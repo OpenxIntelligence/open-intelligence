@@ -1,8 +1,8 @@
-# Open Intelligence — Option Preservation Falsification Protocol
-**31 October 2026 · Proposed protocol, not completed validation**
+# Open Intelligence — Supplemental Option Preservation Evaluation Protocol
+**31 October 2026 · Candidate evaluation of an additive workflow within Open Intelligence, not a new architecture, first product or completed validation**
 
 ## Objective
-Determine whether source-linked, forward-looking **option-preservation threats** can be identified reliably *earlier* than a comparator workflow, without unacceptable false clinical implications, excessive human effort or costs.
+Evaluate whether the existing Open Intelligence longitudinal case/investigation workflow can benefit from an **additional option-dependency and preservation view**. It must be compared to existing source-linked case review and simpler tools, without assuming a product pivot or replacing the established architecture.
 
 ## Hypotheses (to be falsified)
 H1: At least some complex oncology cases contain verifiable, time-sensitive preparation decisions whose delay could remove a plausible future option.
@@ -40,9 +40,9 @@ Measure at cutoff, by patient and by action type. Use confidence intervals and a
 5. Clinicians can abstain, reject and explain tradeoffs; patient wording never implies more certainty than clinician wording.
 6. No production or clinical claim from a synthetic benchmark alone.
 
-## Precommitted stop/pivot decisions (thresholds to be set *before* expert cases)
+## Precommitted capability-level stop/continue decisions (thresholds set *before* expert cases)
 - Stop clinical deployment if source/identity/provenance integrity cannot be shown or governing authority is unclear.
-- Pivot away from option preservation if reviewers find few actionable threats or current manual/navigation workflows catch nearly all of them at lower total cost.
+- Retire or narrow this supplemental option-preservation capability if reviewers find few actionable threats or current manual/navigation workflows catch nearly all of them at lower total cost; retain unrelated Open Intelligence architecture and goals.
 - Narrow scope to specimen logistics, eligibility readiness or longitudinal investigation if one subworkflow demonstrates better incremental value.
 - Delay commercial expansion if a realistic cohort cannot be acquired with consent and repeatably reviewed within viable margins.
 
@@ -62,5 +62,5 @@ Measure at cutoff, by patient and by action type. Use confidence intervals and a
 ## Commercial falsification
 No evidence of pricing or demand yet. Interview accountable oncologists, navigators, advanced-cancer patients, health-system leaders, payers and specialty centers. Obtain confirmed *workflow owner*, *budget owner*, *decision-to-pay* and *responsibility/liability allocation*. Do not confuse enthusiasm with a contract. Track true cost from raw record access through correction and follow-up.
 
-## Relationship to existing repo
-Extends OI-001/002 (job and comparator), OI-003 (challenge set), OI-006/007/009 (source/question/amendment), OI-008 (evidence) and OI-014/015 (controlled evaluation/economics). Introduce OI-019+ only after reviewing integration conflicts and agreeing the case-object contract. No stack migration is implied.
+## Architectural integration and precedence
+This is an optional workstream under the current Open Intelligence architecture and OI-001–018 plan, reusing OI-003 cases, OI-006/007/009 source/question/amendment behavior, OI-008 evidence, and OI-014/015 evaluation procedures. OI-019+ are proposals, not an authorized reprioritization, new source of truth, clinical deployment or stack migration.
