@@ -7,7 +7,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import re
 from pathlib import Path
+from threading import Lock
+from time import monotonic
 from urllib.parse import urlsplit
+
+from tools.crossref_metadata import MetadataInputError, fetch_public_doi, project_work
 
 from .store import CaseStore, InvalidInput, MAX_SOURCE_BYTES
 
@@ -20,6 +24,10 @@ ID_PART = r"([A-Z][A-Z0-9-]{1,39})"
 class Handler(BaseHTTPRequestHandler):
     # Purely local synthetic demonstration, with no authenticated user concept.
     db_path: str
+    allow_crossref_live = False
+    crossref_contact: str | None = None
+    metadata_request_lock = Lock()
+    metadata_last_request = 0.0
 
     def log_message(self, fmt: str, *args: object) -> None:
         # Avoid logging source text, patient-like fields or query strings.
@@ -90,6 +98,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, {"text": (SYNTHETIC / "alpha-pathology-amended.txt").read_text()})
             if path == "/api/examples/evidence":
                 return self._json(200, {"text": (SYNTHETIC / "demo-evidence.txt").read_text()})
+            if path == "/api/bibliography/status":
+                return self._json(200, {"live_enabled": bool(self.allow_crossref_live)})
+            if path == "/api/bibliography/example":
+                # Original fictional metadata, not a publication or live lookup.
+                data = json.loads((SYNTHETIC / "crossref-metadata-fixture.json").read_text())
+                return self._json(200, project_work(data, "10.5555/oi-synthetic-001"))
         except OSError:
             return self._json(404, {"error": "Resource unavailable"})
         # Each request uses a separate SQLite connection; never share a
@@ -125,6 +139,23 @@ class Handler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         try:
             data = self._body()
+            if path == "/api/bibliography/lookup":
+                if not self.allow_crossref_live:
+                    return self._json(403, {"error": "Live Crossref lookup disabled by default; use explicit local server option"})
+                if not self.metadata_request_lock.acquire(blocking=False):
+                    return self._json(429, {"error": "Only one public DOI lookup can run at a time"})
+                try:
+                    current = monotonic()
+                    if current - type(self).metadata_last_request < 1.0:
+                        return self._json(429, {"error": "Public metadata lookup is rate limited; retry later"})
+                    type(self).metadata_last_request = current
+                    try:
+                        record = fetch_public_doi(data.get("doi"), contact=self.crossref_contact)
+                    except MetadataInputError as error:
+                        return self._json(422, {"error": str(error)})
+                    return self._json(200, record)
+                finally:
+                    self.metadata_request_lock.release()
             store = CaseStore(self.db_path)
             try:
                 if path == "/api/cases":
@@ -192,14 +223,22 @@ def main() -> None:
     parser.add_argument("operation", choices=["seed", "serve"])
     parser.add_argument("--db", default=".local/open-intelligence.sqlite")
     parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument("--enable-crossref-live", action="store_true",
+                        help="Allow explicit public DOI-only metadata requests; disabled by default")
+    parser.add_argument("--crossref-contact", default=None,
+                        help="Optional operator email for Crossref polite pool, never patient email")
     args = parser.parse_args()
     if args.operation == "seed":
         seed(args.db)
         return
     print(f"Synthetic-only Open Intelligence demo: http://127.0.0.1:{args.port}")
     print("No authentication; localhost only. Do not import real patient data.")
+    print("Crossref DOI-only live lookup:", "ENABLED (explicit)" if args.enable_crossref_live else "DISABLED (default)")
     server_type = type("LocalOIHTTPServer", (ThreadingHTTPServer,), {"allow_reuse_address": True})
-    bound_handler = type("BoundHandler", (Handler,), {"db_path": args.db})
+    bound_handler = type("BoundHandler", (Handler,), {
+        "db_path": args.db, "allow_crossref_live": args.enable_crossref_live,
+        "crossref_contact": args.crossref_contact,
+    })
     httpd = server_type(("127.0.0.1", args.port), bound_handler)
     try:
         httpd.serve_forever()

@@ -386,4 +386,65 @@ el('evidence-withdraw-form').addEventListener('submit', async event => {
   } catch (err) { notice(err.message, true); }
 });
 
+
+function renderBibliography(record) {
+  clear('bibliography-result');
+  const card = node('article', null, 'source-card');
+  card.append(node('strong', record.title));
+  const meta = node('p', [record.journal, record.year, record.publication_type]
+    .filter(x => x !== null && x !== undefined && x !== '').join(' · '), 'snapshot-meta');
+  card.append(meta);
+  if (Array.isArray(record.authors) && record.authors.length) {
+    card.append(node('p', 'Authors: ' + record.authors.join(', '), 'muted'));
+  }
+  card.append(node('p', 'Source: ' + record.source.provider + ' · Retrieved ' +
+    record.source.retrieved_at, 'snapshot-meta'));
+  const link = document.createElement('a');
+  // The local backend constructs this from an ASCII validated DOI. Defence
+  // in depth: do not follow a publisher-provided arbitrary URL in the UI.
+  if (typeof record.canonical_url === 'string' &&
+      record.canonical_url.startsWith('https://doi.org/')) {
+    link.href = record.canonical_url;
+    link.textContent = 'Open DOI landing page';
+    link.target = '_blank'; link.rel = 'noopener noreferrer';
+    card.append(link);
+  }
+  card.append(node('p', record.kind === 'bibliographic_metadata_only' ?
+    'Bibliographic metadata only. No abstract, full text, medical evidence appraisal or patient linkage.' :
+    'Unrecognized record type; do not treat this as clinical evidence.', 'muted tiny'));
+  el('bibliography-result').append(card);
+}
+async function initializeBibliography() {
+  try {
+    const status = await api('/api/bibliography/status');
+    const enabled = status.live_enabled === true;
+    el('bibliography-live-button').disabled = !enabled;
+    el('bibliography-mode').textContent = enabled ?
+      'Live public DOI-only lookup enabled by local operator. No case data is sent.' :
+      'Offline by default. Only original fictional metadata can be loaded here.';
+  } catch (err) {
+    el('bibliography-live-button').disabled = true;
+    el('bibliography-mode').textContent = 'Bibliography service unavailable; live lookup disabled.';
+  }
+}
+
+el('bibliography-example-button').addEventListener('click', async () => {
+  try {
+    const record = await api('/api/bibliography/example');
+    renderBibliography(record);
+    notice('Fictional bibliography example loaded; not a real scientific publication.');
+  } catch (err) { notice(err.message, true); }
+});
+el('bibliography-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  if (el('bibliography-live-button').disabled) {
+    return notice('Live DOI lookups are disabled in this local demo.', true);
+  }
+  try {
+    const record = await api('/api/bibliography/lookup', { doi: el('bibliography-doi').value.trim() });
+    renderBibliography(record);
+    notice('Crossref bibliographic metadata retrieved. No paper content or patient context was used.');
+  } catch (err) { notice(err.message, true); }
+});
 initialize();
+initializeBibliography();

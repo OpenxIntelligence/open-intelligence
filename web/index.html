@@ -24,6 +24,7 @@
         <a href="#sources">Sources &amp; assertions</a>
         <a href="#investigations">Investigations</a>
         <a href="#evidence">Synthetic evidence</a>
+        <a href="#bibliography">Bibliographic metadata</a>
         <a href="#import">Import &amp; changes</a>
         <a href="#activity">Activity log</a>
       </nav>
@@ -102,6 +103,20 @@
               <textarea id="evidence-withdraw-reason" rows="2" minlength="10" maxlength="600" required></textarea>
               <button class="button secondary" type="submit">Withdraw and invalidate drafts</button>
             </form>
+          </section>
+          <section class="panel" id="bibliography">
+            <div class="panel-head"><div><div class="eyebrow">PUBLIC RESEARCH / METADATA ONLY</div><h2>Bibliographic discovery</h2></div><span class="pill">Not case-linked</span></div>
+            <p class="muted">A publication identifier is not evidence of treatment benefit or applicability. This panel never sends patient information; do not enter patient details. Live lookups send only a public DOI and require explicit local server opt-in.</p>
+            <div id="bibliography-mode" class="muted tiny" role="status">Checking bibliography mode…</div>
+            <form id="bibliography-form">
+              <label for="bibliography-doi">Public DOI (not a patient identifier)</label>
+              <input id="bibliography-doi" type="text" maxlength="256" placeholder="10.1038/…" required>
+              <div class="actions">
+                <button id="bibliography-example-button" type="button" class="button secondary">Load fictional metadata example</button>
+                <button id="bibliography-live-button" type="submit" class="button" disabled>Lookup DOI metadata</button>
+              </div>
+            </form>
+            <div id="bibliography-result" class="cards" aria-live="polite"></div>
           </section>
           <section class="panel" id="import">
             <div class="panel-head"><div><div class="eyebrow">04 / UPDATES</div><h2>Import synthetic source</h2></div></div>

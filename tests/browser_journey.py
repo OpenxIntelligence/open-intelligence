@@ -429,9 +429,21 @@ def main() -> None:
                 "evidence controls overflow the 390px synthetic demo viewport"
             )
 
+
+            # Bibliography view is publicly sourced, not case-linked: its
+            # offline synthetic metadata must never surface copyrighted
+            # abstract canaries or enable live egress by default.
+            cd.wait("document.querySelector('#bibliography-live-button').disabled",
+                    "live DOI lookup disabled in default server mode")
+            cd.evaluate("document.querySelector('#bibliography-example-button').click()")
+            cd.wait("document.querySelector('#bibliography-result .source-card strong')?.textContent.includes('fictional bibliographic')",
+                    "offline Crossref-format metadata example")
+            assert not cd.evaluate("document.querySelector('#bibliography-result').textContent.includes('COPYRIGHTED ABSTRACT')")
+            assert cd.evaluate("document.querySelector('#bibliography-result').textContent.includes('No abstract')")
+
             print("PASS: browser source drilldown, keyboard Escape/Tab and AX landmarks, "
                   "case switching, question/draft, review, amendment invalidation, "
-                  "original export, fictional evidence lifecycle, 390px responsive layout")
+                  "original export, fictional evidence lifecycle, offline bibliography, 390px responsive layout")
         finally:
             if cd is not None:
                 cd.close()
