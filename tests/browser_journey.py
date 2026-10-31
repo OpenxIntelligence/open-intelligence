@@ -248,8 +248,19 @@ def main() -> None:
                 "width": 390, "height": 844, "deviceScaleFactor": 1, "mobile": False,
             })
             cd.wait("window.innerWidth === 390", "mobile viewport")
-            assert cd.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1"), (
-                "unexpected horizontal overflow on 390px viewport"
+            overflow = cd.evaluate("""(() => {
+              const screenWidth = document.documentElement.clientWidth;
+              const outliers = [...document.querySelectorAll('body *')].map(e => ({
+                element: e.tagName.toLowerCase(),
+                id: e.id || '',
+                cls: typeof e.className === 'string' ? e.className : '',
+                right: Math.round(e.getBoundingClientRect().right)
+              })).filter(e => e.right > screenWidth + 1).slice(0, 12);
+              return {inner: window.innerWidth, client: screenWidth,
+                      scroll: document.documentElement.scrollWidth, outliers};
+            })()""")
+            assert overflow["scroll"] <= overflow["inner"] + 1, (
+                f"unexpected horizontal overflow on 390px viewport: {overflow}"
             )
             print("PASS: browser source drilldown, case switching, question/draft, review, "
                   "amendment invalidation, original export, 390px responsive layout")
