@@ -1,0 +1,6 @@
+OI-SYNTHETIC-EVIDENCE/1
+Evidence: EVID-ASSAY
+Title: Fictional assay methods example
+Issued-At: 2026-05-09
+Rights: original-synthetic
+Statement: This independently authored fictional note describes an assay limitation; it is not evidence of treatment efficacy.

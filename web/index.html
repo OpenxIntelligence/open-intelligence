@@ -23,6 +23,7 @@
         <a href="#overview">Overview &amp; timeline</a>
         <a href="#sources">Sources &amp; assertions</a>
         <a href="#investigations">Investigations</a>
+        <a href="#evidence">Synthetic evidence</a>
         <a href="#import">Import &amp; changes</a>
         <a href="#activity">Activity log</a>
       </nav>
@@ -65,10 +66,42 @@
             <form id="draft-form">
               <label for="question-choice">Question</label><select id="question-choice" required></select>
               <label>Source versions included</label><div id="source-choice" class="source-choice"></div>
+              <label>Optional fictional evidence assessments included</label><div id="evidence-choice" class="source-choice"></div>
               <label for="draft-summary">Human-authored, unappraised synthesis</label><textarea id="draft-summary" rows="4" maxlength="3000" required placeholder="This is an engineering demonstration: summarize the selected source statements and remaining uncertainty. Do not assert treatment benefit."></textarea>
               <button class="button" type="submit">Save investigation draft</button>
             </form>
             <div class="subhead">Investigation snapshots</div><div id="snapshot-list" class="snapshots"></div>
+          </section>
+
+          <section class="panel" id="evidence">
+            <div class="panel-head"><div><div class="eyebrow">04 / SYNTHETIC EVIDENCE</div><h2>Evidence &amp; applicability</h2></div><span class="pill pill-warn">FICTIONAL ONLY</span></div>
+            <p class="muted">Evidence samples here are independently authored examples, not publications or medical guidance. Relationships and applicability are human-entered demonstration labels.</p>
+            <form id="evidence-import-form">
+              <label for="evidence-text">Synthetic evidence document</label>
+              <textarea id="evidence-text" rows="7" spellcheck="false" placeholder="OI-SYNTHETIC-EVIDENCE/1&#10;Evidence: EVID-ASSAY&#10;Title: ...&#10;Rights: original-synthetic"></textarea>
+              <div class="actions"><button type="button" id="example-evidence-button" class="button secondary">Load fictional example</button><button type="submit" class="button">Register fictional evidence</button></div>
+            </form>
+            <div class="subhead">Versioned research sources</div>
+            <div id="evidence-list" class="cards"></div>
+            <form id="evidence-assessment-form">
+              <label for="evidence-question-choice">Question to assess</label><select id="evidence-question-choice" required></select>
+              <label for="evidence-source-choice">Current fictional evidence</label><select id="evidence-source-choice" required></select>
+              <label for="evidence-relation">Relationship to question</label>
+              <select id="evidence-relation"><option value="context">Context only</option><option value="supports">Supports (human-labelled)</option><option value="contradicts">Contradicts</option><option value="unknown">Unknown</option></select>
+              <label for="evidence-applicability">Applicability</label>
+              <select id="evidence-applicability"><option value="unknown">Unknown</option><option value="limited">Limited</option><option value="applicable">Applicable (unverified demo label)</option><option value="not_applicable">Not applicable</option></select>
+              <label for="evidence-rationale">Rationale (human-authored)</label>
+              <textarea id="evidence-rationale" rows="3" minlength="15" maxlength="800" required placeholder="Record why this fictional text may or may not apply. Do not make treatment claims."></textarea>
+              <button class="button" type="submit">Record fictional assessment</button>
+            </form>
+            <div class="subhead">Case evidence assessments</div><div id="evidence-assessment-list" class="findings"></div>
+            <form id="evidence-withdraw-form">
+              <label for="evidence-withdraw-id">Choose the current fictional evidence item to withdraw</label>
+              <select id="evidence-withdraw-id" required></select>
+              <label for="evidence-withdraw-reason">Withdrawal reason</label>
+              <textarea id="evidence-withdraw-reason" rows="2" minlength="10" maxlength="600" required></textarea>
+              <button class="button secondary" type="submit">Withdraw and invalidate drafts</button>
+            </form>
           </section>
           <section class="panel" id="import">
             <div class="panel-head"><div><div class="eyebrow">04 / UPDATES</div><h2>Import synthetic source</h2></div></div>

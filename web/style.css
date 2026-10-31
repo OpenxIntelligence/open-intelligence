@@ -89,3 +89,8 @@ dialog::backdrop { background:#071b22ad; }
 dialog pre { background:#eef4f4; padding:18px; border-radius:9px; overflow:auto; white-space:pre-wrap; word-break:break-word; line-height:1.7; font-size:12px; }
 @media(max-width:1100px) { .workspace { grid-template-columns:1fr; } .content-right { grid-row:1; } }
 @media(max-width:700px) { .top{ padding:0 14px; }.top-note,.side-bottom {display:none;} .layout{grid-template-columns:minmax(0,1fr);} .rail{min-width:0;padding:15px 13px; border-right:0; border-bottom:1px solid #dbe4e7; gap:8px;}.rail nav{display:flex; overflow:auto; margin:0;}.rail nav a{padding:7px;white-space:nowrap;font-size:11px;}.rail .tiny{display:none;}.main{min-width:0;padding:16px 12px;}.hero{padding:19px;}.hero-side{display:none;}h1{font-size:23px;}.metrics{grid-template-columns:repeat(2,minmax(0,1fr));}.panel{padding:17px;}.panel-head{align-items:start; flex-direction:column;} }
+
+
+#evidence textarea, #evidence input[type="number"] { width: 100%; }
+#evidence .source-card { margin-bottom: 0.65rem; }
+#evidence-withdraw-form { margin-top: 1.4rem; padding-top: 1rem; border-top: 1px solid #e2e7eb; }

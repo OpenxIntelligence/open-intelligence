@@ -50,14 +50,15 @@ async function initialize() {
     }
     picker.addEventListener('change', () => {
       // An unfinished narrative must never silently become attached to another case.
-      if (el('draft-summary').value.trim()) {
+      if ((el('draft-summary').value.trim() || el('evidence-rationale').value.trim() ||
+          el('evidence-withdraw-reason').value.trim())) {
         picker.value = caseId;
         notice('Save or explicitly clear the unfinished investigation draft before switching cases.', true);
         return;
       }
       caseId = picker.value;
       active = null; // Reject writes while the next case is loading.
-      for (const id of ['question-text', 'report-text']) el(id).value = '';
+      for (const id of ['question-text', 'report-text', 'evidence-rationale']) el(id).value = '';
       if (el('source-dialog').open) el('source-dialog').close();
       refresh();
     });
@@ -85,12 +86,33 @@ function readyCase() {
     throw Error('The selected case is still loading. Try again after it finishes.');
   return caseId;
 }
+function renderEvidenceChoices() {
+  const previouslySelected = new Set([...el('evidence-choice').querySelectorAll('input:checked')]
+    .map(x => Number(x.value)));
+  clear('evidence-choice');
+  const qid = Number(el('question-choice').value);
+  const matches = (active.evidence_assessments || []).filter(a => a.question_id === qid &&
+    (a.evidence_state === 'current' || previouslySelected.has(a.id)));
+  if (!matches.length) return empty(el('evidence-choice'), 'No current evidence assessment for this question (optional).');
+  for (const assessment of matches) {
+    const label = node('label');
+    const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.value = assessment.id;
+    checkbox.checked = previouslySelected.has(assessment.id);
+    label.append(checkbox, node('span', assessment.evidence_key + '@' + assessment.version +
+      (assessment.evidence_state !== 'current' ? ' · STALE: uncheck and reassess' : '') + ' · ' +
+      assessment.relation + ' · ' + assessment.applicability));
+    el('evidence-choice').append(label);
+  }
+}
 function render() {
   const sameCase = renderedCaseId === caseId;
   const priorQuestion = sameCase ? el('question-choice').value : null;
   const priorInputs = sameCase ? [...el('source-choice').querySelectorAll('input')] : [];
   const priorSourceIds = new Set(priorInputs.filter(x => x.checked).map(x => Number(x.value)));
   const preserveSources = priorInputs.length > 0;
+  const priorEvidenceQuestion = sameCase ? el('evidence-question-choice').value : null;
+  const priorEvidenceSource = sameCase ? el('evidence-source-choice').value : null;
+  const priorWithdrawTarget = sameCase ? el('evidence-withdraw-id').value : null;
   clear('metrics');
   const latest = active.sources.filter(s => s.state === 'current');
   const stale = active.snapshots.filter(s => s.state === 'stale');
@@ -132,6 +154,69 @@ function render() {
   }
   if (priorQuestion && [...el('question-choice').options].some(x => x.value === priorQuestion))
     el('question-choice').value = priorQuestion;
+  renderEvidenceChoices();
+  clear('evidence-question-choice'); clear('evidence-source-choice'); clear('evidence-withdraw-id');
+  for (const question of active.questions) {
+    const opt = node('option', 'Q' + question.id + ' · ' + question.question.slice(0, 62));
+    opt.value = question.id; el('evidence-question-choice').append(opt);
+  }
+  if (priorEvidenceQuestion && [...el('evidence-question-choice').options].some(x => x.value === priorEvidenceQuestion))
+    el('evidence-question-choice').value = priorEvidenceQuestion;
+  clear('evidence-list');
+  const evidence = active.evidence || [];
+  if (!evidence.length) empty(el('evidence-list'), 'No fictional research evidence registered.');
+  for (const item of evidence) {
+    const card = node('article', null, 'source-card');
+    const heading = node('div', null, 'source-top');
+    heading.append(node('strong', item.evidence_key + '@' + item.version),
+      pill(item.state, item.state === 'current' ? '' : 'pill-warn'));
+    const view = node('button', 'Inspect fictional source', 'button secondary minor');
+    view.type = 'button'; view.addEventListener('click', () => openEvidence(item));
+    card.append(heading, node('p', item.title), node('p', 'Statement line ' + item.statement_line +
+      ' · SHA ' + item.sha256.slice(0, 12) + '…', 'snapshot-meta'), view);
+    el('evidence-list').append(card);
+    if (item.state === 'current') {
+      const opt = node('option', item.evidence_key + '@' + item.version + ' · ' + item.title);
+      opt.value = item.id; el('evidence-source-choice').append(opt);
+      const withdraw = node('option', item.evidence_key + '@' + item.version + ' · ' + item.title);
+      withdraw.value = item.id; el('evidence-withdraw-id').append(withdraw);
+    }
+  }
+  if (priorWithdrawTarget) {
+    if ([...el('evidence-withdraw-id').options].some(x => x.value === priorWithdrawTarget))
+      el('evidence-withdraw-id').value = priorWithdrawTarget;
+    else {
+      // Do not default to another current item after the selected version
+      // was amended or withdrawn, especially when a reason is already drafted.
+      el('evidence-withdraw-id').selectedIndex = -1;
+      notice('The selected withdrawal target is no longer current. Select a new evidence item explicitly.', true);
+    }
+  }
+  if (priorEvidenceSource && [...el('evidence-source-choice').options].some(x => x.value === priorEvidenceSource))
+    el('evidence-source-choice').value = priorEvidenceSource;
+  else if (priorEvidenceSource && el('evidence-rationale').value.trim()) {
+    const oldItem = evidence.find(x => String(x.id) === priorEvidenceSource);
+    if (oldItem) {
+      const staleOption = node('option', oldItem.evidence_key + '@' + oldItem.version +
+        ' · STALE: choose current evidence and reconsider rationale');
+      staleOption.value = oldItem.id;
+      el('evidence-source-choice').append(staleOption);
+      el('evidence-source-choice').value = priorEvidenceSource;
+      notice('The evidence assessment source changed. Explicitly choose a current version and reconsider its applicability.', true);
+    }
+  }
+  clear('evidence-assessment-list');
+  const assessments = active.evidence_assessments || [];
+  if (!assessments.length) empty(el('evidence-assessment-list'), 'No fictional evidence assessments linked to this case.');
+  for (const item of assessments) {
+    const box = node('article', null, 'finding');
+    const row = node('div', null, 'finding-head');
+    row.append(node('strong', item.evidence_key + '@' + item.version + ' · Q' + item.question_id),
+      pill(item.evidence_state, item.evidence_state === 'current' ? '' : 'pill-alert'));
+    box.append(row, node('p', item.relation + ' / ' + item.applicability, 'snapshot-meta'),
+      node('p', item.statement, 'quoted'), node('p', item.rationale, 'muted'));
+    el('evidence-assessment-list').append(box);
+  }
   clear('source-choice');
   // Preserve exact source IDs across refreshes, including now-superseded IDs:
   // a human must explicitly reconcile the bindings with the new source versions.
@@ -196,6 +281,16 @@ async function openSource(source) {
     el('source-dialog').showModal();
   } catch (err) { notice(err.message, true); }
 }
+async function openEvidence(item) {
+  try {
+    const requestedCase = readyCase();
+    const response = await api('/api/evidence/' + item.id);
+    if (requestedCase !== caseId) return;
+    el('dialog-title').textContent = item.evidence_key + '@' + item.version + ' · fictional source';
+    el('dialog-text').textContent = response.text;
+    el('source-dialog').showModal();
+  } catch (err) { notice(err.message, true); }
+}
 async function downloadSnapshot(id) {
   try {
     const requestedCase = readyCase();
@@ -222,6 +317,7 @@ el('draft-form').addEventListener('submit', async event => {
     const sources = [...el('source-choice').querySelectorAll('input:checked')].map(x => Number(x.value));
     const created = await api('/api/cases/' + requestedCase + '/snapshots', {
       question_id: Number(el('question-choice').value), summary: el('draft-summary').value, source_ids: sources,
+      evidence_assessment_ids: [...el('evidence-choice').querySelectorAll('input:checked')].map(x => Number(x.value)),
     });
     if (requestedCase !== caseId) return;
     el('draft-summary').value = ''; notice('Draft #' + created.snapshot_id + ' saved with exact source versions.'); await refresh();
@@ -241,4 +337,53 @@ el('import-form').addEventListener('submit', async event => {
     el('report-text').value = ''; await refresh();
   } catch (err) { notice(err.message, true); }
 });
+
+el('question-choice').addEventListener('change', () => {
+  // A different question must never inherit the former question's evidence choices.
+  clear('evidence-choice');
+  renderEvidenceChoices();
+});
+el('example-evidence-button').addEventListener('click', async () => {
+  try {
+    el('evidence-text').value = (await api('/api/examples/evidence')).text;
+    notice('Original fictional evidence example loaded.');
+  } catch (err) { notice(err.message, true); }
+});
+el('evidence-import-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const outcome = await api('/api/evidence/imports', { text: el('evidence-text').value });
+    notice('Fictional evidence: ' + outcome.result +
+      (outcome.invalidated_snapshots?.length ? ' · ' + outcome.invalidated_snapshots.length + ' draft(s) stale' : ''));
+    el('evidence-text').value = ''; await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('evidence-assessment-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const outcome = await api('/api/cases/' + requestedCase + '/evidence-assessments', {
+      question_id: Number(el('evidence-question-choice').value),
+      evidence_version_id: Number(el('evidence-source-choice').value),
+      relation: el('evidence-relation').value, applicability: el('evidence-applicability').value,
+      rationale: el('evidence-rationale').value,
+    });
+    if (requestedCase !== caseId) return;
+    notice('Human-authored fictional assessment #' + outcome.assessment_id + ' recorded.');
+    el('evidence-rationale').value = ''; await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('evidence-withdraw-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const outcome = await api('/api/evidence/' + Number(el('evidence-withdraw-id').value) + '/withdraw', {
+      reason: el('evidence-withdraw-reason').value,
+    });
+    if (requestedCase !== caseId) return;
+    notice('Synthetic evidence withdrawn · ' + outcome.invalidated_snapshots.length + ' dependent draft(s) stale.');
+    el('evidence-withdraw-reason').value = ''; await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+
 initialize();

@@ -310,6 +310,9 @@ def main() -> None:
               .some(x => x.closest('label').textContent.includes('STALE'))"""), (
                 "source amendment silently rebound the unfinished draft to the replacement version"
             )
+            # Explicit operator reconciliation before creating the evidence-linked draft.
+            cd.evaluate("""[...document.querySelectorAll('#source-choice input')]
+              .forEach(x => { x.checked = !x.closest('label').textContent.includes('STALE'); })""")
 
             report = json.load(urlopen(f"http://127.0.0.1:{app_port}/api/cases/CASE-ALPHA/state"))
             assert len(report["snapshots"]) == 1 and report["snapshots"][0]["state"] == "stale"
@@ -337,9 +340,98 @@ def main() -> None:
             assert overflow["scroll"] <= overflow["inner"] + 1, (
                 f"unexpected horizontal overflow on 390px viewport: {overflow}"
             )
+
+            # The research layer is synthetic only: register a fictional
+            # source, review its exact content, assess it against this case's
+            # question, and attach that assessment to a new dated draft.
+            cd.evaluate("document.querySelector('#example-evidence-button').click()")
+            cd.wait("document.querySelector('#evidence-text').value.includes('OI-SYNTHETIC-EVIDENCE/1')",
+                    "fictional evidence example loaded")
+            cd.evaluate("document.querySelector('#evidence-import-form').requestSubmit()")
+            cd.wait("document.querySelectorAll('#evidence-list .source-card').length === 1",
+                    "fictional evidence persisted in UI")
+            cd.evaluate("document.querySelector('#evidence-list .source-card button').click()")
+            cd.wait("document.querySelector('#source-dialog').open", "evidence original source dialog")
+            assert "original-synthetic" in cd.evaluate("document.querySelector('#dialog-text').textContent")
+            cd.evaluate("document.querySelector('#dialog-close').click()")
+
+            # Two distinct current evidence sources make selection integrity
+            # observable: a refresh must not silently change a written
+            # withdrawal reason's target to the first option.
+            cd.evaluate("document.querySelector('#example-evidence-button').click()")
+            cd.wait("document.querySelector('#evidence-text').value.includes('EVID-ASSAY')",
+                    "second synthetic evidence template")
+            cd.evaluate("""(() => {
+              const input = document.querySelector('#evidence-text');
+              input.value = input.value.replace('Evidence: EVID-ASSAY', 'Evidence: EVID-SECOND')
+                .replace('Title: Fictional assay methods example', 'Title: Fictional second-source example');
+              document.querySelector('#evidence-import-form').requestSubmit();
+            })()""")
+            cd.wait("document.querySelectorAll('#evidence-list .source-card').length === 2",
+                    "two distinct synthetic evidence versions registered")
+            evidence_state = json.load(urlopen(
+                f"http://127.0.0.1:{app_port}/api/cases/CASE-ALPHA/state"))
+            second_id = next(x["id"] for x in evidence_state["evidence"]
+                             if x["evidence_key"] == "EVID-SECOND")
+            cd.evaluate("""(target => {
+              document.querySelector('#evidence-withdraw-id').value = String(target);
+              document.querySelector('#evidence-withdraw-reason').value =
+                'This second fictional item is only a target-selection regression fixture.';
+              document.querySelector('#question-text').value =
+                'Third synthetic question to trigger an evidence-selector refresh?';
+              document.querySelector('#question-form').requestSubmit();
+            })(""" + str(second_id) + ")")
+            cd.wait("document.querySelectorAll('#question-list .question').length === 3",
+                    "state refresh after selecting second evidence withdrawal")
+            assert cd.evaluate("document.querySelector('#evidence-withdraw-id').value") == str(second_id), (
+                "withdrawal refresh changed the target under an unfinished reason"
+            )
+            assert "second fictional item" in cd.evaluate(
+                "document.querySelector('#evidence-withdraw-reason').value"
+            ), "withdrawal refresh lost the authored reason"
+            cd.evaluate("document.querySelector('#evidence-withdraw-reason').value = ''")
+
+            cd.evaluate("""(() => {
+              document.querySelector('#evidence-rationale').value =
+                'This is independently authored fictional context, not an appraisal of an actual study.';
+              document.querySelector('#evidence-assessment-form').requestSubmit();
+            })()""")
+            cd.wait("document.querySelectorAll('#evidence-assessment-list .finding').length === 1",
+                    "question-specific fictional assessment persisted")
+            cd.evaluate("""(() => {
+              document.querySelector('#evidence-choice input').checked = true;
+              document.querySelector('#draft-summary').value =
+                'The fictional investigation includes a labelled synthetic evidence assessment.';
+              document.querySelector('#draft-form').requestSubmit();
+            })()""")
+            cd.wait("document.querySelectorAll('#snapshot-list .snapshot').length === 2",
+                    "draft with fictional evidence attached")
+            state = json.load(urlopen(f"http://127.0.0.1:{app_port}/api/cases/CASE-ALPHA/state"))
+            latest = state["snapshots"][0]
+            assert latest["state"] == "draft" and len(latest["evidence_assessment_ids"]) == 1
+            evidence_version_id = state["evidence"][0]["id"]
+
+            # Withdrawal must not silently keep that draft current.
+            cd.evaluate("""(evidenceId => {
+              document.querySelector('#evidence-withdraw-id').value = evidenceId;
+              document.querySelector('#evidence-withdraw-reason').value =
+                'Original fictional evidence retired to test dependency invalidation.';
+              document.querySelector('#evidence-withdraw-form').requestSubmit();
+            })(""" + str(evidence_version_id) + ")")
+            cd.wait("document.querySelectorAll('#snapshot-list .snapshot .pill-alert').length >= 2",
+                    "withdrawal invalidates dependent fictional draft")
+            state = json.load(urlopen(f"http://127.0.0.1:{app_port}/api/cases/CASE-ALPHA/state"))
+            latest = next(x for x in state["snapshots"] if x["id"] == latest["id"])
+            assert latest["state"] == "stale"
+            assert state["evidence"][0]["state"] == "withdrawn"
+            assert state["evidence_changes"][0]["kind"] == "withdrawn"
+            assert cd.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1"), (
+                "evidence controls overflow the 390px synthetic demo viewport"
+            )
+
             print("PASS: browser source drilldown, keyboard Escape/Tab and AX landmarks, "
                   "case switching, question/draft, review, amendment invalidation, "
-                  "original export, 390px responsive layout")
+                  "original export, fictional evidence lifecycle, 390px responsive layout")
         finally:
             if cd is not None:
                 cd.close()

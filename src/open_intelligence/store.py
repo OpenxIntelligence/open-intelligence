@@ -131,6 +131,73 @@ def parse_report(raw: bytes) -> ParsedReport:
     return ParsedReport(patient_id, document_id, kind, event_date, issued_at, specimen_id, amends, tuple(findings), raw)
 
 
+
+EVIDENCE_RELATIONS = frozenset({"supports", "contradicts", "context", "unknown"})
+EVIDENCE_APPLICABILITY = frozenset({"applicable", "limited", "not_applicable", "unknown"})
+
+
+@dataclass(frozen=True)
+class ParsedEvidence:
+    evidence_key: str
+    title: str
+    issued_at: str
+    statement: str
+    statement_line: int
+    amends: tuple[str, int] | None
+    raw: bytes
+
+
+def parse_synthetic_evidence(raw: bytes) -> ParsedEvidence:
+    """Parse fictional research evidence authored for tests, never external articles.
+
+    The declared rights field is NOT legal clearance of arbitrarily supplied
+    text. Production evidence requires an independently verified rights service.
+    """
+    if not isinstance(raw, bytes) or not 0 < len(raw) <= 32768:
+        raise InvalidInput("Synthetic evidence must be nonempty UTF-8, at most 32 KiB")
+    try:
+        text = raw.decode("utf-8", errors="strict")
+    except UnicodeDecodeError:
+        raise InvalidInput("Synthetic evidence must be UTF-8") from None
+    if "\r" in text or "\x00" in text:
+        raise InvalidInput("CR and NUL are not supported")
+    lines = text.splitlines()
+    if not lines or lines[0] != "OI-SYNTHETIC-EVIDENCE/1":
+        raise InvalidInput("Only OI-SYNTHETIC-EVIDENCE/1 is accepted")
+    allowed = {"Evidence", "Title", "Issued-At", "Rights", "Statement", "Amends"}
+    values: dict[str, str] = {}
+    statement_line = 0
+    for line_number, line in enumerate(lines[1:], start=2):
+        if not line.strip():
+            continue
+        if ": " not in line:
+            raise InvalidInput(f"Evidence line {line_number}: expected 'Field: value'")
+        label, value = line.split(": ", 1)
+        if label not in allowed or label in values or not value.strip():
+            raise InvalidInput(f"Evidence line {line_number}: unknown, duplicate, or empty field")
+        values[label] = value.strip()
+        if label == "Statement":
+            statement_line = line_number
+    if not {"Evidence", "Title", "Issued-At", "Rights", "Statement"} <= values.keys():
+        raise InvalidInput("Synthetic evidence requires Evidence, Title, Issued-At, Rights, Statement")
+    key = valid_id(values["Evidence"])
+    title = values["Title"]
+    if not 4 <= len(title) <= 180:
+        raise InvalidInput("Evidence title must have 4–180 characters")
+    issued_at = valid_date(values["Issued-At"])
+    if values["Rights"] != "original-synthetic":
+        raise InvalidInput("Only explicitly original synthetic example text is supported")
+    statement = values["Statement"]
+    if not 10 <= len(statement) <= 1200:
+        raise InvalidInput("Evidence statement must have 10–1200 characters")
+    amends = None
+    if "Amends" in values:
+        match = re.fullmatch(r"([A-Z][A-Z0-9-]{1,39})@([1-9][0-9]*)", values["Amends"])
+        if not match or match.group(1) != key:
+            raise InvalidInput("Evidence Amends must be EVIDENCE-ID@VERSION")
+        amends = (key, int(match.group(2)))
+    return ParsedEvidence(key, title, issued_at, statement, statement_line, amends, raw)
+
 SCHEMA = """
 PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS cases (
@@ -181,6 +248,38 @@ CREATE TABLE IF NOT EXISTS events (
   id INTEGER PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(case_id),
   kind TEXT NOT NULL, details TEXT NOT NULL, occurred_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS evidence_versions (
+  id INTEGER PRIMARY KEY, evidence_key TEXT NOT NULL, version INTEGER NOT NULL,
+  sha256 TEXT NOT NULL, raw BLOB NOT NULL, title TEXT NOT NULL,
+  issued_at TEXT NOT NULL, received_at TEXT NOT NULL,
+  statement TEXT NOT NULL, statement_line INTEGER NOT NULL,
+  rights TEXT NOT NULL CHECK(rights='original-synthetic'),
+  state TEXT NOT NULL CHECK(state IN ('current','superseded','withdrawn')),
+  previous_id INTEGER REFERENCES evidence_versions(id),
+  UNIQUE(evidence_key,version), UNIQUE(evidence_key,sha256)
+);
+CREATE TABLE IF NOT EXISTS evidence_assessments (
+  id INTEGER PRIMARY KEY,
+  case_id TEXT NOT NULL REFERENCES cases(case_id),
+  question_id INTEGER NOT NULL REFERENCES questions(id),
+  evidence_version_id INTEGER NOT NULL REFERENCES evidence_versions(id),
+  relation TEXT NOT NULL CHECK(relation IN ('supports','contradicts','context','unknown')),
+  applicability TEXT NOT NULL CHECK(applicability IN ('applicable','limited','not_applicable','unknown')),
+  rationale TEXT NOT NULL, created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS snapshot_evidence (
+  snapshot_id INTEGER NOT NULL REFERENCES snapshots(id),
+  assessment_id INTEGER NOT NULL REFERENCES evidence_assessments(id),
+  PRIMARY KEY(snapshot_id,assessment_id)
+);
+CREATE TABLE IF NOT EXISTS evidence_changes (
+  id INTEGER PRIMARY KEY,
+  evidence_version_id INTEGER NOT NULL REFERENCES evidence_versions(id),
+  kind TEXT NOT NULL CHECK(kind IN ('amended','withdrawn')),
+  reason TEXT NOT NULL, recorded_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_assessments_evidence ON evidence_assessments(evidence_version_id);
+CREATE INDEX IF NOT EXISTS idx_snapshot_evidence_assessment ON snapshot_evidence(assessment_id);
 CREATE INDEX IF NOT EXISTS idx_sources_case ON source_versions(case_id, document_id, version);
 CREATE INDEX IF NOT EXISTS idx_assertions_source ON assertions(source_version_id);
 CREATE INDEX IF NOT EXISTS idx_snapshot_sources_source ON snapshot_sources(source_version_id);
@@ -240,8 +339,7 @@ class CaseStore:
         with self.db:
             self.db.execute("BEGIN IMMEDIATE")
             if report.patient_id != case_id:
-                # Repeated wrong-case deliveries are idempotent too. Keep the
-                # original receipt and avoid manufacturing extra quarantine events.
+                # Idempotent quarantine across repeated wrong-case deliveries.
                 existing = self.db.execute(
                     "SELECT id FROM quarantine WHERE target_case_id=? AND sha256=? ORDER BY id LIMIT 1",
                     (case_id, digest)).fetchone()
@@ -300,6 +398,130 @@ class CaseStore:
             return {"result": "imported", "source_id": source_id, "version": version,
                     "invalidated_snapshots": invalidated}
 
+
+    def _invalidate_evidence_version(self, evidence_version_id: int, *, reason: str) -> list[int]:
+        """Invalidate dependent snapshots across ALL synthetic cases, retaining history.
+
+        Caller must own a write transaction. Only snapshots citing this exact
+        immutable evidence version are affected.
+        """
+        rows = self.db.execute("""SELECT DISTINCT s.id,s.case_id,s.question_id
+            FROM snapshots s JOIN snapshot_evidence se ON se.snapshot_id=s.id
+            JOIN evidence_assessments a ON a.id=se.assessment_id
+            WHERE a.evidence_version_id=? AND s.state!='stale'""",
+            (evidence_version_id,)).fetchall()
+        invalidated = [int(row["id"]) for row in rows]
+        if invalidated:
+            ids = ",".join("?" for _ in invalidated)
+            self.db.execute(f"UPDATE snapshots SET state='stale' WHERE id IN ({ids})", invalidated)
+            self.db.execute(f"""UPDATE questions SET state='open' WHERE id IN
+                (SELECT DISTINCT question_id FROM snapshots WHERE id IN ({ids}))""", invalidated)
+            affected = {str(row["case_id"]) for row in rows}
+            for case_id in sorted(affected):
+                changed = [int(row["id"]) for row in rows if row["case_id"] == case_id]
+                self._event(case_id, "evidence_invalidated",
+                            evidence_version_id=evidence_version_id,
+                            reason=reason, invalidated_snapshots=changed)
+        return invalidated
+
+    def import_synthetic_evidence(self, raw: bytes) -> dict:
+        """Version original fictional research text; no live article import is supported."""
+        item = parse_synthetic_evidence(raw)
+        digest = hashlib.sha256(raw).hexdigest()
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            duplicate = self.db.execute(
+                "SELECT id,version FROM evidence_versions WHERE evidence_key=? AND sha256=?",
+                (item.evidence_key, digest)).fetchone()
+            if duplicate:
+                return {"result": "duplicate", "evidence_version_id": duplicate["id"],
+                        "version": duplicate["version"], "invalidated_snapshots": []}
+            previous = self.db.execute("""SELECT id,version,state FROM evidence_versions
+                WHERE evidence_key=? ORDER BY version DESC LIMIT 1""",
+                (item.evidence_key,)).fetchone()
+            if previous:
+                if previous["state"] != "current":
+                    raise InvalidInput("Withdrawn evidence cannot be silently replaced")
+                if item.amends != (item.evidence_key, previous["version"]):
+                    raise InvalidInput("Changed evidence requires Amends: EVIDENCE-ID@LATEST-VERSION")
+            elif item.amends is not None:
+                raise InvalidInput("Initial evidence cannot specify Amends")
+            version = previous["version"] + 1 if previous else 1
+            invalidated = []
+            if previous:
+                self.db.execute("UPDATE evidence_versions SET state='superseded' WHERE id=?", (previous["id"],))
+                self.db.execute("INSERT INTO evidence_changes (evidence_version_id,kind,reason,recorded_at) VALUES (?,'amended',?,?)",
+                                (previous["id"], "Explicit synthetic source version replacement", now_utc()))
+                invalidated = self._invalidate_evidence_version(previous["id"], reason="amendment")
+            cur = self.db.execute("""INSERT INTO evidence_versions
+                (evidence_key,version,sha256,raw,title,issued_at,received_at,
+                 statement,statement_line,rights,state,previous_id)
+                VALUES (?,?,?,?,?,?,?,?,?,'original-synthetic','current',?)""",
+                (item.evidence_key, version, digest, raw, item.title, item.issued_at,
+                 now_utc(), item.statement, item.statement_line,
+                 previous["id"] if previous else None))
+            return {"result": "imported", "evidence_version_id": int(cur.lastrowid),
+                    "version": version, "invalidated_snapshots": invalidated}
+
+    def withdraw_synthetic_evidence(self, evidence_version_id: int, reason: str) -> dict:
+        """Withdraw a CURRENT fictional item; invalidate related drafts everywhere."""
+        if type(evidence_version_id) is not int or evidence_version_id < 1:
+            raise InvalidInput("Invalid evidence version ID")
+        if not isinstance(reason, str) or not 10 <= len(reason.strip()) <= 600:
+            raise InvalidInput("Withdrawal requires a 10–600 character reason")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            row = self.db.execute("SELECT state FROM evidence_versions WHERE id=?",
+                                  (evidence_version_id,)).fetchone()
+            if not row or row["state"] != "current":
+                raise InvalidInput("Evidence not current")
+            self.db.execute("UPDATE evidence_versions SET state='withdrawn' WHERE id=?",
+                            (evidence_version_id,))
+            self.db.execute("INSERT INTO evidence_changes (evidence_version_id,kind,reason,recorded_at) VALUES (?,'withdrawn',?,?)",
+                            (evidence_version_id, reason.strip(), now_utc()))
+            affected = self._invalidate_evidence_version(evidence_version_id, reason="withdrawal")
+            return {"result": "withdrawn", "invalidated_snapshots": affected}
+
+    def assess_synthetic_evidence(self, case_id: str, question_id: int,
+                                  evidence_version_id: int, relation: str,
+                                  applicability: str, rationale: str) -> int:
+        """Persist a HUMAN-authored assessment, not validated clinical appraisal."""
+        self._case(case_id)
+        if type(question_id) is not int or type(evidence_version_id) is not int:
+            raise InvalidInput("Question and evidence IDs must be integers")
+        if not isinstance(relation, str) or not isinstance(applicability, str) or relation not in EVIDENCE_RELATIONS or applicability not in EVIDENCE_APPLICABILITY:
+            raise InvalidInput("Invalid evidence relationship or applicability")
+        if relation == "supports" and applicability == "not_applicable":
+            raise InvalidInput("An inapplicable source cannot be labelled as supporting this question")
+        if not isinstance(rationale, str) or not 15 <= len(rationale.strip()) <= 800:
+            raise InvalidInput("Assessment rationale must have 15–800 characters")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            if not self.db.execute("SELECT 1 FROM questions WHERE id=? AND case_id=?",
+                                   (question_id, case_id)).fetchone():
+                raise InvalidInput("Question not in this case")
+            current = self.db.execute("""SELECT 1 FROM evidence_versions WHERE id=?
+                AND state='current' AND rights='original-synthetic'""",
+                (evidence_version_id,)).fetchone()
+            if not current:
+                raise InvalidInput("Evidence not current or not permitted for synthetic assessment")
+            cur = self.db.execute("""INSERT INTO evidence_assessments
+                (case_id,question_id,evidence_version_id,relation,applicability,rationale,created_at)
+                VALUES (?,?,?,?,?,?,?)""", (case_id, question_id, evidence_version_id,
+                   relation, applicability, rationale.strip(), now_utc()))
+            self._event(case_id, "synthetic_evidence_assessed",
+                        assessment_id=cur.lastrowid, evidence_version_id=evidence_version_id)
+            return int(cur.lastrowid)
+
+    def synthetic_evidence_text(self, evidence_version_id: int) -> str:
+        if type(evidence_version_id) is not int or evidence_version_id < 1:
+            raise InvalidInput("Invalid evidence version ID")
+        row = self.db.execute("SELECT raw FROM evidence_versions WHERE id=?",
+                              (evidence_version_id,)).fetchone()
+        if not row:
+            raise InvalidInput("Evidence version not found")
+        return bytes(row["raw"]).decode("utf-8")
+
     def add_question(self, case_id: str, question: str) -> int:
         self._case(case_id)
         if not isinstance(question, str) or not 5 <= len(question.strip()) <= 500:
@@ -310,7 +532,8 @@ class CaseStore:
             self._event(case_id, "question_created", question_id=cur.lastrowid)
         return int(cur.lastrowid)
 
-    def create_snapshot(self, case_id: str, question_id: int, summary: str, source_ids: list[int]) -> int:
+    def create_snapshot(self, case_id: str, question_id: int, summary: str, source_ids: list[int],
+                        evidence_assessment_ids: list[int] | None = None) -> int:
         self._case(case_id)
         if not isinstance(summary, str) or not 10 <= len(summary.strip()) <= MAX_SUMMARY:
             raise InvalidInput("Draft must have 10–3000 characters")
@@ -318,8 +541,14 @@ class CaseStore:
             raise InvalidInput("Select one or more current source versions")
         if len(source_ids) != len(set(source_ids)) or len(source_ids) > 50:
             raise InvalidInput("Source IDs must be unique; maximum 50")
+        evidence_assessment_ids = [] if evidence_assessment_ids is None else evidence_assessment_ids
+        if (not isinstance(evidence_assessment_ids, list) or
+            len(evidence_assessment_ids) != len(set(str(x) for x in evidence_assessment_ids)) or
+            len(evidence_assessment_ids) > 50 or
+            any(type(x) is not int or x < 1 for x in evidence_assessment_ids)):
+            raise InvalidInput("Evidence assessment IDs must be unique positive integers; maximum 50")
         with self.db:
-            self.db.execute("BEGIN IMMEDIATE")  # Serialize against incoming amendments.
+            self.db.execute("BEGIN IMMEDIATE")  # Serialize against incoming amendments and evidence changes.
             question = self.db.execute("SELECT id FROM questions WHERE id=? AND case_id=?", (question_id, case_id)).fetchone()
             if not question:
                 raise InvalidInput("Question not in this case")
@@ -327,12 +556,23 @@ class CaseStore:
                 if not self.db.execute("SELECT 1 FROM source_versions WHERE id=? AND case_id=? AND state='current'",
                                        (sid, case_id)).fetchone():
                     raise InvalidInput("Source is missing, superseded, or belongs to another case")
+            for aid in evidence_assessment_ids:
+                linked = self.db.execute("""SELECT 1 FROM evidence_assessments a
+                    JOIN evidence_versions v ON v.id=a.evidence_version_id
+                    WHERE a.id=? AND a.case_id=? AND a.question_id=?
+                    AND v.state='current' AND v.rights='original-synthetic'""",
+                    (aid, case_id, question_id)).fetchone()
+                if not linked:
+                    raise InvalidInput("Evidence assessment is missing, stale, or outside this question")
             cur = self.db.execute("""INSERT INTO snapshots (case_id,question_id,summary,state,created_at)
                 VALUES (?,?,?,'draft',?)""", (case_id, question_id, summary.strip(), now_utc()))
             snapshot_id = int(cur.lastrowid)
             for sid in source_ids:
                 self.db.execute("INSERT INTO snapshot_sources VALUES (?,?)", (snapshot_id, sid))
-            self._event(case_id, "draft_created", snapshot_id=snapshot_id, question_id=question_id)
+            for aid in evidence_assessment_ids:
+                self.db.execute("INSERT INTO snapshot_evidence VALUES (?,?)", (snapshot_id, aid))
+            self._event(case_id, "draft_created", snapshot_id=snapshot_id, question_id=question_id,
+                        evidence_assessment_ids=evidence_assessment_ids)
             return snapshot_id
 
     def acknowledge_demo_review(self, case_id: str, snapshot_id: int, reviewer_label: str) -> None:
@@ -376,7 +616,22 @@ class CaseStore:
                 snapshot["source_ids"] = [r[0] for r in self.db.execute(
                     "SELECT source_version_id FROM snapshot_sources WHERE snapshot_id=? ORDER BY source_version_id",
                     (snapshot["id"],)).fetchall()]
+            for snapshot in snapshot_rows:
+                snapshot["evidence_assessment_ids"] = [r[0] for r in self.db.execute(
+                    "SELECT assessment_id FROM snapshot_evidence WHERE snapshot_id=? ORDER BY assessment_id",
+                    (snapshot["id"],)).fetchall()]
+            evidence_rows = self._dicts(self.db.execute("""SELECT id,evidence_key,version,sha256,title,
+                issued_at,received_at,statement,statement_line,rights,state,previous_id
+                FROM evidence_versions ORDER BY evidence_key,version""").fetchall())
+            assessments = self._dicts(self.db.execute("""SELECT a.*,v.evidence_key,v.version,v.state AS evidence_state,
+                v.title,v.statement,v.statement_line,v.sha256
+                FROM evidence_assessments a JOIN evidence_versions v ON v.id=a.evidence_version_id
+                WHERE a.case_id=? ORDER BY a.id DESC""", (case_id,)).fetchall())
             return {
+                "evidence": evidence_rows,
+                "evidence_changes": self._dicts(self.db.execute(
+                    "SELECT id,evidence_version_id,kind,reason,recorded_at FROM evidence_changes ORDER BY id DESC").fetchall()),
+                "evidence_assessments": assessments,
                 "case": dict(self.db.execute("SELECT * FROM cases WHERE case_id=?", (case_id,)).fetchone()),
                 "sources": source_rows,
                 "assertions": assert_rows,
@@ -418,14 +673,34 @@ class CaseStore:
                      snapshot["summary"], "", "## Source versions and original text", ""]
             for source in sources:
                 raw_text = bytes(source["raw"]).decode("utf-8")
-                # An input quotation can itself contain Markdown fences. Always use
-                # a longer delimiter so source bytes cannot escape their code block.
+                # Prevent raw input from escaping Markdown source fences.
                 longest = max((len(run) for run in re.findall(r"`+", raw_text)), default=0)
                 fence = "`" * max(3, longest + 1)
                 lines.extend([f"### {source['document_id']}@{source['version']} — {source['state']}", "",
                               f"SHA-256: `{source['sha256']}` | Event: {source['event_date']} | Issued: {source['issued_at']}", "",
                               fence + "text", raw_text, fence, ""])
-            lines.extend(["## Limitations", "", "- The reports, questions, and narrative are synthetic and not clinically appraised.",
+            evidence = self.db.execute("""SELECT a.*,v.evidence_key,v.version,v.state AS evidence_state,
+                v.title,v.sha256,v.raw,v.rights,v.statement_line FROM snapshot_evidence se
+                JOIN evidence_assessments a ON a.id=se.assessment_id
+                JOIN evidence_versions v ON v.id=a.evidence_version_id
+                WHERE se.snapshot_id=? ORDER BY a.id""", (snapshot_id,)).fetchall()
+            lines.extend(["## Fictional evidence assessments", ""])
+            if not evidence:
+                lines.extend(["None included; no external study appraisal performed.", ""])
+            for assessment in evidence:
+                evidence_text = bytes(assessment["raw"]).decode("utf-8")
+                longest = max((len(run) for run in re.findall(r"`+", evidence_text)), default=0)
+                fence = "`" * max(3, longest + 1)
+                lines.extend([f"### {assessment['evidence_key']}@{assessment['version']}: {assessment['title']}",
+                              "", f"Evidence state: {assessment['evidence_state']} | Rights: {assessment['rights']}",
+                              f"SHA-256: `{assessment['sha256']}` | Source line: {assessment['statement_line']}",
+                              f"Human-assigned relationship: {assessment['relation']} | Applicability: {assessment['applicability']}",
+                              "", f"Rationale: {assessment['rationale']}", "", fence + "text",
+                              evidence_text, fence, ""])
+            lines.extend(["## Limitations", "",
+                          "- Evidence items above are fictional, independently authored examples; no real publication, guideline or trial was appraised.",
+                          "- Declared synthetic rights are not legal verification of user-supplied content.",
+                          "- The reports, questions, and narrative are synthetic and not clinically appraised.",
                           "- An acknowledgment in this demo is not clinician credential verification or a clinical sign-off.",
                           "- Amendments can make previous investigations stale; see the state above.", ""])
             return "\n".join(lines)
