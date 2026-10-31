@@ -502,6 +502,46 @@ def main() -> None:
             assert not cd.evaluate("document.querySelector('#bibliography-result').textContent.includes('COPYRIGHTED ABSTRACT')")
             assert cd.evaluate("document.querySelector('#bibliography-result').textContent.includes('No abstract')")
 
+            # Historical stale snapshots must not keep the review banner active
+            # after each reopened question is given a new demo acknowledgment.
+            # The prior source/evidence history itself must remain unchanged.
+            state = json.load(urlopen(f"http://127.0.0.1:{app_port}/api/cases/CASE-ALPHA/state"))
+            stale_ids = {s["id"] for s in state["snapshots"] if s["state"] == "stale"}
+            reopened_ids = sorted({s["question_id"] for s in state["snapshots"]
+                                   if s["state"] == "stale" and
+                                   any(q["id"] == s["question_id"] and q["state"] == "open"
+                                       for q in state["questions"])})
+            assert stale_ids and reopened_ids, "synthetic amendment did not leave review history"
+            for qid in reopened_ids:
+                cd.evaluate("""(qid => {
+                  document.querySelector('#question-choice').value = String(qid);
+                  document.querySelectorAll('#source-choice input').forEach(x => {
+                    x.checked = !x.closest('label').textContent.includes('STALE');
+                  });
+                  document.querySelectorAll('#evidence-choice input').forEach(x => x.checked = false);
+                  document.querySelector('#draft-summary').value =
+                    'New synthetic draft on current source versions after the amended evidence.';
+                  document.querySelector('#draft-form').requestSubmit();
+                })(""" + str(qid) + ")")
+                cd.wait("document.querySelector('#snapshot-list .snapshot .pill')?.textContent === 'draft'",
+                        "replacement draft for reopened synthetic question")
+                cd.evaluate("""[...document.querySelector('#snapshot-list .snapshot').querySelectorAll('button')]
+                  .find(x => x.textContent.includes('Demo review acknowledgment')).click()""")
+                cd.wait("document.querySelector('#snapshot-list .snapshot .pill')?.textContent === 'reviewed_in_demo'",
+                        "replacement acknowledged in demo only")
+            cd.wait("document.querySelector('#review-attention')?.dataset.state === 'no-open-review'",
+                    "historical stale snapshots must not present ongoing review work")
+            assert "No unresolved source-change review" in cd.evaluate(
+                "document.querySelector('#review-attention-summary').textContent")
+            state = json.load(urlopen(f"http://127.0.0.1:{app_port}/api/cases/CASE-ALPHA/state"))
+            assert stale_ids.issubset({s["id"] for s in state["snapshots"] if s["state"] == "stale"}), (
+                "resolving review attention erased historical stale snapshots"
+            )
+            assert cd.evaluate("""[...document.querySelectorAll('#metrics .metric')]
+              .some(e => e.textContent.includes('Review required') && e.textContent.includes('0'))"""), (
+                "review attention counter did not clear after replacement acknowledgment"
+            )
+
             print("PASS: browser source drilldown, keyboard Escape/Tab and AX landmarks, "
                   "case switching, question/draft, review, amendment invalidation, "
                   "original export, source-derived timeline, fictional evidence lifecycle, offline bibliography, 390px responsive layout")
