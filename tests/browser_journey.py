@@ -399,12 +399,12 @@ def main() -> None:
             cd.evaluate("document.querySelector('#dialog-close').click()")
 
             assert cd.evaluate("""[...document.querySelectorAll('#source-choice input:checked')]
-              .some(x => x.closest('label').textContent.includes('STALE'))"""), (
+              .some(x => x.closest('label').textContent.includes('Needs review'))"""), (
                 "source amendment silently rebound the unfinished draft to the replacement version"
             )
             # Explicit operator reconciliation before creating the evidence-linked draft.
             cd.evaluate("""[...document.querySelectorAll('#source-choice input')]
-              .forEach(x => { x.checked = !x.closest('label').textContent.includes('STALE'); })""")
+              .forEach(x => { x.checked = !x.closest('label').textContent.includes('Needs review'); })""")
 
             report = json.load(urlopen(f"http://127.0.0.1:{app_port}/api/cases/CASE-ALPHA/state"))
             assert len(report["snapshots"]) == 1 and report["snapshots"][0]["state"] == "stale"
