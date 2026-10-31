@@ -10,7 +10,11 @@ Repository context: Meta Global AI Developer Hackathon, Indie track.
 
 ## Current status
 
-This repository starts with the product plan, execution backlog, and contributor instructions. It does not yet contain an implemented or clinically validated application. Architecture choices and clinical workflows remain proposals to evaluate.
+The repository now contains an **original, local synthetic-only Python/SQLite research prototype**, alongside the product plan and execution backlog. Its bounded case-workspace features include source-preserving report versions, authored findings with source-line references, persistent investigation questions and review drafts, amendment-triggered staleness, an event chronology, fictional evidence/applicability records, and an optional DOI-only bibliographic metadata view. These are demonstration and engineering capabilities, **not a clinically validated application**.
+
+The local prototype has **no real-patient authorization, verified clinician identity, production access control, clinical inference, treatment recommendations, comprehensive EHR interoperability, or licensed full-text literature analysis**. Do not enter actual patient records or treat demo acknowledgments as clinical sign-off. Scientific model and production architecture choices remain under review.
+
+**Last verified main baseline (31 October 2026):** commit [`9bef888`](https://github.com/OpenxIntelligence/open-intelligence/commit/9bef88863a3049c44a71c5ae0a1e131459ff70ba), with [synthetic application/Chromium CI](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41233998409) and [Crossref contract CI](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41233998357) passing. Later commits require their own verification. The [IV-01–03 synthetic evaluation packet (PR #24)](https://github.com/OpenxIntelligence/open-intelligence/pull/24) remains an unmerged draft and is **not** independent clinical validation.
 
 ## Start here
 
@@ -20,9 +24,9 @@ This repository starts with the product plan, execution backlog, and contributor
 | [Execution backlog](docs/EXECUTION_BACKLOG.csv) | Eighteen bounded work packages with dependencies and acceptance evidence |
 | [Contributor instructions](AGENTS.md) | How humans and coding agents should work in this repository |
 
-## First implementation milestone
+## Investigation workflow under development
 
-Build a complete investigation loop using independently authored synthetic records:
+The current synthetic-only demonstration exercises a bounded portion of the intended investigation loop. These are requirements for subsequent independent evaluation and controlled expansion, not claims that full clinical workflows have been established:
 
 1. Import source documents and preserve their identity, original bytes, and versions.
 2. Persist source-linked assertions, uncertainty, questions, and scoped review decisions.
