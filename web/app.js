@@ -58,6 +58,20 @@ async function refresh() {
     render();
   } catch (err) { notice(err.message, true); }
 }
+
+function renderEvidenceChoices() {
+  clear('evidence-choice');
+  const qid = Number(el('question-choice').value);
+  const matches = (active.evidence_assessments || []).filter(a => a.question_id === qid && a.evidence_state === 'current');
+  if (!matches.length) return empty(el('evidence-choice'), 'No current evidence assessment for this question (optional).');
+  for (const assessment of matches) {
+    const label = node('label');
+    const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.value = assessment.id;
+    label.append(checkbox, node('span', assessment.evidence_key + '@' + assessment.version + ' · ' +
+      assessment.relation + ' · ' + assessment.applicability));
+    el('evidence-choice').append(label);
+  }
+}
 function render() {
   clear('metrics');
   const latest = active.sources.filter(s => s.state === 'current');
@@ -97,6 +111,42 @@ function render() {
     el('question-list').append(row);
     const opt = node('option', 'Q' + question.id + ' · ' + question.question.slice(0, 62));
     opt.value = question.id; el('question-choice').append(opt);
+  }
+  renderEvidenceChoices();
+  clear('evidence-question-choice'); clear('evidence-source-choice');
+  for (const question of active.questions) {
+    const opt = node('option', 'Q' + question.id + ' · ' + question.question.slice(0, 62));
+    opt.value = question.id; el('evidence-question-choice').append(opt);
+  }
+  clear('evidence-list');
+  const evidence = active.evidence || [];
+  if (!evidence.length) empty(el('evidence-list'), 'No fictional research evidence registered.');
+  for (const item of evidence) {
+    const card = node('article', null, 'source-card');
+    const heading = node('div', null, 'source-top');
+    heading.append(node('strong', item.evidence_key + '@' + item.version),
+      pill(item.state, item.state === 'current' ? '' : 'pill-warn'));
+    const view = node('button', 'Inspect fictional source', 'button secondary minor');
+    view.type = 'button'; view.addEventListener('click', () => openEvidence(item));
+    card.append(heading, node('p', item.title), node('p', 'Statement line ' + item.statement_line +
+      ' · SHA ' + item.sha256.slice(0, 12) + '…', 'snapshot-meta'), view);
+    el('evidence-list').append(card);
+    if (item.state === 'current') {
+      const opt = node('option', item.evidence_key + '@' + item.version + ' · ' + item.title);
+      opt.value = item.id; el('evidence-source-choice').append(opt);
+    }
+  }
+  clear('evidence-assessment-list');
+  const assessments = active.evidence_assessments || [];
+  if (!assessments.length) empty(el('evidence-assessment-list'), 'No fictional evidence assessments linked to this case.');
+  for (const item of assessments) {
+    const box = node('article', null, 'finding');
+    const row = node('div', null, 'finding-head');
+    row.append(node('strong', item.evidence_key + '@' + item.version + ' · Q' + item.question_id),
+      pill(item.evidence_state, item.evidence_state === 'current' ? '' : 'pill-alert'));
+    box.append(row, node('p', item.relation + ' / ' + item.applicability, 'snapshot-meta'),
+      node('p', item.statement, 'quoted'), node('p', item.rationale, 'muted'));
+    el('evidence-assessment-list').append(box);
   }
   clear('source-choice');
   for (const source of latest) {
@@ -148,6 +198,14 @@ async function openSource(source) {
     el('source-dialog').showModal();
   } catch (err) { notice(err.message, true); }
 }
+async function openEvidence(item) {
+  try {
+    const response = await api('/api/evidence/' + item.id);
+    el('dialog-title').textContent = item.evidence_key + '@' + item.version + ' · fictional source';
+    el('dialog-text').textContent = response.text;
+    el('source-dialog').showModal();
+  } catch (err) { notice(err.message, true); }
+}
 async function downloadSnapshot(id) {
   try {
     const text = await api('/api/cases/' + caseId + '/snapshots/' + id + '/export');
@@ -169,6 +227,7 @@ el('draft-form').addEventListener('submit', async event => {
     const sources = [...el('source-choice').querySelectorAll('input:checked')].map(x => Number(x.value));
     const created = await api('/api/cases/' + caseId + '/snapshots', {
       question_id: Number(el('question-choice').value), summary: el('draft-summary').value, source_ids: sources,
+      evidence_assessment_ids: [...el('evidence-choice').querySelectorAll('input:checked')].map(x => Number(x.value)),
     });
     el('draft-summary').value = ''; notice('Draft #' + created.snapshot_id + ' saved with exact source versions.'); await refresh();
   } catch (err) { notice(err.message, true); }
@@ -185,4 +244,45 @@ el('import-form').addEventListener('submit', async event => {
     el('report-text').value = ''; await refresh();
   } catch (err) { notice(err.message, true); }
 });
+
+el('question-choice').addEventListener('change', renderEvidenceChoices);
+el('example-evidence-button').addEventListener('click', async () => {
+  try {
+    el('evidence-text').value = (await api('/api/examples/evidence')).text;
+    notice('Original fictional evidence example loaded.');
+  } catch (err) { notice(err.message, true); }
+});
+el('evidence-import-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const outcome = await api('/api/evidence/imports', { text: el('evidence-text').value });
+    notice('Fictional evidence: ' + outcome.result +
+      (outcome.invalidated_snapshots?.length ? ' · ' + outcome.invalidated_snapshots.length + ' draft(s) stale' : ''));
+    el('evidence-text').value = ''; await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('evidence-assessment-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const outcome = await api('/api/cases/' + caseId + '/evidence-assessments', {
+      question_id: Number(el('evidence-question-choice').value),
+      evidence_version_id: Number(el('evidence-source-choice').value),
+      relation: el('evidence-relation').value, applicability: el('evidence-applicability').value,
+      rationale: el('evidence-rationale').value,
+    });
+    notice('Human-authored fictional assessment #' + outcome.assessment_id + ' recorded.');
+    el('evidence-rationale').value = ''; await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('evidence-withdraw-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const outcome = await api('/api/evidence/' + Number(el('evidence-withdraw-id').value) + '/withdraw', {
+      reason: el('evidence-withdraw-reason').value,
+    });
+    notice('Synthetic evidence withdrawn · ' + outcome.invalidated_snapshots.length + ' dependent draft(s) stale.');
+    el('evidence-withdraw-id').value = ''; el('evidence-withdraw-reason').value = ''; await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+
 initialize();

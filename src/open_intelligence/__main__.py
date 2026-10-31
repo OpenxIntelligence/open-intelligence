@@ -81,6 +81,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._static("style.css", "text/css; charset=utf-8")
             if path == "/api/examples/amendment":
                 return self._json(200, {"text": (SYNTHETIC / "alpha-pathology-amended.txt").read_text()})
+            if path == "/api/examples/evidence":
+                return self._json(200, {"text": (SYNTHETIC / "demo-evidence.txt").read_text()})
         except OSError:
             return self._json(404, {"error": "Resource unavailable"})
         # Each request uses a separate SQLite connection; never share a
@@ -89,6 +91,9 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if path == "/api/cases":
                 return self._json(200, store.cases())
+            evidence_text = re.fullmatch(r"/api/evidence/([0-9]+)", path)
+            if evidence_text:
+                return self._json(200, {"text": store.synthetic_evidence_text(int(evidence_text[1]))})
             case_state = re.fullmatch(rf"/api/cases/{ID_PART}/state", path)
             if case_state:
                 return self._json(200, store.state(case_state[1]))
@@ -116,6 +121,15 @@ class Handler(BaseHTTPRequestHandler):
                 if path == "/api/cases":
                     store.add_case(data.get("case_id"), data.get("label"))
                     return self._json(201, {"result": "created"})
+                if path == "/api/evidence/imports":
+                    raw = data.get("text")
+                    if not isinstance(raw, str):
+                        raise InvalidInput("Fictional evidence text required")
+                    return self._json(200, store.import_synthetic_evidence(raw.encode("utf-8")))
+                withdrawal = re.fullmatch(r"/api/evidence/([0-9]+)/withdraw", path)
+                if withdrawal:
+                    return self._json(200, store.withdraw_synthetic_evidence(
+                        int(withdrawal[1]), data.get("reason")))
                 imports = re.fullmatch(rf"/api/cases/{ID_PART}/imports", path)
                 if imports:
                     raw = data.get("text")
@@ -125,10 +139,16 @@ class Handler(BaseHTTPRequestHandler):
                 questions = re.fullmatch(rf"/api/cases/{ID_PART}/questions", path)
                 if questions:
                     return self._json(201, {"question_id": store.add_question(questions[1], data.get("question"))})
+                evidence_assessment = re.fullmatch(rf"/api/cases/{ID_PART}/evidence-assessments", path)
+                if evidence_assessment:
+                    return self._json(201, {"assessment_id": store.assess_synthetic_evidence(
+                        evidence_assessment[1], data.get("question_id"), data.get("evidence_version_id"),
+                        data.get("relation"), data.get("applicability"), data.get("rationale"))})
                 drafts = re.fullmatch(rf"/api/cases/{ID_PART}/snapshots", path)
                 if drafts:
                     return self._json(201, {"snapshot_id": store.create_snapshot(
-                        drafts[1], data.get("question_id"), data.get("summary"), data.get("source_ids"))})
+                        drafts[1], data.get("question_id"), data.get("summary"), data.get("source_ids"),
+                        data.get("evidence_assessment_ids"))})
                 review = re.fullmatch(rf"/api/cases/{ID_PART}/snapshots/([0-9]+)/review", path)
                 if review:
                     store.acknowledge_demo_review(review[1], int(review[2]), data.get("reviewer_label"))
