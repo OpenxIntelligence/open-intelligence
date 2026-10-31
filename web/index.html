@@ -96,8 +96,8 @@
             </form>
             <div class="subhead">Case evidence assessments</div><div id="evidence-assessment-list" class="findings"></div>
             <form id="evidence-withdraw-form">
-              <label for="evidence-withdraw-id">Withdraw current fictional evidence by version ID</label>
-              <input id="evidence-withdraw-id" type="number" min="1" step="1" required>
+              <label for="evidence-withdraw-id">Choose the current fictional evidence item to withdraw</label>
+              <select id="evidence-withdraw-id" required></select>
               <label for="evidence-withdraw-reason">Withdrawal reason</label>
               <textarea id="evidence-withdraw-reason" rows="2" minlength="10" maxlength="600" required></textarea>
               <button class="button secondary" type="submit">Withdraw and invalidate drafts</button>
