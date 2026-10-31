@@ -245,7 +245,7 @@ def main() -> None:
             assert "stale" in exported and "Marker A was not tested" in exported
 
             cd.command("Emulation.setDeviceMetricsOverride", {
-                "width": 390, "height": 844, "deviceScaleFactor": 1, "mobile": True,
+                "width": 390, "height": 844, "deviceScaleFactor": 1, "mobile": False,
             })
             cd.wait("window.innerWidth === 390", "mobile viewport")
             assert cd.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1"), (
