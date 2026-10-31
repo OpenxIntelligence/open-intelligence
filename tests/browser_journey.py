@@ -217,6 +217,19 @@ def main() -> None:
               filter.value = 'all'; filter.dispatchEvent(new Event('change'));
             })()""")
 
+            cd.wait("document.querySelectorAll('#assertion-list .source-jump').length >= 1",
+                    "source-linked finding actions")
+            cd.evaluate("document.querySelector('#assertion-list .source-jump').click()")
+            cd.wait("document.querySelector('#source-dialog').open && document.querySelector('#dialog-text mark.source-highlight')",
+                    "source-line anchored report view")
+            assert "Finding:" in cd.evaluate(
+                "document.querySelector('#dialog-text mark.source-highlight').textContent")
+            assert "highlighted original line" in cd.evaluate(
+                "document.querySelector('#dialog-context').textContent")
+            assert "OI-SYNTHETIC-REPORT/1" in cd.evaluate(
+                "document.querySelector('#dialog-text').textContent")
+            cd.evaluate("document.querySelector('#dialog-close').click()")
+
             cd.evaluate("document.querySelector('#source-list .source-card button').click()")
             cd.wait("document.querySelector('#source-dialog').open", "original source modal")
             assert "OI-SYNTHETIC-REPORT/1" in cd.evaluate("document.querySelector('#dialog-text').textContent")
@@ -329,6 +342,10 @@ def main() -> None:
             cd.evaluate("document.querySelector('#import-form').requestSubmit()")
             cd.wait("document.querySelector('#snapshot-list .pill-alert')?.textContent === 'stale'",
                     "source amendment invalidates review snapshot")
+            cd.wait("document.querySelector('#review-attention')?.dataset.state === 'needs-review'",
+                    "source correction triggers visible review attention")
+            assert "stale" in cd.evaluate(
+                "document.querySelector('#review-attention-summary').textContent")
             cd.wait("document.querySelectorAll('#source-list .source-card').length === 3",
                     "original and amended source versions retained")
 
