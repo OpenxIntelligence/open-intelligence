@@ -2,6 +2,7 @@ import json
 import tempfile
 import threading
 import unittest
+from http.client import HTTPConnection
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from urllib.error import HTTPError
@@ -52,6 +53,28 @@ class HttpTests(unittest.TestCase):
         status, other = self.request(f'/api/cases/CASE-BETA/sources/{sid}')
         self.assertEqual(status, 422)
         self.assertEqual(other['error'], 'Source not in this case')
+
+    def test_unexpected_host_rejected_for_reads_and_writes(self):
+        # A browser-controlled DNS name resolving to loopback must not become
+        # a same-origin API entry point for this unauthenticated local demo.
+        requests = [
+            ('GET', '/api/cases', None),
+            ('POST', '/api/cases/CASE-ALPHA/questions',
+             json.dumps({'question': 'Should this foreign host be rejected?'})),
+        ]
+        for method, path, body in requests:
+            with self.subTest(method=method):
+                conn = HTTPConnection('127.0.0.1', self.port, timeout=5)
+                try:
+                    conn.request(method, path, body=body, headers={
+                        'Host': 'untrusted.example:' + str(self.port),
+                        'Content-Type': 'application/json',
+                    })
+                    response = conn.getresponse()
+                    self.assertEqual(response.status, 403)
+                    self.assertIn('Unexpected Host', response.read().decode())
+                finally:
+                    conn.close()
 
     def test_foreign_origin_cannot_post(self):
         status, error = self.request('/api/cases/CASE-ALPHA/questions',
