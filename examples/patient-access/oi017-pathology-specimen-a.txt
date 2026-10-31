@@ -1,0 +1,10 @@
+OI-SYNTHETIC-REPORT/1
+Patient: CASE-OI017
+Document: PATH-OI017-A
+Type: pathology
+Event-Date: 2026-01-20
+Issued-At: 2026-01-22
+Specimen: SPEC-OI017-A
+Finding: histology|reported|Fictional Institution A pathology on specimen A describes a malignant epithelial neoplasm.
+Finding: marker-a|not-reported|Marker A was not tested on specimen A in this fictional report.
+Finding: margin|indeterminate|The margin cannot be assessed from this small fictional specimen.
