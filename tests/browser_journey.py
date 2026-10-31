@@ -192,7 +192,39 @@ def main() -> None:
             cd.evaluate("document.querySelector('#source-list .source-card button').click()")
             cd.wait("document.querySelector('#source-dialog').open", "original source modal")
             assert "OI-SYNTHETIC-REPORT/1" in cd.evaluate("document.querySelector('#dialog-text').textContent")
-            cd.evaluate("document.querySelector('#dialog-close').click()")
+            # Escape closes the native dialog without a mouse.
+            cd.command("Input.dispatchKeyEvent", {
+                "type": "keyDown", "key": "Escape", "code": "Escape",
+                "windowsVirtualKeyCode": 27,
+            })
+            cd.command("Input.dispatchKeyEvent", {
+                "type": "keyUp", "key": "Escape", "code": "Escape",
+                "windowsVirtualKeyCode": 27,
+            })
+            cd.wait("!document.querySelector('#source-dialog').open",
+                    "Escape closes the original-source modal")
+
+            # Browser-enforced Tab focus should proceed from case selection into
+            # the navigation without disappearing into a dead control.
+            cd.evaluate("document.querySelector('#case-picker').focus()")
+            cd.command("Input.dispatchKeyEvent", {
+                "type": "keyDown", "key": "Tab", "code": "Tab",
+                "windowsVirtualKeyCode": 9,
+            })
+            cd.command("Input.dispatchKeyEvent", {
+                "type": "keyUp", "key": "Tab", "code": "Tab",
+                "windowsVirtualKeyCode": 9,
+            })
+            cd.wait("document.activeElement?.getAttribute('href') === '#overview'",
+                    "keyboard Tab reaches first workspace navigation link")
+            cd.command("Accessibility.enable")
+            nodes = cd.command("Accessibility.getFullAXTree").get("nodes", [])
+            names = [(n.get("role", {}).get("value"), n.get("name", {}).get("value", ""))
+                     for n in nodes]
+            assert any(role == "combobox" and "synthetic case" in name.lower()
+                       for role, name in names), "Case selector lacks accessible combobox name"
+            assert any(role == "navigation" for role, _ in names), "Navigation landmark not exposed"
+            assert any(role == "main" for role, _ in names), "Main landmark not exposed"
 
             cd.evaluate("""(() => {
               const picker = document.querySelector('#case-picker');
@@ -262,8 +294,9 @@ def main() -> None:
             assert overflow["scroll"] <= overflow["inner"] + 1, (
                 f"unexpected horizontal overflow on 390px viewport: {overflow}"
             )
-            print("PASS: browser source drilldown, case switching, question/draft, review, "
-                  "amendment invalidation, original export, 390px responsive layout")
+            print("PASS: browser source drilldown, keyboard Escape/Tab and AX landmarks, "
+                  "case switching, question/draft, review, amendment invalidation, "
+                  "original export, 390px responsive layout")
         finally:
             if cd is not None:
                 cd.close()
