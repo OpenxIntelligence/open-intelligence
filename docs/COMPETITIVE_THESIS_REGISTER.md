@@ -1,7 +1,7 @@
-# Open Intelligence — Competitive Thesis and Evidence Register
-**31 October 2026 · Research leads and working hypotheses; not a certified current market survey**
+# Open Intelligence — Complementary Capability Competitive Due Diligence
+**31 October 2026 · Supplemental competitive research for the existing project; not a strategic replacement, launch decision or certified market survey**
 
-## Founder's adversarial constraints
+## Adversarial design filters for incremental capabilities
 - A capability implemented mostly inside an EHR is not a durable independent company. EHRs can add chart summaries, reasoning, missingness alerts, order/plan tracking and clinical copilots.
 - Drug companies can build response models, wet labs, assays, closed-loop discovery and internal therapeutic development. “AI biotech” alone has no structural advantage.
 - AI-agent authorization is being standardized and sold by identity/security vendors. Governance primitives alone do not create healthcare distribution.
@@ -48,4 +48,4 @@ These are **adversarial hypotheses**. A broad feature list proves neither compet
 - FDA clinician decision-support guidance https://www.fda.gov/regulatory-information/search-fda-guidance-documents/clinical-decision-support-software
 
 ## Diligence decision
-**Investigate, not launch-certified.** The product's proposed differentiator is an evidence-backed, patient-controlled *option dependency and readiness graph* plus human-authorized follow-through. If prospectively tested usefulness or durable buyer is absent, keep the world model as useful internal technology but do not assert a venture-scale independent moat.
+**Evaluate as a complementary Open Intelligence workflow, not as a replacement company thesis.** Evidence-backed option dependencies and human-authorized follow-through may add value to the existing platform, but differentiation, willingness to pay and market demand are not established. Failure of this optional workflow does not invalidate the existing architecture or research agenda.
