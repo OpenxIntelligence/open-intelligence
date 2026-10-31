@@ -231,6 +231,29 @@ def main() -> None:
               filter.value = 'all'; filter.dispatchEvent(new Event('change'));
             })()""")
 
+            # Claim → exact source-line requires one action, and the report
+            # remains literal text with no markup execution.
+            cd.wait("document.querySelectorAll('#assertion-list .source-jump').length >= 1",
+                    "source-linked claim actions")
+            assert "No amended report" in cd.evaluate(
+                "document.querySelector('#source-change-list').textContent"), (
+                "unamended sources were presented as revisions"
+            )
+            cd.evaluate("document.querySelector('#assertion-list .source-jump').click()")
+            cd.wait("document.querySelector('#source-dialog').open && !!document.querySelector('#dialog-text mark.source-highlight')",
+                    "exact line highlighted in original source")
+            assert "Finding:" in cd.evaluate(
+                "document.querySelector('#dialog-text mark.source-highlight').textContent"), (
+                "highlighted source line does not match a finding"
+            )
+            assert "highlighted original line" in cd.evaluate(
+                "document.querySelector('#dialog-context').textContent")
+            assert not cd.evaluate("document.querySelector('#dialog-text script')"), (
+                "source material became active HTML"
+            )
+            cd.evaluate("document.querySelector('#dialog-close').click()")
+            cd.wait("!document.querySelector('#source-dialog').open", "anchored source modal closes")
+
             cd.evaluate("document.querySelector('#source-list .source-card button').click()")
             cd.wait("document.querySelector('#source-dialog').open", "original source modal")
             assert "OI-SYNTHETIC-REPORT/1" in cd.evaluate("document.querySelector('#dialog-text').textContent")
@@ -377,6 +400,28 @@ def main() -> None:
             cd.evaluate("document.querySelector('#import-form').requestSubmit()")
             cd.wait("document.querySelector('#snapshot-list .pill-alert')?.textContent === 'stale'",
                     "source amendment invalidates review snapshot")
+            cd.wait("document.querySelector('#review-attention')?.dataset.state === 'needs-review'",
+                    "amendment surfaces unresolved review attention")
+            assert "reopened question(s)" in cd.evaluate(
+                "document.querySelector('#review-attention-summary').textContent")
+            cd.wait("document.querySelectorAll('#source-change-list .change-card').length === 1",
+                    "source amendment appears in change explorer")
+            assert "version 1 → 2" in cd.evaluate(
+                "document.querySelector('#source-change-list').textContent")
+            assert "saved investigation(s)" in cd.evaluate(
+                "document.querySelector('#source-change-list').textContent")
+            cd.evaluate("document.querySelector('#source-change-list .change-card button').click()")
+            cd.wait("document.querySelector('#compare-dialog').open", "read-only source comparison opens")
+            previous_text = cd.evaluate("document.querySelector('#compare-before').textContent")
+            amended_text = cd.evaluate("document.querySelector('#compare-after').textContent")
+            assert "OI-SYNTHETIC-REPORT/1" in previous_text and "OI-SYNTHETIC-REPORT/1" in amended_text
+            assert previous_text != amended_text, "amendment comparison lost original version difference"
+            assert "PATH-ALPHA" in cd.evaluate("document.querySelector('#compare-title').textContent")
+            assert "no clinical or treatment determination" in cd.evaluate(
+                "document.querySelector('#compare-context').textContent")
+            cd.evaluate("document.querySelector('#compare-close').click()")
+            cd.wait("!document.querySelector('#compare-dialog').open",
+                    "source comparison closes without losing the current case")
             cd.wait("document.querySelectorAll('#source-list .source-card').length === 3",
                     "original and amended source versions retained")
 
@@ -542,7 +587,59 @@ def main() -> None:
             assert not cd.evaluate("document.querySelector('#bibliography-result').textContent.includes('COPYRIGHTED ABSTRACT')")
             assert cd.evaluate("document.querySelector('#bibliography-result').textContent.includes('No abstract')")
 
-            print("PASS: browser source drilldown, keyboard Escape/Tab and AX landmarks, "
+            # A historical stale snapshot must remain inspectable after the
+            # corresponding reopened question receives a NEW demo acknowledgment.
+            # The current-attention counter then clears, without deleting history.
+            state = json.load(urlopen(f"http://127.0.0.1:{app_port}/api/cases/CASE-ALPHA/state"))
+            stale_ids = {snapshot["id"] for snapshot in state["snapshots"]
+                         if snapshot["state"] == "stale"}
+            reopened_ids = sorted({snapshot["question_id"] for snapshot in state["snapshots"]
+                                   if snapshot["state"] == "stale" and
+                                   any(q["id"] == snapshot["question_id"] and q["state"] == "open"
+                                       for q in state["questions"])})
+            assert stale_ids and reopened_ids, "missing synthetic stale review fixture"
+            for qid in reopened_ids:
+                cd.evaluate("""(qid => {
+                  const selectedQuestion = document.querySelector('#question-choice');
+                  selectedQuestion.value = String(qid);
+                  selectedQuestion.dispatchEvent(new Event('change'));
+                  document.querySelectorAll('#source-choice input').forEach(input => {
+                    input.checked = !input.closest('label').textContent.includes('Needs review');
+                  });
+                  document.querySelectorAll('#evidence-choice input').forEach(input => input.checked = false);
+                  document.querySelector('#draft-observations').value =
+                    'Current synthetic source versions have been re-inspected; no clinical conclusion is drawn.';
+                  document.querySelector('#draft-summary').value = '';
+                  document.querySelector('#draft-assumptions').value =
+                    'Earlier investigation remains historical and the amended report needs reviewer interpretation.';
+                  document.querySelector('#draft-form').requestSubmit();
+                })(""" + str(qid) + ")")
+                cd.wait("document.querySelector('#snapshot-list .snapshot .pill')?.textContent === 'draft'",
+                        "new source-scoped draft saved")
+                cd.evaluate("""[...document.querySelector('#snapshot-list .snapshot').querySelectorAll('button')]
+                  .find(button => button.textContent.includes('Demo review acknowledgment')).click()""")
+                cd.wait("document.querySelector('#snapshot-list .snapshot .pill')?.textContent === 'reviewed_in_demo'",
+                        "replacement demo acknowledgment persisted")
+            cd.wait("document.querySelector('#review-attention')?.dataset.state === 'no-open-review'",
+                    "review attention must clear after replacement acknowledgment")
+            assert "No unresolved source-change review" in cd.evaluate(
+                "document.querySelector('#review-attention-summary').textContent")
+            assert cd.evaluate("""[...document.querySelectorAll('#metrics .metric')]
+              .some(item => item.textContent.includes('Review required') &&
+                 item.querySelector('.number')?.textContent === '0')"""), (
+                "historical stale snapshots were mistakenly counted as unresolved work"
+            )
+            state = json.load(urlopen(f"http://127.0.0.1:{app_port}/api/cases/CASE-ALPHA/state"))
+            assert stale_ids.issubset({snapshot["id"] for snapshot in state["snapshots"]
+                                      if snapshot["state"] == "stale"}), (
+                "review resolution erased historical source-dependent snapshots"
+            )
+            assert cd.evaluate("document.querySelectorAll('#source-change-list .change-card').length") == 1, (
+                "review resolution erased document-version history"
+            )
+
+            print("PASS: browser source drilldown, source comparison, review-attention resolution, "
+                  "keyboard Escape/Tab and AX landmarks, "
                   "case switching, question/draft, review, amendment invalidation, "
                   "original export, source-derived timeline, fictional evidence lifecycle, offline bibliography, 390px responsive layout")
         finally:
