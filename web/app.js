@@ -3,6 +3,7 @@
 let caseId = null;
 let active = null;
 let refreshSequence = 0;
+let renderedCaseId = null;
 const el = (id) => document.getElementById(id);
 function node(tag, text, className = '') {
   const item = document.createElement(tag);
@@ -47,7 +48,19 @@ async function initialize() {
       notice('Run PYTHONPATH=src python -m open_intelligence seed before opening the demo.', true);
       return;
     }
-    picker.addEventListener('change', () => { caseId = picker.value; refresh(); });
+    picker.addEventListener('change', () => {
+      // An unfinished narrative must never silently become attached to another case.
+      if ((el('draft-summary').value.trim() || el('evidence-rationale').value.trim())) {
+        picker.value = caseId;
+        notice('Save or explicitly clear the unfinished investigation draft before switching cases.', true);
+        return;
+      }
+      caseId = picker.value;
+      active = null; // Reject writes while the next case is loading.
+      for (const id of ['question-text', 'report-text', 'evidence-rationale']) el(id).value = '';
+      if (el('source-dialog').open) el('source-dialog').close();
+      refresh();
+    });
     caseId = cases[0].case_id;
     await refresh();
   } catch (err) { notice(err.message, true); }
@@ -67,6 +80,11 @@ async function refresh() {
     if (sequence === refreshSequence && requestedCase === caseId) notice(err.message, true);
   }
 }
+function readyCase() {
+  if (!active || !caseId || active.case.case_id !== caseId || renderedCaseId !== caseId)
+    throw Error('The selected case is still loading. Try again after it finishes.');
+  return caseId;
+}
 function renderEvidenceChoices() {
   clear('evidence-choice');
   const qid = Number(el('question-choice').value);
@@ -81,6 +99,11 @@ function renderEvidenceChoices() {
   }
 }
 function render() {
+  const sameCase = renderedCaseId === caseId;
+  const priorQuestion = sameCase ? el('question-choice').value : null;
+  const priorInputs = sameCase ? [...el('source-choice').querySelectorAll('input')] : [];
+  const priorSourceIds = new Set(priorInputs.filter(x => x.checked).map(x => Number(x.value)));
+  const preserveSources = priorInputs.length > 0;
   clear('metrics');
   const latest = active.sources.filter(s => s.state === 'current');
   const stale = active.snapshots.filter(s => s.state === 'stale');
@@ -120,6 +143,8 @@ function render() {
     const opt = node('option', 'Q' + question.id + ' · ' + question.question.slice(0, 62));
     opt.value = question.id; el('question-choice').append(opt);
   }
+  if (priorQuestion && [...el('question-choice').options].some(x => x.value === priorQuestion))
+    el('question-choice').value = priorQuestion;
   renderEvidenceChoices();
   clear('evidence-question-choice'); clear('evidence-source-choice');
   for (const question of active.questions) {
@@ -157,13 +182,22 @@ function render() {
     el('evidence-assessment-list').append(box);
   }
   clear('source-choice');
-  for (const source of latest) {
+  // Preserve exact source IDs across refreshes, including now-superseded IDs:
+  // a human must explicitly reconcile the bindings with the new source versions.
+  const sourcesForDraft = preserveSources
+    ? active.sources.filter(x => x.state === 'current' || priorSourceIds.has(x.id))
+    : latest;
+  for (const source of sourcesForDraft) {
     const label = node('label');
-    const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.value = source.id; checkbox.checked = true;
-    label.append(checkbox, node('span', source.document_id + '@' + source.version + ' · ' + source.event_date));
+    const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.value = source.id;
+    checkbox.checked = preserveSources ? priorSourceIds.has(source.id) : true;
+    label.append(checkbox, node('span', source.document_id + '@' + source.version + ' · ' +
+      source.event_date + (source.state !== 'current' ? ' · STALE: uncheck and select the replacement explicitly' : '')));
     el('source-choice').append(label);
   }
   if (!latest.length) empty(el('source-choice'), 'No current sources.');
+  if ([...priorSourceIds].some(id => !latest.some(x => x.id === id)))
+    notice('An investigation source changed while you were editing. Review the narrative and explicitly reconcile source selections before saving.', true);
   clear('snapshot-list');
   if (!active.snapshots.length) empty(el('snapshot-list'), 'No investigation drafts yet.');
   for (const snapshot of active.snapshots) {
@@ -179,7 +213,9 @@ function render() {
       const button = node('button', 'Demo review acknowledgment', 'button minor'); button.type = 'button';
       button.addEventListener('click', async () => {
         try {
-          await api('/api/cases/' + caseId + '/snapshots/' + snapshot.id + '/review', { reviewer_label: 'Synthetic reviewer (unverified)' });
+          const requestedCase = readyCase();
+          await api('/api/cases/' + requestedCase + '/snapshots/' + snapshot.id + '/review', { reviewer_label: 'Synthetic reviewer (unverified)' });
+          if (requestedCase !== caseId) return;
           notice('Acknowledged in demonstration only. This is not credentialed clinical review.'); await refresh();
         } catch (err) { notice(err.message, true); }
       }); actions.append(button);
@@ -197,10 +233,13 @@ function render() {
     const card = node('div', event.kind.replaceAll('_', ' '), 'event');
     card.append(node('small', event.occurred_at)); el('event-list').append(card);
   }
+  renderedCaseId = caseId;
 }
 async function openSource(source) {
   try {
-    const response = await api('/api/cases/' + caseId + '/sources/' + source.id);
+    const requestedCase = readyCase();
+    const response = await api('/api/cases/' + requestedCase + '/sources/' + source.id);
+    if (requestedCase !== caseId) return;
     el('dialog-title').textContent = source.document_id + '@' + source.version + ' · original UTF-8';
     el('dialog-text').textContent = response.text;
     el('source-dialog').showModal();
@@ -208,7 +247,9 @@ async function openSource(source) {
 }
 async function openEvidence(item) {
   try {
+    const requestedCase = readyCase();
     const response = await api('/api/evidence/' + item.id);
+    if (requestedCase !== caseId) return;
     el('dialog-title').textContent = item.evidence_key + '@' + item.version + ' · fictional source';
     el('dialog-text').textContent = response.text;
     el('source-dialog').showModal();
@@ -216,7 +257,9 @@ async function openEvidence(item) {
 }
 async function downloadSnapshot(id) {
   try {
-    const text = await api('/api/cases/' + caseId + '/snapshots/' + id + '/export');
+    const requestedCase = readyCase();
+    const text = await api('/api/cases/' + requestedCase + '/snapshots/' + id + '/export');
+    if (requestedCase !== caseId) return;
     const url = URL.createObjectURL(new Blob([text], { type: 'text/markdown' }));
     const link = document.createElement('a'); link.href = url; link.download = 'synthetic-investigation-' + id + '.md';
     document.body.append(link); link.click(); link.remove(); URL.revokeObjectURL(url);
@@ -225,18 +268,22 @@ async function downloadSnapshot(id) {
 el('dialog-close').addEventListener('click', () => el('source-dialog').close());
 el('question-form').addEventListener('submit', async event => {
   event.preventDefault(); try {
-    await api('/api/cases/' + caseId + '/questions', { question: el('question-text').value });
+    const requestedCase = readyCase();
+    await api('/api/cases/' + requestedCase + '/questions', { question: el('question-text').value });
+    if (requestedCase !== caseId) return;
     el('question-text').value = ''; notice('Question persisted.'); await refresh();
   } catch (err) { notice(err.message, true); }
 });
 el('draft-form').addEventListener('submit', async event => {
   event.preventDefault();
   try {
+    const requestedCase = readyCase();
     const sources = [...el('source-choice').querySelectorAll('input:checked')].map(x => Number(x.value));
-    const created = await api('/api/cases/' + caseId + '/snapshots', {
+    const created = await api('/api/cases/' + requestedCase + '/snapshots', {
       question_id: Number(el('question-choice').value), summary: el('draft-summary').value, source_ids: sources,
       evidence_assessment_ids: [...el('evidence-choice').querySelectorAll('input:checked')].map(x => Number(x.value)),
     });
+    if (requestedCase !== caseId) return;
     el('draft-summary').value = ''; notice('Draft #' + created.snapshot_id + ' saved with exact source versions.'); await refresh();
   } catch (err) { notice(err.message, true); }
 });
@@ -247,7 +294,9 @@ el('example-button').addEventListener('click', async () => {
 el('import-form').addEventListener('submit', async event => {
   event.preventDefault();
   try {
-    const outcome = await api('/api/cases/' + caseId + '/imports', { text: el('report-text').value });
+    const requestedCase = readyCase();
+    const outcome = await api('/api/cases/' + requestedCase + '/imports', { text: el('report-text').value });
+    if (requestedCase !== caseId) return;
     notice('Import: ' + outcome.result + (outcome.invalidated_snapshots?.length ? ' · ' + outcome.invalidated_snapshots.length + ' investigation(s) marked stale' : ''));
     el('report-text').value = ''; await refresh();
   } catch (err) { notice(err.message, true); }
@@ -272,12 +321,14 @@ el('evidence-import-form').addEventListener('submit', async event => {
 el('evidence-assessment-form').addEventListener('submit', async event => {
   event.preventDefault();
   try {
-    const outcome = await api('/api/cases/' + caseId + '/evidence-assessments', {
+    const requestedCase = readyCase();
+    const outcome = await api('/api/cases/' + requestedCase + '/evidence-assessments', {
       question_id: Number(el('evidence-question-choice').value),
       evidence_version_id: Number(el('evidence-source-choice').value),
       relation: el('evidence-relation').value, applicability: el('evidence-applicability').value,
       rationale: el('evidence-rationale').value,
     });
+    if (requestedCase !== caseId) return;
     notice('Human-authored fictional assessment #' + outcome.assessment_id + ' recorded.');
     el('evidence-rationale').value = ''; await refresh();
   } catch (err) { notice(err.message, true); }
@@ -285,9 +336,11 @@ el('evidence-assessment-form').addEventListener('submit', async event => {
 el('evidence-withdraw-form').addEventListener('submit', async event => {
   event.preventDefault();
   try {
+    const requestedCase = readyCase();
     const outcome = await api('/api/evidence/' + Number(el('evidence-withdraw-id').value) + '/withdraw', {
       reason: el('evidence-withdraw-reason').value,
     });
+    if (requestedCase !== caseId) return;
     notice('Synthetic evidence withdrawn · ' + outcome.invalidated_snapshots.length + ' dependent draft(s) stale.');
     el('evidence-withdraw-id').value = ''; el('evidence-withdraw-reason').value = ''; await refresh();
   } catch (err) { notice(err.message, true); }
