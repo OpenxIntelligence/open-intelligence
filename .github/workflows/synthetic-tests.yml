@@ -1,9 +1,9 @@
 name: Synthetic case ledger tests
 on:
   push:
-    branches: [main, feat/synthetic-case-ledger]
+    branches: [main, feat/synthetic-case-ledger, fix/draft-case-provenance]
   pull_request:
-    branches: [main]
+    branches: [main, feat/synthetic-case-ledger]
 permissions:
   contents: read
 jobs:

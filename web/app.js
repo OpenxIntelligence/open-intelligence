@@ -2,7 +2,13 @@
 // All displayed data is from local, synthetic records. No third-party scripts.
 let caseId = null;
 let active = null;
+let renderedCaseId = null;
 let refreshSequence = 0;
+function ensureRenderedCase() {
+  if (!active || !active.case || active.case.case_id !== caseId || renderedCaseId !== caseId) {
+    throw Error('The selected synthetic case is still loading. Try again when it appears.');
+  }
+}
 const el = (id) => document.getElementById(id);
 function node(tag, text, className = '') {
   const item = document.createElement(tag);
@@ -47,7 +53,19 @@ async function initialize() {
       notice('Run PYTHONPATH=src python -m open_intelligence seed before opening the demo.', true);
       return;
     }
-    picker.addEventListener('change', () => { caseId = picker.value; refresh(); });
+    picker.addEventListener('change', () => {
+      if (caseId === picker.value) return;
+      const unsubmitted = ['draft-summary', 'question-text', 'report-text']
+        .some(id => Boolean(el(id).value.trim()));
+      caseId = picker.value;
+      renderedCaseId = null;
+      active = null;
+      if (el('source-dialog').open) el('source-dialog').close();
+      for (const id of ['draft-summary', 'question-text', 'report-text']) el(id).value = '';
+      el('case-heading').textContent = 'Loading selected synthetic case…';
+      if (unsubmitted) notice('Unsubmitted work from the prior case was cleared. Start a new draft for this case.', true);
+      refresh();
+    });
     caseId = cases[0].case_id;
     await refresh();
   } catch (err) { notice(err.message, true); }
@@ -63,11 +81,18 @@ async function refresh() {
     active = response;
     el('case-heading').textContent = active.case.label;
     render();
+    renderedCaseId = requestedCase;
   } catch (err) {
     if (sequence === refreshSequence && requestedCase === caseId) notice(err.message, true);
   }
 }
 function render() {
+  // A same-case refresh must never silently rebind a partially written draft.
+  const preserveDraft = renderedCaseId === caseId && Boolean(el('draft-summary').value.trim());
+  const selectedQuestionId = preserveDraft ? el('question-choice').value : null;
+  const selectedSourceIds = preserveDraft
+    ? new Set([...el('source-choice').querySelectorAll('input:checked')].map(x => x.value))
+    : null;
   clear('metrics');
   const latest = active.sources.filter(s => s.state === 'current');
   const stale = active.snapshots.filter(s => s.state === 'stale');
@@ -107,14 +132,26 @@ function render() {
     const opt = node('option', 'Q' + question.id + ' · ' + question.question.slice(0, 62));
     opt.value = question.id; el('question-choice').append(opt);
   }
+  if (preserveDraft && selectedQuestionId &&
+      [...el('question-choice').options].some(option => option.value === selectedQuestionId)) {
+    el('question-choice').value = selectedQuestionId;
+  }
   clear('source-choice');
-  for (const source of latest) {
+  const selectedHistorical = preserveDraft
+    ? active.sources.filter(s => s.state !== 'current' && selectedSourceIds.has(String(s.id)))
+    : [];
+  for (const source of [...latest, ...selectedHistorical]) {
     const label = node('label');
-    const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.value = source.id; checkbox.checked = true;
-    label.append(checkbox, node('span', source.document_id + '@' + source.version + ' · ' + source.event_date));
+    const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.value = source.id;
+    checkbox.checked = preserveDraft ? selectedSourceIds.has(String(source.id)) : source.state === 'current';
+    label.append(checkbox, node('span', source.document_id + '@' + source.version + ' · ' + source.event_date +
+      (source.state !== 'current' ? ' · SUPERSEDED: uncheck and reconcile before saving' : '')));
     el('source-choice').append(label);
   }
   if (!latest.length) empty(el('source-choice'), 'No current sources.');
+  if (selectedHistorical.length) {
+    notice('A report changed while this draft was open. Review the narrative, uncheck the superseded version and explicitly select the replacement.', true);
+  }
   clear('snapshot-list');
   if (!active.snapshots.length) empty(el('snapshot-list'), 'No investigation drafts yet.');
   for (const snapshot of active.snapshots) {
@@ -151,17 +188,23 @@ function render() {
 }
 async function openSource(source) {
   const requestedCase = caseId;
+  const sequence = refreshSequence;
   try {
+    ensureRenderedCase();
     const response = await api('/api/cases/' + requestedCase + '/sources/' + source.id);
-    if (requestedCase !== caseId) return;
+    if (requestedCase !== caseId || sequence !== refreshSequence) return;
     el('dialog-title').textContent = source.document_id + '@' + source.version + ' · original UTF-8';
     el('dialog-text').textContent = response.text;
     el('source-dialog').showModal();
   } catch (err) { notice(err.message, true); }
 }
 async function downloadSnapshot(id) {
+  const requestedCase = caseId;
+  const sequence = refreshSequence;
   try {
-    const text = await api('/api/cases/' + caseId + '/snapshots/' + id + '/export');
+    ensureRenderedCase();
+    const text = await api('/api/cases/' + requestedCase + '/snapshots/' + id + '/export');
+    if (requestedCase !== caseId || sequence !== refreshSequence) return;
     const url = URL.createObjectURL(new Blob([text], { type: 'text/markdown' }));
     const link = document.createElement('a'); link.href = url; link.download = 'synthetic-investigation-' + id + '.md';
     document.body.append(link); link.click(); link.remove(); URL.revokeObjectURL(url);
@@ -170,6 +213,7 @@ async function downloadSnapshot(id) {
 el('dialog-close').addEventListener('click', () => el('source-dialog').close());
 el('question-form').addEventListener('submit', async event => {
   event.preventDefault(); try {
+    ensureRenderedCase();
     await api('/api/cases/' + caseId + '/questions', { question: el('question-text').value });
     el('question-text').value = ''; notice('Question persisted.'); await refresh();
   } catch (err) { notice(err.message, true); }
@@ -177,7 +221,12 @@ el('question-form').addEventListener('submit', async event => {
 el('draft-form').addEventListener('submit', async event => {
   event.preventDefault();
   try {
+    ensureRenderedCase();
     const sources = [...el('source-choice').querySelectorAll('input:checked')].map(x => Number(x.value));
+    const currentIds = new Set(active.sources.filter(s => s.state === 'current').map(s => s.id));
+    if (sources.some(id => !currentIds.has(id))) {
+      throw Error('This draft cites a superseded report. Explicitly reconcile the source and narrative first.');
+    }
     const created = await api('/api/cases/' + caseId + '/snapshots', {
       question_id: Number(el('question-choice').value), summary: el('draft-summary').value, source_ids: sources,
     });
@@ -191,6 +240,7 @@ el('example-button').addEventListener('click', async () => {
 el('import-form').addEventListener('submit', async event => {
   event.preventDefault();
   try {
+    ensureRenderedCase();
     const outcome = await api('/api/cases/' + caseId + '/imports', { text: el('report-text').value });
     notice('Import: ' + outcome.result + (outcome.invalidated_snapshots?.length ? ' · ' + outcome.invalidated_snapshots.length + ' investigation(s) marked stale' : ''));
     el('report-text').value = ''; await refresh();

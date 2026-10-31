@@ -261,6 +261,25 @@ def main() -> None:
               .find(x => x.textContent.includes('Demo review acknowledgment')).click()""")
             cd.wait("document.querySelector('#snapshot-list .pill')?.textContent === 'reviewed_in_demo'",
                     "explicit demo acknowledgment")
+            # Keep an unsaved narrative attached to its selected question and
+            # exact pathology source across a same-case refresh.
+            cd.evaluate("""(() => {
+              document.querySelector('#draft-summary').value =
+                'Unsubmitted Alpha narrative: marker A was not tested.';
+              const inputs = [...document.querySelectorAll('#source-choice input')];
+              for (const input of inputs)
+                input.checked = input.parentElement.textContent.includes('PATH-ALPHA@1');
+              document.querySelector('#question-text').value =
+                'A second synthetic question that must not replace the first.';
+              document.querySelector('#question-form').requestSubmit();
+            })()""")
+            cd.wait("document.querySelectorAll('#question-list .question').length === 2",
+                    "second question saved without rebinding draft")
+            assert cd.evaluate("document.querySelector('#question-choice').value === '1'"), (
+                "unfinished draft lost its original question binding"
+            )
+            assert cd.evaluate("document.querySelector('#draft-summary').value.includes('not tested')")
+
             cd.evaluate("document.querySelector('#example-button').click()")
             cd.wait("document.querySelector('#report-text').value.includes('Amends: PATH-ALPHA@1')",
                     "amendment loaded")
@@ -269,6 +288,36 @@ def main() -> None:
                     "source amendment invalidates review snapshot")
             cd.wait("document.querySelectorAll('#source-list .source-card').length === 3",
                     "original and amended source versions retained")
+            cd.wait("""[...document.querySelectorAll('#source-choice label')]
+              .some(label => label.textContent.includes('PATH-ALPHA@1') &&
+                  label.textContent.includes('SUPERSEDED') &&
+                  label.querySelector('input')?.checked)""",
+                    "unfinished draft preserved old selected source with stale warning")
+            assert cd.evaluate("document.querySelector('#draft-summary').value.includes('not tested')")
+            assert cd.evaluate("document.querySelector('#question-choice').value === '1'")
+            cd.evaluate("document.querySelector('#draft-form').requestSubmit()")
+            cd.wait("document.querySelector('#notice').textContent.includes('superseded report')",
+                    "draft with superseded source rejected before API write")
+            assert cd.evaluate("document.querySelectorAll('#snapshot-list .snapshot').length === 1")
+
+            # Changing to another patient must never carry Alpha's unsaved
+            # narrative into a Beta draft with valid Beta source references.
+            cd.evaluate("""(() => {
+              const picker = document.querySelector('#case-picker');
+              picker.value = 'CASE-BETA';
+              picker.dispatchEvent(new Event('change'));
+            })()""")
+            cd.wait("document.querySelector('#case-heading')?.textContent === 'Fictional case Beta'",
+                    "Beta case loaded after clearing unfinished Alpha draft")
+            assert cd.evaluate("document.querySelector('#draft-summary').value === ''")
+            assert cd.evaluate("document.querySelectorAll('#source-list .source-card').length === 1")
+            cd.evaluate("""(() => {
+              const picker = document.querySelector('#case-picker');
+              picker.value = 'CASE-ALPHA';
+              picker.dispatchEvent(new Event('change'));
+            })()""")
+            cd.wait("document.querySelector('#case-heading')?.textContent === 'Fictional case Alpha'",
+                    "returned to Alpha after case switch")
 
             report = json.load(urlopen(f"http://127.0.0.1:{app_port}/api/cases/CASE-ALPHA/state"))
             assert len(report["snapshots"]) == 1 and report["snapshots"][0]["state"] == "stale"
@@ -298,6 +347,7 @@ def main() -> None:
             )
             print("PASS: browser source drilldown, keyboard Escape/Tab and AX landmarks, "
                   "case switching, question/draft, review, amendment invalidation, "
+                  "draft binding preserved across refresh and cleared on case switch, "
                   "original export, 390px responsive layout")
         finally:
             if cd is not None:
