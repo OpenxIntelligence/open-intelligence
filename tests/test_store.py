@@ -112,6 +112,34 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(self.store.state('CASE-ALPHA')['snapshots'][0]['state'], 'draft')
         self.assertIn('Marker A assay was performed', self.store.export_markdown('CASE-ALPHA', replacement_id))
 
+    def test_repeated_wrong_patient_input_keeps_one_quarantine_receipt(self):
+        wrong = report('wrong-patient.txt')
+        first = self.store.import_report('CASE-ALPHA', wrong)
+        self.assertEqual(first['result'], 'quarantined')
+        before = self.store.state('CASE-ALPHA')
+        again = self.store.import_report('CASE-ALPHA', wrong)
+        after = self.store.state('CASE-ALPHA')
+        self.assertEqual(again['quarantine_id'], first['quarantine_id'])
+        self.assertTrue(again['duplicate'])
+        self.assertEqual(len(after['quarantines']), 1)
+        self.assertEqual(len(after['events']), len(before['events']))
+        self.assertEqual(after['assertions'], [])
+
+    def test_export_contains_source_backticks_inside_safe_fence(self):
+        # Even synthetic authored text can contain Markdown delimiters.
+        original = report('alpha-pathology-original.txt')
+        modified = original.replace(b'not tested', b'not tested ```')
+        self.assertNotEqual(original, modified)
+        first = self.store.import_report('CASE-ALPHA', modified)
+        question = self.store.add_question('CASE-ALPHA', 'What was not tested in this report?')
+        snapshot = self.store.create_snapshot('CASE-ALPHA', question,
+                                             'This is a human-authored synthetic-only draft.',
+                                             [first['source_id']])
+        exported = self.store.export_markdown('CASE-ALPHA', snapshot)
+        self.assertIn('\n````text\n', exported)
+        self.assertIn('not tested ```', exported)
+        self.assertIn('\n````\n', exported)
+
     def test_wrong_patient_quarantined_without_facts(self):
         result = self.store.import_report('CASE-ALPHA', report('wrong-patient.txt'))
         self.assertEqual(result['result'], 'quarantined')
