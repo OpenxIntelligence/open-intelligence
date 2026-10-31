@@ -87,7 +87,7 @@ dialog { border:1px solid #bdcfd4; border-radius:14px; max-width:min(760px,95vw)
 dialog::backdrop { background:#071b22ad; }
 .dialog-head { display:flex; justify-content:space-between; gap:10px; align-items:center; }
 dialog pre { background:#eef4f4; padding:18px; border-radius:9px; overflow:auto; white-space:pre-wrap; word-break:break-word; line-height:1.7; font-size:12px; }
-@media(max-width:1100px) { .workspace { grid-template-columns:1fr; } .content-right { grid-row:1; } }
+@media(max-width:1100px) { .workspace { grid-template-columns:1fr; } .content-right { grid-row:auto; } }
 @media(max-width:700px) { .top{ padding:0 14px; }.top-note,.side-bottom {display:none;} .layout{grid-template-columns:minmax(0,1fr);} .rail{min-width:0;padding:15px 13px; border-right:0; border-bottom:1px solid #dbe4e7; gap:8px;}.rail nav{display:flex; overflow:auto; margin:0;}.rail nav a{padding:7px;white-space:nowrap;font-size:11px;}.rail .tiny{display:none;}.main{min-width:0;padding:16px 12px;}.hero{padding:19px;}.hero-side{display:none;}h1{font-size:23px;}.metrics{grid-template-columns:repeat(2,minmax(0,1fr));}.panel{padding:17px;}.panel-head{align-items:start; flex-direction:column;} }
 
 
@@ -113,3 +113,40 @@ dialog pre { background:#eef4f4; padding:18px; border-radius:9px; overflow:auto;
 .timeline-entry .actions { max-width:100%; }
 .timeline-entry .button { white-space:normal; text-align:left; }
 @media(max-width:700px) { .timeline-filters { min-width:130px; } }
+
+/* First source-to-review UX slice: navigate evidence, preserve review context. */
+.skip-link { position:absolute; top:8px; left:12px; z-index:20; transform:translateY(-180%); padding:11px 16px; background:#fff; color:#123a44; border:2px solid #177878; border-radius:8px; font-weight:750; }
+.skip-link:focus-visible { transform:translateY(0); }
+.main:focus { outline:none; }
+section[id] { scroll-margin-top:20px; }
+input:focus-visible, button:focus-visible, .button:focus-visible { outline:3px solid #238885; outline-offset:3px; }
+.rail nav a { display:flex; align-items:center; min-height:42px; }
+.review-attention { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:16px; padding:17px 21px; margin:-5px 0 22px; background:#f9fbfc; border:1px solid #d8e3e6; border-left:4px solid #7899a1; border-radius:13px; }
+.review-attention[data-state="needs-review"] { background:#fff9ef; border-color:#ead9bd; border-left-color:#b46e20; }
+.review-attention-copy { flex:1 1 280px; min-width:0; }
+.review-attention h2 { font-size:15px; margin:3px 0 4px; }
+.review-attention p { font-size:12px; color:#516c76; margin:0; max-width:750px; }
+.review-attention[data-state="needs-review"] p { color:#704b24; }
+.attention-action { display:inline-flex; align-items:center; justify-content:center; text-decoration:none; min-height:42px; text-align:center; white-space:normal; }
+.finding-labels { display:flex; gap:5px; flex-wrap:wrap; justify-content:flex-end; }
+.finding .source-jump { margin-top:9px; text-align:left; }
+.finding .quoted { overflow-wrap:anywhere; }
+#dialog-context { margin:5px 0 9px; }
+#dialog-text mark.source-highlight { background:#fff0a5; color:#1b3642; outline:2px solid #936414; border-radius:2px; }
+@media(max-width:700px) {
+  .review-attention { padding:15px; margin-top:0; }
+  .attention-action { width:100%; }
+  .rail nav a { min-height:44px; padding:9px 11px; }
+  .finding-head { align-items:flex-start; }
+}
+@media(prefers-reduced-motion:reduce) {
+  .button { transition:none; }
+}
+@media print {
+  .skip-link,.rail,.attention-action { display:none !important; }
+  .top { height:auto; padding:12px 0; }
+  .top-right .pill-warn { color:#000 !important; background:transparent !important; border:2px solid #000; white-space:normal; }
+  .layout { display:block; }
+  .main { padding:10px 0; }
+  .review-attention { break-inside:avoid; }
+}
