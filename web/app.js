@@ -185,6 +185,16 @@ function render() {
   el('metrics').append(
     metric(latest.length, 'Current source documents'), metric(active.assertions.length, 'Reported statements'),
     metric(active.questions.filter(q => q.state === 'open').length, 'Open questions'), metric(stale.length, 'Review required'));
+  const reviewNotice = el('review-attention');
+  reviewNotice.dataset.state = stale.length ? 'needs-review' : 'no-stale';
+  el('review-attention-title').textContent = stale.length
+    ? 'Source changes require renewed review'
+    : 'Investigation review status';
+  el('review-attention-summary').textContent = stale.length
+    ? stale.length + ' investigation snapshot(s) are stale because their source or evidence basis changed. The earlier history is retained; inspect and explicitly re-review before relying on a new draft.'
+    : active.snapshots.length
+      ? 'No investigation snapshots currently flagged stale. Demo acknowledgments do not establish clinical review or a complete case.'
+      : 'No investigation snapshots exist yet. Start with a source-linked question; there is no clinical conclusion to review.';
   renderTimeline();
   clear('source-list');
   if (!active.sources.length) empty(el('source-list'), 'No records received.');
@@ -205,9 +215,20 @@ function render() {
   for (const assertion of active.assertions) {
     const card = node('div', null, 'finding');
     const heading = node('div', null, 'finding-head');
-    heading.append(node('strong', assertion.finding_key), pill(assertion.certainty,
+    const labels = node('div', null, 'finding-labels');
+    labels.append(pill('Source says', 'pill-neutral'), pill(assertion.certainty,
       ['pending', 'indeterminate', 'conflicting', 'not-reported', 'not-assessed'].includes(assertion.certainty) ? 'pill-warn' : ''));
-    card.append(heading, node('p', assertion.quote, 'quoted'), node('span', 'Exact source version #' + assertion.source_version_id + ' · line ' + assertion.source_line, 'ref'));
+    heading.append(node('strong', assertion.finding_key), labels);
+    card.append(heading, node('p', assertion.quote, 'quoted'));
+    const supportingSource = active.sources.find(s => Number(s.id) === Number(assertion.source_version_id));
+    const sourceButton = node('button', supportingSource
+      ? 'Inspect ' + supportingSource.document_id + '@' + supportingSource.version + ' · source line ' + assertion.source_line
+      : 'Source version #' + assertion.source_version_id + ' unavailable',
+      'button secondary minor source-jump');
+    sourceButton.type = 'button';
+    sourceButton.disabled = !supportingSource;
+    if (supportingSource) sourceButton.addEventListener('click', () => openSource(supportingSource, Number(assertion.source_line)));
+    card.append(sourceButton);
     el('assertion-list').append(card);
   }
   clear('question-list'); clear('question-choice');
@@ -338,14 +359,37 @@ function render() {
   }
   renderedCaseId = caseId;
 }
-async function openSource(source) {
+function renderOriginalSource(text, lineNumber) {
+  // Never insert imported source text as HTML. Preserve each character and
+  // original line break while marking only the requested anchored line.
+  const viewer = el('dialog-text');
+  viewer.replaceChildren();
+  const lines = String(text).split('\n');
+  const hasAnchor = Number.isInteger(lineNumber) && lineNumber > 0 && lineNumber <= lines.length;
+  for (let index = 0; index < lines.length; index++) {
+    if (index) viewer.append(document.createTextNode('\n'));
+    if (hasAnchor && index + 1 === lineNumber) {
+      viewer.append(node('mark', lines[index], 'source-highlight'));
+    } else {
+      viewer.append(document.createTextNode(lines[index]));
+    }
+  }
+  return hasAnchor;
+}
+async function openSource(source, lineNumber = null) {
   try {
     const requestedCase = readyCase();
     const response = await api('/api/cases/' + requestedCase + '/sources/' + source.id);
     if (requestedCase !== caseId) return;
     el('dialog-title').textContent = source.document_id + '@' + source.version + ' · original UTF-8';
-    el('dialog-text').textContent = response.text;
+    const highlighted = renderOriginalSource(response.text, lineNumber);
+    el('dialog-context').textContent = highlighted
+      ? 'Source-reported statement · highlighted original line ' + lineNumber + '. Not clinically reviewed.'
+      : lineNumber === null
+        ? 'Original report text, including exact source version. Not clinically reviewed.'
+        : 'The requested line is not present in this source version; inspect the unaltered report text.';
     el('source-dialog').showModal();
+    if (highlighted) el('dialog-text').querySelector('mark.source-highlight')?.scrollIntoView({block:'center'});
   } catch (err) { notice(err.message, true); }
 }
 async function openEvidence(item) {
@@ -354,6 +398,7 @@ async function openEvidence(item) {
     const response = await api('/api/evidence/' + item.id);
     if (requestedCase !== caseId) return;
     el('dialog-title').textContent = item.evidence_key + '@' + item.version + ' · fictional source';
+    el('dialog-context').textContent = 'Fictional evidence text · human-authored demo, not clinical appraisal.';
     el('dialog-text').textContent = response.text;
     el('source-dialog').showModal();
   } catch (err) { notice(err.message, true); }
