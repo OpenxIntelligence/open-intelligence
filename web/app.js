@@ -2,6 +2,7 @@
 // All displayed data is from local, synthetic records. No third-party scripts.
 let caseId = null;
 let active = null;
+let refreshSequence = 0;
 const el = (id) => document.getElementById(id);
 function node(tag, text, className = '') {
   const item = document.createElement(tag);
@@ -52,11 +53,19 @@ async function initialize() {
   } catch (err) { notice(err.message, true); }
 }
 async function refresh() {
+  const requestedCase = caseId;
+  const sequence = ++refreshSequence;
   try {
-    active = await api('/api/cases/' + caseId + '/state');
+    const response = await api('/api/cases/' + requestedCase + '/state');
+    // The user can switch cases while a response is in flight. Never render
+    // the previous case underneath the newly selected case or its actions.
+    if (sequence !== refreshSequence || caseId !== requestedCase) return;
+    active = response;
     el('case-heading').textContent = active.case.label;
     render();
-  } catch (err) { notice(err.message, true); }
+  } catch (err) {
+    if (sequence === refreshSequence && requestedCase === caseId) notice(err.message, true);
+  }
 }
 function render() {
   clear('metrics');
@@ -141,8 +150,10 @@ function render() {
   }
 }
 async function openSource(source) {
+  const requestedCase = caseId;
   try {
-    const response = await api('/api/cases/' + caseId + '/sources/' + source.id);
+    const response = await api('/api/cases/' + requestedCase + '/sources/' + source.id);
+    if (requestedCase !== caseId) return;
     el('dialog-title').textContent = source.document_id + '@' + source.version + ' · original UTF-8';
     el('dialog-text').textContent = response.text;
     el('source-dialog').showModal();
