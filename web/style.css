@@ -150,3 +150,10 @@ input:focus-visible, button:focus-visible, .button:focus-visible { outline:3px s
   .main { padding:10px 0; }
   .review-attention { break-inside:avoid; }
 }
+
+@media(max-width:700px) {
+  /* Keep the expanded fictional-data warning fully visible without page overflow. */
+  .top { min-height:74px; height:auto; display:grid; grid-template-columns:minmax(0,1fr); align-content:center; gap:8px; padding:12px 14px; }
+  .brand,.top-right { min-width:0; }
+  .top-right .pill-warn { max-width:100%; white-space:normal; overflow-wrap:anywhere; line-height:1.35; }
+}
