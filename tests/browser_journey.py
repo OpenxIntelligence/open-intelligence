@@ -294,9 +294,62 @@ def main() -> None:
             assert overflow["scroll"] <= overflow["inner"] + 1, (
                 f"unexpected horizontal overflow on 390px viewport: {overflow}"
             )
+
+            # The research layer is synthetic only: register a fictional
+            # source, review its exact content, assess it against this case's
+            # question, and attach that assessment to a new dated draft.
+            cd.evaluate("document.querySelector('#example-evidence-button').click()")
+            cd.wait("document.querySelector('#evidence-text').value.includes('OI-SYNTHETIC-EVIDENCE/1')",
+                    "fictional evidence example loaded")
+            cd.evaluate("document.querySelector('#evidence-import-form').requestSubmit()")
+            cd.wait("document.querySelectorAll('#evidence-list .source-card').length === 1",
+                    "fictional evidence persisted in UI")
+            cd.evaluate("document.querySelector('#evidence-list .source-card button').click()")
+            cd.wait("document.querySelector('#source-dialog').open", "evidence original source dialog")
+            assert "original-synthetic" in cd.evaluate("document.querySelector('#dialog-text').textContent")
+            cd.evaluate("document.querySelector('#dialog-close').click()")
+
+            cd.evaluate("""(() => {
+              document.querySelector('#evidence-rationale').value =
+                'This is independently authored fictional context, not an appraisal of an actual study.';
+              document.querySelector('#evidence-assessment-form').requestSubmit();
+            })()""")
+            cd.wait("document.querySelectorAll('#evidence-assessment-list .finding').length === 1",
+                    "question-specific fictional assessment persisted")
+            cd.evaluate("""(() => {
+              document.querySelector('#evidence-choice input').checked = true;
+              document.querySelector('#draft-summary').value =
+                'The fictional investigation includes a labelled synthetic evidence assessment.';
+              document.querySelector('#draft-form').requestSubmit();
+            })()""")
+            cd.wait("document.querySelectorAll('#snapshot-list .snapshot').length === 2",
+                    "draft with fictional evidence attached")
+            state = json.load(urlopen(f"http://127.0.0.1:{app_port}/api/cases/CASE-ALPHA/state"))
+            latest = state["snapshots"][0]
+            assert latest["state"] == "draft" and len(latest["evidence_assessment_ids"]) == 1
+            evidence_version_id = state["evidence"][0]["id"]
+
+            # Withdrawal must not silently keep that draft current.
+            cd.evaluate("""(evidenceId => {
+              document.querySelector('#evidence-withdraw-id').value = evidenceId;
+              document.querySelector('#evidence-withdraw-reason').value =
+                'Original fictional evidence retired to test dependency invalidation.';
+              document.querySelector('#evidence-withdraw-form').requestSubmit();
+            })(""" + str(evidence_version_id) + ")")
+            cd.wait("document.querySelectorAll('#snapshot-list .snapshot .pill-alert').length >= 2",
+                    "withdrawal invalidates dependent fictional draft")
+            state = json.load(urlopen(f"http://127.0.0.1:{app_port}/api/cases/CASE-ALPHA/state"))
+            latest = next(x for x in state["snapshots"] if x["id"] == latest["id"])
+            assert latest["state"] == "stale"
+            assert state["evidence"][0]["state"] == "withdrawn"
+            assert state["evidence_changes"][0]["kind"] == "withdrawn"
+            assert cd.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1"), (
+                "evidence controls overflow the 390px synthetic demo viewport"
+            )
+
             print("PASS: browser source drilldown, keyboard Escape/Tab and AX landmarks, "
                   "case switching, question/draft, review, amendment invalidation, "
-                  "original export, 390px responsive layout")
+                  "original export, fictional evidence lifecycle, 390px responsive layout")
         finally:
             if cd is not None:
                 cd.close()
