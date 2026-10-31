@@ -50,7 +50,8 @@ async function initialize() {
     }
     picker.addEventListener('change', () => {
       // An unfinished narrative must never silently become attached to another case.
-      if ((el('draft-summary').value.trim() || el('evidence-rationale').value.trim())) {
+      if ((el('draft-summary').value.trim() || el('evidence-rationale').value.trim() ||
+          el('evidence-withdraw-reason').value.trim())) {
         picker.value = caseId;
         notice('Save or explicitly clear the unfinished investigation draft before switching cases.', true);
         return;
@@ -111,6 +112,7 @@ function render() {
   const preserveSources = priorInputs.length > 0;
   const priorEvidenceQuestion = sameCase ? el('evidence-question-choice').value : null;
   const priorEvidenceSource = sameCase ? el('evidence-source-choice').value : null;
+  const priorWithdrawTarget = sameCase ? el('evidence-withdraw-id').value : null;
   clear('metrics');
   const latest = active.sources.filter(s => s.state === 'current');
   const stale = active.snapshots.filter(s => s.state === 'stale');
@@ -178,6 +180,16 @@ function render() {
       opt.value = item.id; el('evidence-source-choice').append(opt);
       const withdraw = node('option', item.evidence_key + '@' + item.version + ' · ' + item.title);
       withdraw.value = item.id; el('evidence-withdraw-id').append(withdraw);
+    }
+  }
+  if (priorWithdrawTarget) {
+    if ([...el('evidence-withdraw-id').options].some(x => x.value === priorWithdrawTarget))
+      el('evidence-withdraw-id').value = priorWithdrawTarget;
+    else {
+      // Do not default to another current item after the selected version
+      // was amended or withdrawn, especially when a reason is already drafted.
+      el('evidence-withdraw-id').selectedIndex = -1;
+      notice('The selected withdrawal target is no longer current. Select a new evidence item explicitly.', true);
     }
   }
   if (priorEvidenceSource && [...el('evidence-source-choice').options].some(x => x.value === priorEvidenceSource))
