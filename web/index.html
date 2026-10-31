@@ -20,7 +20,8 @@
       <select id="case-picker" aria-label="Select synthetic case"></select>
       <p class="muted tiny">Case data stays on this local machine. There is no identity verification or patient login.</p>
       <nav aria-label="Workspace sections">
-        <a href="#overview">Overview &amp; timeline</a>
+        <a href="#overview">Overview</a>
+        <a href="#timeline">Longitudinal timeline</a>
         <a href="#sources">Sources &amp; assertions</a>
         <a href="#investigations">Investigations</a>
         <a href="#evidence">Synthetic evidence</a>
@@ -45,6 +46,16 @@
       <div id="notice" role="status" aria-live="polite" class="notice" hidden></div>
       <div class="workspace">
         <div class="content-left">
+          <section class="panel" id="timeline">
+            <div class="panel-head">
+              <div><div class="eyebrow">LONGITUDINAL SOURCES</div><h2>Case event timeline</h2></div>
+              <div class="timeline-filters"><label for="timeline-filter">Record type</label>
+                <select id="timeline-filter"><option value="all">All</option><option value="pathology">Pathology</option><option value="imaging">Imaging</option><option value="molecular">Molecular</option><option value="laboratory">Laboratory</option><option value="clinical">Clinical</option><option value="other">Other</option></select>
+              </div>
+            </div>
+            <p class="muted tiny">Ordered by the event date stated in the original fictional report. Issued and received dates are shown separately. An amended report remains one event with several auditable source versions. No disease progression or treatment response is inferred.</p>
+            <ol id="timeline-events" class="timeline-events" aria-label="Source-derived event chronology"></ol>
+          </section>
           <section class="panel" id="sources">
             <div class="panel-head"><div><div class="eyebrow">01 / INTAKE</div><h2>Source history</h2></div><span class="muted tiny">Event date ≠ issued date ≠ received date</span></div>
             <div id="source-list" class="cards"></div>
