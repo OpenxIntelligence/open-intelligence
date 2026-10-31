@@ -257,10 +257,46 @@ def main() -> None:
             })()""")
             cd.wait("document.querySelectorAll('#snapshot-list .snapshot').length === 1",
                     "source-linked draft persisted")
+
+            # A same-case refresh must preserve an unfinished narrative's
+            # question and source bindings rather than silently rebinding.
+            cd.evaluate("""(() => {
+              document.querySelector('#question-text').value =
+                'Second synthetic investigation question for binding verification?';
+              document.querySelector('#question-form').requestSubmit();
+            })()""")
+            cd.wait("document.querySelectorAll('#question-list .question').length === 2",
+                    "second question stored")
+            first_question = json.load(urlopen(
+                f"http://127.0.0.1:{app_port}/api/cases/CASE-ALPHA/state"))["questions"][-1]["id"]
+            cd.evaluate("""(question => {
+              document.querySelector('#question-choice').value = String(question);
+              document.querySelector('#draft-summary').value =
+                'This unfinished Alpha-only draft must keep the same question and original sources.';
+            })(""" + str(first_question) + ")")
             cd.evaluate("""[...document.querySelectorAll('#snapshot-list button')]
               .find(x => x.textContent.includes('Demo review acknowledgment')).click()""")
             cd.wait("document.querySelector('#snapshot-list .pill')?.textContent === 'reviewed_in_demo'",
                     "explicit demo acknowledgment")
+
+            assert cd.evaluate("document.querySelector('#question-choice').value") == str(first_question), (
+                "same-case refresh silently changed an unfinished draft's selected question"
+            )
+            assert "unfinished Alpha-only" in cd.evaluate(
+                "document.querySelector('#draft-summary').value"
+            ), "same-case refresh discarded the draft narrative"
+            cd.evaluate("""(() => {
+              const picker = document.querySelector('#case-picker');
+              picker.value = 'CASE-BETA';
+              picker.dispatchEvent(new Event('change'));
+            })()""")
+            assert cd.evaluate("document.querySelector('#case-picker').value") == "CASE-ALPHA", (
+                "a case switch silently rebound the unfinished Alpha narrative"
+            )
+            assert "unfinished Alpha-only" in cd.evaluate(
+                "document.querySelector('#draft-summary').value"
+            ), "blocked case switch lost the user's narrative"
+            cd.evaluate("document.querySelector('#draft-summary').value = ''")
             cd.evaluate("document.querySelector('#example-button').click()")
             cd.wait("document.querySelector('#report-text').value.includes('Amends: PATH-ALPHA@1')",
                     "amendment loaded")
@@ -269,6 +305,11 @@ def main() -> None:
                     "source amendment invalidates review snapshot")
             cd.wait("document.querySelectorAll('#source-list .source-card').length === 3",
                     "original and amended source versions retained")
+
+            assert cd.evaluate("""[...document.querySelectorAll('#source-choice input:checked')]
+              .some(x => x.closest('label').textContent.includes('STALE'))"""), (
+                "source amendment silently rebound the unfinished draft to the replacement version"
+            )
 
             report = json.load(urlopen(f"http://127.0.0.1:{app_port}/api/cases/CASE-ALPHA/state"))
             assert len(report["snapshots"]) == 1 and report["snapshots"][0]["state"] == "stale"
