@@ -11,6 +11,7 @@ import base64
 import hashlib
 import json
 import os
+import signal
 from pathlib import Path
 import shutil
 import socket
@@ -173,7 +174,8 @@ def main() -> None:
                 "--disable-extensions", "--no-default-browser-check",
                 "--remote-allow-origins=*", f"--remote-debugging-port={debug_port}",
                 f"--user-data-dir={directory}/chrome", "about:blank",
-            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+              start_new_session=True)
             targets = wait_for(
                 lambda: json.load(urlopen(f"http://127.0.0.1:{debug_port}/json/list", timeout=1)),
                 "Chrome DevTools target")
@@ -301,11 +303,21 @@ def main() -> None:
             if cd is not None:
                 cd.close()
             if browser is not None:
-                browser.terminate()
+                # Chromium forks renderer/zygote processes which can outlive
+                # the browser parent. Stop the entire process group before
+                # TemporaryDirectory deletes its active browser profile.
+                try:
+                    os.killpg(browser.pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
                 try:
                     browser.wait(timeout=5)
                 except subprocess.TimeoutExpired:
-                    browser.kill()
+                    try:
+                        os.killpg(browser.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                    browser.wait(timeout=5)
             server.terminate()
             try:
                 server.wait(timeout=5)
