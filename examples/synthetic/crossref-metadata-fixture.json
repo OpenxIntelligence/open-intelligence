@@ -1,0 +1,49 @@
+{
+  "status": "ok",
+  "message": {
+    "DOI": "10.5555/oi-synthetic-001",
+    "title": [
+      "Independently authored fictional bibliographic test entry"
+    ],
+    "container-title": [
+      "Fictional Examples Journal"
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2026,
+          1,
+          12
+        ]
+      ]
+    },
+    "type": "journal-article",
+    "author": [
+      {
+        "given": "Ari",
+        "family": "Example"
+      },
+      {
+        "given": "Rin",
+        "family": "Invented"
+      }
+    ],
+    "abstract": "COPYRIGHTED ABSTRACT MUST NEVER COPY",
+    "URL": "https://example.net/untrusted-link",
+    "link": [
+      {
+        "URL": "https://example.net/full-text-unlicensed"
+      }
+    ],
+    "resource": {
+      "primary": {
+        "URL": "https://example.net/paywalled"
+      }
+    },
+    "license": [
+      {
+        "URL": "https://example.net/article-license"
+      }
+    ]
+  }
+}
