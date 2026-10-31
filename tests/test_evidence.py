@@ -156,10 +156,33 @@ class EvidenceTests(unittest.TestCase):
         self.assertEqual(set(out["invalidated_snapshots"]), {alpha_snapshot, beta_snapshot})
         self.assertEqual(self.store.state("CASE-ALPHA")["snapshots"][0]["state"], "stale")
         self.assertEqual(self.store.state("CASE-BETA")["snapshots"][0]["state"], "stale")
+        history = self.store.state("CASE-ALPHA")["evidence_changes"]
+        self.assertEqual(history[0]["kind"], "withdrawn")
+        self.assertEqual(history[0]["reason"], "Synthetic text intentionally retired from the demo.")
         with self.assertRaisesRegex(InvalidInput, "not current"):
             self.assessment(evidence_id=version)
         with self.assertRaisesRegex(InvalidInput, "Withdrawn evidence"):
             self.store.import_synthetic_evidence(AMENDED)
+
+
+    def test_fictional_evidence_markdown_fences_do_not_escape_export(self):
+        crafted = ORIGINAL.replace(b"EVID-ASSAY", b"EVID-FENCE").replace(
+            b"assay limitation", b"long " + b"````" + b" assay limitation")
+        version = self.store.import_synthetic_evidence(crafted)["evidence_version_id"]
+        assessment = self.assessment(evidence_id=version)
+        snapshot = self.store.create_snapshot("CASE-ALPHA", self.question_a,
+                                              "A synthetic report with embedded Markdown fence characters.",
+                                              [self.source_a], [assessment])
+        export = self.store.export_markdown("CASE-ALPHA", snapshot)
+        self.assertIn("`````text", export)
+        self.assertIn("````" + " assay limitation", export)
+
+    def test_invalid_assessment_types_fail_cleanly(self):
+        version = self.store.import_synthetic_evidence(ORIGINAL)["evidence_version_id"]
+        with self.assertRaises(InvalidInput):
+            self.store.assess_synthetic_evidence("CASE-ALPHA", self.question_a, version,
+                                                  ["supports"], "limited",
+                                                  "A fictional rationale with sufficient length.")
 
 if __name__ == "__main__":
     unittest.main()

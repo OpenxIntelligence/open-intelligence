@@ -272,6 +272,12 @@ CREATE TABLE IF NOT EXISTS snapshot_evidence (
   assessment_id INTEGER NOT NULL REFERENCES evidence_assessments(id),
   PRIMARY KEY(snapshot_id,assessment_id)
 );
+CREATE TABLE IF NOT EXISTS evidence_changes (
+  id INTEGER PRIMARY KEY,
+  evidence_version_id INTEGER NOT NULL REFERENCES evidence_versions(id),
+  kind TEXT NOT NULL CHECK(kind IN ('amended','withdrawn')),
+  reason TEXT NOT NULL, recorded_at TEXT NOT NULL
+);
 CREATE INDEX IF NOT EXISTS idx_assessments_evidence ON evidence_assessments(evidence_version_id);
 CREATE INDEX IF NOT EXISTS idx_snapshot_evidence_assessment ON snapshot_evidence(assessment_id);
 CREATE INDEX IF NOT EXISTS idx_sources_case ON source_versions(case_id, document_id, version);
@@ -333,6 +339,13 @@ class CaseStore:
         with self.db:
             self.db.execute("BEGIN IMMEDIATE")
             if report.patient_id != case_id:
+                # Idempotent quarantine across repeated wrong-case deliveries.
+                existing = self.db.execute(
+                    "SELECT id FROM quarantine WHERE target_case_id=? AND sha256=? ORDER BY id LIMIT 1",
+                    (case_id, digest)).fetchone()
+                if existing:
+                    return {"result": "quarantined", "reason": "patient_mismatch",
+                            "quarantine_id": existing["id"], "duplicate": True}
                 cur = self.db.execute(
                     "INSERT INTO quarantine (target_case_id,declared_patient_id,sha256,raw,reason,received_at) VALUES (?,?,?,?,?,?)",
                     (case_id, report.patient_id, digest, raw, "patient_mismatch", now_utc()))
@@ -437,6 +450,8 @@ class CaseStore:
             invalidated = []
             if previous:
                 self.db.execute("UPDATE evidence_versions SET state='superseded' WHERE id=?", (previous["id"],))
+                self.db.execute("INSERT INTO evidence_changes (evidence_version_id,kind,reason,recorded_at) VALUES (?,'amended',?,?)",
+                                (previous["id"], "Explicit synthetic source version replacement", now_utc()))
                 invalidated = self._invalidate_evidence_version(previous["id"], reason="amendment")
             cur = self.db.execute("""INSERT INTO evidence_versions
                 (evidence_key,version,sha256,raw,title,issued_at,received_at,
@@ -462,6 +477,8 @@ class CaseStore:
                 raise InvalidInput("Evidence not current")
             self.db.execute("UPDATE evidence_versions SET state='withdrawn' WHERE id=?",
                             (evidence_version_id,))
+            self.db.execute("INSERT INTO evidence_changes (evidence_version_id,kind,reason,recorded_at) VALUES (?,'withdrawn',?,?)",
+                            (evidence_version_id, reason.strip(), now_utc()))
             affected = self._invalidate_evidence_version(evidence_version_id, reason="withdrawal")
             return {"result": "withdrawn", "invalidated_snapshots": affected}
 
@@ -472,7 +489,7 @@ class CaseStore:
         self._case(case_id)
         if type(question_id) is not int or type(evidence_version_id) is not int:
             raise InvalidInput("Question and evidence IDs must be integers")
-        if relation not in EVIDENCE_RELATIONS or applicability not in EVIDENCE_APPLICABILITY:
+        if not isinstance(relation, str) or not isinstance(applicability, str) or relation not in EVIDENCE_RELATIONS or applicability not in EVIDENCE_APPLICABILITY:
             raise InvalidInput("Invalid evidence relationship or applicability")
         if relation == "supports" and applicability == "not_applicable":
             raise InvalidInput("An inapplicable source cannot be labelled as supporting this question")
@@ -607,6 +624,8 @@ class CaseStore:
             WHERE a.case_id=? ORDER BY a.id DESC""", (case_id,)).fetchall())
         return {
             "evidence": evidence_rows,
+            "evidence_changes": self._dicts(self.db.execute(
+                "SELECT id,evidence_version_id,kind,reason,recorded_at FROM evidence_changes ORDER BY id DESC").fetchall()),
             "evidence_assessments": assessments,
             "case": dict(self.db.execute("SELECT * FROM cases WHERE case_id=?", (case_id,)).fetchone()),
             "sources": source_rows,
@@ -644,9 +663,13 @@ class CaseStore:
                  "## Question", "", snapshot["question"], "", "## Draft (human-authored)", "",
                  snapshot["summary"], "", "## Source versions and original text", ""]
         for source in sources:
+            raw_text = bytes(source["raw"]).decode("utf-8")
+            # Prevent raw input from escaping Markdown source fences.
+            longest = max((len(run) for run in re.findall(r"`+", raw_text)), default=0)
+            fence = "`" * max(3, longest + 1)
             lines.extend([f"### {source['document_id']}@{source['version']} — {source['state']}", "",
                           f"SHA-256: `{source['sha256']}` | Event: {source['event_date']} | Issued: {source['issued_at']}", "",
-                          "```text", bytes(source["raw"]).decode("utf-8"), "```", ""])
+                          fence + "text", raw_text, fence, ""])
         evidence = self.db.execute("""SELECT a.*,v.evidence_key,v.version,v.state AS evidence_state,
             v.title,v.sha256,v.raw,v.rights,v.statement_line FROM snapshot_evidence se
             JOIN evidence_assessments a ON a.id=se.assessment_id
@@ -656,12 +679,15 @@ class CaseStore:
         if not evidence:
             lines.extend(["None included; no external study appraisal performed.", ""])
         for assessment in evidence:
+            evidence_text = bytes(assessment["raw"]).decode("utf-8")
+            longest = max((len(run) for run in re.findall(r"`+", evidence_text)), default=0)
+            fence = "`" * max(3, longest + 1)
             lines.extend([f"### {assessment['evidence_key']}@{assessment['version']}: {assessment['title']}",
                           "", f"Evidence state: {assessment['evidence_state']} | Rights: {assessment['rights']}",
                           f"SHA-256: `{assessment['sha256']}` | Source line: {assessment['statement_line']}",
                           f"Human-assigned relationship: {assessment['relation']} | Applicability: {assessment['applicability']}",
-                          "", f"Rationale: {assessment['rationale']}", "", "```text",
-                          bytes(assessment["raw"]).decode("utf-8"), "```", ""])
+                          "", f"Rationale: {assessment['rationale']}", "", fence + "text",
+                          evidence_text, fence, ""])
         lines.extend(["## Limitations", "",
                       "- Evidence items above are fictional, independently authored examples; no real publication, guideline or trial was appraised.",
                       "- Declared synthetic rights are not legal verification of user-supplied content.",
