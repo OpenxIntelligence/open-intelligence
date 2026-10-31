@@ -191,6 +191,32 @@ def main() -> None:
                     "Alpha case loaded")
             cd.wait("document.querySelectorAll('#source-list .source-card').length === 2",
                     "two Alpha sources rendered")
+
+            # Chronology is derived entirely from existing source event dates
+            # rather than invented diagnosis/progression assertions.
+            cd.wait("document.querySelectorAll('#timeline-events .timeline-entry').length === 2",
+                    "two chronological Alpha source events")
+            assert cd.evaluate("document.querySelector('#timeline-events .timeline-entry .timeline-doc').textContent") == "IMG-ALPHA"
+            assert cd.evaluate("""[...document.querySelectorAll('#timeline-events time')]
+              .map(x => x.dateTime).join(',')""") == "2026-05-17,2026-05-03"
+            cd.evaluate("""(() => {
+              const filter = document.querySelector('#timeline-filter');
+              filter.value = 'pathology'; filter.dispatchEvent(new Event('change'));
+            })()""")
+            cd.wait("document.querySelectorAll('#timeline-events .timeline-entry').length === 1",
+                    "source timeline pathology filter")
+            assert cd.evaluate("document.querySelector('#timeline-events .timeline-entry').textContent.includes('PATH-ALPHA')")
+            cd.evaluate("""(() => {
+              const filter = document.querySelector('#timeline-filter');
+              filter.value = 'molecular'; filter.dispatchEvent(new Event('change'));
+            })()""")
+            cd.wait("document.querySelector('#timeline-events').textContent.includes('No source events')",
+                    "no invented molecular events")
+            cd.evaluate("""(() => {
+              const filter = document.querySelector('#timeline-filter');
+              filter.value = 'all'; filter.dispatchEvent(new Event('change'));
+            })()""")
+
             cd.evaluate("document.querySelector('#source-list .source-card button').click()")
             cd.wait("document.querySelector('#source-dialog').open", "original source modal")
             assert "OI-SYNTHETIC-REPORT/1" in cd.evaluate("document.querySelector('#dialog-text').textContent")
@@ -305,6 +331,24 @@ def main() -> None:
                     "source amendment invalidates review snapshot")
             cd.wait("document.querySelectorAll('#source-list .source-card').length === 3",
                     "original and amended source versions retained")
+
+
+            # Two versions of the same pathology document refer to one
+            # original specimen event, with separate original/amended sources.
+            cd.wait("document.querySelectorAll('#timeline-events .timeline-entry').length === 2",
+                    "amendment retains same source event grouping")
+            assert cd.evaluate("""[...document.querySelectorAll('#timeline-events .timeline-entry')]
+              .find(e => e.querySelector('.timeline-doc')?.textContent === 'PATH-ALPHA')
+              ?.querySelectorAll('button').length""") == 2
+            assert cd.evaluate("""[...document.querySelectorAll('#timeline-events .timeline-entry')]
+              .find(e => e.querySelector('.timeline-doc')?.textContent === 'PATH-ALPHA')
+              ?.textContent.includes('2 report versions')""")
+            cd.evaluate("""[...document.querySelectorAll('#timeline-events .timeline-entry')]
+              .find(e => e.querySelector('.timeline-doc')?.textContent === 'PATH-ALPHA')
+              ?.querySelector('button').click()""")
+            cd.wait("document.querySelector('#source-dialog').open", "original pathology accessible from timeline")
+            assert cd.evaluate("document.querySelector('#dialog-title').textContent.includes('PATH-ALPHA@1')")
+            cd.evaluate("document.querySelector('#dialog-close').click()")
 
             assert cd.evaluate("""[...document.querySelectorAll('#source-choice input:checked')]
               .some(x => x.closest('label').textContent.includes('STALE'))"""), (
@@ -443,7 +487,7 @@ def main() -> None:
 
             print("PASS: browser source drilldown, keyboard Escape/Tab and AX landmarks, "
                   "case switching, question/draft, review, amendment invalidation, "
-                  "original export, fictional evidence lifecycle, offline bibliography, 390px responsive layout")
+                  "original export, source-derived timeline, fictional evidence lifecycle, offline bibliography, 390px responsive layout")
         finally:
             if cd is not None:
                 cd.close()

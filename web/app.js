@@ -104,6 +104,72 @@ function renderEvidenceChoices() {
     el('evidence-choice').append(label);
   }
 }
+
+function groupedTimeline(sources) {
+  const groups = new Map();
+  for (const source of sources) {
+    // The source ledger rejects changes to event/specimen/type identity
+    // within amended document versions; do not count a correction as a new
+    // biological event merely because a later report was issued.
+    const key = JSON.stringify([source.document_id, source.event_date, source.kind, source.specimen_id || null]);
+    if (!groups.has(key)) groups.set(key, {
+      documentId: source.document_id, eventDate: source.event_date,
+      kind: source.kind, specimenId: source.specimen_id, versions: []
+    });
+    groups.get(key).versions.push(source);
+  }
+  return [...groups.values()].map(group => {
+    group.versions.sort((a, b) => a.version - b.version);
+    return group;
+  }).sort((a, b) => b.eventDate.localeCompare(a.eventDate) ||
+    a.documentId.localeCompare(b.documentId));
+}
+function renderTimeline() {
+  clear('timeline-events');
+  if (!active) return;
+  const choice = el('timeline-filter').value;
+  const groups = groupedTimeline(active.sources).filter(g =>
+    choice === 'all' || g.kind === choice);
+  if (!groups.length) {
+    const item = node('li', null, 'timeline-entry');
+    item.append(node('p', 'No source events of this type in the selected fictional case.', 'muted'));
+    el('timeline-events').append(item);
+    return;
+  }
+  for (const group of groups) {
+    const latest = group.versions[group.versions.length - 1];
+    const entry = node('li', null, 'timeline-entry');
+    const head = node('div', null, 'timeline-head');
+    const eventTime = node('time', group.eventDate, 'timeline-date');
+    eventTime.dateTime = group.eventDate;
+    head.append(eventTime, pill(group.kind),
+      group.versions.length > 1 ? pill(group.versions.length + ' report versions', 'pill-warn') : pill('One source version', 'pill-neutral'));
+    entry.append(head, node('strong', group.documentId, 'timeline-doc'));
+    const meta = node('p', 'Latest issue: ' + latest.issued_at +
+      ' · Received: ' + latest.received_at.slice(0, 10) +
+      (group.specimenId ? ' · Specimen: ' + group.specimenId : ' · No specimen recorded'), 'snapshot-meta');
+    entry.append(meta);
+    const actions = node('div', null, 'actions');
+    for (const version of group.versions) {
+      const button = node('button',
+        'View ' + group.documentId + '@' + version.version + ' (' + version.state + ')',
+        'button secondary minor');
+      button.type = 'button';
+      button.addEventListener('click', () => openSource(version));
+      actions.append(button);
+    }
+    entry.append(actions);
+    const currentAssertions = active.assertions.filter(x =>
+      x.source_version_id === latest.id);
+    if (currentAssertions.length && latest.state === 'current') {
+      const details = node('p', currentAssertions.length +
+        ' current authored assertion(s); click source to inspect exact report text.', 'muted tiny');
+      entry.append(details);
+    }
+    el('timeline-events').append(entry);
+  }
+}
+
 function render() {
   const sameCase = renderedCaseId === caseId;
   const priorQuestion = sameCase ? el('question-choice').value : null;
@@ -119,6 +185,7 @@ function render() {
   el('metrics').append(
     metric(latest.length, 'Current source documents'), metric(active.assertions.length, 'Reported statements'),
     metric(active.questions.filter(q => q.state === 'open').length, 'Open questions'), metric(stale.length, 'Review required'));
+  renderTimeline();
   clear('source-list');
   if (!active.sources.length) empty(el('source-list'), 'No records received.');
   for (const source of active.sources) {
@@ -446,5 +513,6 @@ el('bibliography-form').addEventListener('submit', async event => {
     notice('Crossref bibliographic metadata retrieved. No paper content or patient context was used.');
   } catch (err) { notice(err.message, true); }
 });
+el('timeline-filter').addEventListener('change', renderTimeline);
 initialize();
 initializeBibliography();

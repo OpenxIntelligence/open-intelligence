@@ -99,3 +99,17 @@ dialog pre { background:#eef4f4; padding:18px; border-radius:9px; overflow:auto;
 #bibliography a { font-size:12px; font-weight:700; color:#135d7c; }
 #bibliography button:disabled { opacity:0.5; cursor:not-allowed; }
 #bibliography-result { margin-top:15px; }
+
+
+.timeline-filters { min-width:135px; max-width:165px; font-size:11px; color:#637b84; }
+.timeline-filters label { display:block; font-weight:700; margin-bottom:5px; }
+.timeline-filters select { padding:7px 9px; font-size:12px; }
+.timeline-events { padding:0 0 0 19px; margin:17px 0 0; list-style:none; border-left:2px solid #cfe1e2; display:grid; gap:13px; }
+.timeline-entry { min-width:0; position:relative; background:#fcfdfd; border:1px solid #e0e9eb; border-radius:10px; padding:15px; }
+.timeline-entry::before { content:""; width:10px; height:10px; position:absolute; left:-26px; top:19px; border-radius:50%; background:#167d7c; border:2px solid white; box-shadow:0 0 0 2px #cfe1e2; }
+.timeline-head { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-bottom:5px; }
+.timeline-date { font-size:12px; font-weight:800; color:#174e5b; margin-right:5px; }
+.timeline-doc { display:block; font-size:14px; color:#264955; }
+.timeline-entry .actions { max-width:100%; }
+.timeline-entry .button { white-space:normal; text-align:left; }
+@media(max-width:700px) { .timeline-filters { min-width:130px; } }
