@@ -94,6 +94,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._static("app.js", "text/javascript; charset=utf-8")
             if path == "/style.css":
                 return self._static("style.css", "text/css; charset=utf-8")
+            if path == "/tokens.css":
+                return self._static("tokens.css", "text/css; charset=utf-8")
+            if path == "/base.css":
+                return self._static("base.css", "text/css; charset=utf-8")
             if path == "/api/examples/amendment":
                 return self._json(200, {"text": (SYNTHETIC / "alpha-pathology-amended.txt").read_text()})
             if path == "/api/examples/evidence":

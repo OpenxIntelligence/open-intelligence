@@ -185,12 +185,26 @@ def main() -> None:
             cd = ChromeSession(pages[0]["webSocketDebuggerUrl"])
             cd.command("Page.enable")
             cd.command("Runtime.enable")
+            cd.command("Emulation.setDeviceMetricsOverride", {
+                "width": 1440, "height": 960, "deviceScaleFactor": 1, "mobile": False,
+            })
             cd.command("Page.navigate", {"url": url})
 
             cd.wait("document.querySelector('#case-heading')?.textContent === 'Fictional case Alpha'",
                     "Alpha case loaded")
             cd.wait("document.querySelectorAll('#source-list .source-card').length === 2",
                     "two Alpha sources rendered")
+            assert cd.evaluate("document.querySelector('#investigations .panel-head').textContent.includes('Human-authored, no AI call')"), (
+                "the investigation draft must disclose that it is human-authored"
+            )
+            cd.wait("document.querySelector('#workspace-nav a[aria-current=location]')?.getAttribute('href') === '#overview'",
+                    "current workspace section is announced")
+            assert cd.evaluate("document.querySelector('.section-menu')?.open === true"), (
+                "desktop section navigation should be expanded"
+            )
+            assert cd.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1"), (
+                "desktop viewport has unexpected horizontal overflow"
+            )
 
             # Chronology is derived entirely from existing source event dates
             # rather than invented diagnosis/progression assertions.
@@ -253,6 +267,16 @@ def main() -> None:
                        for role, name in names), "Case selector lacks accessible combobox name"
             assert any(role == "navigation" for role, _ in names), "Navigation landmark not exposed"
             assert any(role == "main" for role, _ in names), "Main landmark not exposed"
+            assert cd.evaluate("document.querySelector('#workspace-nav a[aria-current=location]')?.getAttribute('href')") == "#overview", (
+                "Current section is not exposed in workspace navigation"
+            )
+            for group_name in (
+                "Source versions",
+                "Evidence assessments",
+            ):
+                assert any(role == "group" and name == group_name for role, name in names), (
+                    f"Checkbox group lacks an accessible name: {group_name}"
+                )
 
             cd.evaluate("""(() => {
               const picker = document.querySelector('#case-picker');
@@ -277,8 +301,21 @@ def main() -> None:
             cd.wait("document.querySelectorAll('#question-list .question').length === 1",
                     "persistent question submitted")
             cd.evaluate("""(() => {
+              document.querySelector('#draft-observations').value = '          ';
+              document.querySelector('#draft-form').requestSubmit();
+            })()""")
+            cd.wait("document.querySelector('#notice').textContent.includes('Add reported observations')",
+                    "whitespace-only observations are rejected")
+            assert cd.evaluate("document.querySelectorAll('#snapshot-list .snapshot').length") == 0, (
+                "whitespace-only observations created a draft"
+            )
+            cd.evaluate("""(() => {
+              document.querySelector('#draft-observations').value =
+                'PATH-ALPHA reports classification pending external review; IMG-ALPHA reports a 31 mm measurement.';
               document.querySelector('#draft-summary').value =
-                'This fictional case needs a dated review of the currently reported findings.';
+                'No hypothesis is proposed from the current source set.';
+              document.querySelector('#draft-assumptions').value =
+                'Prior images are unavailable; classification awaits external review.';
               document.querySelector('#draft-form').requestSubmit();
             })()""")
             cd.wait("document.querySelectorAll('#snapshot-list .snapshot').length === 1",
@@ -297,8 +334,12 @@ def main() -> None:
                 f"http://127.0.0.1:{app_port}/api/cases/CASE-ALPHA/state"))["questions"][-1]["id"]
             cd.evaluate("""(question => {
               document.querySelector('#question-choice').value = String(question);
+              document.querySelector('#draft-observations').value =
+                'The selected source versions are retained for this unfinished draft.';
               document.querySelector('#draft-summary').value =
                 'This unfinished Alpha-only draft must keep the same question and original sources.';
+              document.querySelector('#draft-assumptions').value =
+                'This draft must remain bound to CASE-ALPHA.';
             })(""" + str(first_question) + ")")
             cd.evaluate("""[...document.querySelectorAll('#snapshot-list button')]
               .find(x => x.textContent.includes('Demo review acknowledgment')).click()""")
@@ -311,6 +352,9 @@ def main() -> None:
             assert "unfinished Alpha-only" in cd.evaluate(
                 "document.querySelector('#draft-summary').value"
             ), "same-case refresh discarded the draft narrative"
+            assert "selected source versions" in cd.evaluate(
+                "document.querySelector('#draft-observations').value"
+            ), "same-case refresh discarded reported observations"
             cd.evaluate("""(() => {
               const picker = document.querySelector('#case-picker');
               picker.value = 'CASE-BETA';
@@ -322,7 +366,11 @@ def main() -> None:
             assert "unfinished Alpha-only" in cd.evaluate(
                 "document.querySelector('#draft-summary').value"
             ), "blocked case switch lost the user's narrative"
-            cd.evaluate("document.querySelector('#draft-summary').value = ''")
+            assert "remain bound" in cd.evaluate(
+                "document.querySelector('#draft-assumptions').value"
+            ), "blocked case switch lost the draft's stated assumptions"
+            cd.evaluate("""['draft-observations', 'draft-summary', 'draft-assumptions']
+              .forEach(id => document.querySelector('#' + id).value = '')""")
             cd.evaluate("document.querySelector('#example-button').click()")
             cd.wait("document.querySelector('#report-text').value.includes('Amends: PATH-ALPHA@1')",
                     "amendment loaded")
@@ -370,6 +418,8 @@ def main() -> None:
                 "width": 390, "height": 844, "deviceScaleFactor": 1, "mobile": False,
             })
             cd.wait("window.innerWidth === 390", "mobile viewport")
+            cd.wait("document.querySelector('.section-menu')?.open === false",
+                    "responsive workspace navigation collapsed")
             overflow = cd.evaluate("""(() => {
               const screenWidth = document.documentElement.clientWidth;
               const outliers = [...document.querySelectorAll('body *')].map(e => ({
@@ -444,8 +494,12 @@ def main() -> None:
                     "question-specific fictional assessment persisted")
             cd.evaluate("""(() => {
               document.querySelector('#evidence-choice input').checked = true;
+              document.querySelector('#draft-observations').value =
+                'The fictional source states a bounded research claim.';
               document.querySelector('#draft-summary').value =
-                'The fictional investigation includes a labelled synthetic evidence assessment.';
+                'No patient-specific conclusion is drawn.';
+              document.querySelector('#draft-assumptions').value =
+                'The relationship and applicability labels are human-authored and unverified.';
               document.querySelector('#draft-form').requestSubmit();
             })()""")
             cd.wait("document.querySelectorAll('#snapshot-list .snapshot').length === 2",
@@ -453,6 +507,9 @@ def main() -> None:
             state = json.load(urlopen(f"http://127.0.0.1:{app_port}/api/cases/CASE-ALPHA/state"))
             latest = state["snapshots"][0]
             assert latest["state"] == "draft" and len(latest["evidence_assessment_ids"]) == 1
+            assert "Reported observations:" in latest["summary"]
+            assert "Working hypothesis or mechanism:" in latest["summary"]
+            assert "Assumptions, contradictions, and gaps:" in latest["summary"]
             evidence_version_id = state["evidence"][0]["id"]
 
             # Withdrawal must not silently keep that draft current.

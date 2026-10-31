@@ -39,7 +39,7 @@ async function initialize() {
     const cases = await api('/api/cases');
     const picker = el('case-picker');
     for (const entry of cases) {
-      const option = node('option', entry.label + ' · ' + entry.case_id);
+      const option = node('option', entry.label.replace(/^Fictional case /, '') + ', ' + entry.case_id);
       option.value = entry.case_id;
       picker.append(option);
     }
@@ -50,15 +50,16 @@ async function initialize() {
     }
     picker.addEventListener('change', () => {
       // An unfinished narrative must never silently become attached to another case.
-      if ((el('draft-summary').value.trim() || el('evidence-rationale').value.trim() ||
-          el('evidence-withdraw-reason').value.trim())) {
+      if ((['draft-observations', 'draft-summary', 'draft-assumptions', 'evidence-rationale',
+            'evidence-withdraw-reason'].some(id => el(id).value.trim()))) {
         picker.value = caseId;
         notice('Save or explicitly clear the unfinished investigation draft before switching cases.', true);
         return;
       }
       caseId = picker.value;
       active = null; // Reject writes while the next case is loading.
-      for (const id of ['question-text', 'report-text', 'evidence-rationale']) el(id).value = '';
+      for (const id of ['question-text', 'report-text', 'evidence-rationale', 'draft-observations',
+        'draft-summary', 'draft-assumptions']) el(id).value = '';
       if (el('source-dialog').open) el('source-dialog').close();
       refresh();
     });
@@ -99,8 +100,8 @@ function renderEvidenceChoices() {
     const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.value = assessment.id;
     checkbox.checked = previouslySelected.has(assessment.id);
     label.append(checkbox, node('span', assessment.evidence_key + '@' + assessment.version +
-      (assessment.evidence_state !== 'current' ? ' · STALE: uncheck and reassess' : '') + ' · ' +
-      assessment.relation + ' · ' + assessment.applicability));
+      (assessment.evidence_state !== 'current' ? ', Needs review: uncheck and reassess' : '') + ', ' +
+      assessment.relation + ', ' + assessment.applicability));
     el('evidence-choice').append(label);
   }
 }
@@ -146,8 +147,8 @@ function renderTimeline() {
       group.versions.length > 1 ? pill(group.versions.length + ' report versions', 'pill-warn') : pill('One source version', 'pill-neutral'));
     entry.append(head, node('strong', group.documentId, 'timeline-doc'));
     const meta = node('p', 'Latest issue: ' + latest.issued_at +
-      ' · Received: ' + latest.received_at.slice(0, 10) +
-      (group.specimenId ? ' · Specimen: ' + group.specimenId : ' · No specimen recorded'), 'snapshot-meta');
+      ', Received: ' + latest.received_at.slice(0, 10) +
+      (group.specimenId ? ', Specimen: ' + group.specimenId : ', No specimen recorded'), 'snapshot-meta');
     entry.append(meta);
     const actions = node('div', null, 'actions');
     for (const version of group.versions) {
@@ -162,8 +163,7 @@ function renderTimeline() {
     const currentAssertions = active.assertions.filter(x =>
       x.source_version_id === latest.id);
     if (currentAssertions.length && latest.state === 'current') {
-      const details = node('p', currentAssertions.length +
-        ' current authored assertion(s); click source to inspect exact report text.', 'muted tiny');
+      const details = node('p', currentAssertions.length + ' current assertion(s)', 'muted tiny');
       entry.append(details);
     }
     el('timeline-events').append(entry);
@@ -207,7 +207,7 @@ function render() {
     const heading = node('div', null, 'finding-head');
     heading.append(node('strong', assertion.finding_key), pill(assertion.certainty,
       ['pending', 'indeterminate', 'conflicting', 'not-reported', 'not-assessed'].includes(assertion.certainty) ? 'pill-warn' : ''));
-    card.append(heading, node('p', assertion.quote, 'quoted'), node('span', 'Exact source version #' + assertion.source_version_id + ' · line ' + assertion.source_line, 'ref'));
+    card.append(heading, node('p', assertion.quote, 'quoted'), node('span', 'Exact source version #' + assertion.source_version_id + ', line ' + assertion.source_line, 'ref'));
     el('assertion-list').append(card);
   }
   clear('question-list'); clear('question-choice');
@@ -216,7 +216,7 @@ function render() {
     const row = node('div', null, 'question');
     row.append(node('p', question.question), pill(question.state, question.state === 'open' ? 'pill-warn' : ''));
     el('question-list').append(row);
-    const opt = node('option', 'Q' + question.id + ' · ' + question.question.slice(0, 62));
+    const opt = node('option', 'Q' + question.id + ', ' + question.question.slice(0, 62));
     opt.value = question.id; el('question-choice').append(opt);
   }
   if (priorQuestion && [...el('question-choice').options].some(x => x.value === priorQuestion))
@@ -224,7 +224,7 @@ function render() {
   renderEvidenceChoices();
   clear('evidence-question-choice'); clear('evidence-source-choice'); clear('evidence-withdraw-id');
   for (const question of active.questions) {
-    const opt = node('option', 'Q' + question.id + ' · ' + question.question.slice(0, 62));
+    const opt = node('option', 'Q' + question.id + ', ' + question.question.slice(0, 62));
     opt.value = question.id; el('evidence-question-choice').append(opt);
   }
   if (priorEvidenceQuestion && [...el('evidence-question-choice').options].some(x => x.value === priorEvidenceQuestion))
@@ -240,12 +240,12 @@ function render() {
     const view = node('button', 'Inspect fictional source', 'button secondary minor');
     view.type = 'button'; view.addEventListener('click', () => openEvidence(item));
     card.append(heading, node('p', item.title), node('p', 'Statement line ' + item.statement_line +
-      ' · SHA ' + item.sha256.slice(0, 12) + '…', 'snapshot-meta'), view);
+      ', SHA ' + item.sha256.slice(0, 12) + '…', 'snapshot-meta'), view);
     el('evidence-list').append(card);
     if (item.state === 'current') {
-      const opt = node('option', item.evidence_key + '@' + item.version + ' · ' + item.title);
+      const opt = node('option', item.evidence_key + '@' + item.version + ', ' + item.title);
       opt.value = item.id; el('evidence-source-choice').append(opt);
-      const withdraw = node('option', item.evidence_key + '@' + item.version + ' · ' + item.title);
+      const withdraw = node('option', item.evidence_key + '@' + item.version + ', ' + item.title);
       withdraw.value = item.id; el('evidence-withdraw-id').append(withdraw);
     }
   }
@@ -265,7 +265,7 @@ function render() {
     const oldItem = evidence.find(x => String(x.id) === priorEvidenceSource);
     if (oldItem) {
       const staleOption = node('option', oldItem.evidence_key + '@' + oldItem.version +
-        ' · STALE: choose current evidence and reconsider rationale');
+        ', Needs review: choose current evidence and reconsider rationale');
       staleOption.value = oldItem.id;
       el('evidence-source-choice').append(staleOption);
       el('evidence-source-choice').value = priorEvidenceSource;
@@ -278,7 +278,7 @@ function render() {
   for (const item of assessments) {
     const box = node('article', null, 'finding');
     const row = node('div', null, 'finding-head');
-    row.append(node('strong', item.evidence_key + '@' + item.version + ' · Q' + item.question_id),
+    row.append(node('strong', item.evidence_key + '@' + item.version + ', Q' + item.question_id),
       pill(item.evidence_state, item.evidence_state === 'current' ? '' : 'pill-alert'));
     box.append(row, node('p', item.relation + ' / ' + item.applicability, 'snapshot-meta'),
       node('p', item.statement, 'quoted'), node('p', item.rationale, 'muted'));
@@ -294,8 +294,8 @@ function render() {
     const label = node('label');
     const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.value = source.id;
     checkbox.checked = preserveSources ? priorSourceIds.has(source.id) : true;
-    label.append(checkbox, node('span', source.document_id + '@' + source.version + ' · ' +
-      source.event_date + (source.state !== 'current' ? ' · STALE: uncheck and select the replacement explicitly' : '')));
+    label.append(checkbox, node('span', source.document_id + '@' + source.version + ', ' +
+      source.event_date + (source.state !== 'current' ? ', Needs review: uncheck and select the replacement explicitly' : '')));
     el('source-choice').append(label);
   }
   if (!latest.length) empty(el('source-choice'), 'No current sources.');
@@ -308,7 +308,7 @@ function render() {
     top.append(node('strong', 'Investigation #' + snapshot.id), pill(snapshot.state,
       snapshot.state === 'stale' ? 'pill-alert' : snapshot.state === 'draft' ? 'pill-warn' : ''));
     const description = node('p', snapshot.summary);
-    const meta = node('p', 'Sources: ' + snapshot.source_ids.map(x => '#' + x).join(', ') + ' · ' + snapshot.created_at, 'snapshot-meta');
+    const meta = node('p', 'Sources: ' + snapshot.source_ids.map(x => '#' + x).join(', ') + ', ' + snapshot.created_at, 'snapshot-meta');
     const actions = node('div', null, 'actions');
     const exportButton = node('button', 'Export with sources', 'button secondary minor'); exportButton.type = 'button';
     exportButton.addEventListener('click', () => downloadSnapshot(snapshot.id)); actions.append(exportButton);
@@ -329,7 +329,7 @@ function render() {
   }
   clear('quarantine-list');
   for (const entry of active.quarantines) {
-    el('quarantine-list').append(node('div', 'Quarantined #' + entry.id + ': declared ' + entry.declared_patient_id + ', not ' + caseId + ' · no assertions imported', 'quarantine'));
+    el('quarantine-list').append(node('div', 'Quarantined #' + entry.id + ': declared ' + entry.declared_patient_id + ', not ' + caseId + ', no assertions imported', 'quarantine'));
   }
   clear('event-list');
   for (const event of active.events.slice(0, 12)) {
@@ -343,7 +343,7 @@ async function openSource(source) {
     const requestedCase = readyCase();
     const response = await api('/api/cases/' + requestedCase + '/sources/' + source.id);
     if (requestedCase !== caseId) return;
-    el('dialog-title').textContent = source.document_id + '@' + source.version + ' · original UTF-8';
+    el('dialog-title').textContent = source.document_id + '@' + source.version + ', original UTF-8';
     el('dialog-text').textContent = response.text;
     el('source-dialog').showModal();
   } catch (err) { notice(err.message, true); }
@@ -353,7 +353,7 @@ async function openEvidence(item) {
     const requestedCase = readyCase();
     const response = await api('/api/evidence/' + item.id);
     if (requestedCase !== caseId) return;
-    el('dialog-title').textContent = item.evidence_key + '@' + item.version + ' · fictional source';
+    el('dialog-title').textContent = item.evidence_key + '@' + item.version + ', fictional source';
     el('dialog-text').textContent = response.text;
     el('source-dialog').showModal();
   } catch (err) { notice(err.message, true); }
@@ -379,15 +379,29 @@ el('question-form').addEventListener('submit', async event => {
 });
 el('draft-form').addEventListener('submit', async event => {
   event.preventDefault();
+  const observations = el('draft-observations').value.trim();
+  if (!observations) {
+    el('draft-observations').focus();
+    notice('Add reported observations before saving.', true);
+    return;
+  }
   try {
     const requestedCase = readyCase();
     const sources = [...el('source-choice').querySelectorAll('input:checked')].map(x => Number(x.value));
+    const summary = [
+      ['Reported observations', observations],
+      ['Working hypothesis or mechanism', el('draft-summary').value],
+      ['Assumptions, contradictions, and gaps', el('draft-assumptions').value],
+    ].filter(([, text]) => text.trim())
+      .map(([label, text]) => label + ':\n' + text.trim())
+      .join('\n\n');
     const created = await api('/api/cases/' + requestedCase + '/snapshots', {
-      question_id: Number(el('question-choice').value), summary: el('draft-summary').value, source_ids: sources,
+      question_id: Number(el('question-choice').value), summary, source_ids: sources,
       evidence_assessment_ids: [...el('evidence-choice').querySelectorAll('input:checked')].map(x => Number(x.value)),
     });
     if (requestedCase !== caseId) return;
-    el('draft-summary').value = ''; notice('Draft #' + created.snapshot_id + ' saved with exact source versions.'); await refresh();
+    for (const id of ['draft-observations', 'draft-summary', 'draft-assumptions']) el(id).value = '';
+    notice('Draft #' + created.snapshot_id + ' saved with exact source versions.'); await refresh();
   } catch (err) { notice(err.message, true); }
 });
 el('example-button').addEventListener('click', async () => {
@@ -400,7 +414,7 @@ el('import-form').addEventListener('submit', async event => {
     const requestedCase = readyCase();
     const outcome = await api('/api/cases/' + requestedCase + '/imports', { text: el('report-text').value });
     if (requestedCase !== caseId) return;
-    notice('Import: ' + outcome.result + (outcome.invalidated_snapshots?.length ? ' · ' + outcome.invalidated_snapshots.length + ' investigation(s) marked stale' : ''));
+    notice('Import: ' + outcome.result + (outcome.invalidated_snapshots?.length ? ', ' + outcome.invalidated_snapshots.length + ' investigation(s) marked stale' : ''));
     el('report-text').value = ''; await refresh();
   } catch (err) { notice(err.message, true); }
 });
@@ -421,7 +435,7 @@ el('evidence-import-form').addEventListener('submit', async event => {
   try {
     const outcome = await api('/api/evidence/imports', { text: el('evidence-text').value });
     notice('Fictional evidence: ' + outcome.result +
-      (outcome.invalidated_snapshots?.length ? ' · ' + outcome.invalidated_snapshots.length + ' draft(s) stale' : ''));
+      (outcome.invalidated_snapshots?.length ? ', ' + outcome.invalidated_snapshots.length + ' draft(s) stale' : ''));
     el('evidence-text').value = ''; await refresh();
   } catch (err) { notice(err.message, true); }
 });
@@ -448,7 +462,7 @@ el('evidence-withdraw-form').addEventListener('submit', async event => {
       reason: el('evidence-withdraw-reason').value,
     });
     if (requestedCase !== caseId) return;
-    notice('Synthetic evidence withdrawn · ' + outcome.invalidated_snapshots.length + ' dependent draft(s) stale.');
+    notice('Synthetic evidence withdrawn, ' + outcome.invalidated_snapshots.length + ' dependent draft(s) stale.');
     el('evidence-withdraw-reason').value = ''; await refresh();
   } catch (err) { notice(err.message, true); }
 });
@@ -459,12 +473,12 @@ function renderBibliography(record) {
   const card = node('article', null, 'source-card');
   card.append(node('strong', record.title));
   const meta = node('p', [record.journal, record.year, record.publication_type]
-    .filter(x => x !== null && x !== undefined && x !== '').join(' · '), 'snapshot-meta');
+    .filter(x => x !== null && x !== undefined && x !== '').join(', '), 'snapshot-meta');
   card.append(meta);
   if (Array.isArray(record.authors) && record.authors.length) {
     card.append(node('p', 'Authors: ' + record.authors.join(', '), 'muted'));
   }
-  card.append(node('p', 'Source: ' + record.source.provider + ' · Retrieved ' +
+  card.append(node('p', 'Source: ' + record.source.provider + ', retrieved ' +
     record.source.retrieved_at, 'snapshot-meta'));
   const link = document.createElement('a');
   // The local backend constructs this from an ASCII validated DOI. Defence
@@ -516,3 +530,25 @@ el('bibliography-form').addEventListener('submit', async event => {
 el('timeline-filter').addEventListener('change', renderTimeline);
 initialize();
 initializeBibliography();
+
+const sectionMenu = document.querySelector('.section-menu');
+const workspaceNav = document.querySelector('#workspace-nav');
+if (sectionMenu && workspaceNav) {
+  const sectionLinks = [...workspaceNav.querySelectorAll('a[href^="#"]')];
+  const mobileSections = window.matchMedia('(max-width: 60rem)');
+  const syncSectionMenu = () => { sectionMenu.open = !mobileSections.matches; };
+  const syncCurrentSection = () => {
+    const current = window.location.hash || '#overview';
+    sectionLinks.forEach(link => {
+      if (link.getAttribute('href') === current) link.setAttribute('aria-current', 'location');
+      else link.removeAttribute('aria-current');
+    });
+  };
+  syncSectionMenu();
+  syncCurrentSection();
+  mobileSections.addEventListener('change', syncSectionMenu);
+  window.addEventListener('hashchange', syncCurrentSection);
+  workspaceNav.addEventListener('click', event => {
+    if (mobileSections.matches && event.target.closest('a')) sectionMenu.open = false;
+  });
+}
