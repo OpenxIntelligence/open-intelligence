@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from open_intelligence import CaseStore, InvalidInput, parse_report
@@ -111,6 +112,73 @@ class StoreTests(unittest.TestCase):
         replacement_id = self.store.create_snapshot('CASE-ALPHA', q1, 'Amended report now states that a fictional assay was negative.', [update['source_id']])
         self.assertEqual(self.store.state('CASE-ALPHA')['snapshots'][0]['state'], 'draft')
         self.assertIn('Marker A assay was performed', self.store.export_markdown('CASE-ALPHA', replacement_id))
+
+    def test_repeated_wrong_patient_input_keeps_one_quarantine_receipt(self):
+        wrong = report('wrong-patient.txt')
+        first = self.store.import_report('CASE-ALPHA', wrong)
+        self.assertEqual(first['result'], 'quarantined')
+        before = self.store.state('CASE-ALPHA')
+        again = self.store.import_report('CASE-ALPHA', wrong)
+        after = self.store.state('CASE-ALPHA')
+        self.assertEqual(again['quarantine_id'], first['quarantine_id'])
+        self.assertTrue(again['duplicate'])
+        self.assertEqual(len(after['quarantines']), 1)
+        self.assertEqual(len(after['events']), len(before['events']))
+        self.assertEqual(after['assertions'], [])
+
+    def test_export_contains_source_backticks_inside_safe_fence(self):
+        # Even synthetic authored text can contain Markdown delimiters.
+        original = report('alpha-pathology-original.txt')
+        modified = original.replace(b'not tested', b'not tested ```')
+        self.assertNotEqual(original, modified)
+        first = self.store.import_report('CASE-ALPHA', modified)
+        question = self.store.add_question('CASE-ALPHA', 'What was not tested in this report?')
+        snapshot = self.store.create_snapshot('CASE-ALPHA', question,
+                                             'This is a human-authored synthetic-only draft.',
+                                             [first['source_id']])
+        exported = self.store.export_markdown('CASE-ALPHA', snapshot)
+        self.assertIn('\n````text\n', exported)
+        self.assertIn('not tested ```', exported)
+        self.assertIn('\n````\n', exported)
+
+    def test_concurrent_amendment_and_acknowledgment_never_review_stale_source(self):
+        original = self.store.import_report('CASE-ALPHA', report('alpha-pathology-original.txt'))
+        question = self.store.add_question('CASE-ALPHA', 'What was originally reported about marker A?')
+        draft = self.store.create_snapshot('CASE-ALPHA', question,
+                                           'This synthetic draft depends on the original pathology report.',
+                                           [original['source_id']])
+
+        def amend():
+            worker = CaseStore(self.db_path)
+            try:
+                return worker.import_report('CASE-ALPHA', report('alpha-pathology-amended.txt'))
+            finally:
+                worker.close()
+
+        def acknowledge():
+            worker = CaseStore(self.db_path)
+            try:
+                try:
+                    worker.acknowledge_demo_review('CASE-ALPHA', draft, 'Demo reviewer')
+                    return 'acknowledged_before_amendment'
+                except InvalidInput as error:
+                    self.assertIn('Only a current draft', str(error))
+                    return 'blocked_after_amendment'
+            finally:
+                worker.close()
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            amend_future = pool.submit(amend)
+            review_future = pool.submit(acknowledge)
+            self.assertEqual(amend_future.result()['version'], 2)
+            self.assertIn(review_future.result(),
+                          {'acknowledged_before_amendment', 'blocked_after_amendment'})
+
+        state = self.store.state('CASE-ALPHA')
+        self.assertEqual({x['id']: x['state'] for x in state['snapshots']}[draft], 'stale')
+        self.assertEqual({x['id']: x['state'] for x in state['questions']}[question], 'open')
+        self.assertEqual(len([x for x in state['sources'] if x['document_id'] == 'PATH-ALPHA']), 2)
+        self.assertEqual(len([x for x in state['events'] if x['kind'] == 'source_imported']), 2)
 
     def test_wrong_patient_quarantined_without_facts(self):
         result = self.store.import_report('CASE-ALPHA', report('wrong-patient.txt'))
