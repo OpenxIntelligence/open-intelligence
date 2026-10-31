@@ -1,0 +1,7 @@
+OI-SYNTHETIC-REPORT/1
+Patient: CASE-BETA
+Document: PATH-OTHER
+Type: pathology
+Event-Date: 2026-06-02
+Issued-At: 2026-06-05
+Finding: histology|reported|Fictional test report intentionally declares the other synthetic subject.

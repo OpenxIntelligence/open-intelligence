@@ -1,0 +1,11 @@
+OI-SYNTHETIC-REPORT/1
+Patient: CASE-ALPHA
+Document: PATH-ALPHA
+Type: pathology
+Event-Date: 2026-05-03
+Issued-At: 2026-05-11
+Specimen: BIOPSY-ALPHA
+Amends: PATH-ALPHA@1
+Finding: histology|reported|Amended fictional report refines the descriptive classification after internal slide review.
+Finding: marker-a|negative|Marker A assay was performed and reported negative in the amended report.
+Finding: margin|indeterminate|The margin cannot be assessed from this small specimen.

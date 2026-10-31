@@ -1,0 +1,193 @@
+"""Run with PYTHONPATH=src python -m open_intelligence serve/seed."""
+
+from __future__ import annotations
+
+import argparse
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import json
+import re
+from pathlib import Path
+from urllib.parse import urlsplit
+
+from .store import CaseStore, InvalidInput, MAX_SOURCE_BYTES
+
+ROOT = Path(__file__).resolve().parents[2]
+WEB = ROOT / "web"
+SYNTHETIC = ROOT / "examples" / "synthetic"
+ID_PART = r"([A-Z][A-Z0-9-]{1,39})"
+
+
+class Handler(BaseHTTPRequestHandler):
+    # Purely local synthetic demonstration, with no authenticated user concept.
+    db_path: str
+
+    def log_message(self, fmt: str, *args: object) -> None:
+        # Avoid logging source text, patient-like fields or query strings.
+        print("[local demo]", fmt % args)
+
+    def _headers(self, status: int, kind: str, size: int) -> None:
+        self.send_response(status)
+        self.send_header("Content-Type", kind)
+        self.send_header("Content-Length", str(size))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Security-Policy", "default-src 'self'; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.end_headers()
+
+    def _send(self, status: int, body: bytes, kind: str) -> None:
+        self._headers(status, kind, len(body))
+        self.wfile.write(body)
+
+    def _json(self, status: int, payload: dict | list) -> None:
+        self._send(status, json.dumps(payload, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8")
+
+    def _static(self, name: str, mime: str) -> None:
+        self._send(200, (WEB / name).read_bytes(), mime)
+
+    def _body(self) -> dict:
+        if self.headers.get("Content-Type", "").split(";", 1)[0].strip() != "application/json":
+            raise InvalidInput("Only application/json is accepted")
+        try:
+            n = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            raise InvalidInput("Invalid Content-Length") from None
+        if not 0 < n <= MAX_SOURCE_BYTES + 8192:
+            raise InvalidInput("Request body exceeds local-demo limit")
+        try:
+            data = json.loads(self.rfile.read(n))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            raise InvalidInput("Invalid JSON body") from None
+        if not isinstance(data, dict):
+            raise InvalidInput("JSON object required")
+        return data
+
+    def _host_allowed(self) -> bool:
+        # Host validation prevents a remote-controlled domain resolving to
+        # 127.0.0.1 from reading this unauthenticated local demo via rebinding.
+        return self.headers.get("Host") == f"127.0.0.1:{self.server.server_port}"
+
+    def _origin_allowed(self) -> bool:
+        origin = self.headers.get("Origin")
+        if origin:
+            return origin == f"http://127.0.0.1:{self.server.server_port}"
+        # A foreign webpage may omit Origin in some requests. Modern browser
+        # metadata provides an additional barrier; this is NOT authentication.
+        return self.headers.get("Sec-Fetch-Site", "none") in {"none", "same-origin"}
+
+    def do_GET(self) -> None:  # noqa: N802
+        if not self._host_allowed():
+            return self._json(403, {"error": "Unexpected Host for loopback-only demo"})
+        path = urlsplit(self.path).path
+        try:
+            if path in ("/", "/index.html"):
+                return self._static("index.html", "text/html; charset=utf-8")
+            if path == "/app.js":
+                return self._static("app.js", "text/javascript; charset=utf-8")
+            if path == "/style.css":
+                return self._static("style.css", "text/css; charset=utf-8")
+            if path == "/api/examples/amendment":
+                return self._json(200, {"text": (SYNTHETIC / "alpha-pathology-amended.txt").read_text()})
+        except OSError:
+            return self._json(404, {"error": "Resource unavailable"})
+        # Each request uses a separate SQLite connection; never share a
+        # connection between ThreadingHTTPServer's request threads.
+        store = CaseStore(self.db_path)
+        try:
+            if path == "/api/cases":
+                return self._json(200, store.cases())
+            case_state = re.fullmatch(rf"/api/cases/{ID_PART}/state", path)
+            if case_state:
+                return self._json(200, store.state(case_state[1]))
+            source = re.fullmatch(rf"/api/cases/{ID_PART}/sources/([0-9]+)", path)
+            if source:
+                return self._json(200, {"text": store.source_text(source[1], int(source[2]))})
+            exported = re.fullmatch(rf"/api/cases/{ID_PART}/snapshots/([0-9]+)/export", path)
+            if exported:
+                contents = store.export_markdown(exported[1], int(exported[2])).encode("utf-8")
+                return self._send(200, contents, "text/markdown; charset=utf-8")
+            return self._json(404, {"error": "Route not found"})
+        except InvalidInput as error:
+            return self._json(422, {"error": str(error)})
+        finally:
+            store.close()
+
+    def do_POST(self) -> None:  # noqa: N802
+        if not self._host_allowed():
+            return self._json(403, {"error": "Unexpected Host for loopback-only demo"})
+        if not self._origin_allowed():
+            return self._json(403, {"error": "Cross-origin writes prohibited"})
+        path = urlsplit(self.path).path
+        try:
+            data = self._body()
+            store = CaseStore(self.db_path)
+            try:
+                if path == "/api/cases":
+                    store.add_case(data.get("case_id"), data.get("label"))
+                    return self._json(201, {"result": "created"})
+                imports = re.fullmatch(rf"/api/cases/{ID_PART}/imports", path)
+                if imports:
+                    raw = data.get("text")
+                    if not isinstance(raw, str):
+                        raise InvalidInput("Report text required")
+                    return self._json(200, store.import_report(imports[1], raw.encode("utf-8")))
+                questions = re.fullmatch(rf"/api/cases/{ID_PART}/questions", path)
+                if questions:
+                    return self._json(201, {"question_id": store.add_question(questions[1], data.get("question"))})
+                drafts = re.fullmatch(rf"/api/cases/{ID_PART}/snapshots", path)
+                if drafts:
+                    return self._json(201, {"snapshot_id": store.create_snapshot(
+                        drafts[1], data.get("question_id"), data.get("summary"), data.get("source_ids"))})
+                review = re.fullmatch(rf"/api/cases/{ID_PART}/snapshots/([0-9]+)/review", path)
+                if review:
+                    store.acknowledge_demo_review(review[1], int(review[2]), data.get("reviewer_label"))
+                    return self._json(200, {"result": "acknowledged_in_demo"})
+                return self._json(404, {"error": "Route not found"})
+            finally:
+                store.close()
+        except InvalidInput as error:
+            return self._json(422, {"error": str(error)})
+        except (OverflowError, UnicodeEncodeError):
+            return self._json(422, {"error": "Invalid text or identifier"})
+
+
+def seed(db_path: str) -> None:
+    store = CaseStore(db_path)
+    try:
+        for case_id, label, files in (
+            ("CASE-ALPHA", "Fictional case Alpha", ["alpha-pathology-original.txt", "alpha-imaging.txt"]),
+            ("CASE-BETA", "Fictional case Beta", ["beta-pathology.txt"]),
+        ):
+            if not any(x["case_id"] == case_id for x in store.cases()):
+                store.add_case(case_id, label)
+            for file in files:
+                outcome = store.import_report(case_id, (SYNTHETIC / file).read_bytes())
+                print(case_id, file, outcome["result"])
+    finally:
+        store.close()
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Open Intelligence synthetic-only workflow")
+    parser.add_argument("operation", choices=["seed", "serve"])
+    parser.add_argument("--db", default=".local/open-intelligence.sqlite")
+    parser.add_argument("--port", type=int, default=8765)
+    args = parser.parse_args()
+    if args.operation == "seed":
+        seed(args.db)
+        return
+    print(f"Synthetic-only Open Intelligence demo: http://127.0.0.1:{args.port}")
+    print("No authentication; localhost only. Do not import real patient data.")
+    server_type = type("LocalOIHTTPServer", (ThreadingHTTPServer,), {"allow_reuse_address": True})
+    bound_handler = type("BoundHandler", (Handler,), {"db_path": args.db})
+    httpd = server_type(("127.0.0.1", args.port), bound_handler)
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        httpd.server_close()
+
+
+if __name__ == "__main__":
+    main()

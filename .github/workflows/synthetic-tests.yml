@@ -1,0 +1,25 @@
+name: Synthetic case ledger tests
+on:
+  push:
+    branches: [main, feat/synthetic-case-ledger]
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Compile
+        run: PYTHONPATH=src python -m compileall -q src
+      - name: Unit and HTTP tests
+        run: PYTHONPATH=src python -m unittest discover -s tests -v
+      - name: Synthetic browser journey (headless Chromium)
+        run: PYTHONPATH=src python tests/browser_journey.py

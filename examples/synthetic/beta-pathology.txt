@@ -1,0 +1,9 @@
+OI-SYNTHETIC-REPORT/1
+Patient: CASE-BETA
+Document: PATH-BETA
+Type: pathology
+Event-Date: 2026-06-02
+Issued-At: 2026-06-05
+Specimen: BIOPSY-BETA
+Finding: histology|reported|Fictional lesion sample shows an indeterminate finding requiring additional review.
+Finding: marker-a|not-assessed|Marker A testing was not assessed for this sample.
