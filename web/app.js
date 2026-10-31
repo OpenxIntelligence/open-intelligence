@@ -182,18 +182,24 @@ function render() {
   clear('metrics');
   const latest = active.sources.filter(s => s.state === 'current');
   const stale = active.snapshots.filter(s => s.state === 'stale');
+  // A stale snapshot is retained as history after a replacement is acknowledged.
+  // Only questions still open due to stale snapshots need *current* attention.
+  const reopenedQuestionIds = new Set(stale
+    .filter(s => active.questions.some(q => Number(q.id) === Number(s.question_id) && q.state === 'open'))
+    .map(s => Number(s.question_id)));
+  const reviewRequired = reopenedQuestionIds.size;
   el('metrics').append(
     metric(latest.length, 'Current source documents'), metric(active.assertions.length, 'Reported statements'),
-    metric(active.questions.filter(q => q.state === 'open').length, 'Open questions'), metric(stale.length, 'Review required'));
+    metric(active.questions.filter(q => q.state === 'open').length, 'Open questions'), metric(reviewRequired, 'Review required'));
   const reviewNotice = el('review-attention');
-  reviewNotice.dataset.state = stale.length ? 'needs-review' : 'no-stale';
-  el('review-attention-title').textContent = stale.length
+  reviewNotice.dataset.state = reviewRequired ? 'needs-review' : 'no-open-review';
+  el('review-attention-title').textContent = reviewRequired
     ? 'Source changes require renewed review'
     : 'Investigation review status';
-  el('review-attention-summary').textContent = stale.length
-    ? stale.length + ' investigation snapshot(s) are stale because their source or evidence basis changed. The earlier history is retained; inspect and explicitly re-review before relying on a new draft.'
+  el('review-attention-summary').textContent = reviewRequired
+    ? reviewRequired + ' reopened question(s) have source- or evidence-stale investigation history. Inspect changes and record a new scoped demo review; historical snapshots remain accessible.'
     : active.snapshots.length
-      ? 'No investigation snapshots currently flagged stale. Demo acknowledgments do not establish clinical review or a complete case.'
+      ? 'No unresolved source-change review is flagged. Historical stale snapshots remain visible. Demo acknowledgments do not establish clinical review or case completeness.'
       : 'No investigation snapshots exist yet. Start with a source-linked question; there is no clinical conclusion to review.';
   renderTimeline();
   clear('source-list');
