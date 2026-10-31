@@ -1,0 +1,8 @@
+OI-SYNTHETIC-REPORT/1
+Patient: CASE-ALPHA
+Document: IMG-ALPHA
+Type: imaging
+Event-Date: 2026-05-17
+Issued-At: 2026-05-18
+Finding: lesion-size|reported|A fictional reference lesion was measured as 31 mm on the current scan.
+Finding: comparison|pending|Prior images are unavailable for reliable comparative measurement.

@@ -1,0 +1,10 @@
+OI-SYNTHETIC-REPORT/1
+Patient: CASE-ALPHA
+Document: PATH-ALPHA
+Type: pathology
+Event-Date: 2026-05-03
+Issued-At: 2026-05-05
+Specimen: BIOPSY-ALPHA
+Finding: histology|reported|Fictional biopsy reports a malignant epithelial neoplasm; classification pending external review.
+Finding: marker-a|not-reported|Marker A was not tested in this specimen.
+Finding: margin|indeterminate|The margin cannot be assessed from this small specimen.

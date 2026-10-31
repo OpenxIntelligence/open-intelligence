@@ -29,3 +29,9 @@ coverage/
 .idea/
 .vscode/
 *.log
+
+.local/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+workspace-screenshot.png

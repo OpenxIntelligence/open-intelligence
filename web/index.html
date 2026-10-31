@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Open Intelligence — Investigation Workspace</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="top">
+    <div class="brand"><span class="brand-mark" aria-hidden="true">◈</span><div><strong>Open Intelligence</strong><small>Oncology investigation workspace</small></div></div>
+    <div class="top-right"><span class="pill pill-warn">SYNTHETIC DATA ONLY</span><span class="top-note">Local research demo · Not clinical software</span></div>
+  </header>
+  <div class="layout">
+    <aside class="rail">
+      <div class="rail-title">WORKSPACE</div>
+      <label for="case-picker">Selected synthetic case</label>
+      <select id="case-picker" aria-label="Select synthetic case"></select>
+      <p class="muted tiny">Case data stays on this local machine. There is no identity verification or patient login.</p>
+      <nav aria-label="Workspace sections">
+        <a href="#overview">Overview &amp; timeline</a>
+        <a href="#sources">Sources &amp; assertions</a>
+        <a href="#investigations">Investigations</a>
+        <a href="#import">Import &amp; changes</a>
+        <a href="#activity">Activity log</a>
+      </nav>
+      <div class="side-bottom">
+        <strong>What this prototype proves</strong>
+        <p>Versioned original documents, traceable statements, durable questions, and amendment-driven review status.</p>
+        <p class="muted tiny">No automated clinical extraction, AI reasoning, trial matching, or treatment recommendations.</p>
+      </div>
+    </aside>
+    <main class="main">
+      <section id="overview" class="hero">
+        <div><div class="eyebrow">LONGITUDINAL CASE REVIEW · ENGINEERING REFERENCE</div>
+          <h1 id="case-heading">Loading case…</h1>
+          <p class="hero-desc">Understand what the authored sources say, what is unresolved, and what changed after a correction.</p></div>
+        <div class="hero-side"><span class="pill">Local / offline</span><span class="muted tiny">Evidence is source-linked, not clinically evaluated.</span></div>
+      </section>
+      <div class="metrics" id="metrics" aria-live="polite"></div>
+      <div id="notice" role="status" aria-live="polite" class="notice" hidden></div>
+      <div class="workspace">
+        <div class="content-left">
+          <section class="panel" id="sources">
+            <div class="panel-head"><div><div class="eyebrow">01 / INTAKE</div><h2>Source history</h2></div><span class="muted tiny">Event date ≠ issued date ≠ received date</span></div>
+            <div id="source-list" class="cards"></div>
+          </section>
+          <section class="panel">
+            <div class="panel-head"><div><div class="eyebrow">02 / ASSERTIONS</div><h2>Current reported findings</h2></div><span class="muted tiny">Reported text is not a validated clinical conclusion</span></div>
+            <div id="assertion-list" class="findings"></div>
+          </section>
+          <section class="panel" id="activity">
+            <div class="panel-head"><div><div class="eyebrow">05 / AUDIT</div><h2>Recent activity</h2></div></div>
+            <div id="event-list" class="activity"></div>
+          </section>
+        </div>
+        <div class="content-right">
+          <section class="panel" id="investigations">
+            <div class="panel-head"><div><div class="eyebrow">03 / INVESTIGATIONS</div><h2>Questions &amp; review</h2></div></div>
+            <form id="question-form"><label for="question-text">New unresolved question</label><textarea id="question-text" rows="2" maxlength="500" required placeholder="e.g. Which reported findings need reconciliation before the next review?"></textarea><button type="submit" class="button">Add question</button></form>
+            <div id="question-list" class="questions"></div>
+            <div class="subhead">Create a dated investigation draft</div>
+            <form id="draft-form">
+              <label for="question-choice">Question</label><select id="question-choice" required></select>
+              <label>Source versions included</label><div id="source-choice" class="source-choice"></div>
+              <label for="draft-summary">Human-authored, unappraised synthesis</label><textarea id="draft-summary" rows="4" maxlength="3000" required placeholder="This is an engineering demonstration: summarize the selected source statements and remaining uncertainty. Do not assert treatment benefit."></textarea>
+              <button class="button" type="submit">Save investigation draft</button>
+            </form>
+            <div class="subhead">Investigation snapshots</div><div id="snapshot-list" class="snapshots"></div>
+          </section>
+          <section class="panel" id="import">
+            <div class="panel-head"><div><div class="eyebrow">04 / UPDATES</div><h2>Import synthetic source</h2></div></div>
+            <p class="muted">Paste a structured OI synthetic report. The importer is deterministic; it does not understand general clinical documents.</p>
+            <form id="import-form"><label for="report-text">Original report bytes (UTF-8)</label><textarea id="report-text" rows="9" spellcheck="false" placeholder="OI-SYNTHETIC-REPORT/1&#10;Patient: CASE-ALPHA&#10;Document: …"></textarea><div class="actions"><button type="button" class="button secondary" id="example-button">Load example amendment</button><button class="button" type="submit">Import report</button></div></form>
+            <div id="quarantine-list" class="quarantine-list"></div>
+          </section>
+        </div>
+      </div>
+      <footer>Open Intelligence · Original, dependency-free reference implementation · No real patient information, credentialed clinical review, or regulatory clearance.</footer>
+    </main>
+  </div>
+  <dialog id="source-dialog"><div class="dialog-head"><h2 id="dialog-title">Original source</h2><button id="dialog-close" class="button secondary" type="button">Close</button></div><pre id="dialog-text"></pre></dialog>
+</body>
+</html>

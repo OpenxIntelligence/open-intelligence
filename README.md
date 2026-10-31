@@ -43,3 +43,7 @@ An incoming amendment marks affected outputs as requiring review. It does not au
 ## Licensing
 
 The project's distribution license has not yet been selected. This initial foundation includes original project documentation and references to external sources; it does not vendor their code or datasets. A project license and any third-party notices will be added through an explicit licensing decision.
+
+## Run the source-ledger prototype
+
+See [README_IMPLEMENTATION.md](README_IMPLEMENTATION.md) for local setup, supported synthetic report format, tests, and explicit limitations. The first code slice is a local demonstration, not a deployable clinical application.
