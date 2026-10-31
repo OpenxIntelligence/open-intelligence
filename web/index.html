@@ -17,7 +17,7 @@
       <strong>Open Intelligence</strong>
     </a>
     <div class="top-right">
-      <span class="pill pill-warn">Synthetic data only</span>
+      <span class="pill pill-warn">FICTIONAL DEMO DATA — not a real patient</span>
       <span class="top-note">Local demo, not clinical software</span>
     </div>
   </header>
@@ -52,6 +52,14 @@
         </div>
       </section>
       <div class="metrics" id="metrics" aria-live="polite"></div>
+      <section id="review-attention" class="review-attention" data-state="checking" aria-labelledby="review-attention-heading">
+        <div>
+          <p class="tiny muted review-eyebrow">SOURCE-DEPENDENT REVIEW · FICTIONAL DEMO</p>
+          <h2 id="review-attention-heading">Checking investigation freshness…</h2>
+          <p id="review-attention-summary" role="status" aria-live="polite">Loading source-linked review state.</p>
+        </div>
+        <a href="#investigations" class="button secondary">Inspect investigations</a>
+      </section>
       <div id="notice" role="status" aria-live="polite" class="notice" hidden></div>
 
       <section class="panel panel-timeline" id="timeline">
@@ -72,6 +80,14 @@
         </div>
         <p class="muted panel-note">Event, issue, and receipt dates remain separate. Amendments stay attached to their source event.</p>
         <ol id="timeline-events" class="timeline-events" aria-label="Source-derived event chronology"></ol>
+        <section class="change-review" aria-labelledby="change-review-heading">
+          <div class="panel-head">
+            <h3 id="change-review-heading">Source Change Explorer</h3>
+            <span class="pill pill-neutral">Exact source versions · no clinical inference</span>
+          </div>
+          <p class="muted panel-note">Compare original report text and inspect which saved investigations used an earlier version. A textual amendment is not automatically a new biological event or a clinical change.</p>
+          <div id="source-change-list" class="change-list"></div>
+        </section>
       </section>
 
       <section class="panel panel-investigation" id="investigations" aria-labelledby="investigation-heading">
@@ -207,9 +223,22 @@
       <footer>Open Intelligence is an original, dependency-free reference implementation. No real patient information, patient login, credentialed clinical review, automated clinical inference, treatment recommendations, or regulatory clearance.</footer>
     </main>
   </div>
-  <dialog id="source-dialog">
+  <dialog id="source-dialog" aria-labelledby="dialog-title" aria-describedby="dialog-context">
     <div class="dialog-head"><h2 id="dialog-title">Original source</h2><button id="dialog-close" class="button secondary" type="button">Close</button></div>
+    <p id="dialog-context" class="muted tiny">Exact source text. Not clinically reviewed.</p>
     <pre id="dialog-text"></pre>
+  </dialog>
+  <dialog id="compare-dialog" aria-labelledby="compare-title" aria-describedby="compare-context">
+    <div class="dialog-head"><h2 id="compare-title">Compare source versions</h2><button id="compare-close" class="button secondary" type="button">Close comparison</button></div>
+    <p id="compare-context" class="muted">Read-only, exact original text. Differences require human interpretation; this view makes no clinical or treatment determination.</p>
+    <div class="comparison-grid">
+      <section class="comparison-pane" aria-labelledby="compare-before-title">
+        <h3 id="compare-before-title">Previous version</h3><pre id="compare-before"></pre>
+      </section>
+      <section class="comparison-pane" aria-labelledby="compare-after-title">
+        <h3 id="compare-after-title">Current version</h3><pre id="compare-after"></pre>
+      </section>
+    </div>
   </dialog>
 </body>
 </html>
