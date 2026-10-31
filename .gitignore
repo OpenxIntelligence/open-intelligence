@@ -1,0 +1,31 @@
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.json
+secrets/
+
+# Local patient/source material must never enter this repository
+private-data/
+patient-data/
+local-data/
+uploads/
+
+# Build output and dependencies
+node_modules/
+dist/
+build/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+coverage/
+
+# Machine-local files
+.DS_Store
+.idea/
+.vscode/
+*.log
