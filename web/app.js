@@ -61,6 +61,7 @@ async function initialize() {
       for (const id of ['question-text', 'report-text', 'evidence-rationale', 'draft-observations',
         'draft-summary', 'draft-assumptions']) el(id).value = '';
       if (el('source-dialog').open) el('source-dialog').close();
+      if (el('compare-dialog').open) el('compare-dialog').close();
       refresh();
     });
     caseId = cases[0].case_id;
@@ -170,6 +171,49 @@ function renderTimeline() {
   }
 }
 
+function renderSourceChanges() {
+  clear('source-change-list');
+  const revisions = active.sources.filter(s => s.supersedes_id !== null && s.supersedes_id !== undefined)
+    .sort((a, b) => b.received_at.localeCompare(a.received_at));
+  if (!revisions.length) {
+    empty(el('source-change-list'), 'No amended report is recorded in these available fictional sources. This does not mean the case is complete.');
+    return;
+  }
+  for (const revision of revisions) {
+    const previous = active.sources.find(s => Number(s.id) === Number(revision.supersedes_id));
+    const card = node('article', null, 'change-card');
+    const heading = node('div', null, 'change-heading');
+    heading.append(node('strong', revision.document_id + ': version ' +
+      (previous ? previous.version : '?') + ' → ' + revision.version), pill('Document amendment', 'pill-neutral'));
+    card.append(heading);
+    card.append(node('p', 'Original event: ' + revision.event_date + ', ' + revision.kind +
+      (revision.specimen_id ? ', specimen ' + revision.specimen_id : ', no specimen recorded') +
+      '. An amended report is not a new biological event.', 'snapshot-meta'));
+    if (!previous) {
+      card.append(node('p', 'The earlier source version is unavailable here. No textual or clinical comparison is possible.', 'muted'));
+    } else {
+      const affected = active.snapshots.filter(snapshot =>
+        (snapshot.source_ids || []).some(id => Number(id) === Number(previous.id)));
+      const openQuestionIds = new Set(affected.filter(snapshot =>
+        active.questions.some(q => Number(q.id) === Number(snapshot.question_id) && q.state === 'open'))
+        .map(snapshot => Number(snapshot.question_id)));
+      card.append(node('p', affected.length + ' saved investigation(s) cite the earlier source version; ' +
+        openQuestionIds.size + ' linked question(s) are currently open. Historical snapshots remain intact.', 'change-impact'));
+      const actions = node('div', null, 'actions');
+      const compare = node('button', 'Compare original versions', 'button secondary minor');
+      compare.type = 'button';
+      compare.addEventListener('click', () => openComparison(previous, revision));
+      const older = node('button', 'Open version ' + previous.version, 'button secondary minor');
+      older.type = 'button'; older.addEventListener('click', () => openSource(previous));
+      const newer = node('button', 'Open version ' + revision.version, 'button secondary minor');
+      newer.type = 'button'; newer.addEventListener('click', () => openSource(revision));
+      actions.append(compare, older, newer);
+      card.append(actions);
+    }
+    el('source-change-list').append(card);
+  }
+}
+
 function render() {
   const sameCase = renderedCaseId === caseId;
   const priorQuestion = sameCase ? el('question-choice').value : null;
@@ -182,10 +226,31 @@ function render() {
   clear('metrics');
   const latest = active.sources.filter(s => s.state === 'current');
   const stale = active.snapshots.filter(s => s.state === 'stale');
+  // Source-dependent review is CURRENT work only while its question is reopened.
+  // Keep superseded snapshots stale in history even after the replacement is acknowledged.
+  const reopenedQuestionIds = new Set(stale
+    .filter(snapshot => active.questions.some(q =>
+      Number(q.id) === Number(snapshot.question_id) && q.state === 'open'))
+    .map(snapshot => Number(snapshot.question_id)));
+  const reviewRequired = reopenedQuestionIds.size;
   el('metrics').append(
     metric(latest.length, 'Current source documents'), metric(active.assertions.length, 'Reported statements'),
-    metric(active.questions.filter(q => q.state === 'open').length, 'Open questions'), metric(stale.length, 'Review required'));
+    metric(active.questions.filter(q => q.state === 'open').length, 'Open questions'), metric(reviewRequired, 'Review required'));
+  const reviewNotice = el('review-attention');
+  reviewNotice.dataset.state = reviewRequired ? 'needs-review' : 'no-open-review';
+  el('review-attention-heading').textContent = reviewRequired
+    ? 'Changed sources need another review'
+    : 'Investigation review status';
+  const openQuestions = active.questions.filter(q => q.state === 'open').length;
+  el('review-attention-summary').textContent = reviewRequired
+    ? reviewRequired + ' reopened question(s) have stale source-dependent investigation history. Inspect both versions and prepare a new reviewable draft; no clinical decision is made automatically.'
+    : active.snapshots.length
+      ? 'No unresolved source-change review is flagged. ' + openQuestions +
+        ' open question(s) remain. Historical stale records are retained; a demo acknowledgment is not clinical sign-off.'
+      : 'No investigation snapshots exist yet. ' + openQuestions +
+        ' open question(s) are recorded. No conclusion is available to review.';
   renderTimeline();
+  renderSourceChanges();
   clear('source-list');
   if (!active.sources.length) empty(el('source-list'), 'No records received.');
   for (const source of active.sources) {
@@ -205,9 +270,21 @@ function render() {
   for (const assertion of active.assertions) {
     const card = node('div', null, 'finding');
     const heading = node('div', null, 'finding-head');
-    heading.append(node('strong', assertion.finding_key), pill(assertion.certainty,
+    const labels = node('div', null, 'finding-labels');
+    labels.append(pill('Source says', 'pill-neutral'), pill(assertion.certainty,
       ['pending', 'indeterminate', 'conflicting', 'not-reported', 'not-assessed'].includes(assertion.certainty) ? 'pill-warn' : ''));
-    card.append(heading, node('p', assertion.quote, 'quoted'), node('span', 'Exact source version #' + assertion.source_version_id + ', line ' + assertion.source_line, 'ref'));
+    heading.append(node('strong', assertion.finding_key), labels);
+    card.append(heading, node('p', assertion.quote, 'quoted'));
+    const supportingSource = active.sources.find(source =>
+      Number(source.id) === Number(assertion.source_version_id));
+    const sourceButton = node('button', supportingSource
+      ? 'Inspect ' + supportingSource.document_id + '@' + supportingSource.version + ', line ' + assertion.source_line
+      : 'Exact source version unavailable', 'button secondary minor source-jump');
+    sourceButton.type = 'button';
+    sourceButton.disabled = !supportingSource;
+    if (supportingSource)
+      sourceButton.addEventListener('click', () => openSource(supportingSource, Number(assertion.source_line)));
+    card.append(sourceButton);
     el('assertion-list').append(card);
   }
   clear('question-list'); clear('question-choice');
@@ -338,14 +415,54 @@ function render() {
   }
   renderedCaseId = caseId;
 }
-async function openSource(source) {
+function renderOriginalSource(text, lineNumber) {
+  // Imported source text must never become HTML. Highlight only the exact
+  // recorded source line; preserve all other characters and line breaks.
+  const viewer = el('dialog-text');
+  viewer.replaceChildren();
+  const lines = String(text).split('\n');
+  const anchored = Number.isInteger(lineNumber) && lineNumber > 0 && lineNumber <= lines.length;
+  for (let index = 0; index < lines.length; index++) {
+    if (index) viewer.append(document.createTextNode('\n'));
+    if (anchored && index + 1 === lineNumber)
+      viewer.append(node('mark', lines[index], 'source-highlight'));
+    else viewer.append(document.createTextNode(lines[index]));
+  }
+  return anchored;
+}
+async function openSource(source, lineNumber = null) {
   try {
     const requestedCase = readyCase();
     const response = await api('/api/cases/' + requestedCase + '/sources/' + source.id);
     if (requestedCase !== caseId) return;
     el('dialog-title').textContent = source.document_id + '@' + source.version + ', original UTF-8';
-    el('dialog-text').textContent = response.text;
+    const anchored = renderOriginalSource(response.text, lineNumber);
+    el('dialog-context').textContent = anchored
+      ? 'Source-reported statement, highlighted original line ' + lineNumber + '. Not clinically reviewed.'
+      : lineNumber === null
+        ? 'Exact original report and source version. Not clinically reviewed.'
+        : 'Requested source line is not present in this version. Original text is preserved below.';
     el('source-dialog').showModal();
+    if (anchored) el('dialog-text').querySelector('mark.source-highlight')?.scrollIntoView({block:'center'});
+  } catch (err) { notice(err.message, true); }
+}
+async function openComparison(previous, current) {
+  try {
+    const requestedCase = readyCase();
+    // Both immutable source versions are retrieved from the *same* selected case.
+    if (![previous, current].every(version => active.sources.some(source => Number(source.id) === Number(version.id))))
+      throw Error('Source versions are not in the selected fictional case.');
+    const [before, after] = await Promise.all([previous, current].map(source =>
+      api('/api/cases/' + requestedCase + '/sources/' + source.id)));
+    if (requestedCase !== caseId) return;
+    el('compare-title').textContent = current.document_id + ': original versions ' +
+      previous.version + ' and ' + current.version;
+    el('compare-before-title').textContent = previous.document_id + '@' + previous.version + ' · ' + previous.state;
+    el('compare-after-title').textContent = current.document_id + '@' + current.version + ' · ' + current.state;
+    // textContent prevents untrusted report content from becoming executable markup.
+    el('compare-before').textContent = before.text;
+    el('compare-after').textContent = after.text;
+    el('compare-dialog').showModal();
   } catch (err) { notice(err.message, true); }
 }
 async function openEvidence(item) {
@@ -354,6 +471,7 @@ async function openEvidence(item) {
     const response = await api('/api/evidence/' + item.id);
     if (requestedCase !== caseId) return;
     el('dialog-title').textContent = item.evidence_key + '@' + item.version + ', fictional source';
+    el('dialog-context').textContent = 'Fictional evidence text, not independent clinical appraisal.';
     el('dialog-text').textContent = response.text;
     el('source-dialog').showModal();
   } catch (err) { notice(err.message, true); }
@@ -369,6 +487,7 @@ async function downloadSnapshot(id) {
   } catch (err) { notice(err.message, true); }
 }
 el('dialog-close').addEventListener('click', () => el('source-dialog').close());
+el('compare-close').addEventListener('click', () => el('compare-dialog').close());
 el('question-form').addEventListener('submit', async event => {
   event.preventDefault(); try {
     const requestedCase = readyCase();
