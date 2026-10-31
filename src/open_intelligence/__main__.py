@@ -9,7 +9,7 @@ import re
 from pathlib import Path
 from threading import Lock
 from time import monotonic
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from tools.crossref_metadata import MetadataInputError, fetch_public_doi, project_work
 
@@ -118,6 +118,12 @@ class Handler(BaseHTTPRequestHandler):
             case_state = re.fullmatch(rf"/api/cases/{ID_PART}/state", path)
             if case_state:
                 return self._json(200, store.state(case_state[1]))
+            case_options = re.fullmatch(rf"/api/cases/{ID_PART}/options", path)
+            if case_options:
+                query = parse_qs(urlsplit(self.path).query)
+                snapshot_raw = query.get("snapshot_id", [None])[0]
+                snapshot_id = int(snapshot_raw) if snapshot_raw is not None else None
+                return self._json(200, store.option_view(case_options[1], snapshot_id))
             source = re.fullmatch(rf"/api/cases/{ID_PART}/sources/([0-9]+)", path)
             if source:
                 return self._json(200, {"text": store.source_text(source[1], int(source[2]))})
@@ -193,6 +199,47 @@ class Handler(BaseHTTPRequestHandler):
                 if review:
                     store.acknowledge_demo_review(review[1], int(review[2]), data.get("reviewer_label"))
                     return self._json(200, {"result": "acknowledged_in_demo"})
+                option_create = re.fullmatch(rf"/api/cases/{ID_PART}/options", path)
+                if option_create:
+                    option_id = store.create_option(
+                        option_create[1], data.get("snapshot_id"), data.get("label"),
+                        data.get("description"), data.get("epistemic_status"))
+                    return self._json(201, {"option_id": option_id})
+                option_dep = re.fullmatch(rf"/api/cases/{ID_PART}/options/([0-9]+)/dependencies", path)
+                if option_dep:
+                    dependency_id = store.add_option_dependency(
+                        option_dep[1], int(option_dep[2]), data.get("kind"),
+                        source_version_id=data.get("source_version_id"),
+                        evidence_assessment_id=data.get("evidence_assessment_id"),
+                        preparation_task_id=data.get("preparation_task_id"),
+                        depends_on_option_id=data.get("depends_on_option_id"),
+                        lead_time_days=data.get("lead_time_days"),
+                        deadline_date=data.get("deadline_date"),
+                        deadline_basis=data.get("deadline_basis", "unknown"),
+                        anchor=data.get("anchor", ""))
+                    return self._json(201, {"dependency_id": dependency_id})
+                option_task = re.fullmatch(rf"/api/cases/{ID_PART}/options/([0-9]+)/tasks", path)
+                if option_task:
+                    task_id = store.add_preparation_task(
+                        option_task[1], int(option_task[2]), data.get("label"),
+                        data.get("owner_label"), data.get("lead_time_days"))
+                    return self._json(201, {"task_id": task_id})
+                task_status = re.fullmatch(rf"/api/cases/{ID_PART}/tasks/([0-9]+)/status", path)
+                if task_status:
+                    store.set_preparation_task_status(task_status[1], int(task_status[2]), data.get("status"))
+                    return self._json(200, {"result": "task_status_updated"})
+                option_threat = re.fullmatch(rf"/api/cases/{ID_PART}/options/([0-9]+)/threats", path)
+                if option_threat:
+                    threat_id = store.add_optionality_threat(
+                        option_threat[1], int(option_threat[2]), data.get("kind"),
+                        data.get("description"), data.get("threat_date"),
+                        data.get("threat_basis", "unknown"), data.get("anchor", ""))
+                    return self._json(201, {"threat_id": threat_id})
+                option_review = re.fullmatch(rf"/api/cases/{ID_PART}/options/([0-9]+)/review", path)
+                if option_review:
+                    return self._json(200, store.review_option(
+                        option_review[1], int(option_review[2]), data.get("reviewer_label"),
+                        data.get("action"), data.get("scope"), data.get("snapshot_id")))
                 return self._json(404, {"error": "Route not found"})
             finally:
                 store.close()

@@ -11,7 +11,7 @@ import json
 import re
 import sqlite3
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 ID = re.compile(r"[A-Z][A-Z0-9-]{1,39}\Z")
@@ -283,6 +283,59 @@ CREATE INDEX IF NOT EXISTS idx_snapshot_evidence_assessment ON snapshot_evidence
 CREATE INDEX IF NOT EXISTS idx_sources_case ON source_versions(case_id, document_id, version);
 CREATE INDEX IF NOT EXISTS idx_assertions_source ON assertions(source_version_id);
 CREATE INDEX IF NOT EXISTS idx_snapshot_sources_source ON snapshot_sources(source_version_id);
+-- OI-021: derived option/dependency projection over the existing ledger.
+-- Options are proposals tied to an investigation snapshot; they are never a
+-- second canonical ledger, never a clinical recommendation, and never an
+-- order. Status columns hold the CURRENT state only; history is preserved in
+-- option_review_events (never deleted) and in the immutable snapshots.
+CREATE TABLE IF NOT EXISTS options (
+  id INTEGER PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(case_id),
+  snapshot_id INTEGER NOT NULL REFERENCES snapshots(id),
+  label TEXT NOT NULL, description TEXT NOT NULL,
+  epistemic_status TEXT NOT NULL CHECK(epistemic_status IN ('supported','contradicted','unsupported','unknown')),
+  operational_status TEXT NOT NULL CHECK(operational_status IN ('proposed','reviewed','held','rejected','withdrawn','expired')),
+  review_state TEXT NOT NULL CHECK(review_state IN ('current','needs_review')),
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS preparation_tasks (
+  id INTEGER PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(case_id),
+  option_id INTEGER NOT NULL REFERENCES options(id),
+  label TEXT NOT NULL, owner_label TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('not_started','in_progress','done','blocked','cancelled')),
+  lead_time_days INTEGER, created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS optionality_threats (
+  id INTEGER PRIMARY KEY, option_id INTEGER NOT NULL REFERENCES options(id),
+  kind TEXT NOT NULL CHECK(kind IN ('expiring_window','dependency_loss','evidence_withdrawal','other')),
+  description TEXT NOT NULL, threat_date TEXT,
+  threat_basis TEXT NOT NULL CHECK(threat_basis IN ('sourced','unknown')),
+  anchor TEXT NOT NULL, created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS option_dependencies (
+  id INTEGER PRIMARY KEY, option_id INTEGER NOT NULL REFERENCES options(id),
+  kind TEXT NOT NULL CHECK(kind IN ('source','evidence_assessment','preparation_task','option')),
+  source_version_id INTEGER REFERENCES source_versions(id),
+  evidence_assessment_id INTEGER REFERENCES evidence_assessments(id),
+  preparation_task_id INTEGER REFERENCES preparation_tasks(id),
+  depends_on_option_id INTEGER REFERENCES options(id),
+  lead_time_days INTEGER, deadline_date TEXT,
+  deadline_basis TEXT NOT NULL CHECK(deadline_basis IN ('sourced','unknown')),
+  anchor TEXT NOT NULL, created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS option_review_events (
+  id INTEGER PRIMARY KEY, option_id INTEGER NOT NULL REFERENCES options(id),
+  reviewer_label TEXT NOT NULL,
+  action TEXT NOT NULL CHECK(action IN ('approve','reject','abstain','reconfirm','withdraw','expire')),
+  scope TEXT NOT NULL, snapshot_id INTEGER REFERENCES snapshots(id), noted_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_options_case ON options(case_id, snapshot_id);
+CREATE INDEX IF NOT EXISTS idx_option_deps_option ON option_dependencies(option_id);
+CREATE INDEX IF NOT EXISTS idx_option_deps_source ON option_dependencies(source_version_id);
+CREATE INDEX IF NOT EXISTS idx_option_deps_assessment ON option_dependencies(evidence_assessment_id);
+CREATE INDEX IF NOT EXISTS idx_option_deps_target ON option_dependencies(depends_on_option_id);
+CREATE INDEX IF NOT EXISTS idx_option_tasks_option ON preparation_tasks(option_id);
+CREATE INDEX IF NOT EXISTS idx_option_threats_option ON optionality_threats(option_id);
+CREATE INDEX IF NOT EXISTS idx_option_reviews_option ON option_review_events(option_id);
 """
 
 
@@ -381,6 +434,7 @@ class CaseStore:
                     VALUES (?,?,?,?,?,?)""",
                     (case_id, source_id, finding.key, finding.state, finding.quote, finding.line))
             invalidated = []
+            invalidated_options = []
             if previous:
                 invalidated = [row[0] for row in self.db.execute(
                     """SELECT snapshots.id FROM snapshots JOIN snapshot_sources
@@ -392,14 +446,488 @@ class CaseStore:
                     self.db.execute(f"UPDATE snapshots SET state='stale' WHERE id IN ({marks})", invalidated)
                     self.db.execute(f"""UPDATE questions SET state='open' WHERE case_id=? AND id IN
                         (SELECT question_id FROM snapshots WHERE id IN ({marks}))""", [case_id, *invalidated])
+                # OI-021, same transaction: only options in THIS case that
+                # cite the superseded version or a stale snapshot reopen.
+                invalidated_options = self._invalidate_options(
+                    snapshot_ids=set(invalidated), source_version_ids={previous["id"]},
+                    evidence_version_ids=set())
+                if invalidated_options:
+                    self._event(case_id, "option_review_reopened",
+                                source_version_id=previous["id"],
+                                invalidated_options=invalidated_options)
             self._event(case_id, "source_imported", document_id=report.document_id,
                         version=version, source_id=source_id, amends_id=previous["id"] if previous else None,
-                        invalidated_snapshots=invalidated)
+                        invalidated_snapshots=invalidated, invalidated_options=invalidated_options)
             return {"result": "imported", "source_id": source_id, "version": version,
-                    "invalidated_snapshots": invalidated}
+                    "invalidated_snapshots": invalidated, "invalidated_options": invalidated_options}
 
 
-    def _invalidate_evidence_version(self, evidence_version_id: int, *, reason: str) -> list[int]:
+    # ---- OI-021: reviewed option/dependency view (derived projection) ----
+    OPTION_EPISTEMIC = frozenset({"supported", "contradicted", "unsupported", "unknown"})
+    OPTION_OPERATIONAL = frozenset({"proposed", "reviewed", "held", "rejected", "withdrawn", "expired"})
+    OPTION_REVIEW_ACTIONS = frozenset({"approve", "reject", "abstain", "reconfirm", "withdraw", "expire"})
+    TASK_STATUSES = frozenset({"not_started", "in_progress", "done", "blocked", "cancelled"})
+    THREAT_KINDS = frozenset({"expiring_window", "dependency_loss", "evidence_withdrawal", "other"})
+    # Imperative clinical language is rejected at proposal time. This is a
+    # narrow guard, not a clinical-language classifier: the disclaimer on
+    # every view states what the view is not, and human review remains the
+    # gate. The guard covers the fields a proposal author controls.
+    _CLINICAL_LANGUAGE = re.compile(
+        r"\b(recommend\w*|prescrib\w*|eligible)\b"
+        r"|\bshould\s+(receive|undergo|get|start)\b"
+        r"|\bmust\s+(receive|undergo)\b"
+        r"|\border\s+(this|the)\s+(treatment|therapy|procedure)\b"
+        r"|\bstart\s+treatment\b", re.IGNORECASE)
+
+    @staticmethod
+    def _check_no_clinical_language(text: str, field: str) -> str:
+        if not isinstance(text, str) or not text.strip():
+            raise InvalidInput(f"{field} is required")
+        if CaseStore._CLINICAL_LANGUAGE.search(text):
+            raise InvalidInput(f"{field} must not state a clinical recommendation, order, or eligibility claim")
+        return text.strip()
+
+    @staticmethod
+    def _check_lead(value: object) -> int | None:
+        if value is None:
+            return None
+        if type(value) is not int or not 0 <= value <= 3650:
+            raise InvalidInput("Lead time must be an integer of 0–3650 days or absent")
+        return value
+
+    @staticmethod
+    def _check_sourced_date(date_value: object, basis: object, anchor: object, field: str) -> tuple[str | None, str, str]:
+        """A date is only as good as its attested anchor in this demo.
+
+        Sourced means: a human supplied a date AND an anchor text (10–300
+        chars) AND, for dependencies, the edge itself is a source or evidence
+        edge (enforced by the caller). The anchor is a human attestation, not
+        verified citation — the same honesty level as existing assessments.
+        Unknown means: no date, full stop.
+        """
+        if basis not in ("sourced", "unknown"):
+            raise InvalidInput(f"{field} basis must be 'sourced' or 'unknown'")
+        if date_value is None:
+            if basis != "unknown":
+                raise InvalidInput(f"{field} with no date must use basis 'unknown'")
+            anchor_text = anchor if isinstance(anchor, str) else ""
+            if len(anchor_text) > 300:
+                raise InvalidInput(f"{field} anchor must be at most 300 characters")
+            return None, "unknown", anchor_text.strip()
+        if basis != "sourced":
+            raise InvalidInput(f"{field} with a date must use basis 'sourced'")
+        anchor_text = CaseStore._check_no_clinical_language(anchor, f"{field} anchor")
+        if not 10 <= len(anchor_text) <= 300:
+            raise InvalidInput(f"{field} anchor must have 10–300 characters")
+        return valid_date(date_value), "sourced", anchor_text
+
+    def _option_row(self, case_id: str, option_id: int) -> sqlite3.Row:
+        if type(option_id) is not int or option_id < 1:
+            raise InvalidInput("Invalid option ID")
+        row = self.db.execute("SELECT * FROM options WHERE id=? AND case_id=?", (option_id, case_id)).fetchone()
+        if not row:
+            raise InvalidInput("Option not in this case")
+        return row
+
+    def _option_contradicted(self, option_id: int) -> bool:
+        row = self.db.execute("""SELECT 1 FROM option_dependencies d
+            JOIN evidence_assessments a ON a.id=d.evidence_assessment_id
+            WHERE d.option_id=? AND a.relation='contradicts' LIMIT 1""", (option_id,)).fetchone()
+        return row is not None
+
+    def _invalidate_options(self, *, snapshot_ids: set[int], source_version_ids: set[int],
+                            evidence_version_ids: set[int]) -> list[int]:
+        """Mark ONLY dependent option proposals needs_review, transitively
+        through option->option edges. Caller must own a write transaction.
+        Returns the invalidated option IDs. Other cases/options untouched,
+        except evidence invalidation, which (like existing snapshot evidence
+        invalidation) is global because evidence versions are shared."""
+        seeded: set[int] = set()
+        if snapshot_ids:
+            marks = ",".join("?" for _ in snapshot_ids)
+            seeded.update(r[0] for r in self.db.execute(
+                f"SELECT id FROM options WHERE snapshot_id IN ({marks}) AND review_state='current'",
+                sorted(snapshot_ids)).fetchall())
+        if source_version_ids:
+            marks = ",".join("?" for _ in source_version_ids)
+            seeded.update(r[0] for r in self.db.execute(
+                f"""SELECT DISTINCT option_id FROM option_dependencies
+                WHERE source_version_id IN ({marks})""", sorted(source_version_ids)).fetchall())
+        if evidence_version_ids:
+            marks = ",".join("?" for _ in evidence_version_ids)
+            seeded.update(r[0] for r in self.db.execute(
+                f"""SELECT DISTINCT d.option_id FROM option_dependencies d
+                JOIN evidence_assessments a ON a.id=d.evidence_assessment_id
+                WHERE a.evidence_version_id IN ({marks})""", sorted(evidence_version_ids)).fetchall())
+        # Transitive closure over option->option dependencies.
+        changed = set(seeded)
+        frontier = set(seeded)
+        while frontier:
+            marks = ",".join("?" for _ in frontier)
+            nxt = {r[0] for r in self.db.execute(
+                f"""SELECT DISTINCT option_id FROM option_dependencies
+                WHERE depends_on_option_id IN ({marks})""", sorted(frontier)).fetchall()}
+            nxt -= changed
+            changed |= nxt
+            frontier = nxt
+        invalidated = sorted(changed)
+        if invalidated:
+            marks = ",".join("?" for _ in invalidated)
+            self.db.execute(f"UPDATE options SET review_state='needs_review' WHERE id IN ({marks}) AND review_state='current'",
+                            invalidated)
+        return invalidated
+
+    def create_option(self, case_id: str, snapshot_id: int, label: str, description: str,
+                      epistemic_status: str) -> int:
+        self._case(case_id)
+        label = self._check_no_clinical_language(label, "Option label")
+        if not 1 <= len(label) <= 120:
+            raise InvalidInput("Option label must have 1–120 characters")
+        description = self._check_no_clinical_language(description, "Option description")
+        if not 10 <= len(description) <= 1000:
+            raise InvalidInput("Option description must have 10–1000 characters")
+        if epistemic_status not in self.OPTION_EPISTEMIC:
+            raise InvalidInput("Invalid epistemic status")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            snap = self.db.execute("SELECT state FROM snapshots WHERE id=? AND case_id=?",
+                                   (snapshot_id, case_id)).fetchone()
+            if not snap:
+                raise InvalidInput("Investigation snapshot not in this case")
+            if snap["state"] == "stale":
+                raise InvalidInput("Options cannot be proposed on a stale investigation snapshot")
+            cur = self.db.execute("""INSERT INTO options
+                (case_id,snapshot_id,label,description,epistemic_status,operational_status,review_state,created_at)
+                VALUES (?,?,?,?,?,'proposed','current',?)""",
+                (case_id, snapshot_id, label, description, epistemic_status, now_utc()))
+            self._event(case_id, "option_created", option_id=cur.lastrowid, snapshot_id=snapshot_id)
+            return int(cur.lastrowid)
+
+    def add_option_dependency(self, case_id: str, option_id: int, kind: str, *,
+                              source_version_id: int | None = None,
+                              evidence_assessment_id: int | None = None,
+                              preparation_task_id: int | None = None,
+                              depends_on_option_id: int | None = None,
+                              lead_time_days: int | None = None,
+                              deadline_date: str | None = None,
+                              deadline_basis: str = "unknown",
+                              anchor: str = "") -> int:
+        self._case(case_id)
+        if kind not in ("source", "evidence_assessment", "preparation_task", "option"):
+            raise InvalidInput("Invalid dependency kind")
+        targets = [x for x in (source_version_id, evidence_assessment_id,
+                               preparation_task_id, depends_on_option_id) if x is not None]
+        if len(targets) != 1:
+            raise InvalidInput("Exactly one dependency target is required")
+        expected = {"source": source_version_id, "evidence_assessment": evidence_assessment_id,
+                    "preparation_task": preparation_task_id, "option": depends_on_option_id}[kind]
+        if expected is None or type(expected) is not int or expected < 1:
+            raise InvalidInput("Dependency target does not match its kind")
+        lead = self._check_lead(lead_time_days)
+        if kind not in ("source", "evidence_assessment") and deadline_date is not None:
+            raise InvalidInput("A sourced deadline date is only allowed on a source or evidence dependency")
+        date_value, basis, anchor_text = self._check_sourced_date(
+            deadline_date, deadline_basis, anchor, "Dependency deadline")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            option = self._option_row(case_id, option_id)
+            if kind == "source":
+                if not self.db.execute("SELECT 1 FROM source_versions WHERE id=? AND case_id=?",
+                                       (source_version_id, case_id)).fetchone():
+                    raise InvalidInput("Source version not in this case")
+            elif kind == "evidence_assessment":
+                if not self.db.execute("SELECT 1 FROM evidence_assessments WHERE id=? AND case_id=?",
+                                       (evidence_assessment_id, case_id)).fetchone():
+                    raise InvalidInput("Evidence assessment not in this case")
+            elif kind == "preparation_task":
+                task = self.db.execute("SELECT option_id FROM preparation_tasks WHERE id=? AND case_id=?",
+                                       (preparation_task_id, case_id)).fetchone()
+                if not task or task["option_id"] != option_id:
+                    raise InvalidInput("Preparation task must belong to this option")
+            else:
+                target = self.db.execute("SELECT case_id,operational_status FROM options WHERE id=?",
+                                         (depends_on_option_id,)).fetchone()
+                if not target or target["case_id"] != case_id:
+                    raise InvalidInput("Dependent option not in this case")
+                if depends_on_option_id == option_id:
+                    raise InvalidInput("An option cannot depend on itself")
+                if target["operational_status"] in ("rejected", "withdrawn", "expired"):
+                    raise InvalidInput("An option cannot depend on a rejected, withdrawn, or expired option")
+                # Cycle check inside the immediate transaction.
+                seen, frontier = set(), {depends_on_option_id}
+                while frontier:
+                    if option_id in frontier:
+                        raise InvalidInput("Option dependency would create a cycle")
+                    seen |= frontier
+                    marks = ",".join("?" for _ in frontier)
+                    frontier = {r[0] for r in self.db.execute(
+                        f"""SELECT DISTINCT depends_on_option_id FROM option_dependencies
+                        WHERE option_id IN ({marks}) AND depends_on_option_id IS NOT NULL""",
+                        sorted(frontier)).fetchall()} - seen
+            cur = self.db.execute("""INSERT INTO option_dependencies
+                (option_id,kind,source_version_id,evidence_assessment_id,preparation_task_id,
+                 depends_on_option_id,lead_time_days,deadline_date,deadline_basis,anchor,created_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                (option_id, kind, source_version_id, evidence_assessment_id, preparation_task_id,
+                 depends_on_option_id, lead, date_value, basis, anchor_text, now_utc()))
+            self._event(case_id, "option_dependency_added", option_id=option_id,
+                        dependency_id=cur.lastrowid, dependency_kind=kind)
+            return int(cur.lastrowid)
+
+    def add_preparation_task(self, case_id: str, option_id: int, label: str,
+                             owner_label: str, lead_time_days: int | None = None) -> int:
+        self._case(case_id)
+        label = self._check_no_clinical_language(label, "Preparation task label")
+        if not 1 <= len(label) <= 120:
+            raise InvalidInput("Preparation task label must have 1–120 characters")
+        if not isinstance(owner_label, str) or not 2 <= len(owner_label.strip()) <= 80:
+            raise InvalidInput("Preparation task requires a human owner label")
+        lead = self._check_lead(lead_time_days)
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            self._option_row(case_id, option_id)
+            cur = self.db.execute("""INSERT INTO preparation_tasks
+                (case_id,option_id,label,owner_label,status,lead_time_days,created_at)
+                VALUES (?,?,?,?,'not_started',?,?)""",
+                (case_id, option_id, label, owner_label.strip(), lead, now_utc()))
+            self._event(case_id, "preparation_task_created", option_id=option_id, task_id=cur.lastrowid)
+            return int(cur.lastrowid)
+
+    def set_preparation_task_status(self, case_id: str, task_id: int, status: str) -> None:
+        self._case(case_id)
+        if status not in self.TASK_STATUSES:
+            raise InvalidInput("Invalid preparation task status")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            row = self.db.execute("SELECT option_id FROM preparation_tasks WHERE id=? AND case_id=?",
+                                  (task_id, case_id)).fetchone()
+            if not row:
+                raise InvalidInput("Preparation task not in this case")
+            self.db.execute("UPDATE preparation_tasks SET status=? WHERE id=?", (status, task_id))
+            self._event(case_id, "preparation_task_status_changed", option_id=row["option_id"],
+                        task_id=task_id, status=status)
+
+    def add_optionality_threat(self, case_id: str, option_id: int, kind: str, description: str,
+                               threat_date: str | None = None, threat_basis: str = "unknown",
+                               anchor: str = "") -> int:
+        self._case(case_id)
+        if kind not in self.THREAT_KINDS:
+            raise InvalidInput("Invalid optionality threat kind")
+        description = self._check_no_clinical_language(description, "Threat description")
+        if not 10 <= len(description) <= 500:
+            raise InvalidInput("Threat description must have 10–500 characters")
+        date_value, basis, anchor_text = self._check_sourced_date(
+            threat_date, threat_basis, anchor, "Threat date")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            self._option_row(case_id, option_id)
+            cur = self.db.execute("""INSERT INTO optionality_threats
+                (option_id,kind,description,threat_date,threat_basis,anchor,created_at)
+                VALUES (?,?,?,?,?,?,?)""",
+                (option_id, kind, description, date_value, basis, anchor_text, now_utc()))
+            self._event(case_id, "optionality_threat_added", option_id=option_id, threat_id=cur.lastrowid)
+            return int(cur.lastrowid)
+
+    def review_option(self, case_id: str, option_id: int, reviewer_label: str, action: str,
+                      scope: str, snapshot_id: int | None = None) -> dict:
+        """Record one reviewer action. Approve is re-checked inside the
+        immediate transaction: contradicted or needs_review proposals cannot
+        slip through on a stale read. A failed approve records nothing, the
+        same as the existing snapshot-review pattern; the held state remains
+        visible in the derived view."""
+        self._case(case_id)
+        if action not in self.OPTION_REVIEW_ACTIONS:
+            raise InvalidInput("Invalid option review action")
+        if not isinstance(reviewer_label, str) or not 2 <= len(reviewer_label.strip()) <= 80:
+            raise InvalidInput("Provide a reviewer label")
+        scope = self._check_no_clinical_language(scope, "Review scope")
+        if not 10 <= len(scope) <= 300:
+            raise InvalidInput("Review scope must have 10–300 characters")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            option = self._option_row(case_id, option_id)
+            operational = option["operational_status"]
+            if operational in ("withdrawn", "expired") and action != "abstain":
+                raise InvalidInput("A withdrawn or expired option cannot change state further")
+            if action == "approve":
+                if option["review_state"] != "current":
+                    raise InvalidInput("Option review is not current; reconfirm it after amendment before approval")
+                snap = self.db.execute("SELECT state FROM snapshots WHERE id=?",
+                                       (option["snapshot_id"],)).fetchone()
+                if not snap or snap["state"] == "stale":
+                    raise InvalidInput("Option review is not current; reconfirm it after amendment before approval")
+                if self._option_contradicted(option_id):
+                    raise InvalidInput("A contradicted option cannot be approved; record a rejection or abstention")
+                if operational == "reviewed":
+                    raise InvalidInput("Option is already reviewed")
+                if operational in ("rejected",):
+                    raise InvalidInput("A rejected option cannot be approved without a new proposal")
+                self.db.execute("UPDATE options SET operational_status='reviewed' WHERE id=?", (option_id,))
+                target_snapshot = option["snapshot_id"]
+            elif action == "reject":
+                if operational == "reviewed":
+                    raise InvalidInput("A reviewed option cannot be rejected without a new proposal")
+                self.db.execute("UPDATE options SET operational_status='rejected' WHERE id=?", (option_id,))
+                target_snapshot = option["snapshot_id"]
+            elif action == "abstain":
+                target_snapshot = option["snapshot_id"]
+            elif action == "reconfirm":
+                if option["review_state"] != "needs_review":
+                    raise InvalidInput("Only an option awaiting re-review can be reconfirmed")
+                if snapshot_id is None or type(snapshot_id) is not int:
+                    raise InvalidInput("Reconfirmation requires a replacement investigation snapshot")
+                snap = self.db.execute("SELECT state FROM snapshots WHERE id=? AND case_id=?",
+                                       (snapshot_id, case_id)).fetchone()
+                if not snap or snap["state"] == "stale":
+                    raise InvalidInput("Replacement snapshot is missing or stale")
+                if self._option_contradicted(option_id):
+                    raise InvalidInput("A contradicted option cannot be reconfirmed; record a rejection or abstention")
+                self.db.execute("""UPDATE options SET snapshot_id=?,review_state='current',
+                    operational_status='proposed' WHERE id=?""", (snapshot_id, option_id))
+                target_snapshot = snapshot_id
+            elif action == "withdraw":
+                if operational == "withdrawn":
+                    raise InvalidInput("Option is already withdrawn")
+                self.db.execute("UPDATE options SET operational_status='withdrawn' WHERE id=?", (option_id,))
+                target_snapshot = option["snapshot_id"]
+            else:  # expire
+                if operational == "expired":
+                    raise InvalidInput("Option is already expired")
+                self.db.execute("UPDATE options SET operational_status='expired' WHERE id=?", (option_id,))
+                target_snapshot = option["snapshot_id"]
+            timestamp = now_utc()
+            cur = self.db.execute("""INSERT INTO option_review_events
+                (option_id,reviewer_label,action,scope,snapshot_id,noted_at)
+                VALUES (?,?,?,?,?,?)""",
+                (option_id, reviewer_label.strip(), action, scope, target_snapshot, timestamp))
+            self._event(case_id, "option_reviewed", option_id=option_id, action=action,
+                        review_event_id=cur.lastrowid)
+            return {"result": action, "review_event_id": int(cur.lastrowid)}
+
+    def _potential_discussion_deadline(self, option_id: int) -> dict:
+        """Deterministic traversal. Effective date for a sourced deadline
+        edge = deadline minus every lead time on the path to it: the edge's
+        own lead, the leads of option->option edges above it, and the leads
+        of preparation tasks of options on the path (a finished task costs
+        no lead). No sourced deadline anywhere => unknown. The result is a
+        POTENTIAL DISCUSSION deadline, never a clinical deadline, and the
+        label says so in every rendering."""
+        best: tuple[str, list[str]] | None = None
+        visited: set[int] = set()
+
+        def walk(current_id: int, accumulated_lead: int, path: list[str]) -> None:
+            nonlocal best
+            if current_id in visited:
+                return
+            visited.add(current_id)
+            deps = self.db.execute("SELECT * FROM option_dependencies WHERE option_id=? ORDER BY id",
+                                   (current_id,)).fetchall()
+            prep_lead = 0
+            for dep in deps:
+                if dep["kind"] == "preparation_task" and dep["preparation_task_id"] is not None:
+                    task = self.db.execute("SELECT status,lead_time_days FROM preparation_tasks WHERE id=?",
+                                           (dep["preparation_task_id"],)).fetchone()
+                    if task and task["status"] != "done" and task["lead_time_days"] is not None:
+                        prep_lead += int(task["lead_time_days"])
+            for dep in deps:
+                edge_lead = int(dep["lead_time_days"]) if dep["lead_time_days"] is not None else 0
+                if dep["kind"] == "option" and dep["depends_on_option_id"] is not None:
+                    walk(int(dep["depends_on_option_id"]),
+                         accumulated_lead + prep_lead + edge_lead,
+                         path + [f"option #{dep['depends_on_option_id']}"])
+                elif dep["kind"] in ("source", "evidence_assessment") and dep["deadline_date"]:
+                    effective = (date.fromisoformat(dep["deadline_date"])
+                                 - timedelta(days=accumulated_lead + prep_lead + edge_lead)).isoformat()
+                    label_path = " → ".join(path + [f"dependency #{dep['id']}"])
+                    if best is None or effective < best[0]:
+                        best = (effective, [label_path])
+        walk(option_id, 0, [f"option #{option_id}"])
+        if best is None:
+            return {"date": None, "basis": "unknown",
+                    "label": "Potential discussion deadline: unknown — no sourced deadline in the dependency chain. This is not a clinical deadline.",
+                    "path": []}
+        return {"date": best[0], "basis": "sourced",
+                "label": "Potential discussion deadline (not a clinical deadline): " + best[0],
+                "path": best[1]}
+
+    def option_view(self, case_id: str, snapshot_id: int | None = None) -> dict:
+        """Derived projection over the existing ledger.
+
+        Unfiltered: every option ever proposed for the case, current state
+        plus its immutable review-event history (withdrawn/expired rows are
+        never deleted). Filtered by snapshot_id: the options proposed against
+        that investigation snapshot, as known at that snapshot — dependency
+        rows are append-only, so a later proposal never appears in an earlier
+        snapshot's view, and a later amendment never rewrites the earlier
+        proposal's text. Mutable preparation-task status is the documented
+        exception: the replay shows current task status, not task status at
+        snapshot time."""
+        self._case(case_id)
+        if snapshot_id is not None:
+            if type(snapshot_id) is not int or not self.db.execute(
+                    "SELECT 1 FROM snapshots WHERE id=? AND case_id=?", (snapshot_id, case_id)).fetchone():
+                raise InvalidInput("Investigation snapshot not in this case")
+        query = "SELECT * FROM options WHERE case_id=? ORDER BY id"
+        args: list[object] = [case_id]
+        if snapshot_id is not None:
+            query = "SELECT * FROM options WHERE case_id=? AND snapshot_id=? ORDER BY id"
+            args.append(snapshot_id)
+        options = []
+        for option in self.db.execute(query, args).fetchall():
+            option_id = int(option["id"])
+            snap = self.db.execute("SELECT state FROM snapshots WHERE id=?",
+                                   (option["snapshot_id"],)).fetchone()
+            deps = []
+            for dep in self.db.execute("SELECT * FROM option_dependencies WHERE option_id=? ORDER BY id",
+                                       (option_id,)).fetchall():
+                target = ""
+                if dep["kind"] == "source" and dep["source_version_id"] is not None:
+                    src = self.db.execute("SELECT document_id,version,state FROM source_versions WHERE id=?",
+                                          (dep["source_version_id"],)).fetchone()
+                    target = f"{src['document_id']}@{src['version']} ({src['state']})" if src else "missing source"
+                elif dep["kind"] == "evidence_assessment" and dep["evidence_assessment_id"] is not None:
+                    asm = self.db.execute("""SELECT a.relation,v.evidence_key,v.version,v.state FROM evidence_assessments a
+                        JOIN evidence_versions v ON v.id=a.evidence_version_id WHERE a.id=?""",
+                        (dep["evidence_assessment_id"],)).fetchone()
+                    target = (f"{asm['evidence_key']}@{asm['version']} ({asm['state']}) · {asm['relation']}"
+                              if asm else "missing assessment")
+                elif dep["kind"] == "preparation_task" and dep["preparation_task_id"] is not None:
+                    task = self.db.execute("SELECT label,status FROM preparation_tasks WHERE id=?",
+                                           (dep["preparation_task_id"],)).fetchone()
+                    target = f"{task['label']} ({task['status']})" if task else "missing task"
+                elif dep["kind"] == "option" and dep["depends_on_option_id"] is not None:
+                    other = self.db.execute("SELECT label,operational_status FROM options WHERE id=?",
+                                            (dep["depends_on_option_id"],)).fetchone()
+                    target = f"{other['label']} ({other['operational_status']})" if other else "missing option"
+                deps.append({**dict(dep), "target": target})
+            contradicted = option["epistemic_status"] == "contradicted" or self._option_contradicted(option_id)
+            derived_epistemic = "contradicted" if contradicted else option["epistemic_status"]
+            display_operational = option["operational_status"]
+            if contradicted and display_operational in ("proposed", "reviewed"):
+                display_operational = "held"
+            options.append({
+                **dict(option),
+                "snapshot_state": snap["state"] if snap else "missing",
+                "derived_epistemic_status": derived_epistemic,
+                "display_operational_status": display_operational,
+                "dependencies": deps,
+                "preparation_tasks": self._dicts(self.db.execute(
+                    "SELECT * FROM preparation_tasks WHERE option_id=? ORDER BY id", (option_id,)).fetchall()),
+                "threats": self._dicts(self.db.execute(
+                    "SELECT * FROM optionality_threats WHERE option_id=? ORDER BY id", (option_id,)).fetchall()),
+                "review_events": self._dicts(self.db.execute(
+                    "SELECT * FROM option_review_events WHERE option_id=? ORDER BY id", (option_id,)).fetchall()),
+                "potential_discussion_deadline": self._potential_discussion_deadline(option_id),
+            })
+        return {
+            "case_id": case_id,
+            "as_known_at_snapshot_id": snapshot_id,
+            "disclaimer": ("For discussion only. This view states no clinical eligibility, safety, or next step. "
+                           "A potential discussion deadline is not a clinical deadline."),
+            "options": options,
+        }
+
+    def _invalidate_evidence_version(self, evidence_version_id: int, *, reason: str) -> tuple[list[int], list[int]]:
         """Invalidate dependent snapshots across ALL synthetic cases, retaining history.
 
         Caller must own a write transaction. Only snapshots citing this exact
@@ -422,7 +950,23 @@ class CaseStore:
                 self._event(case_id, "evidence_invalidated",
                             evidence_version_id=evidence_version_id,
                             reason=reason, invalidated_snapshots=changed)
-        return invalidated
+        # OI-021: same transaction, dependent options only. Evidence versions
+        # are shared, so this fan-out is global exactly like the snapshot
+        # fan-out above; case/source amendments stay case-scoped.
+        invalidated_options = self._invalidate_options(
+            snapshot_ids=set(invalidated), source_version_ids=set(),
+            evidence_version_ids={evidence_version_id})
+        if invalidated_options:
+            option_cases = {str(r[0]) for r in self.db.execute(
+                "SELECT DISTINCT case_id FROM options WHERE id IN (%s)" %
+                ",".join("?" for _ in invalidated_options), invalidated_options).fetchall()}
+            for case_id in sorted(option_cases):
+                per_case = [oid for oid in invalidated_options if self.db.execute(
+                    "SELECT case_id FROM options WHERE id=?", (oid,)).fetchone()["case_id"] == case_id]
+                self._event(case_id, "option_review_reopened",
+                            evidence_version_id=evidence_version_id, reason=reason,
+                            invalidated_options=per_case)
+        return invalidated, invalidated_options
 
     def import_synthetic_evidence(self, raw: bytes) -> dict:
         """Version original fictional research text; no live article import is supported."""
@@ -447,12 +991,13 @@ class CaseStore:
             elif item.amends is not None:
                 raise InvalidInput("Initial evidence cannot specify Amends")
             version = previous["version"] + 1 if previous else 1
-            invalidated = []
+            invalidated: list[int] = []
+            invalidated_options: list[int] = []
             if previous:
                 self.db.execute("UPDATE evidence_versions SET state='superseded' WHERE id=?", (previous["id"],))
                 self.db.execute("INSERT INTO evidence_changes (evidence_version_id,kind,reason,recorded_at) VALUES (?,'amended',?,?)",
                                 (previous["id"], "Explicit synthetic source version replacement", now_utc()))
-                invalidated = self._invalidate_evidence_version(previous["id"], reason="amendment")
+                invalidated, invalidated_options = self._invalidate_evidence_version(previous["id"], reason="amendment")
             cur = self.db.execute("""INSERT INTO evidence_versions
                 (evidence_key,version,sha256,raw,title,issued_at,received_at,
                  statement,statement_line,rights,state,previous_id)
@@ -461,7 +1006,8 @@ class CaseStore:
                  now_utc(), item.statement, item.statement_line,
                  previous["id"] if previous else None))
             return {"result": "imported", "evidence_version_id": int(cur.lastrowid),
-                    "version": version, "invalidated_snapshots": invalidated}
+                    "version": version, "invalidated_snapshots": invalidated,
+                    "invalidated_options": invalidated_options}
 
     def withdraw_synthetic_evidence(self, evidence_version_id: int, reason: str) -> dict:
         """Withdraw a CURRENT fictional item; invalidate related drafts everywhere."""
@@ -479,8 +1025,9 @@ class CaseStore:
                             (evidence_version_id,))
             self.db.execute("INSERT INTO evidence_changes (evidence_version_id,kind,reason,recorded_at) VALUES (?,'withdrawn',?,?)",
                             (evidence_version_id, reason.strip(), now_utc()))
-            affected = self._invalidate_evidence_version(evidence_version_id, reason="withdrawal")
-            return {"result": "withdrawn", "invalidated_snapshots": affected}
+            affected, affected_options = self._invalidate_evidence_version(evidence_version_id, reason="withdrawal")
+            return {"result": "withdrawn", "invalidated_snapshots": affected,
+                    "invalidated_options": affected_options}
 
     def assess_synthetic_evidence(self, case_id: str, question_id: int,
                                   evidence_version_id: int, relation: str,
@@ -627,6 +1174,7 @@ class CaseStore:
                 v.title,v.statement,v.statement_line,v.sha256
                 FROM evidence_assessments a JOIN evidence_versions v ON v.id=a.evidence_version_id
                 WHERE a.case_id=? ORDER BY a.id DESC""", (case_id,)).fetchall())
+            option_projection = self.option_view(case_id)
             return {
                 "evidence": evidence_rows,
                 "evidence_changes": self._dicts(self.db.execute(
@@ -637,6 +1185,9 @@ class CaseStore:
                 "assertions": assert_rows,
                 "questions": self._dicts(self.db.execute("SELECT * FROM questions WHERE case_id=? ORDER BY id DESC", (case_id,)).fetchall()),
                 "snapshots": snapshot_rows,
+                # OI-021 derived projection: same ledger, no second state.
+                "options": option_projection["options"],
+                "option_disclaimer": option_projection["disclaimer"],
                 "quarantines": self._dicts(self.db.execute(
                     "SELECT id,declared_patient_id,sha256,reason,received_at FROM quarantine WHERE target_case_id=? ORDER BY id DESC",
                     (case_id,)).fetchall()),

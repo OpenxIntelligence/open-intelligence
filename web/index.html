@@ -25,6 +25,7 @@
         <a href="#sources">Sources &amp; assertions</a>
         <a href="#investigations">Investigations</a>
         <a href="#evidence">Synthetic evidence</a>
+        <a href="#options">Options &amp; dependencies</a>
         <a href="#bibliography">Bibliographic metadata</a>
         <a href="#import">Import &amp; changes</a>
         <a href="#activity">Activity log</a>
@@ -113,6 +114,66 @@
               <label for="evidence-withdraw-reason">Withdrawal reason</label>
               <textarea id="evidence-withdraw-reason" rows="2" minlength="10" maxlength="600" required></textarea>
               <button class="button secondary" type="submit">Withdraw and invalidate drafts</button>
+            </form>
+          </section>
+          <section class="panel" id="options">
+            <div class="panel-head"><div><div class="eyebrow">04b / OPTIONS · DERIVED VIEW</div><h2>Options &amp; dependencies</h2></div><span class="pill pill-warn">DISCUSSION ONLY</span></div>
+            <p class="muted">A derived view over the existing investigation ledger — not a second ledger, not a clinical recommendation, and not an order. Epistemic status (what the evidence says) is kept separate from operational status (what reviewers decided). A potential discussion deadline is not a clinical deadline.</p>
+            <p class="muted tiny" id="option-disclaimer"></p>
+            <form id="option-form">
+              <label for="option-snapshot-choice">Investigation snapshot the proposal is based on</label><select id="option-snapshot-choice" required></select>
+              <label for="option-label">Option label</label><input id="option-label" type="text" maxlength="120" required placeholder="Fictional discussion item">
+              <label for="option-description">Description (no recommendation, order, or eligibility language)</label><textarea id="option-description" rows="3" minlength="10" maxlength="1000" required placeholder="Describe the fictional item under discussion, with its uncertainty."></textarea>
+              <label for="option-epistemic">Epistemic status</label>
+              <select id="option-epistemic"><option value="unknown">Unknown</option><option value="supported">Supported (human-labelled)</option><option value="unsupported">Unsupported</option><option value="contradicted">Contradicted</option></select>
+              <button class="button" type="submit">Propose option for review</button>
+            </form>
+            <div class="subhead">Proposed options</div><div id="option-list" class="snapshots"></div>
+            <div class="subhead">Add a dependency</div>
+            <form id="option-dependency-form">
+              <label for="dependency-option-choice">Option</label><select id="dependency-option-choice" required></select>
+              <label for="dependency-kind">Dependency kind</label>
+              <select id="dependency-kind"><option value="source">Source version</option><option value="evidence_assessment">Evidence assessment</option><option value="preparation_task">Preparation task (same option)</option><option value="option">Another option</option></select>
+              <label for="dependency-source-choice">Source version (for source dependencies)</label><select id="dependency-source-choice"></select>
+              <label for="dependency-assessment-choice">Evidence assessment (for evidence dependencies)</label><select id="dependency-assessment-choice"></select>
+              <label for="dependency-task-choice">Preparation task (for task dependencies)</label><select id="dependency-task-choice"></select>
+              <label for="dependency-option-target-choice">Other option (for option dependencies)</label><select id="dependency-option-target-choice"></select>
+              <label for="dependency-lead">Lead time in days (optional)</label><input id="dependency-lead" type="number" min="0" max="3650" placeholder="0">
+              <label for="dependency-deadline">Sourced deadline date (source/evidence dependencies only)</label><input id="dependency-deadline" type="date">
+              <label for="dependency-basis">Deadline basis</label>
+              <select id="dependency-basis"><option value="unknown">Unknown — no date</option><option value="sourced">Sourced — date with anchor below</option></select>
+              <label for="dependency-anchor">Anchor for a sourced deadline (10–300 characters)</label><textarea id="dependency-anchor" rows="2" maxlength="300"></textarea>
+              <button class="button" type="submit">Add dependency</button>
+            </form>
+            <div class="subhead">Add a human-owned preparation task</div>
+            <form id="option-task-form">
+              <label for="task-option-choice">Option</label><select id="task-option-choice" required></select>
+              <label for="task-label">Task label</label><input id="task-label" type="text" maxlength="120" required>
+              <label for="task-owner">Human owner</label><input id="task-owner" type="text" maxlength="80" required>
+              <label for="task-lead">Lead time in days (optional)</label><input id="task-lead" type="number" min="0" max="3650" placeholder="0">
+              <button class="button" type="submit">Add preparation task</button>
+            </form>
+            <div class="subhead">Add an optionality threat</div>
+            <form id="option-threat-form">
+              <label for="threat-option-choice">Option</label><select id="threat-option-choice" required></select>
+              <label for="threat-kind">Threat kind</label>
+              <select id="threat-kind"><option value="expiring_window">Expiring window</option><option value="dependency_loss">Dependency loss</option><option value="evidence_withdrawal">Evidence withdrawal</option><option value="other">Other</option></select>
+              <label for="threat-description">Description</label><textarea id="threat-description" rows="2" minlength="10" maxlength="500" required></textarea>
+              <label for="threat-date">Sourced threat date (optional)</label><input id="threat-date" type="date">
+              <label for="threat-basis">Threat date basis</label>
+              <select id="threat-basis"><option value="unknown">Unknown — no date</option><option value="sourced">Sourced — date with anchor below</option></select>
+              <label for="threat-anchor">Anchor for a sourced threat date (10–300 characters)</label><textarea id="threat-anchor" rows="2" maxlength="300"></textarea>
+              <button class="button" type="submit">Add threat</button>
+            </form>
+            <div class="subhead">Record a reviewer action</div>
+            <form id="option-review-form">
+              <label for="review-option-choice">Option</label><select id="review-option-choice" required></select>
+              <label for="reviewer-label">Reviewer label</label><input id="reviewer-label" type="text" maxlength="80" required placeholder="Synthetic reviewer (unverified)">
+              <label for="review-action">Action</label>
+              <select id="review-action"><option value="approve">Approve (only if review is current and not contradicted)</option><option value="reject">Reject</option><option value="abstain">Abstain</option><option value="reconfirm">Reconfirm after amendment (needs a replacement snapshot)</option><option value="withdraw">Withdraw</option><option value="expire">Expire</option></select>
+              <label for="review-scope">Authorized scope</label><textarea id="review-scope" rows="2" minlength="10" maxlength="300" required placeholder="What this review covers, in plain words."></textarea>
+              <label for="review-snapshot-choice">Replacement snapshot (reconfirm only)</label><select id="review-snapshot-choice"></select>
+              <button class="button" type="submit">Record reviewer action</button>
             </form>
           </section>
           <section class="panel" id="bibliography">
