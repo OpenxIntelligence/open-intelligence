@@ -12,6 +12,12 @@ The challenges cover untested versus negative, indeterminate findings, order ver
 
 The new tool validates and packages evaluation inputs only. Existing CaseStore, source/version semantics, human review, evidence ledger and UI are not modified. The integration tests feed these original examples through the existing importer. No new runtime packages, downloaded models or external services are needed.
 
+## Additional fail-closed source checks
+
+The packet generator validates the exact UTF-8 hash and also requires one unambiguous ISO `Issued-At` date for each source. Every source issue date must be no later than its declared receipt date. Synthetic reports must declare a patient that exists among the fictional cases. A source addressed to a different *receipt target* remains an intentional wrong-case challenge, not automatically corrected. Synthetic evidence must carry exactly one `Rights: original-synthetic` header; ambiguous or restrictive declarations are rejected, even if the content hash has been recomputed.
+
+These checks protect the integrity of this fictional practice manifest only. A rights header is **not** proof of copyright ownership, lawful AI training, actual patient consent, or suitability for clinical use. No production rights clearance, medical validity or PHI approval is implied.
+
 ## Coordinator and participant separation
 
 `cases.json`, `coordinator_key.json`, this README, the protocol and tests are **coordinator/development material**. Generate only one cutoff-specific `inputs.json` for a participant. Do not hand participants the complete repository, source manifest, tests or answer key during a purported masked run. Only selected source bytes and receipt metadata enter `inputs.json`; later sources, later receipt IDs, future hashes and the coordinator key are omitted.
