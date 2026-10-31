@@ -1,0 +1,24 @@
+name: Crossref metadata contract
+
+on:
+  push:
+    branches: [main, feat/crossref-metadata-boundary]
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  metadata:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Syntax
+        run: python -m compileall -q tools
+      - name: Metadata and rights projection tests
+        run: python -m unittest discover -s tests -p 'test_crossref_metadata.py' -v
+      - name: Offline demonstration
+        run: python -m tools.crossref_metadata 10.5555/oi-synthetic-001 --fixture examples/synthetic/crossref-metadata-fixture.json
