@@ -1,7 +1,7 @@
-# Open Intelligence — Full Precision-Oncology World Model Vision
-**Research architecture / future capability map · 31 October 2026 · proposed, not built**
+# Open Intelligence — Complementary Precision-Oncology Capability Annex
+**Supplementary ideas for the existing Open Intelligence architecture · 31 October 2026 · proposed, not built**
 
-This document **preserves the entire long-term CEVax-inspired vision** while the first commercial wedge, *Future Option Preservation*, is experimentally falsified. The near-term product spec is [OPTION_PRESERVATION_PRODUCT_SPEC.md](OPTION_PRESERVATION_PRODUCT_SPEC.md). This is not a commitment to build every module or medically actionable claims.
+**Architecture precedence:** Open Intelligence is the sole project and product name. Its existing first-principles plan, accepted architecture decisions, Notion specifications, active engineering backlog, and verified repository behavior remain authoritative. This annex **adds possible capabilities** to that existing architecture; it is not a v2 replacement, independent platform, renamed CEVax architecture, product pivot, or replacement first milestone. Option Preservation is just one optional investigation/workflow that may reuse existing longitudinal source, evidence, investigation, review and authority structures. See [supplemental capability proposal](OPTION_PRESERVATION_PRODUCT_SPEC.md). Do not implement all modules or claim medically actionable functionality.
 
 ## 1. Full mission
 A cancer patient needs a durable, independent, governed computational account of what is known, suspected, unknown, contradicted, planned, attempted, measured and learned across their life and the changing scientific world. Source and knowledge history must survive amendments, vendor changes and clinician transitions. The same substrate may later serve other conditions, but oncology is the first deep domain.
@@ -109,12 +109,12 @@ The hypothetical end-to-end case simulation demonstrated plausible feasibility o
 
 Scope clinical intended use function-by-function; clinician involvement alone does not guarantee non-device status. Rights to records, research datasets, samples, third-party code, model weights, clinical terminologies and external publication content are separately governed.
 
-## 13. Engineering sequence preserving full vision
+## 13. Optional integration and evaluation within established engineering roadmap
 **Already in the repository:** source-ledger and research-evidence experimental slices on PR branches; check current GitHub main, PRs and CI before asserting implementation.
-**Next falsification experiment:** 2 synthetic cases with staged T0/T1/T2 source snapshots, tissue discussions, hypothetical expiring trial dependencies, bad candidates and no-threat controls. Reuse existing case, provenance and investigation machinery.
-**Next product proof:** independent reviewers compare option-preservation output with simpler case brief and standard navigation; measure errors, early actionable threats, real total labor and cost.
-**Then:** one lawful data-access path and design partner; independent clinical/operational pilot only after all gates.
-**Later:** selected BWM adapters, raw biological pointer custody, expert execution network and specialized models, based on demonstrated need.
+**Candidate additive falsification experiment, scheduled only through the existing backlog:** 2 synthetic cases with staged T0/T1/T2 source snapshots, tissue discussions, hypothetical expiring trial dependencies, bad candidates and no-threat controls. Reuse existing case, provenance and investigation machinery.
+**Optional capability evaluation:** independent reviewers compare option-preservation output with simpler case brief and standard navigation; measure errors, early actionable threats, real total labor and cost.
+**Any later integration:** one lawful data-access path and design partner; independent clinical/operational pilot only after all gates.
+**If separately justified:** selected BWM adapters, raw biological pointer custody, expert execution network and specialized models, based on demonstrated need.
 
 ## Cross-reference
 - [Product spec](OPTION_PRESERVATION_PRODUCT_SPEC.md)
