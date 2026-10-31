@@ -1,0 +1,97 @@
+{
+  "schema_version": "OI-EVALUATION-FIXTURE/1",
+  "dataset_id": "OI-IV-DEV",
+  "authorship": "original_synthetic_no_patient_data",
+  "baseline_commit": "769295bb06400c98057435c1a178621c05be4412",
+  "cases": [
+    "CASE-IV-A",
+    "CASE-IV-B"
+  ],
+  "rounds": [
+    {"id": "R1", "cutoff": "2026-05-10T00:00:00Z"},
+    {"id": "R2", "cutoff": "2026-05-20T00:00:00Z"},
+    {"id": "R3", "cutoff": "2026-05-25T00:00:00Z"}
+  ],
+  "sources": [
+    {
+      "id": "S01",
+      "target_case_id": "CASE-IV-A",
+      "available_at": "2026-05-03T08:00:00Z",
+      "kind": "report",
+      "content": "OI-SYNTHETIC-REPORT/1\nPatient: CASE-IV-A\nDocument: PATH-IV-A\nType: pathology\nEvent-Date: 2026-05-01\nIssued-At: 2026-05-02\nSpecimen: SPEC-IV-A\nFinding: marker-x|not-assessed|Fictional marker X was not tested on this specimen.\nFinding: classification|indeterminate|Classification in this fictional sample remains indeterminate.\n",
+      "sha256": "779b64f0d68f1114f17e0abe641bd40fd203b16811133d74c7dded5ca7d84f97"
+    },
+    {
+      "id": "S02",
+      "target_case_id": "CASE-IV-A",
+      "available_at": "2026-05-04T08:00:00Z",
+      "kind": "report",
+      "content": "OI-SYNTHETIC-REPORT/1\nPatient: CASE-IV-A\nDocument: NOTE-IV-A\nType: clinical\nEvent-Date: 2026-05-02\nIssued-At: 2026-05-02\nFinding: exposure|not-reported|A fictional intervention was discussed and ordered; administration is not documented.\nFinding: metastasis|negative|This fictional source states no evidence of metastasis in the described assessment.\n",
+      "sha256": "c0d864768bfcd47b9fbee4e933ea066a98a1262b6a8bd3b20e7b4ad4c5c7f292"
+    },
+    {
+      "id": "S03",
+      "target_case_id": "CASE-IV-B",
+      "available_at": "2026-05-04T09:00:00Z",
+      "kind": "report",
+      "content": "OI-SYNTHETIC-REPORT/1\nPatient: CASE-IV-B\nDocument: PATH-IV-B\nType: pathology\nEvent-Date: 2026-05-02\nIssued-At: 2026-05-03\nSpecimen: SPEC-IV-B\nFinding: marker-x|pending|Fictional marker X is pending; this source does not establish a negative result.\nFinding: follow-up|reported|The fictional record contains no new urgency signal; routine review remains pending.\n",
+      "sha256": "f742cc5522410e808792bc506b6b696417c9095cc5ef365e8876487b821ed7ea"
+    },
+    {
+      "id": "S04",
+      "target_case_id": "CASE-IV-A",
+      "available_at": "2026-05-05T08:00:00Z",
+      "kind": "evidence",
+      "content": "OI-SYNTHETIC-EVIDENCE/1\nEvidence: EVID-IV\nTitle: Fictional assay context note\nIssued-At: 2026-05-02\nRights: original-synthetic\nStatement: This fictional cell-assay note suggests a research question but does not establish treatment benefit in a person.\n",
+      "sha256": "b1ca63d7d729acc997ba7d71a23b70db85ff796ab5ef2858b5d56c4ebce15d87"
+    },
+    {
+      "id": "S05",
+      "target_case_id": "CASE-IV-A",
+      "available_at": "2026-05-11T08:00:00Z",
+      "kind": "report",
+      "content": "OI-SYNTHETIC-REPORT/1\nPatient: CASE-IV-A\nDocument: PATH-IV-A\nType: pathology\nEvent-Date: 2026-05-01\nIssued-At: 2026-05-02\nSpecimen: SPEC-IV-A\nFinding: marker-x|not-assessed|Fictional marker X was not tested on this specimen.\nFinding: classification|indeterminate|Classification in this fictional sample remains indeterminate.\n",
+      "sha256": "779b64f0d68f1114f17e0abe641bd40fd203b16811133d74c7dded5ca7d84f97"
+    },
+    {
+      "id": "S06",
+      "target_case_id": "CASE-IV-A",
+      "available_at": "2026-05-12T08:00:00Z",
+      "kind": "report",
+      "content": "OI-SYNTHETIC-REPORT/1\nPatient: CASE-IV-B\nDocument: PATH-IV-B\nType: pathology\nEvent-Date: 2026-05-02\nIssued-At: 2026-05-03\nSpecimen: SPEC-IV-B\nFinding: marker-x|pending|Fictional marker X is pending; this source does not establish a negative result.\nFinding: follow-up|reported|The fictional record contains no new urgency signal; routine review remains pending.\n",
+      "sha256": "f742cc5522410e808792bc506b6b696417c9095cc5ef365e8876487b821ed7ea"
+    },
+    {
+      "id": "S07",
+      "target_case_id": "CASE-IV-A",
+      "available_at": "2026-05-15T08:00:00Z",
+      "kind": "report",
+      "content": "OI-SYNTHETIC-REPORT/1\nPatient: CASE-IV-A\nDocument: PATH-IV-A\nType: pathology\nEvent-Date: 2026-05-01\nIssued-At: 2026-05-14\nSpecimen: SPEC-IV-A\nAmends: PATH-IV-A@1\nFinding: marker-x|negative|An additional fictional marker X assay is now reported negative.\nFinding: classification|indeterminate|Classification remains indeterminate after the additional assay.\n",
+      "sha256": "e670ff03747a7253787018915ef625ba66b3b79ae8c04930d0c0009225f15cd2"
+    },
+    {
+      "id": "S08",
+      "target_case_id": "CASE-IV-A",
+      "available_at": "2026-05-22T08:00:00Z",
+      "kind": "report",
+      "content": "OI-SYNTHETIC-REPORT/1\nPatient: CASE-IV-A\nDocument: IMG-IV-A\nType: imaging\nEvent-Date: 2026-04-30\nIssued-At: 2026-05-01\nFinding: measurement|reported|LATER-RESULT-CANARY: a fictional lesion is reported as 12 mm.\nFinding: comparison|not-assessed|No comparable prior image is available; progression is not established.\n",
+      "sha256": "75c2fded4088dd2a51173c42ff7ad4abdf0b818ac0445d55c4e2af751b7e8e70"
+    },
+    {
+      "id": "S09",
+      "target_case_id": "CASE-IV-A",
+      "available_at": "2026-05-13T08:00:00Z",
+      "kind": "report",
+      "content": "OI-SYNTHETIC-REPORT/1\nPatient: CASE-IV-A\nDocument: PATH-IV-A\nType: pathology\nEvent-Date: 2026-05-01\nIssued-At: 2026-05-12\nSpecimen: SPEC-OTHER\nAmends: PATH-IV-A@1\nFinding: marker-x|negative|An additional fictional marker X assay is now reported negative.\nFinding: classification|indeterminate|Classification remains indeterminate after the additional assay.\n",
+      "sha256": "9a829391bde01182dbfb6a3827259d300c1049c6e75edce8ab453f283c3462a2"
+    },
+    {
+      "id": "S10",
+      "target_case_id": "CASE-IV-A",
+      "available_at": "2026-05-16T08:00:00Z",
+      "kind": "evidence",
+      "content": "OI-SYNTHETIC-EVIDENCE/1\nEvidence: EVID-IV\nTitle: Fictional assay context correction\nIssued-At: 2026-05-16\nRights: original-synthetic\nAmends: EVID-IV@1\nStatement: A fictional correction reports that the assay signal was not replicated; the earlier mechanistic suggestion remains unsupported.\n",
+      "sha256": "e075a328f02010547ea88cdfa2706effff8a7cfb223ad13440c5e4f4478794a2"
+    }
+  ]
+}
