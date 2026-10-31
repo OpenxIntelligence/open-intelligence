@@ -65,6 +65,22 @@ class StoreTests(unittest.TestCase):
             self.store.import_report('CASE-ALPHA', invalid)
         self.assertEqual(len(self.store.state('CASE-ALPHA')['sources']), 1)
 
+    def test_amendment_cannot_silently_reassign_specimen_or_event(self):
+        original = report('alpha-pathology-original.txt')
+        self.store.import_report('CASE-ALPHA', original)
+        amended = report('alpha-pathology-amended.txt')
+        for updated in (
+            amended.replace(b'Specimen: BIOPSY-ALPHA', b'Specimen: BIOPSY-NEW'),
+            amended.replace(b'Event-Date: 2026-05-03', b'Event-Date: 2026-06-03'),
+            amended.replace(b'Type: pathology', b'Type: molecular'),
+        ):
+            with self.subTest(updated=updated[:140]):
+                with self.assertRaisesRegex(InvalidInput, 'Amendment cannot change'):
+                    self.store.import_report('CASE-ALPHA', updated)
+        self.assertEqual(len(self.store.state('CASE-ALPHA')['sources']), 1)
+        result = self.store.import_report('CASE-ALPHA', amended)
+        self.assertEqual(result['version'], 2)
+
     def test_amendment_invalidates_only_dependent_case_snapshot(self):
         first = self.store.import_report('CASE-ALPHA', report('alpha-pathology-original.txt'))
         img = self.store.import_report('CASE-ALPHA', report('alpha-imaging.txt'))

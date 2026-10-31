@@ -251,12 +251,14 @@ class CaseStore:
             if duplicate:
                 return {"result": "duplicate", "source_id": duplicate["id"], "version": duplicate["version"]}
             previous = self.db.execute(
-                "SELECT id,version FROM source_versions WHERE case_id=? AND document_id=? ORDER BY version DESC LIMIT 1",
+                "SELECT id,version,kind,event_date,specimen_id FROM source_versions WHERE case_id=? AND document_id=? ORDER BY version DESC LIMIT 1",
                 (case_id, report.document_id)).fetchone()
             if previous and report.amends != (report.document_id, previous["version"]):
                 raise InvalidInput("Changed document requires Amends: DOCUMENT-ID@LATEST-VERSION")
             if not previous and report.amends is not None:
                 raise InvalidInput("First document version cannot have Amends")
+            if previous and (previous["kind"], previous["event_date"], previous["specimen_id"]) != (report.kind, report.event_date, report.specimen_id):
+                raise InvalidInput("Amendment cannot change report type, event date, or specimen; create a distinct document")
             version = previous["version"] + 1 if previous else 1
             if previous:
                 self.db.execute("UPDATE source_versions SET state='superseded' WHERE id=?", (previous["id"],))
@@ -309,6 +311,7 @@ class CaseStore:
         if len(source_ids) != len(set(source_ids)) or len(source_ids) > 50:
             raise InvalidInput("Source IDs must be unique; maximum 50")
         with self.db:
+            self.db.execute("BEGIN IMMEDIATE")  # Serialize against incoming amendments.
             question = self.db.execute("SELECT id FROM questions WHERE id=? AND case_id=?", (question_id, case_id)).fetchone()
             if not question:
                 raise InvalidInput("Question not in this case")
@@ -329,6 +332,7 @@ class CaseStore:
         if not isinstance(reviewer_label, str) or not 2 <= len(reviewer_label.strip()) <= 80:
             raise InvalidInput("Provide a demo reviewer label")
         with self.db:
+            self.db.execute("BEGIN IMMEDIATE")  # Do not acknowledge an invalidated draft.
             row = self.db.execute("SELECT state,question_id FROM snapshots WHERE case_id=? AND id=?",
                                   (case_id, snapshot_id)).fetchone()
             if not row or row["state"] != "draft":
