@@ -596,49 +596,54 @@ class CaseStore:
 
     def state(self, case_id: str) -> dict:
         self._case(case_id)
-        source_rows = self._dicts(self.db.execute(
-            """SELECT id,document_id,version,sha256,kind,event_date,issued_at,received_at,
-            specimen_id,state,supersedes_id FROM source_versions WHERE case_id=?
-            ORDER BY event_date,document_id,version""", (case_id,)).fetchall())
-        assert_rows = self._dicts(self.db.execute(
-            """SELECT assertions.id,source_version_id,finding_key,certainty,quote,source_line
-            FROM assertions JOIN source_versions ON source_versions.id=assertions.source_version_id
-            WHERE assertions.case_id=? AND source_versions.state='current' ORDER BY assertions.id""",
-            (case_id,)).fetchall())
-        snapshot_rows = self._dicts(self.db.execute(
-            "SELECT * FROM snapshots WHERE case_id=? ORDER BY id DESC", (case_id,)).fetchall())
-        for snapshot in snapshot_rows:
-            snapshot["source_ids"] = [r[0] for r in self.db.execute(
-                "SELECT source_version_id FROM snapshot_sources WHERE snapshot_id=? ORDER BY source_version_id",
-                (snapshot["id"],)).fetchall()]
-        for snapshot in snapshot_rows:
-            snapshot["evidence_assessment_ids"] = [r[0] for r in self.db.execute(
-                "SELECT assessment_id FROM snapshot_evidence WHERE snapshot_id=? ORDER BY assessment_id",
-                (snapshot["id"],)).fetchall()]
-        evidence_rows = self._dicts(self.db.execute("""SELECT id,evidence_key,version,sha256,title,
-            issued_at,received_at,statement,statement_line,rights,state,previous_id
-            FROM evidence_versions ORDER BY evidence_key,version""").fetchall())
-        assessments = self._dicts(self.db.execute("""SELECT a.*,v.evidence_key,v.version,v.state AS evidence_state,
-            v.title,v.statement,v.statement_line,v.sha256
-            FROM evidence_assessments a JOIN evidence_versions v ON v.id=a.evidence_version_id
-            WHERE a.case_id=? ORDER BY a.id DESC""", (case_id,)).fetchall())
-        return {
-            "evidence": evidence_rows,
-            "evidence_changes": self._dicts(self.db.execute(
-                "SELECT id,evidence_version_id,kind,reason,recorded_at FROM evidence_changes ORDER BY id DESC").fetchall()),
-            "evidence_assessments": assessments,
-            "case": dict(self.db.execute("SELECT * FROM cases WHERE case_id=?", (case_id,)).fetchone()),
-            "sources": source_rows,
-            "assertions": assert_rows,
-            "questions": self._dicts(self.db.execute("SELECT * FROM questions WHERE case_id=? ORDER BY id DESC", (case_id,)).fetchall()),
-            "snapshots": snapshot_rows,
-            "quarantines": self._dicts(self.db.execute(
-                "SELECT id,declared_patient_id,sha256,reason,received_at FROM quarantine WHERE target_case_id=? ORDER BY id DESC",
-                (case_id,)).fetchall()),
-            "events": self._dicts(self.db.execute(
-                "SELECT id,kind,details,occurred_at FROM events WHERE case_id=? ORDER BY id DESC LIMIT 40",
-                (case_id,)).fetchall()),
-        }
+        # A single read transaction is required across versions, assertions,
+        # questions, review state and events. Otherwise concurrent amendments
+        # can expose mutually inconsistent case snapshots to the browser.
+        with self.db:
+            self.db.execute("BEGIN")
+            source_rows = self._dicts(self.db.execute(
+                """SELECT id,document_id,version,sha256,kind,event_date,issued_at,received_at,
+                specimen_id,state,supersedes_id FROM source_versions WHERE case_id=?
+                ORDER BY event_date,document_id,version""", (case_id,)).fetchall())
+            assert_rows = self._dicts(self.db.execute(
+                """SELECT assertions.id,source_version_id,finding_key,certainty,quote,source_line
+                FROM assertions JOIN source_versions ON source_versions.id=assertions.source_version_id
+                WHERE assertions.case_id=? AND source_versions.state='current' ORDER BY assertions.id""",
+                (case_id,)).fetchall())
+            snapshot_rows = self._dicts(self.db.execute(
+                "SELECT * FROM snapshots WHERE case_id=? ORDER BY id DESC", (case_id,)).fetchall())
+            for snapshot in snapshot_rows:
+                snapshot["source_ids"] = [r[0] for r in self.db.execute(
+                    "SELECT source_version_id FROM snapshot_sources WHERE snapshot_id=? ORDER BY source_version_id",
+                    (snapshot["id"],)).fetchall()]
+            for snapshot in snapshot_rows:
+                snapshot["evidence_assessment_ids"] = [r[0] for r in self.db.execute(
+                    "SELECT assessment_id FROM snapshot_evidence WHERE snapshot_id=? ORDER BY assessment_id",
+                    (snapshot["id"],)).fetchall()]
+            evidence_rows = self._dicts(self.db.execute("""SELECT id,evidence_key,version,sha256,title,
+                issued_at,received_at,statement,statement_line,rights,state,previous_id
+                FROM evidence_versions ORDER BY evidence_key,version""").fetchall())
+            assessments = self._dicts(self.db.execute("""SELECT a.*,v.evidence_key,v.version,v.state AS evidence_state,
+                v.title,v.statement,v.statement_line,v.sha256
+                FROM evidence_assessments a JOIN evidence_versions v ON v.id=a.evidence_version_id
+                WHERE a.case_id=? ORDER BY a.id DESC""", (case_id,)).fetchall())
+            return {
+                "evidence": evidence_rows,
+                "evidence_changes": self._dicts(self.db.execute(
+                    "SELECT id,evidence_version_id,kind,reason,recorded_at FROM evidence_changes ORDER BY id DESC").fetchall()),
+                "evidence_assessments": assessments,
+                "case": dict(self.db.execute("SELECT * FROM cases WHERE case_id=?", (case_id,)).fetchone()),
+                "sources": source_rows,
+                "assertions": assert_rows,
+                "questions": self._dicts(self.db.execute("SELECT * FROM questions WHERE case_id=? ORDER BY id DESC", (case_id,)).fetchall()),
+                "snapshots": snapshot_rows,
+                "quarantines": self._dicts(self.db.execute(
+                    "SELECT id,declared_patient_id,sha256,reason,received_at FROM quarantine WHERE target_case_id=? ORDER BY id DESC",
+                    (case_id,)).fetchall()),
+                "events": self._dicts(self.db.execute(
+                    "SELECT id,kind,details,occurred_at FROM events WHERE case_id=? ORDER BY id DESC LIMIT 40",
+                    (case_id,)).fetchall()),
+            }
 
     def source_text(self, case_id: str, source_id: int) -> str:
         self._case(case_id)
