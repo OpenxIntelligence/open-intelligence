@@ -21,3 +21,5 @@ jobs:
         run: PYTHONPATH=src python -m compileall -q src
       - name: Unit and HTTP tests
         run: PYTHONPATH=src python -m unittest discover -s tests -v
+      - name: Synthetic browser journey (headless Chromium)
+        run: PYTHONPATH=src python tests/browser_journey.py
