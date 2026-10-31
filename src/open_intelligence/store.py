@@ -395,28 +395,32 @@ class CaseStore:
 
     def export_markdown(self, case_id: str, snapshot_id: int) -> str:
         self._case(case_id)
-        snapshot = self.db.execute("""SELECT s.*,q.question FROM snapshots s JOIN questions q ON q.id=s.question_id
-            WHERE s.case_id=? AND s.id=?""", (case_id, snapshot_id)).fetchone()
-        if not snapshot:
-            raise InvalidInput("Investigation not in this case")
-        sources = self.db.execute("""SELECT v.* FROM source_versions v JOIN snapshot_sources ss ON ss.source_version_id=v.id
-            WHERE ss.snapshot_id=? ORDER BY v.document_id,v.version""", (snapshot_id,)).fetchall()
-        lines = ["# Open Intelligence — synthetic investigation", "",
-                 "> Research demonstration only. No clinical review or patient-specific treatment recommendation.", "",
-                 f"Case: `{case_id}` | Investigation: {snapshot_id} | State: **{snapshot['state']}**",
-                 f"Created: {snapshot['created_at']} | Demo acknowledgment: {snapshot['reviewed_at'] or 'None'}", "",
-                 "## Question", "", snapshot["question"], "", "## Draft (human-authored)", "",
-                 snapshot["summary"], "", "## Source versions and original text", ""]
-        for source in sources:
-            raw_text = bytes(source["raw"]).decode("utf-8")
-            # An input quotation can itself contain Markdown fences. Always use
-            # a longer delimiter so source bytes cannot escape their code block.
-            longest = max((len(run) for run in re.findall(r"`+", raw_text)), default=0)
-            fence = "`" * max(3, longest + 1)
-            lines.extend([f"### {source['document_id']}@{source['version']} — {source['state']}", "",
-                          f"SHA-256: `{source['sha256']}` | Event: {source['event_date']} | Issued: {source['issued_at']}", "",
-                          fence + "text", raw_text, fence, ""])
-        lines.extend(["## Limitations", "", "- The reports, questions, and narrative are synthetic and not clinically appraised.",
-                      "- An acknowledgment in this demo is not clinician credential verification or a clinical sign-off.",
-                      "- Amendments can make previous investigations stale; see the state above.", ""])
-        return "\n".join(lines)
+        # Explicit read transaction keeps status and source/evidence versions
+        # consistent if an amendment or withdrawal commits during export.
+        with self.db:
+            self.db.execute("BEGIN")
+            snapshot = self.db.execute("""SELECT s.*,q.question FROM snapshots s JOIN questions q ON q.id=s.question_id
+                WHERE s.case_id=? AND s.id=?""", (case_id, snapshot_id)).fetchone()
+            if not snapshot:
+                raise InvalidInput("Investigation not in this case")
+            sources = self.db.execute("""SELECT v.* FROM source_versions v JOIN snapshot_sources ss ON ss.source_version_id=v.id
+                WHERE ss.snapshot_id=? ORDER BY v.document_id,v.version""", (snapshot_id,)).fetchall()
+            lines = ["# Open Intelligence — synthetic investigation", "",
+                     "> Research demonstration only. No clinical review or patient-specific treatment recommendation.", "",
+                     f"Case: `{case_id}` | Investigation: {snapshot_id} | State: **{snapshot['state']}**",
+                     f"Created: {snapshot['created_at']} | Demo acknowledgment: {snapshot['reviewed_at'] or 'None'}", "",
+                     "## Question", "", snapshot["question"], "", "## Draft (human-authored)", "",
+                     snapshot["summary"], "", "## Source versions and original text", ""]
+            for source in sources:
+                raw_text = bytes(source["raw"]).decode("utf-8")
+                # An input quotation can itself contain Markdown fences. Always use
+                # a longer delimiter so source bytes cannot escape their code block.
+                longest = max((len(run) for run in re.findall(r"`+", raw_text)), default=0)
+                fence = "`" * max(3, longest + 1)
+                lines.extend([f"### {source['document_id']}@{source['version']} — {source['state']}", "",
+                              f"SHA-256: `{source['sha256']}` | Event: {source['event_date']} | Issued: {source['issued_at']}", "",
+                              fence + "text", raw_text, fence, ""])
+            lines.extend(["## Limitations", "", "- The reports, questions, and narrative are synthetic and not clinically appraised.",
+                          "- An acknowledgment in this demo is not clinician credential verification or a clinical sign-off.",
+                          "- Amendments can make previous investigations stale; see the state above.", ""])
+            return "\n".join(lines)
