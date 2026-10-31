@@ -240,6 +240,14 @@ class CaseStore:
         with self.db:
             self.db.execute("BEGIN IMMEDIATE")
             if report.patient_id != case_id:
+                # Repeated wrong-case deliveries are idempotent too. Keep the
+                # original receipt and avoid manufacturing extra quarantine events.
+                existing = self.db.execute(
+                    "SELECT id FROM quarantine WHERE target_case_id=? AND sha256=? ORDER BY id LIMIT 1",
+                    (case_id, digest)).fetchone()
+                if existing:
+                    return {"result": "quarantined", "reason": "patient_mismatch",
+                            "quarantine_id": existing["id"], "duplicate": True}
                 cur = self.db.execute(
                     "INSERT INTO quarantine (target_case_id,declared_patient_id,sha256,raw,reason,received_at) VALUES (?,?,?,?,?,?)",
                     (case_id, report.patient_id, digest, raw, "patient_mismatch", now_utc()))
@@ -400,9 +408,14 @@ class CaseStore:
                  "## Question", "", snapshot["question"], "", "## Draft (human-authored)", "",
                  snapshot["summary"], "", "## Source versions and original text", ""]
         for source in sources:
+            raw_text = bytes(source["raw"]).decode("utf-8")
+            # An input quotation can itself contain Markdown fences. Always use
+            # a longer delimiter so source bytes cannot escape their code block.
+            longest = max((len(run) for run in re.findall(r"`+", raw_text)), default=0)
+            fence = "`" * max(3, longest + 1)
             lines.extend([f"### {source['document_id']}@{source['version']} — {source['state']}", "",
                           f"SHA-256: `{source['sha256']}` | Event: {source['event_date']} | Issued: {source['issued_at']}", "",
-                          "```text", bytes(source["raw"]).decode("utf-8"), "```", ""])
+                          fence + "text", raw_text, fence, ""])
         lines.extend(["## Limitations", "", "- The reports, questions, and narrative are synthetic and not clinically appraised.",
                       "- An acknowledgment in this demo is not clinician credential verification or a clinical sign-off.",
                       "- Amendments can make previous investigations stale; see the state above.", ""])
