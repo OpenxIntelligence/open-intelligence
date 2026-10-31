@@ -355,6 +355,42 @@ def main() -> None:
             assert "original-synthetic" in cd.evaluate("document.querySelector('#dialog-text').textContent")
             cd.evaluate("document.querySelector('#dialog-close').click()")
 
+            # Two distinct current evidence sources make selection integrity
+            # observable: a refresh must not silently change a written
+            # withdrawal reason's target to the first option.
+            cd.evaluate("document.querySelector('#example-evidence-button').click()")
+            cd.wait("document.querySelector('#evidence-text').value.includes('EVID-ASSAY')",
+                    "second synthetic evidence template")
+            cd.evaluate("""(() => {
+              const input = document.querySelector('#evidence-text');
+              input.value = input.value.replace('Evidence: EVID-ASSAY', 'Evidence: EVID-SECOND')
+                .replace('Title: Fictional assay methods example', 'Title: Fictional second-source example');
+              document.querySelector('#evidence-import-form').requestSubmit();
+            })()""")
+            cd.wait("document.querySelectorAll('#evidence-list .source-card').length === 2",
+                    "two distinct synthetic evidence versions registered")
+            evidence_state = json.load(urlopen(
+                f"http://127.0.0.1:{app_port}/api/cases/CASE-ALPHA/state"))
+            second_id = next(x["id"] for x in evidence_state["evidence"]
+                             if x["evidence_key"] == "EVID-SECOND")
+            cd.evaluate("""(target => {
+              document.querySelector('#evidence-withdraw-id').value = String(target);
+              document.querySelector('#evidence-withdraw-reason').value =
+                'This second fictional item is only a target-selection regression fixture.';
+              document.querySelector('#question-text').value =
+                'Third synthetic question to trigger an evidence-selector refresh?';
+              document.querySelector('#question-form').requestSubmit();
+            })(""" + str(second_id) + ")")
+            cd.wait("document.querySelectorAll('#question-list .question').length === 3",
+                    "state refresh after selecting second evidence withdrawal")
+            assert cd.evaluate("document.querySelector('#evidence-withdraw-id').value") == str(second_id), (
+                "withdrawal refresh changed the target under an unfinished reason"
+            )
+            assert "second fictional item" in cd.evaluate(
+                "document.querySelector('#evidence-withdraw-reason').value"
+            ), "withdrawal refresh lost the authored reason"
+            cd.evaluate("document.querySelector('#evidence-withdraw-reason').value = ''")
+
             cd.evaluate("""(() => {
               document.querySelector('#evidence-rationale').value =
                 'This is independently authored fictional context, not an appraisal of an actual study.';
