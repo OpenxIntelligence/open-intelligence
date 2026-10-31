@@ -6,7 +6,7 @@ A public practice set does not establish blind, independent evaluation.
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 import hashlib
 import json
 from pathlib import Path
@@ -52,6 +52,42 @@ def records(value: object, expected: set[str]) -> dict:
     return result
 
 
+def source_field(lines: list[str], label: str) -> str:
+    """Read one explicit synthetic source header; ambiguity is never guessed."""
+    matches = [line[len(label):].strip() for line in lines if line.startswith(label)]
+    if len(matches) != 1 or not matches[0]:
+        raise ValueError(f'source {label.strip()} must appear exactly once')
+    return matches[0]
+
+
+def issued_date(source: dict, cases: dict) -> date:
+    """Ensure reviewer packets describe declared, coherent source metadata.
+
+    These checks do not establish authorship, copyright ownership, clinical
+    authenticity or actual patient consent. They only reject unsafe claims
+    within the original synthetic engineering fixture format.
+    """
+    lines = source['text'].splitlines()
+    issued = source_field(lines, 'Issued-At: ')
+    if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', issued):
+        raise ValueError('source Issued-At requires YYYY-MM-DD')
+    try:
+        parsed = date.fromisoformat(issued)
+    except ValueError as exc:
+        raise ValueError('invalid source Issued-At') from exc
+    if source['kind'] == 'report':
+        declared = source_field(lines, 'Patient: ')
+        if declared not in cases:
+            raise ValueError('source declared patient is not a fictional case')
+        # Mismatch to the receipt target remains a deliberate challenge: do
+        # not silently repair or quarantine it in this offline packaging tool.
+    else:
+        rights = source_field(lines, 'Rights: ')
+        if rights != 'original-synthetic':
+            raise ValueError('source rights must be original-synthetic')
+    return parsed
+
+
 def validate(packet: dict) -> None:
     fields(packet, ROOT_FIELDS)
     if packet['synthetic'] is not True:
@@ -79,6 +115,7 @@ def validate(packet: dict) -> None:
         if not isinstance(case['label'], str) or not case['label'].strip():
             raise ValueError('case label required')
     sources = records(packet['sources'], {'id', 'kind', 'sha256', 'text'})
+    issued_dates = {}
     for source in sources.values():
         kind = source['kind']
         if kind not in ('report', 'evidence'):
@@ -95,6 +132,7 @@ def validate(packet: dict) -> None:
             raise ValueError('source exceeds 64 KiB')
         if not isinstance(source['sha256'], str) or hashlib.sha256(raw).hexdigest() != source['sha256']:
             raise ValueError('source hash mismatch')
+        issued_dates[source['id']] = issued_date(source, cases)
     receipts = records(packet['receipts'], {'id', 'source_id', 'target_case', 'received_at'})
     for receipt in receipts.values():
         source_id = receipt['source_id']
@@ -106,7 +144,9 @@ def validate(packet: dict) -> None:
                 raise ValueError('report target case missing')
         elif target is not None:
             raise ValueError('evidence receipt must not carry a case attachment')
-        instant(receipt['received_at'])
+        received_at = instant(receipt['received_at'])
+        if issued_dates[source_id] > received_at.date():
+            raise ValueError('source issued after receipt')
 
 
 def bundle(packet: dict, cutoff: str) -> dict:
