@@ -86,14 +86,19 @@ function readyCase() {
   return caseId;
 }
 function renderEvidenceChoices() {
+  const previouslySelected = new Set([...el('evidence-choice').querySelectorAll('input:checked')]
+    .map(x => Number(x.value)));
   clear('evidence-choice');
   const qid = Number(el('question-choice').value);
-  const matches = (active.evidence_assessments || []).filter(a => a.question_id === qid && a.evidence_state === 'current');
+  const matches = (active.evidence_assessments || []).filter(a => a.question_id === qid &&
+    (a.evidence_state === 'current' || previouslySelected.has(a.id)));
   if (!matches.length) return empty(el('evidence-choice'), 'No current evidence assessment for this question (optional).');
   for (const assessment of matches) {
     const label = node('label');
     const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.value = assessment.id;
-    label.append(checkbox, node('span', assessment.evidence_key + '@' + assessment.version + ' · ' +
+    checkbox.checked = previouslySelected.has(assessment.id);
+    label.append(checkbox, node('span', assessment.evidence_key + '@' + assessment.version +
+      (assessment.evidence_state !== 'current' ? ' · STALE: uncheck and reassess' : '') + ' · ' +
       assessment.relation + ' · ' + assessment.applicability));
     el('evidence-choice').append(label);
   }
@@ -104,6 +109,8 @@ function render() {
   const priorInputs = sameCase ? [...el('source-choice').querySelectorAll('input')] : [];
   const priorSourceIds = new Set(priorInputs.filter(x => x.checked).map(x => Number(x.value)));
   const preserveSources = priorInputs.length > 0;
+  const priorEvidenceQuestion = sameCase ? el('evidence-question-choice').value : null;
+  const priorEvidenceSource = sameCase ? el('evidence-source-choice').value : null;
   clear('metrics');
   const latest = active.sources.filter(s => s.state === 'current');
   const stale = active.snapshots.filter(s => s.state === 'stale');
@@ -146,11 +153,13 @@ function render() {
   if (priorQuestion && [...el('question-choice').options].some(x => x.value === priorQuestion))
     el('question-choice').value = priorQuestion;
   renderEvidenceChoices();
-  clear('evidence-question-choice'); clear('evidence-source-choice');
+  clear('evidence-question-choice'); clear('evidence-source-choice'); clear('evidence-withdraw-id');
   for (const question of active.questions) {
     const opt = node('option', 'Q' + question.id + ' · ' + question.question.slice(0, 62));
     opt.value = question.id; el('evidence-question-choice').append(opt);
   }
+  if (priorEvidenceQuestion && [...el('evidence-question-choice').options].some(x => x.value === priorEvidenceQuestion))
+    el('evidence-question-choice').value = priorEvidenceQuestion;
   clear('evidence-list');
   const evidence = active.evidence || [];
   if (!evidence.length) empty(el('evidence-list'), 'No fictional research evidence registered.');
@@ -167,6 +176,21 @@ function render() {
     if (item.state === 'current') {
       const opt = node('option', item.evidence_key + '@' + item.version + ' · ' + item.title);
       opt.value = item.id; el('evidence-source-choice').append(opt);
+      const withdraw = node('option', item.evidence_key + '@' + item.version + ' · ' + item.title);
+      withdraw.value = item.id; el('evidence-withdraw-id').append(withdraw);
+    }
+  }
+  if (priorEvidenceSource && [...el('evidence-source-choice').options].some(x => x.value === priorEvidenceSource))
+    el('evidence-source-choice').value = priorEvidenceSource;
+  else if (priorEvidenceSource && el('evidence-rationale').value.trim()) {
+    const oldItem = evidence.find(x => String(x.id) === priorEvidenceSource);
+    if (oldItem) {
+      const staleOption = node('option', oldItem.evidence_key + '@' + oldItem.version +
+        ' · STALE: choose current evidence and reconsider rationale');
+      staleOption.value = oldItem.id;
+      el('evidence-source-choice').append(staleOption);
+      el('evidence-source-choice').value = priorEvidenceSource;
+      notice('The evidence assessment source changed. Explicitly choose a current version and reconsider its applicability.', true);
     }
   }
   clear('evidence-assessment-list');
@@ -302,7 +326,11 @@ el('import-form').addEventListener('submit', async event => {
   } catch (err) { notice(err.message, true); }
 });
 
-el('question-choice').addEventListener('change', renderEvidenceChoices);
+el('question-choice').addEventListener('change', () => {
+  // A different question must never inherit the former question's evidence choices.
+  clear('evidence-choice');
+  renderEvidenceChoices();
+});
 el('example-evidence-button').addEventListener('click', async () => {
   try {
     el('evidence-text').value = (await api('/api/examples/evidence')).text;
@@ -342,7 +370,7 @@ el('evidence-withdraw-form').addEventListener('submit', async event => {
     });
     if (requestedCase !== caseId) return;
     notice('Synthetic evidence withdrawn · ' + outcome.invalidated_snapshots.length + ' dependent draft(s) stale.');
-    el('evidence-withdraw-id').value = ''; el('evidence-withdraw-reason').value = ''; await refresh();
+    el('evidence-withdraw-reason').value = ''; await refresh();
   } catch (err) { notice(err.message, true); }
 });
 
