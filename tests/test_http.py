@@ -140,7 +140,7 @@ class HttpTests(unittest.TestCase):
     def test_static_ui_and_csp(self):
         with urlopen(f'http://127.0.0.1:{self.port}/') as response:
             body = response.read().decode()
-            self.assertIn('SYNTHETIC DATA ONLY', body)
+            self.assertIn('FICTIONAL DEMO DATA — not a real patient', body)
             self.assertIn("default-src 'self'", response.headers['Content-Security-Policy'])
 
 
