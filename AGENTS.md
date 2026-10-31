@@ -6,6 +6,14 @@ Read `README.md`, `docs/FIRST_PRINCIPLES_PLAN.md`, and the relevant rows in `doc
 
 The initial repository is a planning foundation. Implement bounded work against explicit acceptance criteria. Ordinary development and reversible fixes within the authorized task should proceed without repeated approval requests.
 
+## Identity, architectural precedence, and complementary research
+
+- The sole current project name is **Open Intelligence**. "CEVax" denotes historical source material only; do not treat it as a second current product or use it in new product/architecture headings.
+- The existing first-principles plan, accepted architecture decisions, source/evidence/investigation/authority contracts, and verified code are the baseline. New diagrams, case studies, competitive analyses, models, vendor catalogs, and commercial ideas are **complementary inputs**, not a newly adopted architecture, mandatory stack, first product, or strategic pivot.
+- Before implementing an additive idea, map it to its existing owning module and contract; record the original source, rights, applicability, expected value, failure modes, alternatives, and acceptance evidence. Prefer a scoped amendment/ADR and existing backlog over a parallel patient store, evidence ledger, agent runtime, or duplicated issue.
+- Distinguish `research candidate`, `proposed extension`, `accepted decision`, `implemented`, `software verified`, `clinically evaluated`, and `rights/release cleared`. A writeup, a passing synthetic test, or model agreement cannot promote an idea across these boundaries.
+- Preserve historical sources, review state, earlier architectural decisions, and existing roadmap priorities. A narrower customer wedge or timeline is a **hypothesis to validate**, not an automatic reduction of Open Intelligence's long-term ambition.
+
 ## Product principles
 
 - Preserve the full longitudinal oncology and biological research ambition.
