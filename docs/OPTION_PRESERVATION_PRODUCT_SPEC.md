@@ -1,16 +1,16 @@
-# Open Intelligence — Patient World Model and Future Option Preservation
-**Status: Proposed product thesis and design contract, 31 October 2026. Not implemented or clinically validated.**
+# Open Intelligence — Supplemental World-Model and Option-Preservation Capabilities
+**Status: Complementary architecture extension / candidate capability, 31 October 2026. Not a new architecture, strategic pivot, first-product decision, implemented feature or clinically validated function.**
 
 ## Decision context
-Open Intelligence continues the comprehensive oncology intelligence ambition. The narrower commercial hypothesis to test is **future cancer-option preservation**, not another EHR, scribe, treatment recommender, clinical chatbot, generic molecular profiler, or trial-matching site.
+**Architectural position:** Open Intelligence already has a broader patient-centered clinical and scientific intelligence architecture. The ideas in this file are **additive capability proposals** (asset custody, uncertainty, option dependencies, prospective preparation) inside that architecture. The existing longitudinal source/investigation/evidence/human-authority system remains the foundation. Option preservation is a testable workflow hypothesis, not a selected company thesis or a replacement for current roadmap priorities.
 
 **Long-term vision:** a patient-authorized, cross-institutional computational model of the patient's disease, biological assets, scientific knowledge, hypotheses, options, approved actions, and measured outcomes.
 
-**Candidate first customer/job:** a complex/advanced cancer patient and accountable oncology review team encountering recurrence, progression, new biopsy, resection or an approaching next-line treatment decision. Continuously identify *options at risk of becoming unavailable* and prepare reviewable, time-sensitive evidence and coordination tasks. No claim that this improves outcomes has been established.
+**Possible evaluation context, not a selected first customer:** a complex/advanced cancer case at recurrence, progression, biopsy, resection or another time-sensitive decision; examine whether surfacing preparation dependencies is incrementally useful. No patient cohort, first product, buying organization or clinical improvement has been established.
 
-The product should be called Open Intelligence in this repository. CEVax research is its historical conceptual source; do not split into unrelated implementations without an explicit decision.
+**Naming and scope:** The project is **Open Intelligence** everywhere. Earlier research material may retain historical titles as cited sources; it is not an alternative active project name. This specification must not create a separate implementation, duplicate canonical graph or new architecture.
 
-## Core user promise: two questions at once
+## Additional question the existing platform may support
 1. What does the available, dated, rights-qualified patient record support now?
 2. What must be learned, preserved, requested, discussed or arranged **now** to prevent loss of clinically relevant options later?
 
@@ -94,7 +94,7 @@ Agents may *draft* requests, compare approved documentation, monitor publicly ac
 - **Collaboration / Board**: specialists and patient see shared facts at role-appropriate detail; clinician decisions remain distinct.
 - **Audit / Export**: historical cutoffs, revised sources, decisions, task receipts, outcome and limitations.
 
-## First implementation contract (fictional only)
+## Optional bounded implementation experiment (fictional only)
 Integrate with existing case/question/source/evidence lineage; avoid a second isolated data model.
 - Represent 2 synthetic patient cases, 3 historical snapshots, 4+ versioned sources, and at least one amendment.
 - Persist 3–5 option candidates and dependency relationships, including a false-positive candidate, one disappearing *hypothetical* trial window, and a tissue-preservation *discussion*, all explicitly fictional.
@@ -103,7 +103,7 @@ Integrate with existing case/question/source/evidence lineage; avoid a second is
 - Provide a synthetic reviewer/owner action queue (no real-world orders or calls). Failure on wrong-case, missing source, revoked rights or unreviewed candidate must be safe.
 - Show *why action matters* versus *why action is not yet justified* equally prominently.
 
-## Validation and commercial status
+## Validation and commercial status — no product decision
 No real clinical utility, prospective benefit, willing buyer, consumer willingness to pay, legal clearance or achievable marginal-cost reduction is proven by simulation. First run blinded historical/synthetic case replay with independent experts and comparator workflows; pre-register errors, time saved, actionable early opportunities, false alarms, harms, and total acquisition/review labor. See [validation protocol](OPTION_PRESERVATION_VALIDATION.md) and [competitive register](COMPETITIVE_THESIS_REGISTER.md).
 
 ## Cross-references
