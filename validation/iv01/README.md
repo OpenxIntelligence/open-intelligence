@@ -53,3 +53,9 @@ These are original AI-assisted fictional text and code contributions; no externa
 ## Acceptance
 
 Engineering gate: exact hashes and references validate; all participant-cutoff and malformed-input tests pass; existing-importer replay preserves expected identity/missingness/amendment outcomes; no app code changes; CI evidence identifies its commit. Human gate: independent clinical/reference review, prespecified metrics/thresholds and authorized evaluation remain **not performed**.
+
+## Evaluation declaration preflight (not authorization)
+
+Run `python -m tools.evaluation_preflight` from the repository root. This read-only check reports `blocked` for the default public `not_activated` template, lists missing declarations, and emits SHA-256 fingerprints for protocol/manifest/blank CSV template. It intentionally does not mark a study clinically validated or legally permitted. To make incomplete declarations fail CI/automation, use `python -m tools.evaluation_preflight --require-complete` (exit 3 while incomplete; malformed inputs exit 2). A declaration-complete *fictional* protocol still reports `scoring_authorized: false` and `blinded_evaluation_established: false` because text fields are not external proof of independence, data rights, institutional permission, or prospective clinical review.
+
+The validator rejects unknown protocol fields, duplicate JSON keys, non-finite or unfrozen thresholds, duplicate reviewer IDs, past results already inspected, nonzero engineering safety invariants, and a nonblank or modified results CSV template. It is a **preregistration structure check**, not the packet source-hash validator or the clinical reviewer. Run `python tools/evaluation_packet.py` separately to validate authored synthetic source bytes, rights declarations and receipt cutoffs. No person is contacted, score generated, real record accessed, or source file modified by the preflight.
