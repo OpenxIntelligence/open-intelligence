@@ -1,5 +1,6 @@
 """Tests of packaging mechanics, not clinical performance."""
 import copy
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
@@ -102,6 +103,42 @@ class PacketTests(unittest.TestCase):
     def test_duplicate_source_id_rejected(self):
         self.data['sources'][1]['id'] = self.data['sources'][0]['id']
         with self.assertRaisesRegex(ValueError, 'duplicate'):
+            self.validate()
+
+    def _replace_source_and_rehash(self, source_index, old, new):
+        source = self.data['sources'][source_index]
+        self.assertIn(old, source['text'])
+        source['text'] = source['text'].replace(old, new)
+        source['sha256'] = hashlib.sha256(source['text'].encode('utf-8')).hexdigest()
+
+    def test_rejects_report_issued_after_its_receipt(self):
+        self._replace_source_and_rehash(0, 'Issued-At: 2026-01-03',
+                                        'Issued-At: 2026-01-20')
+        with self.assertRaisesRegex(ValueError, 'issued after receipt'):
+            self.validate()
+
+    def test_rejects_evidence_issued_after_its_receipt(self):
+        self._replace_source_and_rehash(3, 'Issued-At: 2026-01-07',
+                                        'Issued-At: 2026-01-20')
+        with self.assertRaisesRegex(ValueError, 'issued after receipt'):
+            self.validate()
+
+    def test_rejects_unqualified_evidence_rights_even_with_new_hash(self):
+        self._replace_source_and_rehash(3, 'Rights: original-synthetic',
+                                        'Rights: CC-BY-NC')
+        with self.assertRaisesRegex(ValueError, 'rights'):
+            self.validate()
+
+    def test_rejects_report_for_undeclared_patient_even_with_new_hash(self):
+        self._replace_source_and_rehash(0, 'Patient: CASE-EVAL-A',
+                                        'Patient: UNKNOWN-SUBJECT')
+        with self.assertRaisesRegex(ValueError, 'declared patient'):
+            self.validate()
+
+    def test_rejects_ambiguous_issue_date_headers(self):
+        self._replace_source_and_rehash(0, 'Issued-At: 2026-01-03',
+                                        'Issued-At: 2026-01-03\nIssued-At: 2026-01-03')
+        with self.assertRaisesRegex(ValueError, 'Issued-At'):
             self.validate()
 
     def test_cli_refuses_overwrite(self):
