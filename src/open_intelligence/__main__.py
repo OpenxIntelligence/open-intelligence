@@ -62,6 +62,11 @@ class Handler(BaseHTTPRequestHandler):
             raise InvalidInput("JSON object required")
         return data
 
+    def _host_allowed(self) -> bool:
+        # Host validation prevents a remote-controlled domain resolving to
+        # 127.0.0.1 from reading this unauthenticated local demo via rebinding.
+        return self.headers.get("Host") == f"127.0.0.1:{self.server.server_port}"
+
     def _origin_allowed(self) -> bool:
         origin = self.headers.get("Origin")
         if origin:
@@ -71,6 +76,8 @@ class Handler(BaseHTTPRequestHandler):
         return self.headers.get("Sec-Fetch-Site", "none") in {"none", "same-origin"}
 
     def do_GET(self) -> None:  # noqa: N802
+        if not self._host_allowed():
+            return self._json(403, {"error": "Unexpected Host for loopback-only demo"})
         path = urlsplit(self.path).path
         try:
             if path in ("/", "/index.html"):
@@ -106,6 +113,8 @@ class Handler(BaseHTTPRequestHandler):
             store.close()
 
     def do_POST(self) -> None:  # noqa: N802
+        if not self._host_allowed():
+            return self._json(403, {"error": "Unexpected Host for loopback-only demo"})
         if not self._origin_allowed():
             return self._json(403, {"error": "Cross-origin writes prohibited"})
         path = urlsplit(self.path).path
