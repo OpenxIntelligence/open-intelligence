@@ -220,7 +220,7 @@ def main() -> None:
             cd.wait("document.querySelectorAll('#assertion-list .source-jump').length >= 1",
                     "source-linked finding actions")
             cd.evaluate("document.querySelector('#assertion-list .source-jump').click()")
-            cd.wait("document.querySelector('#source-dialog').open && document.querySelector('#dialog-text mark.source-highlight')",
+            cd.wait("document.querySelector('#source-dialog').open && !!document.querySelector('#dialog-text mark.source-highlight')",
                     "source-line anchored report view")
             assert "Finding:" in cd.evaluate(
                 "document.querySelector('#dialog-text mark.source-highlight').textContent")
