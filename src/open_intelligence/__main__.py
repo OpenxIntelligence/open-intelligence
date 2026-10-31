@@ -13,6 +13,15 @@ from urllib.parse import urlsplit
 
 from tools.crossref_metadata import MetadataInputError, fetch_public_doi, project_work
 
+from .investigation import (
+    TEMPLATES,
+    InvestigationError,
+    ValidatedInvestigation,
+    build_prompt,
+    call_meta_api,
+    meta_api_key,
+    validate_output,
+)
 from .store import CaseStore, InvalidInput, MAX_SOURCE_BYTES
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -118,6 +127,16 @@ class Handler(BaseHTTPRequestHandler):
             case_state = re.fullmatch(rf"/api/cases/{ID_PART}/state", path)
             if case_state:
                 return self._json(200, store.state(case_state[1]))
+            inv_list = re.fullmatch(rf"/api/cases/{ID_PART}/investigations", path)
+            if inv_list:
+                return self._json(200, {"investigations": store.list_investigations(inv_list[1])})
+            inv_one = re.fullmatch(rf"/api/cases/{ID_PART}/investigations/([0-9]+)", path)
+            if inv_one:
+                return self._json(200, store.get_investigation(inv_one[1], int(inv_one[2])))
+            if path == "/api/investigations/templates":
+                return self._json(200, {"templates": [
+                    {"id": template_id, "description": text[:160]}
+                    for template_id, text in TEMPLATES.items()]})
             source = re.fullmatch(rf"/api/cases/{ID_PART}/sources/([0-9]+)", path)
             if source:
                 return self._json(200, {"text": store.source_text(source[1], int(source[2]))})
@@ -193,11 +212,52 @@ class Handler(BaseHTTPRequestHandler):
                 if review:
                     store.acknowledge_demo_review(review[1], int(review[2]), data.get("reviewer_label"))
                     return self._json(200, {"result": "acknowledged_in_demo"})
+                inv_create = re.fullmatch(rf"/api/cases/{ID_PART}/investigations", path)
+                if inv_create:
+                    case_id = inv_create[1]
+                    template = data.get("template")
+                    mode = data.get("mode", "live")
+                    if template not in TEMPLATES:
+                        raise InvalidInput("Unknown investigation template")
+                    if mode not in ("live", "replay"):
+                        raise InvalidInput("Mode must be live or replay")
+                    question_id = data.get("question_id")
+                    if type(question_id) is not int:
+                        raise InvalidInput("question_id must be an integer")
+                    facts = store.investigation_facts(case_id, question_id)
+                    if mode == "replay":
+                        fixture = json.loads((SYNTHETIC / "demo-investigation.json").read_text())
+                        # Replace placeholders with real current ids, then
+                        # validate exactly like live output.
+                        first_source = next(iter(facts["valid_sources"]), None)
+                        first_assessment = next(iter(facts["valid_assessments"]), None)
+                        for claim in fixture.get("claims", []):
+                            for cite in claim.get("citations", []):
+                                if cite.get("id") == "FIRST_SOURCE" and first_source is not None:
+                                    cite["id"] = first_source
+                                if cite.get("id") == "FIRST_ASSESSMENT" and first_assessment is not None:
+                                    cite["id"] = first_assessment
+                        validated = validate_output(fixture, facts["valid_sources"], facts["valid_assessments"])
+                        validated.model = "recorded-replay"
+                        validated.mode = "replay"
+                    else:
+                        prompt = build_prompt(template, facts["question"]["question"],
+                                              facts["assertions"], facts["assessments"])
+                        payload = call_meta_api(prompt, meta_api_key())
+                        validated = validate_output(payload, facts["valid_sources"], facts["valid_assessments"])
+                    investigation_id = store.save_investigation(
+                        case_id, question_id, template, validated, mode)
+                    return self._json(201, store.get_investigation(case_id, investigation_id))
                 return self._json(404, {"error": "Route not found"})
             finally:
                 store.close()
         except InvalidInput as error:
             return self._json(422, {"error": str(error)})
+        except InvestigationError as error:
+            # Missing operator key is a configuration state, not a bug:
+            # offer replay instead of a generic failure.
+            status = 503 if "META_API_KEY is not set" in str(error) else 502
+            return self._json(status, {"error": str(error)})
         except (OverflowError, UnicodeEncodeError):
             return self._json(422, {"error": "Invalid text or identifier"})
 

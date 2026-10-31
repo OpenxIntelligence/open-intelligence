@@ -278,6 +278,20 @@ CREATE TABLE IF NOT EXISTS evidence_changes (
   kind TEXT NOT NULL CHECK(kind IN ('amended','withdrawn')),
   reason TEXT NOT NULL, recorded_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS investigations (
+  id INTEGER PRIMARY KEY,
+  case_id TEXT NOT NULL REFERENCES cases(case_id),
+  question_id INTEGER NOT NULL REFERENCES questions(id),
+  template TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('completed','abstained','blocked_by_policy','failed')),
+  mode TEXT NOT NULL CHECK(mode IN ('live','replay')),
+  model TEXT NOT NULL,
+  claims_json TEXT NOT NULL,
+  abstentions_json TEXT NOT NULL,
+  dropped_json TEXT NOT NULL,
+  stale INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
 CREATE INDEX IF NOT EXISTS idx_assessments_evidence ON evidence_assessments(evidence_version_id);
 CREATE INDEX IF NOT EXISTS idx_snapshot_evidence_assessment ON snapshot_evidence(assessment_id);
 CREATE INDEX IF NOT EXISTS idx_sources_case ON source_versions(case_id, document_id, version);
@@ -392,6 +406,10 @@ class CaseStore:
                     self.db.execute(f"UPDATE snapshots SET state='stale' WHERE id IN ({marks})", invalidated)
                     self.db.execute(f"""UPDATE questions SET state='open' WHERE case_id=? AND id IN
                         (SELECT question_id FROM snapshots WHERE id IN ({marks}))""", [case_id, *invalidated])
+                    # An amendment changes freshness for investigations too:
+                    # they cite the superseded source's facts, so mark them stale
+                    # rather than silently leaving them current.
+                    self.db.execute("UPDATE investigations SET stale=1 WHERE case_id=? AND stale=0", (case_id,))
             self._event(case_id, "source_imported", document_id=report.document_id,
                         version=version, source_id=source_id, amends_id=previous["id"] if previous else None,
                         invalidated_snapshots=invalidated)
@@ -593,6 +611,77 @@ class CaseStore:
             self.db.execute("UPDATE questions SET state='addressed' WHERE case_id=? AND id=?",
                             (case_id, row["question_id"]))
             self._event(case_id, "demo_review_acknowledged", snapshot_id=snapshot_id)
+
+    def investigation_facts(self, case_id: str, question_id: int) -> dict:
+        """Facts the investigation prompt may use: question, current assertions, assessments."""
+        self._case(case_id)
+        if type(question_id) is not int:
+            raise InvalidInput("Question id must be an integer")
+        question = self.db.execute("SELECT * FROM questions WHERE id=? AND case_id=?",
+                                   (question_id, case_id)).fetchone()
+        if not question:
+            raise InvalidInput("Question not in this case")
+        assertions = self._dicts(self.db.execute(
+            """SELECT assertions.id,source_version_id,finding_key,certainty,quote,source_line
+            FROM assertions JOIN source_versions ON source_versions.id=assertions.source_version_id
+            WHERE assertions.case_id=? AND source_versions.state='current' ORDER BY assertions.id""",
+            (case_id,)).fetchall())
+        assessments = self._dicts(self.db.execute(
+            """SELECT a.id,a.relation,a.applicability,a.rationale,v.statement
+            FROM evidence_assessments a JOIN evidence_versions v ON v.id=a.evidence_version_id
+            WHERE a.case_id=? AND a.question_id=? AND v.state='current' AND v.rights='original-synthetic'
+            ORDER BY a.id""", (case_id, question_id)).fetchall())
+        return {
+            "question": dict(question),
+            "assertions": assertions,
+            "assessments": assessments,
+            "valid_sources": {int(a["source_version_id"]) for a in assertions},
+            "valid_assessments": {int(a["id"]) for a in assessments},
+        }
+
+    def save_investigation(self, case_id: str, question_id: int, template: str,
+                           validated, mode: str) -> int:
+        self._case(case_id)
+        with self.db:
+            cur = self.db.execute(
+                """INSERT INTO investigations
+                (case_id,question_id,template,status,mode,model,claims_json,abstentions_json,dropped_json,created_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                (case_id, question_id, template, validated.status, mode, validated.model,
+                 json.dumps(validated.claims), json.dumps(validated.abstentions),
+                 json.dumps(validated.dropped), now_utc()))
+            investigation_id = int(cur.lastrowid)
+            self.db.execute("UPDATE questions SET state='addressed' WHERE id=? AND case_id=?",
+                            (question_id, case_id))
+            self._event(case_id, "investigation_created", investigation_id=investigation_id,
+                        template=template, status=validated.status, mode=mode)
+            return investigation_id
+
+    def get_investigation(self, case_id: str, investigation_id: int) -> dict:
+        self._case(case_id)
+        row = self.db.execute("SELECT * FROM investigations WHERE id=? AND case_id=?",
+                              (investigation_id, case_id)).fetchone()
+        if not row:
+            raise InvalidInput("Investigation not in this case")
+        data = dict(row)
+        data["claims"] = json.loads(data.pop("claims_json"))
+        data["abstentions"] = json.loads(data.pop("abstentions_json"))
+        data["dropped"] = json.loads(data.pop("dropped_json"))
+        data["kind"] = "hypothesis"
+        data["review_state"] = "pending"
+        data["disclaimer"] = ("Research demonstration only. Hypotheses are unreviewed, "
+                              "fictional-data based, and not medical advice.")
+        return data
+
+    def list_investigations(self, case_id: str) -> list[dict]:
+        self._case(case_id)
+        rows = self._dicts(self.db.execute(
+            "SELECT id,question_id,template,status,mode,model,stale,created_at "
+            "FROM investigations WHERE case_id=? ORDER BY id DESC", (case_id,)).fetchall())
+        for row in rows:
+            row["kind"] = "hypothesis"
+            row["review_state"] = "pending"
+        return rows
 
     def state(self, case_id: str) -> dict:
         self._case(case_id)
