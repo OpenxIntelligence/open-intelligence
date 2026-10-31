@@ -48,6 +48,7 @@ async function initialize() {
       notice('Run PYTHONPATH=src python -m open_intelligence seed before opening the demo.', true);
       return;
     }
+    await renderIncomingBoard(cases);
     picker.addEventListener('change', () => {
       // An unfinished narrative must never silently become attached to another case.
       if ((el('draft-summary').value.trim() || el('evidence-rationale').value.trim() ||
@@ -66,6 +67,95 @@ async function initialize() {
     await refresh();
   } catch (err) { notice(err.message, true); }
 }
+async function renderIncomingBoard(cases) {
+  const list = el('incoming-list');
+  clear('incoming-list');
+  if (!cases.length) { empty(list, 'No fictional cases in this demo.'); return; }
+  const summaries = [];
+  for (const entry of cases) {
+    try {
+      const state = await api('/api/cases/' + entry.case_id + '/state');
+      const latestEvent = state.sources.reduce((max, s) =>
+        s.event_date > max ? s.event_date : max, '');
+      summaries.push({
+        label: entry.label, caseId: entry.case_id, latestEvent,
+        currentSources: state.sources.filter(s => s.state === 'current').length,
+        openQuestions: state.questions.filter(q => q.state === 'open').length,
+        stale: state.snapshots.filter(s => s.state === 'stale').length,
+      });
+    } catch (err) {
+      summaries.push({ label: entry.label, caseId: entry.case_id, latestEvent: '', error: err.message });
+    }
+  }
+  // Most recent source event first. No urgency is inferred: the demo data
+  // has no triage field, so sorting is by recency of the record only.
+  summaries.sort((a, b) => b.latestEvent.localeCompare(a.latestEvent));
+  for (const summary of summaries) {
+    const row = node('div', null, 'question');
+    const text = node('div');
+    text.append(node('p', summary.label + ' · ' + summary.caseId));
+    if (summary.error) text.append(node('p', 'Could not load this case summary: ' + summary.error, 'muted'));
+    else text.append(node('p', 'Most recent source event: ' + (summary.latestEvent || 'none recorded') +
+      ' · Current source documents: ' + summary.currentSources +
+      ' · Open questions: ' + summary.openQuestions +
+      ' · Drafts needing another look: ' + summary.stale, 'muted'));
+    const open = node('button', 'Open this case', 'button secondary minor');
+    open.type = 'button';
+    open.addEventListener('click', () => {
+      el('case-picker').value = summary.caseId;
+      el('case-picker').dispatchEvent(new Event('change'));
+      el('overview').scrollIntoView();
+    });
+    row.append(text, open);
+    list.append(row);
+  }
+}
+
+const CERTAINTY_PLAIN = {
+  reported: 'reported', pending: 'still pending', indeterminate: 'not certain yet',
+  conflicting: 'different reports disagree', 'not-reported': 'not reported',
+  'not-assessed': 'not assessed',
+};
+function renderPatientView() {
+  clear('patient-timeline'); clear('patient-findings'); clear('patient-questions'); clear('patient-uncertainty');
+  if (!active) return;
+  const groups = groupedTimeline(active.sources).slice().reverse();
+  if (!groups.length) empty(el('patient-timeline'), 'No records yet in this fictional case.');
+  for (const group of groups) {
+    const item = node('div', null, 'question');
+    const amended = group.versions.length > 1;
+    item.append(node('p', 'On ' + group.eventDate + ', a ' + group.kind + ' report (' + group.documentId + ') was recorded.' +
+      (amended ? ' This report was later corrected; the latest version is the one shown in the workspace, and older versions are kept.' : '')));
+    el('patient-timeline').append(item);
+  }
+  if (!active.assertions.length) empty(el('patient-findings'), 'No reported findings yet in this fictional case.');
+  for (const assertion of active.assertions) {
+    const card = node('div', null, 'finding');
+    card.append(node('strong', 'Source says'), node('p', assertion.quote, 'quoted'),
+      node('span', 'How certain the source is: ' + (CERTAINTY_PLAIN[assertion.certainty] || assertion.certainty) +
+        ' · Exact source version #' + assertion.source_version_id + ', line ' + assertion.source_line, 'ref'));
+    el('patient-findings').append(card);
+  }
+  const open = active.questions.filter(q => q.state === 'open');
+  if (!open.length) empty(el('patient-questions'), 'No open questions in this fictional case.');
+  for (const question of open) {
+    const row = node('div', null, 'question');
+    row.append(node('p', question.question));
+    el('patient-questions').append(row);
+  }
+  const stale = active.snapshots.filter(s => s.state === 'stale').length;
+  const superseded = active.sources.filter(s => s.state !== 'current').length;
+  const notes = [];
+  if (stale) notes.push(stale + ' earlier draft(s) need another look because a report changed since they were written.');
+  if (superseded) notes.push(superseded + ' older report version(s) have been replaced by a newer version; the older versions are still kept and can be inspected.');
+  if (!notes.length) notes.push('Nothing in this fictional case is currently flagged as changed or needing another look.');
+  for (const text of notes) {
+    const row = node('div', null, 'question');
+    row.append(node('p', text));
+    el('patient-uncertainty').append(row);
+  }
+}
+
 async function refresh() {
   const requestedCase = caseId;
   const sequence = ++refreshSequence;
@@ -336,6 +426,7 @@ function render() {
     const card = node('div', event.kind.replaceAll('_', ' '), 'event');
     card.append(node('small', event.occurred_at)); el('event-list').append(card);
   }
+  renderPatientView();
   renderedCaseId = caseId;
 }
 async function openSource(source) {

@@ -20,6 +20,8 @@
       <select id="case-picker" aria-label="Select synthetic case"></select>
       <p class="muted tiny">Case data stays on this local machine. There is no identity verification or patient login.</p>
       <nav aria-label="Workspace sections">
+        <a href="#incoming-board">Incoming board</a>
+        <a href="#patient-view">Patient view</a>
         <a href="#overview">Overview</a>
         <a href="#timeline">Longitudinal timeline</a>
         <a href="#sources">Sources &amp; assertions</a>
@@ -44,6 +46,19 @@
       </section>
       <div class="metrics" id="metrics" aria-live="polite"></div>
       <div id="notice" role="status" aria-live="polite" class="notice" hidden></div>
+      <section class="panel" id="incoming-board">
+        <div class="panel-head"><div><div class="eyebrow">00 / WORKLIST</div><h2>Incoming board</h2></div><span class="pill pill-warn">FICTIONAL DEMO CASES ONLY</span></div>
+        <p class="muted">One shared worklist for the fictional cases in this local demo, most recent source event first. It is not a triage list: the demo data contains no urgency, priority, or next clinical step, so none is shown or inferred. Selecting a case opens the same record the clinician workspace shows — there is no second copy.</p>
+        <div id="incoming-list" class="questions" aria-live="polite"></div>
+      </section>
+      <section class="panel" id="patient-view">
+        <div class="panel-head"><div><div class="eyebrow">PATIENT VIEW · SAME RECORD</div><h2>Your case, in plain words</h2></div><span class="pill">Same facts, plainer language</span></div>
+        <p class="muted">This is the same fictional record as the workspace above, written more plainly. Nothing here is a medical recommendation, and nothing is hidden by making it plain: where a report is uncertain, disagreed with, or has changed, that is stated. This fictional demo is not a real medical record. For a real result, talk to your care team.</p>
+        <div class="subhead">What has happened so far</div><div id="patient-timeline" class="questions"></div>
+        <div class="subhead">What the records say</div><div id="patient-findings" class="findings"></div>
+        <div class="subhead">Questions still open</div><div id="patient-questions" class="questions"></div>
+        <div class="subhead">What is not certain yet</div><div id="patient-uncertainty" class="questions"></div>
+      </section>
       <div class="workspace">
         <div class="content-left">
           <section class="panel" id="timeline">

@@ -142,6 +142,10 @@ class HttpTests(unittest.TestCase):
             body = response.read().decode()
             self.assertIn('SYNTHETIC DATA ONLY', body)
             self.assertIn("default-src 'self'", response.headers['Content-Security-Policy'])
+            # The incoming board and patient view are derived presentations of
+            # the same case state, not separate data: both must be served.
+            self.assertIn('id="incoming-board"', body)
+            self.assertIn('id="patient-view"', body)
 
 
 if __name__ == '__main__':
