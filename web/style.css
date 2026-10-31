@@ -94,3 +94,8 @@ dialog pre { background:#eef4f4; padding:18px; border-radius:9px; overflow:auto;
 #evidence textarea, #evidence input[type="number"] { width: 100%; }
 #evidence .source-card { margin-bottom: 0.65rem; }
 #evidence-withdraw-form { margin-top: 1.4rem; padding-top: 1rem; border-top: 1px solid #e2e7eb; }
+
+#bibliography input[type="text"] { width:100%; min-width:0; padding:10px 12px; border:1px solid #becdd2; border-radius:9px; }
+#bibliography a { font-size:12px; font-weight:700; color:#135d7c; }
+#bibliography button:disabled { opacity:0.5; cursor:not-allowed; }
+#bibliography-result { margin-top:15px; }

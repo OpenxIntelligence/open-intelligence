@@ -2,6 +2,7 @@ import json
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
 from http.client import HTTPConnection
 from http.server import ThreadingHTTPServer
 from pathlib import Path
@@ -91,6 +92,50 @@ class HttpTests(unittest.TestCase):
         self.assertIsInstance(result['question_id'], int)
         status, data = self.request('/api/cases/CASE-ALPHA/state')
         self.assertIn(result['question_id'], [q['id'] for q in data['questions']])
+
+
+    def test_bibliography_fixture_and_default_egress_gate(self):
+        status, config = self.request('/api/bibliography/status')
+        self.assertEqual(status, 200)
+        self.assertEqual(config, {'live_enabled': False})
+        status, record = self.request('/api/bibliography/example')
+        self.assertEqual(status, 200)
+        self.assertEqual(record['kind'], 'bibliographic_metadata_only')
+        self.assertEqual(record['doi'], '10.5555/oi-synthetic-001')
+        self.assertFalse(record['clinical_evidence_appraised'])
+        self.assertNotIn('COPYRIGHTED ABSTRACT', json.dumps(record))
+        with patch('open_intelligence.__main__.fetch_public_doi',
+                   side_effect=AssertionError('No outbound calls when disabled')) as mock_fetch:
+            status, error = self.request('/api/bibliography/lookup',
+                                         {'doi': '10.5555/oi-synthetic-001'})
+            self.assertEqual(status, 403)
+            self.assertIn('disabled by default', error['error'])
+            mock_fetch.assert_not_called()
+
+    def test_bibliography_live_gate_passes_only_doi_and_is_operator_controlled(self):
+        handler = self.server.RequestHandlerClass
+        prior = handler.allow_crossref_live
+        last_request = handler.metadata_last_request
+        handler.allow_crossref_live = True
+        handler.metadata_last_request = 0.0
+        try:
+            with patch('open_intelligence.__main__.fetch_public_doi',
+                       return_value={'kind': 'bibliographic_metadata_only',
+                                     'doi': '10.5555/oi-synthetic-001',
+                                     'clinical_evidence_appraised': False}) as mock_fetch:
+                status, record = self.request('/api/bibliography/lookup',
+                                             {'doi': '10.5555/oi-synthetic-001',
+                                              'patient_id': 'MUST-NOT-EGRESS',
+                                              'question': 'MUST-NOT-EGRESS'})
+                self.assertEqual(status, 200)
+                mock_fetch.assert_called_once_with('10.5555/oi-synthetic-001', contact=None)
+                self.assertNotIn('MUST-NOT-EGRESS', json.dumps(record))
+                status, error = self.request('/api/bibliography/lookup',
+                                             {'doi': '10.5555/oi-synthetic-001'})
+                self.assertEqual(status, 429)
+        finally:
+            handler.allow_crossref_live = prior
+            handler.metadata_last_request = last_request
 
     def test_static_ui_and_csp(self):
         with urlopen(f'http://127.0.0.1:{self.port}/') as response:
