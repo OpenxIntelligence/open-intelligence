@@ -9,9 +9,10 @@
   <script src="/app.js" defer></script>
 </head>
 <body>
+  <a class="skip-link" href="#main-content">Skip to case workspace</a>
   <header class="top">
     <div class="brand"><span class="brand-mark" aria-hidden="true">◈</span><div><strong>Open Intelligence</strong><small>Oncology investigation workspace</small></div></div>
-    <div class="top-right"><span class="pill pill-warn">SYNTHETIC DATA ONLY</span><span class="top-note">Local research demo · Not clinical software</span></div>
+    <div class="top-right"><span class="pill pill-warn">FICTIONAL DEMO DATA — not a real patient</span><span class="top-note">Local research demo · Not clinical software</span></div>
   </header>
   <div class="layout">
     <aside class="rail">
@@ -35,7 +36,7 @@
         <p class="muted tiny">No automated clinical extraction, AI reasoning, trial matching, or treatment recommendations.</p>
       </div>
     </aside>
-    <main class="main">
+    <main class="main" id="main-content" tabindex="-1">
       <section id="overview" class="hero">
         <div><div class="eyebrow">LONGITUDINAL CASE REVIEW · ENGINEERING REFERENCE</div>
           <h1 id="case-heading">Loading case…</h1>
@@ -43,6 +44,14 @@
         <div class="hero-side"><span class="pill">Local / offline</span><span class="muted tiny">Evidence is source-linked, not clinically evaluated.</span></div>
       </section>
       <div class="metrics" id="metrics" aria-live="polite"></div>
+      <section id="review-attention" class="review-attention" data-state="checking" aria-labelledby="review-attention-title">
+        <div class="review-attention-copy">
+          <div class="eyebrow">INVESTIGATION FRESHNESS · DEMO ONLY</div>
+          <h2 id="review-attention-title">Review changes and open questions</h2>
+          <p id="review-attention-summary" role="status" aria-live="polite">Loading the source-linked review state…</p>
+        </div>
+        <a class="button secondary attention-action" href="#investigations">Inspect investigation history</a>
+      </section>
       <div id="notice" role="status" aria-live="polite" class="notice" hidden></div>
       <div class="workspace">
         <div class="content-left">
@@ -140,6 +149,6 @@
       <footer>Open Intelligence · Original, dependency-free reference implementation · No real patient information, credentialed clinical review, or regulatory clearance.</footer>
     </main>
   </div>
-  <dialog id="source-dialog"><div class="dialog-head"><h2 id="dialog-title">Original source</h2><button id="dialog-close" class="button secondary" type="button">Close</button></div><pre id="dialog-text"></pre></dialog>
+  <dialog id="source-dialog" aria-labelledby="dialog-title" aria-describedby="dialog-context"><div class="dialog-head"><h2 id="dialog-title">Original source</h2><button id="dialog-close" class="button secondary" type="button">Close</button></div><p id="dialog-context" class="muted tiny"></p><pre id="dialog-text"></pre></dialog>
 </body>
 </html>
