@@ -650,48 +650,52 @@ class CaseStore:
 
     def export_markdown(self, case_id: str, snapshot_id: int) -> str:
         self._case(case_id)
-        snapshot = self.db.execute("""SELECT s.*,q.question FROM snapshots s JOIN questions q ON q.id=s.question_id
-            WHERE s.case_id=? AND s.id=?""", (case_id, snapshot_id)).fetchone()
-        if not snapshot:
-            raise InvalidInput("Investigation not in this case")
-        sources = self.db.execute("""SELECT v.* FROM source_versions v JOIN snapshot_sources ss ON ss.source_version_id=v.id
-            WHERE ss.snapshot_id=? ORDER BY v.document_id,v.version""", (snapshot_id,)).fetchall()
-        lines = ["# Open Intelligence — synthetic investigation", "",
-                 "> Research demonstration only. No clinical review or patient-specific treatment recommendation.", "",
-                 f"Case: `{case_id}` | Investigation: {snapshot_id} | State: **{snapshot['state']}**",
-                 f"Created: {snapshot['created_at']} | Demo acknowledgment: {snapshot['reviewed_at'] or 'None'}", "",
-                 "## Question", "", snapshot["question"], "", "## Draft (human-authored)", "",
-                 snapshot["summary"], "", "## Source versions and original text", ""]
-        for source in sources:
-            raw_text = bytes(source["raw"]).decode("utf-8")
-            # Prevent raw input from escaping Markdown source fences.
-            longest = max((len(run) for run in re.findall(r"`+", raw_text)), default=0)
-            fence = "`" * max(3, longest + 1)
-            lines.extend([f"### {source['document_id']}@{source['version']} — {source['state']}", "",
-                          f"SHA-256: `{source['sha256']}` | Event: {source['event_date']} | Issued: {source['issued_at']}", "",
-                          fence + "text", raw_text, fence, ""])
-        evidence = self.db.execute("""SELECT a.*,v.evidence_key,v.version,v.state AS evidence_state,
-            v.title,v.sha256,v.raw,v.rights,v.statement_line FROM snapshot_evidence se
-            JOIN evidence_assessments a ON a.id=se.assessment_id
-            JOIN evidence_versions v ON v.id=a.evidence_version_id
-            WHERE se.snapshot_id=? ORDER BY a.id""", (snapshot_id,)).fetchall()
-        lines.extend(["## Fictional evidence assessments", ""])
-        if not evidence:
-            lines.extend(["None included; no external study appraisal performed.", ""])
-        for assessment in evidence:
-            evidence_text = bytes(assessment["raw"]).decode("utf-8")
-            longest = max((len(run) for run in re.findall(r"`+", evidence_text)), default=0)
-            fence = "`" * max(3, longest + 1)
-            lines.extend([f"### {assessment['evidence_key']}@{assessment['version']}: {assessment['title']}",
-                          "", f"Evidence state: {assessment['evidence_state']} | Rights: {assessment['rights']}",
-                          f"SHA-256: `{assessment['sha256']}` | Source line: {assessment['statement_line']}",
-                          f"Human-assigned relationship: {assessment['relation']} | Applicability: {assessment['applicability']}",
-                          "", f"Rationale: {assessment['rationale']}", "", fence + "text",
-                          evidence_text, fence, ""])
-        lines.extend(["## Limitations", "",
-                      "- Evidence items above are fictional, independently authored examples; no real publication, guideline or trial was appraised.",
-                      "- Declared synthetic rights are not legal verification of user-supplied content.",
-                      "- The reports, questions, and narrative are synthetic and not clinically appraised.",
-                      "- An acknowledgment in this demo is not clinician credential verification or a clinical sign-off.",
-                      "- Amendments can make previous investigations stale; see the state above.", ""])
-        return "\n".join(lines)
+        # Explicit read transaction keeps status and source/evidence versions
+        # consistent if an amendment or withdrawal commits during export.
+        with self.db:
+            self.db.execute("BEGIN")
+            snapshot = self.db.execute("""SELECT s.*,q.question FROM snapshots s JOIN questions q ON q.id=s.question_id
+                WHERE s.case_id=? AND s.id=?""", (case_id, snapshot_id)).fetchone()
+            if not snapshot:
+                raise InvalidInput("Investigation not in this case")
+            sources = self.db.execute("""SELECT v.* FROM source_versions v JOIN snapshot_sources ss ON ss.source_version_id=v.id
+                WHERE ss.snapshot_id=? ORDER BY v.document_id,v.version""", (snapshot_id,)).fetchall()
+            lines = ["# Open Intelligence — synthetic investigation", "",
+                     "> Research demonstration only. No clinical review or patient-specific treatment recommendation.", "",
+                     f"Case: `{case_id}` | Investigation: {snapshot_id} | State: **{snapshot['state']}**",
+                     f"Created: {snapshot['created_at']} | Demo acknowledgment: {snapshot['reviewed_at'] or 'None'}", "",
+                     "## Question", "", snapshot["question"], "", "## Draft (human-authored)", "",
+                     snapshot["summary"], "", "## Source versions and original text", ""]
+            for source in sources:
+                raw_text = bytes(source["raw"]).decode("utf-8")
+                # Prevent raw input from escaping Markdown source fences.
+                longest = max((len(run) for run in re.findall(r"`+", raw_text)), default=0)
+                fence = "`" * max(3, longest + 1)
+                lines.extend([f"### {source['document_id']}@{source['version']} — {source['state']}", "",
+                              f"SHA-256: `{source['sha256']}` | Event: {source['event_date']} | Issued: {source['issued_at']}", "",
+                              fence + "text", raw_text, fence, ""])
+            evidence = self.db.execute("""SELECT a.*,v.evidence_key,v.version,v.state AS evidence_state,
+                v.title,v.sha256,v.raw,v.rights,v.statement_line FROM snapshot_evidence se
+                JOIN evidence_assessments a ON a.id=se.assessment_id
+                JOIN evidence_versions v ON v.id=a.evidence_version_id
+                WHERE se.snapshot_id=? ORDER BY a.id""", (snapshot_id,)).fetchall()
+            lines.extend(["## Fictional evidence assessments", ""])
+            if not evidence:
+                lines.extend(["None included; no external study appraisal performed.", ""])
+            for assessment in evidence:
+                evidence_text = bytes(assessment["raw"]).decode("utf-8")
+                longest = max((len(run) for run in re.findall(r"`+", evidence_text)), default=0)
+                fence = "`" * max(3, longest + 1)
+                lines.extend([f"### {assessment['evidence_key']}@{assessment['version']}: {assessment['title']}",
+                              "", f"Evidence state: {assessment['evidence_state']} | Rights: {assessment['rights']}",
+                              f"SHA-256: `{assessment['sha256']}` | Source line: {assessment['statement_line']}",
+                              f"Human-assigned relationship: {assessment['relation']} | Applicability: {assessment['applicability']}",
+                              "", f"Rationale: {assessment['rationale']}", "", fence + "text",
+                              evidence_text, fence, ""])
+            lines.extend(["## Limitations", "",
+                          "- Evidence items above are fictional, independently authored examples; no real publication, guideline or trial was appraised.",
+                          "- Declared synthetic rights are not legal verification of user-supplied content.",
+                          "- The reports, questions, and narrative are synthetic and not clinically appraised.",
+                          "- An acknowledgment in this demo is not clinician credential verification or a clinical sign-off.",
+                          "- Amendments can make previous investigations stale; see the state above.", ""])
+            return "\n".join(lines)
