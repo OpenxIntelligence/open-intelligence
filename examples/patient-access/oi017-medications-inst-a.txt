@@ -1,0 +1,8 @@
+OI-SYNTHETIC-REPORT/1
+Patient: CASE-OI017
+Document: MEDS-OI017-A
+Type: clinical
+Event-Date: 2026-01-12
+Issued-At: 2026-01-13
+Finding: medication-list|reported|Fictional medication list from Institution A records two synthetic maintenance entries, with no administration event claimed.
+Finding: administration-confirmation|not-reported|No administration confirmation is present in this fictional medication list.

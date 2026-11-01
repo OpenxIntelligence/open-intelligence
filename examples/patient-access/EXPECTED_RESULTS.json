@@ -1,0 +1,165 @@
+{
+  "case": "CASE-OI017",
+  "provenance": "Independently authored synthetic fixtures; no real patient data, no PHI. All Patient values are synthetic case ids.",
+  "evidence_tier": "synthetic contract evidence only (see research doc). Synthetic success does not establish real coverage, matching, pricing, or clinical usefulness.",
+  "fixtures": [
+    {
+      "file": "oi017-collision-wrong-binding.txt",
+      "sha256": "d456106db8c4db8b8aa5657a766c0410b3ad26c7b157c4e4ed265c89001a6c41",
+      "bytes": 347
+    },
+    {
+      "file": "oi017-encounter-inst-a.txt",
+      "sha256": "a44e0eae19d96b727929e638e85dab0f3d0d52e9bebe8cab430302d2c557491a",
+      "bytes": 334
+    },
+    {
+      "file": "oi017-imaging-report-only.txt",
+      "sha256": "8ccd25d264c65937299df6c856e8fffb83d295d0ea337535ffb6f6c5e850564a",
+      "bytes": 348
+    },
+    {
+      "file": "oi017-medications-inst-a.txt",
+      "sha256": "59c9849a7644346422eaa70c8bf0a99a2973c9c4a524a8ff661c93ce9439dec6",
+      "bytes": 412
+    },
+    {
+      "file": "oi017-pathology-specimen-a-amended.txt",
+      "sha256": "b432c7c331d7ed910667c28fa72f6aac1644a76e738a0970b90af4d477f0f3a7",
+      "bytes": 536
+    },
+    {
+      "file": "oi017-pathology-specimen-a.txt",
+      "sha256": "002d9c49ee5e24489db2c3169b87d741ffa324b14d6bc1a9646b099ff7049fc7",
+      "bytes": 459
+    },
+    {
+      "file": "oi017-pathology-specimen-b.txt",
+      "sha256": "2b696223abd311b1fef3d04d7a88c0f0759d504ea1cbb44ea2b3f29157481d35",
+      "bytes": 527
+    }
+  ],
+  "expected_sequence": [
+    {
+      "step": 1,
+      "fixture": "oi017-encounter-inst-a.txt",
+      "adapter": "INST-A/SUBJ-OI017-A",
+      "expected": "imported v1, document ENC-OI017-A"
+    },
+    {
+      "step": 2,
+      "fixture": "oi017-pathology-specimen-a.txt",
+      "adapter": "INST-A/SUBJ-OI017-A",
+      "expected": "imported v1, document PATH-OI017-A, specimen SPEC-OI017-A"
+    },
+    {
+      "step": 3,
+      "fixture": "oi017-pathology-specimen-b.txt",
+      "adapter": "INST-B/SUBJ-OI017-B",
+      "expected": "imported v1, document PATH-OI017-B, specimen SPEC-OI017-B; contradictory histology coexists, neither merged nor resolved"
+    },
+    {
+      "step": 4,
+      "fixture": "oi017-pathology-specimen-a-amended.txt",
+      "adapter": "INST-A/SUBJ-OI017-A",
+      "expected": "imported v2, PATH-OI017-A v1 superseded, dependent snapshots stale, history recoverable"
+    },
+    {
+      "step": 5,
+      "fixture": "oi017-pathology-specimen-a.txt (repeat)",
+      "adapter": "INST-A/SUBJ-OI017-A",
+      "expected": "duplicate, no new source version, no new event"
+    },
+    {
+      "step": 6,
+      "fixture": "oi017-collision-wrong-binding.txt",
+      "adapter": "INST-A/SUBJ-OI017-OTHER (conflicts with INST-A/SUBJ-OI017-A)",
+      "expected": "rejected identity_collision, quarantined in existing quarantine table, no new source"
+    },
+    {
+      "step": 7,
+      "fixture": "oi017-medications-inst-a.txt",
+      "adapter": "INST-A/SUBJ-OI017-A",
+      "expected": "imported; administration-confirmation is not-reported, not a confirmed administration"
+    },
+    {
+      "step": 8,
+      "fixture": "oi017-imaging-report-only.txt",
+      "adapter": "INST-A/SUBJ-OI017-A",
+      "expected": "imported report text only; DICOM pixels known_missing, not negative"
+    },
+    {
+      "step": 9,
+      "fixture": "lossy transform of PATH-OI017-A without loss receipt (test-only)",
+      "expected": "rejected transformation_loss_undocumented, no source imported"
+    },
+    {
+      "step": 10,
+      "fixture": "lossy transform of PATH-OI017-A with loss receipt (test-only)",
+      "expected": "original bytes imported; loss receipt recorded as event; normalized output never stored as source"
+    },
+    {
+      "step": 11,
+      "fixture": "delivery after revocation of RCPT-OI017-1 (test-only)",
+      "expected": "rejected revoked_authorization; prior sources preserved, not deleted"
+    }
+  ],
+  "coverage": [
+    {
+      "artifact": "encounter",
+      "status": "present",
+      "source_document": "ENC-OI017-A"
+    },
+    {
+      "artifact": "pathology",
+      "status": "present",
+      "source_document": "PATH-OI017-A, PATH-OI017-B"
+    },
+    {
+      "artifact": "molecular",
+      "status": "known_missing",
+      "reason": "No molecular artifact delivered by either fictional institution"
+    },
+    {
+      "artifact": "imaging report",
+      "status": "present",
+      "source_document": "IMG-OI017-A"
+    },
+    {
+      "artifact": "dicom pixels",
+      "status": "known_missing",
+      "reason": "Report-only delivery; native pixels not exposed"
+    },
+    {
+      "artifact": "medications list",
+      "status": "present",
+      "source_document": "MEDS-OI017-A"
+    },
+    {
+      "artifact": "payer events",
+      "status": "known_missing",
+      "reason": "No payer artifact delivered in this fixture set"
+    },
+    {
+      "artifact": "payer administration confirmation",
+      "status": "known_missing",
+      "reason": "Medication list contains no administration confirmation"
+    },
+    {
+      "artifact": "original documents",
+      "status": "present",
+      "source_document": "all fixtures stored byte-identical with sha256"
+    },
+    {
+      "artifact": "amendments",
+      "status": "present",
+      "source_document": "PATH-OI017-A@2"
+    },
+    {
+      "artifact": "marker-a on specimen A (original)",
+      "status": "negative",
+      "note": "not-reported in v1 is NOT a negative; only the amended v2 reports marker-a negative",
+      "source_document": "PATH-OI017-A@2"
+    }
+  ]
+}

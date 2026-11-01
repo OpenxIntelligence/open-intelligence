@@ -9,10 +9,11 @@ import re
 from pathlib import Path
 from threading import Lock
 from time import monotonic
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from tools.crossref_metadata import MetadataInputError, fetch_public_doi, project_work
 
+from .changes import changes_since_review
 from .investigation import (
     TEMPLATES,
     InvestigationError,
@@ -23,6 +24,7 @@ from .investigation import (
     validate_output,
 )
 from .store import CaseStore, InvalidInput, MAX_SOURCE_BYTES
+from .timeline import case_timeline
 
 ROOT = Path(__file__).resolve().parents[2]
 WEB = ROOT / "web"
@@ -103,10 +105,16 @@ class Handler(BaseHTTPRequestHandler):
                 return self._static("app.js", "text/javascript; charset=utf-8")
             if path == "/style.css":
                 return self._static("style.css", "text/css; charset=utf-8")
+            if path == "/tokens.css":
+                return self._static("tokens.css", "text/css; charset=utf-8")
+            if path == "/base.css":
+                return self._static("base.css", "text/css; charset=utf-8")
             if path == "/api/examples/amendment":
                 return self._json(200, {"text": (SYNTHETIC / "alpha-pathology-amended.txt").read_text()})
             if path == "/api/examples/evidence":
                 return self._json(200, {"text": (SYNTHETIC / "demo-evidence.txt").read_text()})
+            if path == "/api/examples/wrong-patient":
+                return self._json(200, {"text": (SYNTHETIC / "wrong-patient.txt").read_text()})
             if path == "/api/bibliography/status":
                 return self._json(200, {"live_enabled": bool(self.allow_crossref_live)})
             if path == "/api/bibliography/example":
@@ -121,12 +129,31 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if path == "/api/cases":
                 return self._json(200, store.cases())
+            if path == "/api/discovery":
+                return self._json(200, store.list_discovery())
+            discovery_links = re.fullmatch(rf"/api/cases/{ID_PART}/discovery", path)
+            if discovery_links:
+                return self._json(200, store.case_discovery_links(discovery_links[1]))
+            if path == "/api/rights/sources":
+                return self._json(200, store.rights_sources())
             evidence_text = re.fullmatch(r"/api/evidence/([0-9]+)", path)
             if evidence_text:
                 return self._json(200, {"text": store.synthetic_evidence_text(int(evidence_text[1]))})
             case_state = re.fullmatch(rf"/api/cases/{ID_PART}/state", path)
             if case_state:
                 return self._json(200, store.state(case_state[1]))
+            changes = re.fullmatch(rf"/api/cases/{ID_PART}/changes-since-review", path)
+            if changes:
+                raw_since = parse_qs(urlsplit(self.path).query).get("since_event_id", [None])[0]
+                since = None
+                if raw_since is not None:
+                    if not raw_since.isdigit():
+                        raise InvalidInput("since_event_id must be a positive integer")
+                    since = int(raw_since)
+                return self._json(200, changes_since_review(store, changes[1], since_event_id=since))
+            timeline = re.fullmatch(rf"/api/cases/{ID_PART}/timeline", path)
+            if timeline:
+                return self._json(200, case_timeline(store, timeline[1]))
             inv_list = re.fullmatch(rf"/api/cases/{ID_PART}/investigations", path)
             if inv_list:
                 return self._json(200, {"investigations": store.list_investigations(inv_list[1])})
@@ -203,11 +230,64 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(201, {"assessment_id": store.assess_synthetic_evidence(
                         evidence_assessment[1], data.get("question_id"), data.get("evidence_version_id"),
                         data.get("relation"), data.get("applicability"), data.get("rationale"))})
+                if path == "/api/discovery/imports":
+                    raw = data.get("text")
+                    if not isinstance(raw, str):
+                        raise InvalidInput("Fictional discovery text required")
+                    return self._json(200, store.import_discovery(raw.encode("utf-8")))
+                discovery_link = re.fullmatch(rf"/api/cases/{ID_PART}/discovery-links", path)
+                if discovery_link:
+                    return self._json(201, {"link_id": store.link_discovery(
+                        discovery_link[1], data.get("question_id"), data.get("discovery_id"),
+                        data.get("applicability"), data.get("rationale"))})
+                rights_register = path == "/api/rights/sources"
+                if rights_register:
+                    return self._json(201, store.register_rights_source(
+                        data.get("source_key"), data.get("owner"), data.get("version_label"),
+                        data.get("retrieved_at"), data.get("permissions"),
+                        data.get("attribution"), data.get("retention")))
+                rights_revoke = re.fullmatch(r"/api/rights/sources/([0-9]+)/revoke", path)
+                if rights_revoke:
+                    return self._json(200, store.revoke_rights_source(
+                        int(rights_revoke[1]), data.get("reason")))
+                rights_correct = re.fullmatch(r"/api/rights/sources/([0-9]+)/correct", path)
+                if rights_correct:
+                    return self._json(200, store.correct_rights_source(
+                        int(rights_correct[1]), data.get("version_label"), data.get("permissions"),
+                        data.get("reason"), data.get("retrieved_at")))
+                broker_link = re.fullmatch(rf"/api/cases/{ID_PART}/broker-links", path)
+                if broker_link:
+                    return self._json(201, store.create_broker_link(
+                        broker_link[1], data.get("question_id"), data.get("rights_source_id"),
+                        data.get("relation"), data.get("applicability"), data.get("rationale"),
+                        data.get("citation_title"), data.get("excerpt")))
+                broker_review = re.fullmatch(rf"/api/cases/{ID_PART}/broker-links/([0-9]+)/review", path)
+                if broker_review:
+                    return self._json(200, store.review_broker_link(
+                        broker_review[1], int(broker_review[2]), data.get("relation"),
+                        data.get("applicability"), data.get("rationale")))
+                bio_assets = re.fullmatch(rf"/api/cases/{ID_PART}/biological-assets", path)
+                if bio_assets:
+                    return self._json(201, {"biological_asset_id": store.add_biological_asset(
+                        bio_assets[1], data.get("asset_id"), data.get("kind"), data.get("episode_id"),
+                        data.get("observed_date"), data.get("anchor_source_version_id"),
+                        data.get("specimen_state", "unknown"), data.get("specimen_id"),
+                        data.get("parent_asset_id"), data.get("pointer_label"))})
+                inventory = re.fullmatch(rf"/api/cases/{ID_PART}/biological-assets/([0-9]+)/inventory-assertions", path)
+                if inventory:
+                    return self._json(201, {"inventory_assertion_id": store.add_inventory_assertion(
+                        inventory[1], int(inventory[2]), data.get("source_version_id"),
+                        data.get("asserted_by"),
+                        location_state=data.get("location_state"), location_value=data.get("location_value"),
+                        quantity_state=data.get("quantity_state"), quantity_value=data.get("quantity_value"),
+                        custody_state=data.get("custody_state"), custody_value=data.get("custody_value"),
+                        consent_state=data.get("consent_state"), consent_value=data.get("consent_value"),
+                        rights_state=data.get("rights_state"), rights_value=data.get("rights_value"))})
                 drafts = re.fullmatch(rf"/api/cases/{ID_PART}/snapshots", path)
                 if drafts:
                     return self._json(201, {"snapshot_id": store.create_snapshot(
                         drafts[1], data.get("question_id"), data.get("summary"), data.get("source_ids"),
-                        data.get("evidence_assessment_ids"))})
+                        data.get("evidence_assessment_ids"), data.get("broker_link_ids"))})
                 review = re.fullmatch(rf"/api/cases/{ID_PART}/snapshots/([0-9]+)/review", path)
                 if review:
                     store.acknowledge_demo_review(review[1], int(review[2]), data.get("reviewer_label"))
