@@ -417,8 +417,10 @@ def main() -> None:
             assert "OI-SYNTHETIC-REPORT/1" in previous_text and "OI-SYNTHETIC-REPORT/1" in amended_text
             assert previous_text != amended_text, "amendment comparison lost original version difference"
             assert "PATH-ALPHA" in cd.evaluate("document.querySelector('#compare-title').textContent")
-            assert "no clinical or treatment determination" in cd.evaluate(
-                "document.querySelector('#compare-context').textContent")
+            comparison_scope = cd.evaluate(
+                "document.querySelector('#compare-context').textContent").lower()
+            assert "text-only comparison" in comparison_scope
+            assert "no clinical interpretation or treatment determination" in comparison_scope
             cd.evaluate("document.querySelector('#compare-close').click()")
             cd.wait("!document.querySelector('#compare-dialog').open",
                     "source comparison closes without losing the current case")
