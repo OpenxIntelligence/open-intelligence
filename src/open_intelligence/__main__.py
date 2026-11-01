@@ -13,6 +13,7 @@ from urllib.parse import urlsplit
 
 from tools.crossref_metadata import MetadataInputError, fetch_public_doi, project_work
 
+from .mission import build_patient_mission
 from .store import CaseStore, InvalidInput, MAX_SOURCE_BYTES
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -118,6 +119,9 @@ class Handler(BaseHTTPRequestHandler):
             case_state = re.fullmatch(rf"/api/cases/{ID_PART}/state", path)
             if case_state:
                 return self._json(200, store.state(case_state[1]))
+            case_mission = re.fullmatch(rf"/api/cases/{ID_PART}/mission", path)
+            if case_mission:
+                return self._json(200, build_patient_mission(store.state(case_mission[1])))
             source = re.fullmatch(rf"/api/cases/{ID_PART}/sources/([0-9]+)", path)
             if source:
                 return self._json(200, {"text": store.source_text(source[1], int(source[2]))})
