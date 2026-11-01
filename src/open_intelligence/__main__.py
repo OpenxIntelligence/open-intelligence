@@ -9,10 +9,11 @@ import re
 from pathlib import Path
 from threading import Lock
 from time import monotonic
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from tools.crossref_metadata import MetadataInputError, fetch_public_doi, project_work
 
+from .changes import changes_since_review
 from .investigation import (
     TEMPLATES,
     InvestigationError,
@@ -136,6 +137,15 @@ class Handler(BaseHTTPRequestHandler):
             case_state = re.fullmatch(rf"/api/cases/{ID_PART}/state", path)
             if case_state:
                 return self._json(200, store.state(case_state[1]))
+            changes = re.fullmatch(rf"/api/cases/{ID_PART}/changes-since-review", path)
+            if changes:
+                raw_since = parse_qs(urlsplit(self.path).query).get("since_event_id", [None])[0]
+                since = None
+                if raw_since is not None:
+                    if not raw_since.isdigit():
+                        raise InvalidInput("since_event_id must be a positive integer")
+                    since = int(raw_since)
+                return self._json(200, changes_since_review(store, changes[1], since_event_id=since))
             inv_list = re.fullmatch(rf"/api/cases/{ID_PART}/investigations", path)
             if inv_list:
                 return self._json(200, {"investigations": store.list_investigations(inv_list[1])})
