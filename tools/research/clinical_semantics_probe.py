@@ -7,6 +7,8 @@ Meaning: pinned NCI-GDC dictionary plus FHIR R4 MedicationStatement/Administrati
 """
 from __future__ import annotations
 import argparse
+import copy
+import re
 import json
 import math
 from collections import Counter
@@ -22,6 +24,14 @@ SENTINELS = {'unknown': 'unknown', 'not reported': 'not_reported',
              'not available': 'unavailable', '': 'empty'}
 
 
+# Manually cross-checked against case.yaml at DICT_COMMIT. Not a full GDC validator.
+INDEX_CATEGORIES = frozenset({'Diagnosis', 'First Patient Visit', 'First Treatment',
+    'Initial Genomic Sequencing', 'Recurrence', 'Sample Procurement', 'Study Enrollment'})
+# The pinned treatment/follow_up schemas define these inclusive day-count bounds.
+DAY_LIMIT = 32872
+SOURCE_PATH = re.compile(r'^/(?:diagnoses/(?:0|[1-9][0-9]*)/treatments/(?:0|[1-9][0-9]*)|follow_ups/(?:0|[1-9][0-9]*))$')
+
+
 def state(obj: dict, field: str, numeric: bool = False) -> dict:
     """Preserve raw state; never coerce text or turn absence into day zero."""
     value = obj.get(field)
@@ -35,8 +45,10 @@ def state(obj: dict, field: str, numeric: bool = False) -> dict:
     elif numeric:
         if isinstance(value, bool):
             label = 'invalid'
-        elif isinstance(value, (int, float)):
-            label = 'number' if math.isfinite(value) and float(value).is_integer() else 'invalid'
+        elif isinstance(value, int):
+            label = 'number' if -DAY_LIMIT <= value <= DAY_LIMIT else 'invalid'
+        elif isinstance(value, float):
+            label = 'number' if math.isfinite(value) and value.is_integer() and -DAY_LIMIT <= value <= DAY_LIMIT else 'invalid'
         else:
             label = 'unparsed'
     else:
@@ -46,7 +58,7 @@ def state(obj: dict, field: str, numeric: bool = False) -> dict:
 
 
 def anchor_known(anchor: dict) -> bool:
-    return anchor['state'] == 'value' and isinstance(anchor['raw'], str)
+    return anchor['state'] == 'value' and isinstance(anchor['raw'], str) and anchor['raw'] in INDEX_CATEGORIES
 
 
 def treatment(case: dict, obj: dict, path: str) -> dict:
@@ -86,7 +98,9 @@ def treatment(case: dict, obj: dict, path: str) -> dict:
             'receipt_consistency': consistency,
             'start': start, 'end': end, 'placement': placement,
             'prescribed_dose': state(obj, 'prescribed_dose'),
-            'treatment_dose': state(obj, 'treatment_dose')}
+            'treatment_dose': state(obj, 'treatment_dose'),
+            'prescribed_dose_units': state(obj, 'prescribed_dose_units'),
+            'treatment_dose_units': state(obj, 'treatment_dose_units')}
 
 
 def followup(case: dict, obj: dict, path: str) -> dict:
@@ -99,6 +113,50 @@ def followup(case: dict, obj: dict, path: str) -> dict:
             'time': time, 'anchor': anchor, 'placement': placement}
 
 
+def source_at(case: dict, path: str) -> dict:
+    """Resolve only supported occurrence paths, never guess identity or location."""
+    if not isinstance(path, str) or not SOURCE_PATH.fullmatch(path):
+        raise ValueError('Unsupported clinical source path')
+    value = case
+    try:
+        for part in path[1:].split('/'):
+            value = value[int(part)] if isinstance(value, list) else value[part]
+    except (KeyError, IndexError, TypeError, ValueError) as exc:
+        raise ValueError('Clinical source path does not resolve') from exc
+    if not isinstance(value, dict):
+        raise ValueError('Clinical source path is not an object')
+    return value
+
+
+def make_claim(case: dict, path: str) -> dict:
+    """Bind an attributed statement to exact source content. In-memory only.
+
+    Hashes detect mismatched content, not authenticity or clinical correctness.
+    Occurrence paths and whole-case fingerprints are snapshot-local; this is not
+    cross-revision identity resolution or selective dependency invalidation.
+    """
+    if not isinstance(case, dict) or not isinstance(case.get('case_id'), str) or not case['case_id']:
+        raise ValueError('Source case identity missing')
+    obj = source_at(case, path)
+    builder = followup if path.startswith('/follow_ups/') else treatment
+    result = builder(case, obj, path)
+    result.update(source_case_id=case['case_id'], source_case_sha256=digest(case),
+                  source_record_sha256=digest(obj), dictionary_commit=DICT_COMMIT,
+                  temporal_basis='Source-reported relative offsets; privacy transformations may apply',
+                  clinically_verified=False)
+    return copy.deepcopy(result)
+
+
+def verify_claim(case: dict, claim: dict) -> bool:
+    """Check source attachment and deterministic derivation, not clinical truth."""
+    if not isinstance(claim, dict):
+        return False
+    try:
+        return canonical(claim) == canonical(make_claim(case, claim.get('source_path')))
+    except (ValueError, KeyError, TypeError):
+        return False
+
+
 def audit(cases: list[dict]) -> dict:
     before = digest(cases)
     receipts, placements, anchors, starts, ends = (Counter() for _ in range(5))
@@ -109,18 +167,21 @@ def audit(cases: list[dict]) -> dict:
     counts = Counter(treatment_records=0, followup_records=0, positive_relative_intervals=0,
                      positive_records_without_numeric_start=0, nonpositive_with_numeric_start=0,
                      prescribed_without_treatment_dose=0, reversed_numeric_pairs=0,
-                     affirmative_with_reversed_pair=0, start_at_capping_boundary=0,
+                     affirmative_with_reversed_pair=0, start_at_schema_boundary=0,
+                     source_claims_verified=0, source_claim_verification_failures=0,
                      false_day_zero_if_missing_defaulted=0)
     with Projection(cases) as db:
-        roots = {r['case_key']: json.loads(r['payload']) for r in db.conn.execute("SELECT * FROM nodes WHERE kind='case'")}
+        roots = {case['case_id']: case for case in cases}
         for row in db.conn.execute("SELECT * FROM nodes WHERE kind IN ('treatment','follow_up')"):
             obj = json.loads(row['payload']); case = roots[row['case_key']]
+            r = make_claim(case, row['path'])
+            if canonical(obj) != canonical(source_at(case, row['path'])) or not verify_claim(case, r):
+                raise ValueError('Derived assertion does not match original source')
+            counts['source_claims_verified'] += 1
             if row['kind'] == 'follow_up':
-                r = followup(case, obj, row['path'])
                 counts['followup_records'] += 1
                 f_times[r['time']['state']] += 1; f_places[r['placement']] += 1
                 continue
-            r = treatment(case, obj, row['path'])
             counts['treatment_records'] += 1
             receipts[r['receipt']] += 1; placements[r['placement']] += 1
             anchors[r['anchor']['state']] += 1; starts[r['start']['state']] += 1; ends[r['end']['state']] += 1
@@ -130,7 +191,7 @@ def audit(cases: list[dict]) -> dict:
             counts['nonpositive_with_numeric_start'] += not yes and r['start']['state'] == 'number'
             counts['prescribed_without_treatment_dose'] += (r['prescribed_dose']['state'] == 'value' and r['treatment_dose']['state'] != 'value')
             counts['false_day_zero_if_missing_defaulted'] += r['start']['state'] in ('absent', 'null')
-            counts['start_at_capping_boundary'] += r['start']['state'] == 'number' and abs(r['start']['raw']) == 32872
+            counts['start_at_schema_boundary'] += r['start']['state'] == 'number' and abs(r['start']['raw']) == 32872
             if r['start']['state'] == r['end']['state'] == 'number' and r['end']['raw'] < r['start']['raw']:
                 counts['reversed_numeric_pairs'] += 1
                 counts['affirmative_with_reversed_pair'] += yes
@@ -154,7 +215,9 @@ def audit(cases: list[dict]) -> dict:
             'source_unchanged': before == digest(cases),
             'denominator': 'Source object occurrences, not adjudicated administrations or encounters',
             'calendar_dates_generated': 0, 'fhir_resources_generated': 0,
-            'clinical_decisions_generated': 0, 'row_level_records_published': False}
+            'clinical_decisions_generated': 0, 'row_level_records_published': False,
+            'temporal_precision': 'Reported offsets only; privacy transformations may change actual elapsed time',
+            'source_verification_scope': 'Snapshot-local content/derivation, not authentication or clinical adjudication'}
 
 
 def run_probe() -> dict:
@@ -165,10 +228,19 @@ def run_probe() -> dict:
     required = ('treatment_type:', 'treatment_type_administered:', 'treatment_or_therapy:', 'index_date:', 'days_to_treatment_start:', 'days_to_follow_up:')
     if not all(name in terms.decode('utf-8') for name in required):
         raise ValueError('Pinned semantic reference missing expected terms')
+    schema_receipts = {}
+    for schema in ('case', 'treatment', 'follow_up'):
+        _, schema_receipts[schema] = fetch_bytes(
+            'https://raw.githubusercontent.com/NCI-GDC/gdcdictionary/' + DICT_COMMIT +
+            '/src/gdcdictionary/schemas/' + schema + '.yaml')
     result = {'purpose': 'Source-semantic characterization; not clinical validation or FHIR conformance',
               'sampling': 'First 100 case IDs ascending per project; not random or representative',
               'mapping_receipt': mapping_receipt, 'semantic_reference': terms_receipt,
-              'dictionary_commit': DICT_COMMIT, 'experiments': {}}
+              'dictionary_commit': DICT_COMMIT, 'schema_receipts': schema_receipts,
+              'selected_source_rules': {'index_date_categories': sorted(INDEX_CATEGORIES),
+                  'day_offset_minimum': -DAY_LIMIT, 'day_offset_maximum': DAY_LIMIT,
+                  'qualification': 'Selected manually inspected field constraints; not full GDC/FHIR conformance'},
+              'experiments': {}}
     for project in PROJECTS:
         params = {'filters': canonical({'op': 'in', 'content': {'field': 'project.project_id', 'value': [project]}}),
                   'size': 100, 'sort': 'case_id:asc', 'expand': ','.join(EXPAND)}
