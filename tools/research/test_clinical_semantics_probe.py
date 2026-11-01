@@ -144,4 +144,46 @@ class SemanticTests(unittest.TestCase):
         for cases in [[BASE, BASE], [{}]]:
             with self.subTest(cases=cases), self.assertRaises(ValueError): audit(cases)
 
+    def test_legacy_type_control_does_not_pool_new_administered_type(self):
+        c = dict(BASE, diagnoses=[{'treatments': [{'treatment_type_administered': 'Chemotherapy'}]}])
+        self.assertEqual(audit([c])['type_only_control'],
+                         {'labeled_records': 0, 'explicit_no': 0, 'not_affirmative': 0})
+
+    def test_both_type_fields_are_preserved_separately(self):
+        r = treatment(BASE, {'treatment_type': 'Radiation',
+                             'treatment_type_administered': 'Chemotherapy'}, PATH)
+        self.assertEqual(r.get('legacy_type', {}).get('raw'), 'Radiation')
+        self.assertEqual(r.get('administered_type', {}).get('raw'), 'Chemotherapy')
+
+    def test_no_indicator_and_administered_label_preserve_conflict(self):
+        r = treatment(BASE, {'treatment_or_therapy': 'no',
+                             'treatment_type_administered': 'Chemotherapy'}, PATH)
+        self.assertEqual(r.get('receipt_consistency'), 'conflicting_source_fields')
+        self.assertEqual(r['receipt'], 'reported_no')
+        self.assertEqual(r['placement'], 'needs_receipt_review')
+
+    def test_administered_label_without_indicator_is_not_erased_or_promoted(self):
+        r = treatment(BASE, {'treatment_type_administered': 'Chemotherapy', START: 0}, PATH)
+        self.assertEqual(r.get('receipt_consistency'), 'administered_type_without_affirmative_indicator')
+        self.assertEqual(r['receipt'], 'absent')
+        self.assertEqual(r['placement'], 'needs_receipt_review')
+
+    def test_legacy_label_with_no_indicator_is_not_a_new_field_conflict(self):
+        r = treatment(BASE, {'treatment_type': 'Chemotherapy', 'treatment_or_therapy': 'no'}, PATH)
+        self.assertEqual(r.get('receipt_consistency'), 'indicator_only')
+        self.assertEqual(r['placement'], 'not_positive')
+
+    def test_new_field_comparison_has_its_own_denominator(self):
+        c = dict(BASE, diagnoses=[{'treatments': [
+            {'treatment_type_administered': 'A', 'treatment_or_therapy': 'yes'},
+            {'treatment_type_administered': 'A', 'treatment_or_therapy': 'no'},
+            {'treatment_type_administered': 'A'},
+            {'treatment_type_administered': 'Not Reported', 'treatment_or_therapy': 'no'}]}])
+        r = audit([c])
+        self.assertEqual(r.get('administered_type_comparison'),
+            {'labeled_records': 3, 'indicator_yes': 1, 'indicator_no': 1, 'indicator_other': 1})
+        self.assertEqual(r.get('receipt_consistency_states'),
+            {'indicator_and_administered_type': 1, 'conflicting_source_fields': 1,
+             'administered_type_without_affirmative_indicator': 1, 'indicator_only': 1})
+
 if __name__ == '__main__': unittest.main()

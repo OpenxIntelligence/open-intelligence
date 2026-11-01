@@ -55,6 +55,15 @@ def treatment(case: dict, obj: dict, path: str) -> dict:
     if receipt == 'value':
         token = raw['raw'].strip().casefold() if isinstance(raw['raw'], str) else None
         receipt = {'yes': 'reported_yes', 'no': 'reported_no'}.get(token, 'unrecognized')
+    legacy_type = state(obj, 'treatment_type')
+    administered_type = state(obj, 'treatment_type_administered')
+    administered_label = (administered_type['state'] == 'value' and
+                          isinstance(administered_type['raw'], str))
+    consistency = 'indicator_only'
+    if administered_label:
+        consistency = ('indicator_and_administered_type' if receipt == 'reported_yes' else
+                       'conflicting_source_fields' if receipt == 'reported_no' else
+                       'administered_type_without_affirmative_indicator')
     start = state(obj, 'days_to_treatment_start', True)
     end = state(obj, 'days_to_treatment_end', True)
     anchor = state(case, 'index_date')
@@ -67,8 +76,14 @@ def treatment(case: dict, obj: dict, path: str) -> dict:
             placement = 'relative_start_only'
             if end['state'] == 'number':
                 placement = 'relative_interval' if end['raw'] >= start['raw'] else 'held_reversed_interval'
+    if administered_label and receipt != 'reported_yes':
+        # The newer field has stronger semantics than legacy treatment_type.
+        # Preserve its assertion and disagreement rather than silently choosing.
+        placement = 'needs_receipt_review'
     return {'evidence_kind': 'registry_treatment_assertion', 'source_path': path,
             'receipt': receipt, 'receipt_source': raw, 'anchor': anchor,
+            'legacy_type': legacy_type, 'administered_type': administered_type,
+            'receipt_consistency': consistency,
             'start': start, 'end': end, 'placement': placement,
             'prescribed_dose': state(obj, 'prescribed_dose'),
             'treatment_dose': state(obj, 'treatment_dose')}
@@ -89,6 +104,8 @@ def audit(cases: list[dict]) -> dict:
     receipts, placements, anchors, starts, ends = (Counter() for _ in range(5))
     f_times, f_places = Counter(), Counter()
     control = Counter(labeled_records=0, explicit_no=0, not_affirmative=0)
+    newer = Counter(labeled_records=0, indicator_yes=0, indicator_no=0, indicator_other=0)
+    consistency = Counter()
     counts = Counter(treatment_records=0, followup_records=0, positive_relative_intervals=0,
                      positive_records_without_numeric_start=0, nonpositive_with_numeric_start=0,
                      prescribed_without_treatment_dose=0, reversed_numeric_pairs=0,
@@ -117,8 +134,12 @@ def audit(cases: list[dict]) -> dict:
             if r['start']['state'] == r['end']['state'] == 'number' and r['end']['raw'] < r['start']['raw']:
                 counts['reversed_numeric_pairs'] += 1
                 counts['affirmative_with_reversed_pair'] += yes
-            labeled = any(state(obj, key)['state'] == 'value' and isinstance(obj.get(key), str)
-                          for key in ('treatment_type', 'treatment_type_administered'))
+            consistency[r['receipt_consistency']] += 1
+            new_label = r['administered_type']['state'] == 'value' and isinstance(r['administered_type']['raw'], str)
+            if new_label:
+                newer['labeled_records'] += 1
+                newer['indicator_yes' if yes else 'indicator_no' if r['receipt'] == 'reported_no' else 'indicator_other'] += 1
+            labeled = r['legacy_type']['state'] == 'value' and isinstance(r['legacy_type']['raw'], str)
             if labeled:
                 control['labeled_records'] += 1
                 control['explicit_no'] += r['receipt'] == 'reported_no'
@@ -127,7 +148,10 @@ def audit(cases: list[dict]) -> dict:
             'treatment_placements': dict(placements), 'anchor_states_on_treatments': dict(anchors),
             'start_states': dict(starts), 'end_states': dict(ends),
             'followup_time_states': dict(f_times), 'followup_placements': dict(f_places),
-            'type_only_control': dict(control), 'source_unchanged': before == digest(cases),
+            'type_only_control': dict(control), 'administered_type_comparison': dict(newer),
+            'receipt_consistency_states': dict(consistency),
+            'receipt_basis': 'treatment_or_therapy indicator; newer administered-type assertion retained separately',
+            'source_unchanged': before == digest(cases),
             'denominator': 'Source object occurrences, not adjudicated administrations or encounters',
             'calendar_dates_generated': 0, 'fhir_resources_generated': 0,
             'clinical_decisions_generated': 0, 'row_level_records_published': False}
@@ -138,7 +162,7 @@ def run_probe() -> dict:
     raw, mapping_receipt = fetch_bytes('https://api.gdc.cancer.gov/cases/_mapping')
     validate_expansions(EXPAND, json.loads(raw).get('expand'))
     terms, terms_receipt = fetch_bytes(TERMS_URL)
-    required = ('treatment_type:', 'treatment_or_therapy:', 'index_date:', 'days_to_treatment_start:', 'days_to_follow_up:')
+    required = ('treatment_type:', 'treatment_type_administered:', 'treatment_or_therapy:', 'index_date:', 'days_to_treatment_start:', 'days_to_follow_up:')
     if not all(name in terms.decode('utf-8') for name in required):
         raise ValueError('Pinned semantic reference missing expected terms')
     result = {'purpose': 'Source-semantic characterization; not clinical validation or FHIR conformance',
