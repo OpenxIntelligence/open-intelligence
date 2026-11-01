@@ -1,8 +1,9 @@
 # Literature/trials discovery slice
 
-Bounded, standalone slice on main. Maps to backlog OI-008 (metadata-only
+Bounded slice on main. Maps to backlog OI-008 (metadata-only
 discovery, labelled) and OI-017 (candidate screening stays distinct from
-confirmed eligibility).
+confirmed eligibility). The rights-linkage follow-up is implemented in
+this doc's broker section; the format and guard below are unchanged.
 
 ## What it is
 
@@ -35,24 +36,58 @@ confirmed eligibility).
 
 ## Routes
 
-- `GET /api/discovery` — all fictional discovery items.
-- `POST /api/discovery/imports` — import one fixture text.
-- `GET /api/cases/<CASE>/discovery` — that case's discovery links.
+- `GET /api/discovery` — all fictional discovery items, each with its
+  rights linkage (`rights_source_id`, `rights_state` or `unlinked`).
+- `POST /api/discovery/imports` — import one fixture text, with optional
+  `rights_source_id` (see the broker section).
+- `GET /api/cases/<CASE>/discovery` — that case's discovery links,
+  including invalidated ones with their cause.
 - `POST /api/cases/<CASE>/discovery-links` — link an item to a case question
-  with human-entered applicability and rationale (15–800 characters).
-  Rejects unknown cases, questions outside the case, unknown items, and
-  duplicate links.
+  with human-entered applicability and rationale (15–800 characters),
+  with optional `broker_link_ids` (see the broker section).
+  Rejects unknown cases, questions outside the case, unknown items,
+  items bound to a non-active rights row, and duplicate links.
 
-## Link to the rights broker (after PR #42 merges)
+## Link to the rights broker
 
-This slice deliberately does not depend on PR #42's rights broker: it is
-standalone on main. After #42 merges, the follow-up is to attach discovery
-items to rights rows — the import path should accept an optional rights
-reference, and the link endpoint should accept optional broker link ids —
-so a revocation or correction can invalidate dependent discovery links the
-way it invalidates evidence drafts. That follow-up is not in this PR; the
-rights state of every item here is `original-synthetic` fictional content
-only, which needs no external permission.
+Both halves of the recorded follow-up are implemented: discovery items
+and links bind to rights rows, and revocation or correction invalidates
+dependent discovery links the way it invalidates evidence drafts.
+
+Linkage rule:
+
+- `POST /api/discovery/imports` accepts an optional `rights_source_id`,
+  stored on the item. The row must exist and be active. Keys and bindings
+  are immutable: identical bytes re-import as a duplicate, changed bytes
+  under an existing key are rejected, and a binding claim that differs
+  from the stored one is rejected.
+- `POST /api/cases/<CASE>/discovery-links` accepts optional
+  `broker_link_ids`, validated like draft attachments: same case, same
+  question, active rights row. New links also fail closed when the
+  item's own bound row is no longer active.
+- Unknown rights are first-class: an item with no rights row is reported
+  as `unlinked` in `GET /api/discovery` and in link projections, never
+  assumed permitted. Unlinked items stay listable and linkable.
+
+Invalidation behavior:
+
+- Revocation or correction of a rights row marks every dependent valid
+  link `invalid`, with `invalidated_cause` (`revocation`/`correction`),
+  the rights row id, and a timestamp. A link depends on the row when its
+  item is bound to it or when it cites a broker link that is.
+- Links are never deleted: rationale, applicability, broker bindings, and
+  the item stay readable as history, the item stays in
+  `GET /api/discovery`, and a per-case `discovery_invalidated` event is
+  recorded. Unrelated links are untouched. Revoke/correct responses list
+  `invalidated_discovery_links` alongside `invalidated_snapshots`.
+- After a correction the item's binding still points at the superseded
+  row as provenance, so new links fail closed rather than silently
+  carrying the item forward under new terms; explicit re-attachment is
+  out of scope for this slice.
+- A permission record is explicitly NOT proof of permission: the broker
+  language in `docs/RIGHTS_BROKER.md` governs. The gate enforces what
+  the record says and fails closed; it never verifies legal truth. No
+  external fetching, no model involvement in any gate.
 
 ## Deliberately not done
 
@@ -61,3 +96,6 @@ only, which needs no external permission.
   backlog row mapping is recorded here instead: OI-008, OI-017).
 - No Crossref live lookup in this slice; the existing bibliography path is
   the only live metadata route, and it stays operator opt-in.
+- Broker-link re-review does not invalidate discovery links citing that
+  broker link; only revocation and correction of a rights row do. Flag as
+  a follow-up if re-review semantics need to propagate to discovery.
