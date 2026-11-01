@@ -24,6 +24,7 @@ from .investigation import (
     validate_output,
 )
 from .store import CaseStore, InvalidInput, MAX_SOURCE_BYTES
+from .timeline import case_timeline
 
 ROOT = Path(__file__).resolve().parents[2]
 WEB = ROOT / "web"
@@ -150,6 +151,9 @@ class Handler(BaseHTTPRequestHandler):
                         raise InvalidInput("since_event_id must be a positive integer")
                     since = int(raw_since)
                 return self._json(200, changes_since_review(store, changes[1], since_event_id=since))
+            timeline = re.fullmatch(rf"/api/cases/{ID_PART}/timeline", path)
+            if timeline:
+                return self._json(200, case_timeline(store, timeline[1]))
             inv_list = re.fullmatch(rf"/api/cases/{ID_PART}/investigations", path)
             if inv_list:
                 return self._json(200, {"investigations": store.list_investigations(inv_list[1])})
