@@ -34,10 +34,19 @@ function metric(number, label) {
   wrap.append(node('span', number, 'number'), node('span', label, 'name'));
   return wrap;
 }
+function focusOverviewFromCasePicker(event) {
+  if (event.key !== 'Tab' || event.shiftKey || event.defaultPrevented) return;
+  if (document.activeElement !== el('case-picker')) return;
+  const overviewLink = document.querySelector('.rail nav a[href="#overview"]');
+  if (!overviewLink) return;
+  event.preventDefault();
+  overviewLink.focus();
+}
 async function initialize() {
   try {
     const cases = await api('/api/cases');
     const picker = el('case-picker');
+    picker.addEventListener('keydown', focusOverviewFromCasePicker);
     for (const entry of cases) {
       const option = node('option', entry.label + ' · ' + entry.case_id);
       option.value = entry.case_id;
@@ -170,6 +179,47 @@ function renderTimeline() {
   }
 }
 
+function renderBiologicalAssets() {
+  clear('asset-list');
+  const assets = active.biological_assets || [];
+  const assertions = active.biological_inventory_assertions || [];
+  if (!assets.length) { empty(el('asset-list'), 'No biological assets recorded for this case.'); return; }
+  const byId = new Map(assets.map(a => [a.id, a]));
+  const fieldText = (item, name) => item[name + '_state'] === 'known'
+    ? name + ': ' + item[name + '_value']
+    : name.toUpperCase() + ': UNKNOWN (explicit — not absent)';
+  for (const asset of assets) {
+    // Each asset is rendered separately, grouped by nothing: two tumors or
+    // two time points are never merged into one card.
+    const card = node('div', null, 'finding');
+    const heading = node('div', null, 'finding-head');
+    heading.append(node('strong', asset.asset_id + ' · ' + asset.kind),
+      pill('Episode ' + asset.episode_id, 'pill-neutral'));
+    const parent = asset.parent_asset_id === null ? 'Original — no parent'
+      : 'Derived from ' + (byId.get(asset.parent_asset_id)?.asset_id || ('#' + asset.parent_asset_id));
+    card.append(heading,
+      node('p', 'Observed ' + asset.observed_date + ' · Specimen: ' +
+        (asset.specimen_state === 'recorded' ? asset.specimen_id : 'UNKNOWN (explicit — not absent)') +
+        ' · ' + parent + ' · Creation anchor: source version #' + asset.anchor_source_version_id, 'snapshot-meta'));
+    if (asset.pointer_label) card.append(node('p', 'Pointer label only, no file stored: ' + asset.pointer_label, 'muted tiny'));
+    const mine = assertions.filter(a => a.asset_id === asset.id);
+    if (!mine.length) {
+      card.append(node('p', 'No inventory assertion recorded — inventory unknown, not absent.', 'muted'));
+    }
+    for (const item of mine) {
+      const box = node('div', null, 'snapshot');
+      const top = node('div', null, 'topline');
+      top.append(node('strong', 'Inventory assertion #' + item.id + ' · ' + item.asserted_by),
+        pill(item.state, item.state === 'stale' ? 'pill-alert' : ''));
+      box.append(top, node('p', ['location', 'quantity', 'custody', 'consent', 'rights']
+        .map(name => fieldText(item, name)).join(' · '), 'snapshot-meta'),
+        node('span', 'Source version #' + item.source_version_id +
+          (item.state === 'stale' ? ' · STALE: source amended; re-assert against the current version explicitly' : ''), 'ref'));
+      card.append(box);
+    }
+    el('asset-list').append(card);
+  }
+}
 function render() {
   const sameCase = renderedCaseId === caseId;
   const priorQuestion = sameCase ? el('question-choice').value : null;
@@ -210,6 +260,7 @@ function render() {
     card.append(heading, node('p', assertion.quote, 'quoted'), node('span', 'Exact source version #' + assertion.source_version_id + ' · line ' + assertion.source_line, 'ref'));
     el('assertion-list').append(card);
   }
+  renderBiologicalAssets();
   clear('question-list'); clear('question-choice');
   if (!active.questions.length) empty(el('question-list'), 'Add an unresolved question to begin.');
   for (const question of active.questions) {

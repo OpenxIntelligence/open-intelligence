@@ -203,6 +203,23 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(201, {"assessment_id": store.assess_synthetic_evidence(
                         evidence_assessment[1], data.get("question_id"), data.get("evidence_version_id"),
                         data.get("relation"), data.get("applicability"), data.get("rationale"))})
+                bio_assets = re.fullmatch(rf"/api/cases/{ID_PART}/biological-assets", path)
+                if bio_assets:
+                    return self._json(201, {"biological_asset_id": store.add_biological_asset(
+                        bio_assets[1], data.get("asset_id"), data.get("kind"), data.get("episode_id"),
+                        data.get("observed_date"), data.get("anchor_source_version_id"),
+                        data.get("specimen_state", "unknown"), data.get("specimen_id"),
+                        data.get("parent_asset_id"), data.get("pointer_label"))})
+                inventory = re.fullmatch(rf"/api/cases/{ID_PART}/biological-assets/([0-9]+)/inventory-assertions", path)
+                if inventory:
+                    return self._json(201, {"inventory_assertion_id": store.add_inventory_assertion(
+                        inventory[1], int(inventory[2]), data.get("source_version_id"),
+                        data.get("asserted_by"),
+                        location_state=data.get("location_state"), location_value=data.get("location_value"),
+                        quantity_state=data.get("quantity_state"), quantity_value=data.get("quantity_value"),
+                        custody_state=data.get("custody_state"), custody_value=data.get("custody_value"),
+                        consent_state=data.get("consent_state"), consent_value=data.get("consent_value"),
+                        rights_state=data.get("rights_state"), rights_value=data.get("rights_value"))})
                 drafts = re.fullmatch(rf"/api/cases/{ID_PART}/snapshots", path)
                 if drafts:
                     return self._json(201, {"snapshot_id": store.create_snapshot(
