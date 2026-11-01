@@ -307,6 +307,48 @@ class CaseStore:
         self.db.execute("INSERT INTO events (case_id,kind,details,occurred_at) VALUES (?,?,?,?)",
                         (case_id, kind, json.dumps(details, sort_keys=True), now_utc()))
 
+    # Adapter-contract hooks (OI-017): these write ONLY to the existing
+    # events ledger and the existing quarantine table. They create no second
+    # source ledger; source bytes still enter only via import_report.
+    ADAPTER_EVENT_KINDS = frozenset({
+        "adapter_delivery_accepted", "adapter_delivery_rejected",
+        "adapter_delivery_quarantined", "adapter_loss_receipt",
+        "adapter_authorization_revoked",
+    })
+
+    def record_adapter_event(self, case_id: str, kind: str, **details: object) -> None:
+        """Append an adapter receipt/revocation event to the existing ledger."""
+        self._case(case_id)
+        if kind not in self.ADAPTER_EVENT_KINDS:
+            raise InvalidInput("Unknown adapter event kind")
+        with self.db:
+            self._event(case_id, kind, **details)
+
+    def quarantine_adapter_delivery(self, case_id: str, raw: bytes,
+                                    declared_patient_id: str, reason: str) -> dict:
+        """Quarantine a rejected adapter delivery in the existing table.
+
+        Idempotent on (case, sha256, reason): a repeated rejected delivery
+        returns the original quarantine id and emits no new event.
+        """
+        case_id = self._case(case_id)
+        if not isinstance(raw, bytes) or not raw:
+            raise InvalidInput("Quarantined delivery requires raw bytes")
+        digest = hashlib.sha256(raw).hexdigest()
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            existing = self.db.execute(
+                "SELECT id FROM quarantine WHERE target_case_id=? AND sha256=? AND reason=? ORDER BY id LIMIT 1",
+                (case_id, digest, reason)).fetchone()
+            if existing:
+                return {"result": "quarantined", "reason": reason,
+                        "quarantine_id": existing["id"], "duplicate": True}
+            cur = self.db.execute(
+                "INSERT INTO quarantine (target_case_id,declared_patient_id,sha256,raw,reason,received_at) VALUES (?,?,?,?,?,?)",
+                (case_id, declared_patient_id, digest, raw, reason, now_utc()))
+            self._event(case_id, "source_quarantined", quarantine_id=cur.lastrowid, reason=reason)
+            return {"result": "quarantined", "reason": reason, "quarantine_id": cur.lastrowid}
+
     def _case(self, case_id: str) -> str:
         valid_id(case_id)
         if not self.db.execute("SELECT 1 FROM cases WHERE case_id=?", (case_id,)).fetchone():
