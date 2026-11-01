@@ -50,6 +50,9 @@ jobs:
       - name: Treatment and follow-up source semantics
         if: always()
         run: python tools/research/clinical_semantics_probe.py --output research-results/semantics.json
+      - name: Trial registry, criterion uncertainty and prior-art characterization
+        if: always()
+        run: python tools/research/trial_screening_probe.py --output research-results/trial-screening.json
       - name: Reproducibility receipt
         if: always()
         run: |
