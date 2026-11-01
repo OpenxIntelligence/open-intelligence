@@ -112,6 +112,12 @@ class HttpTests(unittest.TestCase):
             self.assertIn('disabled by default', error['error'])
             mock_fetch.assert_not_called()
 
+    def test_wrong_patient_example_serves_declared_other_case(self):
+        status, record = self.request('/api/examples/wrong-patient')
+        self.assertEqual(status, 200)
+        self.assertIn('Patient: CASE-BETA', record['text'])
+        self.assertIn('PATH-OTHER', record['text'])
+
     def test_bibliography_live_gate_passes_only_doi_and_is_operator_controlled(self):
         handler = self.server.RequestHandlerClass
         prior = handler.allow_crossref_live
@@ -140,12 +146,16 @@ class HttpTests(unittest.TestCase):
     def test_static_ui_and_csp(self):
         with urlopen(f'http://127.0.0.1:{self.port}/') as response:
             body = response.read().decode()
-            self.assertIn('SYNTHETIC DATA ONLY', body)
+            self.assertIn('FICTIONAL DEMO DATA — not a real patient', body)
             self.assertIn("default-src 'self'", response.headers['Content-Security-Policy'])
             # The incoming board and patient view are derived presentations of
             # the same case state, not separate data: both must be served.
             self.assertIn('id="incoming-board"', body)
             self.assertIn('id="patient-view"', body)
+        for name in ('style.css', 'tokens.css', 'base.css'):
+            with urlopen(f'http://127.0.0.1:{self.port}/{name}') as response:
+                self.assertEqual(response.headers.get('Content-Type'), 'text/css; charset=utf-8')
+                self.assertTrue(response.read().decode('utf-8').strip())
 
 
 if __name__ == '__main__':

@@ -1,0 +1,9 @@
+OI-SYNTHETIC-REPORT/1
+Patient: CASE-OI019-B
+Document: PATH-OI019-B
+Type: pathology
+Event-Date: 2026-08-01
+Issued-At: 2026-08-03
+Specimen: BIOPSY-OI019-B
+Finding: lesion-description|reported|Fictional sample shows a descriptive lesion finding pending further review.
+Finding: marker-a|negative|Fictional Marker A assay was performed and reported negative.
