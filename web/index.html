@@ -7,6 +7,7 @@
   <title>Open Intelligence — Investigation Workspace</title>
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
+  <script src="/mission.js" defer></script>
 </head>
 <body>
   <header class="top">
@@ -21,6 +22,7 @@
       <p class="muted tiny">Case data stays on this local machine. There is no identity verification or patient login.</p>
       <nav aria-label="Workspace sections">
         <a href="#overview">Overview</a>
+        <a href="#patient-mission">Patient Mission</a>
         <a href="#timeline">Longitudinal timeline</a>
         <a href="#sources">Sources &amp; assertions</a>
         <a href="#investigations">Investigations</a>
@@ -44,6 +46,28 @@
       </section>
       <div class="metrics" id="metrics" aria-live="polite"></div>
       <div id="notice" role="status" aria-live="polite" class="notice" hidden></div>
+
+      <section class="panel" id="patient-mission" aria-labelledby="patient-mission-title">
+        <div class="panel-head">
+          <div><div class="eyebrow">PATIENT MISSION · READ-ONLY PROJECTION</div><h2 id="patient-mission-title">Where the synthetic case workflow stands</h2></div>
+          <span id="mission-status" class="pill pill-neutral" aria-live="polite">Loading…</span>
+        </div>
+        <p class="muted"><strong>Workflow orientation only. Not a diagnosis or treatment recommendation.</strong> This surface projects the existing synthetic case ledger; it does not create clinical facts or authorize an action.</p>
+        <div class="metrics" id="mission-summary" aria-live="polite"></div>
+        <div class="workspace">
+          <div class="content-left">
+            <div><div class="subhead">What the current sources report</div><div id="mission-known" class="findings" aria-live="polite"></div></div>
+            <div><div class="subhead">What remains unresolved</div><div id="mission-unresolved" class="cards" aria-live="polite"></div></div>
+          </div>
+          <div class="content-right">
+            <div><div class="subhead">Material changes</div><div id="mission-changes" class="activity" aria-live="polite"></div></div>
+            <div><div class="subhead">Bounded next workflow actions</div><div id="mission-actions" class="cards" aria-live="polite"></div></div>
+          </div>
+        </div>
+        <div class="subhead">Guardrails</div>
+        <ul id="mission-guardrails" class="muted tiny"></ul>
+      </section>
+
       <div class="workspace">
         <div class="content-left">
           <section class="panel" id="timeline">
