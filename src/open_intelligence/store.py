@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
 
+from .rights import RightsError, check_link_content, normalize_permissions
+
 ID = re.compile(r"[A-Z][A-Z0-9-]{1,39}\Z")
 KEY = re.compile(r"[a-z][a-z0-9_-]{0,59}\Z")
 STATES = frozenset({"reported", "negative", "pending", "indeterminate", "not-reported", "not-assessed", "conflicting"})
@@ -278,6 +280,39 @@ CREATE TABLE IF NOT EXISTS evidence_changes (
   kind TEXT NOT NULL CHECK(kind IN ('amended','withdrawn')),
   reason TEXT NOT NULL, recorded_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS rights_sources (
+  id INTEGER PRIMARY KEY, source_key TEXT NOT NULL, version_label TEXT NOT NULL,
+  owner TEXT NOT NULL, retrieved_at TEXT NOT NULL, attribution TEXT, retention TEXT,
+  state TEXT NOT NULL CHECK(state IN ('active','revoked','superseded')),
+  created_at TEXT NOT NULL, previous_id INTEGER REFERENCES rights_sources(id),
+  UNIQUE(source_key, version_label)
+);
+CREATE TABLE IF NOT EXISTS rights_permissions (
+  rights_source_id INTEGER NOT NULL REFERENCES rights_sources(id),
+  item TEXT NOT NULL, use TEXT NOT NULL,
+  permission TEXT NOT NULL CHECK(permission IN ('allowed','denied','unknown')),
+  PRIMARY KEY(rights_source_id, item, use)
+);
+CREATE TABLE IF NOT EXISTS broker_links (
+  id INTEGER PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(case_id),
+  question_id INTEGER NOT NULL REFERENCES questions(id),
+  rights_source_id INTEGER NOT NULL REFERENCES rights_sources(id),
+  relation TEXT NOT NULL CHECK(relation IN ('supports','contradicts','context','unknown')),
+  applicability TEXT NOT NULL CHECK(applicability IN ('applicable','limited','not_applicable','unknown')),
+  rationale TEXT NOT NULL, citation_title TEXT, excerpt TEXT,
+  mode TEXT NOT NULL CHECK(mode IN ('full','metadata_only','citation_only')),
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS snapshot_broker_links (
+  snapshot_id INTEGER NOT NULL REFERENCES snapshots(id),
+  broker_link_id INTEGER NOT NULL REFERENCES broker_links(id),
+  PRIMARY KEY(snapshot_id, broker_link_id)
+);
+CREATE TABLE IF NOT EXISTS rights_events (
+  id INTEGER PRIMARY KEY, rights_source_id INTEGER NOT NULL REFERENCES rights_sources(id),
+  kind TEXT NOT NULL CHECK(kind IN ('registered','revoked','superseded','link_created','link_reviewed')),
+  reason TEXT NOT NULL, recorded_at TEXT NOT NULL
+);
 CREATE INDEX IF NOT EXISTS idx_assessments_evidence ON evidence_assessments(evidence_version_id);
 CREATE INDEX IF NOT EXISTS idx_snapshot_evidence_assessment ON snapshot_evidence(assessment_id);
 CREATE INDEX IF NOT EXISTS idx_sources_case ON source_versions(case_id, document_id, version);
@@ -513,6 +548,287 @@ class CaseStore:
                         assessment_id=cur.lastrowid, evidence_version_id=evidence_version_id)
             return int(cur.lastrowid)
 
+    # ---- Rights-qualified external evidence broker (issue #2) ----
+    # A broker link never fetches external content and never verifies that
+    # a rights record is legally true. It only enforces, deterministically,
+    # what the record says: unknown means no. Revocation and correction
+    # invalidate dependent drafts the same way withdrawal does for
+    # synthetic evidence, and prior rows are kept, never overwritten.
+
+    @staticmethod
+    def _valid_source_key(value: object) -> str:
+        if not isinstance(value, str) or not 1 <= len(value.strip()) <= 120 \
+                or any(ch.isspace() or ord(ch) < 33 or ord(ch) > 126 for ch in value):
+            raise InvalidInput("Rights source key must be 1–120 printable non-space characters")
+        return value.strip()
+
+    @staticmethod
+    def _valid_optional_text(value: object, *, max_len: int, field: str) -> str | None:
+        if value is None:
+            return None
+        if not isinstance(value, str) or not value.strip() or len(value.strip()) > max_len:
+            raise InvalidInput(f"{field} must be 1–{max_len} characters")
+        return value.strip()
+
+    def _rights_row(self, rights_source_id: int) -> sqlite3.Row:
+        row = self.db.execute(
+            "SELECT * FROM rights_sources WHERE id=?", (rights_source_id,)).fetchone()
+        if not row:
+            raise InvalidInput("Rights source not found")
+        return row
+
+    def _rights_permissions(self, rights_source_id: int) -> dict[str, dict[str, str]]:
+        rows = self.db.execute(
+            "SELECT item, use, permission FROM rights_permissions WHERE rights_source_id=?",
+            (rights_source_id,)).fetchall()
+        permissions: dict[str, dict[str, str]] = {}
+        for row in rows:
+            permissions.setdefault(row["item"], {})[row["use"]] = row["permission"]
+        return permissions
+
+    def _invalidate_broker_source(self, rights_source_id: int, *, reason: str) -> list[int]:
+        """Invalidate non-stale snapshots citing this rights source row.
+
+        Caller must own a write transaction. History is retained: the
+        snapshot rows stay, marked stale, and their questions reopen.
+        """
+        rows = self.db.execute("""SELECT DISTINCT s.id,s.case_id,s.question_id
+            FROM snapshots s JOIN snapshot_broker_links sbl ON sbl.snapshot_id=s.id
+            JOIN broker_links bl ON bl.id=sbl.broker_link_id
+            WHERE bl.rights_source_id=? AND s.state!='stale'""",
+            (rights_source_id,)).fetchall()
+        invalidated = [int(row["id"]) for row in rows]
+        if invalidated:
+            ids = ",".join("?" for _ in invalidated)
+            self.db.execute(f"UPDATE snapshots SET state='stale' WHERE id IN ({ids})", invalidated)
+            self.db.execute(f"""UPDATE questions SET state='open' WHERE id IN
+                (SELECT DISTINCT question_id FROM snapshots WHERE id IN ({ids}))""", invalidated)
+            affected = {str(row["case_id"]) for row in rows}
+            for case_id in sorted(affected):
+                changed = [int(row["id"]) for row in rows if row["case_id"] == case_id]
+                self._event(case_id, "broker_invalidated",
+                            rights_source_id=rights_source_id,
+                            reason=reason, invalidated_snapshots=changed)
+        return invalidated
+
+    def register_rights_source(self, source_key: object, owner: object, version_label: object,
+                               retrieved_at: object, permissions: object,
+                               attribution: object = None, retention: object = None) -> dict:
+        """Record one versioned rights manifest. Unknown permissions fail closed."""
+        key = self._valid_source_key(source_key)
+        if not isinstance(owner, str) or not 2 <= len(owner.strip()) <= 200:
+            raise InvalidInput("Rights source owner must be 2–200 characters")
+        if not isinstance(version_label, str) or not 1 <= len(version_label.strip()) <= 80:
+            raise InvalidInput("Rights version label must be 1–80 characters")
+        retrieved = valid_date(retrieved_at) if isinstance(retrieved_at, str) else None
+        if retrieved is None:
+            raise InvalidInput("Dates must use YYYY-MM-DD")
+        try:
+            normalized = normalize_permissions(permissions)
+        except RightsError as error:
+            raise InvalidInput(str(error)) from error
+        attribution_text = self._valid_optional_text(attribution, max_len=300, field="Attribution")
+        retention_text = self._valid_optional_text(retention, max_len=300, field="Retention")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            try:
+                cur = self.db.execute("""INSERT INTO rights_sources
+                    (source_key,version_label,owner,retrieved_at,attribution,retention,state,created_at,previous_id)
+                    VALUES (?,?,?,?,?,?, 'active',?,NULL)""",
+                    (key, version_label.strip(), owner.strip(), retrieved,
+                     attribution_text, retention_text, now_utc()))
+            except sqlite3.IntegrityError as error:
+                raise InvalidInput("Rights source version already recorded") from error
+            rights_id = int(cur.lastrowid)
+            for item in sorted(normalized):
+                for use in sorted(normalized[item]):
+                    self.db.execute("""INSERT INTO rights_permissions
+                        (rights_source_id,item,use,permission) VALUES (?,?,?,?)""",
+                        (rights_id, item, use, normalized[item][use]))
+            self.db.execute("""INSERT INTO rights_events
+                (rights_source_id,kind,reason,recorded_at) VALUES (?,'registered',?,?)""",
+                (rights_id, "Rights manifest recorded", now_utc()))
+            return {"rights_source_id": rights_id, "mode": "registered"}
+
+    def revoke_rights_source(self, rights_source_id: int, reason: str) -> dict:
+        """Revoke an ACTIVE rights row; dependent drafts go stale. History kept."""
+        if type(rights_source_id) is not int or rights_source_id < 1:
+            raise InvalidInput("Invalid rights source ID")
+        if not isinstance(reason, str) or not 10 <= len(reason.strip()) <= 600:
+            raise InvalidInput("Revocation requires a 10–600 character reason")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            row = self._rights_row(rights_source_id)
+            if row["state"] != "active":
+                raise InvalidInput("Only an active rights source can be revoked")
+            self.db.execute("UPDATE rights_sources SET state='revoked' WHERE id=?", (rights_source_id,))
+            self.db.execute("""INSERT INTO rights_events
+                (rights_source_id,kind,reason,recorded_at) VALUES (?,'revoked',?,?)""",
+                (rights_source_id, reason.strip(), now_utc()))
+            invalidated = self._invalidate_broker_source(rights_source_id, reason="revocation")
+            return {"result": "revoked", "invalidated_snapshots": invalidated}
+
+    def correct_rights_source(self, rights_source_id: int, version_label: object,
+                              permissions: object, reason: str,
+                              retrieved_at: object = None) -> dict:
+        """Supersede an ACTIVE rights row with a new versioned manifest.
+
+        The old row is kept (state 'superseded'), drafts citing it go
+        stale, and new drafts must use the new row. Nothing is silently
+        re-permitted: the new row's own permissions gate its links.
+        """
+        if type(rights_source_id) is not int or rights_source_id < 1:
+            raise InvalidInput("Invalid rights source ID")
+        if not isinstance(reason, str) or not 10 <= len(reason.strip()) <= 600:
+            raise InvalidInput("Correction requires a 10–600 character reason")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            old = self._rights_row(rights_source_id)
+            if old["state"] != "active":
+                raise InvalidInput("Only an active rights source can be corrected")
+            if not isinstance(version_label, str) or not 1 <= len(version_label.strip()) <= 80:
+                raise InvalidInput("Rights version label must be 1–80 characters")
+            if version_label.strip() == old["version_label"]:
+                raise InvalidInput("Correction requires a new version label")
+            try:
+                normalized = normalize_permissions(permissions)
+            except RightsError as error:
+                raise InvalidInput(str(error)) from error
+            retrieved = old["retrieved_at"]
+            if retrieved_at is not None:
+                retrieved = valid_date(retrieved_at) if isinstance(retrieved_at, str) else None
+                if retrieved is None:
+                    raise InvalidInput("Dates must use YYYY-MM-DD")
+            try:
+                cur = self.db.execute("""INSERT INTO rights_sources
+                    (source_key,version_label,owner,retrieved_at,attribution,retention,state,created_at,previous_id)
+                    VALUES (?,?,?,?,?,?, 'active',?,?)""",
+                    (old["source_key"], version_label.strip(), old["owner"], retrieved,
+                     old["attribution"], old["retention"], now_utc(), rights_source_id))
+            except sqlite3.IntegrityError as error:
+                raise InvalidInput("Rights source version already recorded") from error
+            new_id = int(cur.lastrowid)
+            for item in sorted(normalized):
+                for use in sorted(normalized[item]):
+                    self.db.execute("""INSERT INTO rights_permissions
+                        (rights_source_id,item,use,permission) VALUES (?,?,?,?)""",
+                        (new_id, item, use, normalized[item][use]))
+            self.db.execute("UPDATE rights_sources SET state='superseded' WHERE id=?", (rights_source_id,))
+            self.db.execute("""INSERT INTO rights_events
+                (rights_source_id,kind,reason,recorded_at) VALUES (?,'superseded',?,?)""",
+                (rights_source_id, reason.strip(), now_utc()))
+            self.db.execute("""INSERT INTO rights_events
+                (rights_source_id,kind,reason,recorded_at) VALUES (?,'registered',?,?)""",
+                (new_id, reason.strip(), now_utc()))
+            invalidated = self._invalidate_broker_source(rights_source_id, reason="correction")
+            return {"rights_source_id": new_id, "superseded_id": rights_source_id,
+                    "invalidated_snapshots": invalidated}
+
+    def create_broker_link(self, case_id: str, question_id: int, rights_source_id: int,
+                           relation: str, applicability: str, rationale: str,
+                           citation_title: object = None, excerpt: object = None) -> dict:
+        """Attach one rights-gated external source to one case question.
+
+        No content is stored beyond what the rights row permits: an
+        excerpt only in full mode, a title only with metadata (or full)
+        permission, otherwise citation identity alone. The link carries a
+        human-entered review (relation/applicability), never a model
+        verdict; unknown states are first-class, not errors.
+        """
+        self._case(case_id)
+        if type(question_id) is not int or type(rights_source_id) is not int:
+            raise InvalidInput("Question and rights source IDs must be integers")
+        if relation not in EVIDENCE_RELATIONS or applicability not in EVIDENCE_APPLICABILITY:
+            raise InvalidInput("Invalid evidence relationship or applicability")
+        if relation == "supports" and applicability == "not_applicable":
+            raise InvalidInput("An inapplicable source cannot be labelled as supporting this question")
+        if not isinstance(rationale, str) or not 15 <= len(rationale.strip()) <= 800:
+            raise InvalidInput("Broker link rationale must be 15–800 characters")
+        title = self._valid_optional_text(citation_title, max_len=180, field="Citation title")
+        if excerpt is not None:
+            if not isinstance(excerpt, str) or not 10 <= len(excerpt.strip()) <= 1200:
+                raise InvalidInput("Excerpt must be 10–1200 characters")
+            excerpt = excerpt.strip()
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            if not self.db.execute("SELECT 1 FROM questions WHERE id=? AND case_id=?",
+                                   (question_id, case_id)).fetchone():
+                raise InvalidInput("Question not in this case")
+            row = self._rights_row(rights_source_id)
+            if row["state"] != "active":
+                raise InvalidInput("Rights source is not active")
+            permissions = self._rights_permissions(rights_source_id)
+            try:
+                mode = check_link_content(permissions, citation_title=title, excerpt=excerpt)
+            except RightsError as error:
+                raise InvalidInput(str(error)) from error
+            cur = self.db.execute("""INSERT INTO broker_links
+                (case_id,question_id,rights_source_id,relation,applicability,rationale,
+                 citation_title,excerpt,mode,created_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                (case_id, question_id, rights_source_id, relation, applicability,
+                 rationale.strip(), title, excerpt, mode, now_utc()))
+            link_id = int(cur.lastrowid)
+            self.db.execute("""INSERT INTO rights_events
+                (rights_source_id,kind,reason,recorded_at) VALUES (?,'link_created',?,?)""",
+                (rights_source_id, f"Broker link {link_id} for case {case_id}", now_utc()))
+            self._event(case_id, "broker_link_created",
+                        broker_link_id=link_id, rights_source_id=rights_source_id, mode=mode)
+            return {"broker_link_id": link_id, "mode": mode}
+
+    def review_broker_link(self, case_id: str, broker_link_id: int, relation: str,
+                           applicability: str, rationale: str) -> dict:
+        """Human re-review of a broker link, scoped to its own case.
+
+        Revoked sources cannot be re-blessed. A re-review changes what
+        the link means, so drafts already citing it go stale rather than
+        silently changing meaning — the same rule as an amendment.
+        """
+        self._case(case_id)
+        if type(broker_link_id) is not int or broker_link_id < 1:
+            raise InvalidInput("Invalid broker link ID")
+        if relation not in EVIDENCE_RELATIONS or applicability not in EVIDENCE_APPLICABILITY:
+            raise InvalidInput("Invalid evidence relationship or applicability")
+        if relation == "supports" and applicability == "not_applicable":
+            raise InvalidInput("An inapplicable source cannot be labelled as supporting this question")
+        if not isinstance(rationale, str) or not 15 <= len(rationale.strip()) <= 800:
+            raise InvalidInput("Broker link rationale must be 15–800 characters")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            link = self.db.execute("SELECT * FROM broker_links WHERE id=?", (broker_link_id,)).fetchone()
+            if not link or link["case_id"] != case_id:
+                raise InvalidInput("Broker link not found in this case")
+            row = self._rights_row(int(link["rights_source_id"]))
+            if row["state"] != "active":
+                raise InvalidInput("Cannot review a link whose rights source is not active")
+            self.db.execute("""UPDATE broker_links SET relation=?,applicability=?,rationale=?
+                WHERE id=?""", (relation, applicability, rationale.strip(), broker_link_id))
+            self.db.execute("""INSERT INTO rights_events
+                (rights_source_id,kind,reason,recorded_at) VALUES (?,'link_reviewed',?,?)""",
+                (int(link["rights_source_id"]), f"Broker link {broker_link_id} re-reviewed", now_utc()))
+            rows = self.db.execute("""SELECT DISTINCT s.id,s.case_id,s.question_id
+                FROM snapshots s JOIN snapshot_broker_links sbl ON sbl.snapshot_id=s.id
+                WHERE sbl.broker_link_id=? AND s.state!='stale'""", (broker_link_id,)).fetchall()
+            invalidated = [int(r["id"]) for r in rows]
+            if invalidated:
+                ids = ",".join("?" for _ in invalidated)
+                self.db.execute(f"UPDATE snapshots SET state='stale' WHERE id IN ({ids})", invalidated)
+                self.db.execute(f"""UPDATE questions SET state='open' WHERE id IN
+                    (SELECT DISTINCT question_id FROM snapshots WHERE id IN ({ids}))""", invalidated)
+                self._event(case_id, "broker_invalidated",
+                            broker_link_id=broker_link_id,
+                            reason="review", invalidated_snapshots=invalidated)
+            return {"result": "reviewed", "broker_link_id": broker_link_id,
+                    "invalidated_snapshots": invalidated}
+
+    def rights_sources(self) -> list[dict]:
+        """All rights manifests with their permission maps, for inspection."""
+        rows = self._dicts(self.db.execute(
+            "SELECT * FROM rights_sources ORDER BY source_key, id").fetchall())
+        for row in rows:
+            row["permissions"] = self._rights_permissions(int(row["id"]))
+        return rows
+
     def synthetic_evidence_text(self, evidence_version_id: int) -> str:
         if type(evidence_version_id) is not int or evidence_version_id < 1:
             raise InvalidInput("Invalid evidence version ID")
@@ -533,7 +849,8 @@ class CaseStore:
         return int(cur.lastrowid)
 
     def create_snapshot(self, case_id: str, question_id: int, summary: str, source_ids: list[int],
-                        evidence_assessment_ids: list[int] | None = None) -> int:
+                        evidence_assessment_ids: list[int] | None = None,
+                        broker_link_ids: list[int] | None = None) -> int:
         self._case(case_id)
         if not isinstance(summary, str) or not 10 <= len(summary.strip()) <= MAX_SUMMARY:
             raise InvalidInput("Draft must have 10–3000 characters")
@@ -547,6 +864,12 @@ class CaseStore:
             len(evidence_assessment_ids) > 50 or
             any(type(x) is not int or x < 1 for x in evidence_assessment_ids)):
             raise InvalidInput("Evidence assessment IDs must be unique positive integers; maximum 50")
+        broker_link_ids = [] if broker_link_ids is None else broker_link_ids
+        if (not isinstance(broker_link_ids, list) or
+            len(broker_link_ids) != len(set(str(x) for x in broker_link_ids)) or
+            len(broker_link_ids) > 50 or
+            any(type(x) is not int or x < 1 for x in broker_link_ids)):
+            raise InvalidInput("Broker link IDs must be unique positive integers; maximum 50")
         with self.db:
             self.db.execute("BEGIN IMMEDIATE")  # Serialize against incoming amendments and evidence changes.
             question = self.db.execute("SELECT id FROM questions WHERE id=? AND case_id=?", (question_id, case_id)).fetchone()
@@ -571,8 +894,20 @@ class CaseStore:
                 self.db.execute("INSERT INTO snapshot_sources VALUES (?,?)", (snapshot_id, sid))
             for aid in evidence_assessment_ids:
                 self.db.execute("INSERT INTO snapshot_evidence VALUES (?,?)", (snapshot_id, aid))
+            for lid in broker_link_ids:
+                linked = self.db.execute("""SELECT 1 FROM broker_links bl
+                    JOIN rights_sources rs ON rs.id=bl.rights_source_id
+                    WHERE bl.id=? AND bl.case_id=? AND bl.question_id=?
+                    AND rs.state='active'
+                    AND NOT (bl.relation='supports' AND bl.applicability='not_applicable')""",
+                    (lid, case_id, question_id)).fetchone()
+                if not linked:
+                    raise InvalidInput("Broker link is missing, revoked, or outside this question")
+            for lid in broker_link_ids:
+                self.db.execute("INSERT INTO snapshot_broker_links VALUES (?,?)", (snapshot_id, lid))
             self._event(case_id, "draft_created", snapshot_id=snapshot_id, question_id=question_id,
-                        evidence_assessment_ids=evidence_assessment_ids)
+                        evidence_assessment_ids=evidence_assessment_ids,
+                        broker_link_ids=broker_link_ids)
             return snapshot_id
 
     def acknowledge_demo_review(self, case_id: str, snapshot_id: int, reviewer_label: str) -> None:
@@ -620,6 +955,28 @@ class CaseStore:
                 snapshot["evidence_assessment_ids"] = [r[0] for r in self.db.execute(
                     "SELECT assessment_id FROM snapshot_evidence WHERE snapshot_id=? ORDER BY assessment_id",
                     (snapshot["id"],)).fetchall()]
+            for snapshot in snapshot_rows:
+                snapshot["broker_link_ids"] = [r[0] for r in self.db.execute(
+                    "SELECT broker_link_id FROM snapshot_broker_links WHERE snapshot_id=? ORDER BY broker_link_id",
+                    (snapshot["id"],)).fetchall()]
+            broker_rows = self._dicts(self.db.execute("""SELECT bl.*, rs.source_key, rs.version_label,
+                rs.owner, rs.state AS rights_state FROM broker_links bl
+                JOIN rights_sources rs ON rs.id=bl.rights_source_id
+                WHERE bl.case_id=? ORDER BY bl.id DESC""", (case_id,)).fetchall())
+            # Provenance is retained, but revoked/superseded content is not
+            # served: the link and its mode stay visible, the stored title
+            # and excerpt do not.
+            for broker_row in broker_rows:
+                if broker_row["rights_state"] != "active":
+                    broker_row["citation_title"] = None
+                    broker_row["excerpt"] = None
+                    broker_row["content_redacted"] = True
+                else:
+                    broker_row["content_redacted"] = False
+            rights_rows = self._dicts(self.db.execute(
+                "SELECT * FROM rights_sources ORDER BY source_key, id").fetchall())
+            for rights_row in rights_rows:
+                rights_row["permissions"] = self._rights_permissions(int(rights_row["id"]))
             evidence_rows = self._dicts(self.db.execute("""SELECT id,evidence_key,version,sha256,title,
                 issued_at,received_at,statement,statement_line,rights,state,previous_id
                 FROM evidence_versions ORDER BY evidence_key,version""").fetchall())
@@ -628,6 +985,8 @@ class CaseStore:
                 FROM evidence_assessments a JOIN evidence_versions v ON v.id=a.evidence_version_id
                 WHERE a.case_id=? ORDER BY a.id DESC""", (case_id,)).fetchall())
             return {
+                "broker_links": broker_rows,
+                "rights_sources": rights_rows,
                 "evidence": evidence_rows,
                 "evidence_changes": self._dicts(self.db.execute(
                     "SELECT id,evidence_version_id,kind,reason,recorded_at FROM evidence_changes ORDER BY id DESC").fetchall()),
