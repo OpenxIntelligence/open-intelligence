@@ -20,8 +20,12 @@ jobs:
       - name: Compile
         run: PYTHONPATH=src python -m compileall -q src
       - name: JavaScript syntax
-        run: node --check web/app.js
+        run: |
+          node --check web/app.js
+          node --check web/mission.js
       - name: Unit and HTTP tests
         run: PYTHONPATH=src python -m unittest discover -s tests -v
       - name: Synthetic browser journey (headless Chromium)
         run: PYTHONPATH=src python tests/browser_journey.py
+      - name: Patient Mission browser journey (headless Chromium)
+        run: PYTHONPATH=src python tests/patient_mission_browser_journey.py
