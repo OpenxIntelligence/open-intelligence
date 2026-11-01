@@ -1,0 +1,11 @@
+OI-SYNTHETIC-REPORT/1
+Patient: CASE-OI017
+Document: PATH-OI017-A
+Type: pathology
+Event-Date: 2026-01-20
+Issued-At: 2026-02-02
+Specimen: SPEC-OI017-A
+Amends: PATH-OI017-A@1
+Finding: histology|reported|Fictional late correction to the Institution A report refines the descriptive classification after slide review.
+Finding: marker-a|negative|Marker A assay was performed on specimen A after the original report and is reported negative here.
+Finding: margin|indeterminate|The margin cannot be assessed from this small fictional specimen.

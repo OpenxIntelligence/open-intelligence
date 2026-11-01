@@ -185,12 +185,26 @@ def main() -> None:
             cd = ChromeSession(pages[0]["webSocketDebuggerUrl"])
             cd.command("Page.enable")
             cd.command("Runtime.enable")
+            cd.command("Emulation.setDeviceMetricsOverride", {
+                "width": 1440, "height": 960, "deviceScaleFactor": 1, "mobile": False,
+            })
             cd.command("Page.navigate", {"url": url})
 
             cd.wait("document.querySelector('#case-heading')?.textContent === 'Fictional case Alpha'",
                     "Alpha case loaded")
             cd.wait("document.querySelectorAll('#source-list .source-card').length === 2",
                     "two Alpha sources rendered")
+            assert cd.evaluate("document.querySelector('#investigations .panel-head').textContent.includes('Human-authored, no AI call')"), (
+                "the investigation draft must disclose that it is human-authored"
+            )
+            cd.wait("document.querySelector('#workspace-nav a[aria-current=location]')?.getAttribute('href') === '#overview'",
+                    "current workspace section is announced")
+            assert cd.evaluate("document.querySelector('.section-menu')?.open === true"), (
+                "desktop section navigation should be expanded"
+            )
+            assert cd.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1"), (
+                "desktop viewport has unexpected horizontal overflow"
+            )
 
             # Chronology is derived entirely from existing source event dates
             # rather than invented diagnosis/progression assertions.
@@ -216,6 +230,29 @@ def main() -> None:
               const filter = document.querySelector('#timeline-filter');
               filter.value = 'all'; filter.dispatchEvent(new Event('change'));
             })()""")
+
+            # Claim → exact source-line requires one action, and the report
+            # remains literal text with no markup execution.
+            cd.wait("document.querySelectorAll('#assertion-list .source-jump').length >= 1",
+                    "source-linked claim actions")
+            assert "No amended report" in cd.evaluate(
+                "document.querySelector('#source-change-list').textContent"), (
+                "unamended sources were presented as revisions"
+            )
+            cd.evaluate("document.querySelector('#assertion-list .source-jump').click()")
+            cd.wait("document.querySelector('#source-dialog').open && !!document.querySelector('#dialog-text mark.source-highlight')",
+                    "exact line highlighted in original source")
+            assert "Finding:" in cd.evaluate(
+                "document.querySelector('#dialog-text mark.source-highlight').textContent"), (
+                "highlighted source line does not match a finding"
+            )
+            assert "highlighted original line" in cd.evaluate(
+                "document.querySelector('#dialog-context').textContent")
+            assert not cd.evaluate("document.querySelector('#dialog-text script')"), (
+                "source material became active HTML"
+            )
+            cd.evaluate("document.querySelector('#dialog-close').click()")
+            cd.wait("!document.querySelector('#source-dialog').open", "anchored source modal closes")
 
             cd.evaluate("document.querySelector('#source-list .source-card button').click()")
             cd.wait("document.querySelector('#source-dialog').open", "original source modal")
@@ -253,6 +290,16 @@ def main() -> None:
                        for role, name in names), "Case selector lacks accessible combobox name"
             assert any(role == "navigation" for role, _ in names), "Navigation landmark not exposed"
             assert any(role == "main" for role, _ in names), "Main landmark not exposed"
+            assert cd.evaluate("document.querySelector('#workspace-nav a[aria-current=location]')?.getAttribute('href')") == "#overview", (
+                "Current section is not exposed in workspace navigation"
+            )
+            for group_name in (
+                "Source versions",
+                "Evidence assessments",
+            ):
+                assert any(role == "group" and name == group_name for role, name in names), (
+                    f"Checkbox group lacks an accessible name: {group_name}"
+                )
 
             cd.evaluate("""(() => {
               const picker = document.querySelector('#case-picker');
@@ -277,8 +324,21 @@ def main() -> None:
             cd.wait("document.querySelectorAll('#question-list .question').length === 1",
                     "persistent question submitted")
             cd.evaluate("""(() => {
+              document.querySelector('#draft-observations').value = '          ';
+              document.querySelector('#draft-form').requestSubmit();
+            })()""")
+            cd.wait("document.querySelector('#notice').textContent.includes('Add reported observations')",
+                    "whitespace-only observations are rejected")
+            assert cd.evaluate("document.querySelectorAll('#snapshot-list .snapshot').length") == 0, (
+                "whitespace-only observations created a draft"
+            )
+            cd.evaluate("""(() => {
+              document.querySelector('#draft-observations').value =
+                'PATH-ALPHA reports classification pending external review; IMG-ALPHA reports a 31 mm measurement.';
               document.querySelector('#draft-summary').value =
-                'This fictional case needs a dated review of the currently reported findings.';
+                'No hypothesis is proposed from the current source set.';
+              document.querySelector('#draft-assumptions').value =
+                'Prior images are unavailable; classification awaits external review.';
               document.querySelector('#draft-form').requestSubmit();
             })()""")
             cd.wait("document.querySelectorAll('#snapshot-list .snapshot').length === 1",
@@ -297,8 +357,12 @@ def main() -> None:
                 f"http://127.0.0.1:{app_port}/api/cases/CASE-ALPHA/state"))["questions"][-1]["id"]
             cd.evaluate("""(question => {
               document.querySelector('#question-choice').value = String(question);
+              document.querySelector('#draft-observations').value =
+                'The selected source versions are retained for this unfinished draft.';
               document.querySelector('#draft-summary').value =
                 'This unfinished Alpha-only draft must keep the same question and original sources.';
+              document.querySelector('#draft-assumptions').value =
+                'This draft must remain bound to CASE-ALPHA.';
             })(""" + str(first_question) + ")")
             cd.evaluate("""[...document.querySelectorAll('#snapshot-list button')]
               .find(x => x.textContent.includes('Demo review acknowledgment')).click()""")
@@ -311,6 +375,9 @@ def main() -> None:
             assert "unfinished Alpha-only" in cd.evaluate(
                 "document.querySelector('#draft-summary').value"
             ), "same-case refresh discarded the draft narrative"
+            assert "selected source versions" in cd.evaluate(
+                "document.querySelector('#draft-observations').value"
+            ), "same-case refresh discarded reported observations"
             cd.evaluate("""(() => {
               const picker = document.querySelector('#case-picker');
               picker.value = 'CASE-BETA';
@@ -322,13 +389,39 @@ def main() -> None:
             assert "unfinished Alpha-only" in cd.evaluate(
                 "document.querySelector('#draft-summary').value"
             ), "blocked case switch lost the user's narrative"
-            cd.evaluate("document.querySelector('#draft-summary').value = ''")
+            assert "remain bound" in cd.evaluate(
+                "document.querySelector('#draft-assumptions').value"
+            ), "blocked case switch lost the draft's stated assumptions"
+            cd.evaluate("""['draft-observations', 'draft-summary', 'draft-assumptions']
+              .forEach(id => document.querySelector('#' + id).value = '')""")
             cd.evaluate("document.querySelector('#example-button').click()")
             cd.wait("document.querySelector('#report-text').value.includes('Amends: PATH-ALPHA@1')",
                     "amendment loaded")
             cd.evaluate("document.querySelector('#import-form').requestSubmit()")
             cd.wait("document.querySelector('#snapshot-list .pill-alert')?.textContent === 'stale'",
                     "source amendment invalidates review snapshot")
+            cd.wait("document.querySelector('#review-attention')?.dataset.state === 'needs-review'",
+                    "amendment surfaces unresolved review attention")
+            assert "reopened question(s)" in cd.evaluate(
+                "document.querySelector('#review-attention-summary').textContent")
+            cd.wait("document.querySelectorAll('#source-change-list .change-card').length === 1",
+                    "source amendment appears in change explorer")
+            assert "version 1 → 2" in cd.evaluate(
+                "document.querySelector('#source-change-list').textContent")
+            assert "saved investigation(s)" in cd.evaluate(
+                "document.querySelector('#source-change-list').textContent")
+            cd.evaluate("document.querySelector('#source-change-list .change-card button').click()")
+            cd.wait("document.querySelector('#compare-dialog').open", "read-only source comparison opens")
+            previous_text = cd.evaluate("document.querySelector('#compare-before').textContent")
+            amended_text = cd.evaluate("document.querySelector('#compare-after').textContent")
+            assert "OI-SYNTHETIC-REPORT/1" in previous_text and "OI-SYNTHETIC-REPORT/1" in amended_text
+            assert previous_text != amended_text, "amendment comparison lost original version difference"
+            assert "PATH-ALPHA" in cd.evaluate("document.querySelector('#compare-title').textContent")
+            assert "no clinical or treatment determination" in cd.evaluate(
+                "document.querySelector('#compare-context').textContent")
+            cd.evaluate("document.querySelector('#compare-close').click()")
+            cd.wait("!document.querySelector('#compare-dialog').open",
+                    "source comparison closes without losing the current case")
             cd.wait("document.querySelectorAll('#source-list .source-card').length === 3",
                     "original and amended source versions retained")
 
@@ -351,12 +444,12 @@ def main() -> None:
             cd.evaluate("document.querySelector('#dialog-close').click()")
 
             assert cd.evaluate("""[...document.querySelectorAll('#source-choice input:checked')]
-              .some(x => x.closest('label').textContent.includes('STALE'))"""), (
+              .some(x => x.closest('label').textContent.includes('Needs review'))"""), (
                 "source amendment silently rebound the unfinished draft to the replacement version"
             )
             # Explicit operator reconciliation before creating the evidence-linked draft.
             cd.evaluate("""[...document.querySelectorAll('#source-choice input')]
-              .forEach(x => { x.checked = !x.closest('label').textContent.includes('STALE'); })""")
+              .forEach(x => { x.checked = !x.closest('label').textContent.includes('Needs review'); })""")
 
             report = json.load(urlopen(f"http://127.0.0.1:{app_port}/api/cases/CASE-ALPHA/state"))
             assert len(report["snapshots"]) == 1 and report["snapshots"][0]["state"] == "stale"
@@ -370,6 +463,8 @@ def main() -> None:
                 "width": 390, "height": 844, "deviceScaleFactor": 1, "mobile": False,
             })
             cd.wait("window.innerWidth === 390", "mobile viewport")
+            cd.wait("document.querySelector('.section-menu')?.open === false",
+                    "responsive workspace navigation collapsed")
             overflow = cd.evaluate("""(() => {
               const screenWidth = document.documentElement.clientWidth;
               const outliers = [...document.querySelectorAll('body *')].map(e => ({
@@ -444,8 +539,12 @@ def main() -> None:
                     "question-specific fictional assessment persisted")
             cd.evaluate("""(() => {
               document.querySelector('#evidence-choice input').checked = true;
+              document.querySelector('#draft-observations').value =
+                'The fictional source states a bounded research claim.';
               document.querySelector('#draft-summary').value =
-                'The fictional investigation includes a labelled synthetic evidence assessment.';
+                'No patient-specific conclusion is drawn.';
+              document.querySelector('#draft-assumptions').value =
+                'The relationship and applicability labels are human-authored and unverified.';
               document.querySelector('#draft-form').requestSubmit();
             })()""")
             cd.wait("document.querySelectorAll('#snapshot-list .snapshot').length === 2",
@@ -453,6 +552,9 @@ def main() -> None:
             state = json.load(urlopen(f"http://127.0.0.1:{app_port}/api/cases/CASE-ALPHA/state"))
             latest = state["snapshots"][0]
             assert latest["state"] == "draft" and len(latest["evidence_assessment_ids"]) == 1
+            assert "Reported observations:" in latest["summary"]
+            assert "Working hypothesis or mechanism:" in latest["summary"]
+            assert "Assumptions, contradictions, and gaps:" in latest["summary"]
             evidence_version_id = state["evidence"][0]["id"]
 
             # Withdrawal must not silently keep that draft current.
@@ -485,9 +587,128 @@ def main() -> None:
             assert not cd.evaluate("document.querySelector('#bibliography-result').textContent.includes('COPYRIGHTED ABSTRACT')")
             assert cd.evaluate("document.querySelector('#bibliography-result').textContent.includes('No abstract')")
 
-            print("PASS: browser source drilldown, keyboard Escape/Tab and AX landmarks, "
+
+            # A historical stale snapshot must remain inspectable after the
+            # corresponding reopened question receives a NEW demo acknowledgment.
+            # The current-attention counter then clears, without deleting history.
+            state = json.load(urlopen(f"http://127.0.0.1:{app_port}/api/cases/CASE-ALPHA/state"))
+            stale_ids = {snapshot["id"] for snapshot in state["snapshots"]
+                         if snapshot["state"] == "stale"}
+            reopened_ids = sorted({snapshot["question_id"] for snapshot in state["snapshots"]
+                                   if snapshot["state"] == "stale" and
+                                   any(q["id"] == snapshot["question_id"] and q["state"] == "open"
+                                       for q in state["questions"])})
+            assert stale_ids and reopened_ids, "missing synthetic stale review fixture"
+            for qid in reopened_ids:
+                cd.evaluate("""(qid => {
+                  const selectedQuestion = document.querySelector('#question-choice');
+                  selectedQuestion.value = String(qid);
+                  selectedQuestion.dispatchEvent(new Event('change'));
+                  document.querySelectorAll('#source-choice input').forEach(input => {
+                    input.checked = !input.closest('label').textContent.includes('Needs review');
+                  });
+                  document.querySelectorAll('#evidence-choice input').forEach(input => input.checked = false);
+                  document.querySelector('#draft-observations').value =
+                    'Current synthetic source versions have been re-inspected; no clinical conclusion is drawn.';
+                  document.querySelector('#draft-summary').value = '';
+                  document.querySelector('#draft-assumptions').value =
+                    'Earlier investigation remains historical and the amended report needs reviewer interpretation.';
+                  document.querySelector('#draft-form').requestSubmit();
+                })(""" + str(qid) + ")")
+                cd.wait("document.querySelector('#snapshot-list .snapshot .pill')?.textContent === 'draft'",
+                        "new source-scoped draft saved")
+                cd.evaluate("""[...document.querySelector('#snapshot-list .snapshot').querySelectorAll('button')]
+                  .find(button => button.textContent.includes('Demo review acknowledgment')).click()""")
+                cd.wait("document.querySelector('#snapshot-list .snapshot .pill')?.textContent === 'reviewed_in_demo'",
+                        "replacement demo acknowledgment persisted")
+            cd.wait("document.querySelector('#review-attention')?.dataset.state === 'no-open-review'",
+                    "review attention must clear after replacement acknowledgment")
+            assert "No unresolved source-change review" in cd.evaluate(
+                "document.querySelector('#review-attention-summary').textContent")
+            assert cd.evaluate("""[...document.querySelectorAll('#metrics .metric')]
+              .some(item => item.textContent.includes('Review required') &&
+                 item.querySelector('.number')?.textContent === '0')"""), (
+                "historical stale snapshots were mistakenly counted as unresolved work"
+            )
+            state = json.load(urlopen(f"http://127.0.0.1:{app_port}/api/cases/CASE-ALPHA/state"))
+            assert stale_ids.issubset({snapshot["id"] for snapshot in state["snapshots"]
+                                      if snapshot["state"] == "stale"}), (
+                "review resolution erased historical source-dependent snapshots"
+            )
+            assert cd.evaluate("document.querySelectorAll('#source-change-list .change-card').length") == 1, (
+                "review resolution erased document-version history"
+            )
+
+            # Issue #3 rejection paths, exercised through the browser rather
+            # than only at the store layer: a byte-identical re-import and a
+            # wrong-patient import must both be refused without new facts.
+            cd.evaluate("""(() => {
+              const picker = document.querySelector('#case-picker');
+              picker.value = 'CASE-ALPHA'; picker.dispatchEvent(new Event('change'));
+            })()""")
+            cd.wait("document.querySelector('#case-heading')?.textContent === 'Fictional case Alpha'",
+                    "return to Alpha for rejection checks")
+            cards_before = cd.evaluate("document.querySelectorAll('#source-list .source-card').length")
+            state_before = json.load(urlopen(
+                f"http://127.0.0.1:{app_port}/api/cases/CASE-ALPHA/state"))
+            original_id = next(x["id"] for x in state_before["sources"]
+                               if x["document_id"] == "PATH-ALPHA" and x["version"] == 1)
+            cd.evaluate("""(async (sourceId) => {
+              const text = (await (await fetch('/api/cases/CASE-ALPHA/sources/' + sourceId)).json()).text;
+              document.querySelector('#report-text').value = text;
+              document.querySelector('#import-form').requestSubmit();
+            })(""" + str(original_id) + ")")
+            cd.wait("document.querySelector('#notice')?.textContent.includes('Import: duplicate')",
+                    "duplicate import refused in browser")
+            assert cd.evaluate("document.querySelectorAll('#source-list .source-card').length") == cards_before, (
+                "duplicate import added a source card"
+            )
+            state_after_dup = json.load(urlopen(
+                f"http://127.0.0.1:{app_port}/api/cases/CASE-ALPHA/state"))
+            assert len(state_after_dup["sources"]) == len(state_before["sources"]), (
+                "duplicate import added a source version"
+            )
+
+            cd.evaluate("""(async () => {
+              const text = (await (await fetch('/api/examples/wrong-patient')).json()).text;
+              document.querySelector('#report-text').value = text;
+              document.querySelector('#import-form').requestSubmit();
+            })()""")
+            cd.wait("document.querySelector('#notice')?.textContent.includes('Import: quarantined')",
+                    "wrong-patient import quarantined in browser")
+            cd.wait("document.querySelectorAll('#quarantine-list .quarantine').length === 1",
+                    "quarantine receipt rendered")
+            assert "CASE-BETA" in cd.evaluate("document.querySelector('#quarantine-list').textContent"), (
+                "quarantine receipt hides the declared patient"
+            )
+            assert cd.evaluate("document.querySelectorAll('#source-list .source-card').length") == cards_before, (
+                "wrong-patient import added a source card"
+            )
+            # A repeated wrong-patient delivery keeps one receipt, not two.
+            cd.evaluate("""(async () => {
+              const text = (await (await fetch('/api/examples/wrong-patient')).json()).text;
+              document.querySelector('#report-text').value = text;
+              document.querySelector('#import-form').requestSubmit();
+            })()""")
+            cd.wait("document.querySelector('#notice')?.textContent.includes('Import: quarantined')",
+                    "repeated wrong-patient import quarantined in browser")
+            assert cd.evaluate("document.querySelectorAll('#quarantine-list .quarantine').length") == 1, (
+                "repeated wrong-patient delivery duplicated the quarantine receipt"
+            )
+            state_after_q = json.load(urlopen(
+                f"http://127.0.0.1:{app_port}/api/cases/CASE-ALPHA/state"))
+            assert len(state_after_q["quarantines"]) == 1, (
+                "repeated wrong-patient delivery duplicated quarantine state"
+            )
+            assert len(state_after_q["sources"]) == len(state_before["sources"]), (
+                "wrong-patient import added a source version"
+            )
+
+            print("PASS: browser source drilldown, source comparison, review-attention resolution, "
+                  "keyboard Escape/Tab and AX landmarks, "
                   "case switching, question/draft, review, amendment invalidation, "
-                  "original export, source-derived timeline, fictional evidence lifecycle, offline bibliography, 390px responsive layout")
+                  "original export, source-derived timeline, fictional evidence lifecycle, offline bibliography, 390px responsive layout, "
+                  "browser duplicate and wrong-patient rejection")
         finally:
             if cd is not None:
                 cd.close()

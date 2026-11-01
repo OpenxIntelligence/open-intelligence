@@ -68,3 +68,41 @@ PYTHONPATH=src python -m open_intelligence serve --enable-crossref-live
 Optional: `--crossref-contact operator@example.org` adds the operator-supplied contact email to the DOI-only metadata request, not a patient address. Crossref's current [access policy](https://www.crossref.org/documentation/retrieve-metadata/rest-api/access-and-authentication/) describes rate limits and polite contact requirements. The prototype enforces one concurrent DOI lookup and a conservative one-second gap.
 
 Only the public DOI is transmitted to a fixed Crossref API endpoint, and only bibliographic metadata fields are rendered. Abstracts, article text, full-text links, evidence grades and patient identifiers are never included in the output. The UI does not attach metadata to a clinical assertion or claim patient relevance. Live service behavior and medical usefulness require separate evaluation. No patient data should ever be used in this demo.
+
+## Meta investigation layer (Meta Model API, OI-008)
+
+The investigation layer is the first visible Meta tool use in the
+product. It is server-side only and bounded by design:
+
+- `POST /api/cases/{case}/investigations` with
+  `{"question_id": N, "template": "evidence-summary"|"timeline-gaps"|"evidence-applicability", "mode": "live"|"replay"}`
+- `GET /api/cases/{case}/investigations` lists investigations;
+  `GET /api/cases/{case}/investigations/{id}` returns one, always
+  labeled `kind=hypothesis`, `review_state=pending`.
+- Live mode calls Meta Model API (`muse-spark-1.3`) with a fixed
+  template plus the case's current assertions and fictional evidence
+  assessments; the operator key comes from `META_API_KEY` only.
+  Without the key, live returns 503 and points at replay.
+- Every model claim is validated before storage: citations must
+  resolve, uncertainty must be low/moderate/high, and
+  recommendation/treatment/dosing language is dropped by the guard
+  and recorded. Claims that fail any check are dropped, never
+  repaired. Empty results abstain with a reason instead of guessing.
+- Replay mode serves the recorded fixture
+  (`examples/synthetic/demo-investigation.json`) through the same
+  validation, labeled `mode=replay`, `model=recorded-replay`.
+- A source amendment marks the case's investigations stale, like
+  drafts. See `docs/META_MODEL_API.md` for the provider record.
+
+Run it locally:
+
+```bash
+PYTHONPATH=src python -m open_intelligence seed
+PYTHONPATH=src python -m open_intelligence serve
+# Create a question, then POST an investigation with mode=replay
+# (offline) or mode=live (with META_API_KEY set in the server env).
+```
+
+Remaining proof step: a live-server run against the real API with
+the operator key set, before the demo. The API completion itself
+was verified separately on 2026-10-31.
