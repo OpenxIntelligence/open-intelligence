@@ -484,7 +484,7 @@ function renderReportLineComparison(before, after) {
   paint('compare-after', after, difference.afterLines, 'Updated-only');
   const listed = numbers => numbers.length ? numbers.slice(0, 20).join(', ') +
     (numbers.length > 20 ? ' (first 20 of ' + numbers.length + ')' : '') : 'none';
-  const scope = ' Text-only comparison, including whitespace and line endings. No clinical interpretation or treatment determination.';
+  const scope = ' Text-only comparison, including whitespace and line endings. This view makes no clinical or treatment determination.';
   el('compare-context').textContent = difference.status === 'limited'
     ? 'Line highlighting skipped: a source exceeds the 65,536-character or 512-line comparison limit. Both complete original texts remain visible; differences have not been assessed.' + scope
     : difference.status === 'identical'
