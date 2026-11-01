@@ -587,6 +587,7 @@ def main() -> None:
             assert not cd.evaluate("document.querySelector('#bibliography-result').textContent.includes('COPYRIGHTED ABSTRACT')")
             assert cd.evaluate("document.querySelector('#bibliography-result').textContent.includes('No abstract')")
 
+
             # A historical stale snapshot must remain inspectable after the
             # corresponding reopened question receives a NEW demo acknowledgment.
             # The current-attention counter then clears, without deleting history.
@@ -638,10 +639,76 @@ def main() -> None:
                 "review resolution erased document-version history"
             )
 
+            # Issue #3 rejection paths, exercised through the browser rather
+            # than only at the store layer: a byte-identical re-import and a
+            # wrong-patient import must both be refused without new facts.
+            cd.evaluate("""(() => {
+              const picker = document.querySelector('#case-picker');
+              picker.value = 'CASE-ALPHA'; picker.dispatchEvent(new Event('change'));
+            })()""")
+            cd.wait("document.querySelector('#case-heading')?.textContent === 'Fictional case Alpha'",
+                    "return to Alpha for rejection checks")
+            cards_before = cd.evaluate("document.querySelectorAll('#source-list .source-card').length")
+            state_before = json.load(urlopen(
+                f"http://127.0.0.1:{app_port}/api/cases/CASE-ALPHA/state"))
+            original_id = next(x["id"] for x in state_before["sources"]
+                               if x["document_id"] == "PATH-ALPHA" and x["version"] == 1)
+            cd.evaluate("""(async (sourceId) => {
+              const text = (await (await fetch('/api/cases/CASE-ALPHA/sources/' + sourceId)).json()).text;
+              document.querySelector('#report-text').value = text;
+              document.querySelector('#import-form').requestSubmit();
+            })(""" + str(original_id) + ")")
+            cd.wait("document.querySelector('#notice')?.textContent.includes('Import: duplicate')",
+                    "duplicate import refused in browser")
+            assert cd.evaluate("document.querySelectorAll('#source-list .source-card').length") == cards_before, (
+                "duplicate import added a source card"
+            )
+            state_after_dup = json.load(urlopen(
+                f"http://127.0.0.1:{app_port}/api/cases/CASE-ALPHA/state"))
+            assert len(state_after_dup["sources"]) == len(state_before["sources"]), (
+                "duplicate import added a source version"
+            )
+
+            cd.evaluate("""(async () => {
+              const text = (await (await fetch('/api/examples/wrong-patient')).json()).text;
+              document.querySelector('#report-text').value = text;
+              document.querySelector('#import-form').requestSubmit();
+            })()""")
+            cd.wait("document.querySelector('#notice')?.textContent.includes('Import: quarantined')",
+                    "wrong-patient import quarantined in browser")
+            cd.wait("document.querySelectorAll('#quarantine-list .quarantine').length === 1",
+                    "quarantine receipt rendered")
+            assert "CASE-BETA" in cd.evaluate("document.querySelector('#quarantine-list').textContent"), (
+                "quarantine receipt hides the declared patient"
+            )
+            assert cd.evaluate("document.querySelectorAll('#source-list .source-card').length") == cards_before, (
+                "wrong-patient import added a source card"
+            )
+            # A repeated wrong-patient delivery keeps one receipt, not two.
+            cd.evaluate("""(async () => {
+              const text = (await (await fetch('/api/examples/wrong-patient')).json()).text;
+              document.querySelector('#report-text').value = text;
+              document.querySelector('#import-form').requestSubmit();
+            })()""")
+            cd.wait("document.querySelector('#notice')?.textContent.includes('Import: quarantined')",
+                    "repeated wrong-patient import quarantined in browser")
+            assert cd.evaluate("document.querySelectorAll('#quarantine-list .quarantine').length") == 1, (
+                "repeated wrong-patient delivery duplicated the quarantine receipt"
+            )
+            state_after_q = json.load(urlopen(
+                f"http://127.0.0.1:{app_port}/api/cases/CASE-ALPHA/state"))
+            assert len(state_after_q["quarantines"]) == 1, (
+                "repeated wrong-patient delivery duplicated quarantine state"
+            )
+            assert len(state_after_q["sources"]) == len(state_before["sources"]), (
+                "wrong-patient import added a source version"
+            )
+
             print("PASS: browser source drilldown, source comparison, review-attention resolution, "
                   "keyboard Escape/Tab and AX landmarks, "
                   "case switching, question/draft, review, amendment invalidation, "
-                  "original export, source-derived timeline, fictional evidence lifecycle, offline bibliography, 390px responsive layout")
+                  "original export, source-derived timeline, fictional evidence lifecycle, offline bibliography, 390px responsive layout, "
+                  "browser duplicate and wrong-patient rejection")
         finally:
             if cd is not None:
                 cd.close()

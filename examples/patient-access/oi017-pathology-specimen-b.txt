@@ -1,0 +1,10 @@
+OI-SYNTHETIC-REPORT/1
+Patient: CASE-OI017
+Document: PATH-OI017-B
+Type: pathology
+Event-Date: 2026-01-21
+Issued-At: 2026-01-23
+Specimen: SPEC-OI017-B
+Finding: histology|reported|Fictional Institution B pathology on a different specimen B describes a benign-appearing lesion, contradicting the specimen A description.
+Finding: marker-a|negative|Marker A assay was performed on specimen B and reported negative in this fictional report.
+Finding: margin|reported|Margins are described as clear in this fictional specimen B report.
