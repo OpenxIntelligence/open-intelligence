@@ -1,106 +1,108 @@
 'use strict';
+// Supplementary invariants for the SAME comparison implementation as
+// test_source_line_diff.js. No second renderer, diff engine or dependency.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const file = path.join(__dirname, '../web/text-changes.js');
-const api = fs.existsSync(file) ? require(file) : {};
-function diff(before, after) {
-  assert.equal(typeof api.compareLines, 'function', 'source line comparison has not been implemented');
-  return api.compareLines(before, after);
-}
-function restore(result, side) {
-  return result.operations.filter(x => side === 'before' ? x.kind !== 'added' : x.kind !== 'removed')
-    .map(x => x.text).join('');
-}
-function faithful(before, after) {
-  const result = diff(before, after);
-  assert.equal(result.status, 'compared');
-  assert.equal(restore(result, 'before'), before);
-  assert.equal(restore(result, 'after'), after);
-  let left = 1, right = 1;
-  for (const op of result.operations) {
-    assert.equal(op.beforeLine, op.kind === 'added' ? null : left++);
-    assert.equal(op.afterLine, op.kind === 'removed' ? null : right++);
+const vm = require('node:vm');
+function load() {
+  const app = fs.readFileSync(path.join(__dirname, '../web/app.js'), 'utf8');
+  const start = app.indexOf('// Begin source text comparison.');
+  const end = app.indexOf('// End source text comparison.');
+  assert.ok(start >= 0 && end > start, 'canonical source-line comparison is not implemented');
+  class TextNode { constructor(text='') { this.textContent=String(text); } }
+  class Element {
+    constructor(tag='div') { this.tagName=tag; this.children=[]; this.dataset={}; }
+    append(...items) { this.children.push(...items); }
+    replaceChildren(...items) { this.children=items; }
+    set textContent(text) { this.children=[new TextNode(text)]; }
+    get textContent() { return this.children.map(x=>x.textContent).join(''); }
   }
-  return result;
+  const elements = new Map(['compare-before','compare-after','compare-context'].map(id=>[id,new Element()]));
+  const sandbox = {document:{createTextNode:text=>new TextNode(text)}, el:id=>elements.get(id),
+    node:(tag,text,cls)=>{const e=new Element(tag);e.textContent=text;e.className=cls;return e;}};
+  vm.createContext(sandbox); vm.runInContext(app.slice(start,end),sandbox);
+  return {compare:(a,b)=>JSON.parse(JSON.stringify(sandbox.compareReportLines(a,b))),
+    render:(a,b)=>sandbox.renderReportLineComparison(a,b),elements};
 }
-test('identical source remains exactly reconstructable with no changes', () => {
-  const result = faithful('A\nB\n', 'A\nB\n');
-  assert.equal(result.added, 0); assert.equal(result.removed, 0);
-});
-test('empty originals are equal without inventing a blank source line', () => {
-  const result = faithful('', ''); assert.deepEqual(result.operations, []);
-});
-test('a replaced finding preserves both texts and their actual line numbers', () => {
-  const r = faithful('Header\nNot tested\nTail\n', 'Header\nNegative\nTail\n');
-  assert.deepEqual(r.operations.filter(x => x.kind !== 'equal'), [
-    {kind:'removed', text:'Not tested\n', beforeLine:2, afterLine:null},
-    {kind:'added', text:'Negative\n', beforeLine:null, afterLine:2}
-  ]);
-});
-test('an inserted line does not mark later unchanged lines as different', () => {
-  const r = faithful('A\nB\n', 'A\nNew\nB\n');
-  assert.equal(r.added, 1); assert.equal(r.removed, 0);
-  assert.equal(r.operations.at(-1).beforeLine, 2); assert.equal(r.operations.at(-1).afterLine, 3);
-});
-test('deletion retains an old-only original line anchor', () => {
-  const r = faithful('A\nOld\nB\n', 'A\nB\n');
-  assert.equal(r.removed, 1); assert.equal(r.added, 0);
-});
-test('all-added and all-removed documents are supported', () => {
-  assert.equal(faithful('', 'A\nB').added, 2);
-  assert.equal(faithful('A\nB', '').removed, 2);
-});
-test('repeated lines use a stable alignment without dropping occurrences', () => {
-  const r = faithful('A\nA\nB\nA\n', 'A\nB\nA\nA\n');
-  assert.deepEqual(diff('A\nA\nB\nA\n', 'A\nB\nA\nA\n'), r);
-});
-test('a final newline-only change is not hidden', () => {
-  const r = faithful('A', 'A\n'); assert.equal(r.added, 1); assert.equal(r.removed, 1);
-});
-test('CRLF and LF differences preserve the actual original endings', () => {
-  const r = faithful('A\r\nB\r\n', 'A\nB\n'); assert.equal(r.removed, 2);
-});
-test('blank lines and whitespace-only changes are not normalized away', () => {
-  const r = faithful(' \n\nA\n', '\t\nA\n'); assert.ok(r.removed > 0);
-});
-test('Unicode and combining marks are preserved without normalization', () => {
-  const r = faithful('É\n🧬\n', 'E\u0301\n🧬\n'); assert.equal(r.removed, 1);
-});
-test('markup-like original content remains a plain string', () => {
-  const r = faithful('<script>throw 1</script>\n', '<img src=x onerror=alert(1)>\n');
-  assert.equal(r.operations[1].text, '<img src=x onerror=alert(1)>\n');
-});
-test('invalid input is rejected rather than coerced to a source document', () => {
-  assert.throws(() => diff(null, 'A'), TypeError);
-  assert.throws(() => diff('A', {text:'B'}), TypeError);
-});
-test('character limit yields an explicit unavailable result without partial rows', () => {
-  const r = diff('x'.repeat(65537), 'y');
-  assert.equal(r.status, 'limited'); assert.deepEqual(r.operations, []);
-  assert.equal(r.added, undefined); assert.equal(r.removed, undefined);
-});
-test('line count limit also applies to identical originals', () => {
-  assert.equal(diff('\n'.repeat(2001), '\n'.repeat(2001)).status, 'limited');
-});
-test('alignment work limit prevents large unrelated line matrices', () => {
-  const a = Array.from({length:600}, (_,i)=>'before'+i+'\n').join('');
-  const b = Array.from({length:600}, (_,i)=>'after'+i+'\n').join('');
-  const r = diff(a,b); assert.equal(r.status, 'limited'); assert.deepEqual(r.operations, []);
-});
-test('large shared context is trimmed before allocating alignment work', () => {
-  const prefix = 'same\n'.repeat(700), suffix = 'end\n'.repeat(700);
-  const r = faithful(prefix+'Old\n'+suffix, prefix+'New\n'+suffix);
-  assert.equal(r.added, 1); assert.equal(r.removed, 1);
-});
-test('bounded generated examples reconstruct both originals and line anchors', () => {
-  let state = 17;
-  const next = () => (state = (state * 48271) % 2147483647);
-  const tokens = ['A\n','B\r\n','\n',' 🧬\n','<p>\n'];
-  for (let i=0;i<150;i++) {
-    const a = Array.from({length:next()%14},()=>tokens[next()%tokens.length]).join('');
-    const b = Array.from({length:next()%14},()=>tokens[next()%tokens.length]).join('');
-    faithful(a,b);
+const lines = text => text.match(/[^\n]*\n|[^\n]+$/g) || [];
+function check(h,a,b) {
+  const r=h.compare(a,b), left=lines(a),right=lines(b);
+  assert.ok(['compared','identical'].includes(r.status));
+  for (const [indices,source] of [[r.beforeLines,left],[r.afterLines,right]]) {
+    assert.deepEqual([...new Set(indices)].sort((x,y)=>x-y),indices);
+    assert.ok(indices.every(i=>Number.isInteger(i)&&i>=1&&i<=source.length));
   }
+  assert.deepEqual(left.filter((_,i)=>!r.beforeLines.includes(i+1)),
+                   right.filter((_,i)=>!r.afterLines.includes(i+1)),
+                   'unhighlighted original lines must match exactly in order');
+  h.render(a,b);
+  assert.equal(h.elements.get('compare-before').textContent,a);
+  assert.equal(h.elements.get('compare-after').textContent,b);
+  return r;
+}
+function lcsBySubsets(a,b) {
+  let best=0;
+  for(let mask=0;mask<(1<<a.length);mask++) {
+    const subsequence=a.filter((_,i)=>(mask&(1<<i))!==0);
+    let j=0;
+    for(const token of b) if(token===subsequence[j])j++;
+    if(j===subsequence.length)best=Math.max(best,j);
+  }
+  return best;
+}
+test('400 generated source pairs preserve originals and align untouched lines',()=>{
+  const h=load(); let seed=23;
+  const next=()=>seed=(seed*48271)%2147483647;
+  const tokens=['A\n','B\r\n','\n',' 🧬\n','<mark>\n','é\n','e\u0301\n'];
+  for(let i=0;i<400;i++) {
+    const a=Array.from({length:next()%14},()=>tokens[next()%tokens.length]).join('');
+    const b=Array.from({length:next()%14},()=>tokens[next()%tokens.length]).join('');
+    check(h,a,b);
+  }
+});
+test('small repeated-line comparisons agree with independent subsequence oracle',()=>{
+  const h=load();
+  const inputs=['','A\n','B\n','A\nA\n','A\nB\nA\n','B\nA\nB\n','\nA\n','A\nB\nB\nA\n'];
+  for(const a of inputs)for(const b of inputs){
+    const r=check(h,a,b),left=lines(a),right=lines(b);
+    assert.equal(r.beforeLines.length+r.afterLines.length,left.length+right.length-2*lcsBySubsets(left,right));
+  }
+});
+test('reversing comparison swaps edit counts without fabricating equal content',()=>{
+  const h=load(),a='A\nA\nB\n\n🧬\n',b='B\nA\n🧬\nC\n';
+  const x=check(h,a,b),y=check(h,b,a);
+  assert.equal(x.beforeLines.length,y.afterLines.length);
+  assert.equal(x.afterLines.length,y.beforeLines.length);
+});
+test('markup-looking source content never produces source-named elements',()=>{
+  const h=load();
+  check(h,'A\n</mark><script>run()</script>\n','A\n<img id=bad onerror=run()>\n');
+  for(const id of ['compare-before','compare-after']) {
+    const children=h.elements.get(id).children;
+    assert.ok(children.filter(x=>x.tagName).every(x=>x.tagName==='mark'));
+  }
+});
+test('blank final lines retain real line anchors at the supported boundary',()=>{
+  const h=load(),a='A\n'.repeat(510)+'\nB',b='A\n'.repeat(510)+'\nB\n';
+  const r=check(h,a,b);assert.deepEqual(r.beforeLines,[512]);assert.deepEqual(r.afterLines,[512]);
+});
+test('Unicode normalization is not silently treated as equality',()=>{
+  const r=check(load(),'é\n🧬\n','e\u0301\n🧬\n');
+  assert.deepEqual(r.beforeLines,[1]); assert.deepEqual(r.afterLines,[1]);
+});
+test('fallback clears a previous result and preserves complete oversized source',()=>{
+  const h=load();h.render('old\n','new\n');
+  const a='x'.repeat(65537);h.render(a,'y');
+  assert.equal(h.elements.get('compare-before').textContent,a);
+  assert.equal(h.elements.get('compare-after').textContent,'y');
+  for(const id of ['compare-before','compare-after'])
+    assert.equal(h.elements.get(id).children.filter(x=>x.tagName==='mark').length,0);
+  assert.match(h.elements.get('compare-context').textContent,/skipped/i);
+});
+test('successive different comparisons do not retain earlier highlighted line numbers',()=>{
+  const h=load();check(h,'A\nold\n','A\nnew\n');check(h,'left\nA\n','right\nA\n');
+  for(const id of ['compare-before','compare-after'])
+    assert.deepEqual(h.elements.get(id).children.filter(x=>x.tagName==='mark').map(x=>x.dataset.line),['1']);
 });
