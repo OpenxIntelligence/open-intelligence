@@ -9,10 +9,11 @@ import re
 from pathlib import Path
 from threading import Lock
 from time import monotonic
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from tools.crossref_metadata import MetadataInputError, fetch_public_doi, project_work
 
+from .changes import changes_since_review
 from .store import CaseStore, InvalidInput, MAX_SOURCE_BYTES
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -118,6 +119,15 @@ class Handler(BaseHTTPRequestHandler):
             case_state = re.fullmatch(rf"/api/cases/{ID_PART}/state", path)
             if case_state:
                 return self._json(200, store.state(case_state[1]))
+            changes = re.fullmatch(rf"/api/cases/{ID_PART}/changes-since-review", path)
+            if changes:
+                raw_since = parse_qs(urlsplit(self.path).query).get("since_event_id", [None])[0]
+                since = None
+                if raw_since is not None:
+                    if not raw_since.isdigit():
+                        raise InvalidInput("since_event_id must be a positive integer")
+                    since = int(raw_since)
+                return self._json(200, changes_since_review(store, changes[1], since_event_id=since))
             source = re.fullmatch(rf"/api/cases/{ID_PART}/sources/([0-9]+)", path)
             if source:
                 return self._json(200, {"text": store.source_text(source[1], int(source[2]))})
