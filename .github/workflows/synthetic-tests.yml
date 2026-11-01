@@ -21,7 +21,15 @@ jobs:
         run: PYTHONPATH=src python -m compileall -q src
       - name: JavaScript syntax
         run: node --check web/app.js
+      - name: Source inspection concurrency and identity
+        run: node --test tests/test_source_dialogs.js
+      - name: Exact source-line comparison
+        run: node --test tests/test_source_line_diff.js tests/test_text_changes.js
       - name: Unit and HTTP tests
         run: PYTHONPATH=src python -m unittest discover -s tests -v
       - name: Synthetic browser journey (headless Chromium)
         run: PYTHONPATH=src python tests/browser_journey.py
+      - name: Source dialog browser event regression
+        run: PYTHONPATH=src python tests/browser_source_dialogs.py
+      - name: Source-line comparison browser acceptance
+        run: PYTHONPATH=src python tests/browser_text_changes.py

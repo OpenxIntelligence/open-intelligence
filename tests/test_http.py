@@ -146,8 +146,12 @@ class HttpTests(unittest.TestCase):
     def test_static_ui_and_csp(self):
         with urlopen(f'http://127.0.0.1:{self.port}/') as response:
             body = response.read().decode()
-            self.assertIn('SYNTHETIC DATA ONLY', body)
+            self.assertIn('FICTIONAL DEMO DATA — not a real patient', body)
             self.assertIn("default-src 'self'", response.headers['Content-Security-Policy'])
+        for name in ('style.css', 'tokens.css', 'base.css'):
+            with urlopen(f'http://127.0.0.1:{self.port}/{name}') as response:
+                self.assertEqual(response.headers.get('Content-Type'), 'text/css; charset=utf-8')
+                self.assertTrue(response.read().decode('utf-8').strip())
 
 
 if __name__ == '__main__':

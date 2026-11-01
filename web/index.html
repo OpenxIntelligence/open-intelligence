@@ -4,64 +4,145 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <title>Open Intelligence — Investigation Workspace</title>
+  <meta name="description" content="A synthetic case workspace for following source timelines and preparing evidence-linked, reviewable investigations.">
+  <title>Open Intelligence: Case Workspace</title>
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
 </head>
 <body>
+  <a class="skip-link" href="#main-content">Skip to case workspace</a>
   <header class="top">
-    <div class="brand"><span class="brand-mark" aria-hidden="true">◈</span><div><strong>Open Intelligence</strong><small>Oncology investigation workspace</small></div></div>
-    <div class="top-right"><span class="pill pill-warn">SYNTHETIC DATA ONLY</span><span class="top-note">Local research demo · Not clinical software</span></div>
+    <a class="brand" href="#overview" aria-label="Open Intelligence overview">
+      <span class="brand-mark" aria-hidden="true">◈</span>
+      <strong>Open Intelligence</strong>
+    </a>
+    <div class="top-right">
+      <span class="pill pill-warn">FICTIONAL DEMO DATA — not a real patient</span>
+      <span class="top-note">Local demo, not clinical software</span>
+    </div>
   </header>
   <div class="layout">
     <aside class="rail">
-      <div class="rail-title">WORKSPACE</div>
-      <label for="case-picker">Selected synthetic case</label>
+      <label for="case-picker">Case</label>
       <select id="case-picker" aria-label="Select synthetic case"></select>
-      <p class="muted tiny">Case data stays on this local machine. There is no identity verification or patient login.</p>
-      <nav aria-label="Workspace sections">
-        <a href="#overview">Overview</a>
-        <a href="#timeline">Longitudinal timeline</a>
-        <a href="#sources">Sources &amp; assertions</a>
-        <a href="#investigations">Investigations</a>
-        <a href="#evidence">Synthetic evidence</a>
-        <a href="#bibliography">Bibliographic metadata</a>
-        <a href="#import">Import &amp; changes</a>
-        <a href="#activity">Activity log</a>
-      </nav>
-      <div class="side-bottom">
-        <strong>What this prototype proves</strong>
-        <p>Versioned original documents, traceable statements, durable questions, and amendment-driven review status.</p>
-        <p class="muted tiny">No automated clinical extraction, AI reasoning, trial matching, or treatment recommendations.</p>
-      </div>
+      <p class="muted tiny">Fictional case data stays on this local machine.</p>
+      <details class="section-menu" open>
+        <summary>Navigate</summary>
+        <nav id="workspace-nav" aria-label="Workspace sections">
+          <a href="#overview">Case</a>
+          <a href="#timeline">Timeline</a>
+          <a href="#investigations">Investigation</a>
+          <a href="#sources">Sources and findings</a>
+          <a href="#evidence">Evidence review</a>
+          <a href="#bibliography">Bibliography</a>
+          <a href="#import">Updates</a>
+          <a href="#activity">Activity</a>
+        </nav>
+      </details>
     </aside>
-    <main class="main">
+
+    <main class="main" id="main-content" tabindex="-1">
       <section id="overview" class="hero">
-        <div><div class="eyebrow">LONGITUDINAL CASE REVIEW · ENGINEERING REFERENCE</div>
+        <div class="hero-copy">
           <h1 id="case-heading">Loading case…</h1>
-          <p class="hero-desc">Understand what the authored sources say, what is unresolved, and what changed after a correction.</p></div>
-        <div class="hero-side"><span class="pill">Local / offline</span><span class="muted tiny">Evidence is source-linked, not clinically evaluated.</span></div>
+          <p class="hero-desc">Follow source-linked findings, research evidence, and questions across this case.</p>
+        </div>
+        <div class="hero-actions">
+          <a class="button" href="#investigations">Investigate a question</a>
+        </div>
       </section>
       <div class="metrics" id="metrics" aria-live="polite"></div>
+      <section id="review-attention" class="review-attention" data-state="checking" aria-labelledby="review-attention-heading">
+        <div>
+          <p class="tiny muted review-eyebrow">SOURCE-DEPENDENT REVIEW · FICTIONAL DEMO</p>
+          <h2 id="review-attention-heading">Checking investigation freshness…</h2>
+          <p id="review-attention-summary" role="status" aria-live="polite">Loading source-linked review state.</p>
+        </div>
+        <a href="#investigations" class="button secondary">Inspect investigations</a>
+      </section>
       <div id="notice" role="status" aria-live="polite" class="notice" hidden></div>
+
+      <section class="panel panel-timeline" id="timeline">
+        <div class="panel-head">
+          <div><h2>Case event timeline</h2></div>
+          <div class="timeline-filters">
+            <label for="timeline-filter">Record type</label>
+            <select id="timeline-filter">
+              <option value="all">All</option>
+              <option value="pathology">Pathology</option>
+              <option value="imaging">Imaging</option>
+              <option value="molecular">Molecular</option>
+              <option value="laboratory">Laboratory</option>
+              <option value="clinical">Clinical</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+        </div>
+        <p class="muted panel-note">Event, issue, and receipt dates remain separate. Amendments stay attached to their source event.</p>
+        <ol id="timeline-events" class="timeline-events" aria-label="Source-derived event chronology"></ol>
+        <section class="change-review" aria-labelledby="change-review-heading">
+          <div class="panel-head">
+            <h3 id="change-review-heading">Source Change Explorer</h3>
+            <span class="pill pill-neutral">Exact source versions · no clinical inference</span>
+          </div>
+          <p class="muted panel-note">Compare original report text and inspect which saved investigations used an earlier version. A textual amendment is not automatically a new biological event or a clinical change.</p>
+          <div id="source-change-list" class="change-list"></div>
+        </section>
+      </section>
+
+      <section class="panel panel-investigation" id="investigations" aria-labelledby="investigation-heading">
+        <div class="panel-head">
+          <h2 id="investigation-heading">Investigate a question</h2>
+          <span class="pill pill-neutral">Human-authored, no AI call</span>
+        </div>
+        <div class="investigation-grid">
+          <section class="investigation-pane question-pane" aria-labelledby="question-pane-heading">
+            <h3 id="question-pane-heading">Case questions</h3>
+            <form id="question-form">
+              <label for="question-text">New question</label>
+              <textarea id="question-text" rows="2" maxlength="500" required placeholder="Which findings need reconciliation before the next review?"></textarea>
+              <button type="submit" class="button">Add question</button>
+            </form>
+            <div id="question-list" class="questions"></div>
+          </section>
+
+          <section class="investigation-pane draft-pane" aria-labelledby="draft-pane-heading">
+            <h3 id="draft-pane-heading">Prepare a reviewable draft</h3>
+            <form id="draft-form">
+              <label for="question-choice">Question</label>
+              <select id="question-choice" required></select>
+              <fieldset class="choice-group">
+                <legend>Source versions</legend>
+                <div id="source-choice" class="source-choice"></div>
+              </fieldset>
+              <fieldset class="choice-group">
+                <legend>Evidence assessments</legend>
+                <div id="evidence-choice" class="source-choice"></div>
+              </fieldset>
+              <label for="draft-observations">Reported observations</label>
+              <textarea id="draft-observations" rows="3" minlength="10" maxlength="1200" required></textarea>
+              <label for="draft-summary">Working hypothesis or mechanism</label>
+              <textarea id="draft-summary" rows="3" maxlength="1000"></textarea>
+              <label for="draft-assumptions">Assumptions, contradictions, and gaps</label>
+              <textarea id="draft-assumptions" rows="3" maxlength="600"></textarea>
+              <button class="button" type="submit">Save investigation draft</button>
+            </form>
+          </section>
+        </div>
+        <section class="investigation-history" aria-labelledby="investigation-history-heading">
+          <h3 id="investigation-history-heading">Saved drafts and history</h3>
+          <div id="snapshot-list" class="snapshots"></div>
+        </section>
+      </section>
+
       <div class="workspace">
         <div class="content-left">
-          <section class="panel" id="timeline">
-            <div class="panel-head">
-              <div><div class="eyebrow">LONGITUDINAL SOURCES</div><h2>Case event timeline</h2></div>
-              <div class="timeline-filters"><label for="timeline-filter">Record type</label>
-                <select id="timeline-filter"><option value="all">All</option><option value="pathology">Pathology</option><option value="imaging">Imaging</option><option value="molecular">Molecular</option><option value="laboratory">Laboratory</option><option value="clinical">Clinical</option><option value="other">Other</option></select>
-              </div>
-            </div>
-            <p class="muted tiny">Ordered by the event date stated in the original fictional report. Issued and received dates are shown separately. An amended report remains one event with several auditable source versions. No disease progression or treatment response is inferred.</p>
-            <ol id="timeline-events" class="timeline-events" aria-label="Source-derived event chronology"></ol>
-          </section>
           <section class="panel" id="sources">
-            <div class="panel-head"><div><div class="eyebrow">01 / INTAKE</div><h2>Source history</h2></div><span class="muted tiny">Event date ≠ issued date ≠ received date</span></div>
+            <div class="panel-head"><h2>Source history</h2></div>
             <div id="source-list" class="cards"></div>
           </section>
-          <section class="panel">
-            <div class="panel-head"><div><div class="eyebrow">02 / ASSERTIONS</div><h2>Current reported findings</h2></div><span class="muted tiny">Reported text is not a validated clinical conclusion</span></div>
+          <section class="panel" id="assertions">
+            <div class="panel-head"><h2>Current reported findings</h2></div>
             <div id="assertion-list" class="findings"></div>
           </section>
           <section class="panel" id="biological-assets">
@@ -69,39 +150,30 @@
             <div id="asset-list" class="findings"></div>
           </section>
           <section class="panel" id="activity">
-            <div class="panel-head"><div><div class="eyebrow">05 / AUDIT</div><h2>Recent activity</h2></div></div>
+            <div class="panel-head"><h2>Recent activity</h2></div>
             <div id="event-list" class="activity"></div>
           </section>
         </div>
-        <div class="content-right">
-          <section class="panel" id="investigations">
-            <div class="panel-head"><div><div class="eyebrow">03 / INVESTIGATIONS</div><h2>Questions &amp; review</h2></div></div>
-            <form id="question-form"><label for="question-text">New unresolved question</label><textarea id="question-text" rows="2" maxlength="500" required placeholder="e.g. Which reported findings need reconciliation before the next review?"></textarea><button type="submit" class="button">Add question</button></form>
-            <div id="question-list" class="questions"></div>
-            <div class="subhead">Create a dated investigation draft</div>
-            <form id="draft-form">
-              <label for="question-choice">Question</label><select id="question-choice" required></select>
-              <label>Source versions included</label><div id="source-choice" class="source-choice"></div>
-              <label>Optional fictional evidence assessments included</label><div id="evidence-choice" class="source-choice"></div>
-              <label for="draft-summary">Human-authored, unappraised synthesis</label><textarea id="draft-summary" rows="4" maxlength="3000" required placeholder="This is an engineering demonstration: summarize the selected source statements and remaining uncertainty. Do not assert treatment benefit."></textarea>
-              <button class="button" type="submit">Save investigation draft</button>
-            </form>
-            <div class="subhead">Investigation snapshots</div><div id="snapshot-list" class="snapshots"></div>
-          </section>
 
+        <div class="content-right">
           <section class="panel" id="evidence">
-            <div class="panel-head"><div><div class="eyebrow">04 / SYNTHETIC EVIDENCE</div><h2>Evidence &amp; applicability</h2></div><span class="pill pill-warn">FICTIONAL ONLY</span></div>
-            <p class="muted">Evidence samples here are independently authored examples, not publications or medical guidance. Relationships and applicability are human-entered demonstration labels.</p>
+            <div class="panel-head"><h2>Evidence and applicability</h2><span class="pill pill-warn">Fictional only</span></div>
+            <p class="muted">These examples are independently authored, not publications or medical guidance. Relationships and applicability are human-entered demonstration labels.</p>
             <form id="evidence-import-form">
               <label for="evidence-text">Synthetic evidence document</label>
               <textarea id="evidence-text" rows="7" spellcheck="false" placeholder="OI-SYNTHETIC-EVIDENCE/1&#10;Evidence: EVID-ASSAY&#10;Title: ...&#10;Rights: original-synthetic"></textarea>
-              <div class="actions"><button type="button" id="example-evidence-button" class="button secondary">Load fictional example</button><button type="submit" class="button">Register fictional evidence</button></div>
+              <div class="actions">
+                <button type="button" id="example-evidence-button" class="button secondary">Load fictional example</button>
+                <button type="submit" class="button">Register fictional evidence</button>
+              </div>
             </form>
-            <div class="subhead">Versioned research sources</div>
+            <h3 class="subhead">Versioned research sources</h3>
             <div id="evidence-list" class="cards"></div>
             <form id="evidence-assessment-form">
-              <label for="evidence-question-choice">Question to assess</label><select id="evidence-question-choice" required></select>
-              <label for="evidence-source-choice">Current fictional evidence</label><select id="evidence-source-choice" required></select>
+              <label for="evidence-question-choice">Question to assess</label>
+              <select id="evidence-question-choice" required></select>
+              <label for="evidence-source-choice">Current fictional evidence</label>
+              <select id="evidence-source-choice" required></select>
               <label for="evidence-relation">Relationship to question</label>
               <select id="evidence-relation"><option value="context">Context only</option><option value="supports">Supports (human-labelled)</option><option value="contradicts">Contradicts</option><option value="unknown">Unknown</option></select>
               <label for="evidence-applicability">Applicability</label>
@@ -110,8 +182,9 @@
               <textarea id="evidence-rationale" rows="3" minlength="15" maxlength="800" required placeholder="Record why this fictional text may or may not apply. Do not make treatment claims."></textarea>
               <button class="button" type="submit">Record fictional assessment</button>
             </form>
-            <div class="subhead">Case evidence assessments</div><div id="evidence-assessment-list" class="findings"></div>
-            <form id="evidence-withdraw-form">
+            <h3 class="subhead">Case evidence assessments</h3>
+            <div id="evidence-assessment-list" class="findings"></div>
+            <form id="evidence-withdraw-form" class="withdraw-form">
               <label for="evidence-withdraw-id">Choose the current fictional evidence item to withdraw</label>
               <select id="evidence-withdraw-id" required></select>
               <label for="evidence-withdraw-reason">Withdrawal reason</label>
@@ -119,9 +192,10 @@
               <button class="button secondary" type="submit">Withdraw and invalidate drafts</button>
             </form>
           </section>
+
           <section class="panel" id="bibliography">
-            <div class="panel-head"><div><div class="eyebrow">PUBLIC RESEARCH / METADATA ONLY</div><h2>Bibliographic discovery</h2></div><span class="pill">Not case-linked</span></div>
-            <p class="muted">A publication identifier is not evidence of treatment benefit or applicability. This panel never sends patient information; do not enter patient details. Live lookups send only a public DOI and require explicit local server opt-in.</p>
+            <div class="panel-head"><h2>Bibliographic discovery</h2><span class="pill pill-neutral">Not case-linked</span></div>
+            <p class="muted">A publication identifier does not establish treatment benefit or applicability. This panel never sends patient information. Do not enter patient details. Live lookups send only a public DOI and require explicit local server opt-in.</p>
             <div id="bibliography-mode" class="muted tiny" role="status">Checking bibliography mode…</div>
             <form id="bibliography-form">
               <label for="bibliography-doi">Public DOI (not a patient identifier)</label>
@@ -133,17 +207,42 @@
             </form>
             <div id="bibliography-result" class="cards" aria-live="polite"></div>
           </section>
+
           <section class="panel" id="import">
-            <div class="panel-head"><div><div class="eyebrow">04 / UPDATES</div><h2>Import synthetic source</h2></div></div>
-            <p class="muted">Paste a structured OI synthetic report. The importer is deterministic; it does not understand general clinical documents.</p>
-            <form id="import-form"><label for="report-text">Original report bytes (UTF-8)</label><textarea id="report-text" rows="9" spellcheck="false" placeholder="OI-SYNTHETIC-REPORT/1&#10;Patient: CASE-ALPHA&#10;Document: …"></textarea><div class="actions"><button type="button" class="button secondary" id="example-button">Load example amendment</button><button class="button" type="submit">Import report</button></div></form>
+            <div class="panel-head"><h2>Import synthetic source</h2></div>
+            <p class="muted">Paste a structured synthetic report. The importer is deterministic and does not understand general clinical documents.</p>
+            <form id="import-form">
+              <label for="report-text">Original report bytes (UTF-8)</label>
+              <textarea id="report-text" rows="9" spellcheck="false" placeholder="OI-SYNTHETIC-REPORT/1&#10;Patient: CASE-ALPHA&#10;Document: …"></textarea>
+              <div class="actions">
+                <button type="button" class="button secondary" id="example-button">Load example amendment</button>
+                <button class="button" type="submit">Import report</button>
+              </div>
+            </form>
             <div id="quarantine-list" class="quarantine-list"></div>
           </section>
         </div>
       </div>
-      <footer>Open Intelligence · Original, dependency-free reference implementation · No real patient information, credentialed clinical review, or regulatory clearance.</footer>
+
+      <footer>Open Intelligence is an original, dependency-free reference implementation. No real patient information, patient login, credentialed clinical review, automated clinical inference, treatment recommendations, or regulatory clearance.</footer>
     </main>
   </div>
-  <dialog id="source-dialog"><div class="dialog-head"><h2 id="dialog-title">Original source</h2><button id="dialog-close" class="button secondary" type="button">Close</button></div><pre id="dialog-text"></pre></dialog>
+  <dialog id="source-dialog" aria-labelledby="dialog-title" aria-describedby="dialog-context">
+    <div class="dialog-head"><h2 id="dialog-title">Original source</h2><button id="dialog-close" class="button secondary" type="button">Close</button></div>
+    <p id="dialog-context" class="muted tiny">Exact source text. Not clinically reviewed.</p>
+    <pre id="dialog-text"></pre>
+  </dialog>
+  <dialog id="compare-dialog" aria-labelledby="compare-title" aria-describedby="compare-context">
+    <div class="dialog-head"><h2 id="compare-title">Compare source versions</h2><button id="compare-close" class="button secondary" type="button">Close comparison</button></div>
+    <p id="compare-context" class="muted">Read-only, exact original text. Differences require human interpretation; this view makes no clinical or treatment determination.</p>
+    <div class="comparison-grid">
+      <section class="comparison-pane" aria-labelledby="compare-before-title">
+        <h3 id="compare-before-title">Previous version</h3><pre id="compare-before"></pre>
+      </section>
+      <section class="comparison-pane" aria-labelledby="compare-after-title">
+        <h3 id="compare-after-title">Current version</h3><pre id="compare-after"></pre>
+      </section>
+    </div>
+  </dialog>
 </body>
 </html>
