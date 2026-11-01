@@ -1,0 +1,8 @@
+OI-SYNTHETIC-REPORT/1
+Patient: CASE-OI017
+Document: IMG-OI017-A
+Type: imaging
+Event-Date: 2026-01-28
+Issued-At: 2026-01-29
+Finding: lesion-size|reported|A fictional reference lesion was measured as 28 mm in the imaging report text.
+Finding: pixel-data|not-reported|Native DICOM pixel data are not included with this fictional report-only delivery.

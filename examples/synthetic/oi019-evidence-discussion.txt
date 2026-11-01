@@ -1,0 +1,6 @@
+OI-SYNTHETIC-EVIDENCE/1
+Evidence: EVID-OI019-DISCUSSION
+Title: Fictional preservation-discussion example
+Issued-At: 2026-07-12
+Rights: original-synthetic
+Statement: This independently authored fictional note states that a discussion about preserving a sample before an operation is not a decision, and that feasibility and any future use remain unknown.

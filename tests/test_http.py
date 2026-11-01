@@ -112,6 +112,12 @@ class HttpTests(unittest.TestCase):
             self.assertIn('disabled by default', error['error'])
             mock_fetch.assert_not_called()
 
+    def test_wrong_patient_example_serves_declared_other_case(self):
+        status, record = self.request('/api/examples/wrong-patient')
+        self.assertEqual(status, 200)
+        self.assertIn('Patient: CASE-BETA', record['text'])
+        self.assertIn('PATH-OTHER', record['text'])
+
     def test_bibliography_live_gate_passes_only_doi_and_is_operator_controlled(self):
         handler = self.server.RequestHandlerClass
         prior = handler.allow_crossref_live

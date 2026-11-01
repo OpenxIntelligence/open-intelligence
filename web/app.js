@@ -34,10 +34,19 @@ function metric(number, label) {
   wrap.append(node('span', number, 'number'), node('span', label, 'name'));
   return wrap;
 }
+function focusOverviewFromCasePicker(event) {
+  if (event.key !== 'Tab' || event.shiftKey || event.defaultPrevented) return;
+  if (document.activeElement !== el('case-picker')) return;
+  const overviewLink = document.querySelector('.rail nav a[href="#overview"]');
+  if (!overviewLink) return;
+  event.preventDefault();
+  overviewLink.focus();
+}
 async function initialize() {
   try {
     const cases = await api('/api/cases');
     const picker = el('case-picker');
+    picker.addEventListener('keydown', focusOverviewFromCasePicker);
     for (const entry of cases) {
       const option = node('option', entry.label.replace(/^Fictional case /, '') + ', ' + entry.case_id);
       option.value = entry.case_id;
@@ -215,6 +224,47 @@ function renderSourceChanges() {
   }
 }
 
+function renderBiologicalAssets() {
+  clear('asset-list');
+  const assets = active.biological_assets || [];
+  const assertions = active.biological_inventory_assertions || [];
+  if (!assets.length) { empty(el('asset-list'), 'No biological assets recorded for this case.'); return; }
+  const byId = new Map(assets.map(a => [a.id, a]));
+  const fieldText = (item, name) => item[name + '_state'] === 'known'
+    ? name + ': ' + item[name + '_value']
+    : name.toUpperCase() + ': UNKNOWN (explicit — not absent)';
+  for (const asset of assets) {
+    // Each asset is rendered separately, grouped by nothing: two tumors or
+    // two time points are never merged into one card.
+    const card = node('div', null, 'finding');
+    const heading = node('div', null, 'finding-head');
+    heading.append(node('strong', asset.asset_id + ' · ' + asset.kind),
+      pill('Episode ' + asset.episode_id, 'pill-neutral'));
+    const parent = asset.parent_asset_id === null ? 'Original — no parent'
+      : 'Derived from ' + (byId.get(asset.parent_asset_id)?.asset_id || ('#' + asset.parent_asset_id));
+    card.append(heading,
+      node('p', 'Observed ' + asset.observed_date + ' · Specimen: ' +
+        (asset.specimen_state === 'recorded' ? asset.specimen_id : 'UNKNOWN (explicit — not absent)') +
+        ' · ' + parent + ' · Creation anchor: source version #' + asset.anchor_source_version_id, 'snapshot-meta'));
+    if (asset.pointer_label) card.append(node('p', 'Pointer label only, no file stored: ' + asset.pointer_label, 'muted tiny'));
+    const mine = assertions.filter(a => a.asset_id === asset.id);
+    if (!mine.length) {
+      card.append(node('p', 'No inventory assertion recorded — inventory unknown, not absent.', 'muted'));
+    }
+    for (const item of mine) {
+      const box = node('div', null, 'snapshot');
+      const top = node('div', null, 'topline');
+      top.append(node('strong', 'Inventory assertion #' + item.id + ' · ' + item.asserted_by),
+        pill(item.state, item.state === 'stale' ? 'pill-alert' : ''));
+      box.append(top, node('p', ['location', 'quantity', 'custody', 'consent', 'rights']
+        .map(name => fieldText(item, name)).join(' · '), 'snapshot-meta'),
+        node('span', 'Source version #' + item.source_version_id +
+          (item.state === 'stale' ? ' · STALE: source amended; re-assert against the current version explicitly' : ''), 'ref'));
+      card.append(box);
+    }
+    el('asset-list').append(card);
+  }
+}
 function render() {
   const sameCase = renderedCaseId === caseId;
   const priorQuestion = sameCase ? el('question-choice').value : null;
@@ -288,6 +338,7 @@ function render() {
     card.append(sourceButton);
     el('assertion-list').append(card);
   }
+  renderBiologicalAssets();
   clear('question-list'); clear('question-choice');
   if (!active.questions.length) empty(el('question-list'), 'Add an unresolved question to begin.');
   for (const question of active.questions) {
@@ -431,6 +482,71 @@ function renderOriginalSource(text, lineNumber) {
   }
   return anchored;
 }
+// Begin source text comparison.
+function reportLineTokens(text) {
+  // Keep every character, including CRLF, blank lines and the final newline.
+  return text.match(/[^\n]*\n|[^\n]+$/g) || [];
+}
+function compareReportLines(before, after) {
+  if (typeof before !== 'string' || typeof after !== 'string')
+    throw Error('Original source text is required for comparison.');
+  const limited = {status: 'limited', beforeLines: [], afterLines: []};
+  // Bound work before allocating the line-alignment table. Never truncate an original.
+  if (before.length > 65536 || after.length > 65536) return limited;
+  const a = reportLineTokens(before), b = reportLineTokens(after);
+  if (a.length > 512 || b.length > 512) return limited;
+  if (before === after) return {status: 'identical', beforeLines: [], afterLines: []};
+  const width = b.length + 1;
+  const table = new Uint16Array((a.length + 1) * width);
+  for (let i = a.length - 1; i >= 0; i--) {
+    for (let j = b.length - 1; j >= 0; j--) {
+      table[i * width + j] = a[i] === b[j]
+        ? table[(i + 1) * width + j + 1] + 1
+        : Math.max(table[(i + 1) * width + j], table[i * width + j + 1]);
+    }
+  }
+  const beforeLines = [], afterLines = [];
+  let i = 0, j = 0;
+  while (i < a.length || j < b.length) {
+    if (i < a.length && j < b.length && a[i] === b[j]) { i++; j++; }
+    else if (i < a.length && (j === b.length ||
+        table[(i + 1) * width + j] >= table[i * width + j + 1])) beforeLines.push(++i);
+    else afterLines.push(++j);
+  }
+  return {status: 'compared', beforeLines, afterLines};
+}
+function renderReportLineComparison(before, after) {
+  const difference = compareReportLines(before, after);
+  const paint = (id, text, changed, label) => {
+    const viewer = el(id);
+    viewer.replaceChildren();
+    if (difference.status === 'limited') { viewer.textContent = text; return; }
+    const selected = new Set(changed);
+    reportLineTokens(text).forEach((token, index) => {
+      if (selected.has(index + 1)) {
+        const mark = node('mark', token, 'source-highlight');
+        mark.title = label + ' line ' + (index + 1);
+        mark.dataset.line = String(index + 1);
+        viewer.append(mark);
+      } else viewer.append(document.createTextNode(token));
+    });
+  };
+  paint('compare-before', before, difference.beforeLines, 'Previous-only');
+  paint('compare-after', after, difference.afterLines, 'Updated-only');
+  const listed = numbers => numbers.length ? numbers.slice(0, 20).join(', ') +
+    (numbers.length > 20 ? ' (first 20 of ' + numbers.length + ')' : '') : 'none';
+  const scope = ' Text-only comparison, including whitespace and line endings. This view makes no clinical or treatment determination.';
+  el('compare-context').textContent = difference.status === 'limited'
+    ? 'Line highlighting skipped: a source exceeds the 65,536-character or 512-line comparison limit. Both complete original texts remain visible; differences have not been assessed.' + scope
+    : difference.status === 'identical'
+      ? 'Exact source text is identical. This does not establish clinical equivalence.' + scope
+      : difference.beforeLines.length + ' previous-only line(s); ' + difference.afterLines.length +
+        ' updated-only line(s). Previous source lines: ' + listed(difference.beforeLines) +
+        '. Updated source lines: ' + listed(difference.afterLines) +
+        '. Repeated or moved lines use a deterministic text alignment, not a clinical mapping.' + scope;
+  return difference;
+}
+// End source text comparison.
 // One read intent across report, evidence and comparison views. Checking only
 // caseId misses same-case reordering and a case A -> B -> A round trip.
 let sourceReadSequence = 0;
@@ -504,8 +620,7 @@ async function openComparison(requestedPrevious, requestedCurrent) {
       previous.version + ' and ' + current.version;
     el('compare-before-title').textContent = previous.document_id + '@' + previous.version + ' · ' + previous.state;
     el('compare-after-title').textContent = current.document_id + '@' + current.version + ' · ' + current.state;
-    el('compare-before').textContent = beforeText;
-    el('compare-after').textContent = afterText;
+    renderReportLineComparison(beforeText, afterText);
     showSourceView('compare-dialog');
   } catch (err) {
     if (!read || sourceReadIsCurrent(read)) notice(err.message, true);

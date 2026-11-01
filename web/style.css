@@ -1042,7 +1042,6 @@ dialog pre {
   #compare-dialog, .review-attention .button, .change-card button { display: none; }
   .top-right .pill-warn { border: 2px solid var(--color-ink); }
 }
-
 /* Clinician glance: source facts before authored interpretations. */
 .view-question {
   margin-bottom: var(--space-2);

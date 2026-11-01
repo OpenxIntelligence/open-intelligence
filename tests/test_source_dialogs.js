@@ -12,7 +12,7 @@ assert.ok(start >= 0 && end > start, 'Expected source-reader functions in actual
 const reader = app.slice(start, end);
 
 function element() {
-  return {children: [], open: false, _text: '',
+  return {children: [], open: false, _text: '', dataset: {},
     get textContent() {return this._text + this.children.map(x => x.textContent).join('');},
     set textContent(v) {this._text = String(v); this.children = [];},
     replaceChildren() {this._text = ''; this.children = [];},
