@@ -47,6 +47,9 @@ jobs:
       - name: Three-cohort lossless projection and follow-up query control
         if: always()
         run: python tools/research/gdc_projection_probe.py --output research-results/projection.json
+      - name: Treatment and follow-up source semantics
+        if: always()
+        run: python tools/research/clinical_semantics_probe.py --output research-results/semantics.json
       - name: Reproducibility receipt
         if: always()
         run: |
