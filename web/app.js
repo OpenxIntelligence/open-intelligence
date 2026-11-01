@@ -913,10 +913,8 @@ initializeBibliography();
 
 const sectionMenu = document.querySelector('.section-menu');
 const workspaceNav = document.querySelector('#workspace-nav');
-if (sectionMenu && workspaceNav) {
+if (workspaceNav) {
   const sectionLinks = [...workspaceNav.querySelectorAll('a[href^="#"]')];
-  const mobileSections = window.matchMedia('(max-width: 60rem)');
-  const syncSectionMenu = () => { sectionMenu.open = !mobileSections.matches; };
   const syncCurrentSection = () => {
     const current = window.location.hash || '#overview';
     sectionLinks.forEach(link => {
@@ -924,11 +922,15 @@ if (sectionMenu && workspaceNav) {
       else link.removeAttribute('aria-current');
     });
   };
-  syncSectionMenu();
   syncCurrentSection();
-  mobileSections.addEventListener('change', syncSectionMenu);
   window.addEventListener('hashchange', syncCurrentSection);
-  workspaceNav.addEventListener('click', event => {
-    if (mobileSections.matches && event.target.closest('a')) sectionMenu.open = false;
-  });
+  if (sectionMenu) {
+    const mobileSections = window.matchMedia('(max-width: 60rem)');
+    const syncSectionMenu = () => { sectionMenu.open = !mobileSections.matches; };
+    syncSectionMenu();
+    mobileSections.addEventListener('change', syncSectionMenu);
+    workspaceNav.addEventListener('click', event => {
+      if (mobileSections.matches && event.target.closest('a')) sectionMenu.open = false;
+    });
+  }
 }
