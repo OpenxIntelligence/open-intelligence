@@ -27,3 +27,5 @@ jobs:
         run: PYTHONPATH=src python -m unittest discover -s tests -v
       - name: Synthetic browser journey (headless Chromium)
         run: PYTHONPATH=src python tests/browser_journey.py
+      - name: Source dialog browser event regression
+        run: PYTHONPATH=src python tests/browser_source_dialogs.py
