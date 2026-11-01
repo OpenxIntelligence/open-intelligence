@@ -148,6 +148,10 @@ class HttpTests(unittest.TestCase):
             body = response.read().decode()
             self.assertIn('FICTIONAL DEMO DATA — not a real patient', body)
             self.assertIn("default-src 'self'", response.headers['Content-Security-Policy'])
+            # The incoming board and patient view are derived presentations of
+            # the same case state, not separate data: both must be served.
+            self.assertIn('id="incoming-board"', body)
+            self.assertIn('id="patient-view"', body)
         for name in ('style.css', 'tokens.css', 'base.css'):
             with urlopen(f'http://127.0.0.1:{self.port}/{name}') as response:
                 self.assertEqual(response.headers.get('Content-Type'), 'text/css; charset=utf-8')
