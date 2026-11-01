@@ -112,6 +112,11 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if path == "/api/cases":
                 return self._json(200, store.cases())
+            if path == "/api/discovery":
+                return self._json(200, store.list_discovery())
+            discovery_links = re.fullmatch(rf"/api/cases/{ID_PART}/discovery", path)
+            if discovery_links:
+                return self._json(200, store.case_discovery_links(discovery_links[1]))
             evidence_text = re.fullmatch(r"/api/evidence/([0-9]+)", path)
             if evidence_text:
                 return self._json(200, {"text": store.synthetic_evidence_text(int(evidence_text[1]))})
@@ -166,6 +171,16 @@ class Handler(BaseHTTPRequestHandler):
                     if not isinstance(raw, str):
                         raise InvalidInput("Fictional evidence text required")
                     return self._json(200, store.import_synthetic_evidence(raw.encode("utf-8")))
+                if path == "/api/discovery/imports":
+                    raw = data.get("text")
+                    if not isinstance(raw, str):
+                        raise InvalidInput("Fictional discovery text required")
+                    return self._json(200, store.import_discovery(raw.encode("utf-8")))
+                discovery_link = re.fullmatch(rf"/api/cases/{ID_PART}/discovery-links", path)
+                if discovery_link:
+                    return self._json(201, {"link_id": store.link_discovery(
+                        discovery_link[1], data.get("question_id"), data.get("discovery_id"),
+                        data.get("applicability"), data.get("rationale"))})
                 withdrawal = re.fullmatch(r"/api/evidence/([0-9]+)/withdraw", path)
                 if withdrawal:
                     return self._json(200, store.withdraw_synthetic_evidence(
