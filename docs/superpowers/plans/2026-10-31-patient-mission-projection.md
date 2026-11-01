@@ -6,7 +6,7 @@
 
 **Architecture:** A new pure projection module consumes one `CaseStore.state()` snapshot and returns a typed workflow-oriented view. The existing local HTTP service exposes the projection; a small standalone browser script renders it without mutating canonical state or duplicating application logic.
 
-**Tech Stack:** Python 3.11+ standard library, SQLite-backed existing `CaseStore`, dependency-free browser JavaScript, `unittest`, existing headless Chromium journey.
+**Tech Stack:** Python 3.11+ standard library, SQLite-backed existing `CaseStore`, dependency-free browser JavaScript, `unittest`, and dependency-free headless Chromium journeys.
 
 **Spec:** `docs/superpowers/specs/2026-10-31-patient-mission-projection-design.md`
 
@@ -17,7 +17,7 @@
 - Synthetic data only; no PHI, diagnosis, treatment recommendation, trial match, clinical decision, or clinical-validity claim.
 - No new persistence schema, model provider, dependency, or external service.
 - Projection code must be deterministic, read-only, case-scoped, source-linked, and explicit about limitations.
-- PR #10 remains documentation-only and unmerged; implementation occurs on this separate branch.
+- PR #10 remains documentation-only and unmerged; implementation occurs on this separate branch and draft PR #38.
 
 ## Review Focus
 
@@ -39,11 +39,11 @@
 - Consumes: `build_patient_mission(state: dict) -> dict`, where `state` is the exact result of `CaseStore.state(case_id)`.
 - Produces: the `PatientMissionProjection` contract defined by the spec.
 
-- [ ] **Step 1: Write failing tests** for empty state, seeded unresolved state, case isolation, malformed event details, and amendment-driven review state.
-- [ ] **Step 2: Run** `PYTHONPATH=src python -m unittest tests.test_patient_mission -v` and confirm failure because `open_intelligence.mission` does not exist.
-- [ ] **Step 3: Implement** `build_patient_mission(state: dict) -> dict` and private deterministic helpers in `src/open_intelligence/mission.py`.
-- [ ] **Step 4: Run** the task test and then `PYTHONPATH=src python -m unittest discover -s tests -v`; require zero failures.
-- [ ] **Step 5: Commit** `feat: add deterministic patient mission projection`.
+- [x] **Step 1: Write failing tests** for empty state, seeded unresolved state, case isolation, malformed event details, and amendment-driven review state.
+- [x] **Step 2: Confirm the red state.** Run `41269640207` failed because `open_intelligence.mission` did not exist while the existing suite remained green.
+- [x] **Step 3: Implement** `build_patient_mission(state: dict) -> dict` and private deterministic helpers in `src/open_intelligence/mission.py`.
+- [x] **Step 4: Verify** the task and full suite. Run `41269787960` passed compile, 43 unit/HTTP tests, JavaScript syntax, and the existing browser journey after correcting a flawed cross-case test sentinel.
+- [x] **Step 5: Commit** the deterministic projection and tests.
 
 ### Task 2: Case-scoped HTTP endpoint
 
@@ -55,11 +55,11 @@
 - Consumes: `build_patient_mission(state)` from Task 1.
 - Produces: `GET /api/cases/{CASE-ID}/mission` returning JSON; existing unknown-case and host boundaries remain authoritative.
 
-- [ ] **Step 1: Write failing HTTP tests** for a seeded case, unknown case, and unexpected Host rejection.
-- [ ] **Step 2: Run** `PYTHONPATH=src python -m unittest tests.test_patient_mission_http -v` and confirm the endpoint returns 404 before implementation.
-- [ ] **Step 3: Import** the projection helper and add the mission route after the existing case-state route.
-- [ ] **Step 4: Run** the task test and full suite; require zero failures.
-- [ ] **Step 5: Commit** `feat: expose patient mission projection endpoint`.
+- [x] **Step 1: Write failing HTTP tests** for a seeded case, unknown case, and unexpected Host rejection.
+- [x] **Step 2: Confirm the red state.** Run `41269841287` returned 404 for the absent route while the existing Host rejection passed.
+- [x] **Step 3: Import** the projection helper and add the mission route after the existing case-state route.
+- [x] **Step 4: Verify** the task and full suite. Run `41269912124` passed 46 tests and the existing browser journey.
+- [x] **Step 5: Commit** the case-scoped endpoint.
 
 ### Task 3: Patient Mission portal panel
 
@@ -68,18 +68,19 @@
 - Modify: `web/index.html`
 - Create: `web/mission.js`
 - Create: `tests/test_patient_mission_ui.py`
-- Modify: `tests/browser_journey.py`
+- Create: `tests/patient_mission_browser_journey.py`
+- Modify: `.github/workflows/synthetic-tests.yml`
 
 **Interfaces:**
 - Consumes: `GET /api/cases/{CASE-ID}/mission`.
 - Produces: a read-only panel showing status, counts, known statements, unresolved items, material changes, next actions, and guardrails.
 
-- [ ] **Step 1: Write failing static/UI tests** requiring the section, script, exact warning, and mission endpoint call.
-- [ ] **Step 2: Extend the browser journey** to verify the panel follows the selected case and shows amendment-driven review state.
-- [ ] **Step 3: Run** the new tests and confirm they fail because the portal surface is absent.
-- [ ] **Step 4: Add** `/mission.js` static serving, the semantic HTML panel, and dependency-free rendering with stale-response protection.
-- [ ] **Step 5: Run** `node --check web/mission.js`, all unit/HTTP tests, and `PYTHONPATH=src python tests/browser_journey.py`; require zero failures.
-- [ ] **Step 6: Commit** `feat: add patient mission portal panel`.
+- [x] **Step 1: Write failing static/UI tests** requiring the section, script, exact warning, and mission endpoint call.
+- [x] **Step 2: Add a separate browser journey** verifying that the panel follows the selected case and shows amendment-driven review state.
+- [x] **Step 3: Confirm the red state.** Run `41270022603` failed because `web/mission.js` did not yet exist.
+- [x] **Step 4: Add** `/mission.js` static serving, the semantic HTML panel, and dependency-free rendering with stale-response protection.
+- [x] **Step 5: Verify** JavaScript syntax, unit/HTTP tests, the existing browser journey, and the new Patient Mission journey. Run `41270150297` passed compile, both JavaScript syntax checks, 49 unit/HTTP tests, and both browser journeys.
+- [x] **Step 6: Commit** the Patient Mission portal surface and verification workflow.
 
 ### Task 4: Boundaries, documentation, and final verification
 
@@ -90,10 +91,25 @@
 
 **Interfaces:**
 - Consumes: verified behavior from Tasks 1–3.
-- Produces: accurate implementation status, limitations, and test evidence.
+- Produces: accurate implementation status, limitations, external cross-references, and final test evidence.
 
-- [ ] **Step 1: Document** what the projection does and does not establish, including the local route and portal section.
-- [ ] **Step 2: Mark plan checkboxes only for steps supported by actual commits and workflow evidence.
-- [ ] **Step 3: Run** `PYTHONPATH=src python -m compileall -q src`, `node --check web/app.js`, `node --check web/mission.js`, `PYTHONPATH=src python -m unittest discover -s tests -v`, and `PYTHONPATH=src python tests/browser_journey.py`.
-- [ ] **Step 4: Open a separate draft PR to `main`** and verify the pull-request workflow result; do not merge.
-- [ ] **Step 5: Link the implementation PR from the complementary Notion and Google Docs annexes without changing canonical architecture status.
+- [x] **Step 1: Document** what the projection does and does not establish, including the local route and portal section.
+- [x] **Step 2: Mark plan steps only where commits and workflow evidence support completion.**
+- [ ] **Step 3: Run final verification on the exact review state:** Python compile, both JavaScript syntax checks, all unit/HTTP tests, and both browser journeys.
+- [x] **Step 4: Keep the implementation in a separate draft PR to `main`.** Draft PR #38 is open and unmerged; PR #10 remains documentation-only.
+- [ ] **Step 5: Link draft PR #38 from the complementary Notion and Google Docs annexes without changing canonical architecture status.**
+
+## Verification Evidence
+
+| Phase | Run | Result |
+|---|---:|---|
+| Projection RED | `41269640207` | Expected failure: module absent |
+| Projection GREEN | `41269787960` | Compile, 43 tests, JS syntax, original browser journey passed |
+| HTTP RED | `41269841287` | Expected failure: route absent |
+| HTTP GREEN | `41269912124` | 46 tests and original browser journey passed |
+| Portal RED | `41270022603` | Expected failure: renderer absent |
+| Portal GREEN | `41270150297` | Compile, two JS checks, 49 tests, and both browser journeys passed |
+
+## Remaining Boundaries
+
+Passing these synthetic checks does not establish identity, consent, PHI-grade access control, clinical ingestion, diagnosis, treatment selection, trial matching, acute-safety handling, therapeutic development, care realization, outcome attribution, professional validation, regulatory status, or fitness for real patient use.
