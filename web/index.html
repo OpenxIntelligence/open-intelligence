@@ -8,6 +8,7 @@
   <title>Open Intelligence: Case Workspace</title>
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
+  <script src="/mission.js" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main-content">Skip to case workspace</a>
@@ -25,20 +26,29 @@
     <aside class="rail">
       <label for="case-picker">Case</label>
       <select id="case-picker" aria-label="Select synthetic case"></select>
-      <p class="muted tiny">Fictional case data stays on this local machine.</p>
-      <nav id="workspace-nav" aria-label="Workspace sections">
-        <a href="#overview">Case overview</a>
-        <a href="#incoming-board">Incoming board</a>
-        <a href="#patient-view">Patient view</a>
-        <a href="#assertions">Reported findings</a>
-        <a href="#timeline">Timeline</a>
-        <a href="#investigations">Investigation</a>
-        <a href="#sources">Sources and findings</a>
-        <a href="#evidence">Evidence review</a>
-        <a href="#bibliography">Bibliography</a>
-        <a href="#import">Updates</a>
-        <a href="#activity">Activity</a>
-      </nav>
+      <p class="muted tiny">Fictional case data stays on this local machine. There is no identity verification or patient login.</p>
+      <details class="section-menu" open>
+        <summary>Navigate</summary>
+        <nav id="workspace-nav" aria-label="Workspace sections">
+          <a href="#overview">Case overview</a>
+          <a href="#incoming-board">Incoming board</a>
+          <a href="#patient-view">Patient view</a>
+          <a href="#patient-mission">Patient Mission</a>
+          <a href="#assertions">Reported findings</a>
+          <a href="#timeline">Timeline</a>
+          <a href="#investigations">Investigation</a>
+          <a href="#sources">Sources and findings</a>
+          <a href="#evidence">Evidence review</a>
+          <a href="#bibliography">Bibliography</a>
+          <a href="#import">Updates</a>
+          <a href="#activity">Activity</a>
+        </nav>
+      </details>
+      <div class="side-bottom">
+        <strong>What this prototype proves</strong>
+        <p>Versioned original documents, traceable statements, durable questions, and amendment-driven review status.</p>
+        <p class="muted tiny">No automated clinical extraction, AI reasoning, trial matching, or treatment recommendations.</p>
+      </div>
     </aside>
 
     <main class="main" id="main-content" tabindex="-1">
@@ -95,6 +105,27 @@
         <div class="subhead">What the records say</div><div id="patient-findings" class="findings"></div>
         <div class="subhead">Questions still open</div><div id="patient-questions" class="questions"></div>
         <div class="subhead">What is not certain yet</div><div id="patient-uncertainty" class="questions"></div>
+      </section>
+
+      <section class="panel" id="patient-mission" aria-labelledby="patient-mission-title">
+        <div class="panel-head">
+          <div><div class="eyebrow">PATIENT MISSION · READ-ONLY PROJECTION</div><h2 id="patient-mission-title">Where the synthetic case workflow stands</h2></div>
+          <span id="mission-status" class="pill pill-neutral" aria-live="polite">Loading…</span>
+        </div>
+        <p class="muted"><strong>Workflow orientation only. Not a diagnosis or treatment recommendation.</strong> This surface projects the existing synthetic case ledger; it does not create clinical facts or authorize an action.</p>
+        <div class="metrics" id="mission-summary" aria-live="polite"></div>
+        <div class="workspace">
+          <div class="content-left">
+            <div><div class="subhead">What the current sources report</div><div id="mission-known" class="findings" aria-live="polite"></div></div>
+            <div><div class="subhead">What remains unresolved</div><div id="mission-unresolved" class="cards" aria-live="polite"></div></div>
+          </div>
+          <div class="content-right">
+            <div><div class="subhead">Material changes</div><div id="mission-changes" class="activity" aria-live="polite"></div></div>
+            <div><div class="subhead">Bounded next workflow actions</div><div id="mission-actions" class="cards" aria-live="polite"></div></div>
+          </div>
+        </div>
+        <div class="subhead">Guardrails</div>
+        <ul id="mission-guardrails" class="muted tiny"></ul>
       </section>
 
       <section class="panel panel-timeline" id="timeline">
