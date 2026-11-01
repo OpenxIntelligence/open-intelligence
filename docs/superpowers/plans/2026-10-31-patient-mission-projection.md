@@ -95,7 +95,7 @@
 
 - [x] **Step 1: Document** what the projection does and does not establish, including the local route and portal section.
 - [x] **Step 2: Mark plan steps only where commits and workflow evidence support completion.**
-- [ ] **Step 3: Run final verification on the exact review state:** Python compile, both JavaScript syntax checks, all unit/HTTP tests, and both browser journeys.
+- [x] **Step 3: Run final verification on the exact review state:** run `41270295553` passed Python compile, both JavaScript syntax checks, all 49 unit/HTTP tests, and both browser journeys; Crossref contract run `41270295565` also passed.
 - [x] **Step 4: Keep the implementation in a separate draft PR to `main`.** Draft PR #38 is open and unmerged; PR #10 remains documentation-only.
 - [x] **Step 5: Link draft PR #38 from the complementary Notion and Google Docs annexes without changing canonical architecture status.** PR #10 also records the bounded implementation reference.
 
@@ -109,6 +109,8 @@
 | HTTP GREEN | `41269912124` | 46 tests and original browser journey passed |
 | Portal RED | `41270022603` | Expected failure: renderer absent |
 | Portal GREEN | `41270150297` | Compile, two JS checks, 49 tests, and both browser journeys passed |
+| Final review-state GREEN | `41270295553` | Compile, two JS checks, 49 tests, and both browser journeys passed |
+| Independent metadata contract | `41270295565` | Crossref metadata contract passed |
 
 ## Remaining Boundaries
 
