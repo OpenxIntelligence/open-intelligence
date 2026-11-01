@@ -52,7 +52,7 @@ test('evidence selection wins over an older source request', async()=>{
   const h=harness(); const first=h.ctx.openSource(h.before), second=h.ctx.openEvidence(h.evidence);
   h.requests[1].resolve({text:'evidence selected'}); await second;
   h.requests[0].resolve({text:'old source'}); await first;
-  assert.equal(h.el('dialog-text').textContent,'selected source' === 'new selection' ? 'selected source' : 'evidence selected');
+  assert.equal(h.el('dialog-text').textContent,'evidence selected');
 });
 test('a late comparison cannot open over a newer source inspection', async()=>{
   const h=harness(); const first=h.ctx.openComparison(h.before,h.after), second=h.ctx.openSource(h.other);
