@@ -1,0 +1,6 @@
+OI-SYNTHETIC-EVIDENCE/1
+Evidence: EVID-OI019-CONTROL
+Title: Fictional no-threat control example
+Issued-At: 2026-07-12
+Rights: original-synthetic
+Statement: This independently authored fictional note states that a pending imaging comparison, by itself, threatens no option and does not become a candidate; it remains pending until further fictional images arrive.
