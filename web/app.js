@@ -431,6 +431,71 @@ function renderOriginalSource(text, lineNumber) {
   }
   return anchored;
 }
+// Begin source text comparison.
+function reportLineTokens(text) {
+  // Keep every character, including CRLF, blank lines and the final newline.
+  return text.match(/[^\n]*\n|[^\n]+$/g) || [];
+}
+function compareReportLines(before, after) {
+  if (typeof before !== 'string' || typeof after !== 'string')
+    throw Error('Original source text is required for comparison.');
+  const limited = {status: 'limited', beforeLines: [], afterLines: []};
+  // Bound work before allocating the line-alignment table. Never truncate an original.
+  if (before.length > 65536 || after.length > 65536) return limited;
+  const a = reportLineTokens(before), b = reportLineTokens(after);
+  if (a.length > 512 || b.length > 512) return limited;
+  if (before === after) return {status: 'identical', beforeLines: [], afterLines: []};
+  const width = b.length + 1;
+  const table = new Uint16Array((a.length + 1) * width);
+  for (let i = a.length - 1; i >= 0; i--) {
+    for (let j = b.length - 1; j >= 0; j--) {
+      table[i * width + j] = a[i] === b[j]
+        ? table[(i + 1) * width + j + 1] + 1
+        : Math.max(table[(i + 1) * width + j], table[i * width + j + 1]);
+    }
+  }
+  const beforeLines = [], afterLines = [];
+  let i = 0, j = 0;
+  while (i < a.length || j < b.length) {
+    if (i < a.length && j < b.length && a[i] === b[j]) { i++; j++; }
+    else if (i < a.length && (j === b.length ||
+        table[(i + 1) * width + j] >= table[i * width + j + 1])) beforeLines.push(++i);
+    else afterLines.push(++j);
+  }
+  return {status: 'compared', beforeLines, afterLines};
+}
+function renderReportLineComparison(before, after) {
+  const difference = compareReportLines(before, after);
+  const paint = (id, text, changed, label) => {
+    const viewer = el(id);
+    viewer.replaceChildren();
+    if (difference.status === 'limited') { viewer.textContent = text; return; }
+    const selected = new Set(changed);
+    reportLineTokens(text).forEach((token, index) => {
+      if (selected.has(index + 1)) {
+        const mark = node('mark', token, 'source-highlight');
+        mark.title = label + ' line ' + (index + 1);
+        mark.dataset.line = String(index + 1);
+        viewer.append(mark);
+      } else viewer.append(document.createTextNode(token));
+    });
+  };
+  paint('compare-before', before, difference.beforeLines, 'Previous-only');
+  paint('compare-after', after, difference.afterLines, 'Updated-only');
+  const listed = numbers => numbers.length ? numbers.slice(0, 20).join(', ') +
+    (numbers.length > 20 ? ' (first 20 of ' + numbers.length + ')' : '') : 'none';
+  const scope = ' Text-only comparison, including whitespace and line endings. No clinical interpretation or treatment determination.';
+  el('compare-context').textContent = difference.status === 'limited'
+    ? 'Line highlighting skipped: a source exceeds the 65,536-character or 512-line comparison limit. Both complete original texts remain visible; differences have not been assessed.' + scope
+    : difference.status === 'identical'
+      ? 'Exact source text is identical. This does not establish clinical equivalence.' + scope
+      : difference.beforeLines.length + ' previous-only line(s); ' + difference.afterLines.length +
+        ' updated-only line(s). Previous source lines: ' + listed(difference.beforeLines) +
+        '. Updated source lines: ' + listed(difference.afterLines) +
+        '. Repeated or moved lines use a deterministic text alignment, not a clinical mapping.' + scope;
+  return difference;
+}
+// End source text comparison.
 // One read intent across report, evidence and comparison views. Checking only
 // caseId misses same-case reordering and a case A -> B -> A round trip.
 let sourceReadSequence = 0;
@@ -504,8 +569,7 @@ async function openComparison(requestedPrevious, requestedCurrent) {
       previous.version + ' and ' + current.version;
     el('compare-before-title').textContent = previous.document_id + '@' + previous.version + ' · ' + previous.state;
     el('compare-after-title').textContent = current.document_id + '@' + current.version + ' · ' + current.state;
-    el('compare-before').textContent = beforeText;
-    el('compare-after').textContent = afterText;
+    renderReportLineComparison(beforeText, afterText);
     showSourceView('compare-dialog');
   } catch (err) {
     if (!read || sourceReadIsCurrent(read)) notice(err.message, true);
