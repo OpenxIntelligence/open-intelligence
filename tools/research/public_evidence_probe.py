@@ -53,7 +53,7 @@ def profile_gdc(cases: list[dict]) -> dict:
     diagnoses=[d for c in cases for d in c.get('diagnoses',[])]
     samples=[s for c in cases for s in c.get('samples',[])]
     treatments=[t for d in diagnoses for t in d.get('treatments',[])]
-    followups=[f for d in diagnoses for f in d.get('follow_ups',[])]
+    followups=[f for c in cases for f in c.get('follow_ups',[])]
     aliquots=[a for s in samples for p in s.get('portions',[]) for n in p.get('analytes',[]) for a in n.get('aliquots',[])]
     numbers=lambda v: isinstance(v,(int,float)) and not isinstance(v,bool)
     ids=[c.get('case_id') for c in cases]
@@ -63,7 +63,7 @@ def profile_gdc(cases: list[dict]) -> dict:
         'cases_with_multiple_samples':sum(len(c.get('samples',[]))>1 for c in cases),
         'cases_with_diagnosis_records':sum(bool(c.get('diagnoses')) for c in cases),
         'cases_with_treatment_records':sum(any(d.get('treatments') for d in c.get('diagnoses',[])) for c in cases),
-        'cases_with_followup_records':sum(any(d.get('follow_ups') for d in c.get('diagnoses',[])) for c in cases),
+        'cases_with_followup_records':sum(bool(c.get('follow_ups')) for c in cases),
         'treatments_with_numeric_start_offset':sum(numbers(t.get('days_to_treatment_start')) for t in treatments),
         'treatments_with_numeric_end_offset':sum(numbers(t.get('days_to_treatment_end')) for t in treatments),
         'naive_diagnosis_sample_inner_join_rows':sum(len(c.get('diagnoses',[]))*len(c.get('samples',[])) for c in cases),
@@ -121,7 +121,7 @@ def tcia_probe() -> dict:
 def gdc_probe() -> dict:
     filters={'op':'in','content':{'field':'project.project_id','value':['TCGA-LUAD']}}
     params={'filters':json.dumps(filters,separators=(',',':')), 'size':100,'sort':'case_id:asc',
-        'expand':'diagnoses,diagnoses.treatments,diagnoses.follow_ups,samples,samples.portions,samples.portions.analytes,samples.portions.analytes.aliquots'}
+        'expand':'diagnoses,diagnoses.treatments,follow_ups,samples,samples.portions,samples.portions.analytes,samples.portions.analytes.aliquots'}
     raw,receipt=fetch_bytes('https://api.gdc.cancer.gov/cases?'+urlencode(params))
     data=json.loads(raw)['data']; cases=data['hits']; total=data['pagination']['total']
     if len(cases)!=min(100,total): raise ValueError('Incomplete bounded API response')

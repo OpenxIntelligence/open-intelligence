@@ -33,4 +33,23 @@ class ProfileTests(unittest.TestCase):
         import json
         r=profile_gdc([{'case_id':'SECRET-FICTIONAL','diagnoses':[], 'samples':[]}])
         self.assertNotIn('SECRET-FICTIONAL', json.dumps(r))
+    def test_gdc_followups_count_root_records_and_case_coverage(self):
+        cases = [{'case_id': 'FICTIONAL-A', 'diagnoses': [{}],
+                  'follow_ups': [{'follow_up_id': 'F1'}, {'follow_up_id': 'F2'}]},
+                 {'case_id': 'FICTIONAL-B', 'diagnoses': [], 'follow_ups': []}]
+        result = profile_gdc(cases)
+        self.assertEqual(result['follow_ups'], 2)
+        self.assertEqual(result['cases_with_followup_records'], 1)
+
+    def test_gdc_query_requests_case_level_followups(self):
+        import json
+        from unittest.mock import patch
+        from public_evidence_probe import gdc_probe
+        payload = json.dumps({'data': {'hits': [], 'pagination': {'total': 0}}}).encode()
+        with patch('public_evidence_probe.fetch_bytes', return_value=(payload, {})):
+            result = gdc_probe()
+        requested = result['query']['expand'].split(',')
+        self.assertIn('follow_ups', requested)
+        self.assertNotIn('diagnoses.follow_ups', requested)
+
 if __name__=='__main__': unittest.main(verbosity=2)
