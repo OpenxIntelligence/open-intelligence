@@ -121,6 +121,8 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if path == "/api/cases":
                 return self._json(200, store.cases())
+            if path == "/api/rights/sources":
+                return self._json(200, store.rights_sources())
             evidence_text = re.fullmatch(r"/api/evidence/([0-9]+)", path)
             if evidence_text:
                 return self._json(200, {"text": store.synthetic_evidence_text(int(evidence_text[1]))})
@@ -203,6 +205,32 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(201, {"assessment_id": store.assess_synthetic_evidence(
                         evidence_assessment[1], data.get("question_id"), data.get("evidence_version_id"),
                         data.get("relation"), data.get("applicability"), data.get("rationale"))})
+                rights_register = path == "/api/rights/sources"
+                if rights_register:
+                    return self._json(201, store.register_rights_source(
+                        data.get("source_key"), data.get("owner"), data.get("version_label"),
+                        data.get("retrieved_at"), data.get("permissions"),
+                        data.get("attribution"), data.get("retention")))
+                rights_revoke = re.fullmatch(r"/api/rights/sources/([0-9]+)/revoke", path)
+                if rights_revoke:
+                    return self._json(200, store.revoke_rights_source(
+                        int(rights_revoke[1]), data.get("reason")))
+                rights_correct = re.fullmatch(r"/api/rights/sources/([0-9]+)/correct", path)
+                if rights_correct:
+                    return self._json(200, store.correct_rights_source(
+                        int(rights_correct[1]), data.get("version_label"), data.get("permissions"),
+                        data.get("reason"), data.get("retrieved_at")))
+                broker_link = re.fullmatch(rf"/api/cases/{ID_PART}/broker-links", path)
+                if broker_link:
+                    return self._json(201, store.create_broker_link(
+                        broker_link[1], data.get("question_id"), data.get("rights_source_id"),
+                        data.get("relation"), data.get("applicability"), data.get("rationale"),
+                        data.get("citation_title"), data.get("excerpt")))
+                broker_review = re.fullmatch(rf"/api/cases/{ID_PART}/broker-links/([0-9]+)/review", path)
+                if broker_review:
+                    return self._json(200, store.review_broker_link(
+                        broker_review[1], int(broker_review[2]), data.get("relation"),
+                        data.get("applicability"), data.get("rationale")))
                 bio_assets = re.fullmatch(rf"/api/cases/{ID_PART}/biological-assets", path)
                 if bio_assets:
                     return self._json(201, {"biological_asset_id": store.add_biological_asset(
@@ -224,7 +252,7 @@ class Handler(BaseHTTPRequestHandler):
                 if drafts:
                     return self._json(201, {"snapshot_id": store.create_snapshot(
                         drafts[1], data.get("question_id"), data.get("summary"), data.get("source_ids"),
-                        data.get("evidence_assessment_ids"))})
+                        data.get("evidence_assessment_ids"), data.get("broker_link_ids"))})
                 review = re.fullmatch(rf"/api/cases/{ID_PART}/snapshots/([0-9]+)/review", path)
                 if review:
                     store.acknowledge_demo_review(review[1], int(review[2]), data.get("reviewer_label"))
