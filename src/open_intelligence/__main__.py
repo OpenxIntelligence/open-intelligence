@@ -123,6 +123,11 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if path == "/api/cases":
                 return self._json(200, store.cases())
+            if path == "/api/discovery":
+                return self._json(200, store.list_discovery())
+            discovery_links = re.fullmatch(rf"/api/cases/{ID_PART}/discovery", path)
+            if discovery_links:
+                return self._json(200, store.case_discovery_links(discovery_links[1]))
             if path == "/api/rights/sources":
                 return self._json(200, store.rights_sources())
             evidence_text = re.fullmatch(r"/api/evidence/([0-9]+)", path)
@@ -207,6 +212,16 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(201, {"assessment_id": store.assess_synthetic_evidence(
                         evidence_assessment[1], data.get("question_id"), data.get("evidence_version_id"),
                         data.get("relation"), data.get("applicability"), data.get("rationale"))})
+                if path == "/api/discovery/imports":
+                    raw = data.get("text")
+                    if not isinstance(raw, str):
+                        raise InvalidInput("Fictional discovery text required")
+                    return self._json(200, store.import_discovery(raw.encode("utf-8")))
+                discovery_link = re.fullmatch(rf"/api/cases/{ID_PART}/discovery-links", path)
+                if discovery_link:
+                    return self._json(201, {"link_id": store.link_discovery(
+                        discovery_link[1], data.get("question_id"), data.get("discovery_id"),
+                        data.get("applicability"), data.get("rationale"))})
                 rights_register = path == "/api/rights/sources"
                 if rights_register:
                     return self._json(201, store.register_rights_source(

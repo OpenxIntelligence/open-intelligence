@@ -339,6 +339,23 @@ CREATE TABLE IF NOT EXISTS investigations (
   stale INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS discovery_items (
+  id INTEGER PRIMARY KEY, discovery_key TEXT NOT NULL UNIQUE,
+  kind TEXT NOT NULL CHECK(kind IN ('trial','literature')),
+  title TEXT NOT NULL, registry_id TEXT, doi TEXT,
+  issued_at TEXT NOT NULL, summary TEXT NOT NULL, status TEXT,
+  rights TEXT NOT NULL CHECK(rights='original-synthetic'),
+  raw BLOB NOT NULL, created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS discovery_links (
+  id INTEGER PRIMARY KEY,
+  case_id TEXT NOT NULL REFERENCES cases(case_id),
+  question_id INTEGER NOT NULL REFERENCES questions(id),
+  discovery_id INTEGER NOT NULL REFERENCES discovery_items(id),
+  applicability TEXT NOT NULL CHECK(applicability IN ('applicable','limited','not_applicable','unknown')),
+  rationale TEXT NOT NULL, created_at TEXT NOT NULL,
+  UNIQUE(case_id,question_id,discovery_id)
+);
 CREATE INDEX IF NOT EXISTS idx_assessments_evidence ON evidence_assessments(evidence_version_id);
 CREATE INDEX IF NOT EXISTS idx_snapshot_evidence_assessment ON snapshot_evidence(assessment_id);
 CREATE INDEX IF NOT EXISTS idx_sources_case ON source_versions(case_id, document_id, version);
@@ -671,6 +688,86 @@ class CaseStore:
                         assessment_id=cur.lastrowid, evidence_version_id=evidence_version_id)
             return int(cur.lastrowid)
 
+    def import_discovery(self, raw: bytes) -> dict:
+        """Import one fictional discovery fixture. Keys are immutable: a
+        re-import of identical bytes is a duplicate; changed bytes under an
+        existing key are rejected rather than silently overwritten."""
+        from .discovery import DiscoveryInputError, parse_discovery
+        try:
+            item = parse_discovery(raw)
+        except DiscoveryInputError as error:
+            raise InvalidInput(str(error)) from None
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            existing = self.db.execute(
+                "SELECT id, raw FROM discovery_items WHERE discovery_key=?", (item.discovery_key,)).fetchone()
+            if existing:
+                if bytes(existing["raw"]) == raw:
+                    return {"result": "duplicate", "discovery_id": existing["id"]}
+                raise InvalidInput("Discovery key already exists with different content")
+            cur = self.db.execute("""INSERT INTO discovery_items
+                (discovery_key,kind,title,registry_id,doi,issued_at,summary,status,rights,raw,created_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                (item.discovery_key, item.kind, item.title, item.registry_id, item.doi,
+                 item.issued_at, item.summary,
+                 "not-verified" if item.kind == "trial" else None,
+                 "original-synthetic", raw, now_utc()))
+            return {"result": "imported", "discovery_id": int(cur.lastrowid)}
+    def list_discovery(self) -> list[dict]:
+        from .discovery import project_item
+        rows = self.db.execute("SELECT * FROM discovery_items ORDER BY id").fetchall()
+        return [project_item(dict(row)) for row in rows]
+    def link_discovery(self, case_id: str, question_id: int, discovery_id: int,
+                       applicability: str, rationale: str) -> int:
+        """Persist a HUMAN-entered applicability link. Applicability is an
+        assessment label, never a determination of eligibility, efficacy, or
+        treatment relevance; unknown stays first-class."""
+        from .discovery import APPLICABILITY, _check_language, DiscoveryInputError
+        case_id = self._case(case_id)
+        if type(question_id) is not int or type(discovery_id) is not int:
+            raise InvalidInput("Question and discovery IDs must be integers")
+        if not isinstance(applicability, str) or applicability not in APPLICABILITY:
+            raise InvalidInput("Invalid discovery applicability")
+        if not isinstance(rationale, str) or not 15 <= len(rationale.strip()) <= 800:
+            raise InvalidInput("Discovery link rationale must have 15-800 characters")
+        try:
+            _check_language("Rationale", rationale)
+        except DiscoveryInputError as error:
+            raise InvalidInput(str(error)) from None
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            if not self.db.execute("SELECT 1 FROM questions WHERE id=? AND case_id=?",
+                                   (question_id, case_id)).fetchone():
+                raise InvalidInput("Question not in this case")
+            if not self.db.execute("SELECT 1 FROM discovery_items WHERE id=?", (discovery_id,)).fetchone():
+                raise InvalidInput("Discovery item not found")
+            try:
+                cur = self.db.execute("""INSERT INTO discovery_links
+                    (case_id,question_id,discovery_id,applicability,rationale,created_at)
+                    VALUES (?,?,?,?,?,?)""", (case_id, question_id, discovery_id,
+                       applicability, rationale.strip(), now_utc()))
+            except sqlite3.IntegrityError:
+                raise InvalidInput("Discovery item already linked to this question") from None
+            self._event(case_id, "discovery_linked",
+                        link_id=cur.lastrowid, discovery_id=discovery_id)
+            return int(cur.lastrowid)
+    def case_discovery_links(self, case_id: str) -> list[dict]:
+        from .discovery import project_item
+        case_id = self._case(case_id)
+        rows = self.db.execute("""SELECT l.id AS link_id, l.question_id, l.applicability,
+            l.rationale, l.created_at, d.* FROM discovery_links l
+            JOIN discovery_items d ON d.id=l.discovery_id
+            WHERE l.case_id=? ORDER BY l.id""", (case_id,)).fetchall()
+        out = []
+        for row in rows:
+            row = dict(row)
+            item = project_item({k: row[k] for k in (
+                "id", "discovery_key", "kind", "title", "registry_id", "doi",
+                "issued_at", "summary", "status")})
+            out.append({"link_id": row["link_id"], "question_id": row["question_id"],
+                        "applicability": row["applicability"], "rationale": row["rationale"],
+                        "created_at": row["created_at"], "item": item})
+        return out
     # ---- Rights-qualified external evidence broker (issue #2) ----
     # A broker link never fetches external content and never verifies that
     # a rights record is legally true. It only enforces, deterministically,

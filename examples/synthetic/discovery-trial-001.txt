@@ -1,0 +1,9 @@
+OI-SYNTHETIC-DISCOVERY/1
+Discovery: FICT-TRIAL-001
+Kind: trial
+Title: Fictional study listing for demonstration only
+Registry-Id: FICT-NCT-000001
+Issued-At: 2026-01-15
+Rights: original-synthetic
+Status: not-verified
+Summary: Fictional registry listing describing a study design and population notes for demonstration only. Recruitment availability is not verified and no finding is asserted.
