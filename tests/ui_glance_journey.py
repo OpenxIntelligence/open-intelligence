@@ -115,7 +115,12 @@ def main() -> None:
             if disclosure:
                 check(cd.evaluate("!document.querySelector('#evidence-tools').open"), 'Raw evidence input starts collapsed')
                 cd.evaluate("document.querySelector('#evidence-tools > summary').focus()")
-                cd.command('Input.dispatchKeyEvent', {'type': 'keyDown', 'key': 'Enter', 'code': 'Enter', 'windowsVirtualKeyCode': 13})
+                cd.wait("document.activeElement === document.querySelector('#evidence-tools > summary')",
+                        'native disclosure receives keyboard focus')
+                # Native Enter activation needs its character/keypress event,
+                # not just synthetic keyDown/keyUp without character input.
+                cd.command('Input.dispatchKeyEvent', {'type': 'rawKeyDown', 'key': 'Enter', 'code': 'Enter', 'windowsVirtualKeyCode': 13})
+                cd.command('Input.dispatchKeyEvent', {'type': 'char', 'text': '\r', 'unmodifiedText': '\r', 'key': 'Enter', 'code': 'Enter', 'windowsVirtualKeyCode': 13})
                 cd.command('Input.dispatchKeyEvent', {'type': 'keyUp', 'key': 'Enter', 'code': 'Enter', 'windowsVirtualKeyCode': 13})
                 cd.wait("document.querySelector('#evidence-tools').open", 'keyboard opens evidence tools')
                 check(True, 'Evidence disclosure works with the keyboard')
@@ -140,6 +145,9 @@ def main() -> None:
             check(cd.evaluate('document.documentElement.scrollWidth <= innerWidth'), '390px viewport has no page overflow')
             check(cd.evaluate("document.querySelector('.top').textContent.includes('FICTIONAL DEMO DATA')"),
                   'Fictional warning remains in the mobile header')
+        except Exception as error:
+            errors.append(f'{type(error).__name__}: {error}')
+            raise
         finally:
             (output / 'verification.json').write_text(json.dumps(report, indent=2), encoding='utf-8')
             if cd:
