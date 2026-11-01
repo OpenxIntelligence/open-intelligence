@@ -57,12 +57,14 @@ def main():
             session.wait("document.getElementById('report-text').value.includes('Amends: PATH-ALPHA@1')",
                          'authored amendment loaded')
             session.evaluate("document.getElementById('import-form').requestSubmit()")
-            session.wait("active.sources.length === 3 && document.querySelector('#source-change-list .change-card')",
+            # CDP returnByValue serializes DOM nodes as {}, which is false in
+            # Python. Poll explicit booleans, not the element object itself.
+            session.wait("active.sources.length === 3 && document.querySelector('#source-change-list .change-card') !== null",
                          'source change available')
             versions = session.evaluate("active.sources.filter(s=>s.document_id==='PATH-ALPHA').sort((a,b)=>a.version-b.version).map(s=>s.id)")
             originals = [json.load(urlopen(f'{url}api/cases/CASE-ALPHA/sources/{sid}'))['text'] for sid in versions]
             session.evaluate("document.querySelector('#source-change-list .change-card .actions button').click()")
-            session.wait("document.getElementById('compare-dialog').open && document.querySelector('#compare-before mark')",
+            session.wait("document.getElementById('compare-dialog').open && document.querySelector('#compare-before mark') !== null",
                          'line highlights in actual comparison')
             assert session.evaluate("document.getElementById('compare-before').textContent") == originals[0]
             assert session.evaluate("document.getElementById('compare-after').textContent") == originals[1]
@@ -96,7 +98,7 @@ def main():
             session.evaluate("document.getElementById('compare-close').click()")
             session.wait("!document.getElementById('compare-dialog').open", 'comparison closed')
             session.evaluate("document.querySelector('#source-change-list .change-card .actions button').click()")
-            session.wait("document.getElementById('compare-dialog').open && document.querySelector('#compare-before mark')",
+            session.wait("document.getElementById('compare-dialog').open && document.querySelector('#compare-before mark') !== null",
                          'reopened original comparison')
             assert session.evaluate("document.getElementById('compare-before').textContent") == originals[0]
             assert session.evaluate("document.getElementById('compare-after').textContent") == originals[1]
