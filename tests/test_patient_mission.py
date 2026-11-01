@@ -77,8 +77,9 @@ class PatientMissionProjectionTests(unittest.TestCase):
         rendered = repr(beta)
 
         self.assertEqual(beta["case"]["case_id"], "CASE-BETA")
-        self.assertNotIn("Marker A", rendered)
+        self.assertNotIn("Marker A was not tested in this specimen.", rendered)
         self.assertNotIn("Alpha pathology", rendered)
+        self.assertIn("Marker A testing was not assessed for this sample.", rendered)
         self.assertTrue(all(item["source_version_id"] in {
             source["id"] for source in self.store.state("CASE-BETA")["sources"]
         } for item in beta["what_we_know"]))
