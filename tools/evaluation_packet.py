@@ -19,6 +19,20 @@ UTC = re.compile(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\Z')
 IDENTIFIER = re.compile(r'[A-Z][A-Z0-9-]{1,79}\Z')
 
 
+def unique_json_object(pairs: list[tuple[str, object]]) -> dict:
+    """Reject repeated decoded member names before last-value-wins loses them.
+
+    Applies to every JSON object, including cutoffs, receipts and source
+    metadata. Even identical repeats are ambiguous; no value is selected.
+    """
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError('duplicate JSON key in packet manifest')
+        result[key] = value
+    return result
+
+
 def fields(value: object, expected: set[str]) -> None:
     if not isinstance(value, dict) or set(value) != expected:
         raise ValueError('unexpected or missing fields')
@@ -174,7 +188,8 @@ def main() -> None:
     parser.add_argument('--output', type=Path)
     args = parser.parse_args()
     try:
-        packet = json.loads(args.packet.read_text(encoding='utf-8'))
+        packet = json.loads(args.packet.read_text(encoding='utf-8'),
+                            object_pairs_hook=unique_json_object)
         validate(packet)
         if args.cutoff is None and args.output is None:
             print(json.dumps({'status': 'manifest-valid-not-clinically-validated',
