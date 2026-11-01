@@ -59,7 +59,7 @@ class OptionViewTests(unittest.TestCase):
                 return option
         self.fail(f'option {option_id} not in view')
 
-    def test_as_known_at_replay_without_hindsight(self):
+    def test_snapshot_filter_keeps_source_versions_and_current_status(self):
         opt_t0 = self._option()
         self.store.add_option_dependency('CASE-ALPHA', opt_t0, 'source',
                                          source_version_id=self.path['source_id'])
@@ -141,7 +141,7 @@ class OptionViewTests(unittest.TestCase):
         self.assertEqual(self._view_option(option)['operational_status'], 'rejected')
         self.assertEqual(len(self._view_option(option)['review_events']), 1)
 
-    def test_unreviewed_approval_after_amendment_then_reconfirm(self):
+    def test_superseded_dependency_needs_new_proposal_not_pointer_reconfirmation(self):
         option = self._option()
         self.store.add_option_dependency('CASE-ALPHA', option, 'source',
                                          source_version_id=self.path['source_id'])
@@ -155,14 +155,21 @@ class OptionViewTests(unittest.TestCase):
         snap_t1 = self.store.create_snapshot(
             'CASE-ALPHA', q2, 'A human-authored post-amendment discussion draft.',
             [current_path['id']])
-        self.store.review_option('CASE-ALPHA', option, 'Synthetic reviewer', 'reconfirm',
-                                 'Re-review against the post-amendment draft.', snap_t1)
-        view = self._view_option(option)
-        self.assertEqual(view['review_state'], 'current')
-        self.assertEqual(view['operational_status'], 'proposed')
-        self.store.review_option('CASE-ALPHA', option, 'Synthetic reviewer', 'approve',
+        # A new snapshot does not replace the append-only obsolete dependency.
+        # Keep the old record and explicitly author a new proposal on current inputs.
+        with self.assertRaisesRegex(InvalidInput, 'dependency is not current'):
+            self.store.review_option('CASE-ALPHA', option, 'Synthetic reviewer', 'reconfirm',
+                                     'Re-review against the post-amendment draft.', snap_t1)
+        self.assertEqual(self._view_option(option)['review_state'], 'needs_review')
+        replacement = self.store.create_option(
+            'CASE-ALPHA', snap_t1, 'Fictional replacement discussion item',
+            'A separately authored proposal against the current fictional report.', 'unknown')
+        self.store.add_option_dependency('CASE-ALPHA', replacement, 'source',
+                                         source_version_id=current_path['id'])
+        self.store.review_option('CASE-ALPHA', replacement, 'Synthetic reviewer', 'approve',
                                  'Discussion-only review scope for this item.')
-        self.assertEqual(self._view_option(option)['operational_status'], 'reviewed')
+        self.assertEqual(self._view_option(replacement)['operational_status'], 'reviewed')
+        self.assertIn(option, [o['id'] for o in self.store.option_view('CASE-ALPHA', self.snap)['options']])
 
     def test_potential_discussion_deadline_is_deterministic_and_labelled(self):
         option = self._option()
