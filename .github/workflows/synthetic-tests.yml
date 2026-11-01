@@ -13,6 +13,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
@@ -22,6 +24,27 @@ jobs:
       - name: JavaScript syntax
         run: node --check web/app.js
       - name: Unit and HTTP tests
-        run: PYTHONPATH=src python -m unittest discover -s tests -v
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p verification-artifacts
+          PYTHONPATH=src python -m unittest discover -s tests -v 2>&1 | tee verification-artifacts/unit-tests.txt
       - name: Synthetic browser journey (headless Chromium)
-        run: PYTHONPATH=src python tests/browser_journey.py
+        shell: bash
+        run: |
+          set -o pipefail
+          PYTHONPATH=src python tests/browser_journey.py 2>&1 | tee verification-artifacts/browser-tests.txt
+      - name: Record exact synthetic source under test
+        if: always()
+        run: |
+          mkdir -p verification-artifacts
+          git rev-parse HEAD > verification-artifacts/commit.txt
+          git archive --format=zip --output=verification-artifacts/source-under-test.zip HEAD
+      - name: Preserve reproducible engineering evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: synthetic-ledger-verification-${{ github.run_id }}-${{ github.run_attempt }}
+          path: verification-artifacts/
+          if-no-files-found: error
+          retention-days: 7
