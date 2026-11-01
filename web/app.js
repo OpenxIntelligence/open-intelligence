@@ -60,7 +60,7 @@ async function initialize() {
     picker.addEventListener('change', () => {
       // An unfinished narrative must never silently become attached to another case.
       if ((el('draft-summary').value.trim() || el('evidence-rationale').value.trim() ||
-          el('evidence-withdraw-reason').value.trim())) {
+          el('evidence-withdraw-reason').value.trim() || el('option-description').value.trim())) {
         picker.value = caseId;
         notice('Save or explicitly clear the unfinished investigation draft before switching cases.', true);
         return;
@@ -345,6 +345,7 @@ function render() {
     const card = node('div', event.kind.replaceAll('_', ' '), 'event');
     card.append(node('small', event.occurred_at)); el('event-list').append(card);
   }
+  renderOptions();
   renderedCaseId = caseId;
 }
 async function openSource(source) {
@@ -461,8 +462,151 @@ el('evidence-withdraw-form').addEventListener('submit', async event => {
     el('evidence-withdraw-reason').value = ''; await refresh();
   } catch (err) { notice(err.message, true); }
 });
+el('option-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const created = await api('/api/cases/' + requestedCase + '/options', {
+      snapshot_id: Number(el('option-snapshot-choice').value), label: el('option-label').value,
+      description: el('option-description').value, epistemic_status: el('option-epistemic').value,
+    });
+    if (requestedCase !== caseId) return;
+    el('option-label').value = ''; el('option-description').value = '';
+    notice('Option #' + created.option_id + ' proposed for review.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('option-dependency-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const kind = el('dependency-kind').value;
+    const pick = id => { const v = el(id).value; return v === '' ? null : Number(v); };
+    const created = await api('/api/cases/' + requestedCase + '/options/' +
+      Number(el('dependency-option-choice').value) + '/dependencies', {
+      kind, source_version_id: kind === 'source' ? pick('dependency-source-choice') : null,
+      evidence_assessment_id: kind === 'evidence_assessment' ? pick('dependency-assessment-choice') : null,
+      preparation_task_id: kind === 'preparation_task' ? pick('dependency-task-choice') : null,
+      depends_on_option_id: kind === 'option' ? pick('dependency-option-target-choice') : null,
+      lead_time_days: el('dependency-lead').value === '' ? null : Number(el('dependency-lead').value),
+      deadline_date: el('dependency-deadline').value || null,
+      deadline_basis: el('dependency-basis').value, anchor: el('dependency-anchor').value,
+    });
+    if (requestedCase !== caseId) return;
+    notice('Dependency #' + created.dependency_id + ' added.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('option-task-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const created = await api('/api/cases/' + requestedCase + '/options/' +
+      Number(el('task-option-choice').value) + '/tasks', {
+      label: el('task-label').value, owner_label: el('task-owner').value,
+      lead_time_days: el('task-lead').value === '' ? null : Number(el('task-lead').value),
+    });
+    if (requestedCase !== caseId) return;
+    el('task-label').value = ''; el('task-owner').value = ''; el('task-lead').value = '';
+    notice('Preparation task #' + created.task_id + ' added.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('option-threat-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const created = await api('/api/cases/' + requestedCase + '/options/' +
+      Number(el('threat-option-choice').value) + '/threats', {
+      kind: el('threat-kind').value, description: el('threat-description').value,
+      threat_date: el('threat-date').value || null, threat_basis: el('threat-basis').value,
+      anchor: el('threat-anchor').value,
+    });
+    if (requestedCase !== caseId) return;
+    el('threat-description').value = ''; el('threat-date').value = ''; el('threat-anchor').value = '';
+    notice('Threat #' + created.threat_id + ' added.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('option-review-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const outcome = await api('/api/cases/' + requestedCase + '/options/' +
+      Number(el('review-option-choice').value) + '/review', {
+      reviewer_label: el('reviewer-label').value, action: el('review-action').value,
+      scope: el('review-scope').value,
+      snapshot_id: el('review-snapshot-choice').value === '' ? null : Number(el('review-snapshot-choice').value),
+    });
+    if (requestedCase !== caseId) return;
+    el('review-scope').value = '';
+    notice('Reviewer action recorded: ' + outcome.result + '.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
 
 
+function renderOptions() {
+  el('option-disclaimer').textContent = active.option_disclaimer || '';
+  const options = active.options || [];
+  const fill = (id, items, labelFn, allowEmpty = false) => {
+    const select = el(id);
+    const prior = select.value;
+    clear(id);
+    if (allowEmpty) { const blank = node('option', '—'); blank.value = ''; select.append(blank); }
+    for (const item of items) {
+      const opt = node('option', labelFn(item));
+      opt.value = item.id; select.append(opt);
+    }
+    if (prior && [...select.options].some(x => x.value === prior)) select.value = prior;
+  };
+  fill('option-snapshot-choice', active.snapshots, s => 'Investigation #' + s.id + ' · ' + s.state);
+  fill('review-snapshot-choice', active.snapshots, s => 'Investigation #' + s.id + ' · ' + s.state, true);
+  const optionLabel = o => 'Option #' + o.id + ' · ' + o.label + ' (' + o.display_operational_status + ')';
+  fill('dependency-option-choice', options, optionLabel);
+  fill('task-option-choice', options, optionLabel);
+  fill('threat-option-choice', options, optionLabel);
+  fill('review-option-choice', options, optionLabel);
+  fill('dependency-option-target-choice', options, optionLabel, true);
+  fill('dependency-source-choice', active.sources, s => s.document_id + '@' + s.version + ' · ' + s.state, true);
+  fill('dependency-assessment-choice', active.evidence_assessments || [],
+    a => a.evidence_key + '@' + a.version + ' · ' + a.relation, true);
+  const tasks = options.flatMap(o => o.preparation_tasks.map(t => ({ ...t, optionLabel: o.label })));
+  fill('dependency-task-choice', tasks, t => 'Task #' + t.id + ' · ' + t.label + ' (' + t.status + ')', true);
+  clear('option-list');
+  if (!options.length) empty(el('option-list'), 'No options proposed for this case yet.');
+  for (const option of options) {
+    const box = node('div', null, 'snapshot');
+    const top = node('div', null, 'topline');
+    top.append(node('strong', 'Option #' + option.id + ' · ' + option.label),
+      pill(option.derived_epistemic_status, option.derived_epistemic_status === 'contradicted' ? 'pill-alert' : ''),
+      pill(option.display_operational_status, option.display_operational_status === 'held' ? 'pill-alert' : ''),
+      pill('review: ' + option.review_state, option.review_state === 'needs_review' ? 'pill-warn' : ''));
+    box.append(top, node('p', option.description),
+      node('p', 'Based on investigation #' + option.snapshot_id + ' (' + option.snapshot_state + ') · ' +
+        option.potential_discussion_deadline.label, 'snapshot-meta'));
+    if (option.dependencies.length) {
+      const deps = node('ul');
+      for (const dep of option.dependencies) {
+        const line = node('li', dep.kind + ': ' + dep.target +
+          (dep.deadline_date ? ' · deadline ' + dep.deadline_date + ' (' + dep.deadline_basis + ')' : ' · deadline unknown') +
+          (dep.lead_time_days !== null && dep.lead_time_days !== undefined ? ' · lead ' + dep.lead_time_days + 'd' : ''));
+        deps.append(line);
+      }
+      box.append(node('p', 'Dependencies:', 'snapshot-meta'), deps);
+    }
+    if (option.preparation_tasks.length) {
+      box.append(node('p', 'Preparation tasks: ' + option.preparation_tasks.map(t =>
+        t.label + ' · owner ' + t.owner_label + ' · ' + t.status +
+        (t.lead_time_days !== null && t.lead_time_days !== undefined ? ' · lead ' + t.lead_time_days + 'd' : '')).join('; '), 'snapshot-meta'));
+    }
+    if (option.threats.length) {
+      box.append(node('p', 'Optionality threats: ' + option.threats.map(t =>
+        t.kind + ': ' + t.description +
+        (t.threat_date ? ' · ' + t.threat_date + ' (' + t.threat_basis + ')' : ' · date unknown')).join(' ; '), 'snapshot-meta'));
+    }
+    if (option.review_events.length) {
+      box.append(node('p', 'Review history: ' + option.review_events.map(e =>
+        e.action + ' by ' + e.reviewer_label + ' · scope: ' + e.scope).join(' ; '), 'snapshot-meta'));
+    }
+    el('option-list').append(box);
+  }
+}
 function renderBibliography(record) {
   clear('bibliography-result');
   const card = node('article', null, 'source-card');
