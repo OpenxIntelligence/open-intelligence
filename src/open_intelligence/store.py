@@ -137,6 +137,18 @@ def parse_report(raw: bytes) -> ParsedReport:
 EVIDENCE_RELATIONS = frozenset({"supports", "contradicts", "context", "unknown"})
 EVIDENCE_APPLICABILITY = frozenset({"applicable", "limited", "not_applicable", "unknown"})
 
+# OI-020: one minimal BiologicalAsset abstraction. Originals have no parent;
+# derivatives require a same-case, same-episode parent of an allowed kind.
+# Kind and parent are immutable after creation, so lineage can never be
+# grafted across cases or episodes by a later write: there is no update path.
+ASSET_KINDS = frozenset({"ffpe_block", "fresh_frozen_aliquot", "slide", "digital_wsi", "genomics_data_pointer"})
+DERIVATIVE_PARENTS = {
+    "slide": frozenset({"ffpe_block"}),
+    "digital_wsi": frozenset({"slide"}),
+    "genomics_data_pointer": frozenset({"ffpe_block", "fresh_frozen_aliquot"}),
+}
+FIELD_STATES = frozenset({"known", "unknown"})
+
 
 @dataclass(frozen=True)
 class ParsedEvidence:
@@ -313,11 +325,58 @@ CREATE TABLE IF NOT EXISTS rights_events (
   kind TEXT NOT NULL CHECK(kind IN ('registered','revoked','superseded','link_created','link_reviewed')),
   reason TEXT NOT NULL, recorded_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS investigations (
+  id INTEGER PRIMARY KEY,
+  case_id TEXT NOT NULL REFERENCES cases(case_id),
+  question_id INTEGER NOT NULL REFERENCES questions(id),
+  template TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('completed','abstained','blocked_by_policy','failed')),
+  mode TEXT NOT NULL CHECK(mode IN ('live','replay')),
+  model TEXT NOT NULL,
+  claims_json TEXT NOT NULL,
+  abstentions_json TEXT NOT NULL,
+  dropped_json TEXT NOT NULL,
+  stale INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
 CREATE INDEX IF NOT EXISTS idx_assessments_evidence ON evidence_assessments(evidence_version_id);
 CREATE INDEX IF NOT EXISTS idx_snapshot_evidence_assessment ON snapshot_evidence(assessment_id);
 CREATE INDEX IF NOT EXISTS idx_sources_case ON source_versions(case_id, document_id, version);
 CREATE INDEX IF NOT EXISTS idx_assertions_source ON assertions(source_version_id);
 CREATE INDEX IF NOT EXISTS idx_snapshot_sources_source ON snapshot_sources(source_version_id);
+-- OI-020 biological-asset provenance: an extension of the existing case and
+-- source model, NOT a second ledger. Assets are immutable rows anchored to
+-- one exact source version at creation; liveness lives only in the separate
+-- inventory assertions, which go stale anchor-exactly like snapshots do.
+-- No rollup of assertions is ever computed: readers always see each
+-- assertion with its own anchor, attributor, and state.
+CREATE TABLE IF NOT EXISTS biological_assets (
+  id INTEGER PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(case_id),
+  asset_id TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK(kind IN ('ffpe_block','fresh_frozen_aliquot','slide','digital_wsi','genomics_data_pointer')),
+  episode_id TEXT NOT NULL, specimen_id TEXT,
+  specimen_state TEXT NOT NULL CHECK(specimen_state IN ('recorded','unknown')),
+  parent_asset_id INTEGER REFERENCES biological_assets(id),
+  observed_date TEXT NOT NULL,
+  anchor_source_version_id INTEGER NOT NULL REFERENCES source_versions(id),
+  pointer_label TEXT, created_at TEXT NOT NULL,
+  UNIQUE(case_id,asset_id)
+);
+CREATE TABLE IF NOT EXISTS biological_inventory_assertions (
+  id INTEGER PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(case_id),
+  asset_id INTEGER NOT NULL REFERENCES biological_assets(id),
+  source_version_id INTEGER NOT NULL REFERENCES source_versions(id),
+  asserted_by TEXT NOT NULL,
+  location_state TEXT NOT NULL CHECK(location_state IN ('known','unknown')), location_value TEXT,
+  quantity_state TEXT NOT NULL CHECK(quantity_state IN ('known','unknown')), quantity_value TEXT,
+  custody_state TEXT NOT NULL CHECK(custody_state IN ('known','unknown')), custody_value TEXT,
+  consent_state TEXT NOT NULL CHECK(consent_state IN ('known','unknown')), consent_value TEXT,
+  rights_state TEXT NOT NULL CHECK(rights_state IN ('known','unknown')), rights_value TEXT,
+  state TEXT NOT NULL CHECK(state IN ('current','stale')), created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_biological_assets_case ON biological_assets(case_id, asset_id);
+CREATE INDEX IF NOT EXISTS idx_inventory_assertions_asset ON biological_inventory_assertions(asset_id);
+CREATE INDEX IF NOT EXISTS idx_inventory_assertions_source ON biological_inventory_assertions(source_version_id);
 """
 
 
@@ -341,6 +400,48 @@ class CaseStore:
     def _event(self, case_id: str, kind: str, **details: object) -> None:
         self.db.execute("INSERT INTO events (case_id,kind,details,occurred_at) VALUES (?,?,?,?)",
                         (case_id, kind, json.dumps(details, sort_keys=True), now_utc()))
+
+    # Adapter-contract hooks (OI-017): these write ONLY to the existing
+    # events ledger and the existing quarantine table. They create no second
+    # source ledger; source bytes still enter only via import_report.
+    ADAPTER_EVENT_KINDS = frozenset({
+        "adapter_delivery_accepted", "adapter_delivery_rejected",
+        "adapter_delivery_quarantined", "adapter_loss_receipt",
+        "adapter_authorization_revoked",
+    })
+
+    def record_adapter_event(self, case_id: str, kind: str, **details: object) -> None:
+        """Append an adapter receipt/revocation event to the existing ledger."""
+        self._case(case_id)
+        if kind not in self.ADAPTER_EVENT_KINDS:
+            raise InvalidInput("Unknown adapter event kind")
+        with self.db:
+            self._event(case_id, kind, **details)
+
+    def quarantine_adapter_delivery(self, case_id: str, raw: bytes,
+                                    declared_patient_id: str, reason: str) -> dict:
+        """Quarantine a rejected adapter delivery in the existing table.
+
+        Idempotent on (case, sha256, reason): a repeated rejected delivery
+        returns the original quarantine id and emits no new event.
+        """
+        case_id = self._case(case_id)
+        if not isinstance(raw, bytes) or not raw:
+            raise InvalidInput("Quarantined delivery requires raw bytes")
+        digest = hashlib.sha256(raw).hexdigest()
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            existing = self.db.execute(
+                "SELECT id FROM quarantine WHERE target_case_id=? AND sha256=? AND reason=? ORDER BY id LIMIT 1",
+                (case_id, digest, reason)).fetchone()
+            if existing:
+                return {"result": "quarantined", "reason": reason,
+                        "quarantine_id": existing["id"], "duplicate": True}
+            cur = self.db.execute(
+                "INSERT INTO quarantine (target_case_id,declared_patient_id,sha256,raw,reason,received_at) VALUES (?,?,?,?,?,?)",
+                (case_id, declared_patient_id, digest, raw, reason, now_utc()))
+            self._event(case_id, "source_quarantined", quarantine_id=cur.lastrowid, reason=reason)
+            return {"result": "quarantined", "reason": reason, "quarantine_id": cur.lastrowid}
 
     def _case(self, case_id: str) -> str:
         valid_id(case_id)
@@ -427,11 +528,33 @@ class CaseStore:
                     self.db.execute(f"UPDATE snapshots SET state='stale' WHERE id IN ({marks})", invalidated)
                     self.db.execute(f"""UPDATE questions SET state='open' WHERE case_id=? AND id IN
                         (SELECT question_id FROM snapshots WHERE id IN ({marks}))""", [case_id, *invalidated])
+                    # An amendment changes freshness for investigations too:
+                    # they cite the superseded source's facts, so mark them stale
+                    # rather than silently leaving them current.
+                    self.db.execute("UPDATE investigations SET stale=1 WHERE case_id=? AND stale=0", (case_id,))
+            invalidated_inventory = []
+            if previous:
+                # Anchor-exact, like snapshots: only assertions citing the
+                # superseded version go stale. Assertions on other versions,
+                # assets themselves, and all historic rows are preserved.
+                # Deliberate scope boundary (OI-020): staleness does NOT
+                # propagate transitively to derivative assets; each child's
+                # own assertion anchor and parent chain stay visible, so a
+                # reader can see a parent's assertions went stale.
+                invalidated_inventory = [row[0] for row in self.db.execute(
+                    """SELECT id FROM biological_inventory_assertions
+                    WHERE case_id=? AND source_version_id=? AND state='current'""",
+                    (case_id, previous["id"])).fetchall()]
+                if invalidated_inventory:
+                    marks = ",".join("?" for _ in invalidated_inventory)
+                    self.db.execute(f"UPDATE biological_inventory_assertions SET state='stale' WHERE id IN ({marks})",
+                                    invalidated_inventory)
             self._event(case_id, "source_imported", document_id=report.document_id,
                         version=version, source_id=source_id, amends_id=previous["id"] if previous else None,
-                        invalidated_snapshots=invalidated)
+                        invalidated_snapshots=invalidated, invalidated_inventory_assertions=invalidated_inventory)
             return {"result": "imported", "source_id": source_id, "version": version,
-                    "invalidated_snapshots": invalidated}
+                    "invalidated_snapshots": invalidated,
+                    "invalidated_inventory_assertions": invalidated_inventory}
 
 
     def _invalidate_evidence_version(self, evidence_version_id: int, *, reason: str) -> list[int]:
@@ -838,6 +961,141 @@ class CaseStore:
             raise InvalidInput("Evidence version not found")
         return bytes(row["raw"]).decode("utf-8")
 
+    def add_biological_asset(self, case_id: str, asset_id: str, kind: str, episode_id: str,
+                             observed_date: str, anchor_source_version_id: int,
+                             specimen_state: str = "unknown", specimen_id: str | None = None,
+                             parent_asset_id: int | None = None, pointer_label: str | None = None) -> int:
+        """Register one synthetic biological asset inside the existing case model.
+
+        No bytes, images, or genome files are stored: digital_wsi and
+        genomics_data_pointer carry only a short descriptive pointer label, and
+        that label may not be a URL or filesystem path. The anchor source
+        version is creation provenance only; it is never a liveness claim.
+        Liveness lives in inventory assertions. No release, shipment, or
+        outside-service operation exists anywhere in this module.
+        """
+        case_id = self._case(case_id)
+        asset_id = valid_id(asset_id)
+        episode_id = valid_id(episode_id)
+        observed_date = valid_date(observed_date)
+        if kind not in ASSET_KINDS:
+            raise InvalidInput("Unknown biological asset kind")
+        if type(anchor_source_version_id) is not int or anchor_source_version_id < 1:
+            raise InvalidInput("Anchor source version ID must be a positive integer")
+        if specimen_state not in ("recorded", "unknown"):
+            raise InvalidInput("Specimen state must be recorded or unknown")
+        if specimen_state == "recorded":
+            if specimen_id is None:
+                raise InvalidInput("Recorded specimen requires a specimen ID")
+            specimen_id = valid_id(specimen_id)
+        elif specimen_id is not None:
+            raise InvalidInput("Unknown specimen must not carry a specimen ID")
+        if kind in DERIVATIVE_PARENTS:
+            if type(parent_asset_id) is not int or parent_asset_id < 1:
+                raise InvalidInput("A derivative asset requires its parent asset")
+        elif parent_asset_id is not None:
+            raise InvalidInput("An original asset has no parent asset")
+        if pointer_label is not None:
+            if kind not in ("digital_wsi", "genomics_data_pointer"):
+                raise InvalidInput("A pointer label applies only to digital WSI and genomics data pointers")
+            if (not isinstance(pointer_label, str) or not 1 <= len(pointer_label.strip()) <= 200
+                    or "://" in pointer_label or pointer_label.strip().startswith("/")):
+                raise InvalidInput("Pointer label must be 1-200 characters, not a URL or path")
+            pointer_label = pointer_label.strip()
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            anchor = self.db.execute(
+                "SELECT state FROM source_versions WHERE id=? AND case_id=?",
+                (anchor_source_version_id, case_id)).fetchone()
+            if not anchor or anchor["state"] != "current":
+                raise InvalidInput("Anchor source is missing, superseded, or belongs to another case")
+            if parent_asset_id is not None:
+                parent = self.db.execute(
+                    "SELECT kind,episode_id FROM biological_assets WHERE id=? AND case_id=?",
+                    (parent_asset_id, case_id)).fetchone()
+                if not parent:
+                    raise InvalidInput("Parent asset not in this case")
+                if parent["episode_id"] != episode_id:
+                    raise InvalidInput("A derivative must share its parent's cancer episode; tumors never merge")
+                if parent["kind"] not in DERIVATIVE_PARENTS[kind]:
+                    raise InvalidInput("Parent asset kind cannot derive this asset kind")
+            try:
+                cur = self.db.execute("""INSERT INTO biological_assets
+                    (case_id,asset_id,kind,episode_id,specimen_id,specimen_state,parent_asset_id,
+                     observed_date,anchor_source_version_id,pointer_label,created_at)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                    (case_id, asset_id, kind, episode_id, specimen_id, specimen_state,
+                     parent_asset_id, observed_date, anchor_source_version_id, pointer_label, now_utc()))
+            except sqlite3.IntegrityError:
+                raise InvalidInput("Biological asset already exists in this case") from None
+            self._event(case_id, "biological_asset_created", biological_asset_id=int(cur.lastrowid),
+                        asset_id=asset_id, asset_kind=kind, episode_id=episode_id)
+            return int(cur.lastrowid)
+
+    @staticmethod
+    def _inventory_field(state: object, value: object, name: str) -> str | None:
+        if state not in FIELD_STATES:
+            raise InvalidInput(f"Inventory {name} state must be known or unknown")
+        if state == "known":
+            if not isinstance(value, str) or not 1 <= len(value.strip()) <= 200:
+                raise InvalidInput(f"Known inventory {name} requires a 1-200 character value")
+            return value.strip()
+        if value is not None:
+            raise InvalidInput(f"Unknown inventory {name} must not carry a value")
+        return None
+
+    def add_inventory_assertion(self, case_id: str, asset_pk: int, source_version_id: int,
+                                asserted_by: str, *, location_state: str, location_value: str | None,
+                                quantity_state: str, quantity_value: str | None,
+                                custody_state: str, custody_value: str | None,
+                                consent_state: str, consent_value: str | None,
+                                rights_state: str, rights_value: str | None) -> int:
+        """Record one separately attributed inventory assertion for one asset.
+
+        UNKNOWN is an explicit stored state with a NULL value; it is never
+        treated as absent, and an asset with no assertion row at all is
+        reported as 'no inventory assertion recorded', which is distinct from
+        an all-unknown assertion. Rights/consent values are descriptive only:
+        nothing in this module gates, releases, or ships on them, so no
+        query can fail open through them.
+        """
+        case_id = self._case(case_id)
+        if type(asset_pk) is not int or asset_pk < 1 or type(source_version_id) is not int or source_version_id < 1:
+            raise InvalidInput("Asset and source version IDs must be positive integers")
+        if not isinstance(asserted_by, str) or not 2 <= len(asserted_by.strip()) <= 80:
+            raise InvalidInput("Provide an inventory attributor label")
+        values = {
+            "location": self._inventory_field(location_state, location_value, "location"),
+            "quantity": self._inventory_field(quantity_state, quantity_value, "quantity"),
+            "custody": self._inventory_field(custody_state, custody_value, "custody"),
+            "consent": self._inventory_field(consent_state, consent_value, "consent"),
+            "rights": self._inventory_field(rights_state, rights_value, "rights"),
+        }
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            if not self.db.execute("SELECT 1 FROM biological_assets WHERE id=? AND case_id=?",
+                                   (asset_pk, case_id)).fetchone():
+                raise InvalidInput("Biological asset not in this case")
+            source = self.db.execute(
+                "SELECT state FROM source_versions WHERE id=? AND case_id=?",
+                (source_version_id, case_id)).fetchone()
+            if not source or source["state"] != "current":
+                raise InvalidInput("Inventory source is missing, superseded, or belongs to another case")
+            cur = self.db.execute("""INSERT INTO biological_inventory_assertions
+                (case_id,asset_id,source_version_id,asserted_by,
+                 location_state,location_value,quantity_state,quantity_value,
+                 custody_state,custody_value,consent_state,consent_value,
+                 rights_state,rights_value,state,created_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'current',?)""",
+                (case_id, asset_pk, source_version_id, asserted_by.strip(),
+                 location_state, values["location"], quantity_state, values["quantity"],
+                 custody_state, values["custody"], consent_state, values["consent"],
+                 rights_state, values["rights"], now_utc()))
+            self._event(case_id, "biological_inventory_asserted",
+                        inventory_assertion_id=int(cur.lastrowid), asset_id=asset_pk,
+                        source_version_id=source_version_id)
+            return int(cur.lastrowid)
+
     def add_question(self, case_id: str, question: str) -> int:
         self._case(case_id)
         if not isinstance(question, str) or not 5 <= len(question.strip()) <= 500:
@@ -929,6 +1187,77 @@ class CaseStore:
                             (case_id, row["question_id"]))
             self._event(case_id, "demo_review_acknowledged", snapshot_id=snapshot_id)
 
+    def investigation_facts(self, case_id: str, question_id: int) -> dict:
+        """Facts the investigation prompt may use: question, current assertions, assessments."""
+        self._case(case_id)
+        if type(question_id) is not int:
+            raise InvalidInput("Question id must be an integer")
+        question = self.db.execute("SELECT * FROM questions WHERE id=? AND case_id=?",
+                                   (question_id, case_id)).fetchone()
+        if not question:
+            raise InvalidInput("Question not in this case")
+        assertions = self._dicts(self.db.execute(
+            """SELECT assertions.id,source_version_id,finding_key,certainty,quote,source_line
+            FROM assertions JOIN source_versions ON source_versions.id=assertions.source_version_id
+            WHERE assertions.case_id=? AND source_versions.state='current' ORDER BY assertions.id""",
+            (case_id,)).fetchall())
+        assessments = self._dicts(self.db.execute(
+            """SELECT a.id,a.relation,a.applicability,a.rationale,v.statement
+            FROM evidence_assessments a JOIN evidence_versions v ON v.id=a.evidence_version_id
+            WHERE a.case_id=? AND a.question_id=? AND v.state='current' AND v.rights='original-synthetic'
+            ORDER BY a.id""", (case_id, question_id)).fetchall())
+        return {
+            "question": dict(question),
+            "assertions": assertions,
+            "assessments": assessments,
+            "valid_sources": {int(a["source_version_id"]) for a in assertions},
+            "valid_assessments": {int(a["id"]) for a in assessments},
+        }
+
+    def save_investigation(self, case_id: str, question_id: int, template: str,
+                           validated, mode: str) -> int:
+        self._case(case_id)
+        with self.db:
+            cur = self.db.execute(
+                """INSERT INTO investigations
+                (case_id,question_id,template,status,mode,model,claims_json,abstentions_json,dropped_json,created_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                (case_id, question_id, template, validated.status, mode, validated.model,
+                 json.dumps(validated.claims), json.dumps(validated.abstentions),
+                 json.dumps(validated.dropped), now_utc()))
+            investigation_id = int(cur.lastrowid)
+            self.db.execute("UPDATE questions SET state='addressed' WHERE id=? AND case_id=?",
+                            (question_id, case_id))
+            self._event(case_id, "investigation_created", investigation_id=investigation_id,
+                        template=template, status=validated.status, mode=mode)
+            return investigation_id
+
+    def get_investigation(self, case_id: str, investigation_id: int) -> dict:
+        self._case(case_id)
+        row = self.db.execute("SELECT * FROM investigations WHERE id=? AND case_id=?",
+                              (investigation_id, case_id)).fetchone()
+        if not row:
+            raise InvalidInput("Investigation not in this case")
+        data = dict(row)
+        data["claims"] = json.loads(data.pop("claims_json"))
+        data["abstentions"] = json.loads(data.pop("abstentions_json"))
+        data["dropped"] = json.loads(data.pop("dropped_json"))
+        data["kind"] = "hypothesis"
+        data["review_state"] = "pending"
+        data["disclaimer"] = ("Research demonstration only. Hypotheses are unreviewed, "
+                              "fictional-data based, and not medical advice.")
+        return data
+
+    def list_investigations(self, case_id: str) -> list[dict]:
+        self._case(case_id)
+        rows = self._dicts(self.db.execute(
+            "SELECT id,question_id,template,status,mode,model,stale,created_at "
+            "FROM investigations WHERE case_id=? ORDER BY id DESC", (case_id,)).fetchall())
+        for row in rows:
+            row["kind"] = "hypothesis"
+            row["review_state"] = "pending"
+        return rows
+
     def state(self, case_id: str) -> dict:
         self._case(case_id)
         # A single read transaction is required across versions, assertions,
@@ -987,6 +1316,11 @@ class CaseStore:
             return {
                 "broker_links": broker_rows,
                 "rights_sources": rights_rows,
+                "biological_assets": self._dicts(self.db.execute(
+                    "SELECT * FROM biological_assets WHERE case_id=? ORDER BY id", (case_id,)).fetchall()),
+                "biological_inventory_assertions": self._dicts(self.db.execute(
+                    "SELECT * FROM biological_inventory_assertions WHERE case_id=? ORDER BY id",
+                    (case_id,)).fetchall()),
                 "evidence": evidence_rows,
                 "evidence_changes": self._dicts(self.db.execute(
                     "SELECT id,evidence_version_id,kind,reason,recorded_at FROM evidence_changes ORDER BY id DESC").fetchall()),
