@@ -23,6 +23,7 @@ from .investigation import (
     meta_api_key,
     validate_output,
 )
+from .mission import build_patient_mission
 from .store import CaseStore, InvalidInput, MAX_SOURCE_BYTES
 from .timeline import case_timeline
 
@@ -103,6 +104,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._static("index.html", "text/html; charset=utf-8")
             if path == "/app.js":
                 return self._static("app.js", "text/javascript; charset=utf-8")
+            if path == "/mission.js":
+                return self._static("mission.js", "text/javascript; charset=utf-8")
             if path == "/style.css":
                 return self._static("style.css", "text/css; charset=utf-8")
             if path == "/tokens.css":
@@ -142,6 +145,9 @@ class Handler(BaseHTTPRequestHandler):
             case_state = re.fullmatch(rf"/api/cases/{ID_PART}/state", path)
             if case_state:
                 return self._json(200, store.state(case_state[1]))
+            case_mission = re.fullmatch(rf"/api/cases/{ID_PART}/mission", path)
+            if case_mission:
+                return self._json(200, build_patient_mission(store.state(case_mission[1])))
             changes = re.fullmatch(rf"/api/cases/{ID_PART}/changes-since-review", path)
             if changes:
                 raw_since = parse_qs(urlsplit(self.path).query).get("since_event_id", [None])[0]
