@@ -107,6 +107,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, {"text": (SYNTHETIC / "alpha-pathology-amended.txt").read_text()})
             if path == "/api/examples/evidence":
                 return self._json(200, {"text": (SYNTHETIC / "demo-evidence.txt").read_text()})
+            if path == "/api/examples/wrong-patient":
+                return self._json(200, {"text": (SYNTHETIC / "wrong-patient.txt").read_text()})
             if path == "/api/bibliography/status":
                 return self._json(200, {"live_enabled": bool(self.allow_crossref_live)})
             if path == "/api/bibliography/example":
