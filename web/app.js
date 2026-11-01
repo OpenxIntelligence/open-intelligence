@@ -56,6 +56,7 @@ async function initialize() {
         notice('Save or explicitly clear the unfinished investigation draft before switching cases.', true);
         return;
       }
+      cancelSourceRead();
       caseId = picker.value;
       active = null; // Reject writes while the next case is loading.
       for (const id of ['question-text', 'report-text', 'evidence-rationale', 'draft-observations',
@@ -430,51 +431,101 @@ function renderOriginalSource(text, lineNumber) {
   }
   return anchored;
 }
-async function openSource(source, lineNumber = null) {
+// One read intent across report, evidence and comparison views. Checking only
+// caseId misses same-case reordering and a case A -> B -> A round trip.
+let sourceReadSequence = 0;
+function cancelSourceRead() { sourceReadSequence++; }
+function beginSourceRead() {
+  const selectedCase = readyCase();
+  return {caseId: selectedCase, sequence: ++sourceReadSequence};
+}
+function sourceReadIsCurrent(read) {
+  return read.sequence === sourceReadSequence && read.caseId === caseId &&
+    active?.case.case_id === caseId && renderedCaseId === caseId;
+}
+function sourceReadRecord(records, requested, label) {
+  if (!requested || !Number.isSafeInteger(requested.id) || requested.id <= 0)
+    throw Error('Invalid ' + label + ' identifier.');
+  const record = records.find(item => item.id === requested.id);
+  if (!record) throw Error('The requested ' + label + ' is unavailable in this case view.');
+  // Labels and lineage come from the active case response, not caller objects.
+  return record;
+}
+function showSourceView(dialogId) {
+  for (const id of ['source-dialog', 'compare-dialog']) {
+    if (id !== dialogId && el(id).open) el(id).close();
+  }
+  if (!el(dialogId).open) el(dialogId).showModal();
+}
+function originalText(response) {
+  if (!response || typeof response.text !== 'string')
+    throw Error('Original source text is unavailable. No comparison was produced.');
+  return response.text;
+}
+async function openSource(requested, lineNumber = null) {
+  let read;
   try {
-    const requestedCase = readyCase();
-    const response = await api('/api/cases/' + requestedCase + '/sources/' + source.id);
-    if (requestedCase !== caseId) return;
+    read = beginSourceRead();
+    const source = sourceReadRecord(active.sources, requested, 'source');
+    const response = await api('/api/cases/' + read.caseId + '/sources/' + source.id);
+    if (!sourceReadIsCurrent(read)) return;
+    const text = originalText(response);
     el('dialog-title').textContent = source.document_id + '@' + source.version + ', original UTF-8';
-    const anchored = renderOriginalSource(response.text, lineNumber);
+    const anchored = renderOriginalSource(text, lineNumber);
     el('dialog-context').textContent = anchored
       ? 'Source-reported statement, highlighted original line ' + lineNumber + '. Not clinically reviewed.'
       : lineNumber === null
         ? 'Exact original report and source version. Not clinically reviewed.'
         : 'Requested source line is not present in this version. Original text is preserved below.';
-    el('source-dialog').showModal();
+    showSourceView('source-dialog');
     if (anchored) el('dialog-text').querySelector('mark.source-highlight')?.scrollIntoView({block:'center'});
-  } catch (err) { notice(err.message, true); }
+  } catch (err) {
+    if (!read || sourceReadIsCurrent(read)) notice(err.message, true);
+  }
 }
-async function openComparison(previous, current) {
+async function openComparison(requestedPrevious, requestedCurrent) {
+  let read;
   try {
-    const requestedCase = readyCase();
-    // Both immutable source versions are retrieved from the *same* selected case.
-    if (![previous, current].every(version => active.sources.some(source => Number(source.id) === Number(version.id))))
-      throw Error('Source versions are not in the selected fictional case.');
+    read = beginSourceRead();
+    const previous = sourceReadRecord(active.sources, requestedPrevious, 'source');
+    const current = sourceReadRecord(active.sources, requestedCurrent, 'source');
+    // Membership alone is not amendment lineage. Never label unrelated reports
+    // as before/after versions merely because they belong to the same case.
+    if (current.supersedes_id !== previous.id || current.version !== previous.version + 1 ||
+        current.document_id !== previous.document_id || current.kind !== previous.kind ||
+        current.event_date !== previous.event_date ||
+        (current.specimen_id ?? null) !== (previous.specimen_id ?? null))
+      throw Error('Only linked consecutive versions of the same report and specimen can be compared.');
     const [before, after] = await Promise.all([previous, current].map(source =>
-      api('/api/cases/' + requestedCase + '/sources/' + source.id)));
-    if (requestedCase !== caseId) return;
+      api('/api/cases/' + read.caseId + '/sources/' + source.id)));
+    if (!sourceReadIsCurrent(read)) return;
+    const beforeText = originalText(before), afterText = originalText(after);
     el('compare-title').textContent = current.document_id + ': original versions ' +
       previous.version + ' and ' + current.version;
     el('compare-before-title').textContent = previous.document_id + '@' + previous.version + ' · ' + previous.state;
     el('compare-after-title').textContent = current.document_id + '@' + current.version + ' · ' + current.state;
-    // textContent prevents untrusted report content from becoming executable markup.
-    el('compare-before').textContent = before.text;
-    el('compare-after').textContent = after.text;
-    el('compare-dialog').showModal();
-  } catch (err) { notice(err.message, true); }
+    el('compare-before').textContent = beforeText;
+    el('compare-after').textContent = afterText;
+    showSourceView('compare-dialog');
+  } catch (err) {
+    if (!read || sourceReadIsCurrent(read)) notice(err.message, true);
+  }
 }
-async function openEvidence(item) {
+async function openEvidence(requested) {
+  let read;
   try {
-    const requestedCase = readyCase();
+    read = beginSourceRead();
+    const item = sourceReadRecord(active.evidence || [], requested, 'fictional evidence');
     const response = await api('/api/evidence/' + item.id);
-    if (requestedCase !== caseId) return;
+    if (!sourceReadIsCurrent(read)) return;
+    const text = originalText(response);
     el('dialog-title').textContent = item.evidence_key + '@' + item.version + ', fictional source';
     el('dialog-context').textContent = 'Fictional evidence text, not independent clinical appraisal.';
-    el('dialog-text').textContent = response.text;
-    el('source-dialog').showModal();
-  } catch (err) { notice(err.message, true); }
+    el('dialog-text').textContent = text;
+    showSourceView('source-dialog');
+  } catch (err) {
+    if (!read || sourceReadIsCurrent(read)) notice(err.message, true);
+  }
 }
 async function downloadSnapshot(id) {
   try {
@@ -486,8 +537,12 @@ async function downloadSnapshot(id) {
     document.body.append(link); link.click(); link.remove(); URL.revokeObjectURL(url);
   } catch (err) { notice(err.message, true); }
 }
-el('dialog-close').addEventListener('click', () => el('source-dialog').close());
-el('compare-close').addEventListener('click', () => el('compare-dialog').close());
+el('dialog-close').addEventListener('click', () => { cancelSourceRead(); el('source-dialog').close(); });
+el('compare-close').addEventListener('click', () => { cancelSourceRead(); el('compare-dialog').close(); });
+// Native Escape dispatches cancel before closing. Avoid a close-event handler:
+// queued programmatic close events must not cancel a newer read intent.
+for (const id of ['source-dialog', 'compare-dialog'])
+  el(id).addEventListener('cancel', cancelSourceRead);
 el('question-form').addEventListener('submit', async event => {
   event.preventDefault(); try {
     const requestedCase = readyCase();
