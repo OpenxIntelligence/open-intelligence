@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-audience="clinician" data-density="comfortable">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -30,8 +30,9 @@
       <details class="section-menu" open>
         <summary>Navigate</summary>
         <nav id="workspace-nav" aria-label="Workspace sections">
-          <a href="#overview">Case</a>
+          <a href="#overview">Case overview</a>
           <a href="#patient-mission">Patient Mission</a>
+          <a href="#assertions">Reported findings</a>
           <a href="#timeline">Timeline</a>
           <a href="#investigations">Investigation</a>
           <a href="#sources">Sources and findings</a>
@@ -51,22 +52,44 @@
     <main class="main" id="main-content" tabindex="-1">
       <section id="overview" class="hero">
         <div class="hero-copy">
+          <p class="view-question">CASE OVERVIEW · WHERE ARE WE NOW?</p>
           <h1 id="case-heading">Loading case…</h1>
-          <p class="hero-desc">Follow source-linked findings, research evidence, and questions across this case.</p>
+          <p class="hero-desc">Clinician-review evidence workspace — not medical advice. Inspect the reported facts before preparing an interpretation.</p>
         </div>
         <div class="hero-actions">
-          <a class="button" href="#investigations">Investigate a question</a>
+          <a class="button" href="#assertions">Inspect reported findings</a>
+          <a class="button secondary" href="#investigations">Prepare an investigation</a>
         </div>
       </section>
       <div class="metrics" id="metrics" aria-live="polite"></div>
-      <section id="review-attention" class="review-attention" data-state="checking" aria-labelledby="review-attention-heading">
-        <div>
-          <p class="tiny muted review-eyebrow">SOURCE-DEPENDENT REVIEW · FICTIONAL DEMO</p>
-          <h2 id="review-attention-heading">Checking investigation freshness…</h2>
-          <p id="review-attention-summary" role="status" aria-live="polite">Loading source-linked review state.</p>
-        </div>
-        <a href="#investigations" class="button secondary">Inspect investigations</a>
-      </section>
+      <div class="glance-layout">
+        <section class="panel glance-findings" id="assertions" aria-labelledby="findings-heading">
+          <div class="panel-head">
+            <div><p class="view-question">GLANCE · THE AVAILABLE RECORD</p><h2 id="findings-heading">What do the sources report?</h2></div>
+            <span class="pill pill-neutral">Source statements, not clinical conclusions</span>
+          </div>
+          <p class="muted panel-note">Reported, pending, indeterminate and not reported stay distinct. Inspect each exact document version to verify the wording.</p>
+          <div id="assertion-list" class="findings"></div>
+        </section>
+        <aside class="glance-review" aria-label="Review context and next steps">
+          <section id="review-attention" class="review-attention" data-state="checking" aria-labelledby="review-attention-heading">
+            <div>
+              <p class="tiny muted review-eyebrow">SOURCE-DEPENDENT REVIEW · FICTIONAL DEMO</p>
+              <h2 id="review-attention-heading">Checking investigation freshness…</h2>
+              <p id="review-attention-summary" role="status" aria-live="polite">Loading source-linked review state.</p>
+            </div>
+            <a href="#investigations" class="button secondary">Inspect investigations</a>
+          </section>
+          <section class="glance-guide" aria-labelledby="glance-guide-heading">
+            <p class="view-question">INSPECT → VERIFY</p>
+            <h2 id="glance-guide-heading">Keep the source in view</h2>
+            <p>Open a finding’s exact source line. Compare report versions when a source changes. Then prepare a dated draft without changing the original record.</p>
+            <a href="#timeline">Inspect chronology and amendments</a>
+            <a href="#sources">Browse original documents</a>
+            <p class="muted tiny">These counts describe the available fictional records. Zero review flags do not mean a complete or clinically reviewed case.</p>
+          </section>
+        </aside>
+      </div>
       <div id="notice" role="status" aria-live="polite" class="notice" hidden></div>
 
       <section class="panel" id="patient-mission" aria-labelledby="patient-mission-title">
@@ -169,10 +192,6 @@
             <div class="panel-head"><h2>Source history</h2></div>
             <div id="source-list" class="cards"></div>
           </section>
-          <section class="panel" id="assertions">
-            <div class="panel-head"><h2>Current reported findings</h2></div>
-            <div id="assertion-list" class="findings"></div>
-          </section>
           <section class="panel" id="biological-assets">
             <div class="panel-head"><div><div class="eyebrow">03 / BIOLOGICAL ASSETS</div><h2>Biological-asset provenance</h2></div><span class="muted tiny">Synthetic only · no files stored · no release or shipment</span></div>
             <div id="asset-list" class="findings"></div>
@@ -187,14 +206,18 @@
           <section class="panel" id="evidence">
             <div class="panel-head"><h2>Evidence and applicability</h2><span class="pill pill-warn">Fictional only</span></div>
             <p class="muted">These examples are independently authored, not publications or medical guidance. Relationships and applicability are human-entered demonstration labels.</p>
-            <form id="evidence-import-form">
-              <label for="evidence-text">Synthetic evidence document</label>
-              <textarea id="evidence-text" rows="7" spellcheck="false" placeholder="OI-SYNTHETIC-EVIDENCE/1&#10;Evidence: EVID-ASSAY&#10;Title: ...&#10;Rights: original-synthetic"></textarea>
-              <div class="actions">
-                <button type="button" id="example-evidence-button" class="button secondary">Load fictional example</button>
-                <button type="submit" class="button">Register fictional evidence</button>
-              </div>
-            </form>
+            <details id="evidence-tools" class="input-disclosure">
+              <summary>Register a fictional evidence source</summary>
+              <p class="muted tiny">Demonstration input only; not a literature search or evidence appraisal.</p>
+              <form id="evidence-import-form">
+                <label for="evidence-text">Synthetic evidence document</label>
+                <textarea id="evidence-text" rows="7" spellcheck="false" placeholder="OI-SYNTHETIC-EVIDENCE/1&#10;Evidence: EVID-ASSAY&#10;Title: ...&#10;Rights: original-synthetic"></textarea>
+                <div class="actions">
+                  <button type="button" id="example-evidence-button" class="button secondary">Load fictional example</button>
+                  <button type="submit" class="button">Register fictional evidence</button>
+                </div>
+              </form>
+            </details>
             <h3 class="subhead">Versioned research sources</h3>
             <div id="evidence-list" class="cards"></div>
             <form id="evidence-assessment-form">
@@ -212,13 +235,17 @@
             </form>
             <h3 class="subhead">Case evidence assessments</h3>
             <div id="evidence-assessment-list" class="findings"></div>
-            <form id="evidence-withdraw-form" class="withdraw-form">
-              <label for="evidence-withdraw-id">Choose the current fictional evidence item to withdraw</label>
-              <select id="evidence-withdraw-id" required></select>
-              <label for="evidence-withdraw-reason">Withdrawal reason</label>
-              <textarea id="evidence-withdraw-reason" rows="2" minlength="10" maxlength="600" required></textarea>
-              <button class="button secondary" type="submit">Withdraw and invalidate drafts</button>
-            </form>
+            <details id="evidence-withdraw-tools" class="input-disclosure">
+              <summary>Withdraw a fictional evidence source</summary>
+              <p class="muted tiny">This action preserves history and marks dependent drafts stale. It is not a clinical decision.</p>
+              <form id="evidence-withdraw-form" class="withdraw-form">
+                <label for="evidence-withdraw-id">Choose the current fictional evidence item to withdraw</label>
+                <select id="evidence-withdraw-id" required></select>
+                <label for="evidence-withdraw-reason">Withdrawal reason</label>
+                <textarea id="evidence-withdraw-reason" rows="2" minlength="10" maxlength="600" required></textarea>
+                <button class="button secondary" type="submit">Withdraw and invalidate drafts</button>
+              </form>
+            </details>
           </section>
 
           <section class="panel" id="bibliography">
@@ -257,11 +284,13 @@
   </div>
   <dialog id="source-dialog" aria-labelledby="dialog-title" aria-describedby="dialog-context">
     <div class="dialog-head"><h2 id="dialog-title">Original source</h2><button id="dialog-close" class="button secondary" type="button">Close</button></div>
+    <p class="dialog-fictional-label">FICTIONAL DEMO DATA — not a real patient</p>
     <p id="dialog-context" class="muted tiny">Exact source text. Not clinically reviewed.</p>
     <pre id="dialog-text"></pre>
   </dialog>
   <dialog id="compare-dialog" aria-labelledby="compare-title" aria-describedby="compare-context">
     <div class="dialog-head"><h2 id="compare-title">Compare source versions</h2><button id="compare-close" class="button secondary" type="button">Close comparison</button></div>
+    <p class="dialog-fictional-label">FICTIONAL DEMO DATA — not a real patient</p>
     <p id="compare-context" class="muted">Read-only, exact original text. Differences require human interpretation; this view makes no clinical or treatment determination.</p>
     <div class="comparison-grid">
       <section class="comparison-pane" aria-labelledby="compare-before-title">

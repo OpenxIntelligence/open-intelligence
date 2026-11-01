@@ -339,12 +339,17 @@ CREATE TABLE IF NOT EXISTS investigations (
   stale INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL
 );
+-- Discovery-to-rights linkage: an item may be bound to one rights row at
+-- import (NULL means unlinked: rights unknown, never assumed permitted),
+-- and a link may cite broker links. Revocation/correction of a rights row
+-- marks dependent links invalid with a cause; rows are never deleted.
 CREATE TABLE IF NOT EXISTS discovery_items (
   id INTEGER PRIMARY KEY, discovery_key TEXT NOT NULL UNIQUE,
   kind TEXT NOT NULL CHECK(kind IN ('trial','literature')),
   title TEXT NOT NULL, registry_id TEXT, doi TEXT,
   issued_at TEXT NOT NULL, summary TEXT NOT NULL, status TEXT,
   rights TEXT NOT NULL CHECK(rights='original-synthetic'),
+  rights_source_id INTEGER REFERENCES rights_sources(id),
   raw BLOB NOT NULL, created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS discovery_links (
@@ -354,7 +359,16 @@ CREATE TABLE IF NOT EXISTS discovery_links (
   discovery_id INTEGER NOT NULL REFERENCES discovery_items(id),
   applicability TEXT NOT NULL CHECK(applicability IN ('applicable','limited','not_applicable','unknown')),
   rationale TEXT NOT NULL, created_at TEXT NOT NULL,
+  state TEXT NOT NULL DEFAULT 'valid' CHECK(state IN ('valid','invalid')),
+  invalidated_cause TEXT CHECK(invalidated_cause IN ('revocation','correction')),
+  invalidated_rights_source_id INTEGER REFERENCES rights_sources(id),
+  invalidated_at TEXT,
   UNIQUE(case_id,question_id,discovery_id)
+);
+CREATE TABLE IF NOT EXISTS discovery_link_broker_links (
+  discovery_link_id INTEGER NOT NULL REFERENCES discovery_links(id),
+  broker_link_id INTEGER NOT NULL REFERENCES broker_links(id),
+  PRIMARY KEY(discovery_link_id, broker_link_id)
 );
 CREATE INDEX IF NOT EXISTS idx_assessments_evidence ON evidence_assessments(evidence_version_id);
 CREATE INDEX IF NOT EXISTS idx_snapshot_evidence_assessment ON snapshot_evidence(assessment_id);
@@ -406,6 +420,41 @@ class CaseStore:
         self.db.row_factory = sqlite3.Row
         self.db.execute("PRAGMA foreign_keys=ON")
         self.db.executescript(SCHEMA)
+        self._migrate_discovery_rights()
+
+    def _migrate_discovery_rights(self) -> None:
+        """Add rights-linkage columns to pre-existing discovery tables.
+
+        Fresh databases get the columns from SCHEMA. Databases created by
+        earlier slices keep every row; the new columns default to
+        unlinked/valid, so old items stay listable and old links stay
+        valid. This migrates only the discovery tables it names.
+        """
+        migrations = (
+            ("discovery_items", "rights_source_id",
+             "ALTER TABLE discovery_items ADD COLUMN rights_source_id INTEGER REFERENCES rights_sources(id)"),
+            ("discovery_links", "state",
+             "ALTER TABLE discovery_links ADD COLUMN state TEXT NOT NULL DEFAULT 'valid' CHECK(state IN ('valid','invalid'))"),
+            ("discovery_links", "invalidated_cause",
+             "ALTER TABLE discovery_links ADD COLUMN invalidated_cause TEXT CHECK(invalidated_cause IN ('revocation','correction'))"),
+            ("discovery_links", "invalidated_rights_source_id",
+             "ALTER TABLE discovery_links ADD COLUMN invalidated_rights_source_id INTEGER REFERENCES rights_sources(id)"),
+            ("discovery_links", "invalidated_at",
+             "ALTER TABLE discovery_links ADD COLUMN invalidated_at TEXT"),
+        )
+        for table, column, ddl in migrations:
+            names = {row["name"] for row in self.db.execute(f"PRAGMA table_info({table})").fetchall()}
+            if column not in names:
+                try:
+                    self.db.execute(ddl)
+                except sqlite3.OperationalError:
+                    # A concurrent first open may have added the column;
+                    # re-check rather than masking a real failure.
+                    names = {row["name"] for row in self.db.execute(
+                        f"PRAGMA table_info({table})").fetchall()}
+                    if column not in names:
+                        raise
+        self.db.commit()
 
     def close(self) -> None:
         self.db.close()
@@ -688,40 +737,87 @@ class CaseStore:
                         assessment_id=cur.lastrowid, evidence_version_id=evidence_version_id)
             return int(cur.lastrowid)
 
-    def import_discovery(self, raw: bytes) -> dict:
-        """Import one fictional discovery fixture. Keys are immutable: a
-        re-import of identical bytes is a duplicate; changed bytes under an
-        existing key are rejected rather than silently overwritten."""
+    def import_discovery(self, raw: bytes, rights_source_id: int | None = None) -> dict:
+        """Import one fictional discovery fixture, optionally bound to a rights row.
+
+        Keys and bindings are immutable: a re-import of identical bytes is a
+        duplicate; changed bytes under an existing key are rejected rather
+        than silently overwritten, and so is a binding claim that differs
+        from the stored one. The binding records which rights manifest this
+        item's case use depends on, so a later revocation or correction can
+        invalidate dependent links. A rights record that claims permission
+        is not proof of permission — the existing broker language governs.
+        An item with no rights row is unlinked (rights unknown), never
+        assumed permitted.
+        """
         from .discovery import DiscoveryInputError, parse_discovery
         try:
             item = parse_discovery(raw)
         except DiscoveryInputError as error:
             raise InvalidInput(str(error)) from None
+        if rights_source_id is not None:
+            if type(rights_source_id) is not int or rights_source_id < 1:
+                raise InvalidInput("Rights source ID must be a positive integer")
         with self.db:
             self.db.execute("BEGIN IMMEDIATE")
+            if rights_source_id is not None:
+                bound = self.db.execute(
+                    "SELECT state FROM rights_sources WHERE id=?", (rights_source_id,)).fetchone()
+                if not bound:
+                    raise InvalidInput("Rights source not found")
+                if bound["state"] != "active":
+                    raise InvalidInput("Discovery items bind only to an active rights source")
             existing = self.db.execute(
-                "SELECT id, raw FROM discovery_items WHERE discovery_key=?", (item.discovery_key,)).fetchone()
+                "SELECT id, raw, rights_source_id FROM discovery_items WHERE discovery_key=?",
+                (item.discovery_key,)).fetchone()
             if existing:
                 if bytes(existing["raw"]) == raw:
-                    return {"result": "duplicate", "discovery_id": existing["id"]}
+                    stored = existing["rights_source_id"]
+                    if rights_source_id is not None and stored is not None \
+                            and int(stored) != rights_source_id:
+                        raise InvalidInput("Discovery item is already bound to a different rights source")
+                    if rights_source_id is not None and stored is None:
+                        raise InvalidInput("Discovery item binding is immutable once imported unlinked")
+                    return {"result": "duplicate", "discovery_id": existing["id"],
+                            "rights_source_id": stored}
                 raise InvalidInput("Discovery key already exists with different content")
             cur = self.db.execute("""INSERT INTO discovery_items
-                (discovery_key,kind,title,registry_id,doi,issued_at,summary,status,rights,raw,created_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                (discovery_key,kind,title,registry_id,doi,issued_at,summary,status,rights,rights_source_id,raw,created_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (item.discovery_key, item.kind, item.title, item.registry_id, item.doi,
                  item.issued_at, item.summary,
                  "not-verified" if item.kind == "trial" else None,
-                 "original-synthetic", raw, now_utc()))
-            return {"result": "imported", "discovery_id": int(cur.lastrowid)}
+                 "original-synthetic", rights_source_id, raw, now_utc()))
+            return {"result": "imported", "discovery_id": int(cur.lastrowid),
+                    "rights_source_id": rights_source_id}
     def list_discovery(self) -> list[dict]:
         from .discovery import project_item
-        rows = self.db.execute("SELECT * FROM discovery_items ORDER BY id").fetchall()
-        return [project_item(dict(row)) for row in rows]
+        rows = self.db.execute("""SELECT d.*, rs.state AS rights_state FROM discovery_items d
+            LEFT JOIN rights_sources rs ON rs.id=d.rights_source_id
+            ORDER BY d.id""").fetchall()
+        out = []
+        for row in rows:
+            row = dict(row)
+            projected = project_item(row)
+            projected["rights_source_id"] = row["rights_source_id"]
+            projected["rights_state"] = row["rights_state"] \
+                if row["rights_source_id"] is not None else "unlinked"
+            out.append(projected)
+        return out
     def link_discovery(self, case_id: str, question_id: int, discovery_id: int,
-                       applicability: str, rationale: str) -> int:
-        """Persist a HUMAN-entered applicability link. Applicability is an
-        assessment label, never a determination of eligibility, efficacy, or
-        treatment relevance; unknown stays first-class."""
+                       applicability: str, rationale: str,
+                       broker_link_ids: list[int] | None = None) -> int:
+        """Persist a HUMAN-entered applicability link, optionally bound to rights.
+
+        Applicability is an assessment label, never a determination of
+        eligibility, efficacy, or treatment relevance; unknown stays
+        first-class. A link depends on rights through its item's bound row
+        and through any cited broker links; revocation or correction of
+        those rows later marks the link invalid with its cause, preserving
+        history. New links fail closed: an item bound to a non-active row,
+        and broker links that are revoked, wrong-case, or wrong-question,
+        are rejected.
+        """
         from .discovery import APPLICABILITY, _check_language, DiscoveryInputError
         case_id = self._case(case_id)
         if type(question_id) is not int or type(discovery_id) is not int:
@@ -734,13 +830,35 @@ class CaseStore:
             _check_language("Rationale", rationale)
         except DiscoveryInputError as error:
             raise InvalidInput(str(error)) from None
+        broker_link_ids = [] if broker_link_ids is None else broker_link_ids
+        if (not isinstance(broker_link_ids, list) or
+            len(broker_link_ids) != len(set(str(x) for x in broker_link_ids)) or
+            len(broker_link_ids) > 50 or
+            any(type(x) is not int or x < 1 for x in broker_link_ids)):
+            raise InvalidInput("Broker link IDs must be unique positive integers; maximum 50")
         with self.db:
             self.db.execute("BEGIN IMMEDIATE")
             if not self.db.execute("SELECT 1 FROM questions WHERE id=? AND case_id=?",
                                    (question_id, case_id)).fetchone():
                 raise InvalidInput("Question not in this case")
-            if not self.db.execute("SELECT 1 FROM discovery_items WHERE id=?", (discovery_id,)).fetchone():
+            item = self.db.execute(
+                "SELECT rights_source_id FROM discovery_items WHERE id=?", (discovery_id,)).fetchone()
+            if not item:
                 raise InvalidInput("Discovery item not found")
+            if item["rights_source_id"] is not None:
+                bound = self.db.execute(
+                    "SELECT state FROM rights_sources WHERE id=?", (item["rights_source_id"],)).fetchone()
+                if not bound or bound["state"] != "active":
+                    raise InvalidInput("Discovery item's rights source is not active")
+            for lid in broker_link_ids:
+                linked = self.db.execute("""SELECT 1 FROM broker_links bl
+                    JOIN rights_sources rs ON rs.id=bl.rights_source_id
+                    WHERE bl.id=? AND bl.case_id=? AND bl.question_id=?
+                    AND rs.state='active'
+                    AND NOT (bl.relation='supports' AND bl.applicability='not_applicable')""",
+                    (lid, case_id, question_id)).fetchone()
+                if not linked:
+                    raise InvalidInput("Broker link is missing, revoked, or outside this question")
             try:
                 cur = self.db.execute("""INSERT INTO discovery_links
                     (case_id,question_id,discovery_id,applicability,rationale,created_at)
@@ -748,15 +866,22 @@ class CaseStore:
                        applicability, rationale.strip(), now_utc()))
             except sqlite3.IntegrityError:
                 raise InvalidInput("Discovery item already linked to this question") from None
+            for lid in broker_link_ids:
+                self.db.execute("INSERT INTO discovery_link_broker_links VALUES (?,?)",
+                                (cur.lastrowid, lid))
             self._event(case_id, "discovery_linked",
-                        link_id=cur.lastrowid, discovery_id=discovery_id)
+                        link_id=cur.lastrowid, discovery_id=discovery_id,
+                        broker_link_ids=list(broker_link_ids))
             return int(cur.lastrowid)
     def case_discovery_links(self, case_id: str) -> list[dict]:
         from .discovery import project_item
         case_id = self._case(case_id)
         rows = self.db.execute("""SELECT l.id AS link_id, l.question_id, l.applicability,
-            l.rationale, l.created_at, d.* FROM discovery_links l
+            l.rationale, l.created_at AS link_created_at, l.state AS link_state,
+            l.invalidated_cause, l.invalidated_rights_source_id, l.invalidated_at,
+            d.*, rs.state AS rights_state FROM discovery_links l
             JOIN discovery_items d ON d.id=l.discovery_id
+            LEFT JOIN rights_sources rs ON rs.id=d.rights_source_id
             WHERE l.case_id=? ORDER BY l.id""", (case_id,)).fetchall()
         out = []
         for row in rows:
@@ -764,9 +889,20 @@ class CaseStore:
             item = project_item({k: row[k] for k in (
                 "id", "discovery_key", "kind", "title", "registry_id", "doi",
                 "issued_at", "summary", "status")})
+            item["rights_source_id"] = row["rights_source_id"]
+            item["rights_state"] = row["rights_state"] \
+                if row["rights_source_id"] is not None else "unlinked"
+            broker_ids = [r[0] for r in self.db.execute(
+                "SELECT broker_link_id FROM discovery_link_broker_links"
+                " WHERE discovery_link_id=? ORDER BY broker_link_id",
+                (row["link_id"],)).fetchall()]
             out.append({"link_id": row["link_id"], "question_id": row["question_id"],
                         "applicability": row["applicability"], "rationale": row["rationale"],
-                        "created_at": row["created_at"], "item": item})
+                        "created_at": row["link_created_at"], "state": row["link_state"],
+                        "invalidated_cause": row["invalidated_cause"],
+                        "invalidated_rights_source_id": row["invalidated_rights_source_id"],
+                        "invalidated_at": row["invalidated_at"],
+                        "broker_link_ids": broker_ids, "item": item})
         return out
     # ---- Rights-qualified external evidence broker (issue #2) ----
     # A broker link never fetches external content and never verifies that
@@ -831,6 +967,37 @@ class CaseStore:
                             reason=reason, invalidated_snapshots=changed)
         return invalidated
 
+    def _invalidate_discovery_source(self, rights_source_id: int, *, reason: str) -> list[int]:
+        """Invalidate valid discovery links depending on this rights source row.
+
+        Caller must own a write transaction. A link depends on the row when
+        its item is bound to it or when it cites a broker link that is.
+        Links are marked invalid with their cause — never deleted — so the
+        rationale, applicability, broker bindings, and item stay readable
+        as history. Unlinked items and unrelated links are untouched.
+        """
+        rows = self.db.execute("""SELECT DISTINCT l.id,l.case_id
+            FROM discovery_links l
+            JOIN discovery_items d ON d.id=l.discovery_id
+            LEFT JOIN discovery_link_broker_links dlbl ON dlbl.discovery_link_id=l.id
+            LEFT JOIN broker_links bl ON bl.id=dlbl.broker_link_id
+            WHERE l.state='valid' AND (d.rights_source_id=? OR bl.rights_source_id=?)""",
+            (rights_source_id, rights_source_id)).fetchall()
+        invalidated = [int(row["id"]) for row in rows]
+        if invalidated:
+            stamped = now_utc()
+            ids = ",".join("?" for _ in invalidated)
+            self.db.execute(f"""UPDATE discovery_links SET state='invalid',
+                invalidated_cause=?, invalidated_rights_source_id=?, invalidated_at=?
+                WHERE id IN ({ids})""", [reason, rights_source_id, stamped, *invalidated])
+            affected = {str(row["case_id"]) for row in rows}
+            for case_id in sorted(affected):
+                changed = [int(row["id"]) for row in rows if row["case_id"] == case_id]
+                self._event(case_id, "discovery_invalidated",
+                            rights_source_id=rights_source_id,
+                            reason=reason, invalidated_discovery_links=changed)
+        return invalidated
+
     def register_rights_source(self, source_key: object, owner: object, version_label: object,
                                retrieved_at: object, permissions: object,
                                attribution: object = None, retention: object = None) -> dict:
@@ -871,7 +1038,7 @@ class CaseStore:
             return {"rights_source_id": rights_id, "mode": "registered"}
 
     def revoke_rights_source(self, rights_source_id: int, reason: str) -> dict:
-        """Revoke an ACTIVE rights row; dependent drafts go stale. History kept."""
+        """Revoke an ACTIVE rights row; dependent drafts and discovery links invalidate. History kept."""
         if type(rights_source_id) is not int or rights_source_id < 1:
             raise InvalidInput("Invalid rights source ID")
         if not isinstance(reason, str) or not 10 <= len(reason.strip()) <= 600:
@@ -886,7 +1053,9 @@ class CaseStore:
                 (rights_source_id,kind,reason,recorded_at) VALUES (?,'revoked',?,?)""",
                 (rights_source_id, reason.strip(), now_utc()))
             invalidated = self._invalidate_broker_source(rights_source_id, reason="revocation")
-            return {"result": "revoked", "invalidated_snapshots": invalidated}
+            invalidated_discovery = self._invalidate_discovery_source(rights_source_id, reason="revocation")
+            return {"result": "revoked", "invalidated_snapshots": invalidated,
+                    "invalidated_discovery_links": invalidated_discovery}
 
     def correct_rights_source(self, rights_source_id: int, version_label: object,
                               permissions: object, reason: str,
@@ -894,8 +1063,9 @@ class CaseStore:
         """Supersede an ACTIVE rights row with a new versioned manifest.
 
         The old row is kept (state 'superseded'), drafts citing it go
-        stale, and new drafts must use the new row. Nothing is silently
-        re-permitted: the new row's own permissions gate its links.
+        stale, dependent discovery links go invalid, and new drafts must
+        use the new row. Nothing is silently re-permitted: the new row's
+        own permissions gate its links.
         """
         if type(rights_source_id) is not int or rights_source_id < 1:
             raise InvalidInput("Invalid rights source ID")
@@ -941,8 +1111,10 @@ class CaseStore:
                 (rights_source_id,kind,reason,recorded_at) VALUES (?,'registered',?,?)""",
                 (new_id, reason.strip(), now_utc()))
             invalidated = self._invalidate_broker_source(rights_source_id, reason="correction")
+            invalidated_discovery = self._invalidate_discovery_source(rights_source_id, reason="correction")
             return {"rights_source_id": new_id, "superseded_id": rights_source_id,
-                    "invalidated_snapshots": invalidated}
+                    "invalidated_snapshots": invalidated,
+                    "invalidated_discovery_links": invalidated_discovery}
 
     def create_broker_link(self, case_id: str, question_id: int, rights_source_id: int,
                            relation: str, applicability: str, rationale: str,
