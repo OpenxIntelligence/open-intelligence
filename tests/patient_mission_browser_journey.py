@@ -144,6 +144,8 @@ def main() -> None:
                 "mission question persisted",
             )
             session.evaluate("""(() => {
+              document.querySelector('#draft-observations').value =
+                'Synthetic observation recorded for the mission draft journey.';
               document.querySelector('#draft-summary').value =
                 'This synthetic investigation records the source state before an amendment.';
               document.querySelector('#draft-form').requestSubmit();
