@@ -234,12 +234,14 @@ class Handler(BaseHTTPRequestHandler):
                     raw = data.get("text")
                     if not isinstance(raw, str):
                         raise InvalidInput("Fictional discovery text required")
-                    return self._json(200, store.import_discovery(raw.encode("utf-8")))
+                    return self._json(200, store.import_discovery(
+                        raw.encode("utf-8"), rights_source_id=data.get("rights_source_id")))
                 discovery_link = re.fullmatch(rf"/api/cases/{ID_PART}/discovery-links", path)
                 if discovery_link:
                     return self._json(201, {"link_id": store.link_discovery(
                         discovery_link[1], data.get("question_id"), data.get("discovery_id"),
-                        data.get("applicability"), data.get("rationale"))})
+                        data.get("applicability"), data.get("rationale"),
+                        data.get("broker_link_ids"))})
                 rights_register = path == "/api/rights/sources"
                 if rights_register:
                     return self._json(201, store.register_rights_source(
