@@ -97,7 +97,7 @@
 - [x] **Step 2: Mark plan steps only where commits and workflow evidence support completion.**
 - [ ] **Step 3: Run final verification on the exact review state:** Python compile, both JavaScript syntax checks, all unit/HTTP tests, and both browser journeys.
 - [x] **Step 4: Keep the implementation in a separate draft PR to `main`.** Draft PR #38 is open and unmerged; PR #10 remains documentation-only.
-- [ ] **Step 5: Link draft PR #38 from the complementary Notion and Google Docs annexes without changing canonical architecture status.**
+- [x] **Step 5: Link draft PR #38 from the complementary Notion and Google Docs annexes without changing canonical architecture status.** PR #10 also records the bounded implementation reference.
 
 ## Verification Evidence
 
