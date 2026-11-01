@@ -34,10 +34,19 @@ function metric(number, label) {
   wrap.append(node('span', number, 'number'), node('span', label, 'name'));
   return wrap;
 }
+function focusOverviewFromCasePicker(event) {
+  if (event.key !== 'Tab' || event.shiftKey || event.defaultPrevented) return;
+  if (document.activeElement !== el('case-picker')) return;
+  const overviewLink = document.querySelector('.rail nav a[href="#overview"]');
+  if (!overviewLink) return;
+  event.preventDefault();
+  overviewLink.focus();
+}
 async function initialize() {
   try {
     const cases = await api('/api/cases');
     const picker = el('case-picker');
+    picker.addEventListener('keydown', focusOverviewFromCasePicker);
     for (const entry of cases) {
       const option = node('option', entry.label + ' · ' + entry.case_id);
       option.value = entry.case_id;
