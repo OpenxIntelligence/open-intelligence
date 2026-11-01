@@ -12,7 +12,7 @@ assert.ok(start >= 0 && end > start, 'Expected source-reader functions in actual
 const reader = app.slice(start, end);
 
 function element() {
-  return {children: [], open: false, _text: '',
+  return {children: [], open: false, _text: '', dataset: {},
     get textContent() {return this._text + this.children.map(x => x.textContent).join('');},
     set textContent(v) {this._text = String(v); this.children = [];},
     replaceChildren() {this._text = ''; this.children = [];},
@@ -52,7 +52,7 @@ test('evidence selection wins over an older source request', async()=>{
   const h=harness(); const first=h.ctx.openSource(h.before), second=h.ctx.openEvidence(h.evidence);
   h.requests[1].resolve({text:'evidence selected'}); await second;
   h.requests[0].resolve({text:'old source'}); await first;
-  assert.equal(h.el('dialog-text').textContent,'evidence selected');
+  assert.equal(h.el('dialog-text').textContent,'selected source' === 'new selection' ? 'selected source' : 'evidence selected');
 });
 test('a late comparison cannot open over a newer source inspection', async()=>{
   const h=harness(); const first=h.ctx.openComparison(h.before,h.after), second=h.ctx.openSource(h.other);
