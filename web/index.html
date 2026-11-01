@@ -83,6 +83,15 @@
               <button class="button" type="submit">Save investigation draft</button>
             </form>
             <div class="subhead">Investigation snapshots</div><div id="snapshot-list" class="snapshots"></div>
+            <div class="subhead">Model-assisted investigation (bounded templates)</div>
+            <p class="muted">Fixed templates only — no free-text prompt is sent to the model. Every result below is stored as a hypothesis pending review, never a validated conclusion. Research demonstration only.</p>
+            <form id="model-investigation-form">
+              <label for="model-investigation-question">Question</label><select id="model-investigation-question" required></select>
+              <label for="model-investigation-template">Template</label><select id="model-investigation-template" required></select>
+              <label for="model-investigation-mode">Mode</label><select id="model-investigation-mode"><option value="replay">Replay (recorded demonstration, works offline)</option><option value="live">Live (requires operator Meta API key)</option></select>
+              <button class="button" type="submit">Run bounded investigation</button>
+            </form>
+            <div id="model-investigation-list" class="snapshots"></div>
           </section>
 
           <section class="panel" id="evidence">

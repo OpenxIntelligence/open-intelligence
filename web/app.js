@@ -327,6 +327,12 @@ function render() {
     if (snapshot.state === 'stale') box.append(node('p', 'A source was amended. This version remains historical and cannot be acknowledged as current.', 'muted'));
     el('snapshot-list').append(box);
   }
+  clear('model-investigation-question');
+  for (const question of active.questions) {
+    const opt = node('option', question.question);
+    opt.value = question.id; el('model-investigation-question').append(opt);
+  }
+  loadModelInvestigations();
   clear('quarantine-list');
   for (const entry of active.quarantines) {
     el('quarantine-list').append(node('div', 'Quarantined #' + entry.id + ': declared ' + entry.declared_patient_id + ', not ' + caseId + ' · no assertions imported', 'quarantine'));
@@ -514,5 +520,69 @@ el('bibliography-form').addEventListener('submit', async event => {
   } catch (err) { notice(err.message, true); }
 });
 el('timeline-filter').addEventListener('change', renderTimeline);
+async function loadModelTemplates() {
+  try {
+    const data = await api('/api/investigations/templates');
+    clear('model-investigation-template');
+    for (const template of data.templates) {
+      const opt = node('option', template.id);
+      opt.value = template.id; el('model-investigation-template').append(opt);
+    }
+  } catch (err) { notice(err.message, true); }
+}
+async function loadModelInvestigations() {
+  const requested = caseId;
+  try {
+    const data = await api('/api/cases/' + caseId + '/investigations');
+    if (requested !== caseId) return;
+    clear('model-investigation-list');
+    const items = data.investigations || [];
+    if (!items.length) { empty(el('model-investigation-list'), 'No model investigations yet.'); return; }
+    for (const item of items) {
+      const detail = await api('/api/cases/' + caseId + '/investigations/' + item.id);
+      if (requested !== caseId) return;
+      const box = node('div', null, 'snapshot');
+      const top = node('div', null, 'topline');
+      top.append(node('strong', 'Model investigation #' + detail.id),
+        pill(detail.template), pill(detail.status), pill(detail.mode),
+        pill(detail.kind || 'hypothesis'),
+        pill('Review: ' + (detail.review_state || 'pending'),
+          detail.stale ? 'pill-alert' : 'pill-warn'));
+      box.append(top, node('p', detail.model + ' · ' + detail.created_at, 'snapshot-meta'));
+      for (const claim of detail.claims || []) {
+        box.append(node('p', claim.text));
+        box.append(node('p', 'Uncertainty: ' + claim.uncertainty + ' · Cited: ' +
+          (claim.citations || []).map(x => x.type + ' #' + x.id).join(', '), 'muted'));
+        if (claim.limits) box.append(node('p', 'Limits: ' + claim.limits, 'muted'));
+      }
+      for (const abstention of detail.abstentions || []) {
+        box.append(node('p', 'Abstained: ' + abstention.reason + ' (' + abstention.topic + ')', 'muted'));
+      }
+      if ((detail.dropped || []).length) {
+        box.append(node('p', detail.dropped.length + ' claim(s) dropped by validation, never repaired', 'muted'));
+      }
+      if (detail.stale) box.append(node('p', 'A source was amended. This investigation is stale until reconciled.', 'muted'));
+      box.append(node('p', detail.disclaimer || 'Research demonstration only.', 'muted'));
+      el('model-investigation-list').append(box);
+    }
+  } catch (err) {
+    if (requested === caseId) notice(err.message, true);
+  }
+}
+el('model-investigation-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    await api('/api/cases/' + requestedCase + '/investigations', {
+      question_id: Number(el('model-investigation-question').value),
+      template: el('model-investigation-template').value,
+      mode: el('model-investigation-mode').value,
+    });
+    if (requestedCase !== caseId) return;
+    notice('Model investigation stored as a hypothesis pending review.');
+    await refresh();
+  } catch (err) { notice(err.message, true); }
+});
 initialize();
 initializeBibliography();
+loadModelTemplates();
