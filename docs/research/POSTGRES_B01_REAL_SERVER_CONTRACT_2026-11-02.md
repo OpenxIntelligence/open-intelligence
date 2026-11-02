@@ -12,9 +12,9 @@
 | One opaque patient | `patient_registry.py` and PR #85 | Cross-patient row visibility and wrong-subject write denied |
 | Scheduled care encounters | `clinical_encounters.py` and PR #74 | One patient can create; another cannot view or insert under wrong patient |
 | Note-version preservation | PR #74 | DB trigger rejects historical UPDATE/DELETE, invalid supersession, missing correction reason |
-| Source version retention | `store.py` and OI-06 | Corrected source creates a new row; earlier row cannot be mutated or deleted |
-| Atomic patient event | `platform_events.py` / PR #70 | Outbox insert and clinical command roll back together on failure |
-| Retry/command idempotency | PR #74 | Same request hash returns duplicate receipt; key reuse with different hash fails |
+| Source version retention | `store.py` and OI-06 | Corrected source creates a new row; earlier row cannot be mutated or deleted; predecessor must be the same patient/source and immediately preceding version |
+| Atomic patient event | `platform_events.py` / PR #70 | Outbox insert and clinical command roll back together; wrong-patient or wrong-revision aggregate rejected, event identity immutable |
+| Retry/command idempotency | PR #74 | Same request hash returns duplicate receipt even across concurrent connections; mismatched key contents fail |
 | Revocation and suspension | OI-10 PF-01/PF-02 | DB role-grant removal or suspended patient blocks reads and event operations |
 | Two permissive Python drivers | OI-17 | `asyncpg` and `pg8000` both read the same authorized rows; neither sees the wrong patient |
 
