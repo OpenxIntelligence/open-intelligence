@@ -25,6 +25,7 @@ from .investigation import (
 )
 from .composer import build_composer_context, composer_context_fingerprint
 from .composer_lab import composer_lab_trend
+from .durable_runs import DurableComposerRuns
 from .mission import build_patient_mission
 from .store import CaseStore, InvalidInput, MAX_SOURCE_BYTES
 from .timeline import case_timeline
@@ -170,6 +171,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, composer_lab_trend(
                     store, lab_tool[1], int(question_raw),
                     query["context_fingerprint"][0], query["finding_key"][0]))
+            runs_list = re.fullmatch(rf"/api/cases/{ID_PART}/composer/runs", path)
+            if runs_list:
+                return self._json(200, {"runs": DurableComposerRuns(store).list(runs_list[1])})
+            run_item = re.fullmatch(rf"/api/cases/{ID_PART}/composer/runs/([0-9]+)", path)
+            if run_item:
+                return self._json(200, DurableComposerRuns(store).get(
+                    run_item[1],int(run_item[2])))
             composer_preview = re.fullmatch(rf"/api/cases/{ID_PART}/composer/context", path)
             if composer_preview:
                 raw_question = parse_qs(urlsplit(self.path).query).get("question_id", [None])[0]
@@ -370,6 +378,23 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(200, store.review_option(
                         option_review[1], int(option_review[2]), data.get("reviewer_label"),
                         data.get("action"), data.get("scope"), data.get("snapshot_id")))
+                run_list = re.fullmatch(rf"/api/cases/{ID_PART}/composer/runs", path)
+                if run_list:
+                    if set(data) != {"question_id","context_fingerprint","finding_key","idempotency_key"}:
+                        raise InvalidInput("Run creation requires exact task fields")
+                    return self._json(201, DurableComposerRuns(store).queue(
+                        run_list[1],data["question_id"],data["context_fingerprint"],
+                        data["finding_key"],data["idempotency_key"]))
+                run_action = re.fullmatch(
+                    rf"/api/cases/{ID_PART}/composer/runs/([0-9]+)/(execute|cancel)",path)
+                if run_action:
+                    if data:
+                        raise InvalidInput("Run action requires empty JSON object")
+                    ledger = DurableComposerRuns(store)
+                    receipt = (ledger.execute(run_action[1],int(run_action[2]))
+                               if run_action[3] == "execute"
+                               else ledger.cancel(run_action[1],int(run_action[2])))
+                    return self._json(200,receipt)
                 inv_create = re.fullmatch(rf"/api/cases/{ID_PART}/investigations", path)
                 if inv_create:
                     case_id = inv_create[1]
