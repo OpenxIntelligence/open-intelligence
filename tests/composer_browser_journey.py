@@ -142,7 +142,7 @@ def main():
             session.wait(
                 "document.querySelector('#composer-context-fingerprint')?.value.length === 64 && " +
                 "document.querySelector('#composer-context-fingerprint').value !== " +
-                JSON.stringify(alpha_hash),
+                json.dumps(alpha_hash),
                 "automatic source-context refresh after amendment rejection")
             assert session.evaluate(
                 "document.querySelector('#composer-context').textContent.includes('PATH-ALPHA@2')")
