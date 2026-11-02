@@ -38,6 +38,7 @@ class PatientResearchRunReviewIntegration(unittest.TestCase):
     setUp = ClinicalContinuityIntegrationTests.setUp
     actor = ClinicalContinuityIntegrationTests.actor
     workflow = ClinicalContinuityIntegrationTests.workflow
+    _source = ClinicalContinuityIntegrationTests._source
 
     def prepare(self):
         self.workflow()
