@@ -1,0 +1,3 @@
+# Claude-compatible instructions for Open Intelligence
+
+Read and follow root AGENTS.md first, then PRODUCT_CONSTITUTION.md and .agents/README.md. These are common instructions; this file adds no divergent policy. Read the current Sprint Board task, branch, relevant domain contracts and open PR overlaps before editing. Never infer that this document grants permissions, medical authority, release approval or a right to merge. If the task is blocked by ownership, rights, clinical scope or missing product decisions, report the blocker and await authorized resolution while working on other independent assigned tasks.
