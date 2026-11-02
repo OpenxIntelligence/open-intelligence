@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 from open_intelligence.platform_events import (
-    OutboxContractError, claim, complete, enqueue, fail, install, validate_event,
+    OutboxContractError, claim, complete, consume_once, enqueue, fail, install, validate_event,
 )
 from open_intelligence.store import CaseStore
 
@@ -154,6 +154,61 @@ class PlatformEventTests(unittest.TestCase):
         event["aggregate"]["revision"] = True
         with self.assertRaises(OutboxContractError):
             validate_event(event)
+
+    def test_consumer_receipt_prevents_duplicate_operational_effect(self):
+        self.db.execute("CREATE TABLE clinical_projection(event_id TEXT PRIMARY KEY)")
+        event = fixture()
+        calls = []
+
+        def apply(conn, accepted):
+            calls.append(accepted["event_id"])
+            conn.execute("INSERT INTO clinical_projection VALUES (?)", (accepted["event_id"],))
+
+        with self.db:
+            self.db.execute("SELECT COUNT(*) FROM platform_inbox_receipts")
+            self.assertTrue(consume_once(self.db, "ONCOLOGY-READER", event, apply, now=12))
+        with self.db:
+            self.assertFalse(consume_once(self.db, "ONCOLOGY-READER", event, apply, now=13))
+        self.assertEqual(calls, ["EV-PLATFORM-001"])
+        self.assertEqual(
+            self.db.execute("SELECT COUNT(*) FROM clinical_projection").fetchone()[0], 1
+        )
+        changed = fixture()
+        changed["aggregate"]["revision"] = 3
+        with self.db:
+            with self.assertRaises(OutboxContractError):
+                consume_once(self.db, "ONCOLOGY-READER", changed, apply, now=14)
+        self.assertEqual(
+            self.db.execute("SELECT COUNT(*) FROM platform_inbox_receipts").fetchone()[0], 1
+        )
+
+    def test_consumer_effect_rolls_back_with_receipt(self):
+        self.db.execute("CREATE TABLE clinical_projection(event_id TEXT PRIMARY KEY)")
+
+        def apply(conn, accepted):
+            conn.execute("INSERT INTO clinical_projection VALUES (?)", (accepted["event_id"],))
+
+        with self.assertRaisesRegex(RuntimeError, "rolled back"):
+            with self.db:
+                self.assertTrue(
+                    consume_once(self.db, "ONCOLOGY-READER", fixture(), apply, now=12)
+                )
+                raise RuntimeError("rolled back")
+        self.assertEqual(
+            self.db.execute("SELECT COUNT(*) FROM platform_inbox_receipts").fetchone()[0], 0
+        )
+        self.assertEqual(
+            self.db.execute("SELECT COUNT(*) FROM clinical_projection").fetchone()[0], 0
+        )
+        with self.db:
+            self.assertTrue(consume_once(self.db, "ONCOLOGY-READER", fixture(), apply, now=12))
+        self.assertEqual(
+            self.db.execute("SELECT COUNT(*) FROM clinical_projection").fetchone()[0], 1
+        )
+
+    def test_consumer_refuses_effect_without_a_transaction(self):
+        with self.assertRaises(OutboxContractError):
+            consume_once(self.db, "ONCOLOGY-READER", fixture(), lambda c, e: None)
 
     def test_claim_refuses_to_commit_unrelated_open_transaction(self):
         with self.db:
