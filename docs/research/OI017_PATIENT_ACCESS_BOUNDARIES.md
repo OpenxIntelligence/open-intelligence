@@ -56,7 +56,7 @@ on which bytes arrived.
 | InterSystems Health Gateway | Network-access aggregation for participating healthcare-network workflows | Depends on the workflow it serves; verify whether a patient-facing IAS application is a supported use at all | Applicability to a patient-facing IAS app, supported purposes, organization coverage — UNVERIFIED (2026-11-02) | Commercial terms for a patient-facing IAS application — UNVERIFIED (2026-11-02); pointer: https://www.intersystems.com/products/healthshare/health-gateway/; marketing descriptions are not terms. No selection of InterSystems is made or implied. | EVALUATE |
 | InterSystems Health Connect / IRIS for Health / Unified Care Record | Integration, FHIR exchange, normalization, identity, provenance | Integration / exchange (not, by itself, a patient-access right) | Which role each product plays; do not conflate a gateway, an integration engine, and a record aggregator — UNVERIFIED (2026-11-02) | Licence / commercial terms per product — UNVERIFIED (2026-11-02); pointer: https://www.intersystems.com/products/healthshare/health-connect/ | EVALUATE |
 | Health Gorilla (IAS use case) | Patient-facing app via Health Gorilla IAS | Individual access | IAS eligibility, matching, scope, completeness — UNVERIFIED (2026-11-02) | IAS agreement and pricing — UNVERIFIED (2026-11-02); pointer: https://www.healthgorilla.com/home/use-cases/ias | EVALUATE |
-| b.well | Patient-facing access platform | Individual access (verify per product) | Product and purpose actually offered to this kind of app, matching and scope — UNVERIFIED (2026-11-02) | Commercial terms — UNVERIFIED (2026-11-02); no QHIN or vendor selected | EVALUATE |
+| b.well | Patient-facing access platform (exact product unidentified) | Individual access (verify per product — no product confirmed) | Exact product and purpose actually offered to this kind of app, matching and scope — unresolved, no primary pointer in-repo — UNVERIFIED (2026-11-02); the 2026-10-31 addendum names b.well without a link (see U10) | Commercial terms — UNVERIFIED (2026-11-02); no QHIN or vendor selected | EVALUATE |
 | Direct SMART/FHIR + patient-directed records requests | Patient app directly with each institution | Individual access, institution by institution | Per-institution registration, supported scopes, specialty artifact variation, refresh behaviour — UNVERIFIED per site (2026-11-02) | Per-institution terms; no national completeness is implied by any single connection — UNVERIFIED per site (2026-11-02) | EVALUATE (comparison/fallback only) |
 
 ### 2.1 Evidence class per vendor/standard claim (2026-11-02)
@@ -66,7 +66,11 @@ Claim status vocabulary (from the 2026-10-31 research addendum): `source-stated`
 `independently-checked` (verified against dated primary evidence by this repo),
 `hypothesis` (repo working assumption), `unresolved` (no evidence in this repo).
 No claim below is `independently-checked` in this branch: no sandbox, no live
-call, no agreement review was performed or authorized.
+call, no agreement review was performed or authorized. Every status in the
+table — `source-stated`, `hypothesis`, or `unresolved` — is therefore
+**UNVERIFIED (2026-11-02)**: a `source-stated` claim repeats what the
+publisher says without any in-repo check, and must never be read as
+verification.
 
 | # | Claim | Status (2026-11-02) | Pointer (carried forward, not reverified) | Falsification test |
 | --- | --- | --- | --- | --- |
@@ -75,7 +79,7 @@ call, no agreement review was performed or authorized.
 | C3 | Health Gateway is applicable to a patient-facing IAS application | unresolved | https://www.intersystems.com/products/healthshare/health-gateway/ | Obtain exact product/purpose confirmation for a patient-facing IAS app, or fail |
 | C4 | Health Connect / IRIS / UCR play integration/exchange roles distinct from network access | source-stated | https://www.intersystems.com/products/healthshare/health-connect/ | Map each product to its documented role; any conflation with IAS access fails |
 | C5 | Health Gorilla offers an IAS use case for patient-facing apps | source-stated / unresolved for this app | https://www.healthgorilla.com/home/use-cases/ias | Produce the IAS agreement and sandbox evidence on identical fixture scopes, or fail |
-| C6 | b.well offers a patient-facing access product usable by this app | unresolved | Vendor documentation (no pointer verified in-repo) | Produce the exact product/purpose and terms, or fail |
+| C6 | b.well offers a patient-facing access product usable by this app | unresolved | No primary pointer in-repo (see U10); first identify the exact product page | First identify the exact product page, then produce its purpose and terms, or fail |
 | C7 | Per-institution SMART/FHIR supports the artifact classes in §3 | hypothesis, varies by site | Per-site registration and scope evidence (none collected) | Per-site scope retrieval against the §4 contract; any missing class is recorded known-missing, not imputed |
 | C8 | Any candidate returns native DICOM, whole-slide, raw sequencing, or every payer event | unresolved (assumed absent until evidenced) | https://hl7.org/fhir/R4/imagingstudy.html (standard concept only, not a coverage claim) | Sandbox retrieval of the native artifact with source ids and time semantics, or record known-missing |
 
@@ -84,6 +88,25 @@ health-information-network access product, and exchange transport (FHIR/SMART,
 C-CDA, HL7) is not source fidelity or permission to use data for every
 purpose. Each row above stays **EVALUATE** until its exact product, purpose,
 terms, and lawful access basis are confirmed with dated primary evidence.
+The 2026-11-02 date records when the UNVERIFIED status was assessed, not a
+verification event; a document edit date does not refresh its sources.
+
+**Per-finding record (issue #17 evidence limits).** Decision status for every
+claim C1–C8: **EVALUATE** — none accepted, none `independently-checked`,
+no bounded change proposed. Existing-contract links: C1–C7 concern future
+access products outside this repository (the §4 gate is product-agnostic
+and connects to none of them); C8 maps to the §3 coverage vocabulary
+enforced by `classify_coverage()`. Permissions for every claim: unresolved
+(see the obligations column in §2 and §8). Missing behavior and failure
+tests: the falsification test in each row above; contract-level failure
+tests are listed in §10.1. Mapped to the issue's per-finding fields, each
+claim C1–C8 records: existing module/contract (above — §4 gate or §3
+vocabulary, product-agnostic); exact missing behavior (its falsification
+test); source and date actually checked (pointer column — carried forward
+from 2026-10-31, not reverified on 2026-11-02); permissions (obligations
+column in §2 plus §8 — unresolved for every claim); proposed bounded
+change (none); failure tests (falsification test plus the §10.1 contract
+tests); decision status (**EVALUATE**).
 
 ## 3. Artifact coverage matrix: known-missing is not negative
 
@@ -108,6 +131,18 @@ ruled out", which is exactly the failure this boundary exists to prevent.
 | Original documents | present | Every fixture stored byte-identical with SHA-256 (see `EXPECTED_RESULTS.json`) |
 | Amendments | present | `PATH-OI017-A@2` late correction; v1 superseded, history recoverable |
 | Marker-A on specimen A, original report | not-reported, not negative | v1 says `not-reported`; only the amended v2 reports marker-A negative. The manifest records this explicitly so a reader cannot backdate the negative. |
+
+**Marker-A reconciliation.** The manifest classifies marker-A as negative
+only by virtue of `PATH-OI017-A@2`; the v1 report is `not-reported` and must
+never be cited as a negative (pinned by the coverage test, which cites v2).
+
+**Payer scope note.** No payer fixture bytes are authored in this set: the
+payer classes are `known_missing` by design. The addendum's "payer event
+without confirmation of administration" probe is represented by the present
+medication list whose administration-confirmation finding is `not-reported`
+(manifest step 7) — a list is not proof of administration — not by a payer
+artifact. Issue #17 work package 3 requires no payer fixture, and none is
+claimed.
 
 **Source-specific missingness rule (for any later real evaluation).** Define
 the reference inventory, retrieval window, denominator, adjudication method,
@@ -137,16 +172,27 @@ table (asserted by test).
 | Raw bytes + SHA-256 | Original bytes are hashed (`hashlib.sha256`) and stored verbatim; the hash on the acceptance event must equal the stored source hash |
 | `transformation` (optional) | Loss receipt, required when a transform is claimed and lossy (§4.4) |
 
+An unknown target `case_id` raises `InvalidInput` on every path (the
+ledger hooks validate the case before recording anything). On the import
+path the first-wins binding slot is still consumed before that raise
+(see §4.5, U9); rejection paths (revoked, undocumented loss, collision)
+raise before reaching the binding step. Empty `adapter_id`,
+`source_organization`, or `source_subject_ref`, an empty receipt scope,
+and an expiry preceding the grant each raise before any import (tested).
+
 ### 4.2 Authorization receipt and revocation
 
 * A receipt outside its window (`retrieved_at` outside
   `[granted_at, expires_at]`) is rejected; an expired receipt is rejected.
 * A Treatment-purpose receipt is rejected for this adapter — different
   pathway, different eligibility and obligations (§2).
-* Revocation is recorded as an `adapter_authorization_revoked` event in the
-  existing event ledger. It blocks all future deliveries under that receipt.
-  It does **not** delete history: previously imported source versions stay
-  recoverable, exactly as an amendment supersedes rather than erases.
+* A receipt carrying `revoked_at` rejects any retrieval at or after that
+  date; a retrieval strictly before `revoked_at` still imports (tested).
+  Separately, `revoke()` records an `adapter_authorization_revoked` event
+  in the existing event ledger and blocks all future deliveries under that
+  receipt id on that adapter instance. Neither form of revocation deletes
+  history: previously imported source versions stay recoverable, exactly
+  as an amendment supersedes rather than erases.
 * This module builds **no durable authorization system**. A production
   deployment would need a separately authorized, durable authorization store;
   the in-memory binding/revocation state in this module is a test gate, not
@@ -175,7 +221,14 @@ type, event date, or specimen).
 * A claimed transform supplies both field sets; the module computes the
   dropped fields and requires the declared receipt's `dropped_fields` to
   match the computed set exactly (a mismatch raises and imports nothing —
-  tested). `truncated_fields` and `cardinality_changes` are carried on the
+  tested). A claim with only one field set raises `InvalidInput`
+  (read-verified; no dedicated test pins this branch). A claimed
+  transform with an empty computed dropped set and an absent or empty
+  declared receipt is lossless: it imports with no
+  `adapter_loss_receipt` event (read-verified; no dedicated test). A
+  receipt declaring only truncation or cardinality changes still records
+  a loss event, since the event follows the declared receipt.
+  `truncated_fields` and `cardinality_changes` are carried on the
   receipt as declared; the module does not recompute them.
 * A lossy transform **without** a loss receipt is rejected and imports
   nothing (tested). A lossy transform **with** a receipt still imports the
@@ -195,16 +248,33 @@ type, event date, or specimen).
 
 * First binding wins, per organization and per subject reference:
   `(source_organization -> source_subject_ref)` and
-  `(source_subject_ref -> case_id)`.
+  `(source_subject_ref -> case_id)`. Bindings are **per adapter instance**
+  (in-memory): two adapter objects sharing one store do not share
+  bindings. A durable, shared binding store is part of the production
+  authorization gap in §4.2, not a delivered behavior (see U9).
 * A delivery whose organization is already bound to a different subject
   reference, or whose subject reference is already bound to a different
   case, is rejected with reason `identity_collision`, written to the
   existing `quarantine` table, and recorded as an
-  `adapter_delivery_quarantined` event. It never becomes a source (tested).
+  `adapter_delivery_quarantined` event. It never becomes a source (tested
+  with sequential real deliveries on one adapter instance, no
+  private-state injection). A repeated identical collision delivery
+  returns the same `quarantine_id` with a single quarantine row (existing
+  store idempotency on case + bytes + reason); each repeat still records
+  its own `adapter_delivery_quarantined` event (tested for the id, row,
+  and source counts).
 * The existing patient-mismatch quarantine (`import_report`, declared
   patient ≠ target case) is unchanged and complementary: it catches
-  wrong-case bytes; the adapter binding check catches same-case-id
-  collisions that the patient field alone cannot see.
+  wrong-case bytes (tested through the adapter); the adapter binding
+  check catches same-case-id collisions that the patient field alone
+  cannot see. On the import-quarantine path the store's own
+  `source_quarantined` event is the record; the adapter writes no
+  separate adapter event there.
+* Bindings are recorded **before** the import outcome is known, so a
+  delivery that later quarantines (wrong-case bytes) or raises
+  (unknown target case) still consumes its first-wins slot. That
+  ordering is a documented limitation (see U9), not a claimed
+  protection.
 * Duplicate byte-identical deliveries return `duplicate` with no new source
   version and no new event (existing store behaviour, tested through the
   adapter).
@@ -232,14 +302,14 @@ not "poor". No candidate is selected, ranked, or rejected here.
 
 | Criterion | TEFCA/QHIN IAS | Epic IAS | Health Gateway | Health Gorilla / b.well | Direct SMART/FHIR |
 | --- | --- | --- | --- | --- | --- |
-| Completeness (artifact classes actually returned) | Unknown — must be measured per source | Unknown — Epic-connected scope only, must be measured | Unknown — verify IAS applicability first | Unknown — must be measured | Known to vary by institution; no national completeness implied |
-| Provenance (raw bytes, source ids, specimen/assay links, time semantics) | Unknown — must be tested against the contract in §4 | Unknown | Unknown | Unknown | Varies by institution; test per site |
-| False-match risk (identity collision handling) | Unknown — matching method and error handling must be evidenced | Unknown | Unknown | Unknown | Institution-local matching; collision handling per site |
+| Completeness (artifact classes actually returned) | Unknown — must be measured per source | Unknown — Epic-connected scope only, must be measured | Unknown — verify IAS applicability first | Unknown — must be measured | Expected to vary by institution (hypothesis — UNVERIFIED per site, 2026-11-02); no national completeness implied |
+| Provenance (raw bytes, source ids, specimen/assay links, time semantics) | Unknown — must be tested against the contract in §4 | Unknown | Unknown | Unknown | Hypothesis: varies by institution (UNVERIFIED per site, 2026-11-02); test per site |
+| False-match risk (identity collision handling) | Unknown — matching method and error handling must be evidenced | Unknown | Unknown | Unknown | Institution-local matching assumed (hypothesis — UNVERIFIED per site, 2026-11-02); collision handling per site |
 | Loss (lossy transforms, field drops) | Unknown — loss receipts required by §4.4 | Unknown | Unknown | Unknown | Unknown per mapping |
-| Amendment invalidation | Unknown — amendment semantics must be evidenced | Unknown | Unknown | Unknown | Varies by institution |
-| Portability / exit path | Vendor switch must not change source/evidence contracts (§4) — untested against any live vendor | Same | Same | Same | Highest portability per connection, highest per-site burden |
-| Reviewer burden | Unknown — depends on completeness and conflict rate | Unknown | Unknown | Unknown | High (per-institution variation) |
-| Cost | Unknown — no pricing verified | Unknown | Unknown | Unknown | Per-institution effort, no vendor fee assumed |
+| Amendment invalidation | Unknown — amendment semantics must be evidenced | Unknown | Unknown | Unknown | Hypothesis: varies by institution (UNVERIFIED per site, 2026-11-02) |
+| Portability / exit path | Vendor switch must not change source/evidence contracts (§4) — untested against any live vendor | Same | Same | Same | Hypothesis: highest portability per connection, highest per-site burden (UNVERIFIED, 2026-11-02) |
+| Reviewer burden | Unknown — depends on completeness and conflict rate | Unknown | Unknown | Unknown | Hypothesis: high (per-institution variation — UNVERIFIED, 2026-11-02) |
+| Cost | Unknown — no pricing verified | Unknown | Unknown | Unknown | Hypothesis: per-institution effort; no vendor fee assumed (UNVERIFIED, 2026-11-02) |
 
 **No candidate is recommended or rejected here.** A future selection would
 need, per candidate: exact product and purpose, dated primary terms,
@@ -309,6 +379,8 @@ existing module, backlog order, or decision is altered by this document.
 | U6 | Amendment and refresh semantics per live source | Unknown | Sandbox evidence against §4.6 on identical scopes |
 | U7 | Revocation propagation latency in any live system | Unknown | Vendor evidence; the synthetic gate records revocation instantly, which is not a live-system claim |
 | U8 | Semantic merge detection for transforms (beyond receipt matching) | Open implementation gap | Reviewer check today; a future transform validator if transforms are ever built |
+| U9 | Durable, shared authorization/binding store (in-memory per-adapter bindings; slot consumed before import outcome) | Open production gap, documented in §4.2/§4.5 | Separately authorized durable authorization-store design and review; the test gate must never be mistaken for it |
+| U10 | b.well exact product and purpose for a patient-facing app | Unresolved, no primary pointer in-repo | First identify the exact product page, then its purpose and terms (see C6) |
 
 ## 10. Fixtures and expected results
 
@@ -318,18 +390,23 @@ existing module, backlog order, or decision is altered by this document.
   SHA-256, byte counts, the 11-step expected sequence, and the coverage
   classification. The manifest's coverage entry for marker-A is deliberately
   explicit: v1 `not-reported` is not a negative; only amended v2 is negative.
-* Tests: `tests/test_patient_access.py` (16 tests) — verbatim hash,
+* Tests: `tests/test_patient_access.py` (22 tests) — verbatim hash,
   undocumented-loss rejection, receipted-loss original-bytes import,
   mismatched-loss-receipt rejection, identity collision quarantine,
   repeated-collision idempotency (same quarantine id), cross-case subject
   reuse rejection, contradictory-specimen coexistence, late-correction
   invalidation, unrelated-case isolation on amendment, duplicate
   suppression, revocation blocking with history preserved,
-  Treatment-purpose and expiry rejection, time-semantics rejection,
-  negative-vs-known-missing classification, and no-second-ledger assertion.
-  Tests were authored on the branch against the contract; this session could
-  not execute them (hard limit: no shell/test runner), so no pass is claimed
-  here — see the report.
+  Treatment-purpose and expiry rejection, retrieved-before-issued
+  rejection, retrieval-before-grant rejection, revoked_at-window
+  rejection, event-after-issue rejection, envelope validation (bad ids,
+  empty scope, inverted window, unknown case), wrong-case-bytes
+  quarantine, negative-vs-known-missing classification, manifest
+  self-check, and no-second-ledger assertion. Tests were authored on the
+  branch against the contract; this session could not execute them (hard
+  limit: no shell/test runner), so no pass is claimed here — see the
+  report. A loop review on 2026-11-02 re-checked every test body by
+  reading only (no runner) against the contract in §4 and the manifest.
 
 ### 10.1 Work-package-3 coverage: every required scenario has a fixture and an expected result
 
@@ -348,11 +425,22 @@ manifest records each as its own expected step.
 | Lossy transform, undocumented | `oi017-pathology-specimen-a.txt` with dropped fields and no receipt (envelope-level) | Step 9: rejected `transformation_loss_undocumented`, nothing imported | `test_lossy_transform_without_receipt_is_rejected_and_not_imported` |
 | Lossy transform, receipted | Same bytes with a matching `TransformationReceipt` (envelope-level) | Step 10: original bytes imported; loss recorded as `adapter_loss_receipt` event, never as a replacement source | `test_lossy_transform_with_receipt_imports_original_not_normalized` |
 | Revocation | Any delivery after `revoke(RCPT-OI017-1)` (envelope-level) | Step 11: rejected `revoked_authorization`; prior sources preserved | `test_revocation_blocks_future_delivery_but_preserves_history` |
-| Report-only imaging (no DICOM pixels) | `oi017-imaging-report-only.txt` | Step 8: report present, pixels `known_missing` | Coverage test + manifest |
-| Medication list without administration proof | `oi017-medications-inst-a.txt` | Step 7: list present, administration confirmation `known_missing` (a list is not proof of administration) | Coverage test + manifest |
+| Report-only imaging (no DICOM pixels) | `oi017-imaging-report-only.txt` | Step 8: report present, pixels `known_missing` | `test_coverage_distinguishes_negative_from_known_missing` + manifest |
+| Medication list without administration proof | `oi017-medications-inst-a.txt` | Step 7: list present, administration confirmation `known_missing` (a list is not proof of administration) | `test_coverage_distinguishes_negative_from_known_missing` + manifest |
 | Loss receipt integrity (Pass-2 hardening) | `oi017-pathology-specimen-a.txt` with a mismatched declared receipt | Extension of step 9: declared ≠ computed raises, nothing imported | `test_declared_loss_receipt_mismatch_raises_and_imports_nothing` |
 | Collision idempotency (Pass-2 hardening) | `oi017-collision-wrong-binding.txt` delivered twice | Extension of step 6: same quarantine id, one row, one source | `test_repeated_collision_returns_same_quarantine_id` |
+| Verbatim import (bytes + hash + acceptance event) | `oi017-pathology-specimen-a.txt` | Stored text byte-identical to the fixture; stored SHA-256 equals the hash; the `adapter_delivery_accepted` event pins the same hash, receipt, and retrieval date | `test_verbatim_import_preserves_hash_and_original` |
 | Unrelated-case isolation (Pass-2 hardening) | Inline second-case bytes (`CASE-OI017-B`) + `oi017-pathology-specimen-a-amended.txt` | Extension of step 4: A's amendment leaves B's source current and B's snapshot draft | `test_amendment_leaves_unrelated_case_unaffected` |
+| Treatment-purpose rejection | `oi017-encounter-inst-a.txt` with `purpose=treatment` (envelope-level) | Raises `InvalidInput`; nothing imported (§4.2: different pathway) | `test_treatment_purpose_and_expired_receipt_rejected` (first half) |
+| Retrieval after expiry | `oi017-encounter-inst-a.txt` with `retrieved_at=2027-01-05` past `expires_at=2026-12-31` (envelope-level) | Raises `InvalidInput`; nothing imported | `test_treatment_purpose_and_expired_receipt_rejected` (second half) |
+| Retrieved-before-issued | `oi017-encounter-inst-a.txt` (issued 2026-01-13) with `retrieved_at=2026-01-10` (envelope-level) | Raises `InvalidInput`; nothing imported (§4.3) | `test_time_semantics_retrieved_before_issued_rejected` |
+| Retrieval before grant (window start) | `oi017-encounter-inst-a.txt` with `retrieved_at=2026-01-15`, window opens `2026-02-01` (envelope-level) | Raises `InvalidInput`; nothing imported | `test_retrieval_before_grant_rejected` |
+| Revoked_at receipt window | `oi017-encounter-inst-a.txt` with `revoked_at=2026-02-01` (envelope-level) | Retrieval on 2026-02-10 raises; retrieval on 2026-01-15 still imports (§4.2) | `test_revoked_at_receipt_rejected_after_revocation_only` |
+| Event date after issue | Inline `TIME-OI017-X` bytes (`Event-Date: 2026-02-20`, `Issued-At: 2026-02-10`) | Raises `InvalidInput`; nothing imported (§4.3) | `test_event_date_after_issued_rejected` |
+| Envelope validation (bad ids, scope, window, case) | `oi017-encounter-inst-a.txt` with blank ids, empty scope, inverted window, or `CASE-NOPE` (envelope-level) | Each raises `InvalidInput`; nothing imported; unknown case on the import path still consumes its binding slot (§4.1, §4.5, U9) | `test_envelope_validation_rejects_bad_ids_scope_window_and_case` |
+| Wrong-case bytes quarantine | Inline `ENC-OI017-BX` bytes declaring `CASE-OI017-B`, delivered to `CASE-OI017` | Quarantined `patient_mismatch` via the store's own event; no source, no adapter event (§4.5) | `test_wrong_case_bytes_are_quarantined_not_imported` |
+| Manifest self-check (meta) | `EXPECTED_RESULTS.json` + all 7 fixture files | Hashes, byte counts, steps 1–11, and coverage counts (6 present / 1 negative / 4 known_missing / 0 unknown) match disk | `test_expected_results_manifest_matches_fixtures` |
+| No second ledger (meta) | Schema of the existing store | No `adapter_sources` or `patient_store` table; sources live only in `source_versions` | `test_no_second_source_ledger_tables` |
 
 ## 11. What is NOT proved
 
@@ -364,10 +452,12 @@ manifest records each as its own expected step.
 * Passing these tests is not clinical validation, release clearance, or
   authorization to handle real data. The in-memory binding/revocation state
   is not a production authorization system.
-* This session (2026-11-02) authored documentation and 3 additional contract
-  tests but executed no test runner, git, or shell verification (hard limit),
-  so no test pass is claimed here; the manifest's SHA-256/byte counts and
-  all 16 tests must be re-run by a reviewer with a working shell.
+* This branch (2026-11-02) authored documentation and contract tests but
+  executed no test runner, git, or shell verification in these sessions
+  (hard limit), so no test pass is claimed here; the manifest's
+  SHA-256/byte counts and all 22 tests must be re-run by a reviewer with
+  a working shell. A loop review verified every test body and manifest
+  parameter by reading only — that is a consistency check, not a run.
 
 ## Sources (carried-forward pointers, not fresh verification)
 
@@ -377,5 +467,7 @@ manifest records each as its own expected step.
 * InterSystems Health Connect — https://www.intersystems.com/products/healthshare/health-connect/
 * Health Gorilla IAS — https://www.healthgorilla.com/home/use-cases/ias
 * HL7 FHIR ImagingStudy — https://hl7.org/fhir/R4/imagingstudy.html
+* b.well — no primary product pointer in-repo (unresolved, see U10/C6)
+* Direct SMART/FHIR — per-institution terms and scopes; none collected (UNVERIFIED per site)
 * Repo research addendum — `docs/research/INTEROPERABILITY_ACCESS_RESEARCH_2026-10-31.md`
 * Existing contracts — `src/open_intelligence/store.py` (`source_versions`, `quarantine`, `events`); backlog rows OI-005, OI-006, OI-012, OI-013, OI-014.

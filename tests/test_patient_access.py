@@ -62,7 +62,14 @@ class PatientAccessTest(unittest.TestCase):
         src = self.sources()[0]
         self.assertEqual(src["sha256"], hashlib.sha256(raw).hexdigest())
         self.assertEqual(self.store.source_text("CASE-OI017", src["id"]), raw.decode())
-        self.assertTrue(self.events("adapter_delivery_accepted"))
+        accepted = self.events("adapter_delivery_accepted")
+        self.assertEqual(len(accepted), 1)
+        # The acceptance event pins the same hash, receipt, and retrieval
+        # date as the stored source: the event cannot describe other bytes.
+        details = json.loads(accepted[0]["details"])
+        self.assertEqual(details["sha256"], src["sha256"])
+        self.assertEqual(details["receipt_id"], "RCPT-OI017-1")
+        self.assertEqual(details["retrieved_at"], "2026-02-10")
 
     def test_lossy_transform_without_receipt_is_rejected_and_not_imported(self):
         raw = read("oi017-pathology-specimen-a.txt")
@@ -104,15 +111,19 @@ class PatientAccessTest(unittest.TestCase):
         self.assertEqual(quarantines[0]["reason"], "identity_collision")
 
     def test_cross_case_subject_reuse_is_rejected(self):
-        self.adapter.deliver(envelope(), read("oi017-encounter-inst-a.txt"))
+        # One adapter instance, two sequential real deliveries: the second
+        # reuses a subject already bound to another case. No private-state
+        # injection: the binding below is created by the first deliver call.
+        # (Bindings are per adapter instance; see the research doc.)
+        first = self.adapter.deliver(envelope(), read("oi017-encounter-inst-a.txt"))
+        self.assertEqual(first["result"], "imported")
         self.store.add_case("CASE-OI017-B", "Second fictional case")
-        other = PatientAccessAdapter(self.store)
-        # Simulate a shared adapter view: subject already bound to CASE-OI017.
-        other._subject_cases["SUBJ-OI017-A"] = "CASE-OI017"
-        out = other.deliver(envelope(case="CASE-OI017-B"),
-                            read("oi017-encounter-inst-a.txt"))
+        out = self.adapter.deliver(envelope(case="CASE-OI017-B"),
+                                   read("oi017-encounter-inst-a.txt"))
+        self.assertEqual(out["result"], "rejected")
         self.assertEqual(out["reason"], "identity_collision")
         self.assertEqual(self.store.state("CASE-OI017-B")["sources"], [])
+        self.assertEqual(len(self.store.state("CASE-OI017-B")["quarantines"]), 1)
 
     def test_contradictory_specimen_pathology_coexists_not_merged(self):
         self.adapter.deliver(envelope(), read("oi017-pathology-specimen-a.txt"))
@@ -169,19 +180,103 @@ class PatientAccessTest(unittest.TestCase):
         with self.assertRaises(InvalidInput):
             self.adapter.deliver(envelope(retrieved="2026-01-10"),
                                  read("oi017-encounter-inst-a.txt"))
+        self.assertEqual(self.sources(), [])
+
+    def test_retrieval_before_grant_rejected(self):
+        # retrieved_at is after issue but before the receipt window opens.
+        auth = receipt(granted="2026-02-01", expires="2026-12-31")
+        with self.assertRaises(InvalidInput):
+            self.adapter.deliver(envelope(retrieved="2026-01-15", auth=auth),
+                                 read("oi017-encounter-inst-a.txt"))
+        self.assertEqual(self.sources(), [])
+
+    def test_revoked_at_receipt_rejected_after_revocation_only(self):
+        raw = read("oi017-encounter-inst-a.txt")
+        auth = receipt(revoked="2026-02-01")
+        with self.assertRaises(InvalidInput):
+            self.adapter.deliver(envelope(auth=auth), raw)
+        self.assertEqual(self.sources(), [])
+        # Retrieval strictly before revocation still imports.
+        out = self.adapter.deliver(envelope(retrieved="2026-01-15", auth=auth), raw)
+        self.assertEqual(out["result"], "imported")
+
+    def test_event_date_after_issued_rejected(self):
+        raw = (
+            "OI-SYNTHETIC-REPORT/1\n"
+            "Patient: CASE-OI017\n"
+            "Document: TIME-OI017-X\n"
+            "Type: clinical\n"
+            "Event-Date: 2026-02-20\n"
+            "Issued-At: 2026-02-10\n"
+            "Finding: time-probe|reported|Fictional probe whose event date is after its issue date.\n"
+        ).encode()
+        with self.assertRaises(InvalidInput):
+            self.adapter.deliver(envelope(), raw)
+        self.assertEqual(self.sources(), [])
+
+    def test_envelope_validation_rejects_bad_ids_scope_window_and_case(self):
+        raw = read("oi017-encounter-inst-a.txt")
+        env = envelope()
+        env.adapter_id = "  "
+        with self.assertRaises(InvalidInput):
+            self.adapter.deliver(env, raw)
+        env = envelope()
+        env.source_organization = ""
+        with self.assertRaises(InvalidInput):
+            self.adapter.deliver(env, raw)
+        env = envelope()
+        env.source_subject_ref = " "
+        with self.assertRaises(InvalidInput):
+            self.adapter.deliver(env, raw)
+        with self.assertRaises(InvalidInput):
+            self.adapter.deliver(
+                envelope(auth=AuthorizationReceipt(
+                    "RCPT-X", "individual-access", (), "2026-01-01", "2026-12-31")), raw)
+        with self.assertRaises(InvalidInput):
+            self.adapter.deliver(
+                envelope(auth=AuthorizationReceipt(
+                    "RCPT-X", "individual-access", ("encounter",), "2026-12-31", "2026-01-01")),
+                raw)
+        # Unknown target case last: the rejection below still consumes the
+        # first-wins binding (documented limitation, see the research doc).
+        with self.assertRaises(InvalidInput):
+            self.adapter.deliver(envelope(case="CASE-NOPE"), raw)
+        self.assertEqual(self.sources(), [])
+
+    def test_wrong_case_bytes_are_quarantined_not_imported(self):
+        raw = (
+            "OI-SYNTHETIC-REPORT/1\n"
+            "Patient: CASE-OI017-B\n"
+            "Document: ENC-OI017-BX\n"
+            "Type: clinical\n"
+            "Event-Date: 2026-01-12\n"
+            "Issued-At: 2026-01-13\n"
+            "Finding: visit-reason|reported|Fictional bytes declaring a different synthetic case.\n"
+        ).encode()
+        out = self.adapter.deliver(envelope(), raw)
+        self.assertEqual(out["result"], "quarantined")
+        self.assertEqual(out["reason"], "patient_mismatch")
+        self.assertEqual(self.sources(), [])
+        quarantines = self.store.state("CASE-OI017")["quarantines"]
+        self.assertEqual(len(quarantines), 1)
+        self.assertEqual(quarantines[0]["reason"], "patient_mismatch")
+        # The store's own quarantine event is the record on this path.
+        self.assertEqual(len(self.events("source_quarantined")), 1)
 
     def test_coverage_distinguishes_negative_from_known_missing(self):
         result = classify_coverage([
             {"artifact": "encounter", "status": "present"},
             {"artifact": "pathology", "status": "present"},
-            {"artifact": "marker-a-on-specimen-a-original", "status": "negative",
-             "source_document": "PATH-OI017-A"},
+            # Marker-A is negative ONLY by virtue of the amended v2 report. The v1
+            # report says not-reported and must never be cited as a negative.
+            {"artifact": "marker-a-on-specimen-a-amended", "status": "negative",
+             "source_document": "PATH-OI017-A@2"},
             {"artifact": "dicom-pixels", "status": "known_missing",
              "reason": "Report-only delivery; native pixels not exposed"},
             {"artifact": "molecular", "status": "known_missing",
              "reason": "No molecular artifact delivered by either institution"},
             {"artifact": "payer-administration-confirmation", "status": "known_missing",
-             "reason": "Payer event present without administration confirmation"},
+             "reason": "Medication list contains no administration confirmation"},
             {"artifact": "original-documents", "status": "unknown"},
         ])
         self.assertEqual(result["counts"]["negative"], 1)
@@ -245,6 +340,26 @@ class PatientAccessTest(unittest.TestCase):
         self.assertEqual(len(state_b["sources"]), 1)
         self.assertEqual(state_b["sources"][0]["state"], "current")
         self.assertEqual(state_b["snapshots"][0]["state"], "draft")
+
+    def test_expected_results_manifest_matches_fixtures(self):
+        # The manifest is acceptance evidence: its hashes, byte counts, step
+        # list, and coverage block must describe the fixtures on disk.
+        manifest = json.loads((FIX / "EXPECTED_RESULTS.json").read_text())
+        files = {entry["file"]: entry for entry in manifest["fixtures"]}
+        self.assertEqual(len(files), 7)
+        for name, entry in files.items():
+            raw = (FIX / name).read_bytes()
+            self.assertEqual(len(raw), entry["bytes"], name)
+            self.assertEqual(hashlib.sha256(raw).hexdigest(), entry["sha256"], name)
+        self.assertEqual([s["step"] for s in manifest["expected_sequence"]],
+                         list(range(1, 12)))
+        for step in manifest["expected_sequence"]:
+            first = step["fixture"].split()[0]
+            if first.endswith(".txt"):
+                self.assertIn(first, files, step["fixture"])
+        result = classify_coverage(manifest["coverage"])
+        self.assertEqual(result["counts"], {"known_missing": 4, "negative": 1,
+                                           "present": 6, "unknown": 0})
 
     def test_no_second_source_ledger_tables(self):
         # Sources exist only in source_versions; the adapter adds no table.

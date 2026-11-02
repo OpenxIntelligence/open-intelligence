@@ -3,6 +3,34 @@
   "provenance": "Independently authored synthetic fixtures; no real patient data, no PHI. All Patient values are synthetic case ids. All reports are OI-SYNTHETIC-REPORT/1 fictional oncology demo text.",
   "evidence_tier": "synthetic contract evidence only (see research doc). Synthetic success does not establish real coverage, matching, pricing, or clinical usefulness.",
   "vendor_status": "Every adapter candidate stays EVALUATE; all vendor/standard claims are UNVERIFIED (2026-11-02) unless independently checked in-repo. No vendor selected.",
+  "reproduction": {
+    "note": "Envelope defaults used by tests/test_patient_access.py unless a step overrides them. Steps 9-11 and the hardening probes are envelope-level (no separate bytes); their parameters are recorded here so the manifest alone specifies them.",
+    "adapter_id": "adapter-synthetic",
+    "source_system": "fhir-synthetic",
+    "receipt": {"receipt_id": "RCPT-OI017-1", "purpose": "individual-access", "scope": ["encounter", "pathology"], "granted_at": "2026-01-01", "expires_at": "2026-12-31"},
+    "retrieved_at": "2026-02-10",
+    "bindings": {"INST-A": "SUBJ-OI017-A", "INST-B": "SUBJ-OI017-B"},
+    "step_overrides": {
+      "3": {"adapter": "INST-B/SUBJ-OI017-B"},
+      "6": {"adapter": "INST-A/SUBJ-OI017-OTHER"},
+      "9": {"bytes": "oi017-pathology-specimen-a.txt", "original_fields": ["histology", "margin", "marker-a", "specimen-note"], "transformed_fields": ["histology", "marker-a"], "expected_dropped": ["margin", "specimen-note"], "receipt": null},
+      "10": {"bytes": "oi017-pathology-specimen-a.txt", "original_fields": ["histology", "margin", "marker-a", "specimen-note"], "transformed_fields": ["histology", "marker-a"], "expected_dropped": ["margin", "specimen-note"], "receipt": "matching TransformationReceipt"},
+      "11": {"action": "revoke(RCPT-OI017-1) then deliver oi017-encounter-inst-a.txt"}
+    },
+    "hardening_probes": {
+      "declared receipt mismatch": {"bytes": "oi017-pathology-specimen-a.txt", "original_fields": ["histology", "margin", "marker-a"], "transformed_fields": ["histology", "marker-a"], "declared_dropped": ["wrong-field"], "computed_dropped": ["margin"], "expected": "raises, nothing imported"},
+      "repeated collision": {"bytes": "oi017-collision-wrong-binding.txt", "adapter": "INST-A/SUBJ-OI017-OTHER", "expected": "same quarantine_id twice, one quarantine row"},
+      "unrelated case": {"inline_bytes": "CASE-OI017-B encounter ENC-OI017-B (see test_amendment_leaves_unrelated_case_unaffected)", "adapter": "INST-B/SUBJ-OI017-B2", "expected": "A's amendment leaves B's source current and B's snapshot draft"},
+      "window start": {"bytes": "oi017-encounter-inst-a.txt", "retrieved_at": "2026-01-15", "granted_at": "2026-02-01", "expected": "raises, retrieval outside window"},
+      "revoked_at receipt": {"bytes": "oi017-encounter-inst-a.txt", "revoked_at": "2026-02-01", "retrieved_at": "2026-02-10", "expected": "raises; retrieval at 2026-01-15 still imports"},
+      "event after issue": {"inline_bytes": "TIME-OI017-X probe (see test_event_date_after_issued_rejected)", "expected": "raises, nothing imported"},
+      "wrong case bytes": {"inline_bytes": "ENC-OI017-BX declaring CASE-OI017-B delivered to CASE-OI017", "expected": "quarantined patient_mismatch, sources empty"},
+      "treatment purpose": {"bytes": "oi017-encounter-inst-a.txt", "purpose": "treatment", "expected": "raises, nothing imported (see test_treatment_purpose_and_expired_receipt_rejected)"},
+      "after expiry": {"bytes": "oi017-encounter-inst-a.txt", "retrieved_at": "2027-01-05", "expires_at": "2026-12-31", "expected": "raises, nothing imported (see test_treatment_purpose_and_expired_receipt_rejected)"},
+      "retrieved before issued": {"bytes": "oi017-encounter-inst-a.txt (issued 2026-01-13)", "retrieved_at": "2026-01-10", "expected": "raises, nothing imported (see test_time_semantics_retrieved_before_issued_rejected)"},
+      "envelope validation": {"bytes": "oi017-encounter-inst-a.txt", "probes": ["blank adapter_id", "blank source_organization", "blank source_subject_ref", "empty scope", "expiry precedes grant", "unknown case CASE-NOPE"], "expected": "each raises, nothing imported (see test_envelope_validation_rejects_bad_ids_scope_window_and_case)"}
+    }
+  },
   "work_package_3": {
     "multi-institution identity collision (same org, conflicting subject)": "oi017-encounter-inst-a.txt then oi017-collision-wrong-binding.txt; steps 1 and 6",
     "multi-institution identity collision (same subject, second case)": "oi017-encounter-inst-a.txt reused across CASE-OI017 and CASE-OI017-B; binding rule, no cross-subject leak",
@@ -12,6 +40,10 @@
     "lossy transform undocumented (envelope-level, no separate bytes)": "oi017-pathology-specimen-a.txt with dropped fields, no receipt; step 9",
     "lossy transform receipted (envelope-level, no separate bytes)": "oi017-pathology-specimen-a.txt with matching TransformationReceipt; step 10",
     "revocation (envelope-level)": "any delivery after revoke(RCPT-OI017-1); step 11"
+  },
+  "coverage_probes": {
+    "medication list without administration proof": "oi017-medications-inst-a.txt; step 7",
+    "report-only imaging without DICOM pixels": "oi017-imaging-report-only.txt; step 8"
   },
   "fixtures": [
     {
@@ -91,13 +123,13 @@
       "step": 7,
       "fixture": "oi017-medications-inst-a.txt",
       "adapter": "INST-A/SUBJ-OI017-A",
-      "expected": "imported; administration-confirmation is not-reported, not a confirmed administration"
+      "expected": "imported v1, document MEDS-OI017-A; administration-confirmation is not-reported, not a confirmed administration"
     },
     {
       "step": 8,
       "fixture": "oi017-imaging-report-only.txt",
       "adapter": "INST-A/SUBJ-OI017-A",
-      "expected": "imported report text only; DICOM pixels known_missing, not negative"
+      "expected": "imported v1, document IMG-OI017-A, report text only; DICOM pixels known_missing, not negative"
     },
     {
       "step": 9,
