@@ -11,6 +11,7 @@ Status: implementation PR; not adopted/merged. Founder mandate: full first-party
 - **Idempotency:** event ID + canonical SHA-256 serialization; exact retries do not duplicate, conflicting reuse raises a deterministic error.
 - **Delivery:** SQLite `BEGIN IMMEDIATE` lease claims; crashed-worker lease expiration permits at-least-once redelivery. Acknowledgment records broker acceptance, not clinical completion or downstream consumer execution.
 - **Failure:** opaque error-code retry/dead-letter states; no real patient data or free-text failure details in the transport journal.
+- **Consumer receipt:** `consume_once(conn, consumer, event, apply_effect)` writes a domain projection plus an idempotent, content-hashed inbox receipt in the same caller-owned transaction. Identical redelivery is a no-op; changed content with the same event ID fails. Consumer callback must separately enforce trusted permissions and aggregate/version/subject checks.
 - **Tests:** full original `CaseStore` database co-location, rollback, conflicting ID, restart/lease recovery, worker-isolated ack, dead-letter, and schema validation.
 
 ## Not implemented / never claim otherwise
@@ -18,6 +19,7 @@ Status: implementation PR; not adopted/merged. Founder mandate: full first-party
 - No new EHR/LIS/PACS/genomics/pharmacy *operational* records or patient-facing routes are created by this module.
 - No real identity verification, consent evaluation, policy/authority resolution or external delivery is performed; an `authorization_decision_ref` is **not** proof of approval.
 - No PostgreSQL implementation, HA broker, real multitenancy, PHI-ready controls, deployed event processor, outbox/consumer observability, encrypted object store, recovery procedures, or clinical validation.
+- The inbox primitive does not automatically enforce event ordering, expected aggregate revisions, consent or subject resolution; a bounded domain consumer must verify these before invoking the callback.
 - `complete` signifies transport broker acceptance only. Actual recipient processing must establish an independent versioned, idempotent receipt.
 - No stack selection or external runtime dependency is introduced; distribution license and clinical deployment remain undecided.
 
