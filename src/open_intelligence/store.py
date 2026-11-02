@@ -2307,6 +2307,15 @@ class CaseStore:
                             (snapshot_id, reviewer_label.strip(), "acknowledged_in_demo", timestamp))
             self.db.execute("UPDATE questions SET state='addressed' WHERE case_id=? AND id=?",
                             (case_id, row["question_id"]))
+            # Reuse PR #82's single durable review owner: source-bound demo
+            # acknowledgement and its queue receipt must commit atomically.
+            self.db.execute("""INSERT INTO review_receipts
+                (case_id,queue_key,kind,target_id,fingerprint,action,reviewer_label,reason,created_at)
+                VALUES (?,?,?,?,?,?,?,?,?)""",
+                (case_id, f"snapshot:{snapshot_id}", "investigation", snapshot_id,
+                 "reviewed_in_demo", "acknowledged", reviewer_label.strip(),
+                 "Recorded with demo acknowledgment only; not clinical authority.",
+                 timestamp))
             self._event(case_id, "demo_review_acknowledged", snapshot_id=snapshot_id)
 
     # ---- Clinician review queue + sign-off receipts ----
