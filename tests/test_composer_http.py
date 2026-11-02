@@ -105,8 +105,11 @@ class NativeComposerHttpTest(unittest.TestCase):
             "context_fingerprint": context["fingerprint"]})
         self.assertEqual(status, 422)
         self.assertIn("stale", blocked["error"].lower())
-        with CaseStore(self.db) as store:
+        store = CaseStore(self.db)
+        try:
             self.assertEqual(store.list_investigations("CASE-ALPHA"), [])
+        finally:
+            store.close()
 
     def test_mid_model_source_change_cannot_be_saved_under_old_snapshot(self):
         q = self.question()
@@ -115,10 +118,13 @@ class NativeComposerHttpTest(unittest.TestCase):
         calls = []
         def model_changes_source(prompt, token):
             calls.append(True)
-            with CaseStore(self.db) as writer:
+            writer = CaseStore(self.db)
+            try:
                 writer.import_report(
                     "CASE-ALPHA",
                     (SYNTHETIC / "alpha-pathology-amended.txt").read_bytes())
+            finally:
+                writer.close()
             return {"claims": [], "abstentions": [
                 {"topic": "Unresolved synthetic history", "reason": "insufficient_evidence"}]}
         with patch("open_intelligence.__main__.meta_api_key", return_value="fake-test-token"), \
@@ -129,8 +135,11 @@ class NativeComposerHttpTest(unittest.TestCase):
         self.assertEqual(calls, [True])
         self.assertEqual(code, 422)
         self.assertIn("stale", blocked["error"].lower())
-        with CaseStore(self.db) as store:
+        store = CaseStore(self.db)
+        try:
             self.assertEqual(store.list_investigations("CASE-ALPHA"), [])
+        finally:
+            store.close()
 
     def test_current_context_runs_original_replay_path_and_is_persistent(self):
         q = self.question()
@@ -143,8 +152,11 @@ class NativeComposerHttpTest(unittest.TestCase):
         self.assertEqual(completed["review_state"], "pending")
         self.assertEqual(completed["mode"], "replay")
         self.assertEqual(completed["model"], "recorded-replay")
-        with CaseStore(self.db) as store:
+        store = CaseStore(self.db)
+        try:
             self.assertEqual(len(store.list_investigations("CASE-ALPHA")), 1)
+        finally:
+            store.close()
 
     def test_malformed_context_fingerprint_rejected_without_investigation(self):
         q = self.question()
@@ -152,8 +164,11 @@ class NativeComposerHttpTest(unittest.TestCase):
             "question_id": q, "template": "evidence-summary", "mode": "replay",
             "context_fingerprint": "wrong"})
         self.assertEqual(code, 422)
-        with CaseStore(self.db) as store:
+        store = CaseStore(self.db)
+        try:
             self.assertEqual(store.list_investigations("CASE-ALPHA"), [])
+        finally:
+            store.close()
 
 
 if __name__ == "__main__":
