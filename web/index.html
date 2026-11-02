@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
   <script src="/mission.js" defer></script>
+  <script src="/composer.js" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main-content">Skip to case workspace</a>
@@ -208,7 +209,11 @@
             <label for="model-investigation-question">Question</label><select id="model-investigation-question" required></select>
             <label for="model-investigation-template">Template</label><select id="model-investigation-template" required></select>
             <label for="model-investigation-mode">Mode</label><select id="model-investigation-mode"><option value="replay">Replay (recorded demonstration, works offline)</option><option value="live">Live (requires operator Meta API key)</option></select>
-            <button class="button" type="submit">Run bounded investigation</button>
+            <section id="composer-context" class="source-card" aria-label="Native Composer source context" aria-live="polite" aria-busy="true">
+              <p class="muted">Preparing exact source and evidence context for this fictional question…</p>
+            </section>
+            <input type="hidden" id="composer-context-fingerprint">
+            <button class="button" id="model-investigation-run" type="submit" disabled>Run bounded investigation</button>
           </form>
           <div id="model-investigation-list" class="snapshots"></div>
         </section>
