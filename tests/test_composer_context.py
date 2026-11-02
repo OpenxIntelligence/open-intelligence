@@ -130,6 +130,13 @@ class ComposerContextTest(unittest.TestCase):
             self.store.get_investigation("CASE-ALPHA", investigation_id)["stale"],
             "A model-only result over the full case context must not survive "
             "a source amendment as current work")
+        current_question = next(
+            q for q in self.store.state("CASE-ALPHA")["questions"]
+            if q["id"] == self.question)
+        self.assertEqual(
+            current_question["state"], "open",
+            "The question answered by a newly stale model-only result must "
+            "reopen for another evidence review")
 
     def test_fingerprint_is_stable_on_restart_until_inputs_change(self):
         before = build_composer_context(self.store, "CASE-ALPHA", self.question)
