@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hmac
 import json
+from collections.abc import Callable
 
 from .evidence_review_packet import EvidenceReviewPacket
 from .knowledge_context import KnowledgeContextError
@@ -26,13 +27,25 @@ def _digest(payload: dict) -> str:
 class AuthorizedEvidenceReviewHandoff:
     """Build a bounded review queue item; never create competing durable truth."""
 
-    def __init__(self, packet: EvidenceReviewPacket):
+    def __init__(self, packet: EvidenceReviewPacket,
+                 return_authorizer: Callable[[str, str, str, str], bool] | None = None):
         if not isinstance(packet, EvidenceReviewPacket):
             raise TypeError("Use the existing source-quoted evidence packet owner")
         self.packet = packet
         self.store = packet.bridge.store
+        self.return_authorizer = return_authorizer
         if not hasattr(self.store, "review_queue") or not hasattr(self.store, "add_review_receipt"):
             raise RuntimeError("Require the existing append-only review queue contract")
+
+    def _authorize_return(self, patient_id: str, actor: str, purpose: str) -> None:
+        """Reading evidence NEVER implies permission to change review state."""
+        try:
+            permitted = bool(self.return_authorizer and self.return_authorizer(
+                actor, patient_id, "evidence.review_return", purpose))
+        except Exception:
+            permitted = False
+        if not permitted:
+            raise PermissionError("returning evidence for review requires a separate trusted grant")
 
     def preview(self, patient_id: str, case_id: str, question_id: int,
                 assessment_id: int, *, actor: str, purpose: str,
@@ -131,12 +144,15 @@ class AuthorizedEvidenceReviewHandoff:
         authorization is *not* a distributed transaction; the nonterminal
         returned decision cannot approve a clinical item, even on a race.
         """
+        self._authorize_return(patient_id, actor, purpose)
         first = self.preview(patient_id, case_id, question_id, assessment_id,
                              actor=actor, purpose=purpose, selected_quotes=selected_quotes)
         second = self.preview(patient_id, case_id, question_id, assessment_id,
                               actor=actor, purpose=purpose, selected_quotes=selected_quotes)
         if not hmac.compare_digest(_digest(first), _digest(second)):
             raise ClinicalContinuityError("review changed before return receipt")
+        # Distinct write-action authorization, rechecked at the effect boundary.
+        self._authorize_return(patient_id, actor, purpose)
         receipt = self.store.add_review_receipt(
             case_id, first["queue_key"], "returned", reviewer_label=actor, reason=reason)
         # Returning an item remains unresolved. Do not call an acknowledgment
