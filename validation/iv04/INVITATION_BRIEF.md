@@ -20,7 +20,7 @@ We propose a bounded independent critique of one capability, starting with permi
 
 ## What would be provided
 
-For an authorized session: a frozen software/packet revision, permitted source materials, exact question and limitations, and a way to report negative findings. A scored comparison would require its own agreed protocol and equivalent manual/simple-software baseline. The current public practice cases and reference key are not blinded or held-out material; prior exposure must be disclosed, and confirmatory assessment needs fresh, separately controlled cases.
+For an authorized session: a frozen software/packet revision, permitted source materials, exact question and limitations, and a way to report negative findings. A scored comparison would require its own agreed protocol and equivalent manual/simple-software baseline. The draft PR #24 public practice cases and reference key, where present, are not blinded or held-out material; prior exposure must be disclosed, and confirmatory assessment needs fresh, separately controlled cases.
 
 Participation would not imply institutional partnership, endorsement, clinical validation or permission to use real patient data. Please first assess whether the question fits your expertise and which participation pathway your institution considers appropriate. A non-confidential scoping conversation and a formal study are different activities.
 

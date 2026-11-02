@@ -27,7 +27,7 @@ An ordinary non-confidential discussion should not be treated as a formal study 
 
 - [ ] Classify the contribution with INDEPENDENCE_AND_ROLES.md; record relevant expertise, conflicts, prior key/future-result exposure and any recusal.
 - [ ] Freeze the exact application, packet, protocol and source-rights versions; record hashes and the permitted input/output locations. Confirm which PRs are actually merged rather than describing draft material as released.
-- [ ] For scored work, use the existing IV-01–03 packet, adjudication and baseline contracts. Freeze cases, arm order, denominators, acceptance/stop thresholds and handling of abstention, omission and failed runs before looking at results.
+- [ ] For scored work, use the merged IV-02 adjudication and IV-03 baseline contracts in ../iv01/, and, only if separately frozen for the session, the draft PR #24 IV-01–03 packet. Freeze cases, arm order, denominators, acceptance/stop thresholds and handling of abstention, omission and failed runs before looking at results.
 - [ ] Determine institutional participation, ethics, agreements/DUA, privacy/security and consent requirements for the actual activity. Record an authorized not-applicable determination where justified; do not silently assume one.
 - [ ] Agree expected effort, compensation if applicable, confidentiality, publication/attribution, intellectual-property handling, feedback storage/access and retention. No outcome-conditioned positive endorsement.
 - [ ] Name accountable coordination, clinical/experimental roles where relevant, and stop/incident owners. Define where urgent concerns or suspected disclosure go; do not put patient details into public issue trackers.

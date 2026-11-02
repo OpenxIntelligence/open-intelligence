@@ -19,19 +19,19 @@ These files are drafting assets, not an authorization service. A completed templ
 - [OI-012 in the existing execution backlog](../../docs/EXECUTION_BACKLOG.csv): governance and appropriate permissions remain separate from software functionality.
 - [PR #18](https://github.com/OpenxIntelligence/open-intelligence/pull/18): proposed E0–E6/G0–G3/GX collaboration playbook; its proposal status is retained, not silently converted to adopted policy.
 - [Issue #22](https://github.com/OpenxIntelligence/open-intelligence/issues/22) and [draft PR #24](https://github.com/OpenxIntelligence/open-intelligence/pull/24): IV-01–03 practice packet, source-cutoff checks and declaration preflight. This handoff adds no competing packet, rubric, threshold or results register.
-- [PR #32](https://github.com/OpenxIntelligence/open-intelligence/pull/32): proposed IV-02 adjudication and IV-03 baseline procedures. Consult the reviewed versions when available; do not assert this separate PR is merged.
+- [PR #32](https://github.com/OpenxIntelligence/open-intelligence/pull/32): IV-02 adjudication and IV-03 baseline procedures, now merged as [validation/iv01/ADJUDICATION.md](../iv01/ADJUDICATION.md), [validation/iv01/BASELINE.md](../iv01/BASELINE.md) and [validation/iv01/run_record_template.json](../iv01/run_record_template.json). Consult those merged files.
 - [Issue #14](https://github.com/OpenxIntelligence/open-intelligence/issues/14): optional E6 option-preservation comparison remains separate.
 - [Existing Notion validation program](https://app.notion.com/p/40a3866f77ef816f9cd4df7a9efb9b9b): coordination record and current human-review status.
 
 ## Baseline and claim boundaries
 
-The repository baseline inspected for this handoff is `7b092fa7911a982420d455dd21f0f1c976c48da1`. It describes a local synthetic source/investigation workspace, not an authorized clinical service. The proposed evaluation packet was observed in draft PR #24 at `f6d63cb2519ab54195d065e92ad605cb661ebd99`. Exact revisions must be rechecked and frozen for an actual session. A public practice packet and public designer key cannot establish blinded or held-out performance.
+The repository baseline inspected for this handoff is `9bef88863a3049c44a71c5ae0a1e131459ff70ba`. It describes a local synthetic source/investigation workspace, not an authorized clinical service. The proposed evaluation packet was observed in draft PR #24 at `f6d63cb2519ab54195d065e92ad605cb661ebd99`. Exact revisions must be rechecked and frozen for an actual session. A public practice packet and public designer key cannot establish blinded or held-out performance.
 
 A clinician or scientist may give useful developmental feedback on public material without becoming an independent confirmatory evaluator. Only report the role actually performed. No institution, patient organization or laboratory is named as a candidate or partner in this public package.
 
 ## Practical next step
 
-First obtain a project-owner decision for a specific recipient, bounded question and permitted artifact set. A non-confidential scoping conversation is not a formal study and must not be described as one. If a scored exercise is proposed, use the existing packet/protocol and resolve independent reference authorship, prior exposure, denominators, prospective thresholds, reviewer burden, safety and applicable institutional requirements before scores are viewed. Real records and experiments remain outside this handoff.
+First obtain a project-owner decision for a specific recipient, bounded question and permitted artifact set. A non-confidential scoping conversation is not a formal study and must not be described as one. If a scored exercise is proposed, use the merged protocol in validation/iv01/ and, only if separately frozen for the session, the draft PR #24 packet, and resolve independent reference authorship, prior exposure, denominators, prospective thresholds, reviewer burden, safety and applicable institutional requirements before scores are viewed. Real records and experiments remain outside this handoff.
 
 ## Completion accounting
 

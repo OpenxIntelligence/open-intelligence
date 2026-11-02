@@ -1,6 +1,6 @@
 # IV-04 — roles, conflicts and independence
 
-**Blank assessment instructions, not a completed reviewer assessment.** Apply to one claim and one frozen evaluation. Use the existing IV-02 rubric and IV-03 baseline procedures; do not create another clinical scoring system here.
+**Blank assessment instructions, not a completed reviewer assessment.** Apply to one claim and one frozen evaluation. Use the merged IV-02 rubric in ../iv01/ADJUDICATION.md and the IV-03 baseline procedures in ../iv01/BASELINE.md; do not create another clinical scoring system here.
 
 ## Classify the contribution before making a claim
 
@@ -33,7 +33,7 @@ Store identities, contact details, conflict explanations and private corresponde
 
 ## Exposure and assignment rules
 
-The existing public IV-01 cases and designer key are practice material. Removing answers from an export does not restore blinding for someone who has already seen them. Use practice material for familiarization; keep familiarization results separate from any confirmatory result. Fresh evaluation cases require separately controlled access, independent reference preparation, defined cutoffs and exposure records before assessment.
+The draft PR #24 public IV-01 cases and designer key, where present, are practice material. Removing answers from an export does not restore blinding for someone who has already seen them. Use practice material for familiarization; keep familiarization results separate from any confirmatory result. Fresh evaluation cases require separately controlled access, independent reference preparation, defined cutoffs and exposure records before assessment.
 
 For a paired manual/simple/application comparison, adopt the reviewed baseline and arm-order plan from IV-03. Do not let the same reviewer first see a complete case and then claim ignorance of later facts during earlier-cutoff scoring. Changes to assignments or inputs after exposure require a recorded deviation and potentially a new evaluation, not retrospective relabeling.
 
@@ -43,4 +43,4 @@ Keep original observations, each assessor's judgment, source/version/anchor, rat
 
 **Output:** a private claim-specific role/independence decision, unresolved items, and permitted scope. A signed-looking text field is not authentication or proof of independent evaluation. No assessments have been completed by writing this document.
 
-Source requirements: [issue #23](https://github.com/OpenxIntelligence/open-intelligence/issues/23), [proposed playbook PR #18](https://github.com/OpenxIntelligence/open-intelligence/pull/18), [packet PR #24](https://github.com/OpenxIntelligence/open-intelligence/pull/24) and [proposed adjudication/baseline PR #32](https://github.com/OpenxIntelligence/open-intelligence/pull/32).
+Source requirements: [issue #23](https://github.com/OpenxIntelligence/open-intelligence/issues/23), [proposed playbook PR #18](https://github.com/OpenxIntelligence/open-intelligence/pull/18), [packet PR #24](https://github.com/OpenxIntelligence/open-intelligence/pull/24) and the merged adjudication/baseline contracts in ../iv01/ADJUDICATION.md and ../iv01/BASELINE.md (from [PR #32](https://github.com/OpenxIntelligence/open-intelligence/pull/32)).

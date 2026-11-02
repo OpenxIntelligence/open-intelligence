@@ -54,7 +54,7 @@
     "Keep outreach permission distinct from participation acceptance and study activation. Interest or an invitation is not partnership.",
     "A disposition alone is insufficient: actual accountable review, recipient, activity, permitted artifacts, conditions and validity must be recorded and checked.",
     "An authorized not-applicable determination needs its basis and decision owner; null is not an exemption.",
-    "For scored evaluation, use the existing IV-01–03 protocol, rubric, baseline and preflight; do not retrofit thresholds after results are observed.",
+    "For scored evaluation, use the merged IV-02/IV-03 protocol, rubric and baseline in validation/iv01/, and, only if separately frozen for the session, the draft PR #24 IV-01–03 packet and preflight; do not retrofit thresholds after results are observed.",
     "A documentation merge, filled fields or successful software tests cannot establish clinical approval, independent adjudication or permission for real data/experiments.",
     "Do not replace missing approvals with synthetic names, signatures, institutions, clinical judgments or fabricated results."
   ]
