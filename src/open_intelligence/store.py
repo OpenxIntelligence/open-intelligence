@@ -2483,10 +2483,15 @@ class CaseStore:
             }
 
     def add_review_receipt(self, case_id: str, queue_key: str, action: str,
-                           reviewer_label: str, reason: str | None = None) -> dict:
-        """Append one sign-off receipt. Reviewed and acknowledged resolve the
-        current version of the item; returned keeps it visibly queued with
-        its reason. Receipts are never updated or deleted."""
+                           reviewer_label: str, reason: str | None = None, *,
+                           expected_fingerprint: str | None = None) -> dict:
+        """Append a decision for the current version of an existing queue item.
+
+        Optional expected_fingerprint binds a previously authorized source
+        preview to the transaction. An intervening amendment must not silently
+        retarget a receipt to a different evidence version. Existing callers
+        without a preview retain the upstream PR #82 behavior.
+        """
         self._case(case_id)
         if action not in self.REVIEW_RECEIPT_ACTIONS:
             raise InvalidInput("Receipt action must be reviewed, acknowledged, or returned")
@@ -2509,6 +2514,12 @@ class CaseStore:
             item = items.get(queue_key)
             if item is None:
                 raise InvalidInput("Review queue item not found in this case")
+            if expected_fingerprint is not None:
+                if (not isinstance(expected_fingerprint, str)
+                        or not expected_fingerprint
+                        or item["fingerprint"] != expected_fingerprint):
+                    raise InvalidInput(
+                        "Review item changed since preview; refresh before recording receipt")
             prior_terminal = self.db.execute(
                 """SELECT 1 FROM review_receipts WHERE case_id=? AND queue_key=?
                 AND fingerprint=? AND action IN ('reviewed','acknowledged') LIMIT 1""",
