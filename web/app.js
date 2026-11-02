@@ -61,7 +61,8 @@ async function initialize() {
     picker.addEventListener('change', () => {
       // An unfinished narrative must never silently become attached to another case.
       if ((['draft-observations', 'draft-summary', 'draft-assumptions', 'evidence-rationale',
-            'evidence-withdraw-reason', 'option-description'].some(id => el(id).value.trim()))) {
+            'evidence-withdraw-reason', 'option-description', 'so-question-text', 'so-responder',
+            'so-response-text', 'surv-plan-title', 'surv-description'].some(id => el(id).value.trim()))) {
         picker.value = caseId;
         notice('Save or explicitly clear the unfinished investigation draft before switching cases.', true);
         return;
@@ -70,7 +71,8 @@ async function initialize() {
       caseId = picker.value;
       active = null; // Reject writes while the next case is loading.
       for (const id of ['question-text', 'report-text', 'evidence-rationale', 'draft-observations',
-        'draft-summary', 'draft-assumptions']) el(id).value = '';
+        'draft-summary', 'draft-assumptions', 'so-question-text', 'so-responder', 'so-response-text',
+        'surv-plan-title', 'surv-description', 'surv-date']) el(id).value = '';
       if (el('source-dialog').open) el('source-dialog').close();
       if (el('compare-dialog').open) el('compare-dialog').close();
       refresh();
@@ -564,6 +566,7 @@ function render() {
   }
   renderPatientView();
   renderOptions();
+  renderCareRecords();
   renderedCaseId = caseId;
 }
 function renderOriginalSource(text, lineNumber) {
@@ -933,6 +936,64 @@ el('option-review-form').addEventListener('submit', async event => {
 });
 
 
+el('so-request-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const created = await api('/api/cases/' + requestedCase + '/second-opinion-requests', {
+      question_id: Number(el('so-question-choice').value),
+      question_text: el('so-question-text').value,
+      source_version_ids: [...el('so-source-choice').querySelectorAll('input:checked')].map(x => Number(x.value)),
+      snapshot_id: el('so-snapshot-choice').value === '' ? null : Number(el('so-snapshot-choice').value),
+    });
+    if (requestedCase !== caseId) return;
+    el('so-question-text').value = '';
+    notice('Second-opinion request #' + created.request_id + ' recorded with pinned source versions.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('so-response-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const created = await api('/api/cases/' + requestedCase + '/second-opinion-requests/' +
+      Number(el('so-request-choice').value) + '/response', {
+      responder_label: el('so-responder').value,
+      response_text: el('so-response-text').value,
+      anchor_source_version_id: Number(el('so-anchor-choice').value),
+    });
+    if (requestedCase !== caseId) return;
+    el('so-responder').value = ''; el('so-response-text').value = '';
+    notice('Separate second-opinion response #' + created.response_id + ' recorded. The original conclusion is unchanged.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('surv-plan-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const created = await api('/api/cases/' + requestedCase + '/survivorship-plans', {
+      title: el('surv-plan-title').value,
+    });
+    if (requestedCase !== caseId) return;
+    el('surv-plan-title').value = '';
+    notice('Survivorship plan #' + created.plan_id + ' recorded.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('surv-item-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const created = await api('/api/cases/' + requestedCase + '/survivorship-plans/' +
+      Number(el('surv-plan-choice').value) + '/items', {
+      kind: el('surv-kind').value,
+      description: el('surv-description').value,
+      recorded_date: el('surv-date').value || null,
+      anchor_source_version_id: Number(el('surv-anchor-choice').value),
+    });
+    if (requestedCase !== caseId) return;
+    el('surv-description').value = ''; el('surv-date').value = '';
+    notice('Plan item #' + created.item_id + ' recorded as a plain description.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
 function renderOptions() {
   el('option-disclaimer').textContent = active.option_disclaimer || '';
   const options = active.options || [];
@@ -997,6 +1058,170 @@ function renderOptions() {
         e.action + ' by ' + e.reviewer_label + ' · scope: ' + e.scope).join(' ; '), 'snapshot-meta'));
     }
     el('option-list').append(box);
+  }
+}
+function renderCareRecords() {
+  el('second-opinion-disclaimer').textContent = active.second_opinion_disclaimer || '';
+  el('survivorship-disclaimer').textContent = active.survivorship_disclaimer || '';
+  const requests = active.second_opinions || [];
+  const plans = active.survivorship_plans || [];
+  const currentSources = active.sources.filter(s => s.state === 'current');
+  const fill = (id, items, labelFn, allowEmpty = false, emptyLabel = '—') => {
+    const select = el(id);
+    const prior = select.value;
+    clear(id);
+    if (allowEmpty) { const blank = node('option', emptyLabel); blank.value = ''; select.append(blank); }
+    for (const item of items) {
+      const opt = node('option', labelFn(item));
+      opt.value = item.id; select.append(opt);
+    }
+    if (prior && [...select.options].some(x => x.value === prior)) select.value = prior;
+  };
+  fill('so-question-choice', active.questions, q => 'Q' + q.id + ', ' + q.question.slice(0, 62));
+  fill('so-snapshot-choice', active.snapshots, s => 'Investigation #' + s.id + ' · ' + s.state, true, 'No linked conclusion');
+  fill('so-request-choice', requests, r => 'Request #' + r.id + ' · ' + r.status + ' · ' + r.question_text.slice(0, 52));
+  fill('so-anchor-choice', currentSources, s => s.document_id + '@' + s.version);
+  fill('surv-plan-choice', plans, p => 'Plan #' + p.id + ' · ' + p.title);
+  fill('surv-anchor-choice', currentSources, s => s.document_id + '@' + s.version);
+  // Materials: preserve checked current sources across same-case refreshes.
+  // A source that is no longer current is dropped with a notice, never
+  // rebound. A case switch never inherits the previous case's selection.
+  const sameCareCase = renderedCaseId === caseId;
+  const priorChecked = sameCareCase
+    ? new Set([...el('so-source-choice').querySelectorAll('input:checked')].map(x => Number(x.value)))
+    : new Set();
+  const hadChoices = sameCareCase && el('so-source-choice').querySelectorAll('input').length > 0;
+  clear('so-source-choice');
+  if (!currentSources.length) empty(el('so-source-choice'), 'No current sources to share.');
+  for (const source of currentSources) {
+    const label = node('label');
+    const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.value = source.id;
+    checkbox.checked = hadChoices ? priorChecked.has(source.id) : true;
+    label.append(checkbox, node('span', source.document_id + '@' + source.version + ', ' + source.event_date));
+    el('so-source-choice').append(label);
+  }
+  if (hadChoices && [...priorChecked].some(id => !currentSources.some(x => x.id === id)))
+    notice('A shared-material source changed while you were editing. Review the request and explicitly reconcile the shared materials before recording.', true);
+  clear('second-opinion-list');
+  if (!requests.length) empty(el('second-opinion-list'), 'No second-opinion requests recorded for this fictional case.');
+  for (const req of requests) {
+    const box = node('div', null, 'snapshot');
+    const top = node('div', null, 'topline');
+    top.append(node('strong', 'Second-opinion request #' + req.id),
+      pill('Fictional record', 'pill-neutral'),
+      pill(req.status, req.status === 'requested' ? 'pill-warn' : ''),
+      pill('review: ' + req.review_state, req.review_state === 'needs_review' ? 'pill-alert' : ''));
+    box.append(top,
+      node('p', 'Asked about Q' + req.question_id + ': ' + req.question),
+      node('p', 'Question asked: ' + req.question_text),
+      node('p', 'Materials shared by reference: ' + (req.materials.length
+        ? req.materials.map(m => m.document_id + '@' + m.version + ' (' + m.state + ')').join(', ')
+        : 'none recorded') + ' · ' + req.created_at, 'snapshot-meta'));
+    const grid = node('div', null, 'comparison-grid');
+    const originalPane = node('section', null, 'comparison-pane');
+    originalPane.append(node('h3', 'Original case conclusion (unchanged)'));
+    if (req.original_snapshot && !req.original_snapshot.missing) {
+      const card = node('div', null, 'source-card');
+      card.append(node('p', 'Investigation #' + req.original_snapshot.id + ' · ' + req.original_snapshot.state),
+        node('p', req.original_snapshot.summary));
+      originalPane.append(card);
+    } else {
+      originalPane.append(node('p', 'No original conclusion was linked to this request.', 'muted'));
+    }
+    const responsePane = node('section', null, 'comparison-pane');
+    responsePane.append(node('h3', 'Second-opinion response (separate record)'));
+    if (req.response) {
+      const card = node('div', null, 'source-card');
+      card.append(node('p', 'Responder: ' + req.response.responder_label + ' (fictional, unverified)'),
+        node('p', req.response.response_text),
+        node('p', 'Anchored to ' + req.response.anchor.document_id + '@' + req.response.anchor.version +
+          ' (' + req.response.anchor.state + ') · ' + req.response.created_at, 'snapshot-meta'));
+      responsePane.append(card);
+    } else {
+      responsePane.append(node('p', 'No response recorded yet.', 'muted'));
+    }
+    grid.append(originalPane, responsePane);
+    box.append(grid);
+    if (req.review_events.length) {
+      box.append(node('p', 'Review history: ' + req.review_events.map(e =>
+        e.action + ' by ' + e.reviewer_label + ' · scope: ' + e.scope).join(' ; '), 'snapshot-meta'));
+    }
+    if (req.review_state === 'pending') {
+      const actions = node('div', null, 'actions');
+      const button = node('button', 'Demo review acknowledgment', 'button minor'); button.type = 'button';
+      button.addEventListener('click', async () => {
+        try {
+          const requestedCase = readyCase();
+          await api('/api/cases/' + requestedCase + '/second-opinion-requests/' + req.id + '/review',
+            { reviewer_label: 'Synthetic reviewer (unverified)', scope: 'Demo-only acknowledgment of this fictional second-opinion record.' });
+          if (requestedCase !== caseId) return;
+          notice('Acknowledged in demonstration only. This is not credentialed clinical review.'); await refresh();
+        } catch (err) { notice(err.message, true); }
+      });
+      actions.append(button);
+      box.append(actions);
+    } else if (req.review_state === 'needs_review') {
+      box.append(node('p', 'Shared materials changed since this request. This record stays historical; record a new request against current versions.', 'muted'));
+    }
+    el('second-opinion-list').append(box);
+  }
+  clear('survivorship-list');
+  if (!plans.length) empty(el('survivorship-list'), 'No survivorship plans recorded for this fictional case.');
+  for (const plan of plans) {
+    const box = node('div', null, 'snapshot');
+    const top = node('div', null, 'topline');
+    top.append(node('strong', 'Survivorship plan #' + plan.id + ' · ' + plan.title),
+      pill('Fictional record', 'pill-neutral'));
+    box.append(top, node('p', 'Recorded plan only — these notes never direct care. · ' + plan.created_at, 'snapshot-meta'));
+    if (!plan.items.length) box.append(node('p', 'No items recorded in this plan yet.', 'muted'));
+    for (const item of plan.items) {
+      const card = node('div', null, 'source-card');
+      card.append(node('p', item.kind + ' item #' + item.id + ': ' + item.description));
+      card.append(node('p', item.recorded_date_label + ' · Anchored to ' +
+        item.anchor.document_id + '@' + item.anchor.version + ' (' + item.anchor.state + ') · ' +
+        item.created_at, 'snapshot-meta'));
+      const pills = node('div', null, 'actions');
+      pills.append(pill(item.state, item.state === 'triggered' ? '' : 'pill-neutral'),
+        pill('review: ' + item.review_state, item.review_state === 'needs_review' ? 'pill-alert' : ''));
+      card.append(pills);
+      if (item.review_events.length) {
+        card.append(node('p', 'Review history: ' + item.review_events.map(e =>
+          e.action + ' by ' + e.reviewer_label + ' · scope: ' + e.scope).join(' ; '), 'snapshot-meta'));
+      }
+      const actions = node('div', null, 'actions');
+      if (item.review_state === 'pending') {
+        const review = node('button', 'Demo review acknowledgment', 'button minor'); review.type = 'button';
+        review.addEventListener('click', async () => {
+          try {
+            const requestedCase = readyCase();
+            await api('/api/cases/' + requestedCase + '/survivorship-items/' + item.id + '/review',
+              { reviewer_label: 'Synthetic reviewer (unverified)', scope: 'Demo-only acknowledgment of this fictional survivorship record.' });
+            if (requestedCase !== caseId) return;
+            notice('Acknowledged in demonstration only. This is not credentialed clinical review.'); await refresh();
+          } catch (err) { notice(err.message, true); }
+        });
+        actions.append(review);
+      }
+      if (item.kind === 'trigger' && item.state === 'recorded' && item.review_state !== 'needs_review') {
+        const trigger = node('button', 'Mark trigger as observed', 'button secondary minor'); trigger.type = 'button';
+        trigger.addEventListener('click', async () => {
+          try {
+            const requestedCase = readyCase();
+            await api('/api/cases/' + requestedCase + '/survivorship-items/' + item.id + '/trigger',
+              { reason: 'The described condition was observed in the fictional record.' });
+            if (requestedCase !== caseId) return;
+            notice('Trigger marked as observed in this fictional record.'); await refresh();
+          } catch (err) { notice(err.message, true); }
+        });
+        actions.append(trigger);
+      }
+      if (actions.children.length) card.append(actions);
+      if (item.review_state === 'needs_review') {
+        card.append(node('p', 'The anchor source changed since this item was recorded. This record stays historical; record a new item against the current version.', 'muted'));
+      }
+      box.append(card);
+    }
+    el('survivorship-list').append(box);
   }
 }
 function renderBibliography(record) {

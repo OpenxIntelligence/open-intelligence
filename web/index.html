@@ -44,6 +44,7 @@
           <a href="#activity">Activity</a>
           <a href="#changes-since-review">What changed</a>
           <a href="#options">Options &amp; dependencies</a>
+          <a href="#second-survivorship">Second opinion &amp; survivorship</a>
         </nav>
       </details>
       <div class="side-bottom">
@@ -364,6 +365,51 @@
           </section>
         </div>
       </div>
+
+      <section class="panel" id="second-survivorship" aria-labelledby="second-survivorship-heading">
+        <div class="panel-head"><div><div class="eyebrow">05 / SECOND OPINION &amp; SURVIVORSHIP</div><h2 id="second-survivorship-heading">Second opinion &amp; survivorship records</h2></div><span class="pill pill-warn">FICTIONAL DEMO DATA — not a real patient</span></div>
+        <p class="muted">Recorded descriptions only. A second-opinion response is stored as a separate record and never changes the original case conclusion; both stay visible below. Survivorship notes describe a recorded follow-up plan; they never direct care.</p>
+        <p class="muted tiny" id="second-opinion-disclaimer"></p>
+        <p class="muted tiny" id="survivorship-disclaimer"></p>
+        <h3 class="subhead">Ask for a second opinion (fictional record)</h3>
+        <form id="so-request-form">
+          <label for="so-question-choice">Case question this request is about</label><select id="so-question-choice" required></select>
+          <label for="so-question-text">Question asked (plain description, 5–500 characters)</label><textarea id="so-question-text" rows="2" minlength="5" maxlength="500" required placeholder="Which recorded wording is being asked about, in plain words?"></textarea>
+          <fieldset class="choice-group">
+            <legend>Materials shared by reference</legend>
+            <div id="so-source-choice" class="source-choice"></div>
+          </fieldset>
+          <label for="so-snapshot-choice">Original case conclusion under discussion (optional, never changed)</label><select id="so-snapshot-choice"></select>
+          <button class="button" type="submit">Record second-opinion request</button>
+        </form>
+        <h3 class="subhead">Record a separate second-opinion response</h3>
+        <form id="so-response-form">
+          <label for="so-request-choice">Request</label><select id="so-request-choice" required></select>
+          <label for="so-responder">Responder label (fictional, unverified)</label><input id="so-responder" type="text" maxlength="80" required placeholder="Fictional second reviewer">
+          <label for="so-response-text">Response (plain description, 10–2000 characters)</label><textarea id="so-response-text" rows="3" minlength="10" maxlength="2000" required placeholder="Describe the recorded response in plain words."></textarea>
+          <label for="so-anchor-choice">Source version this response discusses</label><select id="so-anchor-choice" required></select>
+          <button class="button" type="submit">Record separate response</button>
+        </form>
+        <h3 class="subhead">Requests and responses, side by side</h3>
+        <div id="second-opinion-list" class="snapshots"></div>
+        <h3 class="subhead">Record a survivorship care plan (fictional record)</h3>
+        <form id="surv-plan-form">
+          <label for="surv-plan-title">Plan title (1–120 characters)</label><input id="surv-plan-title" type="text" maxlength="120" required placeholder="Recorded follow-up notes (fictional)">
+          <button class="button" type="submit">Record survivorship plan</button>
+        </form>
+        <h3 class="subhead">Add a follow-up, watch, or trigger item</h3>
+        <form id="surv-item-form">
+          <label for="surv-plan-choice">Plan</label><select id="surv-plan-choice" required></select>
+          <label for="surv-kind">Item kind</label>
+          <select id="surv-kind"><option value="followup">Follow-up (recorded schedule note)</option><option value="watch">Watch (plain description)</option><option value="trigger">Review trigger (recorded reason to look again)</option></select>
+          <label for="surv-description">Description (plain words, 10–500 characters, never a directive)</label><textarea id="surv-description" rows="3" minlength="10" maxlength="500" required placeholder="Describe what is recorded, with dates as recorded notes."></textarea>
+          <label for="surv-date">Recorded date (optional note, not a clinical due date)</label><input id="surv-date" type="date">
+          <label for="surv-anchor-choice">Source version this item is anchored to</label><select id="surv-anchor-choice" required></select>
+          <button class="button" type="submit">Record plan item</button>
+        </form>
+        <h3 class="subhead">Recorded plans and items</h3>
+        <div id="survivorship-list" class="snapshots"></div>
+      </section>
 
       <section class="panel" id="changes-since-review" aria-labelledby="changes-heading">
         <div class="panel-head"><div><div class="eyebrow">REVIEW · WHAT CHANGED</div><h2 id="changes-heading">What changed since last review</h2></div><span class="pill pill-warn">FICTIONAL DEMO DATA — not a real patient</span></div>

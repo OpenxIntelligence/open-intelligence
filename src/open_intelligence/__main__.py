@@ -383,6 +383,37 @@ class Handler(BaseHTTPRequestHandler):
                     investigation_id = store.save_investigation(
                         case_id, question_id, template, validated, mode)
                     return self._json(201, store.get_investigation(case_id, investigation_id))
+                so_request = re.fullmatch(rf"/api/cases/{ID_PART}/second-opinion-requests", path)
+                if so_request:
+                    return self._json(201, {"request_id": store.create_second_opinion_request(
+                        so_request[1], data.get("question_id"), data.get("question_text"),
+                        data.get("source_version_ids"), data.get("snapshot_id"))})
+                so_response = re.fullmatch(rf"/api/cases/{ID_PART}/second-opinion-requests/([0-9]+)/response", path)
+                if so_response:
+                    return self._json(201, {"response_id": store.record_second_opinion_response(
+                        so_response[1], int(so_response[2]), data.get("responder_label"),
+                        data.get("response_text"), data.get("anchor_source_version_id"))})
+                so_review = re.fullmatch(rf"/api/cases/{ID_PART}/second-opinion-requests/([0-9]+)/review", path)
+                if so_review:
+                    return self._json(200, store.review_second_opinion(
+                        so_review[1], int(so_review[2]), data.get("reviewer_label"), data.get("scope")))
+                surv_plan = re.fullmatch(rf"/api/cases/{ID_PART}/survivorship-plans", path)
+                if surv_plan:
+                    return self._json(201, {"plan_id": store.create_survivorship_plan(
+                        surv_plan[1], data.get("title"))})
+                surv_item = re.fullmatch(rf"/api/cases/{ID_PART}/survivorship-plans/([0-9]+)/items", path)
+                if surv_item:
+                    return self._json(201, {"item_id": store.add_survivorship_item(
+                        surv_item[1], int(surv_item[2]), data.get("kind"), data.get("description"),
+                        data.get("anchor_source_version_id"), data.get("recorded_date"))})
+                surv_review = re.fullmatch(rf"/api/cases/{ID_PART}/survivorship-items/([0-9]+)/review", path)
+                if surv_review:
+                    return self._json(200, store.review_survivorship_item(
+                        surv_review[1], int(surv_review[2]), data.get("reviewer_label"), data.get("scope")))
+                surv_trigger = re.fullmatch(rf"/api/cases/{ID_PART}/survivorship-items/([0-9]+)/trigger", path)
+                if surv_trigger:
+                    return self._json(200, store.mark_survivorship_trigger(
+                        surv_trigger[1], int(surv_trigger[2]), data.get("reason")))
                 return self._json(404, {"error": "Route not found"})
             finally:
                 store.close()
