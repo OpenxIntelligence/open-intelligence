@@ -16,7 +16,7 @@ from .investigation import TEMPLATES
 from .mission import build_patient_mission
 from .store import CaseStore, InvalidInput
 
-CONTEXT_VERSION = "composer-context-v1"
+CONTEXT_VERSION = "composer-context-v2"
 QUESTION_KEYS = ("id", "question", "state")
 SOURCE_KEYS = ("id", "document_id", "version", "sha256", "kind",
                "event_date", "issued_at", "received_at", "specimen_id")
@@ -32,7 +32,8 @@ def _fields(row: dict, keys: tuple[str, ...]) -> dict:
 
 
 def _fingerprint(case_id: str, question: dict, sources: list[dict],
-                 assertions: list[dict], assessments: list[dict]) -> str:
+                 assertions: list[dict], assessments: list[dict],
+                 broker_receipts: list[dict] | None = None) -> str:
     payload = {
         "version": CONTEXT_VERSION,
         "case_id": case_id,
@@ -43,6 +44,7 @@ def _fingerprint(case_id: str, question: dict, sources: list[dict],
                              key=lambda row: row["id"]),
         "assessments": sorted((_fields(x, ASSESSMENT_KEYS) for x in assessments),
                               key=lambda row: row["id"]),
+        "broker_inputs": sorted(broker_receipts or [], key=lambda row: row["broker_link_id"]),
     }
     raw = json.dumps(payload, ensure_ascii=False, sort_keys=True,
                      separators=(",", ":"), allow_nan=False).encode("utf-8")
@@ -77,6 +79,14 @@ def composer_context_fingerprint(store: CaseStore, case_id: str,
     source versions and human-entered evidence assessments available to its
     existing investigation prompt at execution time.
     """
+    if not store.db.in_transaction:
+        with store.db:
+            store.db.execute("BEGIN")
+            return _composer_fingerprint_in_snapshot(store, case_id, question_id)
+    return _composer_fingerprint_in_snapshot(store, case_id, question_id)
+
+
+def _composer_fingerprint_in_snapshot(store: CaseStore, case_id: str, question_id: int) -> str:
     store._case(case_id)
     if type(question_id) is not int or question_id < 1:
         raise InvalidInput("Composer question ID must be a positive integer")
@@ -107,7 +117,8 @@ def composer_context_fingerprint(store: CaseStore, case_id: str,
         (case_id, question_id)).fetchall()
     return _fingerprint(
         case_id, dict(question), [dict(row) for row in sources],
-        [dict(row) for row in assertions], [dict(row) for row in assessments])
+        [dict(row) for row in assertions], [dict(row) for row in assessments],
+        store._broker_context_inputs(case_id, question_id)[1])
 
 
 def build_composer_context(store: CaseStore, case_id: str,
@@ -122,10 +133,12 @@ def build_composer_context(store: CaseStore, case_id: str,
         raise InvalidInput("Composer question ID must be a positive integer")
     for _ in range(3):
         state = store.state(case_id)
+        facts = store.investigation_facts(case_id, question_id)
         q, sources, assertions, assessments = _snapshot_rows_from_state(
             state, question_id)
-        token = _fingerprint(case_id, q, sources, assertions, assessments)
-        if token == composer_context_fingerprint(store, case_id, question_id):
+        token = _fingerprint(case_id, q, sources, assertions, assessments,
+                             facts["broker_snapshot_receipts"])
+        if token == facts["context_fingerprint"] == composer_context_fingerprint(store, case_id, question_id):
             break
     else:
         raise InvalidInput("Composer source context changed during preview; retry")
@@ -171,6 +184,10 @@ def build_composer_context(store: CaseStore, case_id: str,
              "statement_line": x["statement_line"], "sha256": x["sha256"]}
             for x in assessments[:50]],
         "evidence_assessment_count": len(assessments),
+        "external_evidence": facts["external_evidence"],
+        "external_evidence_count": len(facts["external_evidence"]),
+        "external_evidence_model_count": len(facts["valid_brokers"]),
+        "rights_basis": "recorded_declaration_only",
         "mission": {
             "case": mission["case"],
             "workflow_status": mission["workflow_status"],
@@ -194,7 +211,7 @@ def build_composer_context(store: CaseStore, case_id: str,
             "analysis_execution": "unavailable",
             "clinical_authorization": "not_verified",
         },
-        "ready_state": "evidence_available" if anchors or assessments
+        "ready_state": "evidence_available" if anchors or assessments or facts["valid_brokers"]
                        else "requires_source_review",
         "disclaimer": (
             "Fictional synthetic source context only. These are authored "

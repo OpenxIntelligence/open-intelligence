@@ -35,6 +35,7 @@
     const sources = data.current_sources || [];
     const anchors = data.source_anchors || [];
     const assessments = data.evidence_assessments || [];
+    const externalEvidence = data.external_evidence || [];
     const status = data.tool_status || {};
     const metrics = data.mission?.where_am_i || {};
 
@@ -97,6 +98,37 @@
         'muted');
       panel.append(list);
     }
+    const evidenceSection = document.createElement('section');
+    evidenceSection.className = 'composer-external-evidence';
+    evidenceSection.setAttribute('aria-label', 'External evidence for this question');
+    evidenceSection.append(el('h4', 'External evidence for this question'));
+    evidenceSection.append(el('p',
+      'Source permissions are recorded declarations. Display permission and AI processing ' +
+      'permission are checked separately. A citation or search result alone is not clinical evidence.',
+      'tiny muted'));
+    if (!externalEvidence.length) {
+      evidenceSection.append(el('p', 'No external evidence is linked to this question.', 'muted'));
+    }
+    for (const evidence of externalEvidence) {
+      const item = document.createElement('article');
+      item.className = 'composer-evidence-item';
+      item.dataset.brokerId = String(evidence.id);
+      item.dataset.modelEligible = String(Boolean(evidence.model_eligible));
+      item.append(el('strong', 'Evidence #' + evidence.id + ' · ' +
+        evidence.source_key + ' · ' + evidence.version_label));
+      item.append(el('p',
+        'Relation: ' + evidence.relation + ' · Applicability: ' + evidence.applicability +
+        ' · Rights: ' + evidence.rights_state, 'tiny muted'));
+      if (evidence.citation_title) item.append(el('p', evidence.citation_title));
+      if (evidence.excerpt) item.append(el('blockquote', evidence.excerpt));
+      if (evidence.rationale) item.append(el('p', 'Assessment: ' + evidence.rationale, 'muted'));
+      item.append(el('p', evidence.model_eligible
+        ? 'Eligible for AI context under the recorded permissions; inclusion is subject to the task input limit.'
+        : 'Excluded from AI context: ' + (evidence.withheld_reason || 'permission or usable source content is missing'),
+      'tiny muted'));
+      evidenceSection.append(item);
+    }
+    panel.append(evidenceSection);
     panel.append(missing, review, warning);
 
     // One actual read-only numeric tool. This is not the unavailable

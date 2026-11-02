@@ -416,6 +416,12 @@ class Handler(BaseHTTPRequestHandler):
                         if context_fingerprint != actual:
                             raise InvalidInput("stale Composer context: refresh current sources and evidence")
                     facts = store.investigation_facts(case_id, question_id)
+                    # The server binds every external-content run, even when a
+                    # legacy client omits the optional preview fingerprint.
+                    if context_fingerprint is not None and context_fingerprint != facts["context_fingerprint"]:
+                        raise InvalidInput("stale Composer context: refresh current sources and evidence")
+                    if facts["external_evidence"]:
+                        context_fingerprint = facts["context_fingerprint"]
                     if mode == "replay":
                         fixture = json.loads((SYNTHETIC / "demo-investigation.json").read_text())
                         # Replace placeholders with real current ids, then
@@ -428,17 +434,19 @@ class Handler(BaseHTTPRequestHandler):
                                     cite["id"] = first_source
                                 if cite.get("id") == "FIRST_ASSESSMENT" and first_assessment is not None:
                                     cite["id"] = first_assessment
-                        validated = validate_output(fixture, facts["valid_sources"], facts["valid_assessments"])
+                        validated = validate_output(fixture, facts["valid_sources"], facts["valid_assessments"], facts["valid_brokers"])
                         validated.model = "recorded-replay"
                         validated.mode = "replay"
                     else:
                         prompt = build_prompt(template, facts["question"]["question"],
-                                              facts["assertions"], facts["assessments"])
+                                              facts["assertions"], facts["assessments"], facts["external_evidence"])
+                        if context_fingerprint is not None and context_fingerprint != composer_context_fingerprint(store, case_id, question_id):
+                            raise InvalidInput("stale Composer context: evidence changed before execution")
                         payload = call_meta_api(prompt, meta_api_key())
-                        validated = validate_output(payload, facts["valid_sources"], facts["valid_assessments"])
+                        validated = validate_output(payload, facts["valid_sources"], facts["valid_assessments"], facts["valid_brokers"])
                     investigation_id = store.save_investigation(
                         case_id, question_id, template, validated, mode,
-                        context_fingerprint=context_fingerprint)
+                        context_fingerprint=context_fingerprint, input_receipts=facts["input_receipts"])
                     return self._json(201, store.get_investigation(case_id, investigation_id))
                 return self._json(404, {"error": "Route not found"})
             finally:

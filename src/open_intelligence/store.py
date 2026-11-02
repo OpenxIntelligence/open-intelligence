@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-from .rights import RightsError, check_link_content, normalize_permissions
+from .rights import RightsError, check_link_content, normalize_permissions, permitted
 
 ID = re.compile(r"[A-Z][A-Z0-9-]{1,39}\Z")
 KEY = re.compile(r"[a-z][a-z0-9_-]{0,59}\Z")
@@ -338,6 +338,17 @@ CREATE TABLE IF NOT EXISTS investigations (
   dropped_json TEXT NOT NULL,
   stale INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS investigation_input_contexts (
+  investigation_id INTEGER PRIMARY KEY REFERENCES investigations(id),
+  context_fingerprint TEXT NOT NULL, prompt_sha256 TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS investigation_broker_inputs (
+  investigation_id INTEGER NOT NULL REFERENCES investigations(id),
+  broker_link_id INTEGER NOT NULL REFERENCES broker_links(id),
+  rights_source_id INTEGER NOT NULL REFERENCES rights_sources(id),
+  receipt_json TEXT NOT NULL,
+  PRIMARY KEY(investigation_id,broker_link_id)
 );
 -- Discovery-to-rights linkage: an item may be bound to one rights row at
 -- import (NULL means unlinked: rights unknown, never assumed permitted),
@@ -1691,6 +1702,7 @@ class CaseStore:
         Caller must own a write transaction. History is retained: the
         snapshot rows stay, marked stale, and their questions reopen.
         """
+        self._invalidate_model_broker_inputs(rights_source_id=rights_source_id)
         rows = self.db.execute("""SELECT DISTINCT s.id,s.case_id,s.question_id
             FROM snapshots s JOIN snapshot_broker_links sbl ON sbl.snapshot_id=s.id
             JOIN broker_links bl ON bl.id=sbl.broker_link_id
@@ -1709,6 +1721,72 @@ class CaseStore:
                             rights_source_id=rights_source_id,
                             reason=reason, invalidated_snapshots=changed)
         return invalidated
+
+    def _invalidate_model_broker_inputs(self, *, rights_source_id=None, broker_link_id=None):
+        """Invalidate only saved investigations that actually consumed this input."""
+        column, value = ("rights_source_id", rights_source_id) if rights_source_id is not None else ("broker_link_id", broker_link_id)
+        rows = self.db.execute(f"""SELECT DISTINCT i.id,i.case_id,i.question_id
+            FROM investigations i JOIN investigation_broker_inputs b ON b.investigation_id=i.id
+            WHERE b.{column}=? AND i.stale=0""", (value,)).fetchall()
+        for row in rows:
+            self.db.execute("UPDATE investigations SET stale=1 WHERE id=?", (row["id"],))
+            self.db.execute("UPDATE questions SET state='open' WHERE id=? AND case_id=?",
+                            (row["question_id"], row["case_id"]))
+            self._event(row["case_id"], "broker_model_invalidated", investigation_id=row["id"])
+        return [row["id"] for row in rows]
+
+    def _broker_context_inputs(self, case_id: str, question_id: int) -> tuple[list, list]:
+        """Project the durable broker ledger; callers own the snapshot transaction.
+
+        Permission declarations are enforced, never upgraded into legal proof.
+        Raw content only participates in hashes internally. Receipts contain no
+        source text, allowing provenance to remain visible after revocation.
+        """
+        rows = self._dicts(self.db.execute("""SELECT bl.*,rs.source_key,rs.version_label,
+            rs.owner,rs.retrieved_at,rs.attribution,rs.retention,rs.previous_id,
+            rs.state AS rights_state FROM broker_links bl
+            JOIN rights_sources rs ON rs.id=bl.rights_source_id
+            WHERE bl.case_id=? AND bl.question_id=? ORDER BY bl.id""", (case_id, question_id)).fetchall())
+        items, receipts = [], []
+        for row in rows:
+            perms = self._rights_permissions(row["rights_source_id"])
+            active = row["rights_state"] == "active"
+            def allows(item, uses):
+                return all(permitted(perms, item, use, revoked=not active) for use in uses)
+            content_display = allows("full_text", ("store", "display"))
+            metadata_display = allows("metadata", ("store", "display"))
+            content_model = allows("full_text", ("store", "display", "ml_use"))
+            metadata_model = allows("metadata", ("store", "display", "ml_use"))
+            title = row["citation_title"]
+            def contains_title(text):
+                return bool(title and text and title.casefold() in text.casefold())
+            # Do not reintroduce withheld metadata through another text field.
+            if not metadata_display and (contains_title(row["excerpt"]) or contains_title(row["rationale"])):
+                content_display = False
+            if not metadata_model and (contains_title(row["excerpt"]) or contains_title(row["rationale"])):
+                content_model = False
+            eligible = content_display and content_model and bool(row["excerpt"])
+            reason = None if eligible else ("rights_inactive" if not active else
+                     "content_permissions_missing" if not content_model or not content_display else "no_evidence_text")
+            item = {key: row[key] for key in ("id", "rights_source_id", "source_key", "version_label",
+                                             "rights_state", "relation", "applicability")}
+            item.update(rationale=row["rationale"] if content_display else None,
+                        citation_title=title if metadata_display else None,
+                        excerpt=row["excerpt"] if content_display else None,
+                        model_eligible=bool(eligible), withheld_reason=reason,
+                        metadata_model_eligible=metadata_model,
+                        rights_basis="recorded_declaration_only")
+            raw = json.dumps({"link": row, "permissions": perms}, sort_keys=True,
+                             separators=(",", ":"), ensure_ascii=False).encode()
+            receipts.append({"broker_link_id": row["id"], "rights_source_id": row["rights_source_id"],
+                             "source_key": row["source_key"], "version_label": row["version_label"],
+                             "rights_state": row["rights_state"], "permissions": perms,
+                             "relation": row["relation"], "applicability": row["applicability"],
+                             "metadata_model_eligible": metadata_model,
+                             "input_sha256": hashlib.sha256(raw).hexdigest(),
+                             "rights_basis": "recorded_declaration_only"})
+            items.append(item)
+        return items, receipts
 
     def _invalidate_discovery_source(self, rights_source_id: int, *, reason: str) -> list[int]:
         """Invalidate valid discovery links depending on this rights source row.
@@ -1909,6 +1987,7 @@ class CaseStore:
                 (rights_source_id, f"Broker link {link_id} for case {case_id}", now_utc()))
             self._event(case_id, "broker_link_created",
                         broker_link_id=link_id, rights_source_id=rights_source_id, mode=mode)
+            self._stale_model_investigations(case_id, question_id)
             return {"broker_link_id": link_id, "mode": mode}
 
     def review_broker_link(self, case_id: str, broker_link_id: int, relation: str,
@@ -1938,6 +2017,7 @@ class CaseStore:
                 raise InvalidInput("Cannot review a link whose rights source is not active")
             self.db.execute("""UPDATE broker_links SET relation=?,applicability=?,rationale=?
                 WHERE id=?""", (relation, applicability, rationale.strip(), broker_link_id))
+            self._invalidate_model_broker_inputs(broker_link_id=broker_link_id)
             self.db.execute("""INSERT INTO rights_events
                 (rights_source_id,kind,reason,recorded_at) VALUES (?,'link_reviewed',?,?)""",
                 (int(link["rights_source_id"]), f"Broker link {broker_link_id} re-reviewed", now_utc()))
@@ -2200,7 +2280,14 @@ class CaseStore:
             self._event(case_id, "demo_review_acknowledged", snapshot_id=snapshot_id)
 
     def investigation_facts(self, case_id: str, question_id: int) -> dict:
-        """Facts the investigation prompt may use: question, current assertions, assessments."""
+        """One coherent snapshot for text, rights, citation IDs, and receipts."""
+        if self.db.in_transaction:
+            return self._investigation_facts_in_snapshot(case_id, question_id)
+        with self.db:
+            self.db.execute("BEGIN")
+            return self._investigation_facts_in_snapshot(case_id, question_id)
+
+    def _investigation_facts_in_snapshot(self, case_id: str, question_id: int) -> dict:
         self._case(case_id)
         if type(question_id) is not int:
             raise InvalidInput("Question id must be an integer")
@@ -2218,24 +2305,52 @@ class CaseStore:
             FROM evidence_assessments a JOIN evidence_versions v ON v.id=a.evidence_version_id
             WHERE a.case_id=? AND a.question_id=? AND v.state='current' AND v.rights='original-synthetic'
             ORDER BY a.id""", (case_id, question_id)).fetchall())
+        from .composer import composer_context_fingerprint
+        from .investigation import bound_prompt_inputs
+        external, receipts = self._broker_context_inputs(case_id, question_id)
+        assertions, assessments, selected_external = bound_prompt_inputs(
+            question["question"], assertions, assessments, external)
+        selected_ids = {row["id"] for row in selected_external}
+        for row in external:
+            if row["model_eligible"] and row["id"] not in selected_ids:
+                row["model_eligible"] = False
+                row["withheld_reason"] = "prompt_budget"
         return {
             "question": dict(question),
             "assertions": assertions,
             "assessments": assessments,
+            "external_evidence": external,
+            "valid_brokers": selected_ids,
+            "input_receipts": [r for r in receipts if r["broker_link_id"] in selected_ids],
+            "broker_snapshot_receipts": receipts,
+            "context_fingerprint": composer_context_fingerprint(self, case_id, question_id),
             "valid_sources": {int(a["source_version_id"]) for a in assertions},
             "valid_assessments": {int(a["id"]) for a in assessments},
         }
 
     def save_investigation(self, case_id: str, question_id: int, template: str,
                            validated, mode: str,
-                           context_fingerprint: str | None = None) -> int:
+                           context_fingerprint: str | None = None,
+                           input_receipts: list[dict] | None = None) -> int:
         self._case(case_id)
         with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            facts = self.investigation_facts(case_id, question_id)
+            has_broker_citation = any(c.get("type") == "broker" for claim in validated.claims
+                                     for c in claim.get("citations", []))
+            if facts["input_receipts"] or input_receipts or has_broker_citation:
+                if context_fingerprint is None or input_receipts is None:
+                    raise InvalidInput("External evidence requires captured server context and input receipts")
+                if input_receipts != facts["input_receipts"]:
+                    raise InvalidInput("stale Composer context: external evidence changed; refresh")
+                if any(type(c.get("id")) is not int or c["id"] not in facts["valid_brokers"]
+                       for claim in validated.claims for c in claim.get("citations", [])
+                       if c.get("type") == "broker"):
+                    raise InvalidInput("Broker citation was not in the captured prompt inputs")
             if context_fingerprint is not None:
                 # Re-check AFTER model execution and INSIDE the same SQLite
                 # write transaction as the save. A concurrent source or
                 # assessment update must not promote work over stale inputs.
-                self.db.execute("BEGIN IMMEDIATE")
                 from .composer import composer_context_fingerprint
                 actual = composer_context_fingerprint(self, case_id, question_id)
                 if actual != context_fingerprint:
@@ -2248,6 +2363,16 @@ class CaseStore:
                  json.dumps(validated.claims), json.dumps(validated.abstentions),
                  json.dumps(validated.dropped), now_utc()))
             investigation_id = int(cur.lastrowid)
+            if context_fingerprint is not None:
+                from .investigation import build_prompt
+                prompt = build_prompt(template, facts["question"]["question"], facts["assertions"],
+                                      facts["assessments"], facts["external_evidence"])
+                self.db.execute("INSERT INTO investigation_input_contexts VALUES (?,?,?)",
+                                (investigation_id, context_fingerprint, hashlib.sha256(prompt.encode()).hexdigest()))
+            for receipt in input_receipts or []:
+                self.db.execute("INSERT INTO investigation_broker_inputs VALUES (?,?,?,?)",
+                                (investigation_id, receipt["broker_link_id"], receipt["rights_source_id"],
+                                 json.dumps(receipt, sort_keys=True)))
             self.db.execute("UPDATE questions SET state='addressed' WHERE id=? AND case_id=?",
                             (question_id, case_id))
             self._event(case_id, "investigation_created", investigation_id=investigation_id,
@@ -2255,6 +2380,13 @@ class CaseStore:
             return investigation_id
 
     def get_investigation(self, case_id: str, investigation_id: int) -> dict:
+        if not self.db.in_transaction:
+            with self.db:
+                self.db.execute("BEGIN")
+                return self._get_investigation_in_snapshot(case_id, investigation_id)
+        return self._get_investigation_in_snapshot(case_id, investigation_id)
+
+    def _get_investigation_in_snapshot(self, case_id: str, investigation_id: int) -> dict:
         self._case(case_id)
         row = self.db.execute("SELECT * FROM investigations WHERE id=? AND case_id=?",
                               (investigation_id, case_id)).fetchone()
@@ -2264,6 +2396,23 @@ class CaseStore:
         data["claims"] = json.loads(data.pop("claims_json"))
         data["abstentions"] = json.loads(data.pop("abstentions_json"))
         data["dropped"] = json.loads(data.pop("dropped_json"))
+        data["input_receipts"] = [json.loads(r[0]) for r in self.db.execute(
+            "SELECT receipt_json FROM investigation_broker_inputs WHERE investigation_id=? ORDER BY broker_link_id",
+            (investigation_id,)).fetchall()]
+        context = self.db.execute("SELECT context_fingerprint,prompt_sha256 FROM investigation_input_contexts WHERE investigation_id=?",
+                                  (investigation_id,)).fetchone()
+        data["input_context"] = dict(context) if context else None
+        data["output_withheld"] = False
+        if data["input_receipts"]:
+            current_items, current_receipts = self._broker_context_inputs(case_id, data["question_id"])
+            current = {r["broker_link_id"]: r for r in current_receipts}
+            eligible = {r["id"] for r in current_items if r["model_eligible"]}
+            if data["stale"] or any(r != current.get(r["broker_link_id"]) or r["broker_link_id"] not in eligible
+                                    for r in data["input_receipts"]):
+                data["stale"] = 1
+                data["claims"], data["abstentions"], data["dropped"] = [], [], []
+                data["output_withheld"] = True
+                data["withheld_reason"] = "External input changed or is no longer permitted; review required"
         data["kind"] = "hypothesis"
         data["review_state"] = "pending"
         data["disclaimer"] = ("Research demonstration only. Hypotheses are unreviewed, "
@@ -2318,12 +2467,20 @@ class CaseStore:
             # served: the link and its mode stay visible, the stored title
             # and excerpt do not.
             for broker_row in broker_rows:
-                if broker_row["rights_state"] != "active":
+                permissions = self._rights_permissions(broker_row["rights_source_id"])
+                active = broker_row["rights_state"] == "active"
+                metadata_ok = active and all(permitted(permissions, "metadata", use) for use in ("store", "display"))
+                content_ok = active and all(permitted(permissions, "full_text", use) for use in ("store", "display"))
+                title = broker_row["citation_title"]
+                if not metadata_ok and title and any(title.casefold() in (broker_row.get(field) or "").casefold()
+                                                     for field in ("excerpt", "rationale")):
+                    content_ok = False
+                if not metadata_ok:
                     broker_row["citation_title"] = None
+                if not content_ok:
                     broker_row["excerpt"] = None
-                    broker_row["content_redacted"] = True
-                else:
-                    broker_row["content_redacted"] = False
+                    broker_row["rationale"] = None
+                broker_row["content_redacted"] = not content_ok or not metadata_ok
             rights_rows = self._dicts(self.db.execute(
                 "SELECT * FROM rights_sources ORDER BY source_key, id").fetchall())
             for rights_row in rights_rows:
