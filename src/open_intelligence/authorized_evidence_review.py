@@ -7,6 +7,7 @@ inspection and a 'returned for verification' receipt, NOT a clinician signoff.
 """
 from __future__ import annotations
 
+import hashlib
 import hmac
 import json
 from collections.abc import Callable
@@ -140,7 +141,8 @@ class AuthorizedEvidenceReviewHandoff:
 
     def return_for_review(self, patient_id: str, case_id: str, question_id: int,
                           assessment_id: int, *, actor: str, purpose: str,
-                          selected_quotes: list[dict], reason: str) -> dict:
+                          selected_quotes: list[dict], reason: str,
+                          report_reference: dict | None = None) -> dict:
         """Append ONLY a returned receipt; never grant completion or signoff.
 
         The original review queue owns all durable receipts. Cross-provider
@@ -154,11 +156,31 @@ class AuthorizedEvidenceReviewHandoff:
                               actor=actor, purpose=purpose, selected_quotes=selected_quotes)
         if not hmac.compare_digest(_digest(first), _digest(second)):
             raise ClinicalContinuityError("review changed before return receipt")
+        prepared = None
+        if report_reference is not None:
+            if (not isinstance(report_reference, dict) or
+                    set(report_reference) != {"body_sha256", "packet_sha256"}):
+                raise KnowledgeContextError("report reference requires exact digest fields")
+            expected = hashlib.sha256(
+                _digest(second["source_quote_packet"]).encode("utf-8")).hexdigest()
+            if report_reference["packet_sha256"] != expected:
+                raise ClinicalContinuityError("report packet changed before review handoff")
+            cited = second["source_quote_packet"]["quoted_comparisons"][0]["patient_reference"]
+            prepared = {
+                "contract": "oi.synthetic-prepared-report-reference/1",
+                "semantics": "prepared_not_delivery_or_approval",
+                "body_sha256": report_reference["body_sha256"],
+                "packet_sha256": expected,
+                "question_id": question_id,
+                "patient_source": {key: cited[key] for key in
+                    ("assertion_id", "source_version_id", "sha256", "source_line")},
+            }
         # Distinct write-action authorization, rechecked at the effect boundary.
         self._authorize_return(patient_id, actor, purpose)
+        kwargs = {} if prepared is None else {"prepared_report": prepared}
         receipt = self.store.add_review_receipt(
             case_id, first["queue_key"], "returned", reviewer_label=actor,
-            reason=reason, expected_fingerprint=first["queue_fingerprint"])
+            reason=reason, expected_fingerprint=first["queue_fingerprint"], **kwargs)
         # Returning an item remains unresolved. Do not call an acknowledgment
         # review a clinical signoff, even if a later preflight is interrupted.
         return {
