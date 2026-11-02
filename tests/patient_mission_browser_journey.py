@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -257,8 +258,21 @@ def main() -> None:
             if session is not None:
                 session.close()
             if browser is not None:
-                browser.terminate()
-                browser.wait(timeout=8)
+                # The browser owns a new session; its renderer/zygote children
+                # may outlive the parent and keep writing the temporary profile.
+                # Stop that group before TemporaryDirectory removes the profile.
+                try:
+                    os.killpg(browser.pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+                try:
+                    browser.wait(timeout=8)
+                finally:
+                    try:
+                        os.killpg(browser.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                    browser.wait(timeout=8)
             server.terminate()
             server.wait(timeout=8)
 
