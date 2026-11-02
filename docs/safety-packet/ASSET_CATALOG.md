@@ -66,6 +66,95 @@ seven fictional report text files plus one expectations file in
 | `examples/synthetic/oi019-readme.md` | Independently authored demonstration note | Describes the OI-019 two-case staging (T0/T1/T2 by file import) and the four evaluation elements. Not advice or a recommendation. |
 | `examples/patient-access/EXPECTED_RESULTS.json` | Independently authored expectations record for `CASE-OI017` | Per-fixture hashes and sizes plus a synthetic-provenance statement. Synthetic contract evidence only. |
 
+## Merged-main top-up (2026-11-02): covered non-demo files
+
+The 44 files below are CI-only, test-only, research-only, docs-only,
+or coordinator/blank-template material. They are listed here for
+coverage only; the demo-asset counts above are unchanged, and none of
+these files is a demo asset. Each file's first lines were read on
+2026-11-02.
+
+### CI workflows (authored for this repository; CI-only, not shipped)
+
+| Asset | Origin | Purpose / note |
+|---|---|---|
+| `.github/workflows/public-research.yml` | Authored for this repository | Runs the research unit tests, builds a research-only venv from `tools/research/requirements.lock`, and runs probes that hit live public endpoints read-only. Uploads aggregate receipts and research source only (30-day retention). SHA-pinned checkout/setup-python; same SHA-pinned upload-artifact as the existing workflows. |
+| `.github/workflows/rna-analysis.yml` | Authored for this repository | Runs the research regression suite and the fixed-scope RNA probe; retains bounded derived findings and code, not full patient matrices (30-day retention). SHA-pinned checkout/setup-python; same SHA-pinned upload-artifact. |
+| `.github/workflows/single-cell-analysis.yml` | Authored for this repository | Installs research-only `numpy==2.3.5` + `h5py==3.15.1` into the CI environment (not application dependencies), runs the research suite and the fixed-scope single-cell probe; retains aggregate findings and code only (30-day retention). SHA-pinned checkout/setup-python; same SHA-pinned upload-artifact. |
+
+### Offline evaluation tools (authored for this repository; stdlib-only, no network)
+
+| Asset | Origin | Purpose / note |
+|---|---|---|
+| `tools/evaluation_packet.py` | Authored for this repository | Cutoff-isolated packaging of fictional IV-01 practice inputs. Strict JSON validation, SHA-256 checks, no-overwrite output. Never opens the coordinator key. |
+| `tools/evaluation_preflight.py` | Authored for this repository | Fail-closed declaration preflight over recorded IV-01 fields and fingerprints. Writes, activates, contacts, and scores nothing. |
+
+### Research probes (authored for this repository; research-only, not shipped)
+
+Each probe hits live public endpoints read-only (except `runtime_probe.py`, which uses no network). Raw rows stay in memory; only aggregate counts, schema, hashes, and receipts leave the probe.
+
+| Asset | Origin | Purpose / note |
+|---|---|---|
+| `tools/research/clinical_semantics_probe.py` | Authored for this repository | Semantic audit over GDC open case metadata (in memory) against a pinned NCI-GDC dictionary commit plus FHIR R4 MedicationStatement/Administration meaning. No reidentification, controlled files, or LLM calls. |
+| `tools/research/gdc_projection_probe.py` | Authored for this repository | Hierarchy/temporal projection probe over GDC public TCGA-LUAD/BRCA/LAML metadata in RAM/in-memory SQLite. Aggregate receipts only. No controlled files or inference. |
+| `tools/research/public_case_intake.py` | Authored for this repository | Intake over one fixed public catalog (`osteosarc.com/data/catalog/datasets.json`, S3 bucket listing). Raw rows in memory; aggregate engineering receipts, not medical findings. |
+| `tools/research/public_evidence_probe.py` | Authored for this repository | Structure audit over fixed public TCIA CSV/ZIP attachments and GDC public TCGA-LUAD case data. Aggregate counts/schema/hashes only; never subject identifiers or rows. |
+| `tools/research/requirements.lock` | Observed-environment record for research run 41294219202 | Exact third-party pins for the isolated research venv (`/tmp/oi-research-env` in CI). Research only: explicitly not an application dependency decision or security clearance. |
+| `tools/research/rna_expression_probe.py` | Authored for this repository | Fixed-scope descriptive check over five fixed public processed-RNA assets (one subject, four specimens). No raw reads, full matrices, genotypes, p-values, causal claims, or recommendations. |
+| `tools/research/runtime_probe.py` | Authored for this repository | LangGraph/SQLite process-boundary experiment on original fictional state only. No network, no model API, no medical data; includes negative controls. Requires the research env. |
+| `tools/research/single_cell_probe.py` | Authored for this repository | Bounded descriptive localization over one fixed public processed single-cell (h5ad) object. Only aggregates leave RAM; source labels are never equated with malignancy. |
+| `tools/research/trial_screening_probe.py` | Authored for this repository | Registry/screening-contract research over public ClinicalTrials.gov/NLM records. Aggregate time-stamped observations only; no eligibility advice, referrals, or enrollment actions. Executes only a hash-verified pure `parse_criteria` function characterized from ncbi-nlp/TrialGPT (commit `1b3242c`, US Government Work notice); no upstream module imports. |
+
+### Tests (authored for this repository; test-only, not shipped)
+
+| Asset | Origin | Purpose / note |
+|---|---|---|
+| `tests/test_evaluation_packet.py` | Authored for this repository | Packaging-mechanics tests over the fictional IV-01 packet, not clinical performance. |
+| `tests/test_evaluation_packet_json_boundary.py` | Authored for this repository | JSON-boundary CLI regressions with minimal fictional parser fixtures (`CASE-JSON`, `OI-SYNTHETIC-REPORT/1`). Not reference cases or clinical evidence. |
+| `tests/test_evaluation_preflight.py` | Authored for this repository | Fail-closed preflight readiness checks with fictional protocol fixtures. Not clinical assessment. |
+| `tests/test_iv01_evidence_replay.py` | Authored for this repository | IV-01 evidence replay through the existing `CaseStore`. Synthetic software tests only; labels are not clinical truth. |
+| `tests/test_iv01_store.py` | Authored for this repository | IV-01 store replay of practice fixtures through the existing application, without changing it. |
+| `tools/research/test_clinical_semantics_probe.py` | Hand-derived fictional cases (`FICTIONAL-A`) | Semantics-probe unit tests. No upstream patient records or model calls. |
+| `tools/research/test_gdc_projection_probe.py` | Original fictional fixtures (`FICTIONAL-A/B`) | Projection-probe unit tests. No patient records or clinical reference answers. |
+| `tools/research/test_public_case_intake.py` | Original fictional catalog fixtures (`SYN-T0`, `SYN-BLOCK-A`) | Intake unit tests. No copied clinical/genomic records. |
+| `tools/research/test_public_evidence_probe.py` | Original fictional audit fixtures | Public-evidence calculation tests. No patient data. |
+| `tools/research/test_rna_expression_probe.py` | Original fictional RNA fixtures | Expression-parser unit tests. Expectations independent of real-case values. |
+| `tools/research/test_semantic_evidence.py` | Original fictional fixtures (`FICTIONAL-TRACE-A`) | Source-meaning and evidence-attachment checks. |
+| `tools/research/test_single_cell_probe.py` | Original fictional aggregate fixtures | Single-cell summary tests. No patient cell records embedded. |
+| `tools/research/test_trial_screening_probe.py` | Original fictional registry fixtures (`FICTIONAL-A`) | Trial-screening unit tests. No true patient or trial records. |
+
+### Docs and plans (authored for this repository; complementary, not shipped, no code)
+
+| Asset | Origin | Purpose / note |
+|---|---|---|
+| `docs/INDEPENDENT_EVALUATION_COLLABORATION.md` | Authored for this repository | Proposed complementary evaluation/collaboration protocol for the existing architecture. Not a new architecture, validation claim, partnership, or data authorization. |
+| `docs/evaluation/PACKET_TEMPLATE.md` | Authored for this repository | Blank unexecuted evaluation-packet template. No data, no identifiers. |
+| `docs/evaluation/RESULTS_REGISTER_TEMPLATE.csv` | Authored for this repository | Blank results-register header row. No rows, no outcomes. |
+| `docs/research/EXPERIMENTAL_LOOP_EXTENSION_2026-10-31.md` | Authored for this repository | Experimental-loop extension proposal, explicitly not adopted. No new platform, dependency, or clinical function. |
+| `docs/research/HL7_NANO_MODEL_FABRIC_ADDENDUM.md` | Authored for this repository | Additive HL7/Nano/specialist-model evaluation, explicitly research/evaluate. Not an architecture decision, implementation, validation, or vendor approval. |
+| `docs/superpowers/plans/2026-10-31-iv01-packet.md` | Authored for this repository | IV-01 packet implementation plan and constraint record. |
+
+### IV-01 practice packet (independently authored fictional fixtures; coordinator material)
+
+| Asset | Origin | Purpose / note |
+|---|---|---|
+| `validation/iv01/README.md` | Independently authored fictional-engineering notes | Packet readme. Original AI-assisted fictional fixtures; explicitly not independently adjudicated clinical cases. Coordinator/development material, not for participants. |
+| `validation/iv01/SCORING.md` | Authored for this repository | Reviewer rubric and preregistration contract. Supporting methodology, not a validated clinical instrument. |
+| `validation/iv01/cases.json` | Independently authored fictional fixtures, cases `CASE-EVAL-A`/`CASE-EVAL-B` | Practice packet: 2 fictional cases, 10 `OI-SYNTHETIC-REPORT/1` / `OI-SYNTHETIC-EVIDENCE/1` sources with SHA-256, 11 receipts, 3 cutoffs. `synthetic: true`, `status: engineering-practice-only`. Coordinator material. |
+| `validation/iv01/coordinator_key.json` | Designer reference authored with the fixtures | Twelve designer-expected checks with source anchors. `status: designer-reference-not-independent-ground-truth`, `participant_distribution: DO NOT INCLUDE`. Never a participant asset. |
+| `validation/iv01/protocol.json` | Authored for this repository | Protocol record: `status: not_activated`, null evaluation id/commits/thresholds, no reviewers. Nothing activated or approved. |
+| `validation/iv01/results_template.csv` | Authored for this repository | Blank results header row. No rows, no outcomes. |
+
+### IV-04 preparation templates (authored for this repository; blank, no data, no authorization)
+
+| Asset | Origin | Purpose / note |
+|---|---|---|
+| `validation/iv04/ACTIVATION_CHECKLIST.md` | Authored for this repository | Activity/disclosure checklist. Preparation only; all decisions unmade. Not law, permission, approval, or authorization to send anything. |
+| `validation/iv04/INDEPENDENCE_AND_ROLES.md` | Authored for this repository | Blank role/conflict/independence assessment instructions. Not a completed assessment. |
+| `validation/iv04/INVITATION_BRIEF.md` | Authored for this repository | Draft one-page review invitation. DRAFT — NOT SENT; recipient, approval, scope, and participation unestablished. |
+| `validation/iv04/README.md` | Authored for this repository | Handoff readme. Draft preparation material; no outreach, study activation, or partnership. No application, schema, provider, priority, or license change. |
+| `validation/iv04/decision_template.json` | Authored for this repository | Blank activity/authorization record: `status: template_not_an_authorization`, `disposition: not_reviewed`, all decision fields null. An agent cannot supply the approval. |
+
 ## Explicitly absent
 
 - No real patient records, clinical images, pathology slides, or genomic

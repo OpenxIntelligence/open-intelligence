@@ -107,6 +107,90 @@ merged in; refreshed 2026-11-02).
   human-entered fictional engineering data or a pending hypothesis for
   review.
 
+## IV-01 practice fixtures (fictional, coordinator material)
+
+- `validation/iv01/cases.json` holds two fictional cases
+  (`CASE-EVAL-A`, `CASE-EVAL-B`), ten sources in the same
+  `OI-SYNTHETIC-REPORT/1` / `OI-SYNTHETIC-EVIDENCE/1` formats with
+  `Rights: original-synthetic` on the evidence items, eleven receipt
+  events, and three cutoffs. It declares `synthetic: true` and
+  `status: engineering-practice-only`. Coordinator/development
+  material only: participants receive a single cutoff-specific
+  `inputs.json`, never the manifest, tests, or key.
+- `validation/iv01/coordinator_key.json` is a same-author designer
+  reference (`status:
+  designer-reference-not-independent-ground-truth`,
+  `participant_distribution: DO NOT INCLUDE`), not independent
+  ground truth and not a held-out set. A result on this public
+  practice set is not blinded or independent clinical validation.
+- `validation/iv01/protocol.json` (`status: not_activated`, all
+  thresholds null) and `validation/iv01/results_template.csv`
+  (header only) record no study, no reviewers, and no outcomes.
+- The `tools/research/` unit-test fixtures (`FICTIONAL-*`,
+  `SYN-*`) and the `CASE-JSON` parser fixtures in
+  `tests/test_evaluation_packet_json_boundary.py` are hand-derived
+  fictional cases asserting parser/calculation behavior only. No
+  patient records, clinical reference answers, or real-case values
+  are embedded or asserted.
+
+## Research probes: read-only live public endpoints (CI-only, not the demo)
+
+- The `tools/research/` probes run in CI only. They hit live public
+  endpoints read-only; raw rows stay in memory and only aggregate
+  counts, schema, hashes, and receipts leave the probe. No subject
+  identifiers, rows, controlled files, reidentification, linkage,
+  model training, clinical inference, eligibility advice, referral,
+  or enrollment action is published or performed. Probe outputs are
+  engineering observations, not clinical findings.
+- Per-source basis, exactly as asserted in the probe headers (terms
+  themselves UNVERIFIED in this packet — see below):
+  - TCIA attachments (fixed CSV/ZIP URLs): Bakr et al.,
+    doi:10.7937/K9/TCIA.2017.7hs46erv (CC BY 3.0),
+    doi:10.1038/sdata.2018.202; Clark et al.
+    doi:10.1007/s10278-013-9622-7.
+  - GDC open/public TCGA case metadata (LUAD, BRCA, LAML): NCI GDC
+    data analysis policies
+    (`https://gdc.cancer.gov/analyze-data/data-analysis-policies`).
+  - Pinned NCI-GDC dictionary terms file (commit `88d66b0`) and
+    FHIR R4 MedicationStatement/Administration as a meaning
+    reference for the semantic audit.
+  - Fixed public osteosarc catalog
+    (`osteosarc.com/data/catalog/datasets.json`) and S3 bucket
+    listing/processed assets; the in-repo test fixture asserts a
+    `CC0-1.0` catalog license.
+  - ClinicalTrials.gov/NLM registry records: NLM
+    (`https://www.nlm.nih.gov/databases/download.html`) and
+    ClinicalTrials.gov
+    (`https://clinicaltrials.gov/about-site/terms-conditions`)
+    terms; no endorsement implied.
+  - One hash-verified pure `parse_criteria` function characterized
+    from ncbi-nlp/TrialGPT (commit
+    `1b3242cd50c153a9c324661d4a0bd94fc68a4226`, US Government Work
+    notice; credit Jin et al., Nature Communications 2024,
+    doi:10.1038/s41467-024-53081-z). Only that function is
+    executed; no upstream module is imported.
+- `tools/research/runtime_probe.py` uses no network and no model
+  API: it is a process-boundary experiment on original fictional
+  state, with negative controls.
+- `tools/evaluation_packet.py` and `tools/evaluation_preflight.py`
+  perform no network I/O at all.
+
+## Research-only dependencies (not application dependencies)
+
+- `tools/research/requirements.lock` records exact third-party pins
+  observed in research run 41294219202 (langchain/langgraph stack
+  and others). It is installed into an isolated `/tmp/oi-research-env`
+  venv in the `public-research` CI job only. The file itself states
+  it is research only: not an application dependency decision or
+  security clearance. No package license in that lock has been
+  reviewed in this packet.
+- The `single-cell-analysis` CI job installs `numpy==2.3.5` and
+  `h5py==3.15.1` into the CI environment only, likewise research
+  only and not application dependencies. Their licenses are
+  UNVERIFIED in this packet.
+- The demo itself remains Python standard library only, as recorded
+  in `SBOM.md`; no new dependency is shipped with the demo.
+
 ## UNVERIFIED / open items
 
 - The project distribution license is undecided (see `NOTICE.md`). Until
@@ -118,5 +202,12 @@ merged in; refreshed 2026-11-02).
   itself.
 - The terms of the operator-invoked Meta Model API service (live
   investigation mode only) are UNVERIFIED in this packet.
+- The public-source terms asserted in the research-probe headers
+  (TCIA, GDC, osteosarc catalog/S3 assets, NLM/ClinicalTrials.gov,
+  TrialGPT characterization) are recorded as in-repo assertions
+  only and are UNVERIFIED in this packet, as are the licenses of
+  every package in `tools/research/requirements.lock` and of the
+  research-only `numpy`/`h5py` CI install. None of these is shipped
+  with the demo.
 - No independent legal review of this note has been performed. It is an
   engineering inventory, not legal clearance.

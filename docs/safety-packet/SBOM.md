@@ -11,6 +11,17 @@ and the reviewed option/dependency view (routes, store tables, and
 UI). If the tree changes again, this packet must be updated before it
 is used for a submission.
 
+Top-up (2026-11-02): six merged pull requests added 44 files — three
+CI workflows, eight research probes plus a research-only requirements
+lock and eight research unit tests, two offline evaluation tools, five
+`tests/`, six docs/plan files, six `validation/iv01/` practice-packet
+files, and five `validation/iv04/` preparation templates. Each is
+covered by a row in the surfaces table below and an entry in
+`ASSET_CATALOG.md`. All 44 are CI-only, test-only, research-only,
+docs-only, or coordinator/blank-template material: none adds a demo
+route, store table, UI panel, shipped dependency, model path, or
+license decision. Existing entries are unchanged.
+
 How this was produced: by reading the repository — workflow files,
 import statements, `src/`, `tools/`, the `web/` directory, and
 `examples/synthetic/` plus `examples/patient-access/`. Every entry
@@ -61,6 +72,50 @@ Each row names the module, the HTTP routes served by
 | Reviewed option/dependency view | `store.py` option methods | `GET /api/cases/{id}/options[?snapshot_id=N]`, `POST /api/cases/{id}/options`, `POST /api/cases/{id}/options/{n}/dependencies`, `POST /api/cases/{id}/options/{n}/tasks`, `POST /api/cases/{id}/tasks/{n}/status`, `POST /api/cases/{id}/options/{n}/threats`, `POST /api/cases/{id}/options/{n}/review` | `options`, `preparation_tasks`, `optionality_threats`, `option_dependencies`, `option_review_events` | `#options` panel (discussion only; epistemic status kept separate from review status) |
 | Biological-asset provenance | `store.py` asset methods | `POST /api/cases/{id}/biological-assets`, `POST /api/cases/{id}/biological-assets/{n}/inventory-assertions` | `biological_assets`, `biological_inventory_assertions` | `#biological-assets` panel (provenance only; no files stored) |
 | Patient-access adapter | `patient_access.py` (no HTTP routes; exercised by tests) | None | Uses existing `source_versions`, `quarantine`, `events` tables only | None |
+| CI-only research workflow (not shipped; runs probes that hit live public endpoints read-only) | `.github/workflows/public-research.yml` | None — CI job only | None | None |
+| CI-only RNA workflow (not shipped; fixed-scope processed-RNA probe, aggregates only) | `.github/workflows/rna-analysis.yml` | None — CI job only | None | None |
+| CI-only single-cell workflow (not shipped; research-only numpy/h5py install, aggregates only) | `.github/workflows/single-cell-analysis.yml` | None — CI job only | None | None |
+| Complementary docs only (not shipped, no code): independent-evaluation playbook, a proposed protocol, not an authorization | `docs/INDEPENDENT_EVALUATION_COLLABORATION.md` | None | None | None |
+| Complementary docs only (not shipped, no code): blank evaluation packet template, unexecuted, no data | `docs/evaluation/PACKET_TEMPLATE.md` | None | None | None |
+| Complementary docs only (not shipped, no code): blank results-register header, no rows | `docs/evaluation/RESULTS_REGISTER_TEMPLATE.csv` | None | None | None |
+| Complementary docs only (not shipped, no code): experimental-loop extension proposal, not adopted | `docs/research/EXPERIMENTAL_LOOP_EXTENSION_2026-10-31.md` | None | None | None |
+| Complementary docs only (not shipped, no code): HL7/Nano/model-fabric evaluation addendum, research, not a decision | `docs/research/HL7_NANO_MODEL_FABRIC_ADDENDUM.md` | None | None | None |
+| Complementary docs only (not shipped, no code): IV-01 packet implementation plan | `docs/superpowers/plans/2026-10-31-iv01-packet.md` | None | None | None |
+| Offline evaluation packager (not served): stdlib-only, no network; validates/packages fictional IV-01 inputs; never opens the coordinator key | `tools/evaluation_packet.py` | None — CLI tool | None | None |
+| Offline evaluation preflight (not served): stdlib-only, no network; checks recorded fields/fingerprints; writes, activates, contacts, and scores nothing | `tools/evaluation_preflight.py` | None — CLI tool | None | None |
+| Test-only (not shipped): packaging mechanics for the fictional IV-01 packet, not clinical performance | `tests/test_evaluation_packet.py` | None | None | None |
+| Test-only (not shipped): JSON-boundary CLI regressions with fictional parser fixtures | `tests/test_evaluation_packet_json_boundary.py` | None | None | None |
+| Test-only (not shipped): fail-closed preflight readiness checks, not clinical assessment | `tests/test_evaluation_preflight.py` | None | None | None |
+| Test-only (not shipped): IV-01 evidence replay through the existing CaseStore; labels are not clinical truth | `tests/test_iv01_evidence_replay.py` | None | None | None |
+| Test-only (not shipped): IV-01 store replay of practice fixtures without changing the app | `tests/test_iv01_store.py` | None | None | None |
+| Research-only probe (not shipped): hits live public endpoints read-only (GDC open case metadata, pinned NCI-GDC dictionary); metadata in memory, receipts only | `tools/research/clinical_semantics_probe.py` | None — CLI in CI | None | None |
+| Research-only probe (not shipped): hits live public endpoints read-only (GDC public TCGA-LUAD/BRCA/LAML metadata); in-memory only, aggregate receipts | `tools/research/gdc_projection_probe.py` | None — CLI in CI | None | None |
+| Research-only probe (not shipped): hits live public endpoints read-only (fixed osteosarc.com catalog, S3 listing); raw rows stay in memory, aggregate receipts | `tools/research/public_case_intake.py` | None — CLI in CI | None | None |
+| Research-only probe (not shipped): hits live public endpoints read-only (fixed TCIA CSV/ZIP, GDC public TCGA-LUAD); raw data in memory, counts/schema/hashes only | `tools/research/public_evidence_probe.py` | None — CLI in CI | None | None |
+| Research-only environment record (not application dependencies): exact pins from research run 41294219202, installed into /tmp/oi-research-env in CI only | `tools/research/requirements.lock` | None | None | None |
+| Research-only probe (not shipped): hits live public endpoints read-only (five fixed S3 processed-RNA assets); no raw reads, matrices, or recommendations | `tools/research/rna_expression_probe.py` | None — CLI in CI | None | None |
+| Research-only experiment (not shipped, no network, no model API): LangGraph/SQLite process-boundary checks on original fictional state; needs the research env | `tools/research/runtime_probe.py` | None — CLI in CI | None | None |
+| Research-only probe (not shipped): hits live public endpoints read-only (one fixed public processed h5ad object); only aggregates leave RAM | `tools/research/single_cell_probe.py` | None — CLI in CI | None | None |
+| Research-only probe (not shipped): hits live public endpoints read-only (ClinicalTrials.gov/NLM registry records); aggregate observations, no eligibility advice | `tools/research/trial_screening_probe.py` | None — CLI in CI | None | None |
+| Test-only (not shipped): hand-derived fictional cases for the semantics probe; no patient records or model calls | `tools/research/test_clinical_semantics_probe.py` | None | None | None |
+| Test-only (not shipped): original fictional fixtures for the projection probe; no patient records | `tools/research/test_gdc_projection_probe.py` | None | None | None |
+| Test-only (not shipped): original fictional catalog fixtures; no copied clinical/genomic records | `tools/research/test_public_case_intake.py` | None | None | None |
+| Test-only (not shipped): original fictional audit-calculation tests; no patient data | `tools/research/test_public_evidence_probe.py` | None | None | None |
+| Test-only (not shipped): original fictional RNA fixtures; expectations independent of real-case values | `tools/research/test_rna_expression_probe.py` | None | None | None |
+| Test-only (not shipped): original fictional meaning/attachment fixtures | `tools/research/test_semantic_evidence.py` | None | None | None |
+| Test-only (not shipped): original fictional aggregate fixtures; no patient cell records embedded | `tools/research/test_single_cell_probe.py` | None | None | None |
+| Test-only (not shipped): original fictional trial-registry tests; no true patient or trial records | `tools/research/test_trial_screening_probe.py` | None | None | None |
+| Coordinator material (not shipped, not for participants): IV-01 practice-packet readme; original AI-assisted fictional fixtures, not adjudicated cases | `validation/iv01/README.md` | None | None | None |
+| Coordinator material (not shipped, not for participants): reviewer rubric/preregistration contract; methodology, not a validated instrument | `validation/iv01/SCORING.md` | None | None | None |
+| Coordinator material (not shipped, not for participants): two fictional cases (CASE-EVAL-A/B), ten OI-SYNTHETIC sources, eleven receipts, three cutoffs | `validation/iv01/cases.json` | None | None | None |
+| Coordinator-only key (not shipped, DO NOT INCLUDE in participant packets): designer reference, not independent ground truth | `validation/iv01/coordinator_key.json` | None | None | None |
+| Coordinator material (not shipped): IV-01 protocol record, status not_activated, all thresholds null | `validation/iv01/protocol.json` | None | None | None |
+| Coordinator material (not shipped): blank results header, no rows or outcomes | `validation/iv01/results_template.csv` | None | None | None |
+| Blank preparation template (not shipped, no data, no authorization): IV-04 activation checklist, all decisions unmade | `validation/iv04/ACTIVATION_CHECKLIST.md` | None | None | None |
+| Blank preparation template (not shipped, no data, no authorization): IV-04 roles/independence instructions, not an assessment | `validation/iv04/INDEPENDENCE_AND_ROLES.md` | None | None | None |
+| Blank preparation template (not shipped, no data, no authorization): draft invitation, NOT SENT, recipient/scope unestablished | `validation/iv04/INVITATION_BRIEF.md` | None | None | None |
+| Blank preparation template (not shipped, no data, no authorization): IV-04 handoff readme; drafting assets, no outreach or study | `validation/iv04/README.md` | None | None | None |
+| Blank preparation template (not shipped, no data, no authorization): unapproved activity/authorization record, disposition not_reviewed | `validation/iv04/decision_template.json` | None | None | None |
 
 ## CI-only components (not shipped in the demo)
 
@@ -145,3 +200,17 @@ Each row names the module, the HTTP routes served by
    browser journey, or `git` command was run to verify it (the
    sandboxed shell cannot mount proc). Re-run the suite — including
    `tests/test_safety_packet.py` — before submission.
+5. Top-up note (2026-11-02, read from the workflow files): the three
+   new workflows pin
+   `actions/checkout@11d5960a326750d5838078e36cf38b85af677262` and
+   `actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065`
+   by SHA rather than the `@v4`/`@v5` tags asserted in
+   `tests/test_safety_packet.py` (`KNOWN_ACTIONS`), so that guard's
+   workflow-pins invariant no longer matches the tree. This is
+   reported here explicitly; the workflows and the guard are left
+   untouched. The research-only `tools/research/requirements.lock`
+   is not one of the root package-manager filenames the guard
+   checks, and no new files were added under `examples/` or `web/`,
+   so those invariants are unaffected. Like the refresh above, this
+   top-up was produced by reading files only — no test suite or
+   `git` command was run. Re-run the suite before submission.

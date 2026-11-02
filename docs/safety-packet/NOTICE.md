@@ -20,6 +20,17 @@ fixtures, the discovery literature/trial records, and the recorded
 model-investigation replay fixture (see `ASSET_CATALOG.md`). All carry
 their fictional markers and are listed there file by file.
 
+The merged-main top-up (2026-11-02) adds two further fictional-only
+families, likewise listed file by file in `ASSET_CATALOG.md`: the
+IV-01 practice-packet fixtures (`CASE-EVAL-A`/`CASE-EVAL-B` in
+`validation/iv01/cases.json`, in the same `OI-SYNTHETIC-REPORT/1` and
+`OI-SYNTHETIC-EVIDENCE/1` formats) and the hand-derived `FICTIONAL-*`
+/ `SYN-*` fixtures inside the `tools/research/` unit tests and the
+`CASE-JSON` parser fixtures. The IV-01 coordinator key
+(`validation/iv01/coordinator_key.json`) is a same-author designer
+reference, not independent ground truth, and must never be
+distributed to participants.
+
 ## What is not shipped, and what is not claimed
 
 - No third-party clinical content: no article body, guideline text, trial
@@ -50,6 +61,16 @@ their fictional markers and are listed there file by file.
   deadlines and threats accept a date only with a `sourced` basis and
   anchor, and `unknown` otherwise. None of these guards is a clinical
   determination.
+- No research-probe or evaluation-tooling function is shipped in the
+  demo. The `tools/research/` probes run in CI only and hit live
+  public endpoints read-only; raw rows stay in memory and only
+  aggregate counts, schema, hashes, and receipts leave the probe
+  (see `DATA_RIGHTS.md`). They perform no staging, grading, variant
+  interpretation, response/progression inference, eligibility or
+  efficacy determination, or treatment recommendation, and their
+  aggregate outputs are engineering observations, not clinical
+  findings. The IV-01/IV-04 validation files are coordinator
+  material and blank templates, not an executed evaluation.
 
 ## License status — undecided, explicitly
 
