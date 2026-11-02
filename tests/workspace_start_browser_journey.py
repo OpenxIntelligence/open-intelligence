@@ -41,6 +41,12 @@ def main():
    assert json.load(urlopen(url+'api/cases'))==[]
    cd.evaluate("document.querySelector('#case-create-code').value='CASE-START';document.querySelector('#case-create-alias').value='Start';document.querySelector('#case-create-confirm').click();document.querySelector('#case-create-form').requestSubmit()")
    cd.wait("document.querySelector('#case-heading').textContent==='Fictional case Start' && document.body.dataset.workspaceState==='ready'",'new persistent case')
+   cd.evaluate("document.querySelector('#record-acquisition').open=true;document.querySelector('#record-request-label').value='Fictional pathology report';document.querySelector('#record-request-from').value='Fictional pathology center';document.querySelector('#record-request-kind').value='pathology';document.querySelector('#record-request-form').requestSubmit()")
+   cd.wait("document.querySelector('#record-request-list').textContent.includes('awaiting record')",'persistent record acquisition request')
+   acquisitions=json.load(urlopen(url+'api/cases/'+CASE+'/record-requests'))
+   assert len(acquisitions['requests'])==1
+   request_id=acquisitions['requests'][0]['id']
+   assert acquisitions['requests'][0]['status']=='requested'
    def upload(raw,name):
     cd.evaluate("if(!document.querySelector('#source-intake').open) document.querySelector('#source-intake > summary').click()")
     file=Path(tmp)/name;file.write_bytes(raw)
@@ -57,6 +63,12 @@ def main():
    assert state['sources'][0]['sha256']==hashlib.sha256(ORIGINAL).hexdigest()
    assert state['assertions'][0]['certainty']=='not-reported'
    assert cd.evaluate("document.querySelector('#timeline-events').textContent.includes('START-PATH')")
+   cd.wait("!![...document.querySelectorAll('#record-request-list button')].find(b=>b.textContent.includes('Mark received'))",'current original can be linked')
+   cd.evaluate("[...document.querySelectorAll('#record-request-list button')].find(b=>b.textContent.includes('Mark received')).click()")
+   cd.wait("document.querySelector('#record-request-list').textContent.includes('source current')",'original source explicitly reconciled to request')
+   linked=json.load(urlopen(url+'api/cases/'+CASE+'/record-requests'))['requests'][0]
+   assert linked['received_source_id']==state['sources'][0]['id']
+   assert linked['source_sha256']==hashlib.sha256(ORIGINAL).hexdigest()
    cd.evaluate("document.querySelector('#question-text').value='Which original finding requires clarification?';document.querySelector('#question-form').requestSubmit()")
    cd.wait("document.querySelector('#composer-context-fingerprint').value.length===64 && !document.querySelector('#model-investigation-run').disabled",'canonical source preview')
    cd.evaluate("document.querySelector('#model-investigation-form').requestSubmit()")
@@ -69,6 +81,14 @@ def main():
    cd.wait("document.querySelector('#journey-steps').textContent.includes('Demo review recorded')",'explicit review acknowledged')
    upload(AMENDED,'amended.txt')
    cd.wait("document.querySelector('#journey-steps').textContent.includes('Update needs review')",'amendment reopens review')
+   cd.wait("document.querySelector('#record-request-list').textContent.includes('source superseded reconciliation needed')",'acquisition receipt detects corrected source')
+   historical=json.load(urlopen(url+'api/cases/'+CASE+'/record-requests'))['requests'][0]
+   assert historical['receipt_state']=='source_superseded_reconciliation_needed'
+   cd.evaluate("[...document.querySelectorAll('#record-request-list button')].find(b=>b.textContent.includes('Reconcile amended original')).click()")
+   cd.wait("document.querySelector('#record-request-list').textContent.includes('source current')",'amended original explicitly reconciled')
+   revised=json.load(urlopen(url+'api/cases/'+CASE+'/record-requests'))['requests'][0]
+   assert revised['received_source_id']!=historical['received_source_id']
+   assert revised['document_version']==2
    cd.wait("document.querySelectorAll('#source-list .source-card').length===2",'historical originals retained')
    state=json.load(urlopen(url+'api/cases/'+CASE+'/state'))
    assert state['snapshots'][0]['state']=='stale';assert state['questions'][0]['state']=='open'
@@ -82,6 +102,9 @@ def main():
    cd.command('Page.reload')
    cd.wait("document.querySelectorAll('#snapshot-list .snapshot').length===2",'persistent case and reports after browser reload')
    assert len(json.load(urlopen(url+'api/cases')))==1
+   assert json.load(urlopen(url+'api/cases/'+CASE+'/record-requests'))['requests'][0]['receipt_state']=='source_current'
+   cd.evaluate("document.querySelector('#record-acquisition').open=true")
+   cd.wait("document.querySelector('#record-request-list').textContent.includes('source current')",'durable request receipt after browser reload')
    state=json.load(urlopen(url+'api/cases/'+CASE+'/state'))
    assert next(s for s in state['snapshots'] if s['id']==old['id'])['summary']==old['summary']
    assert next(s for s in state['snapshots'] if s['id']!=old['id'])['state']=='draft'
