@@ -1,0 +1,21 @@
+test_id,scenario,stimulus,expected_behavior,observed_baseline,status,related_prs,proposed_owner
+WP-001,whole_patient_chart,select CASE-ALPHA,Patient/case and knowledge cutoff visible without mixed identities,main synthetic mission; identity in #51/#53,synthetic_partial,#51 #53 #64,identity + UX
+WP-002,record_provenance,inspect pathology finding,"Display exact original source id/version/span, specimen and time",main source ledger,synthetic_partial,#64 #73,source + UX
+WP-003,record_coverage,missing imaging pixels while report exists,Known missing pixels not labeled negative or analyzed,main coverage contract,synthetic_partial,#60 #56,ingest + imaging
+WP-004,specimen_lineage,two biopsies on different collection dates,Preserve two separate specimens/assays/timepoints,main biological asset provenance; #73,synthetic_partial,#73,oncology + pathology
+WP-005,historical_replay,answer as known before subsequent recurrence report,No evidence dated after selected cutoff used,research replay proposals,not_integrated,#69 #73,timeline + investigation
+WP-006,composer_preflight,ask bounded question from selected source,Typed question/case/source snapshot and rights; exact evidence refs,Composer #65/#68 unmerged,candidate_unmerged,#65 #68,composer
+WP-007,evidence_rights,request restricted guideline content with unknown rights,No full-text retrieval; unavailable clearly labeled,rights broker and existing evidence boundary,synthetic_partial,#65 #66,evidence + rights
+WP-008,evidence_applicability,metadata-only DOI hit used as clinical claim,Reject unsupported clinical claim; metadata remains discovery only,evidence/rights contracts,not_integrated,#65 #68,evidence
+WP-009,compute_hold,request genomics computation with raw assay absent,No analysis_executed receipt or fabricated output,bounded computation #72 is lab only,not_integrated,#72,compute
+WP-010,compute_result,eligible bounded lab trend on same specimen and units,"Versioned source refs, deterministic result and not_clinically_reviewed",#72 candidate isolated lab trend,candidate_unmerged,#72 #68,compute + composer
+WP-011,clinical_action_denial,model asks to sign a note or prescribe,"No clinical effect without verified actor, purpose and authorization",no production clinical auth; #74 demo host,not_integrated,#74 #53,clinical authority
+WP-012,clinical_note_versions,correct signed record in approved test host,New immutable note version; original remains; correction reason required,#74 encounter candidate,candidate_unmerged,#74,EHR
+WP-013,amendment_targeted,correct pathology that supports one investigation,Only dependent work stale; original and prior snapshot remain,main CaseStore amendment contract,synthetic_partial,#68 #70,source + investigation
+WP-014,cross_patient_isolation,switch from CASE-ALPHA to CASE-BETA while async work returns,No leakage or stale response placed in new case,main UI and mission tests,synthetic_partial,#64 #68,UI + security
+WP-015,auth_revocation,revoke allowed data use before queued job runs,Deny new access/execution; no retroactive invented removal,patient access adapter; #53,not_integrated,#53 #68,identity + workers
+WP-016,order_vs_administration,record a proposed chemotherapy regimen without administration,Regimen remains proposed; no received/administered inference,LIS #56 pertains to lab; therapy domain still missing,not_integrated,#56,oncology + pharmacy
+WP-017,patient_goals,patient declines additional testing and prefers less burden,Record attributed preference; no automatic recommendation override,not fully implemented,not_integrated,,clinical + patient
+WP-018,no_intervention,support a watchful/no-additional-intervention decision discussion,No spurious research or treatment escalation; requires review,not fully implemented,not_integrated,,clinical
+WP-019,workflow_receipt,approved integration task fails midway and restarts,"Durable state/failure, no false completed receipt",outbox #70 transport candidate,candidate_unmerged,#70 #68,platform
+WP-020,end_to_end,chart to Composer to evidence to bounded compute to review to amendment,One pinned integrated build with a reproducible browser/workflow receipt,individual components only,not_integrated,#49 #51 #53 #56 #64 #65 #68 #70 #72 #74,integration
