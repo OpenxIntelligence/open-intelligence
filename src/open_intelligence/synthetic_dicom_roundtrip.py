@@ -15,6 +15,7 @@ from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 from .imaging_backend_contract import check_dicomweb_metadata
+from .synthetic_dicom_multipart import decode_dicom_part, encode_dicom_part
 from .store import CaseStore, InvalidInput
 
 BOUNDARY = "oi-synthetic-dicom"
@@ -168,13 +169,17 @@ class SyntheticObjectServer:
                 self.end_headers()
                 self.wfile.write(data)
             def do_POST(self):
-                if urlsplit(self.path).path != "/studies" or self.headers.get("Content-Type") != "application/dicom":
+                if urlsplit(self.path).path != "/studies":
                     return self.reply(415,b"unsupported content","text/plain")
                 try:
                     count = int(self.headers.get("Content-Length", "0"))
-                    if count < 132 or count > INSTANCE_LIMIT:
+                    if count < 132 or count > 300_000:
                         raise InvalidInput("Invalid bounded byte count")
-                    data = self.rfile.read(count)
+                    body = self.rfile.read(count)
+                    content_type = self.headers.get("Content-Type", "")
+                    data = (decode_dicom_part(content_type, body)
+                            if content_type.lower().startswith("multipart/related;")
+                            else body if content_type == "application/dicom" else b"")
                     parsed = _unpack(data)
                     parent.validate(parsed)
                     parent.object, parent.parsed = data,parsed
@@ -196,6 +201,9 @@ class SyntheticObjectServer:
                     return self.reply(200,json.dumps([_qido(parent.ref,parent.parsed)]).encode(),
                                       "application/dicom+json")
                 if path == "/studies/"+parent.parsed["study"]+"/series/"+parent.parsed["series"]+"/instances/"+parent.parsed["sop"]:
+                    if self.headers.get("Accept") == "multipart/related; type=\"application/dicom\"":
+                        mime,body = encode_dicom_part(parent.object)
+                        return self.reply(200,body,mime)
                     return self.reply(200,parent.object,"application/dicom")
                 return self.reply(404,b"unknown study","text/plain")
         # Server is bound to loopback; still not an authentication boundary.
