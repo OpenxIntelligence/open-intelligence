@@ -79,7 +79,7 @@ Title: Original fictional care-coordination listing, not an actual publication
 DOI: 10.5555/oi-whole-person-fiction
 Issued-At: 2026-02-03
 Rights: original-synthetic
-Summary: A fictional metadata-only listing. It establishes no efficacy, eligibility or clinical recommendation.
+Summary: A fictional metadata-only listing containing bibliographic labels, not a clinical assessment.
 '''
 
 
@@ -97,8 +97,10 @@ def envelope(auth=None):
 class WholePatientContinuityTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
         self.db_path = Path(self.tmp.name) / 'whole-person.sqlite'
         self.store = CaseStore(self.db_path)
+        self.addCleanup(lambda: self.store.close())
         self.store.add_case(A, 'Original fictional whole-person case A')
         self.store.add_case(B, 'Original fictional unrelated control B')
         self.adapter = PatientAccessAdapter(self.store)
@@ -131,10 +133,6 @@ class WholePatientContinuityTests(unittest.TestCase):
             B, self.other_question, 'Separate fictional-person review draft.', [self.other_id])
         self.store.acknowledge_demo_review(A, self.snapshot, 'Unverified demonstration reviewer')
         self.store.acknowledge_demo_review(B, self.control, 'Unverified demonstration reviewer')
-
-    def tearDown(self):
-        self.store.close()
-        self.tmp.cleanup()
 
     def restart(self):
         self.store.close()
