@@ -184,10 +184,12 @@ class PatientAccessAdapter:
 
     def __init__(self, store: CaseStore):
         self.store = store
-        # (source_organization) -> source_subject_ref, first binding wins.
-        self._org_bindings: dict[str, str] = {}
-        # source_subject_ref -> case_id, first binding wins.
-        self._subject_cases: dict[str, str] = {}
+        # Bind within an issuing namespace, never a whole organization.
+        # One case cannot silently change its subject within the same namespace.
+        self._org_bindings: dict[tuple[str, str, str], str] = {}
+        # (organization, source system, subject reference) -> case_id.
+        # Equal local identifiers from different issuers are not equal people.
+        self._subject_cases: dict[tuple[str, str, str], str] = {}
         self._revoked_receipts: set[str] = set()
 
     def revoke(self, case_id: str, receipt_id: str, reason: str) -> dict:
@@ -215,10 +217,10 @@ class PatientAccessAdapter:
         """
         auth = envelope.authorization
         auth.validate()
-        if envelope.adapter_id.strip() == "" or envelope.source_organization.strip() == "":
-            raise InvalidInput("Adapter id and source organization are required")
-        if not envelope.source_subject_ref.strip():
-            raise InvalidInput("Source subject reference is required")
+        for value in (envelope.adapter_id, envelope.source_organization,
+                      envelope.source_system, envelope.source_subject_ref):
+            if not isinstance(value, str) or not value.strip():
+                raise InvalidInput("Adapter, organization, source system and subject identifiers are required")
         if auth.receipt_id in self._revoked_receipts:
             self.store.record_adapter_event(
                 envelope.case_id, "adapter_delivery_rejected",
@@ -242,10 +244,15 @@ class PatientAccessAdapter:
                 return {"result": "rejected", "reason": "transformation_loss_undocumented"}
             if declared is not None and set(declared.dropped_fields) != set(computed.dropped_fields):
                 raise InvalidInput("Declared loss receipt does not match computed dropped fields")
-        # Identity binding: first binding wins per organization and per
-        # subject reference. A conflict is quarantined/rejected, never merged.
-        org_bound = self._org_bindings.get(envelope.source_organization)
-        subject_case = self._subject_cases.get(envelope.source_subject_ref)
+        # Source identity is qualified by the issuing organization AND system.
+        # Keep the case/source binding conservative: aliases need an explicit
+        # reconciliation path rather than being silently merged here.
+        case_namespace = (envelope.case_id, envelope.source_organization,
+                          envelope.source_system)
+        qualified_subject = (envelope.source_organization, envelope.source_system,
+                             envelope.source_subject_ref)
+        org_bound = self._org_bindings.get(case_namespace)
+        subject_case = self._subject_cases.get(qualified_subject)
         if (org_bound is not None and org_bound != envelope.source_subject_ref) or \
                 (subject_case is not None and subject_case != envelope.case_id):
             digest = hashlib.sha256(raw).hexdigest()
@@ -257,17 +264,21 @@ class PatientAccessAdapter:
                 sha256=digest)
             return {"result": "rejected", "reason": "identity_collision",
                     "quarantine_id": outcome["quarantine_id"]}
-        # Bind on first successful contract pass (before import, so a later
-        # duplicate delivery from the same binding is not a collision).
-        self._org_bindings.setdefault(envelope.source_organization, envelope.source_subject_ref)
-        self._subject_cases.setdefault(envelope.source_subject_ref, envelope.case_id)
+        # A rejected/quarantined/failed import must not claim an identity.
+        # A duplicate is accepted canonical content and establishes the same
+        # binding without creating a second source or acceptance receipt.
         outcome = self.store.import_report(envelope.case_id, raw)
+        if outcome["result"] in {"imported", "duplicate"}:
+            self._org_bindings.setdefault(case_namespace, envelope.source_subject_ref)
+            self._subject_cases.setdefault(qualified_subject, envelope.case_id)
         if outcome["result"] == "imported":
             self.store.record_adapter_event(
                 envelope.case_id, "adapter_delivery_accepted",
                 document_id=report.document_id, version=outcome["version"],
                 source_id=outcome["source_id"], adapter_id=envelope.adapter_id,
                 source_organization=envelope.source_organization,
+                source_system=envelope.source_system,
+                source_subject_ref=envelope.source_subject_ref,
                 receipt_id=auth.receipt_id, retrieved_at=envelope.retrieved_at,
                 sha256=hashlib.sha256(raw).hexdigest())
             if envelope.transformation is not None and envelope.transformation.is_lossy:
