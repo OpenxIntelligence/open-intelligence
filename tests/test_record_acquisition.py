@@ -118,7 +118,7 @@ class RecordAcquisitionTest(unittest.TestCase):
         self.assertEqual(self.queue.list("CASE-OTHER")["requests"], [])
 
     def test_invalid_and_cross_case_inputs_do_not_change_case_state(self):
-        for bad in (None, 1, [], {}, "clinical"):
+        for bad in (None, 1, [], {}, "unsupported"):
             with self.subTest(kind=bad):
                 with self.assertRaises(InvalidInput):
                     self.queue.create("CASE-FIRST", "REQUEST-BAD-INPUT", bad, "report", "institution")
