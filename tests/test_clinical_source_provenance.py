@@ -204,5 +204,52 @@ class ClinicalSourceProvenanceTests(unittest.TestCase):
             "SELECT COUNT(*) FROM identity_patients").fetchone()[0], 2)
 
 
+    def test_unified_context_projects_ehr_notes_and_original_source_without_duplication(self):
+        self.attach()
+        context = self.provenance.context_snapshot(
+            self.patient, "CASE-ALPHA", **self.actor)
+        self.assertEqual(context["contract"], "oi.synthetic-clinical-context/1")
+        self.assertEqual(context["patient_id"], self.patient)
+        self.assertEqual(len(context["encounters"]), 1)
+        self.assertEqual(len(context["note_versions"]), 1)
+        self.assertEqual(context["note_versions"][0]["note_version_id"],
+                         self.note_version_id)
+        self.assertNotIn("body", context["note_versions"][0])
+        self.assertEqual(len(context["source_versions"]), 1)
+        self.assertEqual(context["source_versions"][0]["source_version_id"], self.source)
+        self.assertEqual(context["source_reported_assertions"][1]["certainty"],
+                         "not-reported")
+        self.assertEqual(context["note_source_links"][0]["provenance_state"],
+                         "current_source_unreviewed")
+        self.assertEqual(context["note_versions_requiring_source_review"], [])
+        self.assertEqual(context["clinical_interpretation"], "not_generated")
+        self.assertNotIn("Marker A testing was not assessed", repr(context))
+        self.store.import_report(
+            "CASE-ALPHA", (FIXTURES / "alpha-pathology-amended.txt").read_bytes())
+        changed = self.provenance.context_snapshot(
+            self.patient, "CASE-ALPHA", **self.actor)
+        self.assertEqual(len(changed["source_versions"]), 2)
+        self.assertEqual(
+            changed["source_reported_assertions"][1]["certainty"], "negative")
+        self.assertEqual(changed["note_versions_requiring_source_review"],
+                         [self.note_version_id])
+        self.assertEqual(
+            changed["note_source_links"][0]["provenance_state"],
+            "source_superseded_review_required")
+        self.assertEqual(changed["note_versions"][0]["sha256"],
+                         context["note_versions"][0]["sha256"])
+
+    def test_context_read_requires_independent_scope_and_binding(self):
+        with self.assertRaises(ClinicalSourceLinkDenied):
+            self.provenance.context_snapshot(self.patient, "CASE-BETA", **self.actor)
+        with self.assertRaises(ClinicalSourceLinkDenied):
+            self.provenance.context_snapshot(
+                self.patient, "CASE-ALPHA", actor="UNTRUSTED-USER", purpose="care")
+        self.attach()
+        del self.bindings[self.patient]
+        with self.assertRaises(ClinicalSourceLinkDenied):
+            self.provenance.context_snapshot(self.patient, "CASE-ALPHA", **self.actor)
+
+
 if __name__ == "__main__":
     unittest.main()
