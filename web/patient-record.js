@@ -4,6 +4,15 @@
   const labels = Object.freeze({reported: 'Reported', negative: 'Negative', pending: 'Pending',
     indeterminate: 'Indeterminate', 'not-reported': 'Not reported', 'not-assessed': 'Not assessed', conflicting: 'Conflicting'});
   const unresolvedStates = new Set(['pending', 'indeterminate', 'not-reported', 'not-assessed', 'conflicting']);
+  // These are source *format categories*, not required diagnostics or clinical gaps.
+  const recordKinds = Object.freeze([
+    ['clinical', 'Clinical notes'],
+    ['pathology', 'Pathology'],
+    ['laboratory', 'Laboratory'],
+    ['imaging', 'Imaging'],
+    ['molecular', 'Molecular'],
+    ['other', 'Other documents'],
+  ]);
   const positive = value => Number.isSafeInteger(value) && value > 0;
   function requireMatch(condition) { if (!condition) throw Error('Record response does not match the loaded case'); }
   function sameIds(actual, expected) {
@@ -81,7 +90,7 @@
   }
 
   function create({elements, fetchModel, onOpenSource, onOpenQuestion, onRefresh}) {
-    const {root, status, timeline, findings, questions, uncertainty} = elements;
+    const {root, status, timeline, findings, questions, uncertainty, inventory} = elements;
     const document = root.ownerDocument;
     let generation = 0;
     status.setAttribute('role', 'status');
@@ -97,7 +106,7 @@
       root.setAttribute('aria-busy', value === 'loading' ? 'true' : 'false');
     }
     function wipe(message = '') {
-      for (const area of [timeline, findings, questions, uncertainty]) area.replaceChildren();
+      for (const area of [timeline, findings, questions, uncertainty, inventory]) area.replaceChildren();
       status.textContent = message;
     }
     function clear(message = '', loading = false) {
@@ -136,8 +145,34 @@
         sourceButton(source, null, token));
       return row;
     }
+    function renderInventory(model, sources, token) {
+      // Read the same validated source ledger and PWM projection; never infer clinical absence.
+      for (const [kind, label] of recordKinds) {
+        const current = model.current_sources.filter(item => item.kind === kind);
+        const historical = model.history.filter(item => item.kind === kind);
+        const row = node('article', undefined, 'source-card patient-record-item');
+        const head = node('div', undefined, 'finding-head');
+        head.append(node('strong', label));
+        const availability = current.length
+          ? 'Supplied here'
+          : historical.length ? 'Earlier versions only' : 'Not supplied';
+        head.append(node('span', availability, 'pill ' +
+          (current.length ? 'pill-neutral' : 'pill-warn')));
+        row.append(head, node('p',
+          current.length + ' current document(s), ' + historical.length +
+          ' earlier version(s). ' +
+          (current.length ? 'View the original records below.' :
+            'No current ' + label.toLowerCase() + ' document is in this workspace. ' +
+            'This does not establish whether a test or encounter happened elsewhere.'),
+          'source-meta'));
+        // Existing source reader owns exact bytes, version, and review context.
+        for (const item of current) row.append(sourceButton(sources.get(item.source_version_id), null, token));
+        inventory.append(row);
+      }
+    }
     function render(model, state, checked, token) {
       const {sources, observations} = checked;
+      renderInventory(model, sources, token);
       status.textContent = `${model.current_sources.length} current records · ${model.observations.length} source findings. ` +
         'Fictional case for development. These findings have not been clinically reviewed.';
       if (!model.current_sources.length) timeline.append(node('p', 'No current records have been added.', 'empty'));

@@ -71,6 +71,10 @@ def main():
                 (output / name).write_bytes(base64.b64decode(data['data']))
 
             ready()
+            assert cd.evaluate("document.querySelectorAll('#patient-record-inventory article').length") == 6
+            assert cd.evaluate("document.querySelector('#patient-record-inventory').textContent.includes('Not supplied')")
+            assert cd.evaluate("document.querySelector('#patient-record-inventory').textContent.includes('Pathology')")
+            assert cd.evaluate("document.querySelectorAll('#patient-record-inventory button[data-source-id]').length") >= 1
             assert cd.evaluate("document.querySelectorAll('#patient-findings button[data-source-line]').length") == len(state()['assertions'])
             cd.evaluate("document.querySelector('#patient-findings button[data-source-line]').click()")
             cd.wait("document.querySelector('#source-dialog').open", 'exact original source')
