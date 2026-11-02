@@ -61,7 +61,7 @@ function fixture(caseId = 'FICTION-A', marker = 'Authored record') {
 }
 function harness() {
   const document = {createElement: tag => new Element(tag, document)};
-  const elements = Object.fromEntries(['root', 'status', 'timeline', 'findings', 'questions', 'uncertainty'].map(name => [name, document.createElement('div')]));
+  const elements = Object.fromEntries(['root', 'status', 'timeline', 'findings', 'questions', 'uncertainty', 'inventory'].map(name => [name, document.createElement('div')]));
   const requests = [], sourceCalls = [], questionCalls = [], refreshes = [];
   const ctx = vm.createContext({document}); vm.runInContext(code, ctx);
   assert.equal(typeof ctx.OpenIntelligencePatientRecord?.create, 'function', 'patient-record component must expose create');
@@ -201,4 +201,53 @@ test('acknowledged replacement retains stale history without claiming another re
   assert.match(h.elements.questions.textContent, /1 historical stale version/);
   assert.equal(nodes(h.elements.questions, 'button').length, 0);
   assert.equal(nodes(h.elements.questions, 'a')[0].href, '#investigations');
+});
+
+test('record inventory distinguishes supplied from not supplied without inventing medical missingness', async () => {
+  const h = harness(); await render(h);
+  const inventory = h.elements.inventory;
+  const cards = nodes(inventory, 'article');
+  assert.equal(cards.length, 6, 'all source categories must be accounted for');
+  assert.match(inventory.textContent, /Pathology.*2 current document\(s\), 1 earlier version\(s\)/);
+  assert.match(inventory.textContent, /Imaging.*Not supplied.*0 current document\(s\)/);
+  assert.match(inventory.textContent, /Laboratory.*Not supplied/);
+  assert.match(inventory.textContent, /This does not establish whether a test or encounter happened elsewhere/);
+  assert.doesNotMatch(inventory.textContent, /never tested|needs imaging|clinically required/i);
+  const current = nodes(inventory, 'button');
+  assert.equal(current.length, 2, 'only current source versions have a direct inventory action');
+  current[0].click();
+  assert.deepEqual(h.sourceCalls, [[2, null]], 'source button delegates to original record reader');
+});
+
+test('a category with only superseded source versions is not marked present', async () => {
+  const h = harness(), input = fixture();
+  input.state.sources[0].kind = 'imaging';
+  input.model.history[0].kind = 'imaging';
+  await render(h, input);
+  const imaging = nodes(h.elements.inventory, 'article')[3].textContent;
+  assert.match(imaging, /Earlier versions only/);
+  assert.match(imaging, /0 current document\(s\), 1 earlier version\(s\)/);
+  assert.match(imaging, /No current imaging document is in this workspace/);
+  assert.equal(nodes(nodes(h.elements.inventory, 'article')[3], 'button').length, 0);
+});
+
+test('record-inventory old-case actions are disabled during case switch and stale replies', async () => {
+  const h = harness();
+  await render(h, fixture('FICTION-A', 'A source'));
+  const previousAction = nodes(h.elements.inventory, 'button')[0];
+  const pending = h.component.load(fixture('FICTION-B', 'B source').state);
+  assert.equal(h.elements.inventory.children.length, 0);
+  previousAction.click();
+  assert.equal(h.sourceCalls.length, 0);
+  h.requests.at(-1).resolve(fixture('FICTION-B', 'B source').model);
+  assert.equal(await pending, true);
+  assert.equal(nodes(h.elements.inventory, 'button').length, 2);
+  assert.doesNotMatch(h.elements.inventory.textContent, /A source/);
+  const newAction = nodes(h.elements.inventory, 'button')[0];
+  newAction.click();
+  assert.deepEqual(h.sourceCalls, [[2, null]]);
+  h.component.clear('No selected case');
+  assert.equal(h.elements.inventory.textContent, '');
+  newAction.click();
+  assert.equal(h.sourceCalls.length, 1);
 });
