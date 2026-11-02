@@ -135,11 +135,24 @@ def main() -> None:
                 "document.querySelector('#mission-status')?.textContent === 'Ready to define question'",
                 "return to Alpha mission",
             )
-            session.evaluate("""(() => {
-              document.querySelector('#question-text').value =
-                'Which pathology result requires review after a source amendment?';
-              document.querySelector('#question-form').requestSubmit();
-            })()""")
+            # First-party source → question UI: no invented diagnosis, no
+            # implicit persistence, and no second question/record ledger.
+            session.evaluate("""document.querySelector('#world-model-detail').open = true""")
+            session.wait(
+                "document.querySelector('#world-model-observations li button') !== null",
+                "current source-backed World Model loaded",
+            )
+            session.evaluate("""document.querySelector('#world-model-observations li button').click()""")
+            assert session.evaluate(
+                "document.querySelector('#question-text').value.includes('source line')"
+            ), "source reference did not reach the existing question form"
+            assert session.evaluate(
+                "location.hash === '#investigations'"
+            ), "source handoff did not navigate to the investigation workflow"
+            assert session.evaluate(
+                "document.querySelectorAll('#question-list .question').length === 0"
+            ), "source handoff must not silently persist the question"
+            session.evaluate("document.querySelector('#question-form').requestSubmit()")
             session.wait(
                 "document.querySelectorAll('#question-list .question').length === 1",
                 "mission question persisted",
@@ -182,6 +195,13 @@ def main() -> None:
             assert session.evaluate(
                 "document.querySelector('#mission-actions').textContent.includes('Reconcile source changes')"
             )
+            session.wait(
+                "document.querySelector('#world-model-history').textContent.includes('PATH-ALPHA')",
+                "World Model retains original source after amendment",
+            )
+            assert session.evaluate(
+                "document.querySelector('#world-model-history').textContent.includes('Stale snapshots:')"
+            ), "amendment review state did not reach the source inspector"
         finally:
             if session is not None:
                 session.close()

@@ -107,6 +107,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._static("app.js", "text/javascript; charset=utf-8")
             if path == "/mission.js":
                 return self._static("mission.js", "text/javascript; charset=utf-8")
+            if path == "/world-model.js":
+                return self._static("world-model.js", "text/javascript; charset=utf-8")
             if path == "/style.css":
                 return self._static("style.css", "text/css; charset=utf-8")
             if path == "/tokens.css":
