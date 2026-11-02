@@ -176,6 +176,21 @@ class PatientResearchRunReviewIntegration(unittest.TestCase):
         with self.assertRaisesRegex(ClinicalContinuityError,"source provenance mismatch"):
             self.read()
 
+    def test_forged_numeric_delta_fails_even_with_valid_source_hashes(self):
+        self.prepare()
+        current = self.runs.get(CASE,self.run["run_id"])
+        altered = current["result"]
+        altered["result"]["delta"] = "+100.0"
+        with self.store.db:
+            self.store.db.execute(
+                "UPDATE composer_tool_runs SET result_json=? WHERE id=?",
+                (json.dumps(altered),self.run["run_id"]))
+        with self.assertRaisesRegex(ClinicalContinuityError,"arithmetic"):
+            self.read()
+        with self.assertRaisesRegex(ClinicalContinuityError,"arithmetic"):
+            self.review.export_markdown(
+                self.patient_id,CASE,self.question,self.run["run_id"],**self.actor())
+
     def test_source_mutation_during_review_fails_closed(self):
         self.prepare()
         original = self.runs.get
