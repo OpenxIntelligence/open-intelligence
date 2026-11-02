@@ -29,10 +29,15 @@ and nulls): `proposal_id`, `attempt_id`, `actual_execution_state`
 `invalidation_dependencies`, `reviewer`, `review_decision`.
 
 Guards enforced in `validated()`: fictional `FIC-*` cases only; clinical
-language (recommend/prescribe/eligible/diagnose/should-treat/best-treatment/
-order-treatment) rejected in prediction/falsifier/relevance; at least one
-hypothesis id; non-empty versioned inputs; `YYYY-MM-DD` cutoff; class C has no
-automatic execution environment; reviewer must differ from owner (forced
+language rejected in prediction/falsifier/relevance — exactly the code regex:
+`recommend*|prescrib*|eligible|diagnos*`, `should (receive|undergo|get|start|
+take)`, `must (receive|undergo)`, `best (treatment|therapy|option|drug)`,
+`order (this|the) (treatment|therapy|procedure)`, `start treatment` (loop
+cycle 1 correction: the earlier shorthand omitted the must/get/start/take
+variants); at least one hypothesis id; non-empty versioned inputs; cutoff
+`202\d-\d\d-\d\d` (2020s `YYYY-MM-DD`, matching the frozen 2026 cutoff;
+generalization deferred); class C has no automatic execution environment
+(`auto*` environment rejected); reviewer must differ from owner (forced
 self-approval raises `DraftError`); denied runs record `not-started (denied)`.
 
 ## 2. State machine (draft-local, not an orchestration engine)
@@ -41,7 +46,12 @@ self-approval raises `DraftError`); denied runs record `not-started (denied)`.
 independently-checked → human-review → accepted-as-evidence | rejected |
 inconclusive`, plus terminal `quarantined | canceled | budget-exhausted |
 superseded`. Transitions are allow-listed in `PROPOSAL_TRANSITIONS`; anything
-else raises. Terminal states re-enter only via a new proposal id.
+else raises. Terminal states re-enter only via a new proposal id. Every
+non-terminal state also transitions to `superseded` (loop cycle 1 fix,
+matching the code change): an invalidation event never auto-rebases a draft
+onto new inputs; the author starts a new proposal id instead. The earlier
+table wrongly left `superseded` reachable only from `authorized`, which made
+the "supersede result-ready drafts" mapping dead.
 
 ## 3. Mapping to the existing investigation ledger (no ledger writes)
 
@@ -58,6 +68,12 @@ Invalidation triggers that supersede drafts (pure mapping in
 `invalidate_on_event()`): source amendment, evidence amendment/withdrawal,
 rights revocation/correction, consent revocation (class B → quarantined, no
 further runs), tool/model revision, specimen reassignment, cutoff change.
+Two triggers have no current ledger counterpart and are paper-only (loop
+cycle 1 note): no ledger operation reassigns a specimen (amendments cannot
+change it; assets are immutable), and no case-consent table exists (inventory
+consent values are descriptive only). They fire only if a future scoped
+decision introduces such events; until then they must not be scored as
+observed invalidations.
 
 ## 4. What was deliberately not done
 

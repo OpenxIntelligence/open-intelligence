@@ -31,15 +31,20 @@ PROPOSAL_STATES = frozenset({
 # Allowed forward transitions for the draft proposal lifecycle. Terminal:
 # accepted-as-evidence, rejected, inconclusive, quarantined, canceled,
 # budget-exhausted, superseded. Re-entry only via a NEW proposal id.
+# Any non-terminal state may move to superseded when an invalidation event
+# (source/evidence/rights change, tool revision, cutoff change) lands; the
+# draft never auto-rebases onto new inputs. (Loop cycle 1 fix: result-ready
+# and the other non-terminal states previously had no superseded edge, so
+# invalidate_on_event()'s "supersede" mapping was unreachable from them.)
 PROPOSAL_TRANSITIONS = {
-    "draft": {"scoped", "canceled", "quarantined"},
-    "scoped": {"authorized", "rejected", "canceled", "quarantined"},
+    "draft": {"scoped", "canceled", "quarantined", "superseded"},
+    "scoped": {"authorized", "rejected", "canceled", "quarantined", "superseded"},
     "authorized": {"queued", "canceled", "quarantined", "superseded"},
-    "queued": {"running", "canceled", "budget-exhausted", "quarantined"},
-    "running": {"result-ready", "canceled", "budget-exhausted", "quarantined"},
-    "result-ready": {"independently-checked", "quarantined", "canceled"},
-    "independently-checked": {"human-review", "quarantined"},
-    "human-review": {"accepted-as-evidence", "rejected", "inconclusive", "quarantined"},
+    "queued": {"running", "canceled", "budget-exhausted", "quarantined", "superseded"},
+    "running": {"result-ready", "canceled", "budget-exhausted", "quarantined", "superseded"},
+    "result-ready": {"independently-checked", "quarantined", "canceled", "superseded"},
+    "independently-checked": {"human-review", "quarantined", "canceled", "superseded"},
+    "human-review": {"accepted-as-evidence", "rejected", "inconclusive", "quarantined", "superseded"},
 }
 
 # Existing ledger states this draft maps onto (observed in store.py; the draft
@@ -223,6 +228,9 @@ def invalidate_on_event() -> dict[str, str]:
         "rights_revocation_or_correction": "supersede drafts depending on that rights row",
         "consent_revocation": "class-B drafts for that case become quarantined; no further runs",
         "tool_or_model_revision": "supersede result-ready drafts; receipts keep old version pinned",
+        # No ledger operation reassigns a specimen (amendments cannot change
+        # it; assets are immutable), so this trigger is paper-only: it fires
+        # only if a future scoped decision ever introduces such an event.
         "specimen_reassignment": "supersede drafts citing the reassigned specimen link",
         "cutoff_change": "supersede; a new as_known_at requires a new proposal id",
     }

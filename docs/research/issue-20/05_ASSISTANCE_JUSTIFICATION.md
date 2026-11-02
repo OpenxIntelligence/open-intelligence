@@ -31,11 +31,28 @@ Code: `propose_version_checks` (R1), `propose_specimen_checks` (R2),
 [tests/research_issue20_draft.py](../../../tests/research_issue20_draft.py).
 Pure functions over caller-supplied frozen dicts; no I/O, no DB, no imports
 from `src/`; every emitted candidate is a validated `ExperimentProposalDraft`
-(effect class A) entering at `draft` state, requiring the `independently-checked`
-and `human-review` transitions before any ledger-adjacent use; every
-non-emission is recorded in `excluded` with a reason. Denied clinical effects
-stay denied: class C has no auto environment, clinical language is rejected,
-and self-approval raises.
+(effect class A) entering at `draft` state; every non-emission is recorded in
+`excluded` with a reason. Denied clinical effects stay denied: class C has no
+auto environment, clinical language is rejected, and self-approval raises.
+
+Input schemas (loop cycle 1 addition; authoritative form is the code
+docstrings): R1 rows `{doc, cited_version, current_version, case_id,
+question_id}` — emits when cited ≠ current. R2 rows `{doc,
+specimens_by_version, case_id, question_id}` — emits when one document's
+versions carry more than one specimen id. R3 rows `{assessment_ref,
+evidence_ref, evidence_state, case_id, question_id}` — emits when
+`evidence_state != "current"`.
+
+Two honesty notes (loop cycle 1): (a) the "must pass
+`independently-checked` and `human-review` before any ledger-adjacent use"
+rule is procedural, not code-enforced — `transition()` permits the path but
+nothing in the module gates downstream use on proposal state; the run
+procedure must check. (b) Class A for case-bound candidates is deliberate:
+the cases are fictional (`FIC-*`, no consent or PHI exists), the checks are
+synthetic-engineering computations proposing version/identity/freshness flags,
+and `permission_scope` records `fictional-case-review:{case}` for case-bound
+rows vs `synthetic-engineering` for case-free rows. Genuinely consented
+case-specific computation would be class B and is out of scope here.
 
 ## 3. Conditions to revisit model assistance
 
