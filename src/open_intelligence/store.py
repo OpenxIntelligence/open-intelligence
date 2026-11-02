@@ -496,6 +496,17 @@ CREATE TABLE IF NOT EXISTS review_receipts (
   reviewer_label TEXT NOT NULL, reason TEXT, created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_review_receipts_case ON review_receipts(case_id, queue_key);
+-- Prevent an accepted review receipt from being rewritten or silently erased.
+-- This preserves forensic history; privileged database operators still require
+-- separate access, backup, retention and security controls.
+CREATE TRIGGER IF NOT EXISTS review_receipts_immutable_update
+BEFORE UPDATE ON review_receipts BEGIN
+  SELECT RAISE(ABORT, 'Review receipts are immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS review_receipts_immutable_delete
+BEFORE DELETE ON review_receipts BEGIN
+  SELECT RAISE(ABORT, 'Review receipts are immutable');
+END;
 """
 
 
