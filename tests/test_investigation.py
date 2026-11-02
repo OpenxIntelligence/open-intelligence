@@ -196,6 +196,25 @@ class HttpInvestigationTests(unittest.TestCase):
             self.assertEqual(status, 503)
             self.assertIn("replay", data["error"])
 
+    def test_live_documented_key_reaches_provider_with_mocked_response(self):
+        fixture = {"claims": [], "abstentions": [
+            {"topic": "question", "reason": "insufficient_evidence"}]}
+        with patch.dict(os.environ, {"MODEL_API_KEY": "synthetic-operator-key"}, clear=True):
+            with patch("open_intelligence.__main__.call_meta_api",
+                       return_value=fixture) as provider:
+                status, question = self.request('/api/cases/CASE-ALPHA/questions',
+                                                {'question': 'Which evidence is missing?'})
+                self.assertEqual(status, 201)
+                status, data = self.request('/api/cases/CASE-ALPHA/investigations',
+                                            {'question_id': question['question_id'],
+                                             'template': 'evidence-summary', 'mode': 'live'})
+                self.assertEqual(status, 201, data)
+                self.assertEqual(data["mode"], "live")
+                self.assertEqual(data["model"], "muse-spark-1.3")
+                self.assertEqual(data["review_state"], "pending")
+                provider.assert_called_once()
+                self.assertEqual(provider.call_args.args[1], "synthetic-operator-key")
+
     def test_live_with_two_different_keys_fails_before_network_call(self):
         with patch.dict(os.environ, {"MODEL_API_KEY": "key-a",
                                      "META_API_KEY": "key-b"}, clear=True):
