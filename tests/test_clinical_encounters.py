@@ -41,6 +41,50 @@ class ClinicalEncounterTests(unittest.TestCase):
                                    expected_revision=1, request_key='req-begin-000001',
                                    **self.actor)
 
+    def test_new_domain_runs_with_independent_canonical_patient_host(self):
+        """Real domain functions without any legacy CaseStore/cases table."""
+        class CanonicalHost:
+            def __init__(self, path):
+                self.db = sqlite3.connect(path)
+                self.db.row_factory = sqlite3.Row
+                self.db.execute('CREATE TABLE domain_test_events ('
+                                'id INTEGER PRIMARY KEY,patient_id TEXT,kind TEXT,payload TEXT)')
+                self.patients = {'oi:patient.12345'}
+
+            def require_patient(self, patient_id):
+                if patient_id not in self.patients:
+                    raise InvalidInput('Patient does not exist in canonical registry')
+
+            def append_event(self, patient_id, kind, **details):
+                self.db.execute('INSERT INTO domain_test_events (patient_id,kind,payload) '
+                                'VALUES(?,?,?)', (patient_id, kind, json.dumps(details)))
+
+        with tempfile.TemporaryDirectory() as root:
+            host = CanonicalHost(Path(root) / 'standalone.sqlite')
+            try:
+                service = ClinicalEncounters(host, lambda actor, subject, action, purpose:
+                                             actor == 'idp:clinician-001' and purpose == 'care')
+                subject = 'oi:patient.12345'
+                created = service.schedule(subject, 'ENCOUNTER-001', 'telehealth', '2026-11-02',
+                                           request_key='cmd-host-00001', **self.actor)
+                self.assertEqual(created['status'], 'scheduled')
+                service.transition(subject, created['encounter_id'], 'in_progress',
+                                   expected_revision=1, request_key='cmd-host-00002', **self.actor)
+                note = service.write_note(subject, created['encounter_id'], 'NOTE-001',
+                                          'Clinician-authored encounter note', expected_version=0,
+                                          request_key='cmd-host-00003', **self.actor)
+                self.assertEqual(note['status'], 'draft')
+                self.assertEqual(service.attest_note(subject, created['encounter_id'], 'NOTE-001',
+                                                      expected_version=1, request_key='cmd-host-00004',
+                                                      **self.actor)['status'], 'attested')
+                self.assertEqual(host.db.execute('SELECT COUNT(*) FROM domain_test_events').fetchone()[0], 4)
+                self.assertEqual(host.db.execute("SELECT COUNT(*) FROM sqlite_master "
+                                                 "WHERE type='table' AND name='cases'").fetchone()[0], 0)
+                with self.assertRaises(InvalidInput):
+                    service.list_encounters('oi:patient.unknown', **self.actor)
+            finally:
+                host.db.close()
+
     def test_no_host_authorizer_denies_both_read_and_write(self):
         instance = ClinicalEncounters(self.store)
         with self.assertRaises(ClinicalAuthorizationError):
@@ -190,7 +234,7 @@ class ClinicalEncounterTests(unittest.TestCase):
                 self.store.db.execute('DELETE FROM clinical_note_versions WHERE id=?', (version_id,))
         with self.assertRaisesRegex(sqlite3.IntegrityError, 'immutable'):
             with self.store.db:
-                self.store.db.execute('DELETE FROM clinical_encounter_commands WHERE case_id=?', ('CASE-ONE',))
+                self.store.db.execute('DELETE FROM clinical_encounter_commands WHERE patient_id=?', ('CASE-ONE',))
         self.assertEqual(self.ops.note_history('CASE-ONE', encounter_id, 'NOTE-001',
                                                **self.actor)[0]['sha256'], note['sha256'])
 
