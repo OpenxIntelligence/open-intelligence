@@ -152,6 +152,11 @@ class HttpTests(unittest.TestCase):
             # the same case state, not separate data: both must be served.
             self.assertIn('id="incoming-board"', body)
             self.assertIn('id="patient-view"', body)
+            self.assertIn('src="/patient-record.js"', body)
+            self.assertLess(body.index('src="/patient-record.js"'), body.index('src="/app.js"'))
+        with urlopen(f'http://127.0.0.1:{self.port}/patient-record.js') as response:
+            self.assertEqual(response.headers.get('Content-Type'), 'text/javascript; charset=utf-8')
+            self.assertIn('OpenIntelligencePatientRecord', response.read().decode('utf-8'))
         for name in ('style.css', 'tokens.css', 'base.css'):
             with urlopen(f'http://127.0.0.1:{self.port}/{name}') as response:
                 self.assertEqual(response.headers.get('Content-Type'), 'text/css; charset=utf-8')

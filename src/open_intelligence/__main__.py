@@ -105,6 +105,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._static("index.html", "text/html; charset=utf-8")
             if path == "/app.js":
                 return self._static("app.js", "text/javascript; charset=utf-8")
+            if path == "/patient-record.js":
+                return self._static("patient-record.js", "text/javascript; charset=utf-8")
             if path == "/mission.js":
                 return self._static("mission.js", "text/javascript; charset=utf-8")
             if path == "/style.css":
