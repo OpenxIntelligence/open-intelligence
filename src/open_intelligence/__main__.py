@@ -16,9 +16,11 @@ from tools.crossref_metadata import MetadataInputError, fetch_public_doi, projec
 from .changes import changes_since_review
 from .investigation import (
     TEMPLATES,
+    META_MODEL,
     InvestigationError,
     ValidatedInvestigation,
     build_prompt,
+    execute_bounded_model,
     call_meta_api,
     meta_api_key,
     validate_output,
@@ -432,10 +434,14 @@ class Handler(BaseHTTPRequestHandler):
                         validated.model = "recorded-replay"
                         validated.mode = "replay"
                     else:
-                        prompt = build_prompt(template, facts["question"]["question"],
-                                              facts["assertions"], facts["assessments"])
-                        payload = call_meta_api(prompt, meta_api_key())
-                        validated = validate_output(payload, facts["valid_sources"], facts["valid_assessments"])
+                        # Existing authenticated-*demo* provider is still Meta;
+                        # the server chooses it, not the user or model. Future
+                        # reviewed adapters can reuse this same bounded policy,
+                        # citation validator and atomic Composer save gate.
+                        validated = execute_bounded_model(
+                            template, facts,
+                            invoke=lambda prompt: call_meta_api(prompt, meta_api_key()),
+                            provider_id="meta", model_id=META_MODEL)
                     investigation_id = store.save_investigation(
                         case_id, question_id, template, validated, mode,
                         context_fingerprint=context_fingerprint)
