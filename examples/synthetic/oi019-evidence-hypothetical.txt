@@ -1,0 +1,6 @@
+OI-SYNTHETIC-EVIDENCE/1
+Evidence: EVID-OI019-HYPOTHETICAL
+Title: Fictional hypothetical-criterion example
+Issued-At: 2026-08-12
+Rights: original-synthetic
+Statement: This independently authored fictional note states that a hypothetical criterion is not an actual trial requirement, that no actual trial is identified, and that applicability and any treatment effect remain unknown.

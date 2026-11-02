@@ -1,0 +1,8 @@
+OI-SYNTHETIC-REPORT/1
+Patient: CASE-OI017
+Document: PATH-OI017-COLLISION
+Type: pathology
+Event-Date: 2026-01-25
+Issued-At: 2026-01-26
+Specimen: SPEC-OI017-COLLISION
+Finding: histology|reported|Fictional report whose envelope subject binding conflicts with the binding already recorded for its source organization; it must be rejected, not merged.
