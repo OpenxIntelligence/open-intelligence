@@ -7,10 +7,10 @@ state, NO authorization system, and NO live EHR integration:
 * Source bytes live only in ``source_versions`` (or, on rejection, in the
   existing ``quarantine`` table). This module never stores a normalized
   projection as a source.
-* Authorization receipts, loss receipts, bindings checks and revocation are
-  recorded only as rows in the existing ``events`` ledger (via
-  ``CaseStore.record_adapter_event``) plus, for quarantined deliveries, the
-  existing ``quarantine`` table.
+* Synthetic adapter identity bindings and receipt revocations are persisted
+  as narrow gate tables inside the SAME CaseStore SQLite DB. The original
+  source bytes still live only in the existing canonical source/quarantine
+  tables; accepted/rejected event receipts remain in the existing event log.
 * No vendor is selected. ``purpose`` must be ``individual-access`` for this
   patient-directed adapter; a Treatment-purpose receipt is rejected here
   because it belongs to a different pathway with different eligibility and
@@ -61,8 +61,10 @@ class AuthorizationReceipt:
             raise InvalidInput(
                 "Patient-directed adapter accepts only individual-access purpose; "
                 "Treatment-purpose receipts belong to a different pathway")
-        if not self.scope:
-            raise InvalidInput("Authorization receipt scope must be nonempty")
+        if (not isinstance(self.scope, tuple) or not self.scope or
+            any(not isinstance(item, str) or not item.strip()
+                for item in self.scope)):
+            raise InvalidInput("Authorization receipt scope requires nonempty domain names")
         valid_date(self.granted_at)
         valid_date(self.expires_at)
         if self.revoked_at is not None:
@@ -231,6 +233,11 @@ class PatientAccessAdapter:
         # Parse first so time semantics are checked against the real report.
         report = parse_report(raw)
         envelope.validate_time_semantics(report.event_date, report.issued_at)
+        # In these synthetic envelopes, a clinical encounter may be declared as
+        # "encounter" (older fixtures) or "clinical". No scope implies another.
+        scope_kind = "encounter" if report.kind == "clinical" else report.kind
+        if report.kind not in auth.scope and scope_kind not in auth.scope:
+            raise InvalidInput("Report kind is outside declared authorization scope")
         # Loss contract: a claimed transform must carry its receipt, and a
         # lossy receipt never substitutes normalized bytes for the original.
         if envelope.transformed_fields is not None or envelope.original_fields is not None:
