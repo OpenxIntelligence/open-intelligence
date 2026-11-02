@@ -1,16 +1,17 @@
 name: Bounded single-cell investigation
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - '.github/workflows/single-cell-analysis.yml'
-      - 'tools/research/single_cell_probe.py'
-      - 'tools/research/test_single_cell_probe.py'
   workflow_dispatch:
+    inputs:
+      approved_public_case_eval:
+        description: 'Manual opt-in only after ethics, per-file provenance and rights approval'
+        type: boolean
+        required: true
+        default: false
 permissions:
   contents: read
 jobs:
   single-cell:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.approved_public_case_eval == true }}
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
