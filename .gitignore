@@ -31,6 +31,8 @@ coverage/
 *.log
 
 .local/
+.harness/
+.hallmark/
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm

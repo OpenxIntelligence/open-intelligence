@@ -1,0 +1,8 @@
+OI-SYNTHETIC-REPORT/1
+Patient: CASE-OI019-B
+Document: IMG-OI019-B
+Type: imaging
+Event-Date: 2026-08-05
+Issued-At: 2026-08-06
+Finding: lesion-size|reported|A fictional reference lesion was measured as 18 mm on the current scan.
+Finding: comparison|pending|Prior images are unavailable for reliable comparative measurement.
