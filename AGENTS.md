@@ -14,6 +14,14 @@ The initial repository is a planning foundation. Implement bounded work against 
 - Keep research findings, extension proposals, accepted decisions, implemented behavior and validation evidence distinct. An architectural change requires an explicit scoped proposal and accepted review; a research document cannot approve a vendor, dependency, product pivot or clinical function.
 - Preserve the full platform ambition. A proposed cohort, first customer, commercial model or initial workflow does not narrow the architecture without a separately recorded decision.
 
+## Founder directive — full first-party healthcare ecosystem (accepted 2 November 2026)
+
+- The product scope is the **complete first-party healthcare ecosystem**: EHR/EMR, oncology, LIS/LIMS, pathology, RIS/PACS, genomics, medication and treatment, patient/professional, research, AI/ML/agents, enterprise operations and shared clinical/data/security infrastructure. Implementing a bounded vertical slice never narrows that scope.
+- **NO NEXT.JS.** Next.js has been explicitly rejected for new Open Intelligence frontend, backend and first-party product code. Old hackathon Next.js ADRs/BOMs are historical evidence and have no implementation authority. Do not add its packages, scaffolders or project files. This does not preselect an alternative stack.
+- Evaluate every technology against the commercial freedom policy: actual corresponding source, independently forkable/modifiable/self-hostable commercial use, redistribution, patents/trademarks, transitive dependencies, data, fonts, weights, terminology and NOTICE. Unknown rights = HOLD; no AI-issued procurement clearance.
+- Domain components must be first-party owned in scope, with named operational data owners, versioned API and event contracts, patient/specimen/study identity, consent, source provenance, temporal and uncertainty semantics, idempotent recovery and human clinical authority. Existing code can be reused or replaced only through a verified, reversible decision.
+- Read the superseding decision and reference journey in docs/FIRST_PRINCIPLES_PLAN.md; follow relevant existing backlog/PR ownership. Do not create a parallel canonical patient ledger or architecture, and do not claim clinical validation from synthetic demonstrations.
+
 ## Product principles
 
 - Preserve the full longitudinal oncology and biological research ambition.
