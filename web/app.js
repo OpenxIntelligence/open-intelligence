@@ -552,6 +552,7 @@ function render() {
     opt.value = question.id; el('model-investigation-question').append(opt);
   }
   loadModelInvestigations();
+  loadChangesSinceReview();
   clear('quarantine-list');
   for (const entry of active.quarantines) {
     el('quarantine-list').append(node('div', 'Quarantined #' + entry.id + ': declared ' + entry.declared_patient_id + ', not ' + caseId + ', no assertions imported', 'quarantine'));
@@ -961,6 +962,125 @@ async function loadModelInvestigations() {
     }
   } catch (err) {
     if (requested === caseId) notice(err.message, true);
+  }
+}
+async function loadChangesSinceReview() {
+  const requested = caseId;
+  const anchorEl = el('changes-anchor');
+  if (anchorEl) anchorEl.textContent = 'Loading changes since the last review…';
+  for (const id of ['changes-new-sources', 'changes-amendments', 'changes-stale', 'changes-questions']) clear(id);
+  try {
+    const data = await api('/api/cases/' + requested + '/changes-since-review');
+    if (requested !== caseId || !active || active.case.case_id !== requested) return;
+    renderChangesSinceReview(data);
+  } catch (err) {
+    if (requested !== caseId) return;
+    if (anchorEl) anchorEl.textContent = 'Changes since last review unavailable: ' + err.message;
+    el('changes-disclaimer').textContent = '';
+    empty(el('changes-new-sources'), 'Change listing unavailable.');
+    empty(el('changes-amendments'), 'Change listing unavailable.');
+    empty(el('changes-stale'), 'Change listing unavailable.');
+    empty(el('changes-questions'), 'Change listing unavailable.');
+  }
+}
+function renderChangesSinceReview(data) {
+  // Ledger facts only. Reported states are quoted verbatim; the finding-key
+  // diff is a mechanical comparison, never an interpretation of significance.
+  const anchor = data.anchor || {};
+  const counts = data.counts || {};
+  const anchorLabel = anchor.kind === 'demo_review_acknowledged'
+    ? 'latest demo-review acknowledgment'
+    : anchor.kind === 'case_created'
+      ? 'case creation (nothing demo-acknowledged yet)'
+      : String(anchor.kind || 'unknown anchor');
+  el('changes-anchor').textContent = 'Anchor: event #' + anchor.event_id + ' (' + anchorLabel +
+    ') at ' + (anchor.occurred_at || 'unknown time') +
+    '. New sources: ' + (counts.new_sources || 0) +
+    ' · Amendments: ' + (counts.amendments || 0) +
+    ' · Stale investigations: ' + (counts.stale_investigations || 0) +
+    ' · New questions: ' + (counts.new_questions || 0) + '.';
+  el('changes-disclaimer').textContent = (data.synthetic ? 'Fictional synthetic data only. ' : '') +
+    (data.disclaimer || '');
+  clear('changes-new-sources');
+  const newSources = data.new_sources || [];
+  if (!newSources.length) empty(el('changes-new-sources'), 'No new source documents recorded after the anchor event.');
+  for (const item of newSources) {
+    const card = node('article', null, 'source-card');
+    const top = node('div', null, 'source-top');
+    top.append(node('span', item.document_id + ' @' + item.version, 'source-title'),
+      pill(item.kind || 'source', 'pill-neutral'));
+    card.append(top);
+    card.append(node('p', 'Event #' + item.event_id + ' at ' + item.occurred_at +
+      ' · Source version #' + item.source_id +
+      ' · Event date ' + item.event_date + ', issued ' + item.issued_at + ', received ' + item.received_at,
+      'snapshot-meta'));
+    const findings = item.reported_findings || [];
+    card.append(node('p', findings.length
+      ? 'Reported findings: ' + findings.map(entry => entry.finding_key + ' (' + entry.reported_state + ')').join('; ')
+      : 'No reported findings recorded for this source version.', 'muted'));
+    el('changes-new-sources').append(card);
+  }
+  clear('changes-amendments');
+  const amendments = data.amendments || [];
+  if (!amendments.length) empty(el('changes-amendments'), 'No amended source versions recorded after the anchor event.');
+  for (const item of amendments) {
+    const card = node('article', null, 'source-card');
+    const top = node('div', null, 'source-top');
+    top.append(node('span', item.document_id + ': version ' + item.superseded_version + ' → ' + item.version, 'source-title'),
+      pill('Document amendment', 'pill-neutral'));
+    card.append(top);
+    card.append(node('p', 'Event #' + item.event_id + ' at ' + item.occurred_at +
+      ' · Source version #' + item.source_id + ' supersedes #' + item.supersedes_source_id +
+      ' · ' + item.kind + ', event ' + item.event_date + ', received ' + item.received_at, 'snapshot-meta'));
+    const diff = item.finding_key_diff || {};
+    const added = diff.added_finding_keys || [];
+    const removed = diff.removed_finding_keys || [];
+    const stateChanges = diff.reported_state_changes || [];
+    card.append(node('p', 'Mechanical finding-key diff — added: ' + (added.length ? added.join(', ') : 'none') +
+      ' · removed: ' + (removed.length ? removed.join(', ') : 'none') + '.', 'change-impact'));
+    if (!stateChanges.length)
+      card.append(node('p', 'No finding key carries a different reported state between these versions.', 'muted'));
+    for (const change of stateChanges)
+      card.append(node('p', change.finding_key + ': reported state ' +
+        change.previous_reported_state + ' → ' + change.reported_state, 'muted'));
+    const invalidated = item.invalidated_snapshot_ids || [];
+    card.append(node('p', invalidated.length
+      ? 'Marked stale by this amendment: investigation ' + invalidated.map(id => '#' + id).join(', ') + '.'
+      : 'No saved investigation cited the superseded version.', 'muted'));
+    el('changes-amendments').append(card);
+  }
+  clear('changes-stale');
+  const staleList = data.stale_investigations || [];
+  if (!staleList.length) empty(el('changes-stale'), 'No saved investigation was marked stale after the anchor event.');
+  for (const item of staleList) {
+    const box = node('div', null, 'snapshot');
+    const top = node('div', null, 'topline');
+    top.append(node('strong', 'Investigation #' + item.snapshot_id),
+      pill(item.current_state || 'unknown', item.current_state === 'stale' ? 'pill-alert' : 'pill-neutral'));
+    box.append(top);
+    box.append(node('p', 'Question Q' + item.question_id + (item.question ? ': ' + item.question : '') +
+      ' (question state: ' + (item.question_state || 'unknown') + ')', 'snapshot-meta'));
+    for (const cause of item.causes || []) {
+      const causeText = cause.cause === 'source_amendment'
+        ? 'Stale because a bound source was amended (event #' + cause.event_id + ' at ' + cause.occurred_at + ').'
+        : cause.cause === 'evidence_change'
+          ? 'Stale because fictional evidence changed (event #' + cause.event_id + ' at ' + cause.occurred_at +
+            (cause.evidence_version_id ? ', evidence version #' + cause.evidence_version_id : '') +
+            (cause.reason ? ', reason: ' + cause.reason : '') + ').'
+          : 'Stale (' + (cause.cause || 'unknown cause') + ', event #' + cause.event_id +
+            ' at ' + cause.occurred_at + ').';
+      box.append(node('p', causeText, 'muted'));
+    }
+    el('changes-stale').append(box);
+  }
+  clear('changes-questions');
+  const newQuestions = data.new_questions || [];
+  if (!newQuestions.length) empty(el('changes-questions'), 'No questions created after the anchor event.');
+  for (const item of newQuestions) {
+    const row = node('div', null, 'question');
+    row.append(node('p', 'Q' + item.question_id + ': ' + item.question),
+      node('p', 'Event #' + item.event_id + ' · State: ' + item.state + ' · Created ' + item.created_at, 'muted'));
+    el('changes-questions').append(row);
   }
 }
 el('model-investigation-form').addEventListener('submit', async event => {
