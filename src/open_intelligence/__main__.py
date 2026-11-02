@@ -68,7 +68,12 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(status, {"code": code, "error": LITERATURE_ERRORS[code]})
 
     def _search_public_literature(self, data: dict) -> None:
-        """An isolated metadata route: no case store, context, or persistence."""
+        """An isolated metadata route: no case store, context, or persistence.
+
+        Finish the concurrency-critical portion before serializing an HTTP
+        response. Otherwise a completed client can immediately retry while
+        the previous handler still holds the request lock in its finally.
+        """
         if self.allow_literature_live is not True:
             return self._literature_error(403, "disabled")
         terms, page_size = data.get("terms"), data.get("page_size", 5)
@@ -80,27 +85,37 @@ class Handler(BaseHTTPRequestHandler):
             return self._literature_error(422, "invalid_input")
         if not self.literature_request_lock.acquire(blocking=False):
             return self._literature_error(429, "busy")
+
+        error_status, error_code = None, None
+        result = None
         try:
             current = monotonic()
             last = type(self).literature_last_request
             if last is not None and current - last < 1.0:
-                return self._literature_error(429, "rate_limited")
-            type(self).literature_last_request = current
-            try:
-                result = search_europe_pmc(terms, human_authored=data["human_authored"],
-                                           public_terms_only=data["public_terms_only"], page_size=page_size)
-            except LiteratureError as error:
-                # Codes, never exception text, determine the public response.
-                if error.code == "invalid_input":
-                    return self._literature_error(422, "invalid_input")
-                return self._literature_error(502, "provider_unavailable")
-            except Exception:
-                # Unexpected transport/provider failures must not echo a URL,
-                # query, raw response or exception into the browser or logs.
-                return self._literature_error(502, "provider_unavailable")
-            return self._json(200, result)
+                error_status, error_code = 429, "rate_limited"
+            else:
+                type(self).literature_last_request = current
+                try:
+                    result = search_europe_pmc(
+                        terms, human_authored=data["human_authored"],
+                        public_terms_only=data["public_terms_only"], page_size=page_size,
+                    )
+                except LiteratureError as error:
+                    # Public errors remain fixed codes: no query, URL, or raw data.
+                    error_status, error_code = (
+                        (422, "invalid_input") if error.code == "invalid_input"
+                        else (502, "provider_unavailable")
+                    )
+                except Exception:
+                    # Do not log unexpected exception text or patient-like terms.
+                    error_status, error_code = 502, "provider_unavailable"
         finally:
             self.literature_request_lock.release()
+
+        # No HTTP bytes leave this handler while it still owns the lock.
+        if error_code is not None:
+            return self._literature_error(error_status, error_code)
+        return self._json(200, result)
 
     def _headers(self, status: int, kind: str, size: int) -> None:
         self.send_response(status)
