@@ -26,5 +26,7 @@ jobs:
         run: PYTHONPATH=src python -m unittest discover -s tests -p test_composer_broker_context.py -v
       - name: Canonical patient/EHR/LIS/knowledge/durable review
         run: PYTHONPATH=src python -m unittest discover -s tests -p test_patient_research_run_review.py -v
+      - name: Canonical patient Composer v2 broker hypothesis and numeric review
+        run: PYTHONPATH=src python -m unittest discover -s tests -p test_clinical_broker_v2_integration.py -v
       - name: All existing Python and HTTP tests
         run: PYTHONPATH=src python -m unittest discover -s tests -v
