@@ -2621,7 +2621,8 @@ class CaseStore:
 
     def add_review_receipt(self, case_id: str, queue_key: str, action: str,
                            reviewer_label: str, reason: str | None = None, *,
-                           expected_fingerprint: str | None = None) -> dict:
+                           expected_fingerprint: str | None = None,
+                           prepared_report: dict | None = None) -> dict:
         """Append a decision for the current version of an existing queue item.
 
         Optional expected_fingerprint binds a previously authorized source
@@ -2630,6 +2631,30 @@ class CaseStore:
         without a preview retain the upstream PR #82 behavior.
         """
         self._case(case_id)
+        # Optional reference-only metadata joins the original append-only
+        # receipt transaction. Never persist a report body in this ledger.
+        prepared = None
+        if prepared_report is not None:
+            required = {"contract", "semantics", "body_sha256", "packet_sha256",
+                        "question_id", "patient_source"}
+            if (not isinstance(prepared_report, dict) or set(prepared_report) != required
+                    or prepared_report["contract"] != "oi.synthetic-prepared-report-reference/1"
+                    or prepared_report["semantics"] != "prepared_not_delivery_or_approval"
+                    or action != "returned" or expected_fingerprint is None):
+                raise InvalidInput("Invalid prepared report reference")
+            source = prepared_report["patient_source"]
+            if (type(prepared_report["question_id"]) is not int
+                    or prepared_report["question_id"] <= 0
+                    or not isinstance(source, dict)
+                    or set(source) != {"assertion_id", "source_version_id", "sha256", "source_line"}
+                    or any(type(source[k]) is not int or source[k] <= 0
+                           for k in ("assertion_id", "source_version_id", "source_line"))
+                    or any(not isinstance(value, str) or
+                           re.fullmatch(r"[a-f0-9]{64}", value) is None
+                           for value in (source["sha256"], prepared_report["body_sha256"],
+                                         prepared_report["packet_sha256"]))):
+                raise InvalidInput("Prepared report identifiers or hashes are invalid")
+            prepared = json.loads(json.dumps(prepared_report))
         if action not in self.REVIEW_RECEIPT_ACTIONS:
             raise InvalidInput("Receipt action must be reviewed, acknowledged, or returned")
         reviewer_label = self._check_no_clinical_language(reviewer_label, "Reviewer label")
@@ -2657,6 +2682,22 @@ class CaseStore:
                         or item["fingerprint"] != expected_fingerprint):
                     raise InvalidInput(
                         "Review item changed since preview; refresh before recording receipt")
+            if prepared is not None:
+                source = prepared["patient_source"]
+                # Bind to the same current patient/question/source inside the
+                # write lock before accepting the immutable review event.
+                matched = self.db.execute(
+                    """SELECT 1 FROM assertions a
+                    JOIN source_versions v ON v.id=a.source_version_id
+                    JOIN evidence_assessments e ON e.id=? AND e.case_id=a.case_id
+                    WHERE a.case_id=? AND v.case_id=? AND e.question_id=?
+                    AND a.id=? AND v.id=? AND v.sha256=? AND a.source_line=?
+                    AND v.state='current'""",
+                    (item["target_id"], case_id, case_id, prepared["question_id"],
+                     source["assertion_id"], source["source_version_id"],
+                     source["sha256"], source["source_line"])).fetchone()
+                if item["kind"] != "new-evidence" or not matched:
+                    raise InvalidInput("Prepared report source or question changed; refresh")
             prior_terminal = self.db.execute(
                 """SELECT 1 FROM review_receipts WHERE case_id=? AND queue_key=?
                 AND fingerprint=? AND action IN ('reviewed','acknowledged') LIMIT 1""",
@@ -2668,8 +2709,9 @@ class CaseStore:
                 VALUES (?,?,?,?,?,?,?,?,?)""",
                 (case_id, queue_key, item["kind"], item["target_id"], item["fingerprint"],
                  action, reviewer_label, reason_text, now_utc()))
+            metadata = {} if prepared is None else {"prepared_report": prepared}
             self._event(case_id, "review_receipt_recorded", queue_key=queue_key,
-                        action=action, receipt_id=cur.lastrowid)
+                        action=action, receipt_id=cur.lastrowid, **metadata)
             return {"result": action, "receipt_id": int(cur.lastrowid),
                     "queue_key": queue_key, "fingerprint": item["fingerprint"]}
 
