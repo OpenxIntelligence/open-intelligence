@@ -7,7 +7,10 @@ on:
       - main
     paths:
       - 'src/open_intelligence/evidence_review_packet.py'
+      - 'src/open_intelligence/clinical_knowledge_context.py'
       - 'tests/test_evidence_quote_review_integration.py'
+      - 'tests/test_evidence_review_parent_freshness.py'
+      - 'tests/test_patient_knowledge_final_read.py'
       - '.github/workflows/source-quoted-review.yml'
   workflow_dispatch:
 
@@ -33,3 +36,9 @@ jobs:
         run: |
           python -m unittest discover -s tests -p 'test_evidence_quote_review_integration.py' -v
           python -m unittest discover -s tests -p 'test_patient_clinical_knowledge_integration.py' -v
+      - name: Final review read and inherited parent freshness regressions
+        env:
+          PYTHONPATH: src:tests:.
+        run: |
+          python -m unittest discover -s tests -p 'test_evidence_review_parent_freshness.py' -v
+          python -m unittest discover -s tests -p 'test_patient_knowledge_final_read.py' -v
