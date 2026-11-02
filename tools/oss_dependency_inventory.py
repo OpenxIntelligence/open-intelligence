@@ -139,7 +139,10 @@ def inspect(root: Path) -> dict:
                 if not command:
                     continue
                 try:
-                    args = shlex.split(command.group(1))
+                    # YAML single-quoted 'run:' values end with a closing quote
+                    # outside the matched command. Remove only that wrapper.
+                    fragment = command.group(1).strip().rstrip("'\"")
+                    args = shlex.split(fragment)
                 except ValueError:
                     problems.append(f"{identifier}:{n}: unparseable pip command")
                     continue
