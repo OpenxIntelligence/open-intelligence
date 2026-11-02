@@ -1,0 +1,8 @@
+OI-SYNTHETIC-DISCOVERY/1
+Discovery: FICT-LIT-001
+Kind: literature
+Title: Fictional bibliographic record for demonstration only
+DOI: 10.5555/oi-synthetic-002
+Issued-At: 2026-02-20
+Rights: original-synthetic
+Summary: Fictional bibliographic record for demonstration only. The full text is not included and no finding is asserted.

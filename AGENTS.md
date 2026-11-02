@@ -6,6 +6,14 @@ Read `README.md`, `docs/FIRST_PRINCIPLES_PLAN.md`, and the relevant rows in `doc
 
 The initial repository is a planning foundation. Implement bounded work against explicit acceptance criteria. Ordinary development and reversible fixes within the authorized task should proceed without repeated approval requests.
 
+## Project identity and complementary research
+
+- The current project name is **Open Intelligence**. Use the former name CEVax only when identifying historical source material; preserve original archival titles and provenance.
+- Research dossiers, diagrams, vendor comparisons, Notion pages and Google Drive/Docs additions are **complementary inputs**, not a new architecture or replacement baseline merely because they are published.
+- Map each useful finding to the existing case, source, evidence, investigation, review, authority or evaluation contract and its existing backlog item. Do not create a parallel canonical state, source ledger or competing roadmap.
+- Keep research findings, extension proposals, accepted decisions, implemented behavior and validation evidence distinct. An architectural change requires an explicit scoped proposal and accepted review; a research document cannot approve a vendor, dependency, product pivot or clinical function.
+- Preserve the full platform ambition. A proposed cohort, first customer, commercial model or initial workflow does not narrow the architecture without a separately recorded decision.
+
 ## Product principles
 
 - Preserve the full longitudinal oncology and biological research ambition.

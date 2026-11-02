@@ -1,0 +1,45 @@
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 40px;
+  --space-8: 48px;
+  --space-9: 64px;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-md: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 1.75rem;
+
+  --color-paper: oklch(98% 0.006 85);
+  --color-paper-2: oklch(95% 0.008 85);
+  --color-paper-3: oklch(91% 0.01 85);
+  --color-ink: oklch(19% 0.01 60);
+  --color-ink-2: oklch(34% 0.015 60);
+  --color-muted: oklch(45% 0.014 65);
+  --color-rule: oklch(82% 0.014 70);
+  --color-accent: oklch(62% 0.14 70);
+  --color-accent-ink: oklch(12% 0.012 60);
+  --color-source: oklch(52% 0.14 250);
+  --color-source-ink: oklch(30% 0.08 250);
+  --color-focus: oklch(48% 0.16 250);
+  --color-error: oklch(45% 0.16 27);
+  --color-error-paper: oklch(96% 0.025 28);
+  --color-success: oklch(39% 0.08 150);
+  --color-backdrop: oklch(19% 0.01 60 / 68%);
+
+  --font-display: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-body: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-outlier: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+
+  --container: 1560px;
+  --radius-control: 4px;
+  --radius-panel: 6px;
+  --rule-hair: 1px;
+}
