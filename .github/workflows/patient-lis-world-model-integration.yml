@@ -1,0 +1,30 @@
+name: Canonical patient LIS world-model integration
+
+on:
+  push:
+    branches: [integration/patient-lis-evidence-20261102]
+
+permissions:
+  contents: read
+
+jobs:
+  clinical-lis:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout staged integration branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Python runtime
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Syntax and source verification
+        run: PYTHONPATH=src python -m compileall -q src
+      - name: Canonical patient to LIS released observation and review projection
+        run: PYTHONPATH=src python -m unittest discover -s tests -p test_patient_lis_world_model_integration.py -v
+      - name: Existing patient EHR events regression
+        run: PYTHONPATH=src python -m unittest discover -s tests -p test_patient_ehr_event_integration.py -v
+      - name: Full unit and HTTP regression
+        run: PYTHONPATH=src python -m unittest discover -s tests -v
