@@ -12,20 +12,25 @@ The SQLite change adds nullable captured-context metadata and a one-to-one `inve
 
 The new literature route is disabled by default. Explicit operator enablement and fresh public/human-authored attestations are required. The fixed Europe PMC adapter returns one bounded metadata page, rejects redirects, excludes abstracts/full text, preserves unknown integrity and unassessed rights, and never reads or writes patient/case state. It is discovery, not evidence appraisal. Safe HTTP logging avoids request lines, query strings, bodies and provider exception text.
 
+## World Model and completed reassessment extension
+
+The composed candidate also reuses source-owner #147 and #157's read-only World Model projection and inspector, with the missing JavaScript route and draft-vetoed case-switch race corrected. Its real HTTP test covers prepare, review, amendment, reassessment and replacement acknowledgment while source observations remain clinically unreviewed. The Mission projection now treats stale history as active review work only until its own question is addressed with a current reviewed-in-demo replacement. Missing question/review context stays actionable. Old source/report text, reviewer and time remain unchanged; the JSON adds explicit review history rather than stored workflow flags.
+
+The [source-owner integration receipt](WORLD_MODEL_WORKFLOW_INTEGRATION_2026-11-02.md) records failing regressions, independent reviews and isolated checks. The table below is the **actual final combined local execution**, including both patches and the wording corrections. All 20 safety-prerequisite paths remain byte-identical. The new extended Chromium journey must pass at the final published head; its PR body and canonical roadmap hold that exact hosted receipt. Earlier `1bb4ff06` hosted results below are preserved as historical evidence only.
+
 ## Executed local gates
 
 | Check | Actual result |
 |---|---|
-| Full application Python suite | **325 passed**, zero failures/errors/skips; 50.983 seconds |
+| Full application Python suite | **341 passed**, zero failures/errors/skips; 46.741 seconds |
 | Full research suite under pre-discovery network/process denial | **219 passed**, zero failures/errors/skips; all **24 HDF5 tests executed**; zero attempted guarded effects |
-| JavaScript aggregate runner | Five test files passed; environment reports file-level totals |
-| Direct JavaScript test execution | **57 named tests passed**: 7 handoff, 11 literature UI, 16 source-dialog, 15 source-line-diff, 8 text-change |
-| JavaScript syntax | Nine application/test files passed |
-| Workflow/shell syntax | Six workflow YAML files and 28 shell run blocks validated in the safety reconciliation |
+| Direct JavaScript test execution | **63 named tests passed**: 7 handoff, 11 literature UI, 16 source-dialog, 15 source-line-diff, 8 text-change, 6 World Model inspector |
+| JavaScript syntax | Eleven application/test files passed |
+| Workflow/shell syntax | Six workflow YAML files and 31 shell run blocks validated in the final composition |
 | Whitespace/conflict check | `git diff --check` passed |
-| Source/declaration SBOM | Deterministic regeneration, JSON parsing, 32 input hashes and 92 distinct/resolved references verified; official CycloneDX 1.6 JSON Schema validation passed with zero errors using jsonschema 4.26.0, local schema references and enabled format checks |
+| Source/declaration SBOM | Deterministic regeneration, JSON parsing, 34 input hashes and 94 distinct/resolved references verified; official CycloneDX 1.6 JSON Schema validation passed with zero errors using jsonschema 4.26.0, local schema references and enabled format checks |
 
-The eight CI-boundary tests are included in the 325 application total; do not add them again. The HDF5 dependencies are research-test-only NumPy 2.3.5 and h5py 3.15.1. The application adds no third-party runtime package, model weights or patient dataset. See [SBOM scope and unresolved licenses](../safety-packet/SBOM.md) and [safety reconciliation evidence](DATA_BOUNDARY_RECONCILIATION_VERIFICATION.md).
+The eight CI-boundary tests are included in the 341 application total; do not add them again. The HDF5 dependencies are research-test-only NumPy 2.3.5 and h5py 3.15.1. The application adds no third-party runtime package, model weights or patient dataset. See [SBOM scope and unresolved licenses](../safety-packet/SBOM.md) and [safety reconciliation evidence](DATA_BOUNDARY_RECONCILIATION_VERIFICATION.md).
 
 The safety prerequisite at `d35f54daaa64038dbc76360a93cc90ebd1e3c95c` subsequently passed all six hosted workflows: [research](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41526097873), [RNA](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41526097996), [HDF5](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41526097955), [Crossref](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41526097876), [UI glance](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41526097896), and [ledger/Chromium](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41526097894). Ledger attempt 1 passed 244 Python tests but Chromium did not start before application interaction. Only that failed job was retried at the unchanged head; attempt 2 passed. These results cover the prerequisite, not the new product candidate's own hosted gate.
 
@@ -53,7 +58,7 @@ The boundary review also found fixtures sharing archival case metadata. The safe
 
 One live, manually authored generic metadata query succeeded at `2026-11-02T20:27:39Z`: three accepted MED records, API version 6.9, zero exclusions, no patient context and no abstract/full-text retention. The [exact bounded receipt](../research/LITERATURE_LIVE_METADATA_RECEIPT_2026-11-02.json) establishes transport/schema compatibility for that observation only. No live model was called; model workflow tests use explicit replay or mocked transport.
 
-Local browser execution remains unavailable: no Chrome/Chromium executable is installed, and a temporary Playwright browser download returned an invalid archive. The extended Composer browser journey covers prepare → explicit review → amendment → stale report → new run/report → preserved historical export. Static review is not a passing browser run. The published candidate must obtain its own hosted Chromium result; PR descriptions and canonical roadmap updates record the exact head and run links.
+Local browser execution was unavailable: no Chrome/Chromium executable was installed, and a temporary Playwright browser download returned an invalid archive. Published candidate `1bb4ff06a5ab222d3561145e757226f671dbf3ea` subsequently passed [hosted ledger/Chromium 41527551989](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41527551989) and [UI glance 41527551944](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41527551944), both attempt 1. The Composer journey actually executed prepare → explicit review → amendment → stale report → new run/report → preserved historical export. Ledger executed 325 Python and 57 JavaScript tests; UI repeated the 325 Python tests, ran 16 source-dialog tests and passed 13 layout checks. Do not sum the repeated Python suites. GitHub checkout merge `56ba6eacbda02b6b4acfd145fea9d8198e9c7d9a` and the published head have the same tree `a8455b54b589a7733e487661edf2de93be0a32c3`. Nonfatal SQLite ResourceWarnings and Action Node deprecation notices remain visible in the logs. These results qualify that head only, not later changes or clinical use.
 
 ## Release and product limits
 

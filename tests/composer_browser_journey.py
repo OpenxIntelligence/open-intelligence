@@ -2,7 +2,8 @@
 
 Tests case isolation, source-bound preview, the original replay save path,
 source-linked report preparation, explicit demo review, amendment invalidation
-and reassessment. No real patients, model API requests or clinical use.
+and reassessment, with the existing source World Model inspector kept current.
+No real patients, model API requests or clinical use.
 """
 from __future__ import annotations
 
@@ -69,6 +70,28 @@ def main():
             assert session.evaluate(
                 "document.querySelector('#model-investigation-run').disabled"), (
                 "Composer must be disabled until a question and source preview exist")
+            session.wait("document.readyState === 'complete'", "source inspector script loaded")
+            session.evaluate("document.querySelector('#world-model-heading').click()")
+            session.wait(
+                "document.querySelector('#world-model-detail')?.dataset.caseId === 'CASE-ALPHA' && " +
+                "document.querySelector('#world-model-observations').textContent.includes('PATH-ALPHA v1')",
+                "expanded World Model reads the existing original source")
+            assert session.evaluate(
+                "document.querySelector('#world-model-status').textContent.includes('no clinical interpretation')")
+            session.evaluate("""(() => {
+              document.querySelector('#draft-summary').value = 'Unfinished fictional draft';
+              const picker = document.querySelector('#case-picker');
+              picker.value = 'CASE-BETA';
+              picker.dispatchEvent(new Event('change'));
+            })()""")
+            session.wait(
+                "document.querySelector('#case-picker').value === 'CASE-ALPHA' && " +
+                "document.querySelector('#world-model-detail')?.dataset.caseId === 'CASE-ALPHA' && " +
+                "document.querySelector('#world-model-observations').textContent.includes('PATH-ALPHA v1')",
+                "a draft-vetoed case switch restores the original World Model inspection")
+            assert session.evaluate(
+                "document.querySelector('#notice').textContent.includes('unfinished investigation draft')")
+            session.evaluate("document.querySelector('#draft-summary').value = ''")
 
             session.evaluate("""(() => {
               document.querySelector('#question-text').value =
@@ -128,6 +151,10 @@ def main():
             assert "recorded-replay" in original_report
             assert historical_snapshot["investigation_origin"]["citations"]
             session.wait(
+                "document.querySelector('#world-model-history').textContent.includes(" +
+                json.dumps(f"Draft snapshots: {historical_snapshot['id']}.") + ")",
+                "World Model automatically includes the pending generated report")
+            session.wait(
                 "document.querySelector('#model-investigation-list').textContent.includes('Review draft #')",
                 "model run links to the existing report")
             session.evaluate("""[...document.querySelectorAll('#snapshot-list button')]
@@ -138,6 +165,13 @@ def main():
             reviewed_state = json.load(urlopen(url + "api/cases/CASE-ALPHA/state"))
             assert reviewed_state["questions"][0]["state"] == "addressed"
             assert reviewed_state["snapshots"][0]["summary"] == original_report
+            session.wait(
+                "document.querySelector('#world-model-history').textContent.includes('Draft snapshots: none.') && " +
+                "document.querySelector('#world-model-history').textContent.includes('Open question IDs: none recorded.')",
+                "explicit report acknowledgment clears only pending review references")
+            reviewed_world = json.load(urlopen(url + "api/cases/CASE-ALPHA/world-model"))
+            assert all(item["review_state"] == "not_established" and item["clinical_meaning"] is None
+                       for item in reviewed_world["observations"])
             alpha_token = session.wait(
                 "document.querySelector('#composer-context-fingerprint')?.value.length === 64 && " +
                 "!document.querySelector('#model-investigation-run').disabled",
@@ -181,6 +215,12 @@ def main():
             assert stale_state["snapshots"][0]["summary"] == original_report
             assert stale_state["questions"][0]["state"] == "open"
             session.wait(
+                "document.querySelector('#world-model-history').textContent.includes(" +
+                json.dumps(f"Historical stale reports: {historical_snapshot['id']}.") + ") && " +
+                "document.querySelector('#world-model-history').textContent.includes('Superseded: PATH-ALPHA v1') && " +
+                "document.querySelector('#world-model-observations').textContent.includes('PATH-ALPHA v2')",
+                "World Model refresh preserves old source and stale report after amendment")
+            session.wait(
                 "document.querySelector('#changes-stale')?.textContent.includes('Investigation')",
                 "what-changed projection explains stale report")
 
@@ -192,6 +232,11 @@ def main():
             session.wait(
                 "document.querySelector('#case-heading')?.textContent === 'Fictional case Beta'",
                 "switch to different patient")
+            session.wait(
+                "document.querySelector('#world-model-detail')?.dataset.caseId === 'CASE-BETA'",
+                "World Model switches to the other fictional case")
+            assert not session.evaluate(
+                "document.querySelector('#world-model-observations').textContent.includes('PATH-ALPHA')")
             assert session.evaluate(
                 "document.querySelector('#model-investigation-run').disabled"), (
                 "Patient switch did not invalidate the previous context")
@@ -250,10 +295,30 @@ def main():
             assert new_report["investigation_origin"]["investigation_id"] != \
                 old_report["investigation_origin"]["investigation_id"]
             assert new_report["source_ids"] != old_report["source_ids"]
+            session.wait(
+                "document.querySelector('#world-model-detail')?.dataset.caseId === 'CASE-ALPHA' && " +
+                "document.querySelector('#world-model-history').textContent.includes(" +
+                json.dumps(f"Draft snapshots: {new_report['id']}.") + ") && " +
+                "document.querySelector('#world-model-history').textContent.includes(" +
+                json.dumps(f"Historical stale reports: {old_report['id']}.") + ")",
+                "reassessment adds a pending report alongside retained stale history")
+            session.evaluate("""[...document.querySelectorAll('#snapshot-list button')]
+              .find(button => button.textContent === 'Demo review acknowledgment').click()""")
+            session.wait(
+                "document.querySelector('#world-model-history').textContent.includes('Draft snapshots: none.') && " +
+                "document.querySelector('#world-model-history').textContent.includes('Open question IDs: none recorded.') && " +
+                "document.querySelector('#world-model-history').textContent.includes(" +
+                json.dumps(f"Historical stale reports: {old_report['id']}.") + ")",
+                "second report review retains stale history without reopening its question")
+            session.wait(
+                "document.querySelector('#patient-mission')?.dataset.workflowStatus === 'reviewed_in_demo' && " +
+                "document.querySelector('#mission-status').textContent === 'Reviewed in demo'",
+                "current reviewed replacement resolves Mission while stale history remains inspectable")
             with urlopen(url + f"api/cases/CASE-ALPHA/snapshots/{old_report['id']}/export") as exported:
                 assert "PATH-ALPHA@1" in exported.read().decode("utf-8")
             print("PASS: source-bound Composer, replay, report preparation, explicit demo review, "
-                  "stale denial, patient isolation, amendment and versioned reassessment")
+                  "stale denial, patient isolation, amendment, versioned reassessment and "
+                  "World Model inspector refresh with historical report preservation")
         finally:
             if session is not None:
                 session.close()

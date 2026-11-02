@@ -5,7 +5,7 @@
 The current candidate inventory is
 [`SBOM_SOURCE_2026-11-02.cdx.json`](SBOM_SOURCE_2026-11-02.cdx.json), generated from
 the working tree on `integration/patient-evidence-review-20261102`, based on commit
-`24519839aa8ac1ea3aff88a956349ba72798a72a`. It records the candidate's uncommitted
+`1bb4ff06a5ab222d3561145e757226f671dbf3ea`. It records the candidate's uncommitted
 source bytes by SHA-256; that commit alone does **not** identify the added or
 modified files. This section supersedes the historical packet below where the
 candidate differs.
@@ -27,14 +27,14 @@ of historical artifacts.
 The candidate adds native Composer context, captured-input freshness checks,
 rights-qualified offline knowledge-context preparation, the atomic model-run
 handoff into the existing review ledger, and bounded Europe PMC metadata
-discovery. The associated browser code remains first-party JavaScript, HTML
+discovery, the reused read-only World Model inspector and the Mission active-versus-historical review correction. The associated browser code remains first-party JavaScript, HTML
 and CSS. Generation does not imply human review, and metadata discovery does
 not establish clinical evidence or content/model-use permissions.
 
 | Inventory class | Count and evidence | Runtime interpretation |
 |---|---|---|
-| Production source files | **24**: 14 Python files under `src/`, 8 files under `web/`, and `tools/crossref_metadata.py` plus `tools/__init__.py`; each has a path, unique BOM reference and SHA-256 | First-party source inventory, not a compiled dependency graph |
-| All hashed input files | **32**: those 24 production files, 6 workflow files, the research lockfile, and the generator itself | Declaration/tool inputs are marked `scope: excluded` |
+| Production source files | **26**: 15 Python files under `src/`, 9 files under `web/`, and `tools/crossref_metadata.py` plus `tools/__init__.py`; each has a path, unique BOM reference and SHA-256 | First-party source inventory, not a compiled dependency graph |
+| All hashed input files | **34**: those 26 production files, 6 workflow files, the research lockfile, and the generator itself | Declaration/tool inputs are marked `scope: excluded` |
 | Observed local runtime | **2**: Python **3.12.14**, SQLite **3.53.1**, read from the generator's interpreter and `sqlite3` binding | Local observations, not CI or deployment pins; native/binary/transitive contents unresolved |
 | Research lock declarations | **41** exact `name==version` entries from `tools/research/requirements.lock` | All excluded from application runtime; historical environment declarations, not installed or fetched by this inventory |
 | Additional research workflow pins | **2**: `numpy==2.3.5`, `h5py==3.15.1`, from `.github/workflows/single-cell-analysis.yml` | Excluded research declarations; no package installation performed |
@@ -42,13 +42,13 @@ not establish clinical evidence or content/model-use permissions.
 | CI/test runtime declarations | **5**: Python selectors `3.12` and `3.13`, `ubuntu-latest`, Node.js, and Chrome/Chromium | Excluded; exact runner and test-binary versions are not established by their labels |
 | External service declarations | **3**: Europe PMC, Crossref, Meta Model API | Source-declared optional service use; no provider live-verification performed by the inventory |
 
-The JSON contains **87 top-level components**, plus the first-party application
-and inventory-tool metadata records, and three services. All 92 BOM references
-are distinct. Its 16 production Python files have **zero third-party absolute
+The JSON contains **89 top-level components**, plus the first-party application
+and inventory-tool metadata records, and three services. All 94 BOM references
+are distinct. Its 17 production Python files have **zero third-party absolute
 import roots** in an AST `Import`/`ImportFrom` check. That check does not resolve
 dynamic imports, native libraries, operating-system components or a deployed
 environment. No model weights or external dataset files are vendored in the
-enumerated production roots: the 24 files are Python, JavaScript, HTML or CSS.
+enumerated production roots: the 26 files are Python, JavaScript, HTML or CSS.
 Original synthetic fixture contents are outside this file-hash inventory.
 
 Accepted H1 architecture choices remain design decisions. They have not been
@@ -113,14 +113,13 @@ python tools/generate_source_sbom.py --as-of 2026-11-02 --check
 Verification for this candidate checks JSON parsing, exact local file coverage
 and hashes, unique/resolved component/service/dependency/source references, the
 41 lock entries and two workflow pins, excluded research/CI scope, and identical
-regeneration. The 2026-11-02 verification passed all of those checks: **32 file
-hashes, 92 distinct references, 41 exact lock entries and two exact workflow
-pins**. `--check` and `git diff --check` passed. Two independent output writes
-were byte-identical, with SHA-256
-`a208b1eddb9c4dcb458047c6b6a8d19e2abd62c933ad15a1eca7bea2f4257cc0`.
+regeneration. The 2026-11-02 verification passed all of those checks: **34 file
+hashes, 94 distinct references, 41 exact lock entries and two exact workflow
+pins**. `--check` and `git diff --check` passed. Regeneration was byte-identical, with SHA-256
+`fa7578354bf79bcb2f1c831b4101768f2ef30f70eca49e17ff987d438d181019`.
 
 Formal JSON Schema validation **passed with zero errors** on 2 November 2026
-at `21:16:09 UTC`, for the inventory SHA-256 above. The validator was
+at `2026-11-02T21:34:04.235232+00:00`, for the inventory SHA-256 above; see the [machine-readable validation receipt](../engineering/SBOM_SCHEMA_VALIDATION_2026-11-02.json). The validator was
 `jsonschema[format-nongpl]==4.26.0` using `Draft7Validator`; its installed
 `License-Expression: MIT` and exact version agree with the
 [official PyPI release](https://pypi.org/project/jsonschema/4.26.0/).

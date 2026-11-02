@@ -110,7 +110,7 @@ async function renderIncomingBoard(cases) {
     else text.append(node('p', 'Most recent source event: ' + (summary.latestEvent || 'none recorded') +
       ' · Current source documents: ' + summary.currentSources +
       ' · Open questions: ' + summary.openQuestions +
-      ' · Drafts needing another look: ' + summary.stale, 'muted'));
+      ' · Historical drafts tied to changed sources: ' + summary.stale, 'muted'));
     const open = node('button', 'Open this case', 'button secondary minor');
     open.type = 'button';
     open.addEventListener('click', () => {
@@ -158,7 +158,7 @@ function renderPatientView() {
   const stale = active.snapshots.filter(s => s.state === 'stale').length;
   const superseded = active.sources.filter(s => s.state !== 'current').length;
   const notes = [];
-  if (stale) notes.push(stale + ' earlier draft(s) need another look because a report changed since they were written.');
+  if (stale) notes.push(stale + ' earlier draft(s) retain their original text after a source changed. Current questions and review status show what still needs attention.');
   if (superseded) notes.push(superseded + ' older report version(s) have been replaced by a newer version; the older versions are still kept and can be inspected.');
   if (!notes.length) notes.push('Nothing in this fictional case is currently flagged as changed or needing another look.');
   for (const text of notes) {

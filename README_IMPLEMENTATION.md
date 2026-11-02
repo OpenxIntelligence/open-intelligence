@@ -27,6 +27,26 @@ For the demonstration: create a question in `CASE-ALPHA`, save an investigation 
 
 The project distribution license remains undecided. Public source visibility is not an open-source license grant. All test reports and UI code are independently authored for this repository.
 
+## Integrated investigation and review workflow
+
+The candidate integration preserves the existing source ledger and adds a durable handoff from a captured investigation to a versioned report. Use independently authored synthetic files only.
+
+1. Seed the demonstration, start the server with the commands above and select `CASE-ALPHA`.
+2. Create/select a question in the native Composer and inspect its exact current source/evidence context. Run explicitly labeled **replay** for an offline exercise; the recorded response is not a live scientific investigation.
+3. Prepare the review draft. Preparation preserves the run, citations and input fingerprint and leaves review pending. Repeating preparation returns the same draft.
+4. Inspect the original sources and explicitly acknowledge demonstration review. This is not verified clinician approval.
+5. Import an authored amendment. The earlier run/report becomes stale and retains its original text, sources and review history. Run again with the current context to prepare a distinct report; unsupported replay claims may correctly abstain.
+
+`POST /api/cases/{CASE-ID}/investigations/{RUN-ID}/review-draft` accepts exactly `{"question_id": QUESTION_ID}`. Legacy runs without captured context must be rerun. Ordinary manual drafts retain their source/dependency bounds; internally generated reports preserve all canonical dependencies and permit a source-free result only for a genuine abstention.
+
+The public literature panel is independent of case context. To enable manually authored **public bibliographic terms** for bounded Europe PMC metadata discovery:
+
+```bash
+PYTHONPATH=src python -m open_intelligence serve --enable-literature-live
+```
+
+The operator must provide fresh public/human-authored attestations for each search. No case state, abstracts or full text are sent or retained by this adapter. Returned metadata remains rights-unassessed and is not an appraised evidence item. See [the adapter boundary](docs/research/LITERATURE_ADAPTER_BOUNDARY.md) and [integration verification](docs/engineering/INTEGRATION_VERIFICATION_2026-11-02.md) for actual test receipts and limits.
+
 ## Patient Mission workflow projection
 
 The portal now includes a read-only **Patient Mission** panel near the top of the existing case workspace. It projects the canonical case ledger into five workflow questions:
@@ -48,6 +68,14 @@ The endpoint and panel do not create or persist a second patient record. They de
 The panel automatically follows the selected synthetic case and refreshes after the canonical workspace changes. A source amendment can therefore move the projection to `review_required`, surface the exact stale investigation IDs, describe the recorded amendment, and suggest reconciliation as a bounded workflow action. Stale responses are discarded after case changes, and the test suite verifies that Alpha source text cannot appear in Beta's mission projection.
 
 This slice does **not** add identity, consent, patient goals, PHI support, medication intelligence, acute-safety escalation, diagnostic inference, literature appraisal, trial matching, treatment selection, therapeutic development, care coordination, outcome interpretation, or platform learning. It is a source-grounded workflow orientation surface for the synthetic engineering reference only.
+
+## Source-linked World Model view
+
+Expand **Inspect original-source World Model** inside Patient Mission to see the existing fictional case's source-reported observations, exact source version/line/hash, separate event/issued/received dates, unresolved reported states, narrowly defined same-specimen disagreements and prior source versions. The view reads `GET /api/cases/{CASE-ID}/world-model`; it is a read-only projection, not another patient record or inferred clinical interpretation.
+
+Pending draft IDs follow the same investigation reports used above. After an amendment, old reports remain in **Historical stale reports**. A replacement acknowledgment clears current pending work but leaves that history intact. Source observations continue to be marked clinically unreviewed; demonstration review cannot promote them into verified clinical facts.
+
+The inspector immediately clears on case changes, honors the existing unfinished-draft veto, and ignores stale responses. Its original-source view is limited to the supported authored synthetic format; it does not implement general clinical extraction, clinical adjudication or historical as-of querying.
 
 ## Fictional evidence and case applicability slice
 

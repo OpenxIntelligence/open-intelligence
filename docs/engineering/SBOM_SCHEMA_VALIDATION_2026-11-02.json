@@ -1,0 +1,33 @@
+{
+  "validated_at": "2026-11-02T21:34:04.235232+00:00",
+  "bom_path": "docs/safety-packet/SBOM_SOURCE_2026-11-02.cdx.json",
+  "bom_sha256": "fa7578354bf79bcb2f1c831b4101768f2ef30f70eca49e17ff987d438d181019",
+  "validator": "jsonschema 4.26.0 / Draft7Validator",
+  "format_checks_enabled": [
+    "date-time",
+    "idn-email",
+    "iri-reference",
+    "uri"
+  ],
+  "schema_receipts": [
+    {
+      "url": "https://cyclonedx.org/schema/bom-1.6.schema.json",
+      "sha256": "1ebcb88a2c845ecb6ff7bee7aeabdff9422cb0347f3d6875b241bd444b7e098f"
+    },
+    {
+      "url": "https://cyclonedx.org/schema/spdx.schema.json",
+      "sha256": "33863a360fc4d348e183d89c1ca7aa0877f481e7eb55be2d4102a30386188a10"
+    },
+    {
+      "url": "https://cyclonedx.org/schema/jsf-0.82.schema.json",
+      "sha256": "2faf5eb3651f2ae5f46091a131770d8d847bbd121139d19c85fc7051bfa58c46"
+    }
+  ],
+  "schema_self_checks_passed": 3,
+  "component_count": 89,
+  "service_count": 3,
+  "error_count": 0,
+  "errors": [],
+  "blocked_effect_attempts": [],
+  "scope": "Schema validation only; incomplete pre-build source/declaration inventory; not legal, dependency or deployment clearance."
+}
