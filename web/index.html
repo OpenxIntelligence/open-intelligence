@@ -7,6 +7,7 @@
   <meta name="description" content="A synthetic case workspace for following source timelines and preparing evidence-linked, reviewable investigations.">
   <title>Open Intelligence: Case Workspace</title>
   <link rel="stylesheet" href="/style.css">
+  <script src="/patient-record.js" defer></script>
   <script src="/app.js" defer></script>
   <script src="/mission.js" defer></script>
 </head>
@@ -100,13 +101,16 @@
         <p class="muted">One shared worklist for the fictional cases in this local demo, most recent source event first. It is not a triage list: the demo data contains no urgency, priority, or next clinical step, so none is shown or inferred. Selecting a case opens the same record the clinician workspace shows — there is no second copy.</p>
         <div id="incoming-list" class="questions" aria-live="polite"></div>
       </section>
-      <section class="panel" id="patient-view">
-        <div class="panel-head"><div><div class="eyebrow">PATIENT VIEW · SAME RECORD</div><h2>Your case, in plain words</h2></div><span class="pill">Same facts, plainer language</span></div>
-        <p class="muted">This is the same fictional record as the workspace above, written more plainly. Nothing here is a medical recommendation, and nothing is hidden by making it plain: where a report is uncertain, disagreed with, or has changed, that is stated. This fictional demo is not a real medical record. For a real result, talk to your care team.</p>
-        <div class="subhead">What has happened so far</div><div id="patient-timeline" class="questions"></div>
-        <div class="subhead">What the records say</div><div id="patient-findings" class="findings"></div>
-        <div class="subhead">Questions still open</div><div id="patient-questions" class="questions"></div>
-        <div class="subhead">What is not certain yet</div><div id="patient-uncertainty" class="questions"></div>
+      <section class="panel" id="patient-view" aria-labelledby="patient-view-heading" aria-busy="true">
+        <div class="panel-head"><div><div class="eyebrow">PATIENT VIEW · SAME RECORD</div><h2 id="patient-view-heading">Your record and open questions</h2></div><span class="pill">Source-linked · fictional case</span></div>
+        <p class="muted">Explore what the records say, what remains uncertain, and the questions to investigate. Open any finding to inspect its original wording. These are source statements from independently authored fictional records; they have not been clinically reviewed.</p>
+        <p id="patient-record-status" role="status" aria-live="polite">Loading the selected case…</p>
+        <div class="patient-record-grid">
+          <div><h3>What the records say</h3><div id="patient-findings" class="findings"></div></div>
+          <div><h3>What needs clarification</h3><div id="patient-uncertainty" class="questions"></div>
+            <h3>Questions still open</h3><div id="patient-questions" class="questions"></div></div>
+        </div>
+        <h3>Record history</h3><div id="patient-timeline" class="questions"></div>
       </section>
 
       <section class="panel" id="patient-mission" aria-labelledby="patient-mission-title">

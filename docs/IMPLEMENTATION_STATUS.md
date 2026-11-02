@@ -4,6 +4,10 @@
 
 **Backlog coverage:** Part of OI-003, OI-006, OI-007, OI-009 and OI-010. Does not complete the broader investigation/evidence stage (OI-008), identity/governance (OI-012–013), or clinical evaluation (OI-014 onward).
 
+## Current patient-record integration candidate — 2 November 2026
+
+The existing source-derived World Model (#147) is connected to the current Patient view in an unmerged candidate, carrying #136/#142 question-state and case-binding fixes. Findings open exact original source lines; open questions select the existing evidence/investigation workflow; amendments retain history and reopen affected work. Delayed or inconsistent projections are cleared. This is a bounded synthetic interface increment, not complete MVP delivery, production authorization or clinical validation. See [the maintained World Model implementation record](engineering/SYNTHETIC_WORLD_MODEL_PROJECTION.md#patient-record-interface-increment--2-november-2026) for scope, tests and remaining integration gates.
+
 ## Behaviors built
 
 - Strict import of independently authored `OI-SYNTHETIC-REPORT/1` UTF-8 bytes; explicit report identifier, subject, event date, issued date, specimen, finding quotation, and status.

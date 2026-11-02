@@ -1119,3 +1119,23 @@ dialog pre {
   .glance-review .review-attention { margin-block: var(--space-3); }
   .dialog-fictional-label { color: #000; background: #fff; border: 2px solid #000; }
 }
+
+/* The patient view reuses the case ledger and existing source reader. */
+.patient-record-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(16rem, 1fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+#patient-view h3 { margin: 1.4rem 0 .7rem; }
+#patient-record-status { margin: .75rem 0; color: var(--color-muted); }
+#patient-view[data-state="unavailable"] #patient-record-status {
+  border-left: 3px solid currentColor;
+  padding: .6rem .85rem;
+}
+#patient-timeline details { margin-top: .75rem; }
+#patient-timeline summary { cursor: pointer; font-weight: 600; padding: .5rem 0; }
+.patient-record-item { overflow-wrap: anywhere; }
+@media (max-width: 60rem) {
+  .patient-record-grid { grid-template-columns: minmax(0, 1fr); gap: .25rem; }
+}

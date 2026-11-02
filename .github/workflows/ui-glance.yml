@@ -28,14 +28,19 @@ jobs:
         run: |
           python -m compileall -q src tests
           node --check web/app.js
+          node --check web/patient-record.js
       - name: Python and HTTP regression suite
         run: python -m unittest discover -s tests -p 'test_*.py' -v
       - name: Source-reader concurrency and lineage regressions
-        run: node --test tests/test_source_dialogs.js
+        run: node --test tests/test_source_dialogs.js tests/test_source_line_diff.js tests/test_text_changes.js
+      - name: Patient-record projection and concurrency regressions
+        run: node --test tests/test_patient_record.js tests/test_model_investigation_freshness.js
       - name: Existing integrated browser journey
         run: python tests/browser_journey.py
       - name: Source-dialog race browser journey
         run: python tests/browser_source_dialogs.py
+      - name: Patient record to investigation and amendment browser journey
+        run: python tests/browser_patient_record.py
       - name: Source-first layout and keyboard journey
         if: always()
         run: python tests/ui_glance_journey.py
