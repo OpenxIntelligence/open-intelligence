@@ -42,6 +42,7 @@
           <a href="#bibliography">Bibliography</a>
           <a href="#import">Updates</a>
           <a href="#activity">Activity</a>
+          <a href="#changes-since-review">What changed</a>
         </nav>
       </details>
       <div class="side-bottom">
@@ -303,6 +304,17 @@
           </section>
         </div>
       </div>
+
+      <section class="panel" id="changes-since-review" aria-labelledby="changes-heading">
+        <div class="panel-head"><div><div class="eyebrow">REVIEW · WHAT CHANGED</div><h2 id="changes-heading">What changed since last review</h2></div><span class="pill pill-warn">FICTIONAL DEMO DATA — not a real patient</span></div>
+        <p class="muted">The anchor is the latest demo-review acknowledgment, or case creation when nothing has been acknowledged yet. Listed below are the ledger facts recorded after that anchor: new source documents, amended versions with a mechanical finding-key comparison, saved investigations marked stale with their recorded cause, and newly created questions. This listing reports ledger entries only and does not interpret clinical meaning, significance, or relevance.</p>
+        <p id="changes-anchor" class="muted" role="status" aria-live="polite">Loading change anchor…</p>
+        <p id="changes-disclaimer" class="muted tiny"></p>
+        <div class="subhead">New sources since the anchor</div><div id="changes-new-sources" class="cards" aria-live="polite"></div>
+        <div class="subhead">Amendments since the anchor</div><div id="changes-amendments" class="cards" aria-live="polite"></div>
+        <div class="subhead">Stale investigations with cause</div><div id="changes-stale" class="snapshots" aria-live="polite"></div>
+        <div class="subhead">New questions since the anchor</div><div id="changes-questions" class="questions" aria-live="polite"></div>
+      </section>
 
       <footer>Open Intelligence is an original, dependency-free reference implementation. No real patient information, patient login, credentialed clinical review, automated clinical inference, treatment recommendations, or regulatory clearance.</footer>
     </main>
