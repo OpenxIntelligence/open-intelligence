@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 from open_intelligence.platform_events import (
-    OutboxContractError, claim, complete, consume_once, enqueue, fail, install, validate_event,
+    OutboxContractError, claim, complete, consume_once, consume_ordered, enqueue, fail, install, validate_event,
 )
 from open_intelligence.store import CaseStore
 
@@ -214,6 +214,89 @@ class PlatformEventTests(unittest.TestCase):
     def test_consumer_refuses_effect_without_a_transaction(self):
         with self.assertRaises(OutboxContractError):
             consume_once(self.db, "ONCOLOGY-READER", fixture(), lambda c, e: None)
+
+    def test_failed_consumer_callback_rolls_back_partial_writes_even_if_caught(self):
+        self.db.execute("CREATE TABLE projection(id TEXT PRIMARY KEY)")
+        self.db.execute("BEGIN IMMEDIATE")
+        with self.db:
+            def broken(conn, ev):
+                conn.execute("INSERT INTO projection VALUES (?)", (ev["event_id"],))
+                raise ValueError("refused proposed effect")
+            with self.assertRaisesRegex(ValueError, "refused proposed effect"):
+                consume_once(self.db, "READER-A", fixture(), broken)
+            self.assertEqual(self.db.execute("SELECT COUNT(*) FROM projection").fetchone()[0], 0)
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM platform_inbox_receipts").fetchone()[0], 0)
+
+    def test_ordered_consumer_rejects_gaps_cross_patient_and_conflicts(self):
+        self.db.execute("CREATE TABLE projection(id TEXT PRIMARY KEY)")
+        def apply(conn, ev):
+            conn.execute("INSERT INTO projection VALUES (?)", (ev["event_id"],))
+        initial = fixture("EV-ORDERED-1")
+        initial["aggregate"]["revision"] = 1
+        initial["supersedes_source_ref"] = None
+        self.db.execute("BEGIN IMMEDIATE")
+        with self.db:
+            self.assertTrue(consume_ordered(self.db, "READER-A", initial, apply))
+        self.db.execute("BEGIN IMMEDIATE")
+        with self.db:
+            self.assertFalse(consume_ordered(self.db, "READER-A", initial, apply))
+        skipped = fixture("EV-ORDERED-3")
+        skipped["aggregate"]["revision"] = 3
+        self.db.execute("BEGIN IMMEDIATE")
+        with self.db:
+            with self.assertRaisesRegex(OutboxContractError, "expected 2"):
+                consume_ordered(self.db, "READER-A", skipped, apply)
+        other_patient = fixture("EV-ORDERED-2")
+        other_patient["subject_binding_id"] = "BINDING-OTHER-PATIENT"
+        self.db.execute("BEGIN IMMEDIATE")
+        with self.db:
+            with self.assertRaisesRegex(OutboxContractError, "subject binding changed"):
+                consume_ordered(self.db, "READER-A", other_patient, apply)
+        second = fixture("EV-ORDERED-2")
+        self.db.execute("BEGIN IMMEDIATE")
+        with self.db:
+            self.assertTrue(consume_ordered(self.db, "READER-A", second, apply))
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM projection").fetchone()[0], 2)
+        cursor = self.db.execute(
+            "SELECT last_revision,subject_binding_id FROM platform_consumer_aggregate_versions"
+        ).fetchone()
+        self.assertEqual(cursor, (2, "BINDING-FICTIONAL-001"))
+
+    def test_ordered_consumer_rejects_unbound_and_recovers_after_rollback(self):
+        self.db.execute("CREATE TABLE projection(id TEXT PRIMARY KEY)")
+        unbound = fixture("EV-UNBOUND")
+        unbound["aggregate"]["revision"] = 1
+        unbound["subject_binding_id"] = None
+        self.db.execute("BEGIN IMMEDIATE")
+        with self.db:
+            with self.assertRaisesRegex(OutboxContractError, "explicit subject binding"):
+                consume_ordered(self.db, "READER-A", unbound, lambda *_: self.fail("applied"))
+        first = fixture("EV-RESTORE-A")
+        first["aggregate"]["revision"] = 1
+        first["supersedes_source_ref"] = None
+        def apply(conn, ev):
+            conn.execute("INSERT INTO projection VALUES (?)", (ev["event_id"],))
+        self.db.execute("BEGIN IMMEDIATE")
+        with self.assertRaisesRegex(RuntimeError, "rollback requested"):
+            with self.db:
+                consume_ordered(self.db, "READER-A", first, apply)
+                raise RuntimeError("rollback requested")
+        self.db.close()
+        self.db = sqlite3.connect(self.path)
+        self.db.execute("BEGIN IMMEDIATE")
+        with self.db:
+            self.assertTrue(consume_ordered(self.db, "READER-A", first, apply))
+        other = fixture("EV-RESTORE-B")
+        other["aggregate"]["revision"] = 1
+        other["aggregate"]["id"] = "PATH-B"
+        other["subject_binding_id"] = "BINDING-BETA"
+        other["supersedes_source_ref"] = None
+        self.db.execute("BEGIN IMMEDIATE")
+        with self.db:
+            self.assertTrue(consume_ordered(self.db, "READER-A", other, apply))
+        self.assertEqual(
+            self.db.execute("SELECT COUNT(*) FROM platform_consumer_aggregate_versions").fetchone()[0], 2
+        )
 
     def test_claim_refuses_to_commit_unrelated_open_transaction(self):
         with self.db:
