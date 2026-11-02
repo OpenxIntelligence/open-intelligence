@@ -112,6 +112,25 @@ class ComposerContextTest(unittest.TestCase):
         self.assertEqual(withdrawn["evidence_assessments"], [])
         self.assertNotEqual(assessed["fingerprint"], withdrawn["fingerprint"])
 
+    def test_source_amendment_stales_saved_model_only_investigation_without_draft(self):
+        before = build_composer_context(self.store, "CASE-ALPHA", self.question)
+        validated = ValidatedInvestigation(
+            "abstained", [], [{"topic": "Unresolved history",
+                               "reason": "insufficient_evidence"}],
+            [], "recorded-replay", "replay")
+        investigation_id = self.store.save_investigation(
+            "CASE-ALPHA", self.question, "evidence-summary",
+            validated, "replay", context_fingerprint=before["fingerprint"])
+        self.assertFalse(self.store.get_investigation("CASE-ALPHA", investigation_id)["stale"])
+        self.assertEqual(self.store.state("CASE-ALPHA")["snapshots"], [])
+        from open_intelligence.__main__ import SYNTHETIC
+        self.store.import_report(
+            "CASE-ALPHA", (SYNTHETIC / "alpha-pathology-amended.txt").read_bytes())
+        self.assertTrue(
+            self.store.get_investigation("CASE-ALPHA", investigation_id)["stale"],
+            "A model-only result over the full case context must not survive "
+            "a source amendment as current work")
+
     def test_fingerprint_is_stable_on_restart_until_inputs_change(self):
         before = build_composer_context(self.store, "CASE-ALPHA", self.question)
         self.store.close()
