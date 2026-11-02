@@ -67,7 +67,7 @@ class SyntheticWorldModelTests(unittest.TestCase):
             self.assertIsNone(observation["clinical_meaning"])
         self.assertEqual(model["conflicts"], [])
         self.assertEqual({x["reported_state"] for x in model["observations"]},
-                         {"reported", "not-reported"})
+                         {"reported", "not-reported", "indeterminate"})
 
     def test_negative_is_not_missing_and_amendment_keeps_history(self):
         previous = self.store.import_report(
