@@ -144,7 +144,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          PYTHONPATH=src python tests/test_whole_patient_continuity.py --boundary-probe | tee "$RUNNER_TEMP/oi-identity-continuity/boundary-observations.json"
+          OI_COMPOSED_TREE="$(git write-tree)" PYTHONPATH=src python tests/test_whole_patient_continuity.py --boundary-probe | tee "$RUNNER_TEMP/oi-identity-continuity/boundary-observations.json"
       - name: Existing synthetic browser journeys on composed source
         shell: bash
         run: |

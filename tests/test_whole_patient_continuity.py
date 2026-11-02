@@ -24,6 +24,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from open_intelligence.patient_access import (
     AdapterEnvelope, AuthorizationReceipt, PatientAccessAdapter,
@@ -257,7 +258,11 @@ def boundary_probe():
             return {
                 'schema': 'oi-whole-patient-boundary-observation/1',
                 'inspected_baseline': BASELINE,
-                'tested_commit': os.environ.get('GITHUB_SHA', 'local-unrecorded'),
+                # A composed index tree is not the PR merge commit that triggered CI.
+                'tested_commit': (None if os.environ.get('OI_COMPOSED_TREE')
+                                  else os.environ.get('GITHUB_SHA', 'local-unrecorded')),
+                'tested_tree': os.environ.get('OI_COMPOSED_TREE'),
+                'workflow_trigger_commit': os.environ.get('GITHUB_SHA'),
                 'data': 'original-ai-assisted-fiction-only',
                 'collection_completed': True,
                 'observations': observations,
@@ -269,6 +274,25 @@ def boundary_probe():
             }
         finally:
             store.close()
+
+
+class BoundaryReceiptProvenanceTests(unittest.TestCase):
+    def test_composed_source_is_a_tree_not_the_workflow_trigger_commit(self):
+        with patch.dict(os.environ, {'GITHUB_SHA': 'a' * 40,
+                                    'OI_COMPOSED_TREE': 'b' * 40}, clear=True):
+            observed = boundary_probe()
+        self.assertIsNone(observed['tested_commit'])
+        self.assertEqual(observed['tested_tree'], 'b' * 40)
+        self.assertEqual(observed['workflow_trigger_commit'], 'a' * 40)
+        self.assertFalse(observed['release_authorized'])
+
+    def test_ordinary_checkout_keeps_commit_identity_and_no_composed_tree(self):
+        with patch.dict(os.environ, {'GITHUB_SHA': 'a' * 40}, clear=True):
+            observed = boundary_probe()
+        self.assertEqual(observed['tested_commit'], 'a' * 40)
+        self.assertIsNone(observed['tested_tree'])
+        self.assertEqual(observed['workflow_trigger_commit'], 'a' * 40)
+        self.assertFalse(observed['release_authorized'])
 
 
 if __name__ == '__main__':
