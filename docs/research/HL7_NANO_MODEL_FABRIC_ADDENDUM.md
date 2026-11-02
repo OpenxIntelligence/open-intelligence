@@ -3,11 +3,11 @@
 **Status:** RESEARCH / EVALUATE; not an adopted architecture decision, implementation, clinical validation, or vendor approval.  
 **Date:** 2026-10-31  
 **Tracker:** [#15](https://github.com/OpenxIntelligence/open-intelligence/issues/15)  
-**Boundary:** supplements, does not supersede, [the first-principles plan](../FIRST_PRINCIPLES_PLAN.md), existing Notion decisions (including OI-ADR-002, -007, -008, -010, -011 and -012), the current synthetic-only implementation, or any in-flight PR.
+**Boundary:** supplements, does not supersede, [the first-principles plan](../FIRST_PRINCIPLES_PLAN.md), existing Notion decisions (including OI-ADR-002, -007, -008, -010, -011 and -012), the current synthetic-only implementation (including the decided Meta-only investigation slice in [META_MODEL_API.md](../META_MODEL_API.md) and the deterministic timeline in [`timeline.py`](../../src/open_intelligence/timeline.py)), or any in-flight PR.
 
 ## 1. Decision framing
 
-Open Intelligence owns the consent-scoped clinical and biological case, immutable/versioned source material, reviewable assertions, longitudinal timeline, evidence, investigations, human decisions, and governance. It is model-neutral. **Nano is one optional, independently evaluated model** for chronology extraction, timeline reconciliation, contradiction/missingness detection, and context preparation. Other scientific models can be optional specialists (e.g., regulatory genomics, protein, pathology, imaging, pharmacology) selected per task, permissions, modalities, fitness, rights, and evidence. Neither Nano nor any provider owns clinical truth or is a platform dependency.
+Open Intelligence owns the consent-scoped clinical and biological case, immutable/versioned source material, reviewable assertions, longitudinal timeline, evidence, investigations, human decisions, and governance. At the architecture/evaluation level it is model-neutral; this does not supersede the decided synthetic-only implementation slice, which uses Meta's Model API exclusively (see Boundary). **Nano is one optional, independently evaluated model candidate** for chronology extraction, timeline reconciliation, contradiction/missingness detection, and context preparation. Other scientific models are candidates to be evaluated as optional specialists (e.g., regulatory genomics, protein, pathology, imaging, pharmacology) selected per task, permissions, modalities, fitness, rights, and evidence, subject to the decided provider boundary and separate approval. Neither Nano nor any provider owns clinical truth or is a platform dependency.
 
 The proposed addition is an **integration and validation slice** in the existing workflow: authorized source -> existing versioned case and question -> authorized model/tool run -> source-linked candidate -> scoped human review -> existing dated brief. An amended source selectively marks dependent outputs stale while history remains inspectable. Avoid parallel ledgers, a new patient-world-model authority, a separate orchestration core, or a new mandatory FHIR store.
 
@@ -48,7 +48,7 @@ Use existing schemas if they can express these contracts. Introduce new persiste
 - Include exact source version + anchor, patient/cancer episode, lesion/specimen/assay identifiers, polarity, certainty, units/reference, and effective/report/ingestion/amendment timestamps.
 - Carry competing interpretations and source conflicts. No silent promotion to `clinician_reviewed` from model output, confidence score or successful validation of JSON syntax.
 
-### 4.3 Capability registry (configuration for the existing tool/agent boundary)
+### 4.3 Capability registry (configuration for the existing model-call boundary)
 
 - Declare task + modality, allowed input/output schema, required specimen/assay metadata, QC/rejection conditions, local/remote execution and data classes.
 - Declare deployment + data-use terms, retention/training restrictions, dependencies/model-weight/data license status, per-use rights provenance, cost/latency and evaluation date.
@@ -58,13 +58,13 @@ Use existing schemas if they can express these contracts. Introduce new persiste
 
 Nano is **not** the system of record and should not be trained on patient data by default. A future Nano training or fine-tuning program is a separate, reviewable decision requiring: lawful provenance and scope-specific data-use rights, governance approval, representative cohort and labeling policy, train/eval segregation by patient and time, leakage audits, privacy protection, baseline comparison, subgroup/error analysis, reproducibility, deployment approval and monitoring. Benchmarking Nano on synthetic cases does not imply clinical fitness, privacy clearance or any right to train on uploaded records.
 
-The platform must retain the ability to use deterministic workflows and other approved models when Nano is unavailable or performs worse. Third-party models are not assumed callable merely because a publication, web demo or repository exists (including AlphaGenome). Provider availability, hosted API terms, model weights, training rights, personal-data policy and clinical-use restrictions require independent verification.
+The platform must retain the ability to use deterministic workflows and, subject to the decided provider boundary and separate approval, other evaluated models when Nano is unavailable or performs worse. Third-party models are not assumed callable merely because a publication, web demo or repository exists (including AlphaGenome). Provider availability, hosted API terms, model weights, training rights, personal-data policy and clinical-use restrictions require independent verification.
 
 ## 6. Test-first experiment for issue #15
 
 **Independent synthetic fixture set:** cases covering multiple institutions, two primaries, distinct specimens, negative vs untested variant, uncertain/partial dates, reissued pathology finding, duplicated import, conflicting staging, withdrawn evidence, cross-case isolation and revocation.
 
-**Candidates:** (A) deterministic parsing/rules already supported; (B) one permissible general model, if available; (C) Nano only when a runnable version and documented license exist. Use the same frozen source inputs and a blinded, independently authored adjudication set. Model runs must never have tool permission to approve their own results.
+**Candidates:** (A) deterministic parsing/rules already supported (including the deterministic timeline projection); (B) one permissible general model under the decided provider boundary, if available and cleared; (C) Nano only when a runnable version and documented license exist and a separate provider approval is recorded. Use the same frozen source inputs and a blinded, independently authored adjudication set. Model runs must never have tool permission to approve their own results.
 
 **Measurements:** exact source-anchor precision/recall; event extraction and pairwise chronological ordering; polarity and uncertainty preservation; specimen/episode attribution; contradictions retained; valid abstention rate; cross-tenant isolation; selective invalidation precision/recall; human correction time; latency and full cost, including setup and verification. Report raw counts and confidence intervals where sample size permits; no invented performance claims.
 
