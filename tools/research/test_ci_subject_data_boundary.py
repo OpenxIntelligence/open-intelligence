@@ -23,9 +23,9 @@ LIVE_ENTRYPOINTS = (
     "trial_screening_probe.py",
 )
 LIVE_CMD = re.compile(
-    r"(?:^|[\\s;])(?:python(?:3(?:\\.\\d+)?)?|\\$\\{?PYTHON\\}?)"
-    r"\\s+(?:-m\\s+)?(?:\\./)?tools/research/"
-    r"(?:" + "|".join(re.escape(n) for n in LIVE_ENTRYPOINTS) + r")(?:\\s|$)",
+    r"(?:^|[\s;])(?:python(?:3(?:\.\d+)?)?|\$\{?PYTHON\}?)"
+    r"\s+(?:-m\s+)?(?:\./)?tools/research/"
+    r"(?:" + "|".join(re.escape(n) for n in LIVE_ENTRYPOINTS) + r")(?:\s|$)",
     re.M,
 )
 
