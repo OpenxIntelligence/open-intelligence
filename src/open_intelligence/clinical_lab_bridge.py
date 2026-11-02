@@ -289,6 +289,14 @@ def consume_lab_review_event(
         (receipt_id, case_id)).fetchone()
     if row is None or EVENT_TYPES.get(row["kind"]) != ev["event_type"]:
         raise OutboxContractError("lab event has no matching authoritative receipt")
+    if ev["event_id"] != f"EV-LAB-{receipt_id}":
+        raise OutboxContractError("event identifier does not match authoritative receipt")
+    source_revision = bridge.db.execute(
+        """SELECT COUNT(*) FROM events WHERE case_id=? AND id<=?
+           AND kind IN (?,?,?,?,?)""",
+        (case_id, receipt_id, *EVENT_TYPES.keys())).fetchone()[0]
+    if ev["aggregate"]["revision"] != source_revision:
+        raise OutboxContractError("lab event revision does not match authoritative receipt")
     details = json.loads(row["details"])
     if ev["source_version_ref"] != _src_ref(details.get("source_version_id")):
         raise OutboxContractError("source version reference changed")
