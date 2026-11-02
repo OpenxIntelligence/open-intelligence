@@ -98,8 +98,10 @@ def _source(item: Mapping[str, Any]) -> dict:
         and permitted(permissions, "full_text", "display")
         and permitted(permissions, "full_text", "ml_use")
     )
-    if metadata is not None and not metadata_allowed:
+    if metadata is not None and not metadata_allowed and content_state == "current":
         raise KnowledgeContextError("cannot ingest source title without metadata rights")
+    # Superseded and revoked items remain discoverable by source identifier
+    # but their previously permitted metadata/content must be redacted.
     if excerpt is not None and not model_text_allowed:
         raise KnowledgeContextError("cannot ingest source text without explicit AI rights")
     return {
