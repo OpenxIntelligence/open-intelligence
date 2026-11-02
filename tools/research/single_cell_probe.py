@@ -16,15 +16,10 @@ import tempfile
 from datetime import datetime, timezone
 import urllib.request
 
-TARGETS = ('FAP', 'CD276', 'PANX3', 'MDM2')
-CONTROLS = ('PTPRC', 'CD3D', 'LST1', 'COL1A1', 'COL1A2')
-BASE = 'https://sid-sijbrandij-osteosarc-dataset.s3.us-west-2.amazonaws.com/'
-H5_URL = BASE + 'kamil/tumor/analysis/run2/tumor_run2_analyzed.h5ad'
-CATALOG_URL = 'https://osteosarc.com/data/catalog/datasets.json'
-H5_LIMIT = 2_000_000_000
-EXPECTED_H5_SHA256 = '9ac4f1c24bd2ea4ce194cb8cc069b7bbbdc8169dc416e668e25be8168507d62e'
-SAMPLE_DATES = {'T1':'2024-06-06','T2':'2025-01-28','T3':'2025-04-17','T3_CD45neg':'2025-04-17'}
-
+# Independent fictional test schema; no named person's sample aliases or dates.
+TARGETS = ('GENE_A', 'GENE_B', 'GENE_C', 'GENE_D')
+CONTROLS = ('CONTROL_A', 'CONTROL_B')
+SAMPLE_DATES = {'SYN-A':'2026-01-05', 'SYN-B':'2026-02-09'}
 
 def _text(value):
     return value.decode('utf-8') if isinstance(value, bytes) else str(value)
