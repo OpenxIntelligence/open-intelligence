@@ -637,6 +637,7 @@ class CaseStore:
                     (case_id, source_id, finding.key, finding.state, finding.quote, finding.line))
             invalidated = []
             invalidated_options = []
+            newly_stale_models = []
             if previous:
                 invalidated = [row[0] for row in self.db.execute(
                     """SELECT snapshots.id FROM snapshots JOIN snapshot_sources
@@ -654,9 +655,19 @@ class CaseStore:
                 # absent/old evidence. Therefore stale case-scoped model work
                 # whenever any canonical source is amended, even if no manual
                 # snapshot was invalidated. Never rewrite the historical output.
-                self.db.execute(
-                    "UPDATE investigations SET stale=1 WHERE case_id=? AND stale=0",
-                    (case_id,))
+                newly_stale_models = self.db.execute(
+                    """SELECT id,question_id FROM investigations
+                       WHERE case_id=? AND stale=0""", (case_id,)).fetchall()
+                if newly_stale_models:
+                    self.db.execute(
+                        "UPDATE investigations SET stale=1 WHERE case_id=? AND stale=0",
+                        (case_id,))
+                    affected_questions = sorted({
+                        int(row["question_id"]) for row in newly_stale_models})
+                    markers = ",".join("?" for _ in affected_questions)
+                    self.db.execute(
+                        f"UPDATE questions SET state='open' WHERE case_id=? AND id IN ({markers})",
+                        [case_id, *affected_questions])
                 # OI-021, same transaction: only options in THIS case that
                 # cite the superseded version or a stale snapshot reopen.
                 invalidated_options = self._invalidate_options(
@@ -686,9 +697,13 @@ class CaseStore:
             self._event(case_id, "source_imported", document_id=report.document_id,
                         version=version, source_id=source_id, amends_id=previous["id"] if previous else None,
                         invalidated_snapshots=invalidated, invalidated_options=invalidated_options,
+                        invalidated_model_investigation_ids=[
+                            int(x["id"]) for x in newly_stale_models],
                         invalidated_inventory_assertions=invalidated_inventory)
             return {"result": "imported", "source_id": source_id, "version": version,
                     "invalidated_snapshots": invalidated, "invalidated_options": invalidated_options,
+                    "invalidated_model_investigation_ids": [
+                        int(x["id"]) for x in newly_stale_models],
                     "invalidated_inventory_assertions": invalidated_inventory}
 
 
