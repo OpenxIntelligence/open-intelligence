@@ -27,7 +27,7 @@ class RecordAcquisitionTest(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.db = str(Path(self.tmp.name) / "records.sqlite")
         self.store = CaseStore(self.db)
-        self.addCleanup(self.store.close)
+        self.addCleanup(lambda: self.store.close())
         self.store.add_case("CASE-FIRST", "Fictional first case")
         self.store.add_case("CASE-OTHER", "Fictional other case")
         self.queue = RecordAcquisition(self.store)
