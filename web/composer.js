@@ -196,6 +196,110 @@
         }
       });
       labSection.append(selector, invoke, output);
+
+      const save = el('button', 'Queue and execute as saved work', 'button secondary');
+      save.type = 'button';
+      save.className = 'button secondary composer-save-run';
+      const saveStatus = el('p', 'Saving a work item records an actual calculation and its source version.', 'tiny muted');
+      const savedList = document.createElement('div');
+      savedList.className = 'composer-saved-runs';
+      savedList.setAttribute('aria-live', 'polite');
+      labSection.append(save, saveStatus, savedList);
+      const session = requestSequence;
+      const caseScope = data.case_id;
+      const questionScope = String(data.question_id);
+      const token = data.fingerprint;
+      const stillScoped = () => requestSequence === session &&
+        casePicker.value === caseScope && question.value === questionScope &&
+        hidden.value === token && shownKey === caseScope + ':' + questionScope;
+
+      async function sendJson(path, payload) {
+        const response = await fetch(path, {
+          method: 'POST', cache: 'no-store', credentials: 'same-origin',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(payload),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Work request failed');
+        return result;
+      }
+      const runsEndpoint = '/api/cases/' + encodeURIComponent(caseScope) + '/composer/runs';
+      async function loadSavedRuns() {
+        const currentSeq = requestSequence;
+        try {
+          const response = await fetch(runsEndpoint, {cache: 'no-store', credentials: 'same-origin'});
+          const data = await response.json();
+          if (!stillScoped() || currentSeq !== requestSequence) return;
+          if (!response.ok) throw new Error(data.error || 'Work history unavailable');
+          savedList.replaceChildren(el('h4', 'Saved work sessions'));
+          const forQuestion = (data.runs || []).filter(item =>
+            item.case_id === caseScope && String(item.question_id) === questionScope
+          ).slice(0, 8);
+          if (!forQuestion.length) {
+            savedList.append(el('p', 'No saved numerical work for this question.', 'tiny muted'));
+            return;
+          }
+          for (const item of forQuestion) {
+            const entry = document.createElement('div');
+            entry.className = 'composer-saved-entry';
+            entry.append(el('p', 'Run #' + item.run_id + ' · ' + item.state +
+              ' · ' + item.finding_key + ' · ' + (item.updated_at || 'time unknown'), 'tiny'));
+            const numeric = item.result?.result;
+            if (numeric?.status === 'computed') {
+              entry.append(el('p', 'Recorded numeric difference: ' + numeric.delta +
+                ' ' + numeric.unit + ' (historical; inspect current source status).', 'tiny muted'));
+            } else if (item.failure_code) {
+              entry.append(el('p', 'Held/changed: ' + item.failure_code, 'tiny muted'));
+            }
+            if (item.state === 'queued') {
+              const cancel = el('button', 'Cancel queued run', 'button secondary minor');
+              cancel.type = 'button';
+              cancel.addEventListener('click', async () => {
+                if (!stillScoped()) return;
+                cancel.disabled = true;
+                try {
+                  await sendJson(runsEndpoint + '/' + item.run_id + '/cancel', {});
+                  if (stillScoped()) await loadSavedRuns();
+                } catch (error) {
+                  if (stillScoped()) saveStatus.textContent = 'Cancellation unavailable: ' +
+                    String(error.message || error);
+                }
+              });
+              entry.append(cancel);
+            }
+            savedList.append(entry);
+          }
+        } catch (error) {
+          if (stillScoped()) savedList.replaceChildren(el('p',
+            'Saved work unavailable: ' + String(error.message || error), 'muted'));
+        }
+      }
+      save.addEventListener('click', async () => {
+        if (!stillScoped()) return;
+        save.disabled = true;
+        saveStatus.textContent = 'Recording and executing a source-bound synthetic work item…';
+        try {
+          const queued = await sendJson(runsEndpoint, {
+            question_id: Number(questionScope),
+            context_fingerprint: token, finding_key: selector.value,
+            idempotency_key: 'work-' + crypto.randomUUID(),
+          });
+          if (!stillScoped()) return;
+          const finished = await sendJson(runsEndpoint + '/' + queued.run_id + '/execute', {});
+          if (!stillScoped()) return;
+          saveStatus.textContent = 'Saved run #' + finished.run_id + ': ' + finished.state +
+            '. Clinical review: ' + finished.clinical_review_state + '.';
+          await loadSavedRuns();
+        } catch (error) {
+          if (stillScoped()) saveStatus.textContent =
+            'Saved work unavailable: ' + String(error.message || error);
+        } finally {
+          if (stillScoped()) save.disabled = false;
+        }
+      });
+      // Rendering happens just before the context token is installed. Defer
+      // history fetch to the next microtask, then verify its exact scope.
+      queueMicrotask(() => { if (stillScoped()) void loadSavedRuns(); });
     } else {
       labSection.append(el('p',
         'No OI-LAB-VALUE/1 fictional laboratory measurements in the current source preview.',
