@@ -222,3 +222,172 @@
   }
   scheduleRefresh();
 })();
+
+// Begin question review handoff.
+// Derived from existing question/snapshot/source links; never a second review ledger.
+function questionReviewItems(state) {
+  const required = currentReviewQuestionIds(state);
+  const sources = new Map(state.sources.map(s => [Number(s.id), s]));
+  const evidence = new Map((state.evidence || []).map(e => [Number(e.id), e]));
+  const assessments = new Map((state.evidence_assessments || []).map(a => [Number(a.id), a]));
+  const links = new Map((state.broker_links || []).map(l => [Number(l.id), l]));
+  const sameReport = (before, after) => after.supersedes_id === before.id &&
+    after.version === before.version + 1 && after.document_id === before.document_id &&
+    after.kind === before.kind && after.event_date === before.event_date &&
+    (after.specimen_id ?? null) === (before.specimen_id ?? null);
+  return state.questions.filter(q => required.has(Number(q.id))).map(question => {
+    const snapshots = state.snapshots.filter(s => s.state === 'stale' &&
+      Number(s.question_id) === Number(question.id));
+    const sourceIds = new Set(snapshots.flatMap(s => s.source_ids || []).map(Number));
+    const assessmentIds = new Set(snapshots.flatMap(s => s.evidence_assessment_ids || []).map(Number));
+    const linkIds = new Set(snapshots.flatMap(s => s.broker_link_ids || []).map(Number));
+    const reportChanges = [];
+    for (const id of sourceIds) {
+      const source = sources.get(id);
+      if (source?.state === 'current') continue;
+      const pairs = [], visited = new Set([id]);
+      let before = source;
+      while (before && pairs.length < state.sources.length) {
+        const next = state.sources.filter(s => sameReport(before, s));
+        // Missing/ambiguous lineage is not a comparison. Do not jump from v1 to v3.
+        if (next.length !== 1 || visited.has(Number(next[0].id))) break;
+        pairs.push({before, after: next[0]});
+        before = next[0]; visited.add(Number(before.id));
+      }
+      reportChanges.push({id, source: source || null, pairs});
+    }
+    const evidenceChanges = [];
+    for (const id of assessmentIds) {
+      const assessment = assessments.get(id);
+      const scoped = assessment && assessment.case_id === state.case.case_id &&
+        Number(assessment.question_id) === Number(question.id);
+      const source = scoped ? evidence.get(Number(assessment.evidence_version_id)) : null;
+      if (source?.state !== 'current') evidenceChanges.push({id, source: source || null});
+    }
+    const rightsChanges = [];
+    for (const id of linkIds) {
+      const link = links.get(id);
+      if (link?.rights_state !== 'active') rightsChanges.push({id, state: link?.rights_state || 'unavailable'});
+    }
+    return {question, snapshots, reportChanges, evidenceChanges, rightsChanges};
+  });
+}
+function questionReviewAction(context, action) {
+  try {
+    if (context.caseId !== readyCase() || context.sequence !== refreshSequence)
+      throw Error('The case or review state changed. Use the current review list after loading.');
+    action();
+  } catch (err) { notice(err.message, true); }
+}
+function prepareQuestionReview(questionId, context) {
+  questionReviewAction(context, () => {
+    const question = active.questions.find(q => Number(q.id) === Number(questionId));
+    if (!question || !currentReviewQuestionIds(active).has(Number(question.id)))
+      throw Error('This question no longer has an open source-change review. Refresh the review list.');
+    const selector = el('question-choice');
+    const switching = selector.value !== String(question.id);
+    const unfinished = ['draft-observations', 'draft-summary', 'draft-assumptions']
+      .some(id => el(id).value.trim()) || el('evidence-choice').querySelectorAll('input:checked').length > 0;
+    if (switching && unfinished)
+      throw Error('Save or explicitly clear the unfinished draft and evidence selections before changing questions.');
+    if (![...selector.options].some(option => option.value === String(question.id)))
+      throw Error('The requested question is not available in this case form.');
+    if (switching) {
+      selector.value = String(question.id);
+      selector.dispatchEvent(new Event('change'));
+    }
+    el('draft-form').scrollIntoView({block: 'center'});
+    el('draft-observations').focus();
+    notice('Reviewing question #' + question.id + '. Source selections are unchanged: reconcile superseded reports and evidence explicitly. Nothing was saved or approved.');
+  });
+}
+function renderQuestionReviews() {
+  clear('review-question-list');
+  const items = questionReviewItems(active);
+  const context = {caseId, sequence: refreshSequence};
+  if (!items.length) {
+    empty(el('review-question-list'), 'No open source-change review is listed. This does not establish a complete or clinically reviewed record.');
+    return;
+  }
+  for (const item of items) {
+    const row = node('article', null, 'source-card review-question');
+    row.dataset.questionId = String(item.question.id);
+    row.append(node('h3', 'Q' + item.question.id + ': ' + item.question.question));
+    row.append(node('p', item.snapshots.length + ' historical stale draft(s). Original sources and prior drafts are retained.', 'muted tiny'));
+    const compared = new Set();
+    for (const change of item.reportChanges) {
+      if (!change.source) {
+        row.append(node('p', 'Source version #' + change.id + ' is unavailable; no amendment comparison inferred.', 'muted tiny'));
+        continue;
+      }
+      const source = change.source;
+      row.append(node('p', source.document_id + '@' + source.version + ' · ' + source.state +
+        ' · Event ' + source.event_date + ' · Specimen ' + (source.specimen_id || 'not recorded'), 'snapshot-meta'));
+      const sourceAction = node('button', 'Open ' + source.document_id + '@' + source.version, 'button secondary minor');
+      sourceAction.type = 'button';
+      sourceAction.addEventListener('click', () => questionReviewAction(context, () => openSource(source)));
+      row.append(sourceAction);
+      for (const pair of change.pairs) {
+        const key = pair.before.id + ':' + pair.after.id;
+        if (compared.has(key)) continue;
+        compared.add(key);
+        const compare = node('button', 'Compare ' + source.document_id + ' v' + pair.before.version + ' → v' + pair.after.version,
+          'button secondary minor');
+        compare.type = 'button';
+        compare.addEventListener('click', () => questionReviewAction(context, () => openComparison(pair.before, pair.after)));
+        row.append(compare);
+      }
+      if (!change.pairs.length)
+        row.append(node('p', 'Linked consecutive replacement unavailable. Inspect history; no clinical change inferred.', 'muted tiny'));
+    }
+    for (const change of item.evidenceChanges) {
+      const source = change.source;
+      row.append(node('p', source ? 'Fictional evidence ' + source.evidence_key + '@' + source.version + ' is ' + source.state + '.' :
+        'Evidence assessment #' + change.id + ' or its exact source is unavailable.', 'muted tiny'));
+      if (source) {
+        const view = node('button', 'Inspect fictional evidence ' + source.evidence_key + '@' + source.version, 'button secondary minor');
+        view.type = 'button';
+        view.addEventListener('click', () => questionReviewAction(context, () => openEvidence(source)));
+        row.append(view);
+      }
+    }
+    for (const change of item.rightsChanges)
+      row.append(node('p', 'Content-rights link #' + change.id + ': ' + change.state + '. Restricted content is not displayed here.', 'muted tiny'));
+    if (!item.reportChanges.length && !item.evidenceChanges.length && !item.rightsChanges.length)
+      row.append(node('p', 'Changed dependency details are unavailable here. Inspect saved history; no cause or resolution is inferred.', 'muted tiny'));
+    const prepare = node('button', 'Prepare review for Q' + item.question.id, 'button minor');
+    prepare.type = 'button';
+    prepare.addEventListener('click', () => prepareQuestionReview(item.question.id, context));
+    row.append(prepare);
+    el('review-question-list').append(row);
+  }
+}
+// End question review handoff.
+
+// Extend the existing mission/overview projection without a new route or store.
+(() => {
+  const attention = document.getElementById('review-attention');
+  const events = document.getElementById('event-list');
+  if (!attention || !events || document.getElementById('review-question-list')) return;
+  const list = document.createElement('div');
+  list.id = 'review-question-list';
+  list.className = 'questions';
+  list.setAttribute('aria-label', 'Open questions requiring source-change review');
+  attention.insertBefore(list, attention.querySelector('a[href="#investigations"]'));
+  let scheduled = false;
+  function refreshReviewList() {
+    if (scheduled) return;
+    scheduled = true;
+    queueMicrotask(() => {
+      scheduled = false;
+      try { readyCase(); renderQuestionReviews(); }
+      catch (err) {
+        list.replaceChildren();
+        empty(list, 'Waiting for the selected case. No current review conclusion is available.');
+      }
+    });
+  }
+  new MutationObserver(refreshReviewList).observe(events, {childList: true});
+  document.getElementById('case-picker')?.addEventListener('change', refreshReviewList);
+  refreshReviewList();
+})();
