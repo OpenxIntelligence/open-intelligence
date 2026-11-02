@@ -637,7 +637,6 @@ class CaseStore:
                     (case_id, source_id, finding.key, finding.state, finding.quote, finding.line))
             invalidated = []
             invalidated_options = []
-            newly_stale_models = []
             if previous:
                 invalidated = [row[0] for row in self.db.execute(
                     """SELECT snapshots.id FROM snapshots JOIN snapshot_sources
@@ -649,25 +648,6 @@ class CaseStore:
                     self.db.execute(f"UPDATE snapshots SET state='stale' WHERE id IN ({marks})", invalidated)
                     self.db.execute(f"""UPDATE questions SET state='open' WHERE case_id=? AND id IN
                         (SELECT question_id FROM snapshots WHERE id IN ({marks}))""", [case_id, *invalidated])
-                # The model-investigation prompt considers all CURRENT case
-                # source assertions, not only sources linked to a hand-authored
-                # snapshot. A model-only abstention can also depend on the
-                # absent/old evidence. Therefore stale case-scoped model work
-                # whenever any canonical source is amended, even if no manual
-                # snapshot was invalidated. Never rewrite the historical output.
-                newly_stale_models = self.db.execute(
-                    """SELECT id,question_id FROM investigations
-                       WHERE case_id=? AND stale=0""", (case_id,)).fetchall()
-                if newly_stale_models:
-                    self.db.execute(
-                        "UPDATE investigations SET stale=1 WHERE case_id=? AND stale=0",
-                        (case_id,))
-                    affected_questions = sorted({
-                        int(row["question_id"]) for row in newly_stale_models})
-                    markers = ",".join("?" for _ in affected_questions)
-                    self.db.execute(
-                        f"UPDATE questions SET state='open' WHERE case_id=? AND id IN ({markers})",
-                        [case_id, *affected_questions])
                 # OI-021, same transaction: only options in THIS case that
                 # cite the superseded version or a stale snapshot reopen.
                 invalidated_options = self._invalidate_options(
@@ -677,6 +657,10 @@ class CaseStore:
                     self._event(case_id, "option_review_reopened",
                                 source_version_id=previous["id"],
                                 invalidated_options=invalidated_options)
+            # The model prompt consumes all current case assertions, so both
+            # genuinely new and amended sources invalidate earlier model work.
+            # Duplicate and quarantine paths already returned above.
+            newly_stale_model_ids = self._stale_model_investigations(case_id)
             invalidated_inventory = []
             if previous:
                 # Anchor-exact, like snapshots: only assertions citing the
@@ -697,13 +681,11 @@ class CaseStore:
             self._event(case_id, "source_imported", document_id=report.document_id,
                         version=version, source_id=source_id, amends_id=previous["id"] if previous else None,
                         invalidated_snapshots=invalidated, invalidated_options=invalidated_options,
-                        invalidated_model_investigation_ids=[
-                            int(x["id"]) for x in newly_stale_models],
+                        invalidated_model_investigation_ids=newly_stale_model_ids,
                         invalidated_inventory_assertions=invalidated_inventory)
             return {"result": "imported", "source_id": source_id, "version": version,
                     "invalidated_snapshots": invalidated, "invalidated_options": invalidated_options,
-                    "invalidated_model_investigation_ids": [
-                        int(x["id"]) for x in newly_stale_models],
+                    "invalidated_model_investigation_ids": newly_stale_model_ids,
                     "invalidated_inventory_assertions": invalidated_inventory}
 
 
@@ -1321,6 +1303,31 @@ class CaseStore:
             "options": options,
         }
 
+    def _stale_model_investigations(self, case_id: str,
+                                    question_id: int | None = None) -> list[int]:
+        """Reopen the existing model task when its case/question inputs change.
+
+        Caller holds BEGIN IMMEDIATE; preserve historical model artifacts,
+        and leave unrelated questions, cases and ordinary drafts alone.
+        """
+        query = "SELECT id,question_id FROM investigations WHERE case_id=? AND stale=0"
+        args: list = [case_id]
+        if question_id is not None:
+            query += " AND question_id=?"
+            args.append(question_id)
+        rows = self.db.execute(query + " ORDER BY id", args).fetchall()
+        if not rows:
+            return []
+        ids = [int(item["id"]) for item in rows]
+        marks = ",".join("?" for _ in ids)
+        self.db.execute(f"UPDATE investigations SET stale=1 WHERE id IN ({marks})", ids)
+        affected_questions = sorted({int(item["question_id"]) for item in rows})
+        qmarks = ",".join("?" for _ in affected_questions)
+        self.db.execute(
+            f"UPDATE questions SET state='open' WHERE case_id=? AND id IN ({qmarks})",
+            [case_id, *affected_questions])
+        return ids
+
     def _invalidate_evidence_version(self, evidence_version_id: int, *, reason: str) -> tuple[list[int], list[int]]:
         """Invalidate dependent snapshots across ALL synthetic cases, retaining history.
 
@@ -1338,12 +1345,29 @@ class CaseStore:
             self.db.execute(f"UPDATE snapshots SET state='stale' WHERE id IN ({ids})", invalidated)
             self.db.execute(f"""UPDATE questions SET state='open' WHERE id IN
                 (SELECT DISTINCT question_id FROM snapshots WHERE id IN ({ids}))""", invalidated)
-            affected = {str(row["case_id"]) for row in rows}
-            for case_id in sorted(affected):
-                changed = [int(row["id"]) for row in rows if row["case_id"] == case_id]
-                self._event(case_id, "evidence_invalidated",
-                            evidence_version_id=evidence_version_id,
-                            reason=reason, invalidated_snapshots=changed)
+
+        # Model-only work does not have a snapshot_evidence association,
+        # but the question-scoped investigation prompt read these assessments.
+        # Preserve its original output and reopen only affected case/questions.
+        model_cases: dict[str, list[int]] = {}
+        assessed = self.db.execute(
+            """SELECT DISTINCT case_id,question_id FROM evidence_assessments
+               WHERE evidence_version_id=?""", (evidence_version_id,)).fetchall()
+        for item in assessed:
+            affected_case = str(item["case_id"])
+            ids = self._stale_model_investigations(
+                affected_case, int(item["question_id"]))
+            if ids:
+                model_cases.setdefault(affected_case, []).extend(ids)
+        affected_cases = ({str(row["case_id"]) for row in rows} | set(model_cases))
+        for affected_case in sorted(affected_cases):
+            changed = [int(row["id"]) for row in rows
+                       if row["case_id"] == affected_case]
+            self._event(affected_case, "evidence_invalidated",
+                        evidence_version_id=evidence_version_id, reason=reason,
+                        invalidated_snapshots=changed,
+                        invalidated_model_investigation_ids=sorted(
+                            model_cases.get(affected_case, [])))
         # OI-021: same transaction, dependent options only. Evidence versions
         # are shared, so this fan-out is global exactly like the snapshot
         # fan-out above; case/source amendments stay case-scoped.
@@ -1450,8 +1474,10 @@ class CaseStore:
                 (case_id,question_id,evidence_version_id,relation,applicability,rationale,created_at)
                 VALUES (?,?,?,?,?,?,?)""", (case_id, question_id, evidence_version_id,
                    relation, applicability, rationale.strip(), now_utc()))
+            invalidated_models = self._stale_model_investigations(case_id, question_id)
             self._event(case_id, "synthetic_evidence_assessed",
-                        assessment_id=cur.lastrowid, evidence_version_id=evidence_version_id)
+                        assessment_id=cur.lastrowid, evidence_version_id=evidence_version_id,
+                        invalidated_model_investigation_ids=invalidated_models)
             return int(cur.lastrowid)
 
     def import_discovery(self, raw: bytes, rights_source_id: int | None = None) -> dict:
