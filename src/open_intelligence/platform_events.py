@@ -17,7 +17,7 @@ import re
 import sqlite3
 import time
 from datetime import date, datetime
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 SCHEMA_ID = "oi.domain-event/1"
 EVENT_KEYS = frozenset({
@@ -142,6 +142,16 @@ def install(conn: sqlite3.Connection) -> None:
         "ON platform_outbox (state, lease_until, seq)"
     )
 
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS platform_inbox_receipts (
+          consumer_id TEXT NOT NULL,
+          event_id TEXT NOT NULL,
+          event_hash TEXT NOT NULL,
+          applied_at INTEGER NOT NULL,
+          PRIMARY KEY(consumer_id,event_id)
+        )
+    """)
+
 
 def enqueue(conn: sqlite3.Connection, event: Mapping[str, Any]) -> bool:
     """Atomically enqueue with caller's state change; never commits.
@@ -246,3 +256,44 @@ def fail(conn: sqlite3.Connection, event_id: str, worker: str, code: str,
     if changed != 1:
         raise OutboxContractError("no matching lease for failure")
     # Dead-letter records remain inspectable. No silent abandonment or commit.
+
+
+def consume_once(conn: sqlite3.Connection, consumer: str,
+                 event: Mapping[str, Any],
+                 apply_effect: Callable[[sqlite3.Connection, dict[str, Any]], None],
+                 *, now: int | None = None) -> bool:
+    """Apply one **authorized** consumer effect in the caller's transaction.
+
+    A duplicate valid delivery is a no-op; same ID with different bytes fails.
+    Receipt and domain projection are committed/rolled back together. The
+    callback MUST independently verify source identity, permissions, aggregate
+    versions, and policy; this transport primitive is not an auth gate.
+    """
+    _id(consumer, "consumer")
+    if not conn.in_transaction:
+        raise OutboxContractError("consumer effect and receipt require caller transaction")
+    canonical = validate_event(event)
+    serialized = json.dumps(canonical, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    digest = hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+    previous = conn.execute(
+        "SELECT event_hash FROM platform_inbox_receipts "
+        "WHERE consumer_id=? AND event_id=?",
+        (consumer, canonical["event_id"]),
+    ).fetchone()
+    if previous is not None:
+        if previous[0] != digest:
+            raise OutboxContractError("consumer event-id collision with changed content")
+        return False
+    ts = int(time.time()) if now is None else now
+    if type(ts) is not int or ts < 0:
+        raise OutboxContractError("invalid consumer epoch timestamp")
+    apply_effect(conn, canonical)
+    try:
+        conn.execute(
+            "INSERT INTO platform_inbox_receipts "
+            "(consumer_id,event_id,event_hash,applied_at) VALUES (?,?,?,?)",
+            (consumer, canonical["event_id"], digest, ts),
+        )
+    except sqlite3.IntegrityError:
+        raise OutboxContractError("concurrent inbox receipt conflict; retry transaction") from None
+    return True
