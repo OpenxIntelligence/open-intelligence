@@ -23,6 +23,10 @@ The review handoff now passes its previously authorized `queue_fingerprint` to t
 
 Regression tests intentionally amend a fictional evidence source **between preview and write**, verify no stale receipt or event, then test a successful exact-fingerprint return. This closes the same-DB queue-version race, **not** the separate-rights-provider or authenticated-grant races; no distributed transaction or clinical approval is claimed.
 
+## Append-only database enforcement
+
+The existing `review_receipts` source-owner schema now has SQLite `BEFORE UPDATE` and `BEFORE DELETE` triggers that reject rewriting or erasing historical receipts. This is an additive migration-safe rule for the existing table, not another audit store. Regression tests exercise direct SQL attempts to turn a returned receipt into `reviewed` or delete it, verify both are rejected and the original receipt remains. Database administrators, offline copies, privileged backups and full audit retention still need independent controls; triggers are not a tamper-proof production audit service.
+
 ## Non-atomic external-rights boundary
 
 The external rights provider and review receiver are not part of one distributed transaction. Rechecks narrow but cannot eliminate races with independently stored permissions. Therefore a nonterminal `returned` receipt is safe as a review request; promoting to a terminal approved item requires a separate transactional, authenticated, version/authority-bound clinical-review API. Do not incorrectly call a textual actor label verified clinician identity.
