@@ -61,7 +61,8 @@ async function initialize() {
     picker.addEventListener('change', () => {
       // An unfinished narrative must never silently become attached to another case.
       if ((['draft-observations', 'draft-summary', 'draft-assumptions', 'evidence-rationale',
-            'evidence-withdraw-reason', 'option-description'].some(id => el(id).value.trim()))) {
+            'evidence-withdraw-reason', 'option-description',
+            'ft-title', 'ft-detail', 'ft-reason', 'ft-update-reason'].some(id => el(id).value.trim()))) {
         picker.value = caseId;
         notice('Save or explicitly clear the unfinished investigation draft before switching cases.', true);
         return;
@@ -374,9 +375,11 @@ function render() {
       Number(q.id) === Number(snapshot.question_id) && q.state === 'open'))
     .map(snapshot => Number(snapshot.question_id)));
   const reviewRequired = reopenedQuestionIds.size;
+  const overdueTasks = (active.followthrough && active.followthrough.counts && active.followthrough.counts.overdue) || 0;
   el('metrics').append(
     metric(latest.length, 'Current source documents'), metric(active.assertions.length, 'Reported statements'),
-    metric(active.questions.filter(q => q.state === 'open').length, 'Open questions'), metric(reviewRequired, 'Review required'));
+    metric(active.questions.filter(q => q.state === 'open').length, 'Open questions'), metric(reviewRequired, 'Review required'),
+    metric(overdueTasks, 'Overdue tasks'));
   const reviewNotice = el('review-attention');
   reviewNotice.dataset.state = reviewRequired ? 'needs-review' : 'no-open-review';
   el('review-attention-heading').textContent = reviewRequired
@@ -564,6 +567,7 @@ function render() {
   }
   renderPatientView();
   renderOptions();
+  renderFollowthrough();
   renderedCaseId = caseId;
 }
 function renderOriginalSource(text, lineNumber) {
@@ -931,6 +935,41 @@ el('option-review-form').addEventListener('submit', async event => {
     notice('Reviewer action recorded: ' + outcome.result + '.'); await refresh();
   } catch (err) { notice(err.message, true); }
 });
+el('followthrough-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const pick = id => { const v = el(id).value; return v === '' ? null : Number(v); };
+    const created = await api('/api/cases/' + requestedCase + '/followthrough-tasks', {
+      title: el('ft-title').value, detail: el('ft-detail').value || null,
+      due_date: el('ft-due').value || null, review_trigger: el('ft-trigger').value || null,
+      question_id: pick('ft-question'), source_version_id: pick('ft-source'),
+      actor_label: el('ft-actor').value, reason: el('ft-reason').value || null,
+    });
+    if (requestedCase !== caseId) return;
+    for (const id of ['ft-title', 'ft-detail', 'ft-due', 'ft-trigger', 'ft-actor', 'ft-reason']) el(id).value = '';
+    notice('Follow-through task #' + created.task_id + ' recorded. Nothing was acted on.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('followthrough-update-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const payload = {
+      status: el('ft-status').value, actor_label: el('ft-update-actor').value,
+      reason: el('ft-update-reason').value, owner_label: el('ft-owner').value || null,
+    };
+    if (el('ft-clear-due').checked) payload.due_date = null;
+    else if (el('ft-update-due').value) payload.due_date = el('ft-update-due').value;
+    const outcome = await api('/api/cases/' + requestedCase + '/followthrough-tasks/' +
+      Number(el('ft-task-choice').value) + '/status', payload);
+    if (requestedCase !== caseId) return;
+    el('ft-owner').value = ''; el('ft-update-due').value = '';
+    el('ft-clear-due').checked = false;
+    el('ft-update-actor').value = ''; el('ft-update-reason').value = '';
+    notice('Task #' + outcome.task_id + ' is now ' + outcome.result + '. History preserved.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
 
 
 function renderOptions() {
@@ -998,6 +1037,86 @@ function renderOptions() {
     }
     el('option-list').append(box);
   }
+}
+function renderTaskList(id, tasks, emptyText) {
+  clear(id);
+  if (!tasks.length) { empty(el(id), emptyText); return; }
+  for (const task of tasks) {
+    const box = node('div', null, 'snapshot');
+    const top = node('div', null, 'topline');
+    top.append(node('strong', 'Task #' + task.id + ' · ' + task.title),
+      pill(task.status, task.is_overdue ? 'pill-alert' : task.status === 'completed' ? '' : 'pill-warn'));
+    if (task.is_overdue) top.append(pill('overdue', 'pill-alert'));
+    if (task.is_due_soon) top.append(pill('due soon', 'pill-warn'));
+    if (task.needs_recheck) top.append(pill('linked source amended — re-check', 'pill-warn'));
+    box.append(top);
+    if (task.detail) box.append(node('p', task.detail));
+    box.append(node('p', 'Owner: ' + (task.owner_label || 'not assigned yet') +
+      ' · Due: ' + (task.due_date || 'no due date') +
+      (task.review_trigger ? ' · Revisit: ' + task.review_trigger : '') +
+      (task.question_id ? ' · Question Q' + task.question_id + ' (' + (task.question_state || 'unknown') + ')' : '') +
+      (task.source_version_id ? ' · Source #' + task.source_version_id + ' (' + (task.source_state || 'unknown') + ')' : ''),
+      'snapshot-meta'));
+    if (task.status === 'completed') {
+      box.append(node('p', task.human_action_recorded
+        ? 'Recorded as done by a human after acknowledgment. Full history is kept below.'
+        : 'Completion is recorded without an acknowledgment path; treat this record as unreliable.', 'muted'));
+    } else {
+      box.append(node('p', 'No action taken by the platform. This record waits for a human to act.', 'muted tiny'));
+    }
+    if (task.history && task.history.length) {
+      box.append(node('p', 'History: ' + task.history.map(entry =>
+        (entry.previous_status ? entry.previous_status + ' → ' : '') + entry.new_status +
+        ' by ' + entry.actor_label + ' at ' + entry.noted_at +
+        (entry.reason ? ' — ' + entry.reason : '')).join(' ; '), 'snapshot-meta'));
+    }
+    el(id).append(box);
+  }
+}
+function renderFollowthrough() {
+  const data = active.followthrough || { tasks: [], counts: {}, disclaimer: '' };
+  el('followthrough-disclaimer').textContent = data.disclaimer || '';
+  const tasks = data.tasks || [];
+  const overdueIds = new Set(data.overdue_task_ids || []);
+  const dueSoonIds = new Set(data.due_soon_task_ids || []);
+  const counts = data.counts || {};
+  const attention = el('followthrough-attention');
+  attention.dataset.state = overdueIds.size ? 'needs-review' : 'no-open-review';
+  el('followthrough-attention-heading').textContent = overdueIds.size
+    ? overdueIds.size + ' overdue task(s) need a human to act'
+    : 'Follow-through reminders';
+  el('followthrough-attention-summary').textContent = overdueIds.size || dueSoonIds.size
+    ? overdueIds.size + ' overdue · ' + dueSoonIds.size + ' due within 7 days · ' +
+      (counts.open || 0) + ' open in total. These are records for humans; nothing here acts on its own.'
+    : tasks.length
+      ? 'No overdue or due-soon tasks. ' + (counts.open || 0) +
+        ' open task(s) remain. Completed tasks stay in history below.'
+      : 'No follow-through tasks recorded for this fictional case yet.';
+  const fill = (id, items, labelFn, allowEmpty = false) => {
+    const select = el(id);
+    const prior = select.value;
+    clear(id);
+    if (allowEmpty) { const blank = node('option', '—'); blank.value = ''; select.append(blank); }
+    for (const item of items) {
+      const opt = node('option', labelFn(item));
+      opt.value = item.id; select.append(opt);
+    }
+    if (prior && [...select.options].some(x => x.value === prior)) select.value = prior;
+  };
+  fill('ft-question', active.questions || [], q => 'Q' + q.id + ', ' + q.question.slice(0, 62), true);
+  fill('ft-source', (active.sources || []).filter(s => s.state === 'current'),
+    s => s.document_id + '@' + s.version + ', ' + s.event_date, true);
+  fill('ft-task-choice', tasks, t => 'Task #' + t.id + ' · ' + t.title + ' (' + t.status + ')');
+  renderTaskList('ft-overdue', tasks.filter(t => overdueIds.has(t.id)),
+    'No overdue tasks. An overdue task would appear here until a human records its progress.');
+  renderTaskList('ft-duesoon', tasks.filter(t => dueSoonIds.has(t.id)),
+    'No tasks due within the next 7 days.');
+  renderTaskList('ft-open', tasks.filter(t => ['created', 'assigned', 'acknowledged'].includes(t.status)),
+    'No open tasks in this fictional case.');
+  renderTaskList('ft-deferred', tasks.filter(t => t.status === 'deferred'),
+    'No deferred tasks. A deferral keeps its reason in history.');
+  renderTaskList('ft-completed', tasks.filter(t => t.status === 'completed'),
+    'No completed tasks yet. Completed tasks stay here as history.');
 }
 function renderBibliography(record) {
   clear('bibliography-result');
