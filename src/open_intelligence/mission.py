@@ -162,7 +162,14 @@ def _next_actions(state: dict, current_sources: list[dict], open_questions: list
 
 
 def build_patient_mission(state: dict) -> dict:
-    """Project a canonical case snapshot into a synthetic workflow mission view."""
+    """Project a canonical case snapshot into a synthetic workflow mission view.
+
+    Stale reports stop being active review work only when their own question
+    is addressed and has a current reviewed-in-demo report. Missing question
+    or review context never resolves that work. The unresolved IDs and next
+    actions use this active subset; the existing stale count and additive
+    review_history retain all stale IDs without changing the source ledger.
+    """
     case = state["case"]
     current_sources = [item for item in state.get("sources", []) if item.get("state") == "current"]
     known = [_known_statement(item) for item in state.get("assertions", [])]
@@ -171,8 +178,18 @@ def build_patient_mission(state: dict) -> dict:
     drafts = [item for item in state.get("snapshots", []) if item.get("state") == "draft"]
     reviewed = [item for item in state.get("snapshots", []) if item.get("state") == "reviewed_in_demo"]
     quarantines = list(state.get("quarantines", []))
+    reviewed_question_ids = {item.get("question_id") for item in reviewed}
+    resolved_question_ids = {
+        item["id"] for item in state.get("questions", [])
+        if item.get("state") == "addressed" and item.get("id") is not None
+        and item["id"] in reviewed_question_ids
+    }
+    active_stale_snapshots = [
+        item for item in stale_snapshots
+        if item.get("question_id") not in resolved_question_ids
+    ]
 
-    if stale_snapshots or quarantines:
+    if active_stale_snapshots or quarantines:
         workflow_status = "review_required"
     elif open_questions or drafts:
         workflow_status = "investigation_in_progress"
@@ -214,12 +231,15 @@ def build_patient_mission(state: dict) -> dict:
                 }
                 for item in open_questions
             ],
-            "stale_investigation_ids": [item["id"] for item in stale_snapshots],
+            "stale_investigation_ids": [item["id"] for item in active_stale_snapshots],
             "quarantined_delivery_ids": [item["id"] for item in quarantines],
+        },
+        "review_history": {
+            "stale_investigation_ids": [item["id"] for item in stale_snapshots],
         },
         "material_changes": _material_changes(state.get("events", [])),
         "next_actions": _next_actions(
-            state, current_sources, open_questions, stale_snapshots, quarantines
+            state, current_sources, open_questions, active_stale_snapshots, quarantines
         ),
         "guardrails": list(GUARDRAILS),
     }

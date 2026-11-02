@@ -144,7 +144,7 @@
         },
         {
           "name": "open-intelligence:declarations",
-          "value": "[\".github/workflows/public-research.yml:58\", \".github/workflows/synthetic-tests.yml:58\", \".github/workflows/ui-glance.yml:50\"]"
+          "value": "[\".github/workflows/public-research.yml:58\", \".github/workflows/synthetic-tests.yml:58\", \".github/workflows/ui-glance.yml:52\"]"
         },
         {
           "name": "open-intelligence:declared-reference",
@@ -292,7 +292,7 @@
         },
         {
           "name": "open-intelligence:declarations",
-          "value": "[\".github/workflows/synthetic-tests.yml:26\", \".github/workflows/synthetic-tests.yml:27\", \".github/workflows/synthetic-tests.yml:28\", \".github/workflows/synthetic-tests.yml:29\", \".github/workflows/synthetic-tests.yml:31\", \".github/workflows/ui-glance.yml:30\", \".github/workflows/ui-glance.yml:34\"]"
+          "value": "[\".github/workflows/synthetic-tests.yml:26\", \".github/workflows/synthetic-tests.yml:27\", \".github/workflows/synthetic-tests.yml:28\", \".github/workflows/synthetic-tests.yml:29\", \".github/workflows/synthetic-tests.yml:31\", \".github/workflows/ui-glance.yml:30\", \".github/workflows/ui-glance.yml:34\", \".github/workflows/ui-glance.yml:36\"]"
         },
         {
           "name": "open-intelligence:declared-selector",
@@ -465,7 +465,7 @@
       "hashes": [
         {
           "alg": "SHA-256",
-          "content": "596cc05bf3f0d9bf2a7e7e01495fbce689d256be857d34f4647a676dccea015f"
+          "content": "5d782683ceaa6730638f279635370958cfd0fa88d7c1ce44822b416636520847"
         }
       ],
       "name": ".github/workflows/ui-glance.yml",
@@ -525,7 +525,7 @@
       "hashes": [
         {
           "alg": "SHA-256",
-          "content": "b81495e0ae41bcdeff52dd8784ddf3d6dc7391d2facb1d15a7cfe2aa9447ae08"
+          "content": "161719f6a20e172b3a1aab6e5568cd281dccd17f66208d68e4643b5971ddff46"
         }
       ],
       "name": "src/open_intelligence/__main__.py",
@@ -735,7 +735,7 @@
       "hashes": [
         {
           "alg": "SHA-256",
-          "content": "1b277113dc603ed618ad9099cd99d7a240724c48365f8b2ddbe90b6f1f5d0df1"
+          "content": "cb765b8b5d90389f065843eed846e30d1b8f31da7a92d0800a4a0682420fe535"
         }
       ],
       "name": "src/open_intelligence/mission.py",
@@ -911,6 +911,36 @@
       "type": "file"
     },
     {
+      "bom-ref": "file:src/open_intelligence/world_model.py",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "3a3bd3af90182b3bde4c3a45a04793404a75e29e6ef1454658bbde9dd61aee77"
+        }
+      ],
+      "name": "src/open_intelligence/world_model.py",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "production-source"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNSELECTED"
+        },
+        {
+          "name": "open-intelligence:origin",
+          "value": "first-party repository file"
+        },
+        {
+          "name": "open-intelligence:source-path",
+          "value": "src/open_intelligence/world_model.py"
+        }
+      ],
+      "scope": "required",
+      "type": "file"
+    },
+    {
       "bom-ref": "file:tools/__init__.py",
       "hashes": [
         {
@@ -1035,7 +1065,7 @@
       "hashes": [
         {
           "alg": "SHA-256",
-          "content": "1b213a04af3237a4d5ec689698f39710d758282d80379df817a42732805192f0"
+          "content": "5e77b98c24bc38a92a0384c3c1b0b522bbcbfb4fdb4c8eecaa7134fa2b79f57d"
         }
       ],
       "name": "web/app.js",
@@ -1125,7 +1155,7 @@
       "hashes": [
         {
           "alg": "SHA-256",
-          "content": "f6bbfc8cab111b7f2bcf0015a22514132c7d9d21feec58be704125df12005cdc"
+          "content": "abf442b0fdd2db050583413b13d317512a7a8d23fe0383c4b7a1e8d495b77e19"
         }
       ],
       "name": "web/index.html",
@@ -1265,6 +1295,36 @@
         {
           "name": "open-intelligence:source-path",
           "value": "web/tokens.css"
+        }
+      ],
+      "scope": "required",
+      "type": "file"
+    },
+    {
+      "bom-ref": "file:web/world-model.js",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "e0f48420d70dd4a87a8ee6033d12c5336ffe0a02e90d3f2ee7d688a545590247"
+        }
+      ],
+      "name": "web/world-model.js",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "production-source"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNSELECTED"
+        },
+        {
+          "name": "open-intelligence:origin",
+          "value": "first-party repository file"
+        },
+        {
+          "name": "open-intelligence:source-path",
+          "value": "web/world-model.js"
         }
       ],
       "scope": "required",
@@ -2662,7 +2722,7 @@
         },
         {
           "name": "open-intelligence:revision",
-          "value": "24519839aa8ac1ea3aff88a956349ba72798a72a"
+          "value": "1bb4ff06a5ab222d3561145e757226f671dbf3ea"
         },
         {
           "name": "open-intelligence:working-tree-inputs-modified",
@@ -2695,11 +2755,11 @@
       },
       {
         "name": "open-intelligence:input-manifest-sha256",
-        "value": "ac3301ef4a4cad6eb3f125b91b14dfd1bb1fe5e56bfb80fb1bd6a8d037a9d24b"
+        "value": "5affc79d300bbac9bc29be1b69a22e292a21bcccf8a8fee8bed63a7df6c6f1a4"
       },
       {
         "name": "open-intelligence:inventory-counts",
-        "value": "{\"action_occurrence_count\": 15, \"action_reference_count\": 5, \"ci_test_runtime_declaration_count\": 5, \"file_component_count\": 32, \"inline_research_package_count\": 2, \"observed_runtime_count\": 2, \"production_file_count\": 24, \"research_lock_package_count\": 41, \"third_party_production_import_root_count\": 0, \"unresolved_install_declarations\": [], \"workflow_count\": 6}"
+        "value": "{\"action_occurrence_count\": 15, \"action_reference_count\": 5, \"ci_test_runtime_declaration_count\": 5, \"file_component_count\": 34, \"inline_research_package_count\": 2, \"observed_runtime_count\": 2, \"production_file_count\": 26, \"research_lock_package_count\": 41, \"third_party_production_import_root_count\": 0, \"unresolved_install_declarations\": [], \"workflow_count\": 6}"
       },
       {
         "name": "open-intelligence:inventory-date",
@@ -2711,7 +2771,7 @@
       },
       {
         "name": "open-intelligence:production-ast-imports",
-        "value": "{\"first_party_absolute_roots\": [\"tools\"], \"method\": \"AST Import/ImportFrom roots only; relative imports are first-party; no module execution\", \"python_file_count\": 16, \"stdlib_roots\": [\"__future__\", \"argparse\", \"dataclasses\", \"datetime\", \"hashlib\", \"http\", \"json\", \"os\", \"pathlib\", \"re\", \"sqlite3\", \"threading\", \"time\", \"typing\", \"unicodedata\", \"urllib\"], \"unresolved_third_party_roots\": []}"
+        "value": "{\"first_party_absolute_roots\": [\"tools\"], \"method\": \"AST Import/ImportFrom roots only; relative imports are first-party; no module execution\", \"python_file_count\": 17, \"stdlib_roots\": [\"__future__\", \"argparse\", \"collections\", \"dataclasses\", \"datetime\", \"hashlib\", \"http\", \"json\", \"os\", \"pathlib\", \"re\", \"sqlite3\", \"threading\", \"time\", \"typing\", \"unicodedata\", \"urllib\"], \"unresolved_third_party_roots\": []}"
       },
       {
         "name": "open-intelligence:runtime-separation",
