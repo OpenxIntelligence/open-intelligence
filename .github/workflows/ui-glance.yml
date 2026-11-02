@@ -38,6 +38,8 @@ jobs:
         run: python tests/browser_journey.py
       - name: Source-dialog race browser journey
         run: python tests/browser_source_dialogs.py
+      - name: Patient Mission source-to-question browser journey
+        run: python tests/patient_mission_browser_journey.py
       - name: Source-first layout and keyboard journey
         if: always()
         run: python tests/ui_glance_journey.py
