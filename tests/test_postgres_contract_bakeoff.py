@@ -50,6 +50,9 @@ class StaticPostgresContractTests(unittest.TestCase):
         self.assertGreaterEqual(sql.count("FORCE ROW LEVEL SECURITY"), 5)
         self.assertIn("role_patient_grants", sql)
         self.assertIn("oi.request_purpose", sql)
+        self.assertIn("OI-EVENT-OWNER: encounter", sql)
+        self.assertIn("OI-SOURCE-LINEAGE", sql)
+        self.assertIn("OI-OUTBOX-IMMUTABLE", sql)
         self.assertIn("SESSION_USER", sql)
         self.assertIn("NOT implemented", sql)
         self.assertNotIn("GRANT ALL ON", sql)
@@ -233,10 +236,85 @@ class PostgresDomainIntegrityTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_duplicate_event_id_is_rejected(self):
         eid = "evt" + uuid.uuid4().hex
-        await self.a.fetchval("SELECT platform.enqueue_event($1,$2,$3,$4,$5,$6)",self.p_a,eid,"ehr.updated","ehr","x1",1)
+        encounter = await self._insert_encounter(self.a,self.p_a)
+        await self.a.fetchval("SELECT platform.enqueue_event($1,$2,$3,$4,$5,$6)",self.p_a,eid,"ehr.encounter.updated","ehr",str(encounter),1)
         with self.assertRaises(asyncpg.PostgresError):
-            await self.a.fetchval("SELECT platform.enqueue_event($1,$2,$3,$4,$5,$6)",self.p_a,eid,"ehr.updated","ehr","x2",2)
+            await self.a.fetchval("SELECT platform.enqueue_event($1,$2,$3,$4,$5,$6)",self.p_a,eid,"ehr.encounter.updated","ehr",str(encounter),1)
         self.assertEqual(await self.admin.fetchval("SELECT count(*) FROM platform.platform_outbox WHERE event_id=$1",eid),1)
+
+    async def test_forged_cross_patient_aggregate_cannot_be_published(self):
+        wrong_encounter = await self._insert_encounter(self.b,self.p_b)
+        with self.assertRaises(asyncpg.PostgresError):
+            await self.a.fetchval(
+                "SELECT platform.enqueue_event($1,$2,$3,$4,$5,$6)",
+                self.p_a,"evt"+uuid.uuid4().hex,
+                "ehr.encounter.scheduled","ehr",str(wrong_encounter),1)
+        self.assertEqual(await self.admin.fetchval(
+            "SELECT count(*) FROM platform.platform_outbox WHERE patient_id=$1",
+            self.p_a),0)
+
+    async def test_cross_patient_source_amendment_rejected(self):
+        source_a="A-source-"+uuid.uuid4().hex
+        source_b="B-source-"+uuid.uuid4().hex
+        a1=await self.admin.fetchval("""
+          INSERT INTO clinical_source.source_versions
+            (patient_id,origin_ref,source_version,sha256,authored_at)
+          VALUES($1,$2,1,$3,now()) RETURNING id
+        """,self.p_a,source_a,"a"*64)
+        b1=await self.admin.fetchval("""
+          INSERT INTO clinical_source.source_versions
+            (patient_id,origin_ref,source_version,sha256,authored_at)
+          VALUES($1,$2,1,$3,now()) RETURNING id
+        """,self.p_b,source_b,"b"*64)
+        with self.assertRaises(asyncpg.PostgresError):
+            await self.admin.execute("""
+             INSERT INTO clinical_source.source_versions
+               (patient_id,origin_ref,source_version,sha256,authored_at,supersedes_id)
+             VALUES($1,$2,2,$3,now(),$4)
+            """,self.p_a,source_a,"c"*64,b1)
+        with self.assertRaises(asyncpg.PostgresError):
+            await self.admin.execute("""
+             INSERT INTO clinical_source.source_versions
+               (patient_id,origin_ref,source_version,sha256,authored_at,supersedes_id)
+             VALUES($1,$2,3,$3,now(),$4)
+            """,self.p_a,source_a,"c"*64,a1)
+        self.assertEqual(await self.admin.fetchval(
+           "SELECT count(*) FROM clinical_source.source_versions WHERE patient_id=$1",
+           self.p_a),1)
+
+    async def test_published_event_identity_cannot_be_changed(self):
+        encounter=await self._insert_encounter(self.a,self.p_a)
+        event="evt"+uuid.uuid4().hex
+        await self.a.fetchval(
+            "SELECT platform.enqueue_event($1,$2,$3,$4,$5,$6)",
+            self.p_a,event,"ehr.encounter.scheduled","ehr",str(encounter),1)
+        with self.assertRaises(asyncpg.PostgresError):
+            await self.admin.execute(
+                "UPDATE platform.platform_outbox SET patient_id=$1 WHERE event_id=$2",
+                self.p_b,event)
+        # A dispatcher is allowed to change delivery status without rewriting
+        # patient, owner, aggregate or revision.
+        await self.admin.execute(
+            "UPDATE platform.platform_outbox SET state='leased',attempts=attempts+1 WHERE event_id=$1",
+            event)
+        self.assertEqual(await self.admin.fetchval(
+            "SELECT state FROM platform.platform_outbox WHERE event_id=$1",event),
+            "leased")
+
+    async def test_simultaneous_command_retry_is_idempotent(self):
+        key="B01-concurrent-"+uuid.uuid4().hex
+        other=await asyncpg.connect(dsn=DSN,user="oi_b01_a",password=TEST_PASSWORD)
+        try:
+            await other.execute("SELECT set_config('oi.request_purpose','care',false)")
+            async def reserve(conn):
+                return await conn.fetchval(
+                    "SELECT ehr.reserve_command($1,$2,$3)",self.p_a,key,"a"*64)
+            results=await asyncio.gather(reserve(self.a),reserve(other))
+            self.assertEqual(sorted(results),[False,True])
+            self.assertEqual(await self.admin.fetchval(
+                "SELECT count(*) FROM ehr.clinical_encounter_commands WHERE request_key=$1",key),1)
+        finally:
+            await other.close()
 
     async def test_second_permissive_driver_read_parity(self):
         try:
