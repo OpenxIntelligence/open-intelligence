@@ -32,6 +32,8 @@ jobs:
         run: python -m unittest discover -s tests -p 'test_*.py' -v
       - name: Source-reader concurrency and lineage regressions
         run: node --test tests/test_source_dialogs.js
+      - name: Synthetic World Model inspector race and literal-source checks
+        run: node --test tests/test_world_model_ui.js
       - name: Existing integrated browser journey
         run: python tests/browser_journey.py
       - name: Source-dialog race browser journey
