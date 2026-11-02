@@ -1,0 +1,8 @@
+OI-SYNTHETIC-REPORT/1
+Patient: CASE-OI017
+Document: ENC-OI017-A
+Type: clinical
+Event-Date: 2026-01-12
+Issued-At: 2026-01-13
+Finding: visit-reason|reported|Fictional intake visit at Institution A for a synthetic oncology case review.
+Finding: followup-plan|pending|Follow-up plan was not yet recorded in this fictional encounter note.

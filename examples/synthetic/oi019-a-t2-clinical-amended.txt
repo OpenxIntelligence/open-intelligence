@@ -1,0 +1,12 @@
+OI-SYNTHETIC-REPORT/1
+Patient: CASE-OI019-A
+Document: CLIN-OI019-A
+Type: clinical
+Event-Date: 2026-07-10
+Issued-At: 2026-07-14
+Amends: CLIN-OI019-A@1
+Finding: planned-operation|reported|A fictional operation is scheduled in this synthetic record; no clinical recommendation is stated.
+Finding: preservation-discussion|reported|Amended fictional note confirms the preservation item was a discussion only, not a decision.
+Finding: preservation-decision|not-reported|No decision about preservation was recorded in the amended fictional note.
+Finding: preservation-feasibility|indeterminate|Whether preservation would be feasible remains undetermined in the amended fictional note.
+Finding: sample-quantity|indeterminate|The quantity that could be preserved is not stated in the amended fictional note.
