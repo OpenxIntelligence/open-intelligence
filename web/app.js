@@ -126,7 +126,7 @@ async function renderIncomingBoard(cases) {
 const patientRecord = OpenIntelligencePatientRecord.create({
   elements: {
     root: el('patient-view'), status: el('patient-record-status'),
-    timeline: el('patient-timeline'), findings: el('patient-findings'),
+    timeline: el('patient-timeline'), findings: el('patient-findings'), inventory: el('patient-record-inventory'),
     questions: el('patient-questions'), uncertainty: el('patient-uncertainty'),
   },
   fetchModel: requested => api('/api/cases/' + requested + '/world-model'),
