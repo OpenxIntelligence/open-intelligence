@@ -7,10 +7,10 @@ state, NO authorization system, and NO live EHR integration:
 * Source bytes live only in ``source_versions`` (or, on rejection, in the
   existing ``quarantine`` table). This module never stores a normalized
   projection as a source.
-* Authorization receipts, loss receipts, bindings checks and revocation are
-  recorded only as rows in the existing ``events`` ledger (via
-  ``CaseStore.record_adapter_event``) plus, for quarantined deliveries, the
-  existing ``quarantine`` table.
+* Synthetic adapter identity bindings and receipt revocations are persisted
+  as narrow gate tables inside the SAME CaseStore SQLite DB. The original
+  source bytes still live only in the existing canonical source/quarantine
+  tables; accepted/rejected event receipts remain in the existing event log.
 * No vendor is selected. ``purpose`` must be ``individual-access`` for this
   patient-directed adapter; a Treatment-purpose receipt is rejected here
   because it belongs to a different pathway with different eligibility and
@@ -61,8 +61,10 @@ class AuthorizationReceipt:
             raise InvalidInput(
                 "Patient-directed adapter accepts only individual-access purpose; "
                 "Treatment-purpose receipts belong to a different pathway")
-        if not self.scope:
-            raise InvalidInput("Authorization receipt scope must be nonempty")
+        if (not isinstance(self.scope, tuple) or not self.scope or
+            any(not isinstance(item, str) or not item.strip()
+                for item in self.scope)):
+            raise InvalidInput("Authorization receipt scope requires nonempty domain names")
         valid_date(self.granted_at)
         valid_date(self.expires_at)
         if self.revoked_at is not None:
@@ -173,21 +175,22 @@ def classify_coverage(manifest: list[dict]) -> dict:
 
 
 class PatientAccessAdapter:
-    """Stateful (in-memory) binding/revocation gate over an existing CaseStore.
+    """Synthetic-only adapter for existing CaseStore import and source ledger.
 
-    Bindings and revocations live only for the life of this adapter object in
-    tests and in the recorded event ledger; they are not a second source
-    ledger. A production deployment would need a separately authorized,
-    durable authorization store -- this module deliberately does not build
-    one (see the OI-017 document, "what is NOT proved").
+    Actual CaseStore commits adapter bindings/revocations in its SQLite store,
+    atomically with accepted source and receipt events. Local dictionaries are
+    retained for explicit fake-ledger test doubles only. This does NOT establish
+    real identity proof, clinical authorization or production consent services.
     """
 
     def __init__(self, store: CaseStore):
         self.store = store
-        # (source_organization) -> source_subject_ref, first binding wins.
-        self._org_bindings: dict[str, str] = {}
-        # source_subject_ref -> case_id, first binding wins.
-        self._subject_cases: dict[str, str] = {}
+        # Bind within an issuing namespace, never a whole organization.
+        # One case cannot silently change its subject within the same namespace.
+        self._org_bindings: dict[tuple[str, str, str], str] = {}
+        # (organization, source system, subject reference) -> case_id.
+        # Equal local identifiers from different issuers are not equal people.
+        self._subject_cases: dict[tuple[str, str, str], str] = {}
         self._revoked_receipts: set[str] = set()
 
     def revoke(self, case_id: str, receipt_id: str, reason: str) -> dict:
@@ -199,6 +202,9 @@ class PatientAccessAdapter:
         """
         if not isinstance(reason, str) or not 10 <= len(reason.strip()) <= 600:
             raise InvalidInput("Revocation requires a 10–600 character reason")
+        if isinstance(self.store, CaseStore):
+            return self.store.revoke_adapter_receipt(case_id, receipt_id, reason)
+        # Explicit test-double fallback only; real CaseStore is durable.
         self._revoked_receipts.add(receipt_id)
         self.store.record_adapter_event(
             case_id, "adapter_authorization_revoked",
@@ -215,10 +221,10 @@ class PatientAccessAdapter:
         """
         auth = envelope.authorization
         auth.validate()
-        if envelope.adapter_id.strip() == "" or envelope.source_organization.strip() == "":
-            raise InvalidInput("Adapter id and source organization are required")
-        if not envelope.source_subject_ref.strip():
-            raise InvalidInput("Source subject reference is required")
+        for value in (envelope.adapter_id, envelope.source_organization,
+                      envelope.source_system, envelope.source_subject_ref):
+            if not isinstance(value, str) or not value.strip():
+                raise InvalidInput("Adapter, organization, source system and subject identifiers are required")
         if auth.receipt_id in self._revoked_receipts:
             self.store.record_adapter_event(
                 envelope.case_id, "adapter_delivery_rejected",
@@ -227,6 +233,11 @@ class PatientAccessAdapter:
         # Parse first so time semantics are checked against the real report.
         report = parse_report(raw)
         envelope.validate_time_semantics(report.event_date, report.issued_at)
+        # In these synthetic envelopes, a clinical encounter may be declared as
+        # "encounter" (older fixtures) or "clinical". No scope implies another.
+        scope_kind = "encounter" if report.kind == "clinical" else report.kind
+        if report.kind not in auth.scope and scope_kind not in auth.scope:
+            raise InvalidInput("Report kind is outside declared authorization scope")
         # Loss contract: a claimed transform must carry its receipt, and a
         # lossy receipt never substitutes normalized bytes for the original.
         if envelope.transformed_fields is not None or envelope.original_fields is not None:
@@ -242,10 +253,36 @@ class PatientAccessAdapter:
                 return {"result": "rejected", "reason": "transformation_loss_undocumented"}
             if declared is not None and set(declared.dropped_fields) != set(computed.dropped_fields):
                 raise InvalidInput("Declared loss receipt does not match computed dropped fields")
-        # Identity binding: first binding wins per organization and per
-        # subject reference. A conflict is quarantined/rejected, never merged.
-        org_bound = self._org_bindings.get(envelope.source_organization)
-        subject_case = self._subject_cases.get(envelope.source_subject_ref)
+        if isinstance(self.store, CaseStore):
+            # No in-memory identity state is authoritative for an actual CaseStore.
+            # Verify identity, receipt revocation and source acceptance while
+            # holding the *same* SQLite write transaction and event ledger.
+            loss_receipt = None
+            if envelope.transformation is not None and envelope.transformation.is_lossy:
+                loss_receipt = {
+                    "dropped_fields": list(envelope.transformation.dropped_fields),
+                    "truncated_fields": list(envelope.transformation.truncated_fields),
+                    "cardinality_changes": list(envelope.transformation.cardinality_changes),
+                }
+            return self.store.import_adapter_report(
+                envelope.case_id, raw, source_organization=envelope.source_organization,
+                source_system=envelope.source_system,
+                source_subject_ref=envelope.source_subject_ref,
+                receipt_id=auth.receipt_id, adapter_id=envelope.adapter_id,
+                retrieved_at=envelope.retrieved_at, loss_receipt=loss_receipt,
+            )
+
+        # Isolated fake-ledger regressions use the old in-memory path below.
+        # This branch has no claim of durability, identity proof or clinical use.
+        # Source identity is qualified by the issuing organization AND system.
+        # Keep the case/source binding conservative: aliases need an explicit
+        # reconciliation path rather than being silently merged here.
+        case_namespace = (envelope.case_id, envelope.source_organization,
+                          envelope.source_system)
+        qualified_subject = (envelope.source_organization, envelope.source_system,
+                             envelope.source_subject_ref)
+        org_bound = self._org_bindings.get(case_namespace)
+        subject_case = self._subject_cases.get(qualified_subject)
         if (org_bound is not None and org_bound != envelope.source_subject_ref) or \
                 (subject_case is not None and subject_case != envelope.case_id):
             digest = hashlib.sha256(raw).hexdigest()
@@ -257,17 +294,21 @@ class PatientAccessAdapter:
                 sha256=digest)
             return {"result": "rejected", "reason": "identity_collision",
                     "quarantine_id": outcome["quarantine_id"]}
-        # Bind on first successful contract pass (before import, so a later
-        # duplicate delivery from the same binding is not a collision).
-        self._org_bindings.setdefault(envelope.source_organization, envelope.source_subject_ref)
-        self._subject_cases.setdefault(envelope.source_subject_ref, envelope.case_id)
+        # A rejected/quarantined/failed import must not claim an identity.
+        # A duplicate is accepted canonical content and establishes the same
+        # binding without creating a second source or acceptance receipt.
         outcome = self.store.import_report(envelope.case_id, raw)
+        if outcome["result"] in {"imported", "duplicate"}:
+            self._org_bindings.setdefault(case_namespace, envelope.source_subject_ref)
+            self._subject_cases.setdefault(qualified_subject, envelope.case_id)
         if outcome["result"] == "imported":
             self.store.record_adapter_event(
                 envelope.case_id, "adapter_delivery_accepted",
                 document_id=report.document_id, version=outcome["version"],
                 source_id=outcome["source_id"], adapter_id=envelope.adapter_id,
                 source_organization=envelope.source_organization,
+                source_system=envelope.source_system,
+                source_subject_ref=envelope.source_subject_ref,
                 receipt_id=auth.receipt_id, retrieved_at=envelope.retrieved_at,
                 sha256=hashlib.sha256(raw).hexdigest())
             if envelope.transformation is not None and envelope.transformation.is_lossy:
