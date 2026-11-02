@@ -49,6 +49,11 @@ jobs:
         run: |
           set -o pipefail
           PYTHONPATH=src python tests/composer_lab_browser_journey.py 2>&1 | tee verification-artifacts/composer-lab-browser-tests.txt
+      - name: Durable Composer work browser journey (headless Chromium)
+        shell: bash
+        run: |
+          set -o pipefail
+          PYTHONPATH=src python tests/composer_durable_browser_journey.py 2>&1 | tee verification-artifacts/composer-durable-browser-tests.txt
       - name: Record exact synthetic source under test
         if: always()
         run: |
