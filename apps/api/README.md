@@ -191,6 +191,12 @@ that they ran or passed.
   isolation before testing HTTP. See the
   [Docker maintainer explanation](https://github.com/moby/moby/discussions/53256)
   for the gateway requirement; the final PR-head run must verify the correction.
+- The next hosted [run #41529433207](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41529433207)
+  passed the actual network-isolation and loopback-binding assertions, then
+  exposed a startup connection reset before the API was ready. Readiness polling
+  now retries `ConnectionError` within its existing 45-second limit, alongside
+  URL errors and timeouts. Response/schema assertions remain fail-fast; the
+  published-port and restart checks must still pass on the final head.
 
 ## Traceability and handoff
 
