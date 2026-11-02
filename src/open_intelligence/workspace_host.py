@@ -16,11 +16,11 @@ def workspace_html() -> str:
     edits={
         '<link rel="stylesheet" href="/style.css">': '<link rel="stylesheet" href="/style.css">\n  <link rel="stylesheet" href="/intake.css">',
         '<script src="/app.js" defer></script>': '<script src="/intake.js" defer></script>\n  <script src="/app.js" defer></script>',
-        '<script src="/literature.js" defer></script>': '<script src="/literature.js" defer></script>\n  <script src="/workspace-entry.js" defer></script>',
+        '<script src="/literature.js" defer></script>': '<script src="/literature.js" defer></script>\n  <script src="/workspace-entry.js" defer></script>\n  <script src="/record-acquisition.js" defer></script>',
         '<body>': '<body data-workspace-state="loading">',
         '<p class="muted tiny">Fictional case data stays': '<button class="button secondary" type="button" id="new-workspace-button">Create workspace</button>\n      <p class="muted tiny">Fictional case data stays',
         '<a href="#sources">Sources and findings</a>': '<a href="#source-intake">Add original records</a>\n          <a href="#sources">Sources and findings</a>',
-        '      <div class="metrics" id="metrics" aria-live="polite"></div>': (WEB/'workspace-entry.html').read_text(encoding='utf-8')+'      <div class="metrics" id="metrics" aria-live="polite"></div>',
+        '      <div class="metrics" id="metrics" aria-live="polite"></div>': (WEB/'workspace-entry.html').read_text(encoding='utf-8')+'\n'+(WEB/'record-acquisition.html').read_text(encoding='utf-8')+'      <div class="metrics" id="metrics" aria-live="polite"></div>',
     }
     for old,new in edits.items():
         if html.count(old)!=1:
@@ -39,7 +39,8 @@ def workspace_handler(db_path: str) -> type[Handler]:
         def do_GET(self) -> None:  # noqa: N802
             assets={'/intake.js':('intake.js','text/javascript; charset=utf-8'),
                     '/workspace-entry.js':('workspace-entry.js','text/javascript; charset=utf-8'),
-                    '/intake.css':('intake.css','text/css; charset=utf-8')}
+                    '/intake.css':('intake.css','text/css; charset=utf-8'),
+                    '/record-acquisition.js':('record-acquisition.js','text/javascript; charset=utf-8')}
             path=urlsplit(self.path).path
             if path in assets:
                 if not self._host_allowed():

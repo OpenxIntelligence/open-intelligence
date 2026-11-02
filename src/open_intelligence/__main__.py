@@ -26,6 +26,7 @@ from .investigation import (
 from .composer import build_composer_context, composer_context_fingerprint
 from .literature import CLINICAL_USE, MAX_PAGE_SIZE, MAX_QUERY_LENGTH, LiteratureError, search_europe_pmc
 from .mission import build_patient_mission
+from .record_acquisition import RecordAcquisition
 from .store import CaseStore, InvalidInput, MAX_SOURCE_BYTES
 from .timeline import case_timeline
 from .world_model import synthetic_world_model
@@ -204,6 +205,9 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if path == "/api/cases":
                 return self._json(200, store.cases())
+            requests = re.fullmatch(rf"/api/cases/{ID_PART}/record-requests", path)
+            if requests:
+                return self._json(200, RecordAcquisition(store).list(requests[1]))
             if path == "/api/discovery":
                 return self._json(200, store.list_discovery())
             discovery_links = re.fullmatch(rf"/api/cases/{ID_PART}/discovery", path)
@@ -312,6 +316,26 @@ class Handler(BaseHTTPRequestHandler):
                 if path == "/api/cases":
                     store.add_case(data.get("case_id"), data.get("label"))
                     return self._json(201, {"result": "created"})
+                requests = re.fullmatch(rf"/api/cases/{ID_PART}/record-requests", path)
+                if requests:
+                    if set(data) != {"request_key", "kind", "label", "organization"}:
+                        raise InvalidInput("Invalid record acquisition request fields")
+                    receipt = RecordAcquisition(store).create(
+                        requests[1], data.get("request_key"), data.get("kind"),
+                        data.get("label"), data.get("organization"))
+                    return self._json(200 if receipt["duplicate"] else 201, receipt)
+                receipt = re.fullmatch(rf"/api/cases/{ID_PART}/record-requests/([0-9]+)/receive", path)
+                if receipt:
+                    if set(data) != {"source_version_id"}:
+                        raise InvalidInput("An exact source_version_id is required")
+                    return self._json(200, RecordAcquisition(store).receive(
+                        receipt[1], int(receipt[2]), data.get("source_version_id")))
+                cancelled = re.fullmatch(rf"/api/cases/{ID_PART}/record-requests/([0-9]+)/cancel", path)
+                if cancelled:
+                    if set(data) != {"reason"}:
+                        raise InvalidInput("An explicit cancellation reason is required")
+                    return self._json(200, RecordAcquisition(store).cancel(
+                        cancelled[1], int(cancelled[2]), data.get("reason")))
                 if path == "/api/evidence/imports":
                     raw = data.get("text")
                     if not isinstance(raw, str):

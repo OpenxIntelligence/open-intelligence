@@ -20,6 +20,16 @@ Open **http://127.0.0.1:8765**. Python 3.10 or newer is required. The default da
 
 The same existing workspace contains patient-oriented wording, source history, research/evidence assessment, bibliography, timeline, worklist and review history. Availability of a control is not evidence that hospital integration or clinical reasoning is implemented.
 
+## Track source acquisition and amended receipts (draft extension)
+
+The optional **Records to obtain** section records fictional source-acquisition tasks *inside the same case database*. Enter the requested record, expected fictional organization and document category; this does not contact an institution or establish that a test is clinically indicated. Request creation is idempotent under its scoped stable request key. No external records-request communication is implemented.
+
+After a matching original is imported, choose its exact **current source version** and click **Mark received with selected original**. This records the canonical source version in the request and appends an event to the existing case event ledger; mere filename matching is not treated as verified receipt. A cancelled request cannot be fulfilled. If the linked source is later amended, its historical receipt is preserved and the status becomes `source_superseded_reconciliation_needed`; select the updated version explicitly to reconcile it. An amendment never silently updates an old receipt. The original report remains available.
+
+The APIs in this synthetic-only stage are `GET/POST /api/cases/{CASE}/record-requests`, `POST /api/cases/{CASE}/record-requests/{ID}/receive` and `POST /api/cases/{CASE}/record-requests/{ID}/cancel`. There is no provider authentication, patient identity validation, consent, outreach, medical-record release authorization, PHI protection or external source verification. The accepted FastAPI/PostgreSQL and React/Vite contracts must absorb this first-party operational behavior after owner review; SQLite is only the existing local reference implementation.
+
+Verification on this branch includes `PYTHONPATH=src python -m unittest discover -s tests -p test_record_acquisition.py -v` and the existing full workspace browser journey extended through request, receipt, amendment, manual reconciliation and reload. Only exact-head executed results establish software pass status.
+
 ## Boundaries
 
 Use **independently authored fictional data only**, not actual, public or disguised patient records. File intake currently accepts UTF-8 `.txt` files with LF line endings and the existing `OI-SYNTHETIC-REPORT/1` contract, maximum 64 KiB. CRLF, BOM, invalid UTF-8 and unsupported formats are rejected rather than silently normalized. There is no normal PDF/OCR extraction or clinical inference here. Source statements are authored annotations, not model discoveries. A checkbox cannot prove consent, identity or data rights.
@@ -30,7 +40,7 @@ The accepted H1 target remains FastAPI/PostgreSQL and React/Vite/TypeScript. Thi
 
 ## Implementation ownership
 
-The original `app.js`, `index.html`, HTTP handler, source parser, CaseStore, model workflow and review engine remain unchanged. `workspace_host.py` composes a trusted first-party HTML partial and serves three extra static assets; all application APIs are inherited. `workspace-entry.js` is the thin adapter to existing browser selection/render functions, not a second store. Missing template anchors fail explicitly, requiring reconciliation with the owner.
+The original case/source/review data owners remain authoritative. This extension adds a bounded operational request table to the original CaseStore schema, case-scoped HTTP routes in its existing handler, and a separate UI partial; it does not introduce a patient or source ledger. `workspace_host.py` composes a trusted first-party HTML partial and serves three extra static assets; all application APIs are inherited. `workspace-entry.js` is the thin adapter to existing browser selection/render functions, not a second store. Missing template anchors fail explicitly, requiring reconciliation with the owner.
 
 ```sh
 PYTHONPATH=src python -m unittest discover -s tests -p test_workspace_start_http.py -v

@@ -3,7 +3,7 @@ on:
   push:
     branches: [feat/connected-workspace-intake-20261102]
   pull_request:
-    branches: [integration/patient-evidence-review-20261102]
+    branches: [integration/patient-evidence-review-20261102, feat/connected-workspace-intake-20261102]
 permissions:
   contents: read
 jobs:
@@ -25,6 +25,7 @@ jobs:
           python -m compileall -q src tests run_open_intelligence.py
           node --check web/intake.js
           node --check web/workspace-entry.js
+          node --check web/record-acquisition.js
           python run_open_intelligence.py --help
       - name: Existing and intake JavaScript checks
         shell: bash

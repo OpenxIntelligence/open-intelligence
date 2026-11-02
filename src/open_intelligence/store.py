@@ -468,6 +468,23 @@ CREATE TABLE IF NOT EXISTS biological_inventory_assertions (
 CREATE INDEX IF NOT EXISTS idx_biological_assets_case ON biological_assets(case_id, asset_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_assertions_asset ON biological_inventory_assertions(asset_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_assertions_source ON biological_inventory_assertions(source_version_id);
+-- First-party operational requests to obtain records. No shadow patient/source ledger.
+-- Linked receipts reference the canonical source_versions table; history stays
+-- in the original case events ledger and source version chain.
+CREATE TABLE IF NOT EXISTS record_requests (
+  id INTEGER PRIMARY KEY,
+  case_id TEXT NOT NULL REFERENCES cases(case_id),
+  request_key TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK(kind IN ('pathology','molecular','imaging','laboratory','clinical','other')),
+  label TEXT NOT NULL, organization TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('requested','received','cancelled')),
+  received_source_id INTEGER REFERENCES source_versions(id),
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+  CHECK ((status='received' AND received_source_id IS NOT NULL) OR
+         (status!='received' AND received_source_id IS NULL)),
+  UNIQUE(case_id, request_key)
+);
+CREATE INDEX IF NOT EXISTS idx_record_requests_case ON record_requests(case_id, id);
 """
 
 
