@@ -1,8 +1,8 @@
-"""Public-case catalog intake and input planning, isolated from the clinical app.
+"""Archived catalog validation and input planning, isolated from the clinical app.
 
-Only a fixed public catalog is fetched. Raw rows remain in memory. Published
-receipts are aggregate engineering results, not medical findings or permission
-to acquire every listed asset. No model, genomic, image or clinical analysis runs.
+Network catalog acquisition is retired: fetch_catalog refuses before IO.
+Pure validation helpers remain for independently fictional offline fixtures;
+they authorize no patient-data acquisition, model or clinical analysis.
 Maps to existing OI-004/006/008/011/014/016 contracts; no new patient store.
 """
 from __future__ import annotations
@@ -305,6 +305,8 @@ class NoRedirect(HTTPRedirectHandler):
 
 
 def fetch_catalog() -> tuple[bytes, dict]:
+    # The catalog contains case-specific patient data. No manual or CI opt-in is allowed.
+    raise PermissionError('Sid case data catalog access disabled: use public narrative accounts to study workflows, never patient data.')
     url = validate_fetch_url(CATALOG_URL)
     opener = build_opener(NoRedirect())
     for attempt in range(2):

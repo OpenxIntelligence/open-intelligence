@@ -1,8 +1,7 @@
-"""Bounded descriptive localization over a fixed public processed single-cell object.
+"""Offline descriptive parsers for independently authored single-cell fixtures.
 
-This is a research adapter, not a clinical model or an independent annotation.
-Never equate AnnData.raw with raw counts, a source label with malignancy, or cells
-from one patient with independent patient replicates. Only aggregates leave RAM.
+Fixture annotations are input labels, not clinical findings or independent
+annotations. No network acquisition or command execution is enabled.
 """
 from __future__ import annotations
 import argparse
@@ -16,15 +15,10 @@ import tempfile
 from datetime import datetime, timezone
 import urllib.request
 
-TARGETS = ('FAP', 'CD276', 'PANX3', 'MDM2')
-CONTROLS = ('PTPRC', 'CD3D', 'LST1', 'COL1A1', 'COL1A2')
-BASE = 'https://sid-sijbrandij-osteosarc-dataset.s3.us-west-2.amazonaws.com/'
-H5_URL = BASE + 'kamil/tumor/analysis/run2/tumor_run2_analyzed.h5ad'
-CATALOG_URL = 'https://osteosarc.com/data/catalog/datasets.json'
-H5_LIMIT = 2_000_000_000
-EXPECTED_H5_SHA256 = '9ac4f1c24bd2ea4ce194cb8cc069b7bbbdc8169dc416e668e25be8168507d62e'
-SAMPLE_DATES = {'T1':'2024-06-06','T2':'2025-01-28','T3':'2025-04-17','T3_CD45neg':'2025-04-17'}
-
+# Independent fictional test schema; no named person's sample aliases or dates.
+TARGETS = ('GENE_A', 'GENE_B', 'GENE_C', 'GENE_D')
+CONTROLS = ('CONTROL_A', 'CONTROL_B')
+SAMPLE_DATES = {'SYN-A':'2026-01-05', 'SYN-B':'2026-02-09'}
 
 def _text(value):
     return value.decode('utf-8') if isinstance(value, bytes) else str(value)
@@ -174,31 +168,18 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         raise ValueError('redirect denied for fixed research asset')
 
 
-def acquire(url,path,limit):
-    """Fixed endpoints only; no user-selected URL, credentials or model egress."""
-    allowed={H5_URL,CATALOG_URL}
-    if url not in allowed:raise ValueError('source outside declared scope')
-    opener=urllib.request.build_opener(NoRedirect)
-    total=0;digest=hashlib.sha256()
-    with opener.open(urllib.request.Request(url,headers={'User-Agent':'Open-Intelligence-research/1'}),timeout=120) as response,Path(path).open('wb') as f:
-        expected=response.headers.get('Content-Length')
-        if expected and int(expected)>limit:raise ValueError('source exceeds byte cap')
-        while True:
-            block=response.read(8*1024*1024)
-            if not block:break
-            total+=len(block)
-            if total>limit:raise ValueError('source exceeds byte cap')
-            digest.update(block);f.write(block)
-        if expected and int(expected)!=total:raise ValueError('incomplete source response')
-    return {'url':url,'bytes':total,'sha256':digest.hexdigest(),'retrieved_at':datetime.now(timezone.utc).isoformat()}
+def acquire(url, path, limit):
+    """Retired acquisition endpoint; never write a file or make a network request."""
+    raise PermissionError(
+        "Named-patient single-cell data acquisition is disabled; fictional fixtures only."
+    )
 
 
 def inspect_and_analyze(path):
-    """Describe selected count-layer signals under source-predicted annotations.
+    """Validate the fictional fixture schema and summarize stored count values.
 
-    Prior schema inspection established a counts layer, nonnegative log-like X,
-    exact symbols and three source clustering resolutions. We do not refit the
-    clustering, call malignant cells, or infer normal-organ specificity.
+    Require a counts layer, nonnegative X, explicit symbols and three fixture
+    clustering resolutions. No annotation training or clinical inference runs.
     """
     import h5py
     import numpy as np
@@ -209,7 +190,7 @@ def inspect_and_analyze(path):
         if not samples or len(samples)!=len(dates) or len(ids)!=len(samples) or len(ids)!=len(set(ids)):
             raise ValueError('cell identity/date alignment unresolved')
         if any(sample not in SAMPLE_DATES or SAMPLE_DATES[sample]!=day for sample,day in zip(samples,dates)):
-            raise ValueError('sample/date outside the fixed declared tumor scope')
+            raise ValueError('sample/date outside the declared fictional fixture schema')
         symbols=read_column(var,_text(var.attrs.get('_index','_index')))
         mapping=resolve_genes(var,(*TARGETS,*CONTROLS))
         genes=[g for g,i in mapping.items() if i is not None]
@@ -236,10 +217,10 @@ def inspect_and_analyze(path):
         if len({json.dumps(v,sort_keys=True) for v in counts_by_res.values()}) != 1:
             raise ValueError('grouping changed source detection totals')
         return {
-            'question':'Where are the four previously nominated bulk-RNA targets detected among source-annotated cells?',
-            'n_cells':n,'n_source_features':m,'patient_count':1,'capture_count':len(set(samples)),
+            'question':'How are fictional marker counts distributed across fixture sample annotations?',
+            'n_cells':n,'n_source_features':m,'fixture_only':True,'capture_count':len(set(samples)),
             'sample_sizes':summary['sample_sizes'],'sample_collection_dates':{x:SAMPLE_DATES[x] for x in sorted(set(samples))},
-            'enriched_capture':'T3_CD45neg','separate_captures_preserved':True,
+            'separate_captures_preserved':True,
             'matrix_path':'/layers/counts','matrix_encoding':_text(counts_node.attrs.get('encoding-type','dense')),
             'measurement':'source_declared_counts_validated_nonnegative_integers',
             'umi_authenticity_independently_established':False,
@@ -249,40 +230,23 @@ def inspect_and_analyze(path):
             'malignancy_established':False,'normal_tissue_specificity_established':False,
             'clinical_recommendation':None,'p_values':None,'historical_replay':False,
             'limitations':[
-                'One identified public case; cells are not independent patient replicates.',
-                'Use source annotation labels as hypotheses, not independently adjudicated cell identities.',
+                'Independent fictional fixtures do not establish population-level effects.',
+                'Fixture annotation labels are input metadata, not independently adjudicated cell identities.',
                 'Labels may use the same expression markers; localization is not independent validation of the labels.',
-                'CD45-negative enrichment and unsorted captures are not interchangeable tissue-composition samples.',
+                'Different capture preparations require distinct sample identities.',
                 'Positive count-layer entries mean detected in this processed assay; zero does not prove biological absence.',
                 'Mean counts depend on sequencing depth and preparation; no between-time differential-expression or response inference.',
-                'Three existing clustering resolutions are examined; no new annotation model was trained or run.',
+                'Three fixture clustering resolutions are checked; no annotation model was trained or run.',
                 'No normal reference, protein assay, copy-number or somatic-genotype corroboration was performed.'
             ]
         }
 
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('--output',required=True)
-    args=parser.parse_args();outpath=Path(args.output);outpath.parent.mkdir(parents=True,exist_ok=True)
-    try:
-        with tempfile.TemporaryDirectory() as tmp:
-            cat=Path(tmp)/'catalog.json';source=Path(tmp)/'source.h5ad'
-            cat_receipt=acquire(CATALOG_URL,cat,4_000_000)
-            from public_case_intake import build_manifest
-            manifest=build_manifest(cat.read_bytes(),cat_receipt['retrieved_at'])
-            if not any('kamil/tumor/analysis/' in json.dumps(row) for row in manifest['entries']):
-                raise ValueError('fixed analyzed object catalog context unavailable')
-            receipt=acquire(H5_URL,source,H5_LIMIT)
-            if receipt['sha256'] != EXPECTED_H5_SHA256:
-                raise ValueError('processed source revision changed; repeat source review')
-            result=inspect_and_analyze(source)
-            result.update(status='executed',analysis_executed=True,source_receipt=receipt,catalog_receipt=cat_receipt,
-                          clinical_validation=False,learned_model_executed=False,
-                          dependencies={x:importlib.metadata.version(x) for x in ('numpy','h5py')})
-            outpath.write_text(json.dumps(result,indent=2,allow_nan=False))
-            print(json.dumps({'status':'executed','cells':result['n_cells'],'source_sha256':receipt['sha256']}))
-    except Exception as exc:
-        outpath.write_text(json.dumps({'status':'failed','analysis_executed':False,'error_type':type(exc).__name__,'error':str(exc)[:300]},indent=2))
-        raise
+    """Retired real-case command; pure parsers remain available for synthetic tests."""
+    raise PermissionError(
+        "Named-patient single-cell analysis is disabled for development, tests and evaluation."
+    )
+
 
 if __name__=='__main__':main()

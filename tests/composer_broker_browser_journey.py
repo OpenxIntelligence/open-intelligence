@@ -17,14 +17,17 @@ import tempfile
 from urllib.request import Request, urlopen
 
 from browser_journey import ChromeSession, free_port, wait_for
-from open_intelligence.__main__ import seed
 from open_intelligence.store import CaseStore
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def fictional_evidence(db):
-    seed(db)
+    # The supported CLI runs from the repository root. Importing __main__ from
+    # this tests/ script would omit the root-level tools package on hosted CI.
+    subprocess.run([sys.executable, "-m", "open_intelligence", "seed", "--db", db],
+        cwd=ROOT, env=dict(os.environ, PYTHONPATH=str(ROOT / "src")),
+        check=True, stdout=subprocess.DEVNULL)
     store = CaseStore(db)
     try:
         question = store.add_question(

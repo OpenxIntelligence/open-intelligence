@@ -62,6 +62,8 @@ jobs:
           node --check web/composer.js
       - name: Synthetic application, HTTP and rights contracts
         run: python -m unittest discover -s tests -p 'test_*.py' -v 2>&1 | tee composer-broker-artifacts/unit-tests.txt
+      - name: Retired acquisition and independent offline parser checks
+        run: PYTHONPATH=src:tools/research python -m unittest test_restricted_research_entrypoints test_rna_expression_probe test_single_cell_probe test_public_case_intake -v 2>&1 | tee composer-broker-artifacts/offline-research-tests.txt
       - name: JavaScript contracts
         run: node --test tests/test_source_dialogs.js tests/test_source_line_diff.js tests/test_text_changes.js tests/test_model_investigation_refresh.js 2>&1 | tee composer-broker-artifacts/javascript-tests.txt
       - name: Composer browser journey
@@ -92,7 +94,7 @@ jobs:
           ) if shutil.which(name)), None)
           paths = {Path('tools/audit_ci_data_boundaries.py')}
           for directory, pattern in (
-              ('src', '**/*.py'), ('web', '*.js'), ('tests', '*.py'),
+              ('src', '**/*.py'), ('web', '*.js'), ('tests', '*.py'), ('tools/research', '*.py'),
               ('tests', '*.js'), ('.github/workflows', '*.yml'), ('.github/workflows', '*.yaml')
           ):
               paths.update(Path(directory).glob(pattern))
@@ -133,6 +135,7 @@ jobs:
           path: |
             composer-broker-artifacts/static-guard.txt
             composer-broker-artifacts/unit-tests.txt
+            composer-broker-artifacts/offline-research-tests.txt
             composer-broker-artifacts/javascript-tests.txt
             composer-broker-artifacts/composer-browser.txt
             composer-broker-artifacts/composer-lab-browser.txt
