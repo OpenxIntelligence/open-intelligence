@@ -39,12 +39,15 @@ class AuthorizedEvidenceReviewHandoff:
 
     def _authorize_return(self, patient_id: str, actor: str, purpose: str) -> None:
         """Reading evidence NEVER implies permission to change review state."""
+        # Require an actual Boolean True from the trusted policy boundary.
+        # Truthy strings, numbers, dicts or custom objects are not authority.
         try:
-            permitted = bool(self.return_authorizer and self.return_authorizer(
-                actor, patient_id, "evidence.review_return", purpose))
+            decision = (self.return_authorizer(
+                actor, patient_id, "evidence.review_return", purpose)
+                if self.return_authorizer is not None else None)
         except Exception:
-            permitted = False
-        if not permitted:
+            decision = None
+        if decision is not True:
             raise PermissionError("returning evidence for review requires a separate trusted grant")
 
     def preview(self, patient_id: str, case_id: str, question_id: int,
