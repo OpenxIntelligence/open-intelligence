@@ -61,7 +61,9 @@ async function initialize() {
     picker.addEventListener('change', () => {
       // An unfinished narrative must never silently become attached to another case.
       if ((['draft-observations', 'draft-summary', 'draft-assumptions', 'evidence-rationale',
-            'evidence-withdraw-reason', 'option-description'].some(id => el(id).value.trim()))) {
+            'evidence-withdraw-reason', 'option-description', 'goal-statement',
+            'amend-goal-statement', 'goal-status-reason', 'note-text',
+            'amend-note-text'].some(id => el(id).value.trim()))) {
         picker.value = caseId;
         notice('Save or explicitly clear the unfinished investigation draft before switching cases.', true);
         return;
@@ -70,7 +72,9 @@ async function initialize() {
       caseId = picker.value;
       active = null; // Reject writes while the next case is loading.
       for (const id of ['question-text', 'report-text', 'evidence-rationale', 'draft-observations',
-        'draft-summary', 'draft-assumptions']) el(id).value = '';
+        'draft-summary', 'draft-assumptions', 'goal-statement', 'goal-review-trigger',
+        'amend-goal-statement', 'amend-goal-review-trigger', 'goal-status-reason',
+        'note-text', 'amend-note-text']) el(id).value = '';
       if (el('source-dialog').open) el('source-dialog').close();
       if (el('compare-dialog').open) el('compare-dialog').close();
       refresh();
@@ -564,6 +568,7 @@ function render() {
   }
   renderPatientView();
   renderOptions();
+  renderPatientWords();
   renderedCaseId = caseId;
 }
 function renderOriginalSource(text, lineNumber) {
@@ -931,8 +936,141 @@ el('option-review-form').addEventListener('submit', async event => {
     notice('Reviewer action recorded: ' + outcome.result + '.'); await refresh();
   } catch (err) { notice(err.message, true); }
 });
+el('goal-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const created = await api('/api/cases/' + requestedCase + '/patient-goals', {
+      statement: el('goal-statement').value, stated_date: el('goal-stated-date').value,
+      review_trigger: el('goal-review-trigger').value,
+      review_date: el('goal-review-date').value || null,
+    });
+    if (requestedCase !== caseId) return;
+    el('goal-statement').value = ''; el('goal-stated-date').value = '';
+    el('goal-review-trigger').value = ''; el('goal-review-date').value = '';
+    notice('Fictional goal #' + created.goal_id + ' recorded in the patient\'s own words.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('goal-amend-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const outcome = await api('/api/cases/' + requestedCase + '/patient-goals/' +
+      Number(el('amend-goal-choice').value) + '/amendments', {
+      statement: el('amend-goal-statement').value, stated_date: el('amend-goal-stated-date').value,
+      review_trigger: el('amend-goal-review-trigger').value,
+      review_date: el('amend-goal-review-date').value || null,
+    });
+    if (requestedCase !== caseId) return;
+    el('amend-goal-statement').value = ''; el('amend-goal-stated-date').value = '';
+    el('amend-goal-review-trigger').value = ''; el('amend-goal-review-date').value = '';
+    notice('Goal #' + outcome.goal_id + ' version ' + outcome.version + ' saved; earlier wording kept.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('goal-status-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const outcome = await api('/api/cases/' + requestedCase + '/patient-goals/' +
+      Number(el('status-goal-choice').value) + '/status', {
+      status: el('goal-status').value, reason: el('goal-status-reason').value,
+    });
+    if (requestedCase !== caseId) return;
+    el('goal-status-reason').value = '';
+    notice('Goal #' + outcome.goal_id + ' marked ' + outcome.status + ' with reason.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('note-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const created = await api('/api/cases/' + requestedCase + '/patient-notes', {
+      kind: el('note-kind').value, text: el('note-text').value,
+      noted_date: el('note-noted-date').value,
+    });
+    if (requestedCase !== caseId) return;
+    el('note-text').value = ''; el('note-noted-date').value = '';
+    notice('Fictional note #' + created.note_id + ' recorded in the patient\'s own words.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('note-amend-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const outcome = await api('/api/cases/' + requestedCase + '/patient-notes/' +
+      Number(el('amend-note-choice').value) + '/amendments', {
+      text: el('amend-note-text').value, noted_date: el('amend-note-noted-date').value,
+    });
+    if (requestedCase !== caseId) return;
+    el('amend-note-text').value = ''; el('amend-note-noted-date').value = '';
+    notice('Note #' + outcome.note_id + ' version ' + outcome.version + ' saved; earlier wording kept.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
 
 
+function renderPatientWords() {
+  el('patient-words-disclaimer').textContent = active.patient_words_disclaimer || '';
+  const goals = active.patient_goals || [];
+  const notes = active.patient_notes || [];
+  const fill = (id, items, labelFn) => {
+    const select = el(id);
+    const prior = select.value;
+    clear(id);
+    for (const item of items) {
+      const opt = node('option', labelFn(item));
+      opt.value = item.value; select.append(opt);
+    }
+    if (prior && [...select.options].some(x => x.value === prior)) select.value = prior;
+  };
+  const goalLabel = g => 'Goal #' + g.goal_id + ' · ' + (g.current ? g.current.status : 'unknown');
+  fill('amend-goal-choice', goals.map(g => ({ value: g.goal_id, label: g })), x => goalLabel(x.label));
+  fill('status-goal-choice', goals.map(g => ({ value: g.goal_id, label: g })), x => goalLabel(x.label));
+  fill('amend-note-choice', notes.map(n => ({ value: n.note_id, label: n })),
+    x => 'Note #' + x.label.note_id + ' · ' + (x.label.kind === 'symptom' ? 'symptom note' : 'lived experience'));
+  clear('goal-list');
+  if (!goals.length) empty(el('goal-list'), 'No fictional patient goals recorded for this case yet.');
+  for (const goal of goals) {
+    const current = goal.current || {};
+    const box = node('div', null, 'snapshot');
+    const top = node('div', null, 'topline');
+    top.append(node('strong', 'Fictional goal #' + goal.goal_id + ' · patient\'s own words'),
+      pill(current.status || 'unknown', current.status === 'active' ? 'pill-warn' : ''),
+      pill('FICTIONAL', 'pill-neutral'));
+    box.append(top, node('p', current.statement || ''));
+    box.append(node('p', 'Stated ' + (current.stated_date || 'date unknown') +
+      ' · Look at it again: ' + (current.review_trigger || 'not recorded') +
+      (current.review_date ? ' · Review date ' + current.review_date : ' · No review date') +
+      ' · Version ' + (current.version || '?') + ' of ' + goal.versions.length, 'snapshot-meta'));
+    if (current.status_reason) box.append(node('p', 'Standing reason: ' + current.status_reason, 'muted'));
+    if (goal.versions.length > 1) {
+      box.append(node('p', 'Earlier wording kept: ' + goal.versions
+        .filter(v => v.record_state !== 'current')
+        .map(v => 'v' + v.version + ' (' + v.stated_date + '): ' + v.statement).join(' | '), 'muted tiny'));
+    }
+    box.append(node('p', 'Not a diagnosis, staging, response claim, or recommendation.', 'muted tiny'));
+    el('goal-list').append(box);
+  }
+  clear('note-list');
+  if (!notes.length) empty(el('note-list'), 'No fictional lived-experience or symptom notes recorded yet.');
+  for (const item of notes) {
+    const current = item.current || {};
+    const box = node('div', null, 'snapshot');
+    const top = node('div', null, 'topline');
+    const kindLabel = item.kind === 'symptom' ? 'Symptom note · what the patient noticed' : 'Lived experience · daily life';
+    top.append(node('strong', 'Fictional note #' + item.note_id + ' · ' + kindLabel),
+      pill('patient-reported', 'pill-neutral'), pill('FICTIONAL', 'pill-neutral'));
+    box.append(top, node('p', current.note_text || ''));
+    box.append(node('p', 'Noted ' + (current.noted_date || 'date unknown') +
+      ' · Version ' + (current.version || '?') + ' of ' + item.versions.length, 'snapshot-meta'));
+    if (item.versions.length > 1) {
+      box.append(node('p', 'Earlier wording kept: ' + item.versions
+        .filter(v => v.record_state !== 'current')
+        .map(v => 'v' + v.version + ' (' + v.noted_date + '): ' + v.note_text).join(' | '), 'muted tiny'));
+    }
+    box.append(node('p', 'Patient-reported only. Never a diagnosis, staging, or response claim.', 'muted tiny'));
+    el('note-list').append(box);
+  }
+}
 function renderOptions() {
   el('option-disclaimer').textContent = active.option_disclaimer || '';
   const options = active.options || [];

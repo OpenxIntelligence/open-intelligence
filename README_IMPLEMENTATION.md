@@ -106,3 +106,30 @@ PYTHONPATH=src python -m open_intelligence serve
 Remaining proof step: a live-server run against the real API with
 the operator key set, before the demo. The API completion itself
 was verified separately on 2026-10-31.
+
+## Patient goals and lived experience (fictional patient words)
+
+The case workspace includes a **Patient goals** panel for goals the
+fictional patient states in their own words (with stated date, review
+trigger, and optional review date), lived-experience notes, and symptom
+notes. Each record is durable, versioned, and amendable; old versions
+are preserved with `record_state='superseded'` and never deleted. A
+goal can be set, amended, and marked `achieved`, `changed`, or
+`abandoned` with a required plain-language reason; each change creates
+a new version.
+
+```text
+POST /api/cases/{CASE-ID}/patient-goals
+POST /api/cases/{CASE-ID}/patient-goals/{goal_id}/amendments
+POST /api/cases/{CASE-ID}/patient-goals/{goal_id}/status
+POST /api/cases/{CASE-ID}/patient-notes
+POST /api/cases/{CASE-ID}/patient-notes/{note_id}/amendments
+```
+
+Current goals and notes with full history appear in
+`GET /api/cases/{CASE-ID}/state` as `patient_goals` and `patient_notes`.
+Patient words stay patient words: these endpoints accept no diagnosis,
+staging, or response fields, create no assertions or investigations,
+and leave the mission projection unchanged. Every surface labels them
+fictional, patient-reported, and never a clinical interpretation. See
+`tests/test_patient_goals.py` for the acceptance checks.

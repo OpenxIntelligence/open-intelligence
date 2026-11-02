@@ -461,6 +461,49 @@ CREATE TABLE IF NOT EXISTS biological_inventory_assertions (
 CREATE INDEX IF NOT EXISTS idx_biological_assets_case ON biological_assets(case_id, asset_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_assertions_asset ON biological_inventory_assertions(asset_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_assertions_source ON biological_inventory_assertions(source_version_id);
+-- Patient goals + lived experience (Notion vision page 01 slice): durable,
+-- source-anchored, amendable patient words. Never a clinical interpretation.
+-- Goals and notes are versioned rows; old versions stay with
+-- record_state='superseded'. Rows are never deleted. A status change creates
+-- a new version, never an overwrite. No diagnosis, staging, or response
+-- fields exist anywhere in these tables.
+CREATE TABLE IF NOT EXISTS patient_goals (
+  id INTEGER PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(case_id),
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS patient_goal_versions (
+  id INTEGER PRIMARY KEY, goal_id INTEGER NOT NULL REFERENCES patient_goals(id),
+  version INTEGER NOT NULL,
+  statement TEXT NOT NULL,
+  stated_date TEXT NOT NULL,
+  review_trigger TEXT NOT NULL,
+  review_date TEXT,
+  status TEXT NOT NULL CHECK(status IN ('active','achieved','changed','abandoned')),
+  status_reason TEXT,
+  record_state TEXT NOT NULL CHECK(record_state IN ('current','superseded')),
+  previous_id INTEGER REFERENCES patient_goal_versions(id),
+  created_at TEXT NOT NULL,
+  UNIQUE(goal_id,version)
+);
+CREATE TABLE IF NOT EXISTS patient_notes (
+  id INTEGER PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(case_id),
+  kind TEXT NOT NULL CHECK(kind IN ('lived_experience','symptom')),
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS patient_note_versions (
+  id INTEGER PRIMARY KEY, note_id INTEGER NOT NULL REFERENCES patient_notes(id),
+  version INTEGER NOT NULL,
+  note_text TEXT NOT NULL,
+  noted_date TEXT NOT NULL,
+  record_state TEXT NOT NULL CHECK(record_state IN ('current','superseded')),
+  previous_id INTEGER REFERENCES patient_note_versions(id),
+  created_at TEXT NOT NULL,
+  UNIQUE(note_id,version)
+);
+CREATE INDEX IF NOT EXISTS idx_patient_goals_case ON patient_goals(case_id);
+CREATE INDEX IF NOT EXISTS idx_patient_goal_versions_goal ON patient_goal_versions(goal_id);
+CREATE INDEX IF NOT EXISTS idx_patient_notes_case ON patient_notes(case_id);
+CREATE INDEX IF NOT EXISTS idx_patient_note_versions_note ON patient_note_versions(note_id);
 """
 
 
@@ -2062,6 +2105,229 @@ class CaseStore:
                         source_version_id=source_version_id)
             return int(cur.lastrowid)
 
+    # ---- Patient goals + lived experience (fictional patient words) ----
+    # Patient words stay patient words. These methods never create
+    # assertions, snapshots, options, or mission entries, and they accept
+    # no diagnosis, staging, or response fields. Every version keeps its
+    # stated date, receipt time, and previous-version link as its anchor.
+    PATIENT_GOAL_STATUSES = frozenset({"active", "achieved", "changed", "abandoned"})
+    PATIENT_NOTE_KINDS = frozenset({"lived_experience", "symptom"})
+    PATIENT_DISCLAIMER = ("Fictional patient's own words, for discussion only. "
+                          "Never a diagnosis, staging, response claim, or recommendation.")
+
+    @staticmethod
+    def _patient_text(value: object, field: str, low: int, high: int) -> str:
+        if not isinstance(value, str) or not low <= len(value.strip()) <= high:
+            raise InvalidInput(f"{field} must have {low}–{high} characters")
+        return value.strip()
+
+    @staticmethod
+    def _patient_optional_date(value: object) -> str | None:
+        if value is None or value == "":
+            return None
+        if not isinstance(value, str):
+            raise InvalidInput("Dates must use YYYY-MM-DD")
+        return valid_date(value)
+
+    def add_patient_goal(self, case_id: str, statement: object, stated_date: object,
+                         review_trigger: object, review_date: object = None) -> dict:
+        """Record a new fictional patient goal in the patient's own words."""
+        case_id = self._case(case_id)
+        text = self._patient_text(statement, "Goal statement", 4, 1000)
+        stated = valid_date(stated_date) if isinstance(stated_date, str) else None
+        if stated is None:
+            raise InvalidInput("Dates must use YYYY-MM-DD")
+        trigger = self._patient_text(review_trigger, "Review trigger", 4, 300)
+        review = self._patient_optional_date(review_date)
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            stamped = now_utc()
+            head = self.db.execute("INSERT INTO patient_goals (case_id,created_at) VALUES (?,?)",
+                                   (case_id, stamped))
+            goal_id = int(head.lastrowid)
+            cur = self.db.execute("""INSERT INTO patient_goal_versions
+                (goal_id,version,statement,stated_date,review_trigger,review_date,
+                 status,status_reason,record_state,previous_id,created_at)
+                VALUES (?,?,?,?,?,?,'active',NULL,'current',NULL,?)""",
+                (goal_id, 1, text, stated, trigger, review, stamped))
+            self._event(case_id, "patient_goal_created", goal_id=goal_id,
+                        version=1, version_id=int(cur.lastrowid))
+            return {"goal_id": goal_id, "version": 1, "version_id": int(cur.lastrowid)}
+
+    def _current_goal_version(self, case_id: str, goal_id: int) -> sqlite3.Row:
+        if type(goal_id) is not int or goal_id < 1:
+            raise InvalidInput("Invalid patient goal ID")
+        head = self.db.execute("SELECT case_id FROM patient_goals WHERE id=?", (goal_id,)).fetchone()
+        if not head or head["case_id"] != case_id:
+            raise InvalidInput("Patient goal not in this case")
+        current = self.db.execute("""SELECT * FROM patient_goal_versions
+            WHERE goal_id=? AND record_state='current'""", (goal_id,)).fetchone()
+        if not current:
+            raise InvalidInput("Patient goal has no current version")
+        return current
+
+    def amend_patient_goal(self, case_id: str, goal_id: int, statement: object,
+                           stated_date: object, review_trigger: object,
+                           review_date: object = None) -> dict:
+        """Amend a goal's words, dates, or trigger. The old version is preserved."""
+        case_id = self._case(case_id)
+        text = self._patient_text(statement, "Goal statement", 4, 1000)
+        stated = valid_date(stated_date) if isinstance(stated_date, str) else None
+        if stated is None:
+            raise InvalidInput("Dates must use YYYY-MM-DD")
+        trigger = self._patient_text(review_trigger, "Review trigger", 4, 300)
+        review = self._patient_optional_date(review_date)
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            current = self._current_goal_version(case_id, goal_id)
+            if (text == current["statement"] and stated == current["stated_date"]
+                    and trigger == current["review_trigger"]
+                    and review == current["review_date"]):
+                raise InvalidInput("Amendment must change the wording, dates, or review trigger")
+            self.db.execute("UPDATE patient_goal_versions SET record_state='superseded' WHERE id=?",
+                            (current["id"],))
+            nxt = int(current["version"]) + 1
+            stamped = now_utc()
+            cur = self.db.execute("""INSERT INTO patient_goal_versions
+                (goal_id,version,statement,stated_date,review_trigger,review_date,
+                 status,status_reason,record_state,previous_id,created_at)
+                VALUES (?,?,?,?,?,?,?,?,'current',?,?)""",
+                (goal_id, nxt, text, stated, trigger, review,
+                 current["status"], current["status_reason"], current["id"], stamped))
+            self._event(case_id, "patient_goal_amended", goal_id=goal_id,
+                        version=nxt, version_id=int(cur.lastrowid),
+                        supersedes_version_id=int(current["id"]))
+            return {"goal_id": goal_id, "version": nxt, "version_id": int(cur.lastrowid)}
+
+    def set_patient_goal_status(self, case_id: str, goal_id: int, status: object,
+                                reason: object) -> dict:
+        """Mark a goal achieved, changed, or abandoned with a reason.
+
+        Any status change creates a new preserved version; nothing is
+        overwritten. The reason is required so the change stays reviewable.
+        """
+        case_id = self._case(case_id)
+        if status not in self.PATIENT_GOAL_STATUSES:
+            raise InvalidInput("Goal status must be active, achieved, changed, or abandoned")
+        why = self._patient_text(reason, "Status reason", 4, 300)
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            current = self._current_goal_version(case_id, goal_id)
+            if status == current["status"]:
+                raise InvalidInput(f"Goal is already marked {status}")
+            self.db.execute("UPDATE patient_goal_versions SET record_state='superseded' WHERE id=?",
+                            (current["id"],))
+            nxt = int(current["version"]) + 1
+            stamped = now_utc()
+            cur = self.db.execute("""INSERT INTO patient_goal_versions
+                (goal_id,version,statement,stated_date,review_trigger,review_date,
+                 status,status_reason,record_state,previous_id,created_at)
+                VALUES (?,?,?,?,?,?,?,?,'current',?,?)""",
+                (goal_id, nxt, current["statement"], current["stated_date"],
+                 current["review_trigger"], current["review_date"],
+                 status, why, current["id"], stamped))
+            self._event(case_id, "patient_goal_status_changed", goal_id=goal_id,
+                        version=nxt, version_id=int(cur.lastrowid), status=status)
+            return {"goal_id": goal_id, "version": nxt,
+                    "version_id": int(cur.lastrowid), "status": status}
+
+    def patient_goals(self, case_id: str) -> list[dict]:
+        """Current goals with full preserved version history, oldest first."""
+        case_id = self._case(case_id)
+        goals = []
+        for head in self.db.execute("SELECT * FROM patient_goals WHERE case_id=? ORDER BY id",
+                                    (case_id,)).fetchall():
+            versions = self._dicts(self.db.execute(
+                "SELECT * FROM patient_goal_versions WHERE goal_id=? ORDER BY version",
+                (head["id"],)).fetchall())
+            current = next((v for v in versions if v["record_state"] == "current"), None)
+            goals.append({"goal_id": head["id"], "case_id": head["case_id"],
+                          "created_at": head["created_at"],
+                          "provenance": "fictional-patient-words",
+                          "patient_reported": True, "clinical_interpretation": None,
+                          "current": current, "versions": versions})
+        return goals
+
+    def add_patient_note(self, case_id: str, kind: object, text: object,
+                         noted_date: object) -> dict:
+        """Record a lived-experience or symptom note in the patient's own words.
+
+        Symptom notes are stored verbatim as patient-reported text. They are
+        never parsed into findings and never create clinical records.
+        """
+        case_id = self._case(case_id)
+        if kind not in self.PATIENT_NOTE_KINDS:
+            raise InvalidInput("Note kind must be lived_experience or symptom")
+        body = self._patient_text(text, "Note text", 4, 1000)
+        noted = valid_date(noted_date) if isinstance(noted_date, str) else None
+        if noted is None:
+            raise InvalidInput("Dates must use YYYY-MM-DD")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            stamped = now_utc()
+            head = self.db.execute("INSERT INTO patient_notes (case_id,kind,created_at) VALUES (?,?,?)",
+                                   (case_id, kind, stamped))
+            note_id = int(head.lastrowid)
+            cur = self.db.execute("""INSERT INTO patient_note_versions
+                (note_id,version,note_text,noted_date,record_state,previous_id,created_at)
+                VALUES (?,?,?,?,'current',NULL,?)""",
+                (note_id, 1, body, noted, stamped))
+            self._event(case_id, "patient_note_created", note_id=note_id,
+                        note_kind=kind, version=1, version_id=int(cur.lastrowid))
+            return {"note_id": note_id, "version": 1, "version_id": int(cur.lastrowid)}
+
+    def amend_patient_note(self, case_id: str, note_id: int, text: object,
+                           noted_date: object) -> dict:
+        """Amend a note's wording or date. The old version is preserved."""
+        case_id = self._case(case_id)
+        if type(note_id) is not int or note_id < 1:
+            raise InvalidInput("Invalid patient note ID")
+        body = self._patient_text(text, "Note text", 4, 1000)
+        noted = valid_date(noted_date) if isinstance(noted_date, str) else None
+        if noted is None:
+            raise InvalidInput("Dates must use YYYY-MM-DD")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            head = self.db.execute("SELECT case_id FROM patient_notes WHERE id=?",
+                                   (note_id,)).fetchone()
+            if not head or head["case_id"] != case_id:
+                raise InvalidInput("Patient note not in this case")
+            current = self.db.execute("""SELECT * FROM patient_note_versions
+                WHERE note_id=? AND record_state='current'""", (note_id,)).fetchone()
+            if not current:
+                raise InvalidInput("Patient note has no current version")
+            if body == current["note_text"] and noted == current["noted_date"]:
+                raise InvalidInput("Amendment must change the wording or noted date")
+            self.db.execute("UPDATE patient_note_versions SET record_state='superseded' WHERE id=?",
+                            (current["id"],))
+            nxt = int(current["version"]) + 1
+            stamped = now_utc()
+            cur = self.db.execute("""INSERT INTO patient_note_versions
+                (note_id,version,note_text,noted_date,record_state,previous_id,created_at)
+                VALUES (?,?,?,?,'current',?,?)""",
+                (note_id, nxt, body, noted, current["id"], stamped))
+            self._event(case_id, "patient_note_amended", note_id=note_id,
+                        version=nxt, version_id=int(cur.lastrowid),
+                        supersedes_version_id=int(current["id"]))
+            return {"note_id": note_id, "version": nxt, "version_id": int(cur.lastrowid)}
+
+    def patient_notes(self, case_id: str) -> list[dict]:
+        """Current notes with full preserved version history, oldest first."""
+        case_id = self._case(case_id)
+        notes = []
+        for head in self.db.execute("SELECT * FROM patient_notes WHERE case_id=? ORDER BY id",
+                                    (case_id,)).fetchall():
+            versions = self._dicts(self.db.execute(
+                "SELECT * FROM patient_note_versions WHERE note_id=? ORDER BY version",
+                (head["id"],)).fetchall())
+            current = next((v for v in versions if v["record_state"] == "current"), None)
+            notes.append({"note_id": head["id"], "case_id": head["case_id"],
+                          "kind": head["kind"], "created_at": head["created_at"],
+                          "provenance": "fictional-patient-words",
+                          "patient_reported": True, "clinical_interpretation": None,
+                          "current": current, "versions": versions})
+        return notes
+
     def add_question(self, case_id: str, question: str) -> int:
         self._case(case_id)
         if not isinstance(question, str) or not 5 <= len(question.strip()) <= 500:
@@ -2300,6 +2566,9 @@ class CaseStore:
                 # OI-021 derived projection: same ledger, no second state.
                 "options": option_projection["options"],
                 "option_disclaimer": option_projection["disclaimer"],
+                "patient_goals": self.patient_goals(case_id),
+                "patient_notes": self.patient_notes(case_id),
+                "patient_words_disclaimer": self.PATIENT_DISCLAIMER,
                 "quarantines": self._dicts(self.db.execute(
                     "SELECT id,declared_patient_id,sha256,reason,received_at FROM quarantine WHERE target_case_id=? ORDER BY id DESC",
                     (case_id,)).fetchall()),
