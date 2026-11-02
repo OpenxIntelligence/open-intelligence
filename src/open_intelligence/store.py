@@ -482,6 +482,20 @@ CREATE TABLE IF NOT EXISTS adapter_receipt_revocations (
   revoked_at TEXT NOT NULL,
   PRIMARY KEY (case_id,receipt_id)
 );
+-- Clinician review queue sign-off receipts: append-only acknowledgment
+-- records. The queue itself is a derived projection over the existing
+-- ledger (snapshots, model investigations, amendments, held options,
+-- evidence assessments); only these receipts are new durable state.
+-- A receipt never authorizes treatment; it records that a person looked.
+CREATE TABLE IF NOT EXISTS review_receipts (
+  id INTEGER PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(case_id),
+  queue_key TEXT NOT NULL, kind TEXT NOT NULL
+    CHECK(kind IN ('investigation','amendment','held-option','new-evidence')),
+  target_id INTEGER NOT NULL, fingerprint TEXT NOT NULL,
+  action TEXT NOT NULL CHECK(action IN ('reviewed','acknowledged','returned')),
+  reviewer_label TEXT NOT NULL, reason TEXT, created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_review_receipts_case ON review_receipts(case_id, queue_key);
 """
 
 
@@ -2294,6 +2308,213 @@ class CaseStore:
             self.db.execute("UPDATE questions SET state='addressed' WHERE case_id=? AND id=?",
                             (case_id, row["question_id"]))
             self._event(case_id, "demo_review_acknowledged", snapshot_id=snapshot_id)
+
+    # ---- Clinician review queue + sign-off receipts ----
+    # The queue is a derived projection over the existing ledger: human
+    # investigation drafts, model investigations, amended source versions,
+    # held or re-review options, and fictional evidence assessments. It
+    # creates no second ledger. Sign-off receipts are the only new durable
+    # state, and they are append-only: there is no update or delete path.
+    # A receipt records that a person looked; it never authorizes treatment.
+    REVIEW_QUEUE_KINDS = frozenset({"investigation", "amendment", "held-option", "new-evidence"})
+    REVIEW_RECEIPT_ACTIONS = frozenset({"reviewed", "acknowledged", "returned"})
+    REVIEW_QUEUE_DISCLAIMER = (
+        "Fictional demo only. A sign-off records that a person looked at the listed item; "
+        "it does not approve, authorize, or recommend any treatment, test, or procedure. "
+        "Items stay visible until a person records a decision; nothing is auto-approved, "
+        "auto-dismissed, or removed because of age."
+    )
+
+    @staticmethod
+    def _review_age_days(created_at: str) -> int:
+        try:
+            parsed = datetime.fromisoformat(created_at)
+        except (TypeError, ValueError):
+            return 0
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return max(0, int((datetime.now(timezone.utc) - parsed).total_seconds() // 86400))
+
+    def _review_queue_items(self, case_id: str) -> list[dict]:
+        """Derive the current queue from the existing ledger. Reads only.
+
+        Membership follows the ledger: every investigation draft, model
+        investigation, amendment, and evidence assessment is listed, and an
+        option is listed while it is visibly held (contradicted) or awaiting
+        re-review after an amendment. Terminal options (rejected, withdrawn,
+        expired) are historical and are not queued; their recorded decisions
+        remain in the review history. Each item carries a fingerprint of the
+        ledger state a receipt must match, so an amendment reopens the item
+        instead of silently carrying the old decision forward.
+        """
+        items: list[dict] = []
+        for snap in self.db.execute(
+                "SELECT id,question_id,summary,state,created_at FROM snapshots"
+                " WHERE case_id=? ORDER BY id", (case_id,)).fetchall():
+            items.append({
+                "queue_key": f"snapshot:{snap['id']}", "kind": "investigation",
+                "target_id": snap["id"], "fingerprint": snap["state"],
+                "title": f"Fictional investigation #{snap['id']} (question Q{snap['question_id']})",
+                "detail": f"State: {snap['state']}. {snap['summary'][:160]}",
+                "created_at": snap["created_at"],
+                "age_days": self._review_age_days(snap["created_at"]),
+            })
+        for inv in self.db.execute(
+                "SELECT id,question_id,template,status,stale,created_at FROM investigations"
+                " WHERE case_id=? ORDER BY id", (case_id,)).fetchall():
+            items.append({
+                "queue_key": f"model-investigation:{inv['id']}", "kind": "investigation",
+                "target_id": inv["id"], "fingerprint": f"{inv['stale']}:{inv['status']}",
+                "title": f"Fictional model investigation #{inv['id']} ({inv['template']})",
+                "detail": f"Status: {inv['status']}; {'stale after amendment' if inv['stale'] else 'current'}. "
+                          "Hypothesis pending review, not a conclusion.",
+                "created_at": inv["created_at"],
+                "age_days": self._review_age_days(inv["created_at"]),
+            })
+        for src in self.db.execute(
+                """SELECT id,document_id,version,kind,event_date,received_at FROM source_versions
+                WHERE case_id=? AND supersedes_id IS NOT NULL ORDER BY id""", (case_id,)).fetchall():
+            items.append({
+                "queue_key": f"amendment:{src['id']}", "kind": "amendment",
+                "target_id": src["id"], "fingerprint": f"v{src['version']}",
+                "title": f"Fictional amended report {src['document_id']} version {src['version']}",
+                "detail": f"{src['kind']} report for event {src['event_date']}; "
+                          "a corrected version arrived and dependent work may need another look.",
+                "created_at": src["received_at"],
+                "age_days": self._review_age_days(src["received_at"]),
+            })
+        for opt in self.db.execute(
+                "SELECT * FROM options WHERE case_id=? ORDER BY id", (case_id,)).fetchall():
+            if opt["operational_status"] in ("rejected", "withdrawn", "expired"):
+                continue
+            contradicted = opt["epistemic_status"] == "contradicted" \
+                or self._option_contradicted(opt["id"])
+            held = contradicted and opt["operational_status"] in ("proposed", "reviewed")
+            if not held and opt["review_state"] != "needs_review":
+                continue
+            snap = self.db.execute("SELECT state FROM snapshots WHERE id=?",
+                                   (opt["snapshot_id"],)).fetchone()
+            snap_state = snap["state"] if snap else "missing"
+            items.append({
+                "queue_key": f"option:{opt['id']}", "kind": "held-option",
+                "target_id": opt["id"],
+                "fingerprint": f"{opt['operational_status']}:{opt['review_state']}:"
+                               f"{opt['snapshot_id']}:{snap_state}:{opt['epistemic_status']}",
+                "title": f"Fictional held discussion item #{opt['id']}: {opt['label']}",
+                "detail": ("Held: contradictory fictional notes are linked. " if held else "")
+                          + (f"Awaiting re-review after a change. " if opt["review_state"] == "needs_review" else "")
+                          + "For discussion only; not a recommendation.",
+                "created_at": opt["created_at"],
+                "age_days": self._review_age_days(opt["created_at"]),
+            })
+        for asm in self.db.execute(
+                """SELECT a.id,a.question_id,a.relation,a.applicability,a.rationale,a.created_at,
+                v.evidence_key,v.version,v.state AS evidence_state,v.title
+                FROM evidence_assessments a JOIN evidence_versions v ON v.id=a.evidence_version_id
+                WHERE a.case_id=? ORDER BY a.id""", (case_id,)).fetchall():
+            items.append({
+                "queue_key": f"evidence-assessment:{asm['id']}", "kind": "new-evidence",
+                "target_id": asm["id"],
+                "fingerprint": f"{asm['evidence_state']}:{asm['relation']}:{asm['applicability']}",
+                "title": f"Fictional evidence note #{asm['id']}: {asm['evidence_key']}@{asm['version']}",
+                "detail": f"{asm['title'][:120]} — {asm['relation']} / {asm['applicability']} "
+                          f"(evidence {asm['evidence_state']}). Human-labelled demo data.",
+                "created_at": asm["created_at"],
+                "age_days": self._review_age_days(asm["created_at"]),
+            })
+        items.sort(key=lambda x: (x["created_at"], x["queue_key"]))
+        return items
+
+    def review_queue(self, case_id: str) -> dict:
+        """Current review inbox with age, status, and full receipt history.
+
+        An item is awaiting until a terminal receipt (reviewed or
+        acknowledged) matches its current fingerprint. A returned item keeps
+        its reason and stays awaiting. A resolved item whose ledger state
+        later changes reopens with its prior receipts preserved. Nothing is
+        removed by age or by any automatic step: only a recorded human
+        decision resolves the current version of an item.
+        """
+        self._case(case_id)
+        with self.db:
+            self.db.execute("BEGIN")
+            items = self._review_queue_items(case_id)
+            receipts = self._dicts(self.db.execute(
+                "SELECT * FROM review_receipts WHERE case_id=? ORDER BY id", (case_id,)).fetchall())
+            by_key: dict[str, list[dict]] = {}
+            for receipt in receipts:
+                by_key.setdefault(receipt["queue_key"], []).append(receipt)
+            awaiting: list[dict] = []
+            resolved: list[dict] = []
+            for item in items:
+                history = by_key.get(item["queue_key"], [])
+                matching = [r for r in history if r["fingerprint"] == item["fingerprint"]]
+                prior = [r for r in history if r["fingerprint"] != item["fingerprint"]]
+                terminal = [r for r in matching if r["action"] in ("reviewed", "acknowledged")]
+                prior_terminal = [r for r in prior if r["action"] in ("reviewed", "acknowledged")]
+                item["receipts"] = matching
+                item["prior_receipts"] = prior
+                item["reopened_after_change"] = bool(prior_terminal) and not terminal
+                if terminal:
+                    item["status"] = "resolved"
+                    item["resolved_by"] = terminal[-1]
+                    resolved.append(item)
+                else:
+                    if matching and matching[-1]["action"] == "returned":
+                        item["status"] = "returned"
+                        item["return_reason"] = matching[-1]["reason"]
+                        item["returned_by"] = matching[-1]["reviewer_label"]
+                    else:
+                        item["status"] = "awaiting_review"
+                    awaiting.append(item)
+            return {
+                "case_id": case_id, "synthetic": True,
+                "disclaimer": self.REVIEW_QUEUE_DISCLAIMER,
+                "awaiting": awaiting, "resolved": resolved, "receipts": receipts,
+            }
+
+    def add_review_receipt(self, case_id: str, queue_key: str, action: str,
+                           reviewer_label: str, reason: str | None = None) -> dict:
+        """Append one sign-off receipt. Reviewed and acknowledged resolve the
+        current version of the item; returned keeps it visibly queued with
+        its reason. Receipts are never updated or deleted."""
+        self._case(case_id)
+        if action not in self.REVIEW_RECEIPT_ACTIONS:
+            raise InvalidInput("Receipt action must be reviewed, acknowledged, or returned")
+        reviewer_label = self._check_no_clinical_language(reviewer_label, "Reviewer label")
+        if not 2 <= len(reviewer_label) <= 80:
+            raise InvalidInput("Reviewer label must have 2–80 characters")
+        if action == "returned":
+            if not isinstance(reason, str) or not 10 <= len(reason.strip()) <= 600:
+                raise InvalidInput("A returned item requires a 10–600 character reason")
+            reason_text = self._check_no_clinical_language(reason.strip(), "Return reason")
+        elif reason is None or (isinstance(reason, str) and not reason.strip()):
+            reason_text = None
+        else:
+            if not isinstance(reason, str) or not 10 <= len(reason.strip()) <= 600:
+                raise InvalidInput("Receipt reason must have 10–600 characters")
+            reason_text = self._check_no_clinical_language(reason.strip(), "Receipt reason")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            items = {x["queue_key"]: x for x in self._review_queue_items(case_id)}
+            item = items.get(queue_key)
+            if item is None:
+                raise InvalidInput("Review queue item not found in this case")
+            prior_terminal = self.db.execute(
+                """SELECT 1 FROM review_receipts WHERE case_id=? AND queue_key=?
+                AND fingerprint=? AND action IN ('reviewed','acknowledged') LIMIT 1""",
+                (case_id, queue_key, item["fingerprint"])).fetchone()
+            if prior_terminal:
+                raise InvalidInput("This review item is already resolved for its current version")
+            cur = self.db.execute("""INSERT INTO review_receipts
+                (case_id,queue_key,kind,target_id,fingerprint,action,reviewer_label,reason,created_at)
+                VALUES (?,?,?,?,?,?,?,?,?)""",
+                (case_id, queue_key, item["kind"], item["target_id"], item["fingerprint"],
+                 action, reviewer_label, reason_text, now_utc()))
+            self._event(case_id, "review_receipt_recorded", queue_key=queue_key,
+                        action=action, receipt_id=cur.lastrowid)
+            return {"result": action, "receipt_id": int(cur.lastrowid),
+                    "queue_key": queue_key, "fingerprint": item["fingerprint"]}
 
     def investigation_facts(self, case_id: str, question_id: int) -> dict:
         """Facts the investigation prompt may use: question, current assertions, assessments."""
