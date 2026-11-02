@@ -1,0 +1,147 @@
+diff --git a/src/open_intelligence/authorized_evidence_review.py b/src/open_intelligence/authorized_evidence_review.py
+index 48e44c2..c778c72 100644
+--- a/src/open_intelligence/authorized_evidence_review.py
++++ b/src/open_intelligence/authorized_evidence_review.py
+@@ -7,6 +7,7 @@ inspection and a 'returned for verification' receipt, NOT a clinician signoff.
+ """
+ from __future__ import annotations
+ 
++import hashlib
+ import hmac
+ import json
+ from collections.abc import Callable
+@@ -40,8 +41,9 @@ class AuthorizedEvidenceReviewHandoff:
+     def _authorize_return(self, patient_id: str, actor: str, purpose: str) -> None:
+         """Reading evidence NEVER implies permission to change review state."""
+         try:
+-            permitted = bool(self.return_authorizer and self.return_authorizer(
+-                actor, patient_id, "evidence.review_return", purpose))
++            permitted = (self.return_authorizer is not None and
++                         self.return_authorizer(actor, patient_id,
++                                                "evidence.review_return", purpose) is True)
+         except Exception:
+             permitted = False
+         if not permitted:
+@@ -137,7 +139,8 @@ class AuthorizedEvidenceReviewHandoff:
+ 
+     def return_for_review(self, patient_id: str, case_id: str, question_id: int,
+                           assessment_id: int, *, actor: str, purpose: str,
+-                          selected_quotes: list[dict], reason: str) -> dict:
++                          selected_quotes: list[dict], reason: str,
++                          report_reference: dict | None = None) -> dict:
+         """Append ONLY a returned receipt; never grant completion or signoff.
+ 
+         The original review queue owns all durable receipts. Cross-provider
+@@ -151,11 +154,31 @@ class AuthorizedEvidenceReviewHandoff:
+                               actor=actor, purpose=purpose, selected_quotes=selected_quotes)
+         if not hmac.compare_digest(_digest(first), _digest(second)):
+             raise ClinicalContinuityError("review changed before return receipt")
++        prepared = None
++        if report_reference is not None:
++            if (not isinstance(report_reference, dict) or
++                    set(report_reference) != {"body_sha256", "packet_sha256"}):
++                raise KnowledgeContextError("report reference requires exact digest fields")
++            expected = hashlib.sha256(
++                _digest(second["source_quote_packet"]).encode("utf-8")).hexdigest()
++            if report_reference["packet_sha256"] != expected:
++                raise ClinicalContinuityError("report packet changed before review handoff")
++            cited = second["source_quote_packet"]["quoted_comparisons"][0]["patient_reference"]
++            prepared = {
++                "contract": "oi.synthetic-prepared-report-reference/1",
++                "semantics": "prepared_not_delivery_or_approval",
++                "body_sha256": report_reference["body_sha256"],
++                "packet_sha256": expected,
++                "question_id": question_id,
++                "patient_source": {key: cited[key] for key in
++                    ("assertion_id", "source_version_id", "sha256", "source_line")},
++            }
+         # Distinct write-action authorization, rechecked at the effect boundary.
+         self._authorize_return(patient_id, actor, purpose)
++        kwargs = {} if prepared is None else {"prepared_report": prepared}
+         receipt = self.store.add_review_receipt(
+             case_id, first["queue_key"], "returned", reviewer_label=actor,
+-            reason=reason, expected_fingerprint=first["queue_fingerprint"])
++            reason=reason, expected_fingerprint=first["queue_fingerprint"], **kwargs)
+         # Returning an item remains unresolved. Do not call an acknowledgment
+         # review a clinical signoff, even if a later preflight is interrupted.
+         return {
+diff --git a/src/open_intelligence/store.py b/src/open_intelligence/store.py
+index 06653c5..4a8d192 100644
+--- a/src/open_intelligence/store.py
++++ b/src/open_intelligence/store.py
+@@ -2495,7 +2495,8 @@ class CaseStore:
+ 
+     def add_review_receipt(self, case_id: str, queue_key: str, action: str,
+                            reviewer_label: str, reason: str | None = None, *,
+-                           expected_fingerprint: str | None = None) -> dict:
++                           expected_fingerprint: str | None = None,
++                           prepared_report: dict | None = None) -> dict:
+         """Append a decision for the current version of an existing queue item.
+ 
+         Optional expected_fingerprint binds a previously authorized source
+@@ -2504,6 +2505,30 @@ class CaseStore:
+         without a preview retain the upstream PR #82 behavior.
+         """
+         self._case(case_id)
++        # Optional reference-only metadata belongs to the existing receipt/event
++        # transaction, never a second report store. No clinical text is accepted.
++        prepared = None
++        if prepared_report is not None:
++            required = {"contract", "semantics", "body_sha256", "packet_sha256",
++                        "question_id", "patient_source"}
++            if (not isinstance(prepared_report, dict) or set(prepared_report) != required
++                    or prepared_report["contract"] != "oi.synthetic-prepared-report-reference/1"
++                    or prepared_report["semantics"] != "prepared_not_delivery_or_approval"
++                    or action != "returned" or expected_fingerprint is None):
++                raise InvalidInput("Invalid prepared report reference")
++            source = prepared_report["patient_source"]
++            if (type(prepared_report["question_id"]) is not int
++                    or prepared_report["question_id"] <= 0
++                    or not isinstance(source, dict)
++                    or set(source) != {"assertion_id", "source_version_id", "sha256", "source_line"}
++                    or any(type(source[k]) is not int or source[k] <= 0
++                           for k in ("assertion_id", "source_version_id", "source_line"))
++                    or any(not isinstance(value, str) or
++                           re.fullmatch(r"[a-f0-9]{64}", value) is None
++                           for value in (source["sha256"], prepared_report["body_sha256"],
++                                         prepared_report["packet_sha256"]))):
++                raise InvalidInput("Prepared report identifiers or hashes are invalid")
++            prepared = json.loads(json.dumps(prepared_report))
+         if action not in self.REVIEW_RECEIPT_ACTIONS:
+             raise InvalidInput("Receipt action must be reviewed, acknowledged, or returned")
+         reviewer_label = self._check_no_clinical_language(reviewer_label, "Reviewer label")
+@@ -2531,6 +2556,23 @@ class CaseStore:
+                         or item["fingerprint"] != expected_fingerprint):
+                     raise InvalidInput(
+                         "Review item changed since preview; refresh before recording receipt")
++            if prepared is not None:
++                source = prepared["patient_source"]
++                # This check runs under the same writer lock as the receipt.
++                # A report of another patient/question or superseded source
++                # cannot be attached to a current evidence queue item.
++                matched = self.db.execute(
++                    """SELECT 1 FROM assertions a
++                    JOIN source_versions v ON v.id=a.source_version_id
++                    JOIN evidence_assessments e ON e.id=? AND e.case_id=a.case_id
++                    WHERE a.case_id=? AND v.case_id=? AND e.question_id=?
++                    AND a.id=? AND v.id=? AND v.sha256=? AND a.source_line=?
++                    AND v.state='current'""",
++                    (item["target_id"], case_id, case_id, prepared["question_id"],
++                     source["assertion_id"], source["source_version_id"],
++                     source["sha256"], source["source_line"])).fetchone()
++                if item["kind"] != "new-evidence" or not matched:
++                    raise InvalidInput("Prepared report source or question changed; refresh")
+             prior_terminal = self.db.execute(
+                 """SELECT 1 FROM review_receipts WHERE case_id=? AND queue_key=?
+                 AND fingerprint=? AND action IN ('reviewed','acknowledged') LIMIT 1""",
+@@ -2542,8 +2584,9 @@ class CaseStore:
+                 VALUES (?,?,?,?,?,?,?,?,?)""",
+                 (case_id, queue_key, item["kind"], item["target_id"], item["fingerprint"],
+                  action, reviewer_label, reason_text, now_utc()))
++            metadata = {} if prepared is None else {"prepared_report": prepared}
+             self._event(case_id, "review_receipt_recorded", queue_key=queue_key,
+-                        action=action, receipt_id=cur.lastrowid)
++                        action=action, receipt_id=cur.lastrowid, **metadata)
+             return {"result": action, "receipt_id": int(cur.lastrowid),
+                     "queue_key": queue_key, "fingerprint": item["fingerprint"]}
+ 
