@@ -2181,9 +2181,19 @@ class CaseStore:
         }
 
     def save_investigation(self, case_id: str, question_id: int, template: str,
-                           validated, mode: str) -> int:
+                           validated, mode: str,
+                           context_fingerprint: str | None = None) -> int:
         self._case(case_id)
         with self.db:
+            if context_fingerprint is not None:
+                # Re-check AFTER model execution and INSIDE the same SQLite
+                # write transaction as the save. A concurrent source or
+                # assessment update must not promote work over stale inputs.
+                self.db.execute("BEGIN IMMEDIATE")
+                from .composer import composer_context_fingerprint
+                actual = composer_context_fingerprint(self, case_id, question_id)
+                if actual != context_fingerprint:
+                    raise InvalidInput("stale Composer context: sources or assessments changed; refresh")
             cur = self.db.execute(
                 """INSERT INTO investigations
                 (case_id,question_id,template,status,mode,model,claims_json,abstentions_json,dropped_json,created_at)
