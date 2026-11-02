@@ -2182,6 +2182,11 @@ class CaseStore:
 
     def save_investigation(self, case_id: str, question_id: int, template: str,
                            validated, mode: str) -> int:
+        """Record an unreviewed attempt without changing the question's state.
+
+        An attempt, including a completed hypothesis, is not the explicit
+        snapshot acknowledgment performed by ``acknowledge_demo_review``.
+        """
         self._case(case_id)
         with self.db:
             cur = self.db.execute(
@@ -2192,8 +2197,6 @@ class CaseStore:
                  json.dumps(validated.claims), json.dumps(validated.abstentions),
                  json.dumps(validated.dropped), now_utc()))
             investigation_id = int(cur.lastrowid)
-            self.db.execute("UPDATE questions SET state='addressed' WHERE id=? AND case_id=?",
-                            (question_id, case_id))
             self._event(case_id, "investigation_created", investigation_id=investigation_id,
                         template=template, status=validated.status, mode=mode)
             return investigation_id
