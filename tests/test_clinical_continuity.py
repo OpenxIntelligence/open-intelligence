@@ -262,6 +262,22 @@ class ClinicalContinuityIntegrationTests(unittest.TestCase):
         self.assertEqual(result["note_source_links"][0]["source_version_id"], src)
         self.assertEqual(result["patient_world_model_clinical_belief"], "not_generated")
 
+    def test_revocation_between_source_and_receiver_reads_fails_closed(self):
+        self.workflow()
+        original = self.provenance.context_snapshot
+
+        def revoked_during_read(*args, **kwargs):
+            output = original(*args, **kwargs)
+            self.bridge.revoke_case(
+                patient_id=self.patient_id, case_id=CASE,
+                actor=ACTOR, purpose="care",
+                reason="Fictional owner revoked while evidence was being read")
+            return output
+
+        self.provenance.context_snapshot = revoked_during_read
+        with self.assertRaises(PatientRegistryDenied):
+            self.snapshot()
+
     def test_view_without_independent_authorizer_denies_even_after_binding(self):
         self.workflow()
         untrusted = ClinicalContinuityView(
