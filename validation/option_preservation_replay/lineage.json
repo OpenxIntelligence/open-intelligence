@@ -1,0 +1,283 @@
+{
+  "version": 1,
+  "classification": "authored-fixture-compatibility-repair-not-clinical-validation",
+  "original_file_sha256": "f371b73010e2ee443b68a70d1bea1cd95d7f66f75c311d8a8fa0527d84cda964",
+  "original_reference_code_commit": "f6d63cb2519ab54195d065e92ad605cb661ebd99",
+  "replay_reference_code_commit": "7626ec8bd91ea7451b042389cb6559339e9f332c",
+  "changes": [
+    {
+      "source_id": "A-CONTEXT",
+      "original_sha256": "52432026c77b56e170c81ea40b9546165044e39c90019117de86f35765ab8797",
+      "replay_sha256": "199c73ddff4745a809ab686975938dccf5ec9764d2e0090d45ed0508822fad94",
+      "edits": [
+        {
+          "original_lines": [
+            4
+          ],
+          "before": "Type: oncology",
+          "after": "Type: clinical",
+          "reason": "Use an existing allowed report kind; original narrative and dates are unchanged."
+        }
+      ]
+    },
+    {
+      "source_id": "A-INVENTORY-V1",
+      "original_sha256": "85c6fca0e0c773ddfcc9a142e1fd065483a4ea7abecf6228067005ef3c899c37",
+      "replay_sha256": "77c26ca4fe58005b280fd67ad6cc44d1e22481100a64fd9d551c28ec028bf5ac",
+      "edits": [
+        {
+          "original_lines": [
+            4
+          ],
+          "before": "Type: coordination",
+          "after": "Type: other",
+          "reason": "Use an existing allowed report kind; original narrative and dates are unchanged."
+        }
+      ]
+    },
+    {
+      "source_id": "A-PLAN-V1",
+      "original_sha256": "605119ce2b0be7fa0e3729989eb8495e8025d66cd85d7a716e7fd3d623d28f90",
+      "replay_sha256": "f062003f411f022af9213fae7b5cd69304ebfef298b4aa258d1e14186ebb9094",
+      "edits": [
+        {
+          "original_lines": [
+            4
+          ],
+          "before": "Type: coordination",
+          "after": "Type: other",
+          "reason": "Use an existing allowed report kind; original narrative and dates are unchanged."
+        }
+      ]
+    },
+    {
+      "source_id": "B-PLAN-V1",
+      "original_sha256": "e58dd33214bcdfac5fa42f7c689d37f985d7421321ed144fb584efc7423df50f",
+      "replay_sha256": "17873cbfde0794be807fd8b33bccbe74894c44f238f4d2eb7de2f0d181c544b0",
+      "edits": [
+        {
+          "original_lines": [
+            4
+          ],
+          "before": "Type: oncology",
+          "after": "Type: clinical",
+          "reason": "Use an existing allowed report kind; original narrative and dates are unchanged."
+        }
+      ]
+    },
+    {
+      "source_id": "B-ROUTINE-CONTROL",
+      "original_sha256": "4d939575fbaf14a2cb4409f3fa3977cdf770f5e0bef7234cdeff91d4b50b4651",
+      "replay_sha256": "da4d51cf64470d87367a7002c98eba9bc254c6dfe171c9b617b02bc381bbcd04",
+      "edits": [
+        {
+          "original_lines": [
+            4
+          ],
+          "before": "Type: coordination",
+          "after": "Type: other",
+          "reason": "Use an existing allowed report kind; original narrative and dates are unchanged."
+        }
+      ]
+    },
+    {
+      "source_id": "B-UNVERIFIED-OPTION",
+      "original_sha256": "63a1a441b7b634a0be7944f6b9d1d49b77811f06a52a84ffe26b397d5797aa83",
+      "replay_sha256": "1270cc62cb3483dcf8d48ce64b56a9efab6dddbdb713670fc5ea0869838d3fed",
+      "edits": [
+        {
+          "original_lines": [
+            4
+          ],
+          "before": "Type: coordination",
+          "after": "Type: other",
+          "reason": "Use an existing allowed report kind; original narrative and dates are unchanged."
+        }
+      ]
+    },
+    {
+      "source_id": "TRIAL-MEMO-V1",
+      "original_sha256": "f603fed9bc6a73cc5be132acc06dfcead7d6ab77236b4901bf862b1c2fa97286",
+      "replay_sha256": "c9b56bcb5f68f19e214c32d1a23ecee64d3edd2a2ef91a1206b151a713210e4e",
+      "edits": [
+        {
+          "original_lines": [
+            6,
+            7,
+            8,
+            9
+          ],
+          "before": [
+            "Statement: This is independently authored synthetic practice content. There is no real study, site, intervention, sponsor or enrollment opportunity.",
+            "Statement: The toy memo says prior administration of TX-M is an exclusion. A planned exposure alone does not establish prior administration.",
+            "Statement: Every criterion, current protocol version, site availability and participant suitability requires confirmation; this memo cannot establish eligibility.",
+            "Statement: This memo supplies no instruction to change treatment and no clinical evidence of benefit."
+          ],
+          "after": "Statement: This is independently authored synthetic practice content. There is no real study, site, intervention, sponsor or enrollment opportunity. The toy memo says prior administration of TX-M is an exclusion. A planned exposure alone does not establish prior administration. Every criterion, current protocol version, site availability and participant suitability requires confirmation; this memo cannot establish eligibility. This memo supplies no instruction to change treatment and no clinical evidence of benefit.",
+          "reason": "One Statement field is required. Preserve every sentence in its original order."
+        }
+      ]
+    },
+    {
+      "source_id": "A-INVENTORY-V2",
+      "original_sha256": "0542e5b36e1f3b01105f5623fe5b1a78226a013a0dd9a2d647b391659da6dca5",
+      "replay_sha256": "21b998c7d215537f872a668f6f063c1f786c7f31060f6cd15d49b9fdeb34065c",
+      "edits": [
+        {
+          "original_lines": [
+            4
+          ],
+          "before": "Type: coordination",
+          "after": "Type: other",
+          "reason": "Use an existing allowed report kind; original narrative and dates are unchanged."
+        }
+      ]
+    },
+    {
+      "source_id": "A-OLDER-ACCESSION",
+      "original_sha256": "91da66d8448330c3c07fe3c33da47cebde166acb5f782432660b76fb9100d180",
+      "replay_sha256": "8e11f8af60b521a7d8c0672c15ed24c14c84ab850aea282b74bfcb3490ce3730",
+      "edits": [
+        {
+          "original_lines": [
+            4
+          ],
+          "before": "Type: coordination",
+          "after": "Type: other",
+          "reason": "Use an existing allowed report kind; original narrative and dates are unchanged."
+        }
+      ]
+    },
+    {
+      "source_id": "A-CUSTODY-CHALLENGE",
+      "original_sha256": "113e2901037b3c83978597f010e4714c66c0f2bb5231a8e3e2b59cbbfa17e8c2",
+      "replay_sha256": "549ce734637398053fa83e3af7d38863c21ae40b6077f65efedc376b90e2b7ad",
+      "edits": [
+        {
+          "original_lines": [
+            4
+          ],
+          "before": "Type: coordination",
+          "after": "Type: other",
+          "reason": "Use an existing allowed report kind; original narrative and dates are unchanged."
+        }
+      ]
+    },
+    {
+      "source_id": "B-PLAN-V2",
+      "original_sha256": "fa3fc789169914e99efb63565e9d0bc0d08162d5f0ccb6f6ceb9938d3ccdf14f",
+      "replay_sha256": "003c576f87c334b60b8971614371453395cd3ec7f87ac3938541b63003c90b8d",
+      "edits": [
+        {
+          "original_lines": [
+            4
+          ],
+          "before": "Type: oncology",
+          "after": "Type: clinical",
+          "reason": "Use an existing allowed report kind; original narrative and dates are unchanged."
+        },
+        {
+          "original_lines": [
+            3
+          ],
+          "before": "Document: PLAN-B",
+          "after": "Document: PLAN-B-UPDATE",
+          "reason": "Later event date denotes a new event, not a same-event source correction."
+        },
+        {
+          "original_lines": [
+            8
+          ],
+          "before": "Amends: PLAN-B@1",
+          "after": null,
+          "reason": "Do not supersede a prior event or falsify dates to satisfy the amendment contract."
+        }
+      ]
+    },
+    {
+      "source_id": "TRIAL-MEMO-V2",
+      "original_sha256": "a232ee6a12a1a0dee99e9956a9bcf2030a2ce7b46a32150fadcb38ba417704e2",
+      "replay_sha256": "da795e3cb497659a8c7611ba5f217d09ce766ab091461e204e39392e915a65d4",
+      "edits": [
+        {
+          "original_lines": [
+            7,
+            8,
+            9,
+            10
+          ],
+          "before": [
+            "Statement: This is independently authored synthetic practice content, not a real clinical protocol.",
+            "Statement: The prior memo was incorrect: previous TX-M is not an exclusion in the corrected toy memo. Retain the old memo and record why its criterion-based concern is no longer supported.",
+            "Statement: Eligibility, recruitment availability, benefit and suitability are still not established. Removal of one concern is not confirmation of an option.",
+            "Statement: No medication change, enrollment, site contact or clinical instruction is authorized."
+          ],
+          "after": "Statement: This is independently authored synthetic practice content, not a real clinical protocol. The prior memo was incorrect: previous TX-M is not an exclusion in the corrected toy memo. Retain the old memo and record why its criterion-based concern is no longer supported. Eligibility, recruitment availability, benefit and suitability are still not established. Removal of one concern is not confirmation of an option. No medication change, enrollment, site contact or clinical instruction is authorized.",
+          "reason": "One Statement field is required. Preserve every sentence in its original order."
+        }
+      ]
+    },
+    {
+      "source_id": "A-PLAN-V2",
+      "original_sha256": "9b029d82fc8d01d8dd985b0ddd7065e5fe7693c4a3de71a08a83859c8b4bb875",
+      "replay_sha256": "7f50f265c46595280cf13721bf04b5420c733252e17ca8e3ada95b3298f5b6f7",
+      "edits": [
+        {
+          "original_lines": [
+            4
+          ],
+          "before": "Type: coordination",
+          "after": "Type: other",
+          "reason": "Use an existing allowed report kind; original narrative and dates are unchanged."
+        },
+        {
+          "original_lines": [
+            3
+          ],
+          "before": "Document: PLAN-A",
+          "after": "Document: PLAN-A-UPDATE",
+          "reason": "Later event date denotes a new event, not a same-event source correction."
+        },
+        {
+          "original_lines": [
+            8
+          ],
+          "before": "Amends: PLAN-A@1",
+          "after": null,
+          "reason": "Do not supersede a prior event or falsify dates to satisfy the amendment contract."
+        }
+      ]
+    },
+    {
+      "source_id": "A-LAB-RESPONSE",
+      "original_sha256": "5dd4c421cce25c362bebb791a42d79333455d5fd58ec99f26a5c25a5439be95f",
+      "replay_sha256": "25939893db4c9ccf081988140fc371143af2fa3873cd6130aa6cf6d3f69a9809",
+      "edits": [
+        {
+          "original_lines": [
+            4
+          ],
+          "before": "Type: coordination",
+          "after": "Type: other",
+          "reason": "Use an existing allowed report kind; original narrative and dates are unchanged."
+        }
+      ]
+    },
+    {
+      "source_id": "B-SITE-REPLY",
+      "original_sha256": "ec0b6a575117ffddcfd7fa4d773fd9f5bd9298917c8fc7cebd098ef61c20bd8b",
+      "replay_sha256": "bcc954242349819e46b6e696cffb57905268beb47c120fe2e20e7288c9031110",
+      "edits": [
+        {
+          "original_lines": [
+            4
+          ],
+          "before": "Type: coordination",
+          "after": "Type: other",
+          "reason": "Use an existing allowed report kind; original narrative and dates are unchanged."
+        }
+      ]
+    }
+  ],
+  "replay_file_sha256": "aa3e163b9a38d9e21ac109b1090a6e345eb5b6a9a60840e0b085fd0b30edbb12"
+}

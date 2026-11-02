@@ -1,0 +1,221 @@
+{
+  "version": 1,
+  "packet_id": "OI-OPTION-PRESERVATION-PRACTICE-01",
+  "project": "Open Intelligence",
+  "synthetic": true,
+  "status": "engineering-practice-only",
+  "reference_code_commit": "f6d63cb2519ab54195d065e92ad605cb661ebd99",
+  "authorship": "Original AI-assisted fictional engineering fixtures, authored for issue #11. No patient records, copied clinical publications, real interventions or third-party datasets. Designer reference authored by the same assistant; not independent ground truth.",
+  "cutoffs": {
+    "T0": "2026-06-02T23:59:59Z",
+    "T1": "2026-06-05T23:59:59Z",
+    "T2": "2026-06-08T23:59:59Z"
+  },
+  "cases": [
+    {
+      "id": "CASE-PRESERVE-A",
+      "label": "Fictional case A - specimen preparation inquiry"
+    },
+    {
+      "id": "CASE-PRESERVE-B",
+      "label": "Fictional case B - screening clarification and routine-request control"
+    }
+  ],
+  "questions": [
+    "Using only sources received by this cutoff, which preparation or verification questions warrant accountable human review, and why?",
+    "Which source statements are reported, unverified, missing, conflicting, corrected or about planned rather than completed actions?",
+    "For every candidate option or preparation concern, cite exact sources and separate evidence support, access, readiness and authority. Abstain where unsupported.",
+    "What changed since the prior available packet? Preserve historical sources and identify claims requiring renewed review without treating drafts as accepted conclusions.",
+    "Which routine items do not justify a time-sensitive alert? Do not invent deadlines, treatment advice, eligibility, availability or completed actions."
+  ],
+  "sources": [
+    {
+      "id": "A-CONTEXT",
+      "kind": "report",
+      "sha256": "52432026c77b56e170c81ea40b9546165044e39c90019117de86f35765ab8797",
+      "text": "OI-SYNTHETIC-REPORT/1\nPatient: CASE-PRESERVE-A\nDocument: CONTEXT-A\nType: oncology\nEvent-Date: 2026-05-26\nIssued-At: 2026-06-01\nSpecimen: BLOCK-A-1\nFinding: context|reported|Independently authored fictional adult oncology case for engineering practice; no real person or disease-specific treatment plan is represented.\nFinding: question|reported|The team wants to establish what stored material and raw assay artifacts are available before discussing possible future research.\nFinding: goals|reported|The fictional patient prefers avoiding extra procedures and wants uncertain options explained without implying benefit.\nFinding: scope|reported|This record authorizes no collection, specimen release, treatment change, external contact or clinical conclusion.\n"
+    },
+    {
+      "id": "A-INVENTORY-V1",
+      "kind": "report",
+      "sha256": "85c6fca0e0c773ddfcc9a142e1fd065483a4ea7abecf6228067005ef3c899c37",
+      "text": "OI-SYNTHETIC-REPORT/1\nPatient: CASE-PRESERVE-A\nDocument: INVENTORY-A\nType: coordination\nEvent-Date: 2026-05-30\nIssued-At: 2026-06-01\nSpecimen: BLOCK-A-1\nFinding: sections|reported|Four sections are listed in a preliminary copied inventory; current quantity has not been confirmed by the custodian.\nFinding: viable-material|not-reported|No viable material inventory is provided. Absence of a record does not establish absence of material.\nFinding: raw-assay|not-reported|The record does not locate the raw assay files.\nFinding: authority|reported|No release, consumption or reservation has been authorized.\n"
+    },
+    {
+      "id": "A-PLAN-V1",
+      "kind": "report",
+      "sha256": "605119ce2b0be7fa0e3729989eb8495e8025d66cd85d7a716e7fd3d623d28f90",
+      "text": "OI-SYNTHETIC-REPORT/1\nPatient: CASE-PRESERVE-A\nDocument: PLAN-A\nType: coordination\nEvent-Date: 2026-06-01\nIssued-At: 2026-06-01\nSpecimen: PLANNED-A\nFinding: procedure|reported|A fictional procedure is tentatively scheduled for 2026-06-10; scheduling is not evidence that it occurred.\nFinding: preparation|reported|A coordinator asks whether to discuss future specimen handling with the responsible clinician and custodian before the tentative procedure.\nFinding: feasibility|not-reported|No receiving laboratory acceptance, collection protocol, validated assay, manufacturing slot or funding is documented.\nFinding: boundary|reported|The date is a scheduling fact, not an established last-safe clinical deadline. Do not order an additional biopsy or bank material automatically.\n"
+    },
+    {
+      "id": "B-PLAN-V1",
+      "kind": "report",
+      "sha256": "e58dd33214bcdfac5fa42f7c689d37f985d7421321ed144fb584efc7423df50f",
+      "text": "OI-SYNTHETIC-REPORT/1\nPatient: CASE-PRESERVE-B\nDocument: PLAN-B\nType: oncology\nEvent-Date: 2026-06-01\nIssued-At: 2026-06-01\nSpecimen: CONTEXT-B\nFinding: context|reported|Independently authored fictional adult oncology case. TX-M is an invented treatment token, not a real medicine.\nFinding: treatment-plan|reported|TX-M is planned for 2026-06-14 in this fictional record.\nFinding: treatment-administration|not-reported|No administration record is available; a plan is not an administered exposure.\nFinding: trial-discussion|reported|A coordinator is checking a fictional screening memo. Site availability, eligibility and participant suitability have not been established.\nFinding: authority|reported|No instruction to start, stop, delay or change treatment is authorized.\n"
+    },
+    {
+      "id": "B-ROUTINE-CONTROL",
+      "kind": "report",
+      "sha256": "4d939575fbaf14a2cb4409f3fa3977cdf770f5e0bef7234cdeff91d4b50b4651",
+      "text": "OI-SYNTHETIC-REPORT/1\nPatient: CASE-PRESERVE-B\nDocument: ROUTINE-B\nType: coordination\nEvent-Date: 2026-05-28\nIssued-At: 2026-06-01\nSpecimen: ARCHIVE-B\nFinding: routine-request|reported|A routine request for an already archived report is logged; no clinical decision is stated to depend on receiving it immediately.\nFinding: dependency|not-reported|No time-sensitive preparation dependency is supported by this record.\nFinding: deadline|not-reported|No deadline is supplied. Do not invent a deadline or urgent alert from this control.\nFinding: scope|reported|This control concerns only the routine request, not every possible need of the fictional patient.\n"
+    },
+    {
+      "id": "B-UNVERIFIED-OPTION",
+      "kind": "report",
+      "sha256": "63a1a441b7b634a0be7944f6b9d1d49b77811f06a52a84ffe26b397d5797aa83",
+      "text": "OI-SYNTHETIC-REPORT/1\nPatient: CASE-PRESERVE-B\nDocument: MESSAGE-B\nType: coordination\nEvent-Date: 2026-06-01\nIssued-At: 2026-06-01\nSpecimen: CONTEXT-B\nFinding: candidate|reported|An unverified fictional message describes option OPTION-X as approved and available; this is an attributed message, not a verified status.\nFinding: verification|not-reported|No source confirming availability, authorization, patient relevance or clinical benefit accompanies the message.\nFinding: marker|not-reported|The proposed target is not assessed in the supplied case sources. Unknown is not negative or positive.\nFinding: boundary|reported|Retain the message and the reason it cannot support a ready option; it is not a treatment recommendation.\n"
+    },
+    {
+      "id": "TRIAL-MEMO-V1",
+      "kind": "evidence",
+      "sha256": "f603fed9bc6a73cc5be132acc06dfcead7d6ab77236b4901bf862b1c2fa97286",
+      "text": "OI-SYNTHETIC-EVIDENCE/1\nEvidence: TOY-TRIAL-MEMO\nTitle: Original fictional screening memo; not a real trial\nIssued-At: 2026-06-01\nRights: original-synthetic\nStatement: This is independently authored synthetic practice content. There is no real study, site, intervention, sponsor or enrollment opportunity.\nStatement: The toy memo says prior administration of TX-M is an exclusion. A planned exposure alone does not establish prior administration.\nStatement: Every criterion, current protocol version, site availability and participant suitability requires confirmation; this memo cannot establish eligibility.\nStatement: This memo supplies no instruction to change treatment and no clinical evidence of benefit.\n"
+    },
+    {
+      "id": "A-INVENTORY-V2",
+      "kind": "report",
+      "sha256": "0542e5b36e1f3b01105f5623fe5b1a78226a013a0dd9a2d647b391659da6dca5",
+      "text": "OI-SYNTHETIC-REPORT/1\nPatient: CASE-PRESERVE-A\nDocument: INVENTORY-A\nType: coordination\nEvent-Date: 2026-05-30\nIssued-At: 2026-06-04\nSpecimen: BLOCK-A-1\nAmends: INVENTORY-A@1\nFinding: sections|reported|Zero sections remain in BLOCK-A-1. The custodian corrects the copied four-section inventory; that count belonged to a different inventory entry.\nFinding: viable-material|not-reported|No record establishes availability of viable material from a future procedure.\nFinding: raw-assay|not-reported|This correction concerns physical sections and does not establish that prior raw assay data were destroyed.\nFinding: authority|reported|This correction authorizes no new sampling or action. Prior source versions must remain inspectable.\n"
+    },
+    {
+      "id": "A-OLDER-ACCESSION",
+      "kind": "report",
+      "sha256": "91da66d8448330c3c07fe3c33da47cebde166acb5f782432660b76fb9100d180",
+      "text": "OI-SYNTHETIC-REPORT/1\nPatient: CASE-PRESERVE-A\nDocument: ACCESSION-A\nType: coordination\nEvent-Date: 2026-05-26\nIssued-At: 2026-05-27\nSpecimen: BLOCK-A-1\nFinding: raw-assay|reported|An old accession note records raw assay files at fictional locator OI-TEST-ASSET-A. No external URL or actual data is included.\nFinding: material|reported|The note described material at accession time; it is not a current inventory.\nFinding: boundary|reported|Late receipt of this older note does not supersede the custodian inventory correction or restore consumed sections.\n"
+    },
+    {
+      "id": "A-CUSTODY-CHALLENGE",
+      "kind": "report",
+      "sha256": "113e2901037b3c83978597f010e4714c66c0f2bb5231a8e3e2b59cbbfa17e8c2",
+      "text": "OI-SYNTHETIC-REPORT/1\nPatient: CASE-PRESERVE-A\nDocument: CUSTODY-A\nType: coordination\nEvent-Date: 2026-06-03\nIssued-At: 2026-06-03\nSpecimen: BLOCK-A-1\nFinding: custody|reported|Fictional custody confirmation for CASE-PRESERVE-A and BLOCK-A-1 only.\nFinding: boundary|reported|A delivery addressed to another case must be quarantined for review, not silently reassigned or interpreted as that other case.\n"
+    },
+    {
+      "id": "B-PLAN-V2",
+      "kind": "report",
+      "sha256": "fa3fc789169914e99efb63565e9d0bc0d08162d5f0ccb6f6ceb9938d3ccdf14f",
+      "text": "OI-SYNTHETIC-REPORT/1\nPatient: CASE-PRESERVE-B\nDocument: PLAN-B\nType: oncology\nEvent-Date: 2026-06-04\nIssued-At: 2026-06-04\nSpecimen: CONTEXT-B\nAmends: PLAN-B@1\nFinding: treatment-plan|reported|The fictional planned TX-M date remains 2026-06-14.\nFinding: treatment-administration|not-reported|No administration record has been received; the exposure remains planned only.\nFinding: question|reported|The coordinator has requested the current toy protocol and site confirmation.\nFinding: authority|reported|Requesting information is not authorization to change treatment.\n"
+    },
+    {
+      "id": "TRIAL-MEMO-V2",
+      "kind": "evidence",
+      "sha256": "a232ee6a12a1a0dee99e9956a9bcf2030a2ce7b46a32150fadcb38ba417704e2",
+      "text": "OI-SYNTHETIC-EVIDENCE/1\nEvidence: TOY-TRIAL-MEMO\nTitle: Corrected fictional screening memo; not a real trial\nIssued-At: 2026-06-04\nRights: original-synthetic\nAmends: TOY-TRIAL-MEMO@1\nStatement: This is independently authored synthetic practice content, not a real clinical protocol.\nStatement: The prior memo was incorrect: previous TX-M is not an exclusion in the corrected toy memo. Retain the old memo and record why its criterion-based concern is no longer supported.\nStatement: Eligibility, recruitment availability, benefit and suitability are still not established. Removal of one concern is not confirmation of an option.\nStatement: No medication change, enrollment, site contact or clinical instruction is authorized.\n"
+    },
+    {
+      "id": "A-PLAN-V2",
+      "kind": "report",
+      "sha256": "9b029d82fc8d01d8dd985b0ddd7065e5fe7693c4a3de71a08a83859c8b4bb875",
+      "text": "OI-SYNTHETIC-REPORT/1\nPatient: CASE-PRESERVE-A\nDocument: PLAN-A\nType: coordination\nEvent-Date: 2026-06-06\nIssued-At: 2026-06-06\nSpecimen: PLANNED-A\nAmends: PLAN-A@1\nFinding: procedure|reported|The fictional procedure has been rescheduled from 2026-06-10 to 2026-06-17; it has not been documented as performed.\nFinding: preparation|reported|The responsible reviewer must reassess any preparation discussion tied to the old schedule.\nFinding: boundary|reported|Do not retain an urgent alert solely because the old tentative date is near. The record does not establish a clinical last-safe deadline.\n"
+    },
+    {
+      "id": "A-LAB-RESPONSE",
+      "kind": "report",
+      "sha256": "5dd4c421cce25c362bebb791a42d79333455d5fd58ec99f26a5c25a5439be95f",
+      "text": "OI-SYNTHETIC-REPORT/1\nPatient: CASE-PRESERVE-A\nDocument: LAB-RESPONSE-A\nType: coordination\nEvent-Date: 2026-06-07\nIssued-At: 2026-06-07\nSpecimen: PLANNED-A\nFinding: request|reported|The fictional laboratory confirms a request was received for information only.\nFinding: acceptance|not-reported|No acceptance of a specimen, manufacturing slot, custody transfer or service commitment is documented.\nFinding: authority|reported|No collection authorization or clinical order exists in this record.\nFinding: next-step|reported|Keep the preparation question open with a named review role; do not represent material as preserved or an assay as completed.\n"
+    },
+    {
+      "id": "B-SITE-REPLY",
+      "kind": "report",
+      "sha256": "ec0b6a575117ffddcfd7fa4d773fd9f5bd9298917c8fc7cebd098ef61c20bd8b",
+      "text": "OI-SYNTHETIC-REPORT/1\nPatient: CASE-PRESERVE-B\nDocument: SITE-REPLY-B\nType: coordination\nEvent-Date: 2026-06-07\nIssued-At: 2026-06-07\nSpecimen: CONTEXT-B\nFinding: site|reported|The invented site is not accepting new screening requests for the toy study as of this dated fictional message.\nFinding: option|reported|Preserve the candidate and dated access barrier. A future reopening would require fresh confirmation rather than automatic activation.\nFinding: eligibility|not-reported|No enrollment or confirmed eligibility is established.\nFinding: authority|reported|No alteration of the planned treatment is authorized by this message.\n"
+    }
+  ],
+  "receipts": [
+    {
+      "id": "R-T0-01",
+      "source_id": "A-CONTEXT",
+      "target_case": "CASE-PRESERVE-A",
+      "received_at": "2026-06-02T09:01:00Z"
+    },
+    {
+      "id": "R-T0-02",
+      "source_id": "A-INVENTORY-V1",
+      "target_case": "CASE-PRESERVE-A",
+      "received_at": "2026-06-02T09:02:00Z"
+    },
+    {
+      "id": "R-T0-03",
+      "source_id": "A-PLAN-V1",
+      "target_case": "CASE-PRESERVE-A",
+      "received_at": "2026-06-02T09:03:00Z"
+    },
+    {
+      "id": "R-T0-04",
+      "source_id": "B-PLAN-V1",
+      "target_case": "CASE-PRESERVE-B",
+      "received_at": "2026-06-02T09:04:00Z"
+    },
+    {
+      "id": "R-T0-05",
+      "source_id": "B-ROUTINE-CONTROL",
+      "target_case": "CASE-PRESERVE-B",
+      "received_at": "2026-06-02T09:05:00Z"
+    },
+    {
+      "id": "R-T0-06",
+      "source_id": "B-UNVERIFIED-OPTION",
+      "target_case": "CASE-PRESERVE-B",
+      "received_at": "2026-06-02T09:06:00Z"
+    },
+    {
+      "id": "R-T0-07",
+      "source_id": "TRIAL-MEMO-V1",
+      "target_case": null,
+      "received_at": "2026-06-02T09:07:00Z"
+    },
+    {
+      "id": "R-T1-01",
+      "source_id": "A-INVENTORY-V2",
+      "target_case": "CASE-PRESERVE-A",
+      "received_at": "2026-06-04T10:00:00Z"
+    },
+    {
+      "id": "R-WRONG-TARGET",
+      "source_id": "A-CUSTODY-CHALLENGE",
+      "target_case": "CASE-PRESERVE-B",
+      "received_at": "2026-06-04T10:15:00Z"
+    },
+    {
+      "id": "R-T1-03",
+      "source_id": "B-PLAN-V2",
+      "target_case": "CASE-PRESERVE-B",
+      "received_at": "2026-06-04T11:00:00Z"
+    },
+    {
+      "id": "R-T1-04",
+      "source_id": "TRIAL-MEMO-V2",
+      "target_case": null,
+      "received_at": "2026-06-04T12:00:00Z"
+    },
+    {
+      "id": "R-DUPLICATE",
+      "source_id": "A-INVENTORY-V1",
+      "target_case": "CASE-PRESERVE-A",
+      "received_at": "2026-06-05T08:00:00Z"
+    },
+    {
+      "id": "R-T1-06",
+      "source_id": "A-OLDER-ACCESSION",
+      "target_case": "CASE-PRESERVE-A",
+      "received_at": "2026-06-05T10:00:00Z"
+    },
+    {
+      "id": "R-T2-01",
+      "source_id": "A-PLAN-V2",
+      "target_case": "CASE-PRESERVE-A",
+      "received_at": "2026-06-06T15:00:00Z"
+    },
+    {
+      "id": "R-T2-02",
+      "source_id": "A-LAB-RESPONSE",
+      "target_case": "CASE-PRESERVE-A",
+      "received_at": "2026-06-07T09:00:00Z"
+    },
+    {
+      "id": "R-T2-03",
+      "source_id": "B-SITE-REPLY",
+      "target_case": "CASE-PRESERVE-B",
+      "received_at": "2026-06-08T11:00:00Z"
+    }
+  ]
+}
