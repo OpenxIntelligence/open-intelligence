@@ -461,6 +461,27 @@ CREATE TABLE IF NOT EXISTS biological_inventory_assertions (
 CREATE INDEX IF NOT EXISTS idx_biological_assets_case ON biological_assets(case_id, asset_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_assertions_asset ON biological_inventory_assertions(asset_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_assertions_source ON biological_inventory_assertions(source_version_id);
+
+-- Synthetic adapter gate only: source identity and revocation belong to the
+-- SAME SQLite transaction as canonical imports, never to a parallel patient store.
+-- These declarations DO NOT implement clinical identity verification or consent.
+CREATE TABLE IF NOT EXISTS adapter_identity_bindings (
+  case_id TEXT NOT NULL REFERENCES cases(case_id),
+  source_organization TEXT NOT NULL CHECK(length(trim(source_organization))>0),
+  source_system TEXT NOT NULL CHECK(length(trim(source_system))>0),
+  source_subject_ref TEXT NOT NULL CHECK(length(trim(source_subject_ref))>0),
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (source_organization,source_system,source_subject_ref),
+  UNIQUE(case_id,source_organization,source_system)
+);
+CREATE INDEX IF NOT EXISTS idx_adapter_bindings_case ON adapter_identity_bindings(case_id);
+CREATE TABLE IF NOT EXISTS adapter_receipt_revocations (
+  case_id TEXT NOT NULL REFERENCES cases(case_id),
+  receipt_id TEXT NOT NULL CHECK(length(trim(receipt_id))>0),
+  reason TEXT NOT NULL,
+  revoked_at TEXT NOT NULL,
+  PRIMARY KEY (case_id,receipt_id)
+);
 """
 
 
@@ -583,108 +604,229 @@ class CaseStore:
         return self._dicts(self.db.execute("SELECT case_id,label,synthetic FROM cases ORDER BY case_id").fetchall())
 
     def import_report(self, case_id: str, raw: bytes) -> dict:
-        """Durably ingest bytes. An explicit amendment is required for changed text.
-
-        Unknown/cross-case patient data is quarantined, never asserted as fact.
-        The transaction includes invalidation; duplicates cannot emit events.
-        """
+        """Canonical synthetic source import: unchanged transaction semantics."""
         case_id = self._case(case_id)
         report = parse_report(raw)
         digest = hashlib.sha256(raw).hexdigest()
         with self.db:
             self.db.execute("BEGIN IMMEDIATE")
-            if report.patient_id != case_id:
-                # Idempotent quarantine across repeated wrong-case deliveries.
+            return self._import_report_in_transaction(case_id, raw, report, digest)
+
+    def _import_report_in_transaction(self, case_id: str, raw: bytes,
+                                      report: ParsedReport, digest: str) -> dict:
+        """Call only inside a BEGIN IMMEDIATE transaction held by this store.
+        
+        Shared by ordinary import and the gated synthetic adapter; all source,
+        binding and receipt changes commit or roll back together.
+        """
+        if report.patient_id != case_id:
+            # Idempotent quarantine across repeated wrong-case deliveries.
+            existing = self.db.execute(
+                "SELECT id FROM quarantine WHERE target_case_id=? AND sha256=? ORDER BY id LIMIT 1",
+                (case_id, digest)).fetchone()
+            if existing:
+                return {"result": "quarantined", "reason": "patient_mismatch",
+                        "quarantine_id": existing["id"], "duplicate": True}
+            cur = self.db.execute(
+                "INSERT INTO quarantine (target_case_id,declared_patient_id,sha256,raw,reason,received_at) VALUES (?,?,?,?,?,?)",
+                (case_id, report.patient_id, digest, raw, "patient_mismatch", now_utc()))
+            self._event(case_id, "source_quarantined", quarantine_id=cur.lastrowid, reason="patient_mismatch")
+            return {"result": "quarantined", "reason": "patient_mismatch", "quarantine_id": cur.lastrowid}
+        duplicate = self.db.execute(
+            "SELECT id,version FROM source_versions WHERE case_id=? AND document_id=? AND sha256=?",
+            (case_id, report.document_id, digest)).fetchone()
+        if duplicate:
+            return {"result": "duplicate", "source_id": duplicate["id"], "version": duplicate["version"]}
+        previous = self.db.execute(
+            "SELECT id,version,kind,event_date,specimen_id FROM source_versions WHERE case_id=? AND document_id=? ORDER BY version DESC LIMIT 1",
+            (case_id, report.document_id)).fetchone()
+        if previous and report.amends != (report.document_id, previous["version"]):
+            raise InvalidInput("Changed document requires Amends: DOCUMENT-ID@LATEST-VERSION")
+        if not previous and report.amends is not None:
+            raise InvalidInput("First document version cannot have Amends")
+        if previous and (previous["kind"], previous["event_date"], previous["specimen_id"]) != (report.kind, report.event_date, report.specimen_id):
+            raise InvalidInput("Amendment cannot change report type, event date, or specimen; create a distinct document")
+        version = previous["version"] + 1 if previous else 1
+        if previous:
+            self.db.execute("UPDATE source_versions SET state='superseded' WHERE id=?", (previous["id"],))
+        cur = self.db.execute(
+            """INSERT INTO source_versions
+            (case_id,document_id,version,sha256,raw,kind,event_date,issued_at,received_at,specimen_id,state,supersedes_id)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (case_id, report.document_id, version, digest, raw, report.kind, report.event_date,
+             report.issued_at, now_utc(), report.specimen_id, "current", previous["id"] if previous else None))
+        source_id = cur.lastrowid
+        for finding in report.findings:
+            self.db.execute("""INSERT INTO assertions
+                (case_id,source_version_id,finding_key,certainty,quote,source_line)
+                VALUES (?,?,?,?,?,?)""",
+                (case_id, source_id, finding.key, finding.state, finding.quote, finding.line))
+        invalidated = []
+        invalidated_options = []
+        if previous:
+            invalidated = [row[0] for row in self.db.execute(
+                """SELECT snapshots.id FROM snapshots JOIN snapshot_sources
+                ON snapshots.id=snapshot_sources.snapshot_id
+                WHERE snapshots.case_id=? AND snapshot_sources.source_version_id=? AND snapshots.state!='stale'""",
+                (case_id, previous["id"])).fetchall()]
+            if invalidated:
+                marks = ",".join("?" for _ in invalidated)
+                self.db.execute(f"UPDATE snapshots SET state='stale' WHERE id IN ({marks})", invalidated)
+                self.db.execute(f"""UPDATE questions SET state='open' WHERE case_id=? AND id IN
+                    (SELECT question_id FROM snapshots WHERE id IN ({marks}))""", [case_id, *invalidated])
+                # An amendment changes freshness for investigations too:
+                # they cite the superseded source's facts, so mark them stale
+                # rather than silently leaving them current.
+                self.db.execute("UPDATE investigations SET stale=1 WHERE case_id=? AND stale=0", (case_id,))
+            # OI-021, same transaction: only options in THIS case that
+            # cite the superseded version or a stale snapshot reopen.
+            invalidated_options = self._invalidate_options(
+                snapshot_ids=set(invalidated), source_version_ids={previous["id"]},
+                evidence_version_ids=set())
+            if invalidated_options:
+                self._event(case_id, "option_review_reopened",
+                            source_version_id=previous["id"],
+                            invalidated_options=invalidated_options)
+        invalidated_inventory = []
+        if previous:
+            # Anchor-exact, like snapshots: only assertions citing the
+            # superseded version go stale. Assertions on other versions,
+            # assets themselves, and all historic rows are preserved.
+            # Deliberate scope boundary (OI-020): staleness does NOT
+            # propagate transitively to derivative assets; each child's
+            # own assertion anchor and parent chain stay visible, so a
+            # reader can see a parent's assertions went stale.
+            invalidated_inventory = [row[0] for row in self.db.execute(
+                """SELECT id FROM biological_inventory_assertions
+                WHERE case_id=? AND source_version_id=? AND state='current'""",
+                (case_id, previous["id"])).fetchall()]
+            if invalidated_inventory:
+                marks = ",".join("?" for _ in invalidated_inventory)
+                self.db.execute(f"UPDATE biological_inventory_assertions SET state='stale' WHERE id IN ({marks})",
+                                invalidated_inventory)
+        self._event(case_id, "source_imported", document_id=report.document_id,
+                    version=version, source_id=source_id, amends_id=previous["id"] if previous else None,
+                    invalidated_snapshots=invalidated, invalidated_options=invalidated_options,
+                    invalidated_inventory_assertions=invalidated_inventory)
+        return {"result": "imported", "source_id": source_id, "version": version,
+                "invalidated_snapshots": invalidated, "invalidated_options": invalidated_options,
+                "invalidated_inventory_assertions": invalidated_inventory}
+
+
+    def revoke_adapter_receipt(self, case_id: str, receipt_id: str, reason: str) -> dict:
+        """Persist a synthetic adapter denial in the existing canonical ledger.
+
+        Not an issuer-signed authorization service; no retroactive source deletion.
+        """
+        self._case(case_id)
+        if not isinstance(receipt_id, str) or not receipt_id.strip():
+            raise InvalidInput("Adapter receipt id must be nonempty")
+        if not isinstance(reason, str) or not 10 <= len(reason.strip()) <= 600:
+            raise InvalidInput("Revocation requires a 10–600 character reason")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            existing = self.db.execute(
+                "SELECT 1 FROM adapter_receipt_revocations WHERE case_id=? AND receipt_id=?",
+                (case_id, receipt_id)).fetchone()
+            if existing:
+                return {"result": "revoked", "receipt_id": receipt_id, "duplicate": True}
+            self.db.execute(
+                """INSERT INTO adapter_receipt_revocations
+                   (case_id,receipt_id,reason,revoked_at) VALUES (?,?,?,?)""",
+                (case_id, receipt_id, reason.strip(), now_utc()))
+            self._event(case_id, "adapter_authorization_revoked",
+                        receipt_id=receipt_id, reason=reason.strip())
+            return {"result": "revoked", "receipt_id": receipt_id}
+
+    def import_adapter_report(self, case_id: str, raw: bytes, *,
+                              source_organization: str, source_system: str,
+                              source_subject_ref: str, receipt_id: str,
+                              adapter_id: str, retrieved_at: str,
+                              loss_receipt: dict | None = None) -> dict:
+        """Atomically check synthetic identity/revocation and import source.
+
+        Authorization receipts are untrusted *fixture declarations*: this checks
+        deterministic contract semantics, not real identity or clinical consent.
+        The binding tables do not duplicate or replace the source ledger.
+        """
+        self._case(case_id)
+        for value in (source_organization, source_system, source_subject_ref,
+                      receipt_id, adapter_id):
+            if not isinstance(value, str) or not value.strip():
+                raise InvalidInput("Adapter identity and receipt fields must be nonempty strings")
+        report = parse_report(raw)
+        digest = hashlib.sha256(raw).hexdigest()
+        if loss_receipt is not None:
+            if not isinstance(loss_receipt, dict):
+                raise InvalidInput("Loss receipt must be a structured record")
+            if not all(isinstance(loss_receipt.get(k, []), list)
+                       for k in ("dropped_fields", "truncated_fields", "cardinality_changes")):
+                raise InvalidInput("Loss receipt fields must be lists")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            revoked = self.db.execute(
+                "SELECT 1 FROM adapter_receipt_revocations WHERE case_id=? AND receipt_id=?",
+                (case_id, receipt_id)).fetchone()
+            if revoked:
+                self._event(case_id, "adapter_delivery_rejected",
+                            reason="revoked_authorization", receipt_id=receipt_id)
+                return {"result": "rejected", "reason": "revoked_authorization"}
+            case_bound = self.db.execute(
+                """SELECT source_subject_ref FROM adapter_identity_bindings
+                   WHERE case_id=? AND source_organization=? AND source_system=?""",
+                (case_id, source_organization, source_system)).fetchone()
+            subject_bound = self.db.execute(
+                """SELECT case_id FROM adapter_identity_bindings
+                   WHERE source_organization=? AND source_system=? AND source_subject_ref=?""",
+                (source_organization, source_system, source_subject_ref)).fetchone()
+            conflict = ((case_bound is not None and
+                         case_bound["source_subject_ref"] != source_subject_ref) or
+                        (subject_bound is not None and subject_bound["case_id"] != case_id))
+            if conflict:
                 existing = self.db.execute(
-                    "SELECT id FROM quarantine WHERE target_case_id=? AND sha256=? ORDER BY id LIMIT 1",
+                    """SELECT id FROM quarantine WHERE target_case_id=? AND sha256=?
+                       AND reason='identity_collision' ORDER BY id LIMIT 1""",
                     (case_id, digest)).fetchone()
                 if existing:
-                    return {"result": "quarantined", "reason": "patient_mismatch",
-                            "quarantine_id": existing["id"], "duplicate": True}
+                    return {"result": "rejected", "reason": "identity_collision",
+                            "quarantine_id": existing["id"]}
                 cur = self.db.execute(
-                    "INSERT INTO quarantine (target_case_id,declared_patient_id,sha256,raw,reason,received_at) VALUES (?,?,?,?,?,?)",
-                    (case_id, report.patient_id, digest, raw, "patient_mismatch", now_utc()))
-                self._event(case_id, "source_quarantined", quarantine_id=cur.lastrowid, reason="patient_mismatch")
-                return {"result": "quarantined", "reason": "patient_mismatch", "quarantine_id": cur.lastrowid}
-            duplicate = self.db.execute(
-                "SELECT id,version FROM source_versions WHERE case_id=? AND document_id=? AND sha256=?",
-                (case_id, report.document_id, digest)).fetchone()
-            if duplicate:
-                return {"result": "duplicate", "source_id": duplicate["id"], "version": duplicate["version"]}
-            previous = self.db.execute(
-                "SELECT id,version,kind,event_date,specimen_id FROM source_versions WHERE case_id=? AND document_id=? ORDER BY version DESC LIMIT 1",
-                (case_id, report.document_id)).fetchone()
-            if previous and report.amends != (report.document_id, previous["version"]):
-                raise InvalidInput("Changed document requires Amends: DOCUMENT-ID@LATEST-VERSION")
-            if not previous and report.amends is not None:
-                raise InvalidInput("First document version cannot have Amends")
-            if previous and (previous["kind"], previous["event_date"], previous["specimen_id"]) != (report.kind, report.event_date, report.specimen_id):
-                raise InvalidInput("Amendment cannot change report type, event date, or specimen; create a distinct document")
-            version = previous["version"] + 1 if previous else 1
-            if previous:
-                self.db.execute("UPDATE source_versions SET state='superseded' WHERE id=?", (previous["id"],))
-            cur = self.db.execute(
-                """INSERT INTO source_versions
-                (case_id,document_id,version,sha256,raw,kind,event_date,issued_at,received_at,specimen_id,state,supersedes_id)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (case_id, report.document_id, version, digest, raw, report.kind, report.event_date,
-                 report.issued_at, now_utc(), report.specimen_id, "current", previous["id"] if previous else None))
-            source_id = cur.lastrowid
-            for finding in report.findings:
-                self.db.execute("""INSERT INTO assertions
-                    (case_id,source_version_id,finding_key,certainty,quote,source_line)
-                    VALUES (?,?,?,?,?,?)""",
-                    (case_id, source_id, finding.key, finding.state, finding.quote, finding.line))
-            invalidated = []
-            invalidated_options = []
-            if previous:
-                invalidated = [row[0] for row in self.db.execute(
-                    """SELECT snapshots.id FROM snapshots JOIN snapshot_sources
-                    ON snapshots.id=snapshot_sources.snapshot_id
-                    WHERE snapshots.case_id=? AND snapshot_sources.source_version_id=? AND snapshots.state!='stale'""",
-                    (case_id, previous["id"])).fetchall()]
-                if invalidated:
-                    marks = ",".join("?" for _ in invalidated)
-                    self.db.execute(f"UPDATE snapshots SET state='stale' WHERE id IN ({marks})", invalidated)
-                    self.db.execute(f"""UPDATE questions SET state='open' WHERE case_id=? AND id IN
-                        (SELECT question_id FROM snapshots WHERE id IN ({marks}))""", [case_id, *invalidated])
-                    # An amendment changes freshness for investigations too:
-                    # they cite the superseded source's facts, so mark them stale
-                    # rather than silently leaving them current.
-                    self.db.execute("UPDATE investigations SET stale=1 WHERE case_id=? AND stale=0", (case_id,))
-                # OI-021, same transaction: only options in THIS case that
-                # cite the superseded version or a stale snapshot reopen.
-                invalidated_options = self._invalidate_options(
-                    snapshot_ids=set(invalidated), source_version_ids={previous["id"]},
-                    evidence_version_ids=set())
-                if invalidated_options:
-                    self._event(case_id, "option_review_reopened",
-                                source_version_id=previous["id"],
-                                invalidated_options=invalidated_options)
-            invalidated_inventory = []
-            if previous:
-                # Anchor-exact, like snapshots: only assertions citing the
-                # superseded version go stale. Assertions on other versions,
-                # assets themselves, and all historic rows are preserved.
-                # Deliberate scope boundary (OI-020): staleness does NOT
-                # propagate transitively to derivative assets; each child's
-                # own assertion anchor and parent chain stay visible, so a
-                # reader can see a parent's assertions went stale.
-                invalidated_inventory = [row[0] for row in self.db.execute(
-                    """SELECT id FROM biological_inventory_assertions
-                    WHERE case_id=? AND source_version_id=? AND state='current'""",
-                    (case_id, previous["id"])).fetchall()]
-                if invalidated_inventory:
-                    marks = ",".join("?" for _ in invalidated_inventory)
-                    self.db.execute(f"UPDATE biological_inventory_assertions SET state='stale' WHERE id IN ({marks})",
-                                    invalidated_inventory)
-            self._event(case_id, "source_imported", document_id=report.document_id,
-                        version=version, source_id=source_id, amends_id=previous["id"] if previous else None,
-                        invalidated_snapshots=invalidated, invalidated_options=invalidated_options,
-                        invalidated_inventory_assertions=invalidated_inventory)
-            return {"result": "imported", "source_id": source_id, "version": version,
-                    "invalidated_snapshots": invalidated, "invalidated_options": invalidated_options,
-                    "invalidated_inventory_assertions": invalidated_inventory}
+                    """INSERT INTO quarantine
+                       (target_case_id,declared_patient_id,sha256,raw,reason,received_at)
+                       VALUES (?,?,?,?,?,?)""",
+                    (case_id, report.patient_id, digest, raw, "identity_collision", now_utc()))
+                self._event(case_id, "source_quarantined",
+                            quarantine_id=cur.lastrowid, reason="identity_collision")
+                self._event(case_id, "adapter_delivery_quarantined",
+                            reason="identity_collision", quarantine_id=cur.lastrowid,
+                            sha256=digest)
+                return {"result": "rejected", "reason": "identity_collision",
+                        "quarantine_id": cur.lastrowid}
+
+            outcome = self._import_report_in_transaction(case_id, raw, report, digest)
+            if outcome["result"] not in {"imported", "duplicate"}:
+                return outcome
+            if case_bound is None and subject_bound is None:
+                self.db.execute(
+                    """INSERT INTO adapter_identity_bindings
+                       (case_id,source_organization,source_system,source_subject_ref,created_at)
+                       VALUES (?,?,?,?,?)""",
+                    (case_id, source_organization, source_system,
+                     source_subject_ref, now_utc()))
+            if outcome["result"] == "imported":
+                self._event(case_id, "adapter_delivery_accepted",
+                            document_id=report.document_id, version=outcome["version"],
+                            source_id=outcome["source_id"], adapter_id=adapter_id,
+                            source_organization=source_organization, source_system=source_system,
+                            source_subject_ref=source_subject_ref, receipt_id=receipt_id,
+                            retrieved_at=retrieved_at, sha256=digest)
+                if loss_receipt and any(loss_receipt.values()):
+                    self._event(case_id, "adapter_loss_receipt",
+                                document_id=report.document_id,
+                                dropped_fields=loss_receipt.get("dropped_fields", []),
+                                truncated_fields=loss_receipt.get("truncated_fields", []),
+                                cardinality_changes=loss_receipt.get("cardinality_changes", []))
+            return outcome
 
 
     # ---- OI-021: reviewed option/dependency view (derived projection) ----
