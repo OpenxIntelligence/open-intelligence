@@ -1,0 +1,60 @@
+name: Connected workspace intake (fictional only)
+on:
+  push:
+    branches: [feat/connected-workspace-intake-20261102]
+  pull_request:
+    branches: [integration/patient-evidence-review-20261102]
+permissions:
+  contents: read
+jobs:
+  workspace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PYTHONPATH: src
+      OI_INTAKE_ARTIFACT_DIR: verification-artifacts/screenshots
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.13'
+      - name: Compile and source syntax
+        run: |
+          python -m compileall -q src tests run_open_intelligence.py
+          node --check web/intake.js
+          node --check web/workspace-entry.js
+          python run_open_intelligence.py --help
+      - name: Existing and intake JavaScript checks
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p verification-artifacts
+          node --test tests/test_*.js 2>&1 | tee verification-artifacts/javascript.txt
+      - name: Existing and new Python HTTP checks
+        shell: bash
+        run: |
+          set -o pipefail
+          python -m unittest discover -s tests -v 2>&1 | tee verification-artifacts/python.txt
+      - name: Empty workspace through original-file import and versioned review
+        shell: bash
+        run: |
+          set -o pipefail
+          python tests/workspace_start_browser_journey.py 2>&1 | tee verification-artifacts/connected-browser.txt
+      - name: Original Composer and review regression
+        run: python tests/composer_browser_journey.py
+      - name: Record actual source and incomplete inventory
+        if: always()
+        run: |
+          mkdir -p verification-artifacts
+          git rev-parse HEAD > verification-artifacts/commit.txt
+          git archive --format=zip --output=verification-artifacts/source-under-test.zip HEAD
+          python tools/generate_source_sbom.py --as-of 2026-11-02 --output verification-artifacts/source-declaration-sbom.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: connected-workspace-${{ github.run_id }}-${{ github.run_attempt }}
+          path: verification-artifacts/
+          if-no-files-found: error
+          retention-days: 7
