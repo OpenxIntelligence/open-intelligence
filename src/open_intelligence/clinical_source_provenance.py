@@ -215,3 +215,91 @@ class ClinicalSourceProvenance:
             }
             for row in rows
         ]
+
+    def context_snapshot(self, patient_id: str, case_id: str, *,
+                         actor: str, purpose: str) -> dict:
+        """Read one authorized clinical/source context; never synthesize diagnosis.
+
+        This is a *synthetic adapter projection*, not a complete Patient World
+        Model, live Composer API or normalized duplicate store. It presents
+        authoritative references, known original-source assertions, and
+        review-required provenance links for a future governed interface.
+        No clinical note narrative or source raw bytes are copied here.
+        """
+        self._allow(patient_id, case_id, actor=actor, purpose=purpose,
+                    action="patient_context.read")
+        if self.db.in_transaction:
+            raise ClinicalSourceLinkError("Patient context requires isolated read")
+        with self.db:
+            self.db.execute("BEGIN")
+            encounters = [
+                dict(x) for x in self.db.execute(
+                    """SELECT id,external_key,kind,service_date,status,revision
+                       FROM clinical_encounters WHERE patient_id=?
+                       ORDER BY service_date,id""", (patient_id,)
+                ).fetchall()
+            ]
+            notes = [
+                dict(x) for x in self.db.execute(
+                    """SELECT v.id AS note_version_id,n.id AS note_id,
+                              e.id AS encounter_id,v.version,v.status,v.sha256,
+                              v.supersedes_id,v.created_at
+                       FROM clinical_note_versions v
+                       JOIN clinical_note_headers n ON n.id=v.note_id
+                       JOIN clinical_encounters e ON e.id=n.encounter_id
+                       WHERE e.patient_id=? ORDER BY v.id""", (patient_id,)
+                ).fetchall()
+            ]
+            sources = [
+                dict(x) for x in self.db.execute(
+                    """SELECT id AS source_version_id,document_id,version,state,
+                              sha256,kind,event_date,issued_at,received_at,
+                              specimen_id,supersedes_id
+                       FROM source_versions WHERE case_id=?
+                       ORDER BY event_date,document_id,version""", (case_id,)
+                ).fetchall()
+            ]
+            current_observations = [
+                dict(x) for x in self.db.execute(
+                    """SELECT a.source_version_id,a.source_line,a.finding_key,
+                              a.certainty,a.quote
+                       FROM assertions a JOIN source_versions s
+                         ON s.id=a.source_version_id
+                       WHERE a.case_id=? AND s.state='current'
+                       ORDER BY a.id""", (case_id,)
+                ).fetchall()
+            ]
+            links = [
+                dict(x) for x in self.db.execute(
+                    """SELECT r.id AS link_id,r.note_version_id,r.source_version_id,
+                              r.source_line,s.state AS source_state
+                       FROM clinical_note_source_refs r
+                       JOIN source_versions s ON s.id=r.source_version_id
+                       JOIN clinical_note_versions v ON v.id=r.note_version_id
+                       JOIN clinical_note_headers n ON n.id=v.note_id
+                       JOIN clinical_encounters e ON e.id=n.encounter_id
+                       WHERE r.patient_id=? AND r.case_id=? AND e.patient_id=?
+                       ORDER BY r.id""", (patient_id, case_id, patient_id)
+                ).fetchall()
+            ]
+            for link in links:
+                link["provenance_state"] = (
+                    "current_source_unreviewed" if link["source_state"] == "current"
+                    else "source_superseded_review_required"
+                )
+            return {
+                "contract": "oi.synthetic-clinical-context/1",
+                "patient_id": patient_id,
+                "synthetic_case_id": case_id,
+                "encounters": encounters,
+                "note_versions": notes,
+                "source_versions": sources,
+                "source_reported_assertions": current_observations,
+                "note_source_links": links,
+                "note_versions_requiring_source_review": sorted({
+                    link["note_version_id"] for link in links
+                    if link["provenance_state"] == "source_superseded_review_required"
+                }),
+                "clinical_interpretation": "not_generated",
+                "source_coverage": "bounded_original_synthetic_reports_only",
+            }
