@@ -25,6 +25,12 @@ jobs:
         run: |
           node --check web/app.js
           node --check web/mission.js
+      - name: Characterize synthetic adapter limits (not release authorization)
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p verification-artifacts
+          PYTHONPATH=src python tests/test_whole_patient_continuity.py --boundary-probe | tee verification-artifacts/whole-patient-boundary.json
       - name: Unit and HTTP tests
         shell: bash
         run: |
