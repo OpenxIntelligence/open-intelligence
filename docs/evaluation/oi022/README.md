@@ -13,13 +13,14 @@ value — not to confirm it.
 
 - Protocol version: `OI022-DRAFT` (unfrozen; frozen version requires reviewer
   sign-off per [PROTOCOL.md](PROTOCOL.md) §9).
-- Study state: **planned**. No independent oncology adjudicator has been
+- Study state: **planned** (run-record status `not_activated` per
+  [PROTOCOL.md](PROTOCOL.md) §9). No independent oncology adjudicator has been
   recruited, no numerical threshold has been set, no journey has been executed,
   no vendor has been tested. Every threshold cell in this packet is blank by
   design; see [PROTOCOL.md](PROTOCOL.md) §8.
-- All journeys, cases, sources, findings, evidence notes, threats, deadlines,
-  costs, and worksheet rows in this packet are **independently authored
-  fiction**. Nothing here is a clinical claim, a treatment recommendation, an
+- All journeys, cases, sources, findings, evidence notes, threats,
+  discussion deadlines, dates, costs, and worksheet rows in this packet are
+  **independently authored fiction**. Nothing here is a clinical claim, a treatment recommendation, an
   eligibility determination, or evidence of patient benefit. See
   [RIGHTS_MANIFEST.md](RIGHTS_MANIFEST.md).
 - No real patient acquisition, no retrospective real-record use, and no

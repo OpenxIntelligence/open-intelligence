@@ -37,8 +37,9 @@ No reviewers recruited, no thresholds set, no runs executed, no results.**
    [ADJUDICATION_TEMPLATE.md](ADJUDICATION_TEMPLATE.md), even if its sources
    trace correctly.
 4. **Potential discussion deadlines are not clinical deadlines.** The OI-021
-   deterministic deadline is scored only as an arithmetic projection over
-   stated lead times and sourced anchors, labelled as discussion scheduling.
+   deterministic potential discussion deadline is scored only as an
+   arithmetic projection over stated lead times and sourced anchors,
+   labelled as discussion scheduling.
 5. **No retrospective synthetic score masquerades as clinical validation.**
    Every report, memo, and summary produced under this protocol carries the
    header: *"Synthetic staged-journey result; not clinical validation."*
@@ -69,7 +70,10 @@ declaration recording:
 - financial or institutional conflicts in the outcome;
 - relevant qualification (oncology review qualification is required to judge
   whether an applicability inference is withheld correctly; methodological
-  qualification suffices for pure traceability rows — record which applies);
+  qualification suffices for pure traceability rows — record which applies).
+  The dispute adjudicator must hold oncology review qualification for any
+  row where an applicability judgment is in dispute; otherwise the row is
+  resolved only on traceability grounds or marked explicitly unresolved;
 - **prior exposure**: whether they have seen any checkpoint key, pilot score,
   full-journey material beyond their assigned cutoff, or vendor output, and
   when.
@@ -97,8 +101,10 @@ leakage, and hidden burden?
 Manual reading of the cutoff sources plus the coordinator-documented
 "current-workflow" preparation steps (see §4.4): source gathering, manual
 notes, a manually written case brief in the fixed five-section structure of
-`validation/iv01/BASELINE.md` §2. No evidence-linked brief tooling, no option
-graph. This arm produces the frozen baseline brief per journey-cutoff.
+[`validation/iv01/BASELINE.md`](../../../validation/iv01/BASELINE.md) §2. No
+evidence-linked brief tooling, no option graph. This arm produces the frozen
+baseline brief per journey-cutoff, prepared by a coordinator-designated
+preparer who is **not** an assessor of that journey-cutoff (see §12).
 
 ### Arm B — Evidence-linked brief
 
@@ -106,8 +112,12 @@ The source-investigation workspace: source-linked assertions, one focused
 question linked to permitted (here: fictional) evidence with applicability
 limits, and a dated brief — **without** the OI-021 option/dependency/threat
 projection. If the workspace under test cannot disable the option view, the
-coordinator redacts all option-view surfaces from arm outputs and logs the
-redaction; any option-view content leaking into Arm B is a protocol deviation.
+coordinator re-renders arm outputs with all option-view surfaces removed and
+logs the re-render. The removal must leave **no marker** (no redaction label,
+placeholder, or gap an assessor could use to identify the arm); if clean
+removal is impossible, the coordinator logs a masking limitation and the
+reviewers decide, before scoring, whether that journey-cutoff can proceed.
+Any option-view content leaking into Arm B is a protocol deviation.
 
 ### Arm C — Option-preservation graph
 
@@ -143,12 +153,57 @@ manual baseline rather than a straw man. If reviewers judge the Arm A
 definition unfair, the protocol is repaired and re-frozen; it is not scored
 as-is. Record the agreed Arm A definition in the freeze record.
 
+### 4.5 E6 divergences from the IV-02/IV-03 contracts (explicit; amends nothing)
+
+This packet follows the IV-02 adjudication contract
+([`ADJUDICATION.md`](../../../validation/iv01/ADJUDICATION.md)), the IV-03
+reproducibility procedure
+([`BASELINE.md`](../../../validation/iv01/BASELINE.md)), and the supporting
+rubric ([`SCORING.md`](../../../validation/iv01/SCORING.md)) except for the
+following stated E6 divergences, which apply to OI-022 only:
+
+1. **Arms.** OI-022 Arm B is the evidence-linked brief without the option
+   view — not the IV-03 simple manifest/time-sort arm. OI-022 Arm C is Arm B
+   plus the OI-021 option/dependency/threat projection — not the IV-03
+   general application arm. Arm A keeps the IV-03 role (manual preparation
+   producing the frozen baseline brief).
+2. **Journeys replace cases.** Staged fictional journeys with three receipt
+   cutoffs (T0/T1/T2) replace IV practice cases; run records and worksheets
+   use `journey_id` / `cutoff` / `arm_blind_code` where IV-02/IV-03 use
+   `case_id` / `cutoff` / `arm`.
+3. **Worksheet columns.** Relative to IV-02 §7: `protocol_version` and
+   `reviewer_qualification` are added; `source_anchors` replaces
+   `source_lines`; `software_revision` replaces `application_commit`;
+   `journey_id` replaces `case_id`; `arm_blind_code` replaces `arm`; three
+   flags are added (`missed_threat`, `directive_language`,
+   `deadline_labelling_error`); `prior_exposure` replaces
+   `prior_key_exposure`; acquisition/preparation/coordination minutes are
+   coordinator-kept per §6 and are not worksheet columns (see
+   [REVIEWER_WORKSHEET.md](REVIEWER_WORKSHEET.md) §6).
+4. **Run records.** One record per journey-cutoff-arm per §12, following the
+   IV-03 §5 field set with the §4.5(2) substitutions; vendor arms (`V1`…)
+   are additional records of the same form.
+5. **Directive-language S3 extension.** IV-02 S3 covers treatment/diagnosis
+   directives and unreviewed clinical instructions; OI-022 additionally
+   treats **any** directive clinical language (recommendation, eligibility
+   assertion, prescription, order, instruction to act) as S3 per §2 rule 3.
+6. **Additions with no IV-02/IV-03 counterpart.** Authorization/payer
+   confirmation (§10), vendor comparison (§11), the invalidation-correctness
+   metric ([METRICS_SPEC.md](METRICS_SPEC.md) M16), and simulated-reader
+   comprehension (§7.2) are new for E6.
+
 ## 5. Journeys, cutoffs, and negative controls
 
 The journey set is [JOURNEYS.md](JOURNEYS.md): **12 staged fictional
-journeys** (`OI022-FJ01` … `OI022-FJ12`), each with 3–4 stages, per-stage
-fictional sources, cutoff datetimes, one durable question, predeclared
-option-preservation checkpoints, and embedded negative controls.
+journeys** (`OI022-FJ01` … `OI022-FJ12`), each with 3 stages (T0/T1/T2),
+per-stage fictional sources, cutoff datetimes, one durable question,
+predeclared option-preservation checkpoints, and embedded negative controls.
+Planned study size: 12 journeys × 3 cutoffs × 3 arms = **108
+journey-cutoff-arm runs**, plus any separately authorized vendor arms;
+failed runs, timeouts, and abstentions add rows, never shrink denominators.
+The second fictional cases embedded in FJ10 (`CASE-OI022-FJ10B`) and FJ12
+(`CASE-OI022-FJ12B`) are cross-case controls scored inside their parent
+journey's runs; they add no runs.
 
 ### 5.1 Cutoff rules (global; every journey inherits them)
 
@@ -176,8 +231,8 @@ option-preservation checkpoints, and embedded negative controls.
 ### 5.2 Negative controls (predeclared; scored, never dropped)
 
 - **FJ03** is a dedicated no-threat journey: pending items only. Any urgent
-  flag, threat, deadline-derived escalation, or action claim on FJ03 is a
-  false-urgency finding.
+  flag, threat, discussion-deadline-derived escalation, or action claim on
+  FJ03 is a false-urgency finding.
 - **FJ12** carries a no-action documentation-review source: any urgency or
   action inference from it is a false-urgency finding.
 - Every journey embeds at least one **unaffected control**: an independent
@@ -194,14 +249,17 @@ option-preservation checkpoints, and embedded negative controls.
 The structural checkpoints in [JOURNEYS.md](JOURNEYS.md) §13 (which threats
 are flaggable at which cutoff, which controls must stay untouched, which
 amendments affect which outputs) form the coordinator key. **Assessors never
-receive the key.** They score arm outputs against cutoff sources using the
-worksheet; the coordinator maps scores to checkpoints only after scoring is
+receive the key.** They score arm outputs against the cutoff source bytes
+using the worksheet — the bytes are the reference standard for every row,
+and the key serves only as a post-scoring structural completeness check;
+the coordinator maps scores to checkpoints only after scoring is
 complete. The key is never distributed with cutoff inputs or worksheets.
 
 ## 6. Masking and adjudication flow
 
-1. The coordinator prepares one cutoff-specific input per journey-cutoff-arm
-   run. Arm outputs are labelled with blind codes (e.g. `X`/`Y`/`Z`,
+1. The coordinator prepares one cutoff-specific input per journey-cutoff,
+   identical across arms (every arm's run record references the same input
+   hash). Arm outputs are labelled with blind codes (e.g. `X`/`Y`/`Z`,
    re-randomized per journey); assessors never see arm identities during
    scoring.
 2. Two assessors score each journey-cutoff-arm independently using
@@ -284,10 +342,11 @@ are included — never silently discarded.
    back for confirmation.
 4. **Set incident stop rules.** §8.3 lists the incident classes that stop
    the study immediately regardless of bands. These classes are standing
-   safety rules inherited from the playbook and the merged IV-02 contract —
-   not values invented by this packet — and the reviewers confirm or extend
-   the list; they may not remove an item without a recorded rationale and
-   adjudicator sign-off.
+   safety rules inherited from the playbook and the IV-02 contract, with the
+   packet's directive-language S3 extension stated in §2 rule 3 (see also
+   §4.5(5)) — not numeric values invented by this packet — and the reviewers
+   confirm or extend the list; they may not remove an item without a recorded
+   rationale and adjudicator sign-off.
 5. **Freeze and sign.** All reviewers sign and timestamp the completed table
    (§8.2). The signed table is stored immutably (location recorded in the
    freeze record, §9). From that moment the study is activated; thresholds
@@ -319,6 +378,7 @@ Do not backfill. This draft contains no numeric values — not even examples.
 | M13 | Vendor comparability | TO FILL | TO FILL | TO FILL | TO FILL |
 | M14 | Severe (S3) findings | TO FILL | TO FILL | TO FILL | TO FILL |
 | M15 | Reviewer disagreement rate | TO FILL | TO FILL | TO FILL | TO FILL |
+| M16 | Amendment/withdrawal invalidation correctness | TO FILL | TO FILL | TO FILL | TO FILL |
 
 ### 8.3 Incident stop rules (immediate stop + escalation, regardless of bands)
 
@@ -337,6 +397,39 @@ The accountable stop owner (§1) halts scoring, preserves all evidence, and
 routes the incident to the designated restricted channel. Public artifacts
 record the stop and its reason; sensitive details stay restricted.
 
+### 8.4 Issue #14 stop-condition mapping (bands reviewer-set; no values here)
+
+Issue #14 names five conditions that stop **this supplemental workstream**.
+Each maps to frozen threshold bands (§8.2) or incident rules (§8.3) as
+follows; the reviewers set every band in §8.1, and no condition below
+carries a prespecified value:
+
+- **Baseline wins** — on the per-arm comparison, Arm A's values fall in
+  the frozen go bands while Arm C's values do not (M01, M02, M04, M10), or
+  Arm C's M01/M06/M09 values fall outside the frozen go bands while Arm
+  A's stay inside.
+- **Repeated threats are not actionable** (issue wording) — predeclared
+  flaggable items repeatedly unsurfaced or surfaced late (M01/M02 stop
+  bands), or surfaced items repeatedly unsupported on adjudication (M10).
+  In this synthetic packet "actionable" means only "surfaced as a
+  discussion item at the earliest flaggable cutoff with its basis intact";
+  it never means a clinical action is warranted.
+- **Reviewer burden grows** — Arm C expert correction burden or
+  acquisition + coordination labor exceeds the frozen M06/M07 stop bands
+  relative to Arms A/B.
+- **Incorrect clinical certainty appears** — any confirmed S3 (§8.3),
+  including directive clinical language in any arm output, or unsupported
+  efficacy/eligibility/urgency conclusions reaching the frozen M10/M14
+  stop bands.
+- **Privacy/rights barriers prevent a lawful pilot** — real-data,
+  restricted-text, or permission failures (§8.3 incident rules), or
+  authorization/payer confirmation that stays unconfirmable under §10
+  (M12 finding against the value claim).
+
+A stop under any condition is recorded in
+[DECISION_MEMO_TEMPLATE.md](DECISION_MEMO_TEMPLATE.md) §6 with the metric,
+band, and row evidence — never as an unrecorded judgment.
+
 ## 9. Preregistration freeze checklist (all items before any result)
 
 - [ ] Evaluation ID, protocol version, journey-set version confirmed.
@@ -345,15 +438,24 @@ record the stop and its reason; sensitive details stay restricted.
 - [ ] Assessors, adjudicator, operations reviewer recruited; declarations
   filed (§3); anonymous IDs assigned; no-prior-viewing attestations signed.
 - [ ] Arm A "ordinary workflow" definition agreed in writing (§4.4).
-- [ ] Journey list, cutoff datetimes, arm allocation/order, masking codes set.
+- [ ] Journey list, cutoff datetimes, freeze-fixed journey parameters (FJ08
+  window closing date; FJ01/FJ08 preparation lead times; PreparationTask
+  owner labels — see [JOURNEYS.md](JOURNEYS.md) §14), arm allocation/order,
+  masking codes set.
+- [ ] Predeclared opportunity list per journey-cutoff frozen (expected
+  observations, missingness distinctions, identity challenges, amendment
+  effects, no-action controls); denominator eligibility set from it, not
+  after outputs are seen.
 - [ ] Worksheet schema, rubrics, severity rules frozen
   ([REVIEWER_WORKSHEET.md](REVIEWER_WORKSHEET.md),
   [ADJUDICATION_TEMPLATE.md](ADJUDICATION_TEMPLATE.md)).
 - [ ] Denominators, abstention/omission handling, disagreement protocol frozen
   ([METRICS_SPEC.md](METRICS_SPEC.md)).
 - [ ] Threshold table (§8.2) completed, signed, timestamped, stored immutably.
+- [ ] Task contracts and prompts for any model-assisted arm frozen (or "no
+  model use" recorded); tool permissions and data-retention terms recorded.
 - [ ] Burden/cost ledger templates, role rates basis (§7, §10), and
-  comprehension items frozen.
+  comprehension items, reader instructions, and answer guide frozen.
 - [ ] Authorization/payer confirmation table drafted per §10 (confirmations
   may complete during the study; the table structure and evidence standard
   are frozen now).
@@ -406,7 +508,7 @@ Vendors are tested with the **same** fictional journeys, cutoffs, questions,
 masking, burden/cost ledgers, and worksheet — as additional arms
 (`V1`, `V2`, …), never as replacements for Arms A/B/C.
 
-1. **Eligibility.** A vendor system is admitted only if it can run on the
+1. **Admission.** A vendor system is admitted only if it can run on the
    frozen cutoff inputs without network access beyond the declared,
    rights-cleared services, and only after its exact version, model/provider
    identity, tool permissions, and data-retention terms are recorded. Terms
@@ -429,8 +531,9 @@ empty until separately authorized outreach succeeds.
 
 ## 12. Reproducibility and run records
 
-Follow `validation/iv01/BASELINE.md` §§1–5 (clean checkout, frozen baseline
-brief, timed burden ledger, run record) with these E6 additions:
+Follow [`validation/iv01/BASELINE.md`](../../../validation/iv01/BASELINE.md)
+§§1–5 (clean checkout, frozen baseline brief, timed burden ledger, run
+record) with these E6 additions (see also the §4.5 divergence list):
 
 - One run record per journey-cutoff-arm (including vendor arms and failed
   runs). Record: evaluation ID, packet commit, software/vendor revision,
@@ -441,8 +544,12 @@ brief, timed burden ledger, run record) with these E6 additions:
   and `results_observed`.
 - The Arm A baseline brief per journey-cutoff uses the fixed five-section
   structure and is frozen **before** any Arm B/C/vendor output for that
-  journey-cutoff is opened. Opening another arm's output first invalidates
-  that journey-cutoff.
+  journey-cutoff is opened. The brief preparer (recorded by anonymous ID in
+  the run record) must not assess any arm for that journey-cutoff, and no
+  assessor may have prior exposure to that journey (see §3 and §4.4).
+  Opening another arm's output before the brief is frozen — by the preparer
+  or by anyone who then assesses that journey-cutoff — invalidates that
+  journey-cutoff.
 - Participant distribution is cutoff inputs only. The coordinator checkpoint
   key (§5.3), full-journey material, tests, and reference answers are never
   participant material.

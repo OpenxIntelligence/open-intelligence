@@ -1,7 +1,8 @@
 # OI-022 adjudication record template (issue #14)
 
 **FICTIONAL — SYNTHETIC ONLY. Blank record. No judgments recorded, no
-adjudication performed. Copy once per journey-cutoff-arm pair scored.**
+adjudication performed. Copy once per journey-cutoff-arm combination
+scored.**
 
 ## A. Record identity (coordinator completes before adjudication)
 
@@ -78,6 +79,8 @@ independently. Report absolute counts `n/N` alongside any rate.
 | Leakage findings (n/N) | TO RECORD |
 | False-urgency flags raised / confirmed | TO RECORD |
 | Missed-threat flags raised / confirmed | TO RECORD |
+| Directive-language flags raised / confirmed (each confirmed instance is S3, see §C) | TO RECORD |
+| Discussion-deadline labelling flags raised / confirmed | TO RECORD |
 | Null/negative rows preserved (must equal predeclared null count) | TO RECORD |
 
 ## E. S3-review appendix (every S3 raised, even if resolved otherwise)

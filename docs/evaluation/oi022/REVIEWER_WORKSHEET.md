@@ -73,8 +73,8 @@ with A, never averaged, no combined column):
 - `directive_language` — recommendation/eligibility/order/instruction wording
   (automatic S3; quote the wording in `reason`).
 - `deadline_labelling_error` — potential discussion deadline shown without
-  "not a clinical deadline" labelling, or deadline arithmetic wrong (quote
-  both values in `reason`).
+  "not a clinical deadline" labelling, or discussion-deadline arithmetic
+  wrong (quote both values in `reason`).
 
 ## 4. Severity (per row, independent of rubrics)
 

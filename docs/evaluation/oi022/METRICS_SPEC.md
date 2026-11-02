@@ -11,7 +11,11 @@ denominator; a metric reported without both is not a result.**
   [REVIEWER_WORKSHEET.md](REVIEWER_WORKSHEET.md)).
 - Denominator eligibility is fixed at freeze time from the predeclared
   opportunity list. Unresolved rows stay in the denominator note; abstentions
-  are reported separately and never scored as correct/incorrect.
+  are reported separately and never scored as correct/incorrect. Exception:
+  M12 and M13 denominators count study-observed items (action types actually
+  observed; vendor arms actually attempted) that cannot be enumerated before
+  the study — for those two metrics the counting rule and table structure
+  are frozen at freeze time, and the cells are study findings.
 - All rates are reported per arm (A, B, C, and any vendor arms V1…), with the
   absolute numerator/denominator, the range across journeys, and the absolute
   severe-error counts. Percentage-only reporting is forbidden for M05 and M14
@@ -25,12 +29,20 @@ denominator; a metric reported without both is not a result.**
 
 - **Question:** does the arm surface predeclared flaggable items at the
   earliest cutoff where their basis is present?
-- **Numerator:** predeclared threat checkpoints (CP01, CP03, CP13;
-  full list frozen from [JOURNEYS.md](JOURNEYS.md) §13)
-  surfaced by the arm output at the earliest flaggable cutoff, judged
-  `correct` (A) with `uncertainty-preserved` (B).
-- **Denominator:** all predeclared threat checkpoints in scope for the scored
-  journey-cutoffs. Eligibility frozen before results.
+- **Numerator:** predeclared threat checkpoints surfaced by the arm output
+  at the earliest flaggable cutoff, judged `correct` (A) with
+  `uncertainty-preserved` (B). The threat-checkpoint set is exactly
+  **{CP01, CP03, CP13}** from [JOURNEYS.md](JOURNEYS.md) §13 — the three
+  checkpoints whose expectation is "flag this discussion item now". All
+  other checkpoints map to other metrics (see the checkpoint map below):
+  staleness/invalidation scope to M16, held-candidate discipline to M10,
+  rejections/quarantine to M04(a)/M14, no-action controls to M03,
+  unknown-date discipline to M10, derivation/labelling to M04/M10, and
+  leakage probes to M05.
+- **Denominator:** the threat checkpoints in scope for the scored
+  journey-cutoffs (at most {CP01, CP03, CP13}; fewer if a journey-cutoff is
+  excluded at freeze with a recorded reason). The in-scope set is frozen
+  before results.
 - **Report:** rate per arm + absolute n/N + per-checkpoint table. A threat
   surfaced one cutoff late counts as missed here (and may count in M02).
 
@@ -99,8 +111,9 @@ denominator; a metric reported without both is not a result.**
   comprehension items: (1) what the record supports, (2) what is
   missing/uncertain, (3) what changed, (4) what question to ask next,
   (5) whether uncertainty was preserved (detecting upgraded certainty).
-  Items and reader instructions frozen with reviewers in
-  [PROTOCOL.md](PROTOCOL.md) §8.
+  Items, reader instructions, and the answer guide are drafted by the
+  coordinator and approved by the reviewers at freeze (see
+  [PROTOCOL.md](PROTOCOL.md) §§8–9).
 - **Numerator:** comprehension items answered correctly per the frozen answer
   guide (uncertainty-preservation items weighted as the reviewers direct —
   frozen, not backfilled).
@@ -185,3 +198,44 @@ denominator; a metric reported without both is not a result.**
 - **Report:** rate + absolute n/N + disagreement breakdown by field.
   Persistent dissent is preserved in the record and counts here; it is never
   resolved by averaging.
+
+## M16 — Amendment/withdrawal invalidation correctness
+
+- **Question:** after an amendment or withdrawal, does the arm mark exactly
+  the dependent outputs for re-review — no fewer, no more?
+- **Numerator (a) affected outputs:** predeclared dependent options/outputs
+  correctly shown `needs_review` (or equivalent re-review state) with the
+  superseded dependency visible, judged `correct` (A).
+- **Numerator (b) unaffected controls:** predeclared independent options
+  correctly left `current` (not staled, not re-proposed) after the same
+  event, judged `correct` (A).
+- **Denominator:** (a) all predeclared amendment/withdrawal-affected
+  opportunities in scope (checkpoints CP02, CP07, CP14, CP16, CP17 — the
+  FJ01/FJ04/FJ08/FJ10/FJ11 invalidation expectations); (b) all predeclared
+  unaffected options scoped to those same events (the imaging-only option
+  in FJ04, I1 in FJ10, D2 in FJ11). Report (a) and (b) separately; a
+  silently carried-over option fails (a), and a needlessly staled control
+  fails (b).
+- **Report:** both rates per arm + absolute counts + checkpoint ID list.
+  Rejections and quarantine (CP09, CP11, CP18) are not invalidation scope
+  and score under M04(a)/M14 instead (see the checkpoint map).
+
+## Checkpoint-to-metric map (every CP has exactly one primary home)
+
+| Checkpoint | Primary metric | What fails there |
+| --- | --- | --- |
+| CP01, CP03, CP13 | M01 (M02 if never surfaced) | Threat not flagged at earliest cutoff |
+| CP02, CP07, CP14, CP16, CP17 | M16 | Wrong invalidation scope (missed or inappropriate) |
+| CP04 | M10 (+ S3 if directive language used) | Contradicted candidate approved or recommended |
+| CP05, CP19 | M03 | Any urgency/action on a no-action control |
+| CP06, CP08, CP10 | M04 | Missingness, chronology, or duplication error |
+| CP09, CP11, CP18 | M04(a), escalating to M14 | Rejected/quarantined bytes accepted or cited |
+| CP12 | M04(b) / M10 | Contradiction dropped or patient-specific conclusion drawn |
+| CP13 / CP14 derivation/labelling aspects | Secondary flags (tallied under M04(a) / M10) | Discussion-deadline arithmetic or "not a clinical deadline" labelling error; primary homes stay M01 (CP13) and M16 (CP14) |
+| CP15 | M10 | Invented discussion-deadline/threat date |
+| CP20 | M05 | Any post-cutoff citation |
+
+Secondary flags (`missingness_error`, `identity_error`, `false_urgency`,
+`directive_language`, `deadline_labelling_error`) are recorded on the row
+regardless of the primary home and feed their own tallies. Severity (S0–S3)
+is assigned per row independently of this map.

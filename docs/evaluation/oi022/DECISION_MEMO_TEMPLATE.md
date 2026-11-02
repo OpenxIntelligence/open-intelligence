@@ -37,6 +37,7 @@ Copy once at study close. Decide against the frozen threshold bands in
 | M13 vendor comparability (n/N) | — | — | — | TO RECORD | TO RECORD |
 | M14 severe findings (absolute + n/N + row IDs) | TO RECORD | TO RECORD | TO RECORD | TO RECORD | TO RECORD |
 | M15 disagreement rate (n/N) | TO RECORD | TO RECORD | TO RECORD | TO RECORD | TO RECORD |
+| M16 amendment/withdrawal invalidation (affected n/N + unaffected n/N) | TO RECORD | TO RECORD | TO RECORD | TO RECORD | TO RECORD |
 
 Evidence locations (worksheets, adjudication records, ledgers, hashes):
 TO RECORD.
@@ -45,7 +46,8 @@ TO RECORD.
 
 - Strongest failed-probe statement supported: TO RECORD (e.g. "Arm C met the
   frozen M01 go band with no confirmed S3 per the frozen §8.3 incident rules
-  across all executed journeys" — only if true).
+  across all executed journeys" — only if true; a null result reads instead
+  like "no arm separated on M01 within the frozen bands").
 - Successful falsifications (claim disproved on these journeys): TO RECORD
   with metric, band, and row evidence.
 - Null / inconclusive dimensions (bands not discriminating, high
@@ -87,8 +89,9 @@ veto silently.
   claim, the metrics that missed, the re-freeze required, and what will
   change before any retest. No retest on edited thresholds.
 - [ ] **STOP** — falsified or unsafe to continue: state the falsifying
-  evidence (metric, band, rows) or the incident. Preserve all evidence;
-  route incidents per [PROTOCOL.md](PROTOCOL.md) §8.3.
+  evidence (metric, band, rows) or the incident, mapped to the issue #14
+  stop conditions in [PROTOCOL.md](PROTOCOL.md) §8.4. Preserve all
+  evidence; route incidents per [PROTOCOL.md](PROTOCOL.md) §8.3.
 
 Decision: TO SELECT. Rationale: TO RECORD. Accountable approver: TO RECORD.
 Date: TO RECORD. Immutable evidence location: TO RECORD.
