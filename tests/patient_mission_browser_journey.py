@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 from pathlib import Path
 import shutil
 import subprocess
@@ -185,10 +186,27 @@ def main() -> None:
             if session is not None:
                 session.close()
             if browser is not None:
-                browser.terminate()
-                browser.wait(timeout=8)
+                # Chromium renderer and zygote descendants can outlive the
+                # parent and race TemporaryDirectory profile cleanup.
+                # Chrome was launched in its own process group above.
+                try:
+                    os.killpg(browser.pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+                try:
+                    browser.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    try:
+                        os.killpg(browser.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                    browser.wait(timeout=5)
             server.terminate()
-            server.wait(timeout=8)
+            try:
+                server.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                server.kill()
+                server.wait(timeout=5)
 
 
 if __name__ == "__main__":
