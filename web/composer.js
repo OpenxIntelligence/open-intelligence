@@ -98,6 +98,110 @@
       panel.append(list);
     }
     panel.append(missing, review, warning);
+
+    // One actual read-only numeric tool. This is not the unavailable
+    // specialist scientific pipeline advertised above. No new chat backend.
+    const labIds = new Set(sources.filter(s => s.kind === 'laboratory').map(s => s.id));
+    const labKeys = [...new Set(anchors.filter(a =>
+      labIds.has(a.source_version_id) && /^OI-LAB-VALUE\/1;/.test(a.statement || '')
+    ).map(a => a.finding_key))].sort();
+    const labSection = document.createElement('section');
+    labSection.className = 'composer-lab-tool';
+    labSection.append(el('h4', 'Try a source-grounded numeric lab comparison'));
+    labSection.append(el('p',
+      'Read-only fictional source values. No unit conversion, clinical meaning, or verified laboratory QC.',
+      'tiny muted'));
+    if (labKeys.length) {
+      const selector = document.createElement('select');
+      selector.setAttribute('aria-label', 'Synthetic laboratory finding');
+      for (const key of labKeys) {
+        const option = el('option', key);
+        option.value = key;
+        selector.append(option);
+      }
+      const invoke = el('button', 'Calculate numerical change', 'button secondary');
+      invoke.type = 'button';
+      const output = document.createElement('div');
+      output.setAttribute('aria-live', 'polite');
+      output.className = 'composer-lab-result';
+      invoke.addEventListener('click', async () => {
+        const requestId = requestSequence;
+        const requestCase = data.case_id;
+        const requestQuestion = String(data.question_id);
+        const requestFingerprint = data.fingerprint;
+        if (shownKey !== requestCase + ':' + requestQuestion ||
+            hidden.value !== requestFingerprint ||
+            casePicker.value !== requestCase || question.value !== requestQuestion) return;
+        invoke.disabled = true;
+        output.replaceChildren(el('p', 'Running local synthetic numeric validation…', 'muted'));
+        try {
+          const params = new URLSearchParams({
+            question_id: requestQuestion,
+            context_fingerprint: requestFingerprint,
+            finding_key: selector.value,
+          });
+          const response = await fetch('/api/cases/' + encodeURIComponent(requestCase) +
+            '/composer/tools/lab-trend?' + params, {
+            cache: 'no-store', credentials: 'same-origin',
+          });
+          const payload = await response.json();
+          if (requestId !== requestSequence || casePicker.value !== requestCase ||
+              question.value !== requestQuestion ||
+              hidden.value !== requestFingerprint ||
+              shownKey !== requestCase + ':' + requestQuestion) return;
+          if (!response.ok) throw new Error(payload.error || 'Tool unavailable');
+          if (payload.context_fingerprint !== requestFingerprint ||
+              payload.result?.case_id !== requestCase) {
+            throw new Error('Calculated result does not match the selected case context');
+          }
+          output.replaceChildren(el('p',
+            'Tool status: ' + payload.status + '. ' + payload.execution_receipt +
+            '. Clinical interpretation: ' + payload.clinical_interpretation + '.', 'tiny muted'));
+          if (payload.status === 'computed') {
+            output.append(el('p', 'Numerical difference: ' +
+              payload.result.delta + ' ' + payload.result.unit + ' (' +
+              payload.result.direction + '). This is not clinical significance.'));
+          }
+          for (const item of payload.result.points || []) {
+            const source = item.source;
+            const sourceButton = el('button',
+              source.document_id + '@' + source.source_version +
+              ' · line ' + source.source_line + ' · ' + item.value + ' ' + item.unit,
+              'button secondary minor');
+            sourceButton.type = 'button';
+            sourceButton.addEventListener('click', () => {
+              document.dispatchEvent(new CustomEvent('oi:composer-open-source', {
+                detail: {caseId: requestCase,
+                         sourceId: source.source_version_id, line: source.source_line},
+              }));
+            });
+            output.append(sourceButton);
+          }
+          if (payload.result.holds?.length) {
+            output.append(el('p',
+              'No numerical conclusion: ' + payload.result.holds.map(x => x.reason).join('; '),
+              'muted'));
+          }
+          output.append(el('p', payload.disclaimer, 'tiny muted'));
+        } catch (error) {
+          if (requestId === requestSequence && casePicker.value === requestCase &&
+              question.value === requestQuestion) {
+            output.replaceChildren(el('p',
+              'Calculation unavailable: ' + String(error.message || error) +
+              '. Refresh context if source versions changed.', 'muted'));
+          }
+        } finally {
+          if (requestId === requestSequence && casePicker.value === requestCase &&
+              question.value === requestQuestion) invoke.disabled = false;
+        }
+      });
+      labSection.append(selector, invoke, output);
+    } else {
+      labSection.append(el('p',
+        'No OI-LAB-VALUE/1 fictional laboratory measurements in the current source preview.',
+        'tiny muted'));
+    }
+    panel.append(labSection);
     panel.setAttribute('aria-busy', 'false');
   }
 

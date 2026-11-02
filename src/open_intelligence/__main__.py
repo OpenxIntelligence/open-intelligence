@@ -24,6 +24,7 @@ from .investigation import (
     validate_output,
 )
 from .composer import build_composer_context, composer_context_fingerprint
+from .composer_lab import composer_lab_trend
 from .mission import build_patient_mission
 from .store import CaseStore, InvalidInput, MAX_SOURCE_BYTES
 from .timeline import case_timeline
@@ -157,6 +158,18 @@ class Handler(BaseHTTPRequestHandler):
             case_mission = re.fullmatch(rf"/api/cases/{ID_PART}/mission", path)
             if case_mission:
                 return self._json(200, build_patient_mission(store.state(case_mission[1])))
+            lab_tool = re.fullmatch(rf"/api/cases/{ID_PART}/composer/tools/lab-trend", path)
+            if lab_tool:
+                query = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
+                allowed = {"question_id", "context_fingerprint", "finding_key"}
+                if set(query) != allowed or any(len(query[k]) != 1 for k in allowed):
+                    raise InvalidInput("Exactly one question_id, context_fingerprint and finding_key required")
+                question_raw = query["question_id"][0]
+                if not question_raw.isdigit() or int(question_raw) < 1:
+                    raise InvalidInput("Composer question_id must be a positive integer")
+                return self._json(200, composer_lab_trend(
+                    store, lab_tool[1], int(question_raw),
+                    query["context_fingerprint"][0], query["finding_key"][0]))
             composer_preview = re.fullmatch(rf"/api/cases/{ID_PART}/composer/context", path)
             if composer_preview:
                 raw_question = parse_qs(urlsplit(self.path).query).get("question_id", [None])[0]
