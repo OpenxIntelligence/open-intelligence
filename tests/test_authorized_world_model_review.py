@@ -25,7 +25,7 @@ class AuthorizedWorldModelReviewTests(unittest.TestCase):
     setup_bundle = Fixture.setup_bundle
 
     def bundle_read(self, **kwargs):
-        return self.bridge.preview(
+        return self.pwm_review.preview(
             kwargs.get("patient_id", self.patient_id),
             kwargs.get("case_id", CASE),
             kwargs.get("question_id", self.question),
@@ -41,7 +41,7 @@ class AuthorizedWorldModelReviewTests(unittest.TestCase):
 
     def test_one_authorized_context_exposes_current_pwm_evidence_and_numeric_receipt(self):
         self.setup_bundle()
-        self.bridge = AuthorizedWorldModelReview(self.bundle)
+        self.pwm_review = AuthorizedWorldModelReview(self.bundle)
         events = self.store.state(CASE)["events"]
         result = self.bundle_read()
         self.assertEqual(result["contract"], "oi.synthetic-authorized-world-model-review/1")
@@ -67,7 +67,7 @@ class AuthorizedWorldModelReviewTests(unittest.TestCase):
 
     def test_amendment_marks_historical_numeric_without_erasing_source_history(self):
         self.setup_bundle()
-        self.bridge = AuthorizedWorldModelReview(self.bundle)
+        self.pwm_review = AuthorizedWorldModelReview(self.bundle)
         previous = self.bundle_read()
         self.store.import_report(
             CASE, numeric("NUM-LAB-2", "2026-03-01", "8.1", amendment=1))
@@ -82,7 +82,7 @@ class AuthorizedWorldModelReviewTests(unittest.TestCase):
 
     def test_wrong_actor_purpose_and_patient_fail_closed(self):
         self.setup_bundle()
-        self.bridge = AuthorizedWorldModelReview(self.bundle)
+        self.pwm_review = AuthorizedWorldModelReview(self.bundle)
         for kw in ({"actor": "idp:untrusted"}, {"purpose": "research"},
                    {"case_id": "CASE-OTHER-PATIENT"}):
             with self.subTest(kw=kw):
@@ -91,14 +91,14 @@ class AuthorizedWorldModelReviewTests(unittest.TestCase):
 
     def test_external_rights_withdrawal_does_not_expose_world_model(self):
         self.setup_bundle()
-        self.bridge = AuthorizedWorldModelReview(self.bundle)
+        self.pwm_review = AuthorizedWorldModelReview(self.bundle)
         self.sources[0]["rights_state"] = "revoked"
         with self.assertRaises(KnowledgeContextError):
             self.bundle_read()
 
     def test_corrupted_world_model_source_hash_is_rejected(self):
         self.setup_bundle()
-        self.bridge = AuthorizedWorldModelReview(self.bundle)
+        self.pwm_review = AuthorizedWorldModelReview(self.bundle)
         def tampered(*args):
             state = synthetic_world_model(*args)
             state["observations"][0]["source_sha256"] = "0" * 64
@@ -112,14 +112,14 @@ class AuthorizedWorldModelReviewTests(unittest.TestCase):
 
     def test_source_amendment_during_bundle_assembly_fails_closed(self):
         self.setup_bundle()
-        self.bridge = AuthorizedWorldModelReview(self.bundle)
-        original = self.bridge.unified.preview
+        self.pwm_review = AuthorizedWorldModelReview(self.bundle)
+        original = self.pwm_review.unified.preview
         def amend_after_review(*args, **kwargs):
             output = original(*args, **kwargs)
             self.store.import_report(
                 CASE, numeric("NUM-LAB-2", "2026-03-01", "8.1", amendment=1))
             return output
-        with patch.object(self.bridge.unified, "preview",
+        with patch.object(self.pwm_review.unified, "preview",
                           side_effect=amend_after_review):
             with self.assertRaisesRegex(ClinicalContinuityError, "changed"):
                 self.bundle_read()
