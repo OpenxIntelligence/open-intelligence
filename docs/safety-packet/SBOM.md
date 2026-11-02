@@ -30,10 +30,24 @@ UNVERIFIED; nothing here is a guessed license or clearance.
 
 ## Runtime
 
+### H1 API scope addition — issue #112
+
+The historical demo inventory below covers the `src/open_intelligence`/`web`
+prototype. The separate `apps/api` shell now has 24 pinned Python wheel artifacts,
+including native components. Its exact review scope, hashes, embedded-runtime
+notices and exclusions are maintained in
+[`apps/api/dependency-license-inventory.json`](../../apps/api/dependency-license-inventory.json)
+and [`THIRD_PARTY_NOTICES.md`](../../apps/api/THIRD_PARTY_NOTICES.md). Its first-party
+gate generates a CycloneDX package inventory from checked wheel bytes. The H1
+workflow and Dockerfile run that gate before installation. Neither this addition
+nor a passing scan clears complete container/OS images or selects the project's
+distribution license. The old standard-library-only description must not be
+applied to `apps/api` or the separately recorded research tools.
+
 | Component | Version / pin | Source in repo | License / notes |
 |---|---|---|---|
 | Python | 3.11+ claimed in `README_IMPLEMENTATION.md`; CI pins 3.13 in all three workflows | `.github/workflows/synthetic-tests.yml`, `.github/workflows/crossref-metadata.yml`, `.github/workflows/ui-glance.yml` | Python is a runtime, not a shipped dependency. |
-| Python standard library only | No third-party packages | Import scan of `src/`, `tools/`, `tests/` on 2026-11-02: `argparse`, `base64`, `concurrent`, `dataclasses`, `datetime`, `hashlib`, `http` (including `http.client`), `json`, `os`, `pathlib`, `re`, `shutil`, `signal`, `socket`, `sqlite3`, `struct`, `subprocess`, `sys`, `tempfile`, `threading`, `time`, `unittest` (including `unittest.mock`), `urllib`, plus first-party `open_intelligence` and `tools` | Standard library modules ship with Python. No `requirements.txt`, `pyproject.toml`, `package.json`, or `Pipfile` exists in the repo. |
+| Legacy prototype: Python standard library | No third-party application packages in `src/open_intelligence` | Legacy application and its standard-library tests; separate research packages and `apps/api` are outside this claim. | Standard library modules ship with Python. Repository-root package manifests remain absent; the H1 API has its own reviewed lock under `apps/api`. |
 | Node.js (CI only) | UNVERIFIED — not pinned; the workflows run `node --check` and `node --test` on the runner's preinstalled Node | `.github/workflows/synthetic-tests.yml`, `.github/workflows/ui-glance.yml` | Used only to syntax-check JavaScript and run the JS source-reader tests in CI. Not part of the demo. |
 
 ## First-party code shipped

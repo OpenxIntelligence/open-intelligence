@@ -20,12 +20,19 @@ The local prototype has **no real-patient authorization, verified clinician iden
 
 **Bounded implementation target:** Python/FastAPI/PostgreSQL with React/Vite/TypeScript; Next.js is excluded. This is the selected migration target, not the stack of the existing Python/SQLite prototype.
 
+**H1 API foundation candidate:** [`apps/api`](apps/api/README.md) adds the separate
+FastAPI/PostgreSQL 16 composition root for issue #112, with explicit migrations,
+typed health/version contracts and an exact-artifact dependency gate. It is a
+local synthetic shell; patient routes, authentication and the React workspace
+remain separate integration work. Its draft-branch and verification status must
+not be confused with a merged or deployed product.
+
 ## Start here
 
 | Document | Purpose |
 |---|---|
 | [First-principles plan](docs/FIRST_PRINCIPLES_PLAN.md) | Product direction, workflow, architecture, evidence, evaluation, and expansion |
-| [Execution backlog](docs/EXECUTION_BACKLOG.csv) | Eighteen bounded work packages with dependencies and acceptance evidence |
+| [Execution backlog](docs/EXECUTION_BACKLOG.csv) | Bounded work packages with dependencies and acceptance evidence |
 | [Contributor instructions](AGENTS.md) | How humans and coding agents should work in this repository |
 
 ## Investigation workflow under development
