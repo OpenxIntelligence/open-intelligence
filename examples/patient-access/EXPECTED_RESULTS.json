@@ -1,7 +1,18 @@
 {
   "case": "CASE-OI017",
-  "provenance": "Independently authored synthetic fixtures; no real patient data, no PHI. All Patient values are synthetic case ids.",
+  "provenance": "Independently authored synthetic fixtures; no real patient data, no PHI. All Patient values are synthetic case ids. All reports are OI-SYNTHETIC-REPORT/1 fictional oncology demo text.",
   "evidence_tier": "synthetic contract evidence only (see research doc). Synthetic success does not establish real coverage, matching, pricing, or clinical usefulness.",
+  "vendor_status": "Every adapter candidate stays EVALUATE; all vendor/standard claims are UNVERIFIED (2026-11-02) unless independently checked in-repo. No vendor selected.",
+  "work_package_3": {
+    "multi-institution identity collision (same org, conflicting subject)": "oi017-encounter-inst-a.txt then oi017-collision-wrong-binding.txt; steps 1 and 6",
+    "multi-institution identity collision (same subject, second case)": "oi017-encounter-inst-a.txt reused across CASE-OI017 and CASE-OI017-B; binding rule, no cross-subject leak",
+    "contradictory specimen-linked pathology": "oi017-pathology-specimen-a.txt + oi017-pathology-specimen-b.txt; steps 2-3",
+    "late correction": "oi017-pathology-specimen-a-amended.txt; step 4",
+    "duplicate": "oi017-pathology-specimen-a.txt delivered twice; step 5",
+    "lossy transform undocumented (envelope-level, no separate bytes)": "oi017-pathology-specimen-a.txt with dropped fields, no receipt; step 9",
+    "lossy transform receipted (envelope-level, no separate bytes)": "oi017-pathology-specimen-a.txt with matching TransformationReceipt; step 10",
+    "revocation (envelope-level)": "any delivery after revoke(RCPT-OI017-1); step 11"
+  },
   "fixtures": [
     {
       "file": "oi017-collision-wrong-binding.txt",
@@ -156,7 +167,7 @@
       "source_document": "PATH-OI017-A@2"
     },
     {
-      "artifact": "marker-a on specimen A (original)",
+      "artifact": "marker-a on specimen A (negative only in amended v2; v1 was not-reported)",
       "status": "negative",
       "note": "not-reported in v1 is NOT a negative; only the amended v2 reports marker-a negative",
       "source_document": "PATH-OI017-A@2"

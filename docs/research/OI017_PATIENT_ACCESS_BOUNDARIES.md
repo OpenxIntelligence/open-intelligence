@@ -1,9 +1,11 @@
 # OI-017 — Patient-directed access and lossless evidence boundaries (complementary research)
 
-**Date:** 2026-10-31
+**Date:** 2026-10-31 (original); branch update 2026-11-02 (synthetic-only,
+no live verification; external pointers re-listed, not freshly reverified).
 **Status:** Complementary research + synthetic adapter contract. **Not** an adopted
 architecture, vendor decision, implemented live integration, legal determination,
-or clinical release.
+or clinical release. Every vendor/standard claim below that cannot be verified
+from in-repo sources is labeled **UNVERIFIED (2026-11-02)** with a dated pointer.
 **Project:** Open Intelligence (the former name is historical only).
 **Issue:** [#17](https://github.com/OpenxIntelligence/open-intelligence/issues/17) —
 validate patient-directed access and lossless evidence boundaries.
@@ -46,16 +48,36 @@ purpose is not valid for the other. The adapter in this PR accepts only
 gate (tested), because silently accepting it would misrepresent the basis
 on which bytes arrived.
 
-| Pathway | Who acts | Purpose | Eligibility / role questions that must be answered before any real use | Commercial / legal obligations to verify (unresolved) |
+| Pathway | Who acts | Purpose | Eligibility / role questions that must be answered before any real use | Commercial / legal obligations to verify | Status |
+| --- | --- | --- | --- | --- | --- |
+| TEFCA / QHIN Individual Access Services (IAS) | Patient-facing app via a QHIN / IAS provider | Individual access (patient-directed) | Is the app an eligible IAS participant? Which QHINs does the IAS provider connect? What identity proofing and patient matching does it perform? What scope and completeness does it actually return? | QHIN participation terms, IAS provider agreement, permitted-use and audit duties, pricing — UNVERIFIED (2026-11-02); pointer: RCE https://rce.sequoiaproject.org/ | EVALUATE |
+| TEFCA / QHIN Treatment purpose | Provider organization via a QHIN | Treatment (provider-to-provider care) | Is Open Intelligence a provider organization for this purpose? It is not assumed to be one. What treatment relationship must exist? | Treatment-purpose participation terms, provider agreements — UNVERIFIED (2026-11-02); separate pathway, not used by this adapter | EVALUATE (out of scope for this adapter) |
+| Epic IAS (TEFCA) | Patient-facing app via Epic's IAS offering | Individual access | App registration, SMART authorization, organization discovery for Epic-connected sites | Epic IAS terms and any commercial terms — UNVERIFIED (2026-11-02); pointer: https://open.epic.com/Home/Interoperate/TEFCA/IAS (carried forward, not reverified) | EVALUATE |
+| InterSystems Health Gateway | Network-access aggregation for participating healthcare-network workflows | Depends on the workflow it serves; verify whether a patient-facing IAS application is a supported use at all | Applicability to a patient-facing IAS app, supported purposes, organization coverage — UNVERIFIED (2026-11-02) | Commercial terms for a patient-facing IAS application — UNVERIFIED (2026-11-02); pointer: https://www.intersystems.com/products/healthshare/health-gateway/; marketing descriptions are not terms. No selection of InterSystems is made or implied. | EVALUATE |
+| InterSystems Health Connect / IRIS for Health / Unified Care Record | Integration, FHIR exchange, normalization, identity, provenance | Integration / exchange (not, by itself, a patient-access right) | Which role each product plays; do not conflate a gateway, an integration engine, and a record aggregator — UNVERIFIED (2026-11-02) | Licence / commercial terms per product — UNVERIFIED (2026-11-02); pointer: https://www.intersystems.com/products/healthshare/health-connect/ | EVALUATE |
+| Health Gorilla (IAS use case) | Patient-facing app via Health Gorilla IAS | Individual access | IAS eligibility, matching, scope, completeness — UNVERIFIED (2026-11-02) | IAS agreement and pricing — UNVERIFIED (2026-11-02); pointer: https://www.healthgorilla.com/home/use-cases/ias | EVALUATE |
+| b.well | Patient-facing access platform | Individual access (verify per product) | Product and purpose actually offered to this kind of app, matching and scope — UNVERIFIED (2026-11-02) | Commercial terms — UNVERIFIED (2026-11-02); no QHIN or vendor selected | EVALUATE |
+| Direct SMART/FHIR + patient-directed records requests | Patient app directly with each institution | Individual access, institution by institution | Per-institution registration, supported scopes, specialty artifact variation, refresh behaviour — UNVERIFIED per site (2026-11-02) | Per-institution terms; no national completeness is implied by any single connection — UNVERIFIED per site (2026-11-02) | EVALUATE (comparison/fallback only) |
+
+### 2.1 Evidence class per vendor/standard claim (2026-11-02)
+
+Claim status vocabulary (from the 2026-10-31 research addendum): `source-stated`
+(the vendor/standard publisher says so; not independently checked),
+`independently-checked` (verified against dated primary evidence by this repo),
+`hypothesis` (repo working assumption), `unresolved` (no evidence in this repo).
+No claim below is `independently-checked` in this branch: no sandbox, no live
+call, no agreement review was performed or authorized.
+
+| # | Claim | Status (2026-11-02) | Pointer (carried forward, not reverified) | Falsification test |
 | --- | --- | --- | --- | --- |
-| TEFCA / QHIN Individual Access Services (IAS) | Patient-facing app via a QHIN / IAS provider | Individual access (patient-directed) | Is the app an eligible IAS participant? Which QHINs does the IAS provider connect? What identity proofing and patient matching does it perform? What scope and completeness does it actually return? | QHIN participation terms, IAS provider agreement, permitted-use and audit duties, pricing — none verified in this PR |
-| TEFCA / QHIN Treatment purpose | Provider organization via a QHIN | Treatment (provider-to-provider care) | Is Open Intelligence a provider organization for this purpose? It is not assumed to be one. What treatment relationship must exist? | Treatment-purpose participation terms, provider agreements — separate pathway, not used by this adapter |
-| Epic IAS (TEFCA) | Patient-facing app via Epic's IAS offering | Individual access | App registration, SMART authorization, organization discovery for Epic-connected sites | Epic IAS terms and any commercial terms — carried-forward pointer only, not reverified here |
-| InterSystems Health Gateway | Network-access aggregation for participating healthcare-network workflows | Depends on the workflow it serves; verify whether a patient-facing IAS application is a supported use at all | Applicability to a patient-facing IAS app, supported purposes, organization coverage | Commercial terms for a patient-facing IAS application — explicitly unverified; marketing descriptions are not terms |
-| InterSystems Health Connect / IRIS for Health / Unified Care Record | Integration, FHIR exchange, normalization, identity, provenance | Integration / exchange (not, by itself, a patient-access right) | Which role each product plays; do not conflate a gateway, an integration engine, and a record aggregator | Licence / commercial terms per product — unverified here |
-| Health Gorilla (IAS use case) | Patient-facing app via Health Gorilla IAS | Individual access | IAS eligibility, matching, scope, completeness | IAS agreement and pricing — unverified here |
-| b.well | Patient-facing access platform | Individual access (verify per product) | Product and purpose actually offered to this kind of app, matching and scope | Commercial terms — unverified here |
-| Direct SMART/FHIR + patient-directed records requests | Patient app directly with each institution | Individual access, institution by institution | Per-institution registration, supported scopes, specialty artifact variation, refresh behaviour | Per-institution terms; no national completeness is implied by any single connection |
+| C1 | A QHIN/IAS-provider path exists for eligible patient-facing apps | source-stated / unresolved for this app | RCE https://rce.sequoiaproject.org/ | Produce the applicable IAS participation agreement naming this app's role, or fail |
+| C2 | Epic offers a TEFCA IAS path for patient-facing apps | source-stated / unresolved for this app | https://open.epic.com/Home/Interoperate/TEFCA/IAS | Register the app in the named sandbox and retrieve the documented scope, or fail |
+| C3 | Health Gateway is applicable to a patient-facing IAS application | unresolved | https://www.intersystems.com/products/healthshare/health-gateway/ | Obtain exact product/purpose confirmation for a patient-facing IAS app, or fail |
+| C4 | Health Connect / IRIS / UCR play integration/exchange roles distinct from network access | source-stated | https://www.intersystems.com/products/healthshare/health-connect/ | Map each product to its documented role; any conflation with IAS access fails |
+| C5 | Health Gorilla offers an IAS use case for patient-facing apps | source-stated / unresolved for this app | https://www.healthgorilla.com/home/use-cases/ias | Produce the IAS agreement and sandbox evidence on identical fixture scopes, or fail |
+| C6 | b.well offers a patient-facing access product usable by this app | unresolved | Vendor documentation (no pointer verified in-repo) | Produce the exact product/purpose and terms, or fail |
+| C7 | Per-institution SMART/FHIR supports the artifact classes in §3 | hypothesis, varies by site | Per-site registration and scope evidence (none collected) | Per-site scope retrieval against the §4 contract; any missing class is recorded known-missing, not imputed |
+| C8 | Any candidate returns native DICOM, whole-slide, raw sequencing, or every payer event | unresolved (assumed absent until evidenced) | https://hl7.org/fhir/R4/imagingstudy.html (standard concept only, not a coverage claim) | Sandbox retrieval of the native artifact with source ids and time semantics, or record known-missing |
 
 **Reading rule.** An ordinary API gateway (routing/policy) is not a
 health-information-network access product, and exchange transport (FHIR/SMART,
@@ -151,7 +173,10 @@ type, event date, or specimen).
 * **Verbatim is the default.** The adapter imports the original bytes. A
   normalized projection is never stored as a source.
 * A claimed transform supplies both field sets; the module computes the
-  dropped fields and requires the declared receipt to match exactly.
+  dropped fields and requires the declared receipt's `dropped_fields` to
+  match the computed set exactly (a mismatch raises and imports nothing —
+  tested). `truncated_fields` and `cardinality_changes` are carried on the
+  receipt as declared; the module does not recompute them.
 * A lossy transform **without** a loss receipt is rejected and imports
   nothing (tested). A lossy transform **with** a receipt still imports the
   original bytes, and the receipt is recorded as an `adapter_loss_receipt`
@@ -164,7 +189,7 @@ type, event date, or specimen).
   even if it carries a receipt, because the receipt would describe a loss the
   ledger then hides. The current implementation enforces the receipt and the
   original-bytes rules; semantic merge detection remains a reviewer check
-  (see §7, open items).
+  (see §9, U8).
 
 ### 4.5 Identity: collision is quarantined, never merged
 
@@ -202,7 +227,8 @@ type, event date, or specimen).
 
 All candidates remain **EVALUATE**. Scores below are qualitative contract
 criteria for a future, separately authorized evaluation — not measurements.
-"Unknown" means unmeasured in this PR, not "poor".
+"Unknown" means unmeasured in this branch, i.e. **UNVERIFIED (2026-11-02)**,
+not "poor". No candidate is selected, ranked, or rejected here.
 
 | Criterion | TEFCA/QHIN IAS | Epic IAS | Health Gateway | Health Gorilla / b.well | Direct SMART/FHIR |
 | --- | --- | --- | --- | --- | --- |
@@ -241,11 +267,17 @@ scoped ADR. Until then, every candidate stays EVALUATE.
 
 Per issue #17, a bounded ADR is drafted only if evaluation warrants a
 change. It does not: the existing `SourceArtifactStore`/`EventLedger`
-contracts already provide immutable versioned sources, specimen anchoring,
-quarantine, duplicate suppression, amendment-driven invalidation, and an
-event ledger. The adapter gate in this PR is an *input validation layer* on
-those contracts, not a change to them. The existing design is sufficient for
-the synthetic evaluation; no architectural change is proposed, and no
+contracts — implemented in this repository as `CaseStore` tables
+`source_versions` (immutable versioned sources with SHA-256, specimen
+anchoring, duplicate suppression, amendment supersession), `quarantine`
+(wrong-subject and collision quarantine), and `events` (append-only event
+ledger with amendment-driven invalidation of dependent snapshots) in
+`src/open_intelligence/store.py` — already provide every behavior §4
+requires. The adapter gate in this PR is an *input validation layer* on
+those contracts, not a change to them: it adds no table, no canonical
+state, and no authorization system (asserted by
+`test_no_second_source_ledger_tables`). The existing design is sufficient
+for the synthetic evaluation; no architectural change is proposed, and no
 existing module, backlog order, or decision is altered by this document.
 
 ## 8. Rights, terms, and operational restrictions
@@ -265,7 +297,7 @@ existing module, backlog order, or decision is altered by this document.
   checked at their published version and effective date before any legal,
   regulatory, vendor-access, or licensing reliance.
 
-## 9. Uncertainty ledger (dated 2026-10-31)
+## 9. Uncertainty ledger (dated 2026-10-31; re-listed 2026-11-02 with no fresh verification)
 
 | # | Uncertainty | Status on 2026-10-31 | Evidence still needed |
 | --- | --- | --- | --- |
@@ -280,18 +312,47 @@ existing module, backlog order, or decision is altered by this document.
 
 ## 10. Fixtures and expected results
 
-* Fixtures: `examples/patient-access/` (7 synthetic reports).
+* Fixtures: `examples/patient-access/` (7 synthetic reports, all
+  `OI-SYNTHETIC-REPORT/1`, all fictional, labeled everywhere; no PHI).
 * Manifest: `examples/patient-access/EXPECTED_RESULTS.json` — per-file
   SHA-256, byte counts, the 11-step expected sequence, and the coverage
   classification. The manifest's coverage entry for marker-A is deliberately
   explicit: v1 `not-reported` is not a negative; only amended v2 is negative.
-* Tests: `tests/test_patient_access.py` (13 tests) — verbatim hash,
+* Tests: `tests/test_patient_access.py` (16 tests) — verbatim hash,
   undocumented-loss rejection, receipted-loss original-bytes import,
-  identity collision quarantine, cross-case subject reuse rejection,
-  contradictory-specimen coexistence, late-correction invalidation,
-  duplicate suppression, revocation blocking with history preserved,
+  mismatched-loss-receipt rejection, identity collision quarantine,
+  repeated-collision idempotency (same quarantine id), cross-case subject
+  reuse rejection, contradictory-specimen coexistence, late-correction
+  invalidation, unrelated-case isolation on amendment, duplicate
+  suppression, revocation blocking with history preserved,
   Treatment-purpose and expiry rejection, time-semantics rejection,
   negative-vs-known-missing classification, and no-second-ledger assertion.
+  Tests were authored on the branch against the contract; this session could
+  not execute them (hard limit: no shell/test runner), so no pass is claimed
+  here — see the report.
+
+### 10.1 Work-package-3 coverage: every required scenario has a fixture and an expected result
+
+Envelope-level scenarios (duplicate, lossy transform, revocation) reuse the
+byte fixtures below with different envelopes; they need no separate bytes,
+because the contract requires the original bytes in every case (§4.4). The
+manifest records each as its own expected step.
+
+| Required scenario | Fixture file(s) | Manifest step(s) | Test(s) |
+| --- | --- | --- | --- |
+| Multi-institution identity collision (same org, conflicting subject) | `oi017-encounter-inst-a.txt` then `oi017-collision-wrong-binding.txt` | Step 1 binds INST-A; step 6 rejects the collision (`identity_collision`, quarantined, no new source) | `test_identity_collision_is_quarantined_not_merged` |
+| Multi-institution identity collision (same subject, second case) | `oi017-encounter-inst-a.txt` reused across `CASE-OI017` and `CASE-OI017-B` | Covered by the binding rule (subject→case first-wins, §4.5); no cross-subject leak | `test_cross_case_subject_reuse_is_rejected` |
+| Contradictory specimen-linked pathology | `oi017-pathology-specimen-a.txt` (INST-A/SPEC-A) + `oi017-pathology-specimen-b.txt` (INST-B/SPEC-B) | Steps 2–3: both imported, conflict coexists, neither merged nor resolved | `test_contradictory_specimen_pathology_coexists_not_merged` |
+| Late correction | `oi017-pathology-specimen-a-amended.txt` (`Amends: PATH-OI017-A@1`) | Step 4: v2 supersedes v1, dependents stale, history recoverable | `test_late_correction_supersedes_and_invalidates_snapshot` |
+| Duplicate | `oi017-pathology-specimen-a.txt` delivered twice | Step 5: second delivery returns `duplicate`, no new version or event | `test_duplicate_delivery_creates_no_new_source` |
+| Lossy transform, undocumented | `oi017-pathology-specimen-a.txt` with dropped fields and no receipt (envelope-level) | Step 9: rejected `transformation_loss_undocumented`, nothing imported | `test_lossy_transform_without_receipt_is_rejected_and_not_imported` |
+| Lossy transform, receipted | Same bytes with a matching `TransformationReceipt` (envelope-level) | Step 10: original bytes imported; loss recorded as `adapter_loss_receipt` event, never as a replacement source | `test_lossy_transform_with_receipt_imports_original_not_normalized` |
+| Revocation | Any delivery after `revoke(RCPT-OI017-1)` (envelope-level) | Step 11: rejected `revoked_authorization`; prior sources preserved | `test_revocation_blocks_future_delivery_but_preserves_history` |
+| Report-only imaging (no DICOM pixels) | `oi017-imaging-report-only.txt` | Step 8: report present, pixels `known_missing` | Coverage test + manifest |
+| Medication list without administration proof | `oi017-medications-inst-a.txt` | Step 7: list present, administration confirmation `known_missing` (a list is not proof of administration) | Coverage test + manifest |
+| Loss receipt integrity (Pass-2 hardening) | `oi017-pathology-specimen-a.txt` with a mismatched declared receipt | Extension of step 9: declared ≠ computed raises, nothing imported | `test_declared_loss_receipt_mismatch_raises_and_imports_nothing` |
+| Collision idempotency (Pass-2 hardening) | `oi017-collision-wrong-binding.txt` delivered twice | Extension of step 6: same quarantine id, one row, one source | `test_repeated_collision_returns_same_quarantine_id` |
+| Unrelated-case isolation (Pass-2 hardening) | Inline second-case bytes (`CASE-OI017-B`) + `oi017-pathology-specimen-a-amended.txt` | Extension of step 4: A's amendment leaves B's source current and B's snapshot draft | `test_amendment_leaves_unrelated_case_unaffected` |
 
 ## 11. What is NOT proved
 
@@ -303,6 +364,10 @@ existing module, backlog order, or decision is altered by this document.
 * Passing these tests is not clinical validation, release clearance, or
   authorization to handle real data. The in-memory binding/revocation state
   is not a production authorization system.
+* This session (2026-11-02) authored documentation and 3 additional contract
+  tests but executed no test runner, git, or shell verification (hard limit),
+  so no test pass is claimed here; the manifest's SHA-256/byte counts and
+  all 16 tests must be re-run by a reviewer with a working shell.
 
 ## Sources (carried-forward pointers, not fresh verification)
 

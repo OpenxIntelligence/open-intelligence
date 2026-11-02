@@ -194,6 +194,58 @@ class PatientAccessTest(unittest.TestCase):
         with self.assertRaises(InvalidInput):
             classify_coverage([{"artifact": "molecular", "status": "known_missing"}])
 
+    def test_declared_loss_receipt_mismatch_raises_and_imports_nothing(self):
+        raw = read("oi017-pathology-specimen-a.txt")
+        wrong = TransformationReceipt(dropped_fields=("wrong-field",))
+        env = envelope(original_fields={"histology", "marker-a", "margin"},
+                       transformed_fields={"histology", "marker-a"},
+                       transformation=wrong)
+        with self.assertRaises(InvalidInput):
+            self.adapter.deliver(env, raw)
+        self.assertEqual(self.sources(), [])
+
+    def test_repeated_collision_returns_same_quarantine_id(self):
+        self.adapter.deliver(envelope(), read("oi017-encounter-inst-a.txt"))
+        first = self.adapter.deliver(
+            envelope(subject="SUBJ-OI017-OTHER"),
+            read("oi017-collision-wrong-binding.txt"))
+        second = self.adapter.deliver(
+            envelope(subject="SUBJ-OI017-OTHER"),
+            read("oi017-collision-wrong-binding.txt"))
+        self.assertEqual(first["reason"], "identity_collision")
+        self.assertEqual(second["reason"], "identity_collision")
+        self.assertEqual(first["quarantine_id"], second["quarantine_id"])
+        self.assertEqual(len(self.store.state("CASE-OI017")["quarantines"]), 1)
+        self.assertEqual(len(self.sources()), 1)
+
+    def test_amendment_leaves_unrelated_case_unaffected(self):
+        self.adapter.deliver(envelope(), read("oi017-pathology-specimen-a.txt"))
+        self.store.add_case("CASE-OI017-B", "Second fictional case")
+        other_raw = (
+            "OI-SYNTHETIC-REPORT/1\n"
+            "Patient: CASE-OI017-B\n"
+            "Document: ENC-OI017-B\n"
+            "Type: clinical\n"
+            "Event-Date: 2026-01-12\n"
+            "Issued-At: 2026-01-13\n"
+            "Finding: visit-reason|reported|Fictional intake for a second synthetic case.\n"
+        ).encode()
+        other_adapter = PatientAccessAdapter(self.store)
+        out_b = other_adapter.deliver(
+            envelope(case="CASE-OI017-B", org="INST-B", subject="SUBJ-OI017-B2"),
+            other_raw)
+        self.assertEqual(out_b["result"], "imported")
+        q_b = self.store.add_question("CASE-OI017-B", "Fictional question for second case?")
+        self.store.create_snapshot("CASE-OI017-B", q_b,
+                                   "Draft for second fictional case.",
+                                   [out_b["source_id"]])
+        out = self.adapter.deliver(envelope(), read("oi017-pathology-specimen-a-amended.txt"))
+        self.assertEqual(out["result"], "imported")
+        state_b = self.store.state("CASE-OI017-B")
+        self.assertEqual(len(state_b["sources"]), 1)
+        self.assertEqual(state_b["sources"][0]["state"], "current")
+        self.assertEqual(state_b["snapshots"][0]["state"], "draft")
+
     def test_no_second_source_ledger_tables(self):
         # Sources exist only in source_versions; the adapter adds no table.
         tables = [r[0] for r in self.store.db.execute(
