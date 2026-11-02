@@ -1,0 +1,25 @@
+      <details class="panel" id="record-acquisition" aria-labelledby="record-acquisition-title">
+        <summary id="record-acquisition-title">Records to obtain · follow-up</summary>
+        <p class="muted">Keep track of original records you still need to collect. This is local fictional workflow tracking: no request is sent to a hospital or laboratory, and a record's absence here does not mean a clinical test was needed or never performed.</p>
+        <form id="record-request-form">
+          <div class="intake-fields">
+            <div><label for="record-request-label">Record to obtain</label>
+              <input id="record-request-label" maxlength="140" required autocomplete="off" placeholder="Fictional radiology report"></div>
+            <div><label for="record-request-from">Expected from (fictional)</label>
+              <input id="record-request-from" maxlength="100" required autocomplete="off" placeholder="Example imaging center"></div>
+            <div><label for="record-request-kind">Document category</label>
+              <select id="record-request-kind">
+                <option value="clinical">Clinical</option>
+                <option value="pathology">Pathology</option>
+                <option value="laboratory">Laboratory</option>
+                <option value="imaging">Imaging</option>
+                <option value="molecular">Molecular</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+          </div>
+          <button class="button secondary" id="record-request-submit" type="submit">Track record request</button>
+        </form>
+        <p id="record-request-status" class="muted" role="status" aria-live="polite">Choose a case to view its requested documents.</p>
+        <div id="record-request-list" class="questions" aria-live="polite"></div>
+      </details>
