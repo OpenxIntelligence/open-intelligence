@@ -207,3 +207,68 @@ class PatientResearchReview:
             "as current. Re-run and independent human review are required.",
         ])
         return "\n".join(lines)+"\n"
+
+    def investigation_snapshot(self, patient_id: str, case_id: str,
+                               question_id: int, investigation_id: int,
+                               *, actor: str, purpose: str) -> dict:
+        """Re-check a saved source-cited hypothesis through one clinical authority.
+
+        Unlike numerical runs, model hypotheses can include external research
+        text. The source owner's get_investigation applies content-rights
+        withholding before this adapter may return any claims to the caller.
+        This is NOT an authenticated clinical approval or a model-run endpoint.
+        """
+        before = self.knowledge.snapshot(
+            patient_id, case_id, question_id, actor=actor, purpose=purpose)
+        recorded = self.runs.store.get_investigation(case_id, investigation_id)
+        if recorded["question_id"] != question_id or recorded["case_id"] != case_id:
+            raise InvalidInput("investigation is not in this patient's question")
+        # This view requires the rights-aware Composer v2 recorded input
+        # fingerprint. Older model records cannot be promoted as current.
+        receipt = recorded.get("input_context")
+        if not isinstance(receipt, dict) or not isinstance(
+                receipt.get("context_fingerprint"), str):
+            raise ClinicalContinuityError("investigation lacks a versioned input context")
+        after = self.knowledge.snapshot(
+            patient_id, case_id, question_id, actor=actor, purpose=purpose)
+        if not same(before, after):
+            raise ClinicalContinuityError("clinical or research inputs changed during review")
+        rechecked = self.runs.store.get_investigation(case_id, investigation_id)
+        if not same(recorded, rechecked):
+            raise ClinicalContinuityError("investigation changed during review")
+        self.knowledge.composer.clinical._authorize(
+            patient_id, case_id, actor, purpose)
+        self.knowledge.composer.clinical.provenance._allow(
+            patient_id, case_id, actor=actor, purpose=purpose,
+            action="patient_context.read")
+        fingerprint_current = hmac.compare_digest(
+            receipt["context_fingerprint"],
+            after["clinical_composer"]["composer"]["fingerprint"])
+        held = bool(recorded["stale"] or recorded.get("output_withheld")
+                    or not fingerprint_current)
+        return {
+            "contract": "oi.synthetic-authorized-investigation-review/1",
+            "patient_id": patient_id, "case_id": case_id,
+            "question_id": question_id, "investigation_id": investigation_id,
+            "source_context_fingerprint": receipt["context_fingerprint"],
+            "review_status": (
+                "historical_investigation_reassessment_required" if held
+                else "unreviewed_source_bound_investigation"),
+            "investigation": rechecked if not held else {
+                **rechecked,
+                # A stale model response may contain copyrighted/withdrawn
+                # derived text even when only the *patient* source changed.
+                # Do not expose it through the integrated review channel.
+                "claims": [], "abstentions": [], "dropped": [],
+                "output_withheld": True,
+                "withheld_reason": "Input source, rights or current context changed",
+            },
+            "clinical_approval": "not_performed",
+            "model_execution_authorized": False,
+            "disclaimer": (
+                "Synthetic research hypothesis, not reviewed clinical evidence, "
+                "diagnosis, prescription, trial eligibility or authorized care. "
+                "Citations and declared rights are not proof of medical validity "
+                "or a publisher's legal permission."
+            ),
+        }
