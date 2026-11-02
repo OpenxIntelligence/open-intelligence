@@ -5,7 +5,7 @@ quote, and review queue domain objects. No verified real clinician or consent.
 """
 import unittest
 from unittest.mock import patch
-from open_intelligence.store import CaseStore
+from open_intelligence.store import CaseStore, InvalidInput
 
 from open_intelligence.authorized_evidence_review import AuthorizedEvidenceReviewHandoff
 from open_intelligence.evidence_review_packet import EvidenceReviewPacket
@@ -156,6 +156,47 @@ class ReviewHandoffTests(unittest.TestCase):
                 reason="Fictional study has not received independent appraisal.",
                 **self.actor())
         self.assertEqual(self.store.review_queue(CASE)["receipts"], [])
+
+    def test_amendment_between_authorized_preview_and_receipt_does_not_retarget(self):
+        handoff, q, aid, sources, quotes = self.candidate()
+        original_write = self.store.add_review_receipt
+
+        def amend_before_receipt(*args, **kwargs):
+            # Simulate a source correction after both preflight reads but
+            # before the durable write transaction begins.
+            self.store.import_synthetic_evidence(AMENDED)
+            return original_write(*args, **kwargs)
+
+        with patch.object(self.store, "add_review_receipt",
+                          side_effect=amend_before_receipt):
+            with self.assertRaisesRegex(InvalidInput, "changed since preview"):
+                handoff.return_for_review(
+                    self.patient_id, CASE, q, aid, selected_quotes=quotes,
+                    reason="Independently assess fictional evidence before any conclusion.",
+                    **self.actor())
+        self.assertEqual(self.store.review_queue(CASE)["receipts"], [])
+        item = next(x for x in self.store.review_queue(CASE)["awaiting"]
+                    if x["queue_key"] == f"evidence-assessment:{aid}")
+        self.assertEqual(item["status"], "awaiting_review")
+        self.assertIn("superseded", item["fingerprint"])
+
+    def test_atomic_receipt_fingerprint_precondition_rejects_stale_input(self):
+        handoff, q, aid, _, quotes = self.candidate()
+        packet = self.snapshot(handoff, q, aid, quotes)
+        with self.assertRaisesRegex(InvalidInput, "changed since preview"):
+            self.store.add_review_receipt(
+                CASE, packet["queue_key"], "returned",
+                reviewer_label=self.actor()["actor"],
+                reason="Fictional source requires independent verification.",
+                expected_fingerprint="intentionally-outdated-fingerprint")
+        self.assertEqual(self.store.review_queue(CASE)["receipts"], [])
+        result = self.store.add_review_receipt(
+            CASE, packet["queue_key"], "returned",
+            reviewer_label=self.actor()["actor"],
+            reason="Fictional source requires independent verification.",
+            expected_fingerprint=packet["queue_fingerprint"])
+        self.assertEqual(result["fingerprint"], packet["queue_fingerprint"])
+        self.assertEqual(len(self.store.review_queue(CASE)["receipts"]), 1)
 
     def test_rights_revocation_fails_without_new_receipt(self):
         handoff, q, aid, sources, quotes = self.candidate()
