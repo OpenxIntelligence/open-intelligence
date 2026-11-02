@@ -172,6 +172,29 @@ CREATE TABLE IF NOT EXISTS clinical_source.source_versions (
  supersedes_id bigint REFERENCES clinical_source.source_versions(id),
  UNIQUE (patient_id,origin_ref,source_version)
 );
+-- A source amendment must refer to the immediate previous version of the
+-- SAME source and SAME patient. A bare foreign key is not sufficient.
+CREATE OR REPLACE FUNCTION clinical_source.validate_source_lineage()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = pg_catalog,clinical_source AS $src_lineage$
+BEGIN
+  IF NEW.source_version=1 AND NEW.supersedes_id IS NOT NULL THEN
+    RAISE EXCEPTION 'OI-SOURCE-LINEAGE: first version has no predecessor';
+  ELSIF NEW.source_version>1 AND NOT EXISTS (
+    SELECT 1 FROM clinical_source.source_versions previous
+    WHERE previous.id=NEW.supersedes_id AND previous.patient_id=NEW.patient_id
+      AND previous.origin_ref=NEW.origin_ref
+      AND previous.source_version=NEW.source_version-1
+  ) THEN
+    RAISE EXCEPTION 'OI-SOURCE-LINEAGE: amendment must match patient, source and version';
+  END IF;
+  RETURN NEW;
+END;
+$src_lineage$;
+CREATE OR REPLACE TRIGGER oi_source_lineage_insert
+ BEFORE INSERT ON clinical_source.source_versions
+ FOR EACH ROW EXECUTE FUNCTION clinical_source.validate_source_lineage();
+
 CREATE OR REPLACE FUNCTION clinical_source.reject_source_history_mutation()
 RETURNS trigger LANGUAGE plpgsql AS $immutable$
 BEGIN
@@ -225,6 +248,27 @@ CREATE TABLE IF NOT EXISTS platform.platform_outbox (
  UNIQUE (patient_id,owner_domain,aggregate_id,revision)
 );
 CREATE INDEX IF NOT EXISTS idx_b01_outbox_state ON platform.platform_outbox(state,seq);
+-- The publication identity cannot be rewritten by a dispatcher. Only
+-- dispatch-state metadata can change; a new event represents a new fact.
+CREATE OR REPLACE FUNCTION platform.guard_outbox_identity()
+RETURNS trigger LANGUAGE plpgsql AS $guard$
+BEGIN
+  IF OLD.event_id IS DISTINCT FROM NEW.event_id
+    OR OLD.patient_id IS DISTINCT FROM NEW.patient_id
+    OR OLD.event_type IS DISTINCT FROM NEW.event_type
+    OR OLD.owner_domain IS DISTINCT FROM NEW.owner_domain
+    OR OLD.aggregate_id IS DISTINCT FROM NEW.aggregate_id
+    OR OLD.revision IS DISTINCT FROM NEW.revision
+    OR OLD.source_version_id IS DISTINCT FROM NEW.source_version_id THEN
+    RAISE EXCEPTION 'OI-OUTBOX-IMMUTABLE: event identity cannot be edited';
+  END IF;
+  RETURN NEW;
+END;
+$guard$;
+CREATE OR REPLACE TRIGGER oi_outbox_identity_update
+ BEFORE UPDATE ON platform.platform_outbox
+ FOR EACH ROW EXECUTE FUNCTION platform.guard_outbox_identity();
+
 -- App roles get EXECUTE only: never direct DML on outbox or grant ledger.
 CREATE OR REPLACE FUNCTION platform.enqueue_event(
  _patient_id text, _event_id text, _event_type text,
@@ -240,6 +284,35 @@ BEGIN
      char_length(_event_id) NOT BETWEEN 8 AND 100 OR
      char_length(_aggregate_id) NOT BETWEEN 1 AND 128 THEN
     RAISE EXCEPTION 'OI-EVENT: invalid bounded reference';
+  END IF;
+  -- Enforce actual aggregate ownership, not merely a patient-scoped
+  -- actor grant. A forged aggregate ID must not become a trusted event.
+  IF _owner_domain='ehr' THEN
+    IF _event_type NOT LIKE 'ehr.encounter.%' OR NOT EXISTS (
+      SELECT 1 FROM ehr.clinical_encounters e
+      WHERE e.patient_id=_patient_id AND e.id::text=_aggregate_id
+        AND e.revision=_revision
+    ) THEN
+      RAISE EXCEPTION 'OI-EVENT-OWNER: encounter does not belong to subject/revision';
+    END IF;
+  ELSIF _owner_domain='identity' THEN
+    IF _aggregate_id<>_patient_id OR NOT EXISTS (
+      SELECT 1 FROM identity.identity_patients p
+      WHERE p.patient_id=_patient_id AND p.revision=_revision
+    ) THEN
+      RAISE EXCEPTION 'OI-EVENT-OWNER: identity event mismatch';
+    END IF;
+  ELSIF _owner_domain='clinical_source' THEN
+    IF _event_type NOT LIKE 'clinical_source.%' OR NOT EXISTS (
+      SELECT 1 FROM clinical_source.source_versions sv
+      WHERE sv.id::text=_aggregate_id AND sv.patient_id=_patient_id
+        AND sv.source_version=_revision
+    ) THEN
+      RAISE EXCEPTION 'OI-EVENT-OWNER: source version is not this patient';
+    END IF;
+  ELSE
+    -- No canonical lab aggregate owner in this migration fixture yet.
+    RAISE EXCEPTION 'OI-EVENT-OWNER: lab domain requires verified source binding';
   END IF;
   INSERT INTO platform.platform_outbox
     (event_id,patient_id,event_type,owner_domain,aggregate_id,revision)
