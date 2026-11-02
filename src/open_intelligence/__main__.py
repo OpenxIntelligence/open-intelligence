@@ -23,6 +23,7 @@ from .investigation import (
     meta_api_key,
     validate_output,
 )
+from .composer import build_composer_context, composer_context_fingerprint
 from .mission import build_patient_mission
 from .store import CaseStore, InvalidInput, MAX_SOURCE_BYTES
 from .timeline import case_timeline
@@ -106,6 +107,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._static("app.js", "text/javascript; charset=utf-8")
             if path == "/mission.js":
                 return self._static("mission.js", "text/javascript; charset=utf-8")
+            if path == "/composer.js":
+                return self._static("composer.js", "text/javascript; charset=utf-8")
             if path == "/style.css":
                 return self._static("style.css", "text/css; charset=utf-8")
             if path == "/tokens.css":
@@ -154,6 +157,13 @@ class Handler(BaseHTTPRequestHandler):
             case_mission = re.fullmatch(rf"/api/cases/{ID_PART}/mission", path)
             if case_mission:
                 return self._json(200, build_patient_mission(store.state(case_mission[1])))
+            composer_preview = re.fullmatch(rf"/api/cases/{ID_PART}/composer/context", path)
+            if composer_preview:
+                raw_question = parse_qs(urlsplit(self.path).query).get("question_id", [None])[0]
+                if not raw_question or not raw_question.isdigit() or int(raw_question) < 1:
+                    raise InvalidInput("Composer question_id must be a positive integer")
+                return self._json(200, build_composer_context(
+                    store, composer_preview[1], int(raw_question)))
             changes = re.fullmatch(rf"/api/cases/{ID_PART}/changes-since-review", path)
             if changes:
                 raw_since = parse_qs(urlsplit(self.path).query).get("since_event_id", [None])[0]
@@ -359,6 +369,14 @@ class Handler(BaseHTTPRequestHandler):
                     question_id = data.get("question_id")
                     if type(question_id) is not int:
                         raise InvalidInput("question_id must be an integer")
+                    context_fingerprint = data.get("context_fingerprint")
+                    if context_fingerprint is not None:
+                        if (not isinstance(context_fingerprint, str) or
+                                not re.fullmatch(r"[0-9a-f]{64}", context_fingerprint)):
+                            raise InvalidInput("Invalid Composer context fingerprint")
+                        actual = composer_context_fingerprint(store, case_id, question_id)
+                        if context_fingerprint != actual:
+                            raise InvalidInput("stale Composer context: refresh current sources and evidence")
                     facts = store.investigation_facts(case_id, question_id)
                     if mode == "replay":
                         fixture = json.loads((SYNTHETIC / "demo-investigation.json").read_text())
@@ -381,7 +399,8 @@ class Handler(BaseHTTPRequestHandler):
                         payload = call_meta_api(prompt, meta_api_key())
                         validated = validate_output(payload, facts["valid_sources"], facts["valid_assessments"])
                     investigation_id = store.save_investigation(
-                        case_id, question_id, template, validated, mode)
+                        case_id, question_id, template, validated, mode,
+                        context_fingerprint=context_fingerprint)
                     return self._json(201, store.get_investigation(case_id, investigation_id))
                 return self._json(404, {"error": "Route not found"})
             finally:
