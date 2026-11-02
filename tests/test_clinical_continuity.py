@@ -318,6 +318,83 @@ class ClinicalContinuityIntegrationTests(unittest.TestCase):
                 source_subject_ref="DIFFERENT-REVIEWED-SUBJECT",
                 review_ref="REVIEW-OTHER-001", actor=ACTOR, purpose="care")
 
+    def test_authorized_revocation_of_conflicting_link_preserves_original_history(self):
+        self.workflow()
+        self.store.import_adapter_report(
+            CASE, report("DISPUTED-ADAPTER-REPORT", "laboratory", "flag", "reported",
+                         specimen="SPEC-CONT-001"),
+            source_organization=ORG, source_system="SYNTHETIC-LIS",
+            source_subject_ref="SYNTHETIC-DISPUTED-SUBJECT",
+            receipt_id="REC-DISPUTED", adapter_id="ADAPTER-TEST",
+            retrieved_at="2026-11-02T17:00:00Z")
+        sources_before = [tuple(r) for r in self.store.db.execute(
+            "SELECT id,sha256,state FROM source_versions ORDER BY id")]
+        notes_before = [tuple(r) for r in self.store.db.execute(
+            "SELECT id,sha256,status FROM clinical_note_versions ORDER BY id")]
+        with self.assertRaises(PatientRegistryDenied):
+            self.snapshot()
+        self.bridge.revoke_case(
+            patient_id=self.patient_id, case_id=CASE,
+            reason="Disputed source identity requires separate human review",
+            **self.actor())
+        binding = self.store.db.execute(
+            "SELECT status,patient_id,source_subject_ref FROM identity_case_bindings "
+            "WHERE case_id=?", (CASE,)).fetchone()
+        self.assertEqual(tuple(binding),
+                         ("revoked", self.patient_id, "LOCAL-SUBJECT-01"))
+        self.assertEqual([tuple(r) for r in self.store.db.execute(
+            "SELECT id,sha256,state FROM source_versions ORDER BY id")], sources_before)
+        self.assertEqual([tuple(r) for r in self.store.db.execute(
+            "SELECT id,sha256,status FROM clinical_note_versions ORDER BY id")], notes_before)
+        self.assertEqual(self.store.db.execute(
+            "SELECT COUNT(*) FROM identity_domain_events "
+            "WHERE patient_id=? AND event_type='identity.case_binding_revoked'",
+            (self.patient_id,)).fetchone()[0], 1)
+        # Revocation is durable and does not delete the receiving review history.
+        path = self.store.db.execute("PRAGMA database_list").fetchone()[2]
+        other = sqlite3.connect(path)
+        self.addCleanup(other.close)
+        self.assertEqual(other.execute(
+            "SELECT status FROM identity_case_bindings WHERE case_id=?",
+            (CASE,)).fetchone()[0], "revoked")
+        self.assertEqual(self.receiver.execute(
+            "SELECT COUNT(*) FROM lab_world_model_review_candidates").fetchone()[0], 1)
+        with self.assertRaises(PatientRegistryDenied):
+            self.snapshot()
+        with self.assertRaises(PermissionError):
+            self.provenance.context_snapshot(self.patient_id, CASE, **self.actor())
+
+    def test_untrusted_actor_cannot_revoke_reviewed_link(self):
+        self.workflow()
+        with self.assertRaises(PatientRegistryDenied):
+            self.bridge.revoke_case(
+                patient_id=self.patient_id, case_id=CASE,
+                reason="Untrusted caller requests revocation", actor="idp:other",
+                purpose="care")
+        self.assertEqual(self.store.db.execute(
+            "SELECT status FROM identity_case_bindings WHERE case_id=?",
+            (CASE,)).fetchone()[0], "active")
+        self.assertEqual(self.snapshot()["patient_id"], self.patient_id)
+
+    def test_revocation_audit_failure_rolls_back_binding_change(self):
+        self.workflow()
+        self.store.db.executescript("""
+            CREATE TEMP TRIGGER fail_revocation_receipt
+            BEFORE INSERT ON identity_domain_events
+            WHEN NEW.event_type='identity.case_binding_revoked'
+            BEGIN SELECT RAISE(ABORT, 'synthetic audit failure'); END;
+        """)
+        with self.assertRaisesRegex(sqlite3.IntegrityError, "synthetic audit failure"):
+            self.bridge.revoke_case(
+                patient_id=self.patient_id, case_id=CASE,
+                reason="Reviewed synthetic revocation request", **self.actor())
+        self.assertEqual(self.store.db.execute(
+            "SELECT status FROM identity_case_bindings WHERE case_id=?",
+            (CASE,)).fetchone()[0], "active")
+        self.assertEqual(self.store.db.execute(
+            "SELECT COUNT(*) FROM identity_domain_events "
+            "WHERE event_type='identity.case_binding_revoked'").fetchone()[0], 0)
+
     def test_empty_case_contains_no_auto_assessed_lab_or_notes(self):
         view = self.snapshot()
         self.assertEqual(view["lab_evidence_candidates"], [])

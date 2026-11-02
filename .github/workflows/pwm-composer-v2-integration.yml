@@ -1,0 +1,40 @@
+name: Patient World Model and Composer v2 integration acceptance
+on:
+  push:
+    branches: [integration/pwm-composer-v2-review-20261102]
+  pull_request:
+    branches: [integration/authorized-pwm-unified-review-20261102]
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout pinned integration source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.13'
+      - name: Compile source and integration tests
+        run: PYTHONPATH=src python -m compileall -q src tests
+      - name: Cross-branch PWM and broker-v2 acceptance
+        run: PYTHONPATH=src python -m unittest discover -s tests -p test_patient_world_model_composer_v2.py -v
+      - name: Composer rights and clinical integration source-owner tests
+        run: |
+          PYTHONPATH=src python -m unittest discover -s tests -p test_composer_broker_context.py -v
+          PYTHONPATH=src python -m unittest discover -s tests -p test_clinical_broker_v2_integration.py -v
+      - name: Source-owned PWM and unified review contracts
+        run: |
+          PYTHONPATH=src python -m unittest discover -s tests -p test_authorized_world_model_review.py -v
+          PYTHONPATH=src python -m unittest discover -s tests -p test_unified_clinical_review.py -v
+      - name: Complete synthetic Python and HTTP suite
+        run: PYTHONPATH=src python -m unittest discover -s tests -v
+      - name: Original synthetic patient browser journeys
+        run: |
+          PYTHONPATH=src python tests/browser_journey.py
+          PYTHONPATH=src python tests/patient_mission_browser_journey.py
