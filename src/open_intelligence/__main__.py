@@ -297,6 +297,28 @@ class Handler(BaseHTTPRequestHandler):
                         custody_state=data.get("custody_state"), custody_value=data.get("custody_value"),
                         consent_state=data.get("consent_state"), consent_value=data.get("consent_value"),
                         rights_state=data.get("rights_state"), rights_value=data.get("rights_value"))})
+                bio_explanations = re.fullmatch(rf"/api/cases/{ID_PART}/bio-explanations", path)
+                if bio_explanations:
+                    return self._json(201, {"bio_explanation_id": store.add_bio_explanation(
+                        bio_explanations[1], data.get("question_id"), data.get("label"),
+                        data.get("mechanism_text"), data.get("episode_id"),
+                        data.get("source_version_id"),
+                        specimen_state=data.get("specimen_state", "unknown"),
+                        specimen_id=data.get("specimen_id"),
+                        lesion_state=data.get("lesion_state", "unknown"),
+                        lesion_id=data.get("lesion_id"),
+                        clinical_context_state=data.get("clinical_context_state", "unknown"),
+                        clinical_context_value=data.get("clinical_context_value"))})
+                bio_assays = re.fullmatch(rf"/api/cases/{ID_PART}/bio-explanations/([0-9]+)/assay-observations", path)
+                if bio_assays:
+                    return self._json(201, {"bio_assay_observation_id": store.record_bio_assay_observation(
+                        bio_assays[1], int(bio_assays[2]), data.get("method_label"),
+                        data.get("result_note"), data.get("source_version_id"),
+                        data.get("reference_kind"),
+                        tissue_block_state=data.get("tissue_block_state", "unknown"),
+                        tissue_block_asset_id=data.get("tissue_block_asset_id"),
+                        matched_control_state=data.get("matched_control_state", "unknown"),
+                        matched_control_specimen=data.get("matched_control_specimen"))})
                 drafts = re.fullmatch(rf"/api/cases/{ID_PART}/snapshots", path)
                 if drafts:
                     return self._json(201, {"snapshot_id": store.create_snapshot(
