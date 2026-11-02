@@ -2182,13 +2182,20 @@ class CaseStore:
 
     def save_investigation(self, case_id: str, question_id: int, template: str,
                            validated, mode: str) -> int:
-        """Record an unreviewed attempt without changing the question's state.
+        """Record an unreviewed attempt only for a question in this case.
 
         An attempt, including a completed hypothesis, is not the explicit
         snapshot acknowledgment performed by ``acknowledge_demo_review``.
         """
         self._case(case_id)
+        if type(question_id) is not int or question_id < 1:
+            raise InvalidInput("Question id must be a positive integer")
         with self.db:
+            if self.db.execute(
+                "SELECT 1 FROM questions WHERE id=? AND case_id=?",
+                (question_id, case_id),
+            ).fetchone() is None:
+                raise InvalidInput("Question not in this case")
             cur = self.db.execute(
                 """INSERT INTO investigations
                 (case_id,question_id,template,status,mode,model,claims_json,abstentions_json,dropped_json,created_at)

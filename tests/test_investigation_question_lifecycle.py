@@ -15,7 +15,7 @@ from urllib.request import Request, urlopen
 from open_intelligence.__main__ import Handler
 from open_intelligence.investigation import ValidatedInvestigation, validate_output
 from open_intelligence.mission import build_patient_mission
-from open_intelligence.store import CaseStore
+from open_intelligence.store import CaseStore, InvalidInput
 
 
 FIXTURES = Path(__file__).resolve().parents[1] / "examples" / "synthetic"
@@ -53,6 +53,29 @@ class InvestigationQuestionLifecycleTests(unittest.TestCase):
         result.mode = "replay"
         result.model = "recorded-replay"
         return result
+
+    def test_investigation_storage_fails_closed_for_cross_case_question(self):
+        # A valid question ID owned by another case is not sufficient authority
+        # to insert a result into this case's investigation ledger.
+        other_question = self.store.add_question(
+            "CASE-BETA", "Why does this invented other case remain distinct?"
+        )
+        before_alpha = self.store.state("CASE-ALPHA")
+        before_beta = self.store.state("CASE-BETA")
+        for invalid_id in (other_question, 999999, True):
+            with self.subTest(invalid_id=invalid_id):
+                with self.assertRaises(InvalidInput):
+                    self.store.save_investigation(
+                        "CASE-ALPHA", invalid_id, "evidence-summary",
+                        self.result(), "replay"
+                    )
+        self.assertEqual(self.store.list_investigations("CASE-ALPHA"), [])
+        self.assertEqual(self.store.state("CASE-ALPHA")["questions"],
+                         before_alpha["questions"])
+        self.assertEqual(self.store.state("CASE-BETA")["questions"],
+                         before_beta["questions"])
+        self.assertEqual(self.store.state("CASE-ALPHA")["events"],
+                         before_alpha["events"])
 
     def test_every_unreviewed_attempt_keeps_its_question_open(self):
         for status in ("completed", "abstained", "blocked_by_policy", "failed"):
