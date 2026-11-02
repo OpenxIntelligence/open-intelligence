@@ -10,6 +10,7 @@ Never pass real patient data to an unqualified model/service through this API.
 """
 from __future__ import annotations
 
+import hashlib
 import re
 from datetime import date
 from typing import Any, Mapping
@@ -117,6 +118,16 @@ def _source(item: Mapping[str, Any]) -> dict:
         "evidence_text": excerpt if model_text_allowed else None,
         "model_text_available": bool(model_text_allowed and excerpt),
         "content_withheld": not bool(model_text_allowed and excerpt),
+        # Reading/displaying/model processing does not grant redistribution.
+        "report_export_allowed": bool(
+            model_text_allowed and excerpt and metadata_allowed
+            and permitted(permissions, "full_text", "redistribute")
+            and permitted(permissions, "metadata", "redistribute")
+        ),
+        "evidence_text_sha256": (
+            hashlib.sha256(excerpt.encode("utf-8")).hexdigest()
+            if model_text_allowed and excerpt else None
+        ),
     }
 
 
@@ -165,6 +176,7 @@ def compile_context(case_id: str, case_state: Mapping[str, Any],
             "source_line": item["source_line"],
             "source_date": parent["event_date"],
             "issued_at": parent["issued_at"],
+            "received_at": parent.get("received_at"),
             "source_statement": item["quote"],
             "epistemic_kind": "reported_observation",
         })
