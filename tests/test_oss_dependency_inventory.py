@@ -42,7 +42,7 @@ jobs:
 """)
         report = inspect(self.root)
         packages = [d["name"] for d in report["dependency_declarations"]]
-        self.assertEqual(packages, ["numpy", "h5py"])
+        self.assertEqual(packages, ["h5py", "numpy"])  # deterministic lexicographic inventory
         self.assertEqual(
             [w["pin_status"] for w in report["workflow_references"] if "action" in w],
             ["full_sha", "tag_or_nonsha"])
