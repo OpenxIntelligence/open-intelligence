@@ -1,0 +1,34 @@
+name: Research license and patient-data boundary contract
+
+on:
+  push:
+    branches: [policy/synthetic-only-ci-oss-foundation-20261102]
+  pull_request:
+    branches: [main, safety/no-personal-case-data-in-ci-20261102]
+    paths:
+      - 'docs/research/OSS_LICENSE_DISCOVERY_WAVE1.json'
+      - 'tools/research/test_oss_source_license_registry.py'
+      - 'tools/audit_ci_data_boundaries.py'
+      - 'tests/test_ci_data_boundaries.py'
+      - '.github/workflows/research-oss-contract.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  research-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Verify no named-person research CI entrypoints
+        run: python tools/audit_ci_data_boundaries.py
+      - name: Regression of original CI no-download policy
+        run: python -m unittest discover -s tests -p 'test_ci_data_boundaries.py' -v
+      - name: Fail-closed upstream license registry consistency
+        run: python -m unittest discover -s tools/research -p 'test_oss_source_license_registry.py' -v
