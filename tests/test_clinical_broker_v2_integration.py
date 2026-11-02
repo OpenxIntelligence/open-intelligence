@@ -28,7 +28,7 @@ class CanonicalPatientBrokerV2Integration(unittest.TestCase):
 
     def broker(self):
         return link(
-            self.store, self.question, key="EVIDENCE-V2-ONE",
+            self.store, self.question, case=CASE, key="EVIDENCE-V2-ONE",
             excerpt="Independently authored fictional research offers counterevidence.",
             citation_title="Fictional methods comparison.")
 
