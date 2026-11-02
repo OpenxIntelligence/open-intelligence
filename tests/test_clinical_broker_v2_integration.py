@@ -119,7 +119,7 @@ class CanonicalPatientBrokerV2Integration(unittest.TestCase):
         old=self.read(run_id=run["run_id"])
         self.assertEqual(old["review_status"],"historical_numeric_receipt_reassessment_required")
         self.assertIn("value=9.8",self.store.source_text(CASE,self.second))
-        self.assertEqual(self.store.state("CASE-CLIN-CONT-OTHER")["investigations"],[])
+        self.assertEqual(self.store.list_investigations("CASE-CLIN-CONT-OTHER"),[])
 
     def test_denied_actor_purpose_and_revoked_case_block_history(self):
         self.prepare()
