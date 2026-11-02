@@ -92,7 +92,7 @@ class PatientAccessTest(unittest.TestCase):
     def test_identity_collision_is_quarantined_not_merged(self):
         first = self.adapter.deliver(envelope(), read("oi017-encounter-inst-a.txt"))
         self.assertEqual(first["result"], "imported")
-        # Same organization, different subject binding: a collision.
+        # Same case and issuing namespace, different subject: explicit review required.
         out = self.adapter.deliver(
             envelope(subject="SUBJ-OI017-OTHER"),
             read("oi017-collision-wrong-binding.txt"))
@@ -106,11 +106,12 @@ class PatientAccessTest(unittest.TestCase):
     def test_cross_case_subject_reuse_is_rejected(self):
         self.adapter.deliver(envelope(), read("oi017-encounter-inst-a.txt"))
         self.store.add_case("CASE-OI017-B", "Second fictional case")
-        other = PatientAccessAdapter(self.store)
-        # Simulate a shared adapter view: subject already bound to CASE-OI017.
-        other._subject_cases["SUBJ-OI017-A"] = "CASE-OI017"
-        out = other.deliver(envelope(case="CASE-OI017-B"),
-                            read("oi017-encounter-inst-a.txt"))
+        # Exercise the public binding path, not private dictionary injection.
+        # Align the report's case so rejection proves the namespace conflict,
+        # rather than merely a report/envelope patient mismatch.
+        raw = read("oi017-encounter-inst-a.txt").replace(
+            b"Patient: CASE-OI017\n", b"Patient: CASE-OI017-B\n")
+        out = self.adapter.deliver(envelope(case="CASE-OI017-B"), raw)
         self.assertEqual(out["reason"], "identity_collision")
         self.assertEqual(self.store.state("CASE-OI017-B")["sources"], [])
 
