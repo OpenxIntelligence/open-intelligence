@@ -8,6 +8,7 @@ A literal quote does NOT establish scientific entailment or clinical validity.
 """
 from __future__ import annotations
 
+import hashlib
 import hmac
 import json
 
@@ -91,6 +92,7 @@ class EvidenceReviewPacket:
                     "source_line": observation["source_line"],
                     "event_date": observation["source_date"],
                     "issued_at": observation["issued_at"],
+                    "received_at": observation["received_at"],
                     "reported_state": observation["reported_state"],
                     "original_statement": observation["source_statement"],
                 },
@@ -101,6 +103,8 @@ class EvidenceReviewPacket:
                     "version": source["version"],
                     "source_date": source["source_date"],
                     "exact_quote": quote,
+                    "evidence_text_sha256": source["evidence_text_sha256"],
+                    "report_export_allowed": source["report_export_allowed"],
                     "rights_status": source["rights_status"],
                     "permission_receipt": source["approval_receipt"],
                     "publisher_rights_independently_verified": False,
@@ -121,6 +125,9 @@ class EvidenceReviewPacket:
             "patient_id": patient_id,
             "case_id": case_id,
             "question_id": question_id,
+            "question": after["clinical_composer"]["composer"]["question"],
+            "available_comparison_count": len(proposals),
+            "review_context_sha256": hashlib.sha256(_snapshot_bytes(after)).hexdigest(),
             "composer_context_fingerprint": after["clinical_composer"]["composer"]["fingerprint"],
             "quoted_comparisons": rows,
             "missing_or_withheld_evidence": after["knowledge"]["missing_evidence"],
