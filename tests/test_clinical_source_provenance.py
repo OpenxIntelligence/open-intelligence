@@ -50,6 +50,7 @@ class ClinicalSourceProvenanceTests(unittest.TestCase):
                 "encounter.schedule", "encounter.transition", "encounter.read",
                 "note.write", "note.read", "note.attest",
                 "note.provenance_link", "note.provenance_read",
+                "patient_context.read",
             })
         self.clinical = ClinicalEncounters(self.registry, self.clinical_policy)
         self.provenance = ClinicalSourceProvenance(
