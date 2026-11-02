@@ -17,10 +17,15 @@ import tempfile
 from urllib.request import Request, urlopen
 
 from browser_journey import ChromeSession, free_port, wait_for
+
+# Running a script from tests/ places that directory first on sys.path.
+# The existing server imports the repository-root tools package as well as src/.
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "src"))
+
 from open_intelligence.__main__ import seed
 from open_intelligence.store import CaseStore
-
-ROOT = Path(__file__).resolve().parents[1]
 
 
 def report(doc, value, amendment=False):
