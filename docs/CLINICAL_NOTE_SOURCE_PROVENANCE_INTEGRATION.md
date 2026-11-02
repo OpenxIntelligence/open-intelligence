@@ -21,6 +21,12 @@ Only an existing **draft** or **draft correction** note version may gain a sourc
 
 An original pathology source amendment supersedes the previous source version in its existing owner. `note_sources` preserves the original source reference with original text/hash, dates, specimen and line, but changes the **derived** `provenance_state` from `current_source_unreviewed` to `source_superseded_review_required`. The historical signed note body/version is **not** rewritten. This reference is **not** automatically inherited by new or attested note versions, nor does an amendment automatically create a professional review/signature. Future EHR and Patient World Model projections may consume this explicit stale-reference indication after qualified authority validation.
 
+## Combined patient-context read projection (synthetic only)
+
+The same bridge now exposes `context_snapshot(patient_id, case_id, actor, purpose)` as an **authorized read-only projection** over clinical encounters, immutable note version metadata (not note bodies), original source/version metadata, current source-authored observations, and immutable note-to-source links. Its explicit contract tag is `oi.synthetic-clinical-context/1`; it is **not** a comprehensive Patient World Model, real clinician API or automated clinical interpretation. It keeps unknown/negative statuses and stale note-source references distinct, so a future Composer can receive a bounded, permitted view rather than a copied patient record. The method is not exposed through unauthenticated HTTP routes or a new UI.
+
+A pathology amendment changes the current source assertion set and the derived `note_versions_requiring_source_review` list, while historical note SHA and earlier source versions remain unchanged. A new assertion does **not** silently become a professional conclusion or signed record.
+
 ## Runnable acceptance
 
 `PYTHONPATH=src python -m unittest tests.test_clinical_source_provenance -v` with repository-root imports available, or standard repository discovery.
