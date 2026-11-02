@@ -28,7 +28,7 @@ This integration reuses the existing source-ledger and operational services. No 
 3. The first-party LIS performs an order, specimen accession, QC and release; source/version events remain in `CaseStore`. Its `LinkedLabCaseStore` hook publishes strictly reference-only envelopes in the *same write transaction*.
 4. The existing ordered lab consumer validates issuer, patient binding, case, original receipt, current source, latest QC and assertion, then creates a `pending` **review candidate** in a separately owned receiver connection; this does **not** make a medical conclusion.
 5. The authored-note source service references the original source and exact assertion line only while the note version is an editable draft. The original source bytes and historical note text remain with their owning systems.
-6. `ClinicalContinuityView.snapshot` independently checks authorization and the active patient–case binding. It returns EHR note/source **pointers**, lab pending review **pointers**, provenance freshness and the combined review queue. The lab candidate is rechecked against the authoritative outbox hash, original `events` release receipt, accession/specimen, assertions, source version, order source, and latest QC at **every read**.
+6. `ClinicalContinuityView.snapshot` independently checks authorization and the active patient–case binding. It returns EHR note/source **pointers**, lab pending review **pointers**, provenance freshness and the combined review queue. The lab candidate is rechecked against the authoritative outbox hash, original `events` release receipt, accession/specimen, assertions, source version, order source, and latest QC at **every read**. Both authorization/binding gates are rechecked before returning the combined response, so a revocation occurring between the source read and the receiver read fails closed. This still is not an atomic two-database snapshot.
 7. A source amendment does not mutate a historical note or old lab release. The read view marks both `source_superseded_review_required`; a new source/report/QC/release creates a new pending item, without rewriting history. Changed QC similarly marks an old release `quality_changed_review_required`.
 
 ### Explicitly fail-closed identity reconciliation
@@ -54,7 +54,7 @@ This is **not a globally atomic distributed snapshot**: the original source and 
 - QC changes after release: old candidate is no longer current; report's lab state is not inferred as valid.
 - Issue a new release from corrected source: two historically distinct candidates with only the new source marked current pending human review.
 - Reject a receiver candidate with changed specimen, a missing original outbox, edited outbox payload/hash, or falsified source event receipt.
-- Reject an untrusted actor, wrong-purpose read, revoked reviewed case binding, or suspended/unknown canonical patient.
+- Reject an untrusted actor, wrong-purpose read, revoked reviewed case binding (including revocation during a combined read), or suspended/unknown canonical patient.
 - Reject a later source adapter binding that conflicts with a previously reviewed patient–case mapping and vice versa.
 - Do not leak original note body or invent clinical interpretation, diagnosis, laboratory safety conclusion, test eligibility or patient-specific treatment advice.
 
