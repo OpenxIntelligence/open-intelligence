@@ -212,6 +212,15 @@ class WholePatientContinuityTests(unittest.TestCase):
         self.assertEqual(len(self.store.state(B)['sources']), 1)
 
 
+def delivery_observation(adapter, access_envelope, raw):
+    """A fixed adapter may reject by typed exception; record, do not mask it."""
+    try:
+        return adapter.deliver(access_envelope, raw)
+    except InvalidInput as error:
+        return {'result': 'rejected', 'reason': str(error),
+                'exception_type': 'InvalidInput'}
+
+
 def boundary_probe():
     """Collect actual adapter outcomes separately from asserted workflow behavior.
 
@@ -226,14 +235,14 @@ def boundary_probe():
         adapter = PatientAccessAdapter(store)
         initial = adapter.deliver(envelope(), PERSON)
         adapter.revoke(A, 'RCPT-WHOLE-A', 'Fictional access receipt revoked for the probe.')
-        same_instance = adapter.deliver(envelope(), EXPOSURE)
+        same_instance = delivery_observation(adapter, envelope(), EXPOSURE)
         store.close()
         store = CaseStore(path)
         try:
-            after_restart = PatientAccessAdapter(store).deliver(envelope(), EXPOSURE)
+            after_restart = delivery_observation(PatientAccessAdapter(store), envelope(), EXPOSURE)
             different_scope = receipt(('pathology',), 'RCPT-SCOPE-PROBE')
             clinical = report(A, 'SCOPE-MISMATCH', [('context', 'reported', 'Original fictional clinical report, not pathology.')])
-            scope_result = PatientAccessAdapter(store).deliver(envelope(different_scope), clinical)
+            scope_result = delivery_observation(PatientAccessAdapter(store), envelope(different_scope), clinical)
             observations = {
                 'initial_delivery': initial['result'],
                 'revoked_receipt_same_instance': same_instance,
