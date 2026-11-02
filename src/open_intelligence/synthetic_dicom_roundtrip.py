@@ -51,8 +51,8 @@ def synthetic_dicom_bytes(study_uid="1.2.3", series_uid="1.2.3.1",
     ])
     ds = b"".join([
         _str(8, 16, "UI", CT_STORAGE),
-        _str(8, 18, "UI", sop_uid),
-        _str(8, 20, "DA", "20260517"),
+        _str(8, 0x0018, "UI", sop_uid),
+        _str(8, 0x0020, "DA", "20260517"),
         _str(8, 96, "CS", "CT"),
         _str(16, 32, "LO", "FICTIONAL-NOT-A-PATIENT"),
         _str(32, 13, "UI", study_uid),
