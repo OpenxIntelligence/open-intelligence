@@ -152,6 +152,24 @@ def main() -> None:
             assert session.evaluate(
                 "document.querySelectorAll('#question-list .question').length === 0"
             ), "source handoff must not silently persist the question"
+            # Changing to a different patient must not silently erase a
+            # drafted source-linked question before the user submits it.
+            # The original application case-switch guard protects other
+            # unsaved narratives; verify it protects this one as well.
+            session.evaluate("""(() => {
+              const picker = document.querySelector('#case-picker');
+              picker.value = 'CASE-BETA';
+              picker.dispatchEvent(new Event('change'));
+            })()""")
+            assert session.evaluate(
+                "document.querySelector('#case-picker').value === 'CASE-ALPHA'"
+            ), "case switch unexpectedly discarded a drafted source question"
+            assert session.evaluate(
+                "document.querySelector('#question-text').value.includes('source line')"
+            ), "source-linked question was silently erased"
+            assert session.evaluate(
+                "document.querySelector('#notice').textContent.includes('clear')"
+            ), "blocked switch needs an actionable unsaved-question message"
             session.evaluate("document.querySelector('#question-form').requestSubmit()")
             session.wait(
                 "document.querySelectorAll('#question-list .question').length === 1",
