@@ -71,3 +71,19 @@
 - [ ] Run Python compilation and existing browser journeys on a merge candidate; independently inspect GitHub Actions exact commit and log.
 - [ ] Record what is **not** built: authenticated issuer proof, durable real-world grant issuance, multi-tenant production ACL, licensed healthcare assets, real PHI, clinical review authority.
 - [ ] Open a draft PR dependent on PR #51; do not merge automatically.
+
+## Execution receipt — 2 November 2026
+
+**Implemented on this draft branch (not merged):**
+- Extended existing CaseStore's SQLite schema with narrow adapter-identity and case-scoped synthetic receipt-revocation records; no second source store.
+- Factored source import into an ordinary transactional wrapper and a shared in-transaction method, preserving existing original bytes, source amendments, snapshot invalidation and events.
+- Made gated delivery transactional: check revocation/qualified subject, insert canonical source, persist binding and accepted receipt, or roll all of them back.
+- Kept explicit isolated fake-ledger test behavior separate from the actual CaseStore path.
+- Added scope validation: laboratory-only synthetic receipt cannot import a pathology report; clinical encounter can use the documented "encounter" alias.
+- Corrected the old parser test double to include the report kind now required by the contract.
+
+**Test-first evidence and regressions:** original in-memory adapter with nine durable tests produced 6 failing/erroring cases (run 41478579906). After implementation, run 41479739179 passed 266 Python unit/HTTP tests plus scripted synthetic Chromium journeys. A second test-first pass added two declared-scope tests (run 41480159172 showed those tests failing; old fake parser missing a kind exposed separate fixture failures). After actual scope enforcement and test-double correction, **run 41480873207 passed 268 unit/HTTP tests**, Python compilation, JavaScript syntax and both existing synthetic browser journeys. Existing standalone UI-glance and Crossref jobs passed for the final feature commit. Sources checked: feature head a779b8dad3572029ff202a682bfcc46bdc18b253; hosted tested merge checkout d1cf199 (see run logs). External model and clinical workflows were not executed.
+
+**Still not proven:** trusted real-world issuer mapping or clinician identity, rights to clinical data, durable full consent grants, multi-worker clinical authorization, audit tamper protection, secure PHI access, clinical assessment, native FHIR interoperability, real order/accession operation, legally approved components or production readiness. Adapter receipts are synthetic declarations. The test suite's existing SQLite ResourceWarnings remain an uninvestigated maintenance concern.
+
+**Integration order:** Review PR #51 before PR #53, since PR #53 is stacked on #51 and targets main for CI only. Do not merge until the base has been reconciled and the current combined candidate re-tested.
