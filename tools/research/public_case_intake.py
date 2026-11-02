@@ -1,26 +1,25 @@
-"""Public-case catalog intake and input planning, isolated from the clinical app.
+"""Offline synthetic catalog provenance and input-planning helpers.
 
-Only a fixed public catalog is fetched. Raw rows remain in memory. Published
-receipts are aggregate engineering results, not medical findings or permission
-to acquire every listed asset. No model, genomic, image or clinical analysis runs.
-Maps to existing OI-004/006/008/011/014/016 contracts; no new patient store.
+No catalog or medical asset is acquired. Independently authored fixtures exercise
+identity, specimen, timestamp, source-anchor and uncertainty contracts. Public
+narratives are requirements research only; this is not a clinical application.
 """
 from __future__ import annotations
 
-import argparse
 import copy
 import hashlib
 import json
 import re
-import time
 from collections import Counter, defaultdict
-from datetime import date, datetime, timezone
-from pathlib import Path
+from datetime import date, datetime
 from urllib.parse import unquote, urlsplit
-from urllib.request import HTTPRedirectHandler, Request, build_opener
+if __package__:
+    from .data_policy import deny_personal_data_use, disabled_cli
+else:
+    from data_policy import deny_personal_data_use, disabled_cli
 
-CATALOG_URL = 'https://osteosarc.com/data/catalog/datasets.json'
-BUCKET = 'sid-sijbrandij-osteosarc-dataset'
+CATALOG_URL = 'https://synthetic.example.invalid/catalog.json'
+BUCKET = 'synthetic-oncology-fixtures'
 REGION = 'us-west-2'
 MAX_BYTES = 2 * 1024 * 1024
 MAX_ROWS = 10000
@@ -58,10 +57,8 @@ def _reject_constant(value: str) -> None:
 
 
 def validate_fetch_url(url: str) -> str:
-    """Exact read allowlist, no caller-supplied credentials/query/path expansion."""
-    if url != CATALOG_URL:
-        raise ValueError('Endpoint not permitted')
-    return url
+    """No catalog URL authorizes data acquisition in this environment."""
+    deny_personal_data_use()
 
 
 def _identity_list(record: dict, key: str) -> list[str]:
@@ -299,76 +296,17 @@ def aggregate(manifest: dict) -> dict:
     }
 
 
-class NoRedirect(HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        raise ValueError('Redirect outside fixed retrieval contract')
-
-
 def fetch_catalog() -> tuple[bytes, dict]:
-    # The catalog contains case-specific patient data. No manual or CI opt-in is allowed.
-    raise PermissionError('Sid case data catalog access disabled: use public narrative accounts to study workflows, never patient data.')
-    url = validate_fetch_url(CATALOG_URL)
-    opener = build_opener(NoRedirect())
-    for attempt in range(2):
-        try:
-            req = Request(url, headers={'Accept': 'application/json', 'User-Agent': 'OpenIntelligenceResearch/1.0'})
-            with opener.open(req, timeout=25) as response:
-                validate_fetch_url(response.geturl())
-                if response.status != 200:
-                    raise ValueError('Catalog request did not succeed')
-                raw = response.read(MAX_BYTES + 1)
-                if len(raw) > MAX_BYTES:
-                    raise ValueError('Catalog exceeds byte limit')
-                retrieved = datetime.now(timezone.utc).isoformat()
-                return raw, {'url': url, 'retrieved_at': retrieved, 'bytes': len(raw), 'sha256': sha(raw)}
-        except (OSError, TimeoutError):
-            if attempt == 1:
-                raise
-            time.sleep(1)
-    raise RuntimeError('No catalog received')
+    """Retired entrypoint retained to fail visibly for older callers."""
+    deny_personal_data_use()
 
 
 def run_probe() -> dict:
-    raw, receipt = fetch_catalog()
-    manifest = build_manifest(raw, receipt['retrieved_at'])
-    if not verify_manifest(manifest, raw):
-        raise ValueError('Catalog manifest verification failed')
-    current = plan_inputs(manifest)
-    past = plan_inputs(manifest, 'historical_replay', '2025-01-01T00:00:00Z')
-    return {
-        'status': 'tested', 'scope': 'Public catalog metadata intake and deterministic input planning only',
-        'source_receipt': receipt, 'listing_generated_at': manifest['listing_generated_at'],
-        'declared_license': manifest['declared_license'], 'manifest_verified': True,
-        'profile': aggregate(manifest),
-        'plan_summary': {'status': current['status'], 'task_groups': len(current['tasks']),
-                         'model_calls': 0, 'execution_authorized': False},
-        'historical_replay_control': {'cutoff': past['cutoff'], 'status': past['status'],
-                                      'eligible_inputs': past['historical_inputs_eligible']},
-        'clinical_validation': False, 'raw_assets_acquired': False,
-        'limits': ['Metadata is not asset integrity, biological analysis or a complete medical record.',
-                   'CC0 declaration is recorded, not a blanket privacy, third-party or clinical-use clearance.',
-                   'Known public case: development material, not unseen model validation.',
-                   'No payload is sent to an LLM; no row-level patient records are published.'],
-    }
+    deny_personal_data_use()
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--live', action='store_true', help='Explicitly permit only the fixed public catalog read')
-    parser.add_argument('--output', required=True, type=Path)
-    args = parser.parse_args()
-    if not args.live:
-        parser.error('A live catalog read requires --live; unit tests are offline.')
-    try:
-        result = run_probe()
-    except Exception as exc:
-        result = {'status': 'failed', 'error_type': type(exc).__name__,
-                  'raw_records_published': False, 'model_calls': 0}
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(result, indent=2), encoding='utf-8')
-    print(json.dumps(result, indent=2))
-    if result['status'] != 'tested':
-        raise SystemExit(2)
+    disabled_cli()
 
 
 if __name__ == '__main__':

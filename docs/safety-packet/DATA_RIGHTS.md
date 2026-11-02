@@ -133,15 +133,27 @@ merged in; refreshed 2026-11-02).
   patient records, clinical reference answers, or real-case values
   are embedded or asserted.
 
-## Research probes: read-only live public endpoints (CI-only, not the demo)
+## Historical live research probes — archived, not CI inputs after data-boundary change
 
-- The `tools/research/` probes run in CI only. They hit live public
-  endpoints read-only; raw rows stay in memory and only aggregate
-  counts, schema, hashes, and receipts leave the probe. No subject
-  identifiers, rows, controlled files, reidentification, linkage,
-  model training, clinical inference, eligibility advice, referral,
-  or enrollment action is published or performed. Probe outputs are
-  engineering observations, not clinical findings.
+- **New policy, 2 November 2026:** Named-person clinical, RNA, H5AD or
+  public-case catalog data must not be required or fetched by product
+  engineering, CI, demo, model training or evaluation. The existing
+  catalog, RNA and single-cell modules now retain only generic offline
+  helpers and refusal entrypoints in this draft; person-specific retrieval,
+  sample constants and cached case analysis have been retired. Their former
+  implementations remain in version history, without permission to execute.
+  The research workflows run only fictional/offline regression tests.
+  Main `24519839` already disabled named-person CI steps and blocked catalog
+  and single-cell acquisition. Draft PR #137 reconciles the remaining
+  runtime and workflow cleanup from #123/#133 onto that main; it is unmerged.
+- Historical runs may have retrieved personal-case or public-cohort
+  material, even if they published aggregate receipts instead of raw
+  rows. We have not proved previous artifacts/caches absent, erased or
+  appropriately reviewed; no past live-data use is implied to be
+  authorized by this document. Avoid extrapolating clinical efficacy
+  from historical exploratory calculations.
+- The following references document *old probe code*, not a current
+  right or requirement to ingest these sources:
 - Per-source basis, exactly as asserted in the probe headers (terms
   themselves UNVERIFIED in this packet — see below):
   - TCIA attachments (fixed CSV/ZIP URLs): Bakr et al.,
@@ -180,14 +192,17 @@ merged in; refreshed 2026-11-02).
 - `tools/research/requirements.lock` records exact third-party pins
   observed in research run 41294219202 (langchain/langgraph stack
   and others). It is installed into an isolated `/tmp/oi-research-env`
-  venv in the `public-research` CI job only. The file itself states
-  it is research only: not an application dependency decision or
-  security clearance. No package license in that lock has been
-  reviewed in this packet.
-- The `single-cell-analysis` CI job installs `numpy==2.3.5` and
-  `h5py==3.15.1` into the CI environment only, likewise research
-  only and not application dependencies. Their licenses are
-  UNVERIFIED in this packet.
+  venv in historical `public-research` CI runs. The replacement CI in
+  draft PR #123 no longer installs this research lock or executes the
+  network-dependent research runtime. The file itself is research-only:
+  not an application dependency decision or security clearance.
+  No package license in that lock has been reviewed in this packet.
+- The historical `single-cell-analysis` CI job installed
+  `numpy==2.3.5` and `h5py==3.15.1` for exploratory research.
+  Draft PR #123 replaces live analysis with fictional unit tests and
+  does not install this research environment. These are not
+  selected application dependencies. Their licenses remain UNVERIFIED
+  in this packet.
 - The demo itself remains Python standard library only, as recorded
   in `SBOM.md`; no new dependency is shipped with the demo.
 
@@ -196,10 +211,9 @@ merged in; refreshed 2026-11-02).
 - The project distribution license is undecided (see `NOTICE.md`). Until
   it is chosen, redistribution terms for the demo itself are UNVERIFIED
   and must not be stated as granted.
-- The license terms of the CI-only GitHub Actions (now three, including
-  the SHA-pinned `actions/upload-artifact`) are UNVERIFIED (see
-  `SBOM.md`). They are not shipped, so this does not affect the demo
-  itself.
+- The license terms of historical and current CI-only GitHub Actions
+  (including SHA-pinned `actions/upload-artifact`) are UNVERIFIED
+  (see `SBOM.md`). They are not shipped with the local demo.
 - The terms of the operator-invoked Meta Model API service (live
   investigation mode only) are UNVERIFIED in this packet.
 - The public-source terms asserted in the research-probe headers
@@ -207,7 +221,25 @@ merged in; refreshed 2026-11-02).
   TrialGPT characterization) are recorded as in-repo assertions
   only and are UNVERIFIED in this packet, as are the licenses of
   every package in `tools/research/requirements.lock` and of the
-  research-only `numpy`/`h5py` CI install. None of these is shipped
-  with the demo.
+  historical research-only `numpy`/`h5py` install. None of these is
+  shipped with the demo; the updated workflows do not execute those
+  live-data probes.
 - No independent legal review of this note has been performed. It is an
   engineering inventory, not legal clearance.
+
+
+## Historical 2026-11-02 proposed CI policy enforcement receipt
+
+- Draft PR [#123](https://github.com/OpenxIntelligence/open-intelligence/pull/123)
+  removes named-person and other public patient-data fetches from the
+  three research workflows, replacing them with independently authored
+  fictional tests and an explicit no-download source guard.
+- Current feature-branch head before this documentation correction:
+  `5839a5b98b15e61c14c42dbe810d711434773e09`. Six hosted workflows
+  passed on that exact head (research, RNA, single-cell, synthetic ledger,
+  UI glance, Crossref). This historical record predates the newer main
+  prohibition and the consolidated runtime-removal draft #137; it must not
+  be read as permission to run the retired scripts.
+- The scanner matches known direct CI entrypoints; it cannot provide a
+  network sandbox, identify all PHI, or prove exact permissions. A release
+  still requires security, source rights and professional review.

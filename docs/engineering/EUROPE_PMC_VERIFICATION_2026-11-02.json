@@ -1,0 +1,632 @@
+{
+  "recorded_at_utc": "2026-11-02T21:16:34+00:00",
+  "worktree": "/workspace/scratch/3685f848121d/open-intelligence-publication",
+  "base_remote_sha": "533afd3ca6dd0c011e2e47397d3d5cae04e62512",
+  "local_snapshot": "264b2a115b250cffe299249907fc417cb05588e4",
+  "source_files_count": 128,
+  "source_manifest_sha256": "f6e00f9b34385f03c2a4b1f1982ee22680a2ccd4def19d19382178efa4bd0352",
+  "source_unchanged_during_verification": true,
+  "source_files": [
+    {
+      "path": ".github/workflows/crossref-metadata.yml",
+      "sha256": "a87ae24ca0b1632ae727c1ef6ec4641ef5ecbeeb9b9c70de21b2d4bb16258fbf"
+    },
+    {
+      "path": ".github/workflows/offline-scientific-safety.yml",
+      "sha256": "93824e210a79fa2119209feaee6103d3d04d1235596c4542ccbba30257ea6f86"
+    },
+    {
+      "path": ".github/workflows/public-research.yml",
+      "sha256": "c5ef26419d1730bcabaed9bd6b259761cc573b7e6cda91e6b8db1437a49dd74c"
+    },
+    {
+      "path": ".github/workflows/rna-analysis.yml",
+      "sha256": "5271c59b180c9fe569fb90a6160fefd70cf06a5002303915b9547353bc34c657"
+    },
+    {
+      "path": ".github/workflows/single-cell-analysis.yml",
+      "sha256": "aa2561797600c4a4e1de0867f5fc251b237004c7bd4a650c0887c1e75dd21224"
+    },
+    {
+      "path": ".github/workflows/synthetic-tests.yml",
+      "sha256": "e9c581592a2cd7276b04326eba460e98060f16943376c012eeb3805426e0c32b"
+    },
+    {
+      "path": ".github/workflows/ui-glance.yml",
+      "sha256": "596cc05bf3f0d9bf2a7e7e01495fbce689d256be857d34f4647a676dccea015f"
+    },
+    {
+      "path": ".gitignore",
+      "sha256": "0e0dca17b52c0533fed301631f6c99e574064b6501e7379ec6f3c06b3d1d92b4"
+    },
+    {
+      "path": "examples/patient-access/EXPECTED_RESULTS.json",
+      "sha256": "c1cda35b39df25536cffea73a48fb369b0cebb46b65675c8907673ddce42323f"
+    },
+    {
+      "path": "examples/patient-access/oi017-collision-wrong-binding.txt",
+      "sha256": "d456106db8c4db8b8aa5657a766c0410b3ad26c7b157c4e4ed265c89001a6c41"
+    },
+    {
+      "path": "examples/patient-access/oi017-encounter-inst-a.txt",
+      "sha256": "a44e0eae19d96b727929e638e85dab0f3d0d52e9bebe8cab430302d2c557491a"
+    },
+    {
+      "path": "examples/patient-access/oi017-imaging-report-only.txt",
+      "sha256": "8ccd25d264c65937299df6c856e8fffb83d295d0ea337535ffb6f6c5e850564a"
+    },
+    {
+      "path": "examples/patient-access/oi017-medications-inst-a.txt",
+      "sha256": "59c9849a7644346422eaa70c8bf0a99a2973c9c4a524a8ff661c93ce9439dec6"
+    },
+    {
+      "path": "examples/patient-access/oi017-pathology-specimen-a-amended.txt",
+      "sha256": "b432c7c331d7ed910667c28fa72f6aac1644a76e738a0970b90af4d477f0f3a7"
+    },
+    {
+      "path": "examples/patient-access/oi017-pathology-specimen-a.txt",
+      "sha256": "002d9c49ee5e24489db2c3169b87d741ffa324b14d6bc1a9646b099ff7049fc7"
+    },
+    {
+      "path": "examples/patient-access/oi017-pathology-specimen-b.txt",
+      "sha256": "2b696223abd311b1fef3d04d7a88c0f0759d504ea1cbb44ea2b3f29157481d35"
+    },
+    {
+      "path": "examples/synthetic/alpha-imaging.txt",
+      "sha256": "e7e860b66f1a1bff8f40e47f6769b1c6104d78cb6959f7dbe0267d6d10da4fa2"
+    },
+    {
+      "path": "examples/synthetic/alpha-pathology-amended.txt",
+      "sha256": "3b83536f86c87640619904449c41c15310051eff1dc9e6ba393e020d91a0a317"
+    },
+    {
+      "path": "examples/synthetic/alpha-pathology-original.txt",
+      "sha256": "a23a94f96c1ceb01e44b53339c0bef4036acea555ae2e4dc297c0c41e60226fa"
+    },
+    {
+      "path": "examples/synthetic/beta-pathology.txt",
+      "sha256": "f04c73717ab3cc0fd7a8c53231226475c3506610deb2ecb05ec5953539cc2ce0"
+    },
+    {
+      "path": "examples/synthetic/crossref-metadata-fixture.json",
+      "sha256": "7106571a1bcac5d610eee038913ccc4645d0d04b55c36980f197f8515116f052"
+    },
+    {
+      "path": "examples/synthetic/demo-evidence.txt",
+      "sha256": "4a19b0039b71ce93e0941ce321f519ef133729069d804e1588a8a4aefdcd70c1"
+    },
+    {
+      "path": "examples/synthetic/demo-investigation.json",
+      "sha256": "b0d71f38c04ffb4f1e198f3d16e6bf7075e7a281c69d162a3dd95be6e5c35ad6"
+    },
+    {
+      "path": "examples/synthetic/discovery-literature-001.txt",
+      "sha256": "d711d16c2197754b013fea2375be11d0da48800ddcb81d066d6dab32e791d6be"
+    },
+    {
+      "path": "examples/synthetic/discovery-trial-001.txt",
+      "sha256": "1b16f3c5ca6ddfa6608b2b3a25a07d67f342afe912d992593544d872734a05d4"
+    },
+    {
+      "path": "examples/synthetic/oi019-a-t0-imaging.txt",
+      "sha256": "982fb9205d7c30527b589778ef4536b66b0f7f363cd442ce399536ab096dc48d"
+    },
+    {
+      "path": "examples/synthetic/oi019-a-t0-pathology.txt",
+      "sha256": "b522a4a3b1d7bd33abf125bb634f013a09729d3fbee871e5e437f2ebae68b1f5"
+    },
+    {
+      "path": "examples/synthetic/oi019-a-t1-clinical.txt",
+      "sha256": "b5ba4db413a33e07d0b921488eb35b80999d5fecd234f165a1903e10a9ad6af8"
+    },
+    {
+      "path": "examples/synthetic/oi019-a-t2-clinical-amended.txt",
+      "sha256": "badcc2ea978535893b62e2b6043f9020ae7d07a5f10158e0828fa4dd950758d8"
+    },
+    {
+      "path": "examples/synthetic/oi019-b-t0-imaging.txt",
+      "sha256": "4bc43fcb02968d5fad087a9e6136f8d5d0f80f83965f9b79dafc442652480e2d"
+    },
+    {
+      "path": "examples/synthetic/oi019-b-t0-pathology.txt",
+      "sha256": "903f8ca8c2888989987cbc1ff1aaaaf3c8ff0ee386266edc571b50a9244f6b22"
+    },
+    {
+      "path": "examples/synthetic/oi019-b-t1-clinical.txt",
+      "sha256": "728bc4c31eb04c3279bc522cfc67e3ce244d8f586b13c4b28b3fa4826b111b77"
+    },
+    {
+      "path": "examples/synthetic/oi019-b-t2-clinical-amended.txt",
+      "sha256": "a4055e92d17b78e57f0ce53186d398983103cd0b4d65564df534ea769e724986"
+    },
+    {
+      "path": "examples/synthetic/oi019-evidence-control.txt",
+      "sha256": "13d7521638b4c0ddf2c4f6443f1d62cbf95499b83bbb6b9679e034a03d30f297"
+    },
+    {
+      "path": "examples/synthetic/oi019-evidence-discussion.txt",
+      "sha256": "2281ee16229577d7cb61e34442057a564e4ca41013fbfe885b3c33caa507af58"
+    },
+    {
+      "path": "examples/synthetic/oi019-evidence-hypothetical.txt",
+      "sha256": "c903d982a4f9898278b9eca67d6033dc0b9c3ede1c1e82bf18137799e882cd75"
+    },
+    {
+      "path": "examples/synthetic/oi019-evidence-invalid.txt",
+      "sha256": "4ccbdf4cc53211490308d2ddabae6f48de4869c054605ac890d2c9da4ebbe67d"
+    },
+    {
+      "path": "examples/synthetic/oi019-wrong-patient.txt",
+      "sha256": "3dd6c59c1f3b381f9208b50f6054c7efd29324802f3f9b5a527f1ce38de8b0b0"
+    },
+    {
+      "path": "examples/synthetic/wrong-patient.txt",
+      "sha256": "cc4573ce55f511cb6ce8df3bf7888b25231f87de1cf1ce9c3e33c65cd51bf74b"
+    },
+    {
+      "path": "src/open_intelligence/__init__.py",
+      "sha256": "73a039e46fac80c564b59ea548722993bcd92f49a58c509e3375c69360c69fa6"
+    },
+    {
+      "path": "src/open_intelligence/__main__.py",
+      "sha256": "9893383391d0aac80efa2f75f0671c73940c927bce982d82ad871b3946895831"
+    },
+    {
+      "path": "src/open_intelligence/changes.py",
+      "sha256": "4e083e124292b1cb557aec23049c389b24909134571d4f92da37c6a395cb980c"
+    },
+    {
+      "path": "src/open_intelligence/discovery.py",
+      "sha256": "14589dcaac4fa1775afd81faad1a36650e07da14e8e65425801d5a9cf9833da5"
+    },
+    {
+      "path": "src/open_intelligence/investigation.py",
+      "sha256": "a37983a4d682e78b6d907f84a9254364c984ec1428ca57270e45d51c29915b79"
+    },
+    {
+      "path": "src/open_intelligence/mission.py",
+      "sha256": "1b277113dc603ed618ad9099cd99d7a240724c48365f8b2ddbe90b6f1f5d0df1"
+    },
+    {
+      "path": "src/open_intelligence/patient_access.py",
+      "sha256": "66a0203aee3bc09d6689f8ccc9aff4dd1d76a3268bdae33daabc637860283f2b"
+    },
+    {
+      "path": "src/open_intelligence/rights.py",
+      "sha256": "dce63f0d72e32a88837d587285bdba620127e1208592263f3bef2ee72a47405c"
+    },
+    {
+      "path": "src/open_intelligence/store.py",
+      "sha256": "dd08e55b441109474df737d53a4f69d812dbc197663cbb05129d800c182b3efd"
+    },
+    {
+      "path": "src/open_intelligence/timeline.py",
+      "sha256": "b629bf7dcc188903e55196c88160d9286c2d1b6f45e72702ec5e9b202060c89c"
+    },
+    {
+      "path": "tests/browser_journey.py",
+      "sha256": "38f2c2f84d79262b4e18ad50a34df4cda7ae6a8be22955cd497a0964fe6b8765"
+    },
+    {
+      "path": "tests/browser_source_dialogs.py",
+      "sha256": "7246e4868aa8e773ea0d667ce9cd446b2a90f9a0d6e2a2069501bb3ab0559b31"
+    },
+    {
+      "path": "tests/browser_text_changes.py",
+      "sha256": "45d0f7e8c370fe8745c45660abd8f70c47ea988a9d09c4ecf24044d793fbf8d5"
+    },
+    {
+      "path": "tests/patient_mission_browser_journey.py",
+      "sha256": "2736d9029aa38eb5585a51542e5fa160975d707e33fb05359d364bd5c139cd6c"
+    },
+    {
+      "path": "tests/test_biological_assets.py",
+      "sha256": "6c83647ad5ac853496410079862b91c1c0eaff73b30228b3d84c0bbfb312d07d"
+    },
+    {
+      "path": "tests/test_changes.py",
+      "sha256": "5a0d3c618bf3bb83645d92e996f43213b5fd78d73e5c3e05c1ff206dc5735779"
+    },
+    {
+      "path": "tests/test_changes_http.py",
+      "sha256": "e0ecce41941e1ae6ec4e9ff54ad2c5a218b0f1045f7397f71199d5ed97e36a27"
+    },
+    {
+      "path": "tests/test_ci_data_boundaries.py",
+      "sha256": "c785e21f6367bba624d395b16f2c923f9e48090dc8504c851a179761c876579a"
+    },
+    {
+      "path": "tests/test_crossref_metadata.py",
+      "sha256": "825bb5fa5bee7c83751577dab63734a9f1a7b5057ae3c58da9cf2c408ac354c8"
+    },
+    {
+      "path": "tests/test_discovery.py",
+      "sha256": "a9f6fc17ac80a22872335a51cf7302d462e2b7bbc6d23ea1ef5c153e12d4d65a"
+    },
+    {
+      "path": "tests/test_discovery_rights.py",
+      "sha256": "43300a92cadcd8f9a7bf3ad3a71d913521e5ca58edcf884e3ea130a02589ba1f"
+    },
+    {
+      "path": "tests/test_europe_pmc_http.py",
+      "sha256": "e7f460f0cec4770e2b3f705e9a517498549ae80919bb5c092f2d495ee1411787"
+    },
+    {
+      "path": "tests/test_europe_pmc_metadata.py",
+      "sha256": "3d577018e4efaccafe801bc11bbd11572f2e5e8b2373d1ee5ced0defb4b89bdf"
+    },
+    {
+      "path": "tests/test_evaluation_packet.py",
+      "sha256": "97415024243989da3d08fd922589c6820481e964326a878c0a8ca4ab1542e20a"
+    },
+    {
+      "path": "tests/test_evaluation_packet_json_boundary.py",
+      "sha256": "6ce0dbfe82a696e88d16aba41f72cd6f0509640b559772c9969f7ade180381e7"
+    },
+    {
+      "path": "tests/test_evaluation_preflight.py",
+      "sha256": "f25f22436513eea0d82541e3eb2ad40f19485a5085baed067d7fa6912a4b2413"
+    },
+    {
+      "path": "tests/test_evidence.py",
+      "sha256": "32f0ee9cc5bb691993eb0613185dfd31a4083f397072af279136f07a40ec4f76"
+    },
+    {
+      "path": "tests/test_evidence_http.py",
+      "sha256": "ba8061329cab29f8eec192f52dad93b909812e05ae14b60c1d99b274db0fb618"
+    },
+    {
+      "path": "tests/test_http.py",
+      "sha256": "051843a13591be2949ab665ca61a05b67a9185b791c443467337679be5204f16"
+    },
+    {
+      "path": "tests/test_investigation.py",
+      "sha256": "f2eaf7fce46a61bf9ac4edcaee15b7da3742c36307856526e532e0eaf649fb23"
+    },
+    {
+      "path": "tests/test_iv01_evidence_replay.py",
+      "sha256": "67d0f6c130cf7e7f85ae71b2d91ce6d982d7f1b9fc6b6a2057fcef511b881596"
+    },
+    {
+      "path": "tests/test_iv01_store.py",
+      "sha256": "1e9e8b3d7e16b706c3949cc0687548a1a2bb6579b9cee6a4d9a0416f10cbf37e"
+    },
+    {
+      "path": "tests/test_iv02_iv03_contract.py",
+      "sha256": "b3e3470cc404eead0ab3244abbdb221b044984106a2b535888e889381135aada"
+    },
+    {
+      "path": "tests/test_model_investigation_panel.py",
+      "sha256": "ff8bfb560b2d00513ea0ce8e9269b9ed031b2203c49b1b07c53e7a70fd854b2f"
+    },
+    {
+      "path": "tests/test_option_preservation.py",
+      "sha256": "0df6e77bacc11ffce0162ac82393ebbf3ca3893100a35202c45cd4f057d72ffd"
+    },
+    {
+      "path": "tests/test_option_review_regressions.py",
+      "sha256": "43374bed997f0601b13cb855bb8c70b9ec97096f4b4dcc237efd7ae1bac6734c"
+    },
+    {
+      "path": "tests/test_options.py",
+      "sha256": "cca9c71dee9af874a651a83e6c6f6a68cd1979fd4b62b7528c3d3f3726bab82b"
+    },
+    {
+      "path": "tests/test_patient_access.py",
+      "sha256": "29f1fbd4d3de3bff4bdedf5822422f3cc73323826e1b6ff68dea0286821e7eec"
+    },
+    {
+      "path": "tests/test_patient_mission.py",
+      "sha256": "a88eeb13ae08f42583f04968d0721a104ae9b4eb31b4f356429bdfb1424b5ec7"
+    },
+    {
+      "path": "tests/test_patient_mission_http.py",
+      "sha256": "d48076866a8618f1c6e46506c6d58562fb018b61b5c777ef8b020d1d52fbf69e"
+    },
+    {
+      "path": "tests/test_patient_mission_ui.py",
+      "sha256": "1b3d69b475123c4f1e64f50648a4d5dffad6ace42113ccb754b391b09cdc8b58"
+    },
+    {
+      "path": "tests/test_rights_broker.py",
+      "sha256": "3427468d17f854541abb17cc65c9e436b1559970159a08300b66454905464a15"
+    },
+    {
+      "path": "tests/test_safety_packet.py",
+      "sha256": "3734693935f6bdf1b043a0e9004d3abf2206e97704d74556c74863302506afd8"
+    },
+    {
+      "path": "tests/test_source_dialogs.js",
+      "sha256": "5c013d4c7cec747eba1522a4bcb86e38c02e2a506e332accd1c04cc437b405f6"
+    },
+    {
+      "path": "tests/test_source_line_diff.js",
+      "sha256": "da2c47f82b63ccd8604020d76877571deaa2eb002502f33f9dcc39d4d89d1090"
+    },
+    {
+      "path": "tests/test_store.py",
+      "sha256": "e5bb8b9cc333416355f99d08d1dc0e98ce8d09cd914cc9bb8396ab0a7192d0cc"
+    },
+    {
+      "path": "tests/test_text_changes.js",
+      "sha256": "fa001d830b73ca29fdeead5aac60315f8ed32378b424f4adcf3c09c88567c3e3"
+    },
+    {
+      "path": "tests/test_timeline.py",
+      "sha256": "2f1994e6d2fd24acead6ef56e00546f323bac5e094ecce99dcdbd37ba1456b94"
+    },
+    {
+      "path": "tests/test_timeline_http.py",
+      "sha256": "29ec7f8691558126313548df2ab94d8f42e90c593717c43253b4ef3fc8b61f93"
+    },
+    {
+      "path": "tests/ui_glance_journey.py",
+      "sha256": "b37eca97a8b44f3cc6f671afec4134014b30b503a307bd6b0cad699f5a6adafe"
+    },
+    {
+      "path": "tools/__init__.py",
+      "sha256": "0c82fd9382f0abadde1819ccb6292e4c015b3409082f1b2fecd4cd2267f54796"
+    },
+    {
+      "path": "tools/audit_ci_data_boundaries.py",
+      "sha256": "a5afe322410291009a9401da314e6b2585181717dee2d79437d3389c3be64ab8"
+    },
+    {
+      "path": "tools/crossref_metadata.py",
+      "sha256": "dedfe8fd1218a4422f74e6bc6622bece379827986fdacb22bff8c35e3c259fcf"
+    },
+    {
+      "path": "tools/europe_pmc_metadata.py",
+      "sha256": "53c25e437265b169c41ef52d404dd6bb96600a89096f52a9e7405d0189907342"
+    },
+    {
+      "path": "tools/evaluation_packet.py",
+      "sha256": "62a5fdbc298843695ad832aaae23a6ce3f5da83d3edebb94d3e852f4e06abfd5"
+    },
+    {
+      "path": "tools/evaluation_preflight.py",
+      "sha256": "750eb4ca9b9906a9e882dc7a1ddf20cfdc71a368e716d7b518feae4e5804b8e5"
+    },
+    {
+      "path": "tools/research/clinical_semantics_probe.py",
+      "sha256": "a50dc8dd649e4ea546d8d4e3d0c9a7331033bb20debc7cf8a7dedb4f4519bc43"
+    },
+    {
+      "path": "tools/research/data_policy.py",
+      "sha256": "9406a98c1965d484f1d32235df31d6ec44392bc36641f244cdd2c69ff98aca93"
+    },
+    {
+      "path": "tools/research/gdc_projection_probe.py",
+      "sha256": "915dc40639f95e058c79c74f2caf9436bbc9a2753e1f4a95aedd8c191575b6de"
+    },
+    {
+      "path": "tools/research/public_case_intake.py",
+      "sha256": "6a5a61792b85ae6649cfa96c7de0effa987974f77f53323e6141469ca757d37a"
+    },
+    {
+      "path": "tools/research/public_evidence_probe.py",
+      "sha256": "14dca2052acc8e0432bbaaca361abe620f66c7dce059d1c64c28f42953515708"
+    },
+    {
+      "path": "tools/research/requirements.lock",
+      "sha256": "2846ed09cbf96c94449e76dcb2d4f4103dcfade4014d54b60d372ae372d15f3b"
+    },
+    {
+      "path": "tools/research/rna_expression_probe.py",
+      "sha256": "0633ed559148e16ca4d0fcf794ebd7b973537af1a5ce3f302f909ef702bccfb7"
+    },
+    {
+      "path": "tools/research/runtime_probe.py",
+      "sha256": "bf5b4207a4bd8bd120422057c00e67ba610321a40d50350d3209425a86e5ab38"
+    },
+    {
+      "path": "tools/research/single_cell_probe.py",
+      "sha256": "5306562b9129596108e5832532d1beffc45fb35c347ecacb6a5fe73de7b8042f"
+    },
+    {
+      "path": "tools/research/test_clinical_semantics_probe.py",
+      "sha256": "b941ca7625103b22c2abb76681595322489393dab1a18d27e97700d421c7c780"
+    },
+    {
+      "path": "tools/research/test_gdc_projection_probe.py",
+      "sha256": "e78bc1361a6bbb37eeb96b52084a7f6ea886db2566086b2768d0f78c49ba4b6b"
+    },
+    {
+      "path": "tools/research/test_public_case_intake.py",
+      "sha256": "72c41185aaeaf1f3cdab0ec925af8d3da847f21f411951976873a04f446690e1"
+    },
+    {
+      "path": "tools/research/test_public_evidence_probe.py",
+      "sha256": "6e50522fd1603245e87582f5b66ef80acc05966faed02d64e67aba6f952c63f3"
+    },
+    {
+      "path": "tools/research/test_restricted_research_entrypoints.py",
+      "sha256": "c15ff7bb951d9cdfbee23576eb9ec387ab939e7243c99ea7c04c5787e1242fdb"
+    },
+    {
+      "path": "tools/research/test_rna_expression_probe.py",
+      "sha256": "e9c09f835ccb3bb5c1029281c324bad4ced57bd892f21a792fb76a9c4a46ad14"
+    },
+    {
+      "path": "tools/research/test_semantic_evidence.py",
+      "sha256": "283acc0de1de599311e18de5fd80eb258b8b01379a3f254c4c7597dd1c4e220b"
+    },
+    {
+      "path": "tools/research/test_sid_case_data_disabled.py",
+      "sha256": "f0419ceff8c10dcd9639a642709b2f23c17556d193502e541e3e1e7fba15ad5e"
+    },
+    {
+      "path": "tools/research/test_single_cell_probe.py",
+      "sha256": "18a94bd0cdb1e74420744d4cd5b74b10ffc6b49b128df2315240784ba86ae8f8"
+    },
+    {
+      "path": "tools/research/test_trial_screening_probe.py",
+      "sha256": "84e09e197ec3d699aa72ba99edf67238ab8a3bb1dd49b2bae556e3a3eb42df44"
+    },
+    {
+      "path": "tools/research/trial_screening_probe.py",
+      "sha256": "c628d5d9ce23324d08173f4bbf57869d0d739b22b5a15ac46ebfa570b3ad73a9"
+    },
+    {
+      "path": "validation/iv01/cases.json",
+      "sha256": "88b0ea7e2b4dcb467951f3c17fafa8f546c60db69a8eb9dfc7354c400e07331c"
+    },
+    {
+      "path": "validation/iv01/coordinator_key.json",
+      "sha256": "b1d3fb2840411a110edc281bc5601a6e455f2783379a575edfd7788c3cddf71d"
+    },
+    {
+      "path": "validation/iv01/protocol.json",
+      "sha256": "def1eacc9467da230b88be8f34b7e50895e87f5676408005e3cc72e67de6a6fe"
+    },
+    {
+      "path": "validation/iv01/results_template.csv",
+      "sha256": "f52d61100ac668b9d0a0e783261444fab3b1b66affe70b0418e405309fb9e1c2"
+    },
+    {
+      "path": "validation/iv01/run_record_template.json",
+      "sha256": "a3ffb045d58dd532a55c6b7bfa6c590f9616f58cd33243b9be968437405151f7"
+    },
+    {
+      "path": "validation/iv04/decision_template.json",
+      "sha256": "782f18c8e243324f3c6ce3366c5184f23cfd417335d2a42e7c4cce3e8a19206a"
+    },
+    {
+      "path": "validation/iv04/register_template.json",
+      "sha256": "57f71e728db15bd5035f6868181b3e9b99c28925b98e3c02f1963d5de4183a62"
+    },
+    {
+      "path": "web/app.js",
+      "sha256": "cb52faec1d6ba7ab892d99e9c2eb4504bb64b09b92fe3a5dfbbaef480c120e10"
+    },
+    {
+      "path": "web/base.css",
+      "sha256": "ef556b97708eb307559e05d525ac58a5a72603595ad0b6113dc37f6ecf7df5c7"
+    },
+    {
+      "path": "web/index.html",
+      "sha256": "7ab46361a9c67b652c9b20790f5deb570433d699aae9cba26a722616cf17f543"
+    },
+    {
+      "path": "web/mission.js",
+      "sha256": "15218adc05f55ec7ec48b77c093350539b432456cce9212588cfd337977ab4ab"
+    },
+    {
+      "path": "web/style.css",
+      "sha256": "73ad3f3a8e451215ca99714d1bbcb4036729db8399762e15f4a56ccc5e2c7956"
+    },
+    {
+      "path": "web/tokens.css",
+      "sha256": "976f16f5cffbef66bc4d1a31d3943a2ba7d0ec44668c7609c9b6d7d8dcc869fc"
+    }
+  ],
+  "changed_implementation_files": [
+    {
+      "path": "src/open_intelligence/__main__.py",
+      "sha256": "9893383391d0aac80efa2f75f0671c73940c927bce982d82ad871b3946895831"
+    },
+    {
+      "path": "tests/browser_journey.py",
+      "sha256": "38f2c2f84d79262b4e18ad50a34df4cda7ae6a8be22955cd497a0964fe6b8765"
+    },
+    {
+      "path": "tests/test_europe_pmc_http.py",
+      "sha256": "e7f460f0cec4770e2b3f705e9a517498549ae80919bb5c092f2d495ee1411787"
+    },
+    {
+      "path": "tests/test_europe_pmc_metadata.py",
+      "sha256": "3d577018e4efaccafe801bc11bbd11572f2e5e8b2373d1ee5ced0defb4b89bdf"
+    },
+    {
+      "path": "tools/europe_pmc_metadata.py",
+      "sha256": "53c25e437265b169c41ef52d404dd6bb96600a89096f52a9e7405d0189907342"
+    },
+    {
+      "path": "web/app.js",
+      "sha256": "cb52faec1d6ba7ab892d99e9c2eb4504bb64b09b92fe3a5dfbbaef480c120e10"
+    },
+    {
+      "path": "web/index.html",
+      "sha256": "7ab46361a9c67b652c9b20790f5deb570433d699aae9cba26a722616cf17f543"
+    },
+    {
+      "path": "web/style.css",
+      "sha256": "73ad3f3a8e451215ca99714d1bbcb4036729db8399762e15f4a56ccc5e2c7956"
+    }
+  ],
+  "manifest_encoding": "UTF-8 sorted lines: <sha256><two spaces><relative path><newline>; docs and Markdown excluded",
+  "python_version": "3.12.14",
+  "node_version": "v24.22.1",
+  "temporary_qa_dependencies": {
+    "path": "/tmp/oi-hdf5-qa",
+    "numpy": "2.3.5",
+    "h5py": "3.15.1",
+    "HDF5": "1.14.6",
+    "project_dependencies_changed": false
+  },
+  "application": {
+    "command": "PYTHONPATH=/tmp/oi-hdf5-qa:src python -m unittest discover -s tests -p 'test_*.py' -v",
+    "run": 268,
+    "passed": 268,
+    "skipped": 0,
+    "seconds": 29.485
+  },
+  "research": {
+    "command": "PYTHONPATH=/tmp/oi-hdf5-qa:src python -m unittest discover -s tools/research -p 'test_*.py' -v",
+    "run": 204,
+    "passed": 204,
+    "skipped": 0,
+    "seconds": 0.834
+  },
+  "focused_europe_pmc_tests_in_application_suite": 23,
+  "single_cell_tests_in_research_suite": 25,
+  "ci_boundary_guard": "PASS: no known patient-case download entrypoints in current workflows",
+  "javascript_syntax": [
+    "web/app.js",
+    "web/mission.js"
+  ],
+  "workflow_yaml_files_parsed": 7,
+  "browser_scenario_python_syntax": "passed",
+  "browser_execution": "not performed: no installed browser; Playwright Chromium official CDN returned 195-byte text/html Site Unavailable response instead of archive",
+  "browser_scenario": "tests/browser_journey.py adds real offline panel flow, disabled live submissions, fetch guard, literal text/no fictional links, 390px width check",
+  "logs": [
+    {
+      "path": "/tmp/oi-publication-application-tests.txt",
+      "sha256": "e083f2df11687899b2808530a697a68d6a43a398fff7ec2d10a5dd7b98cba1eb"
+    },
+    {
+      "path": "/tmp/oi-publication-research-tests.txt",
+      "sha256": "e82d4faa49d47cb2b9b125e710232028836d79e3cee3b76344d4146b19f4c637"
+    },
+    {
+      "path": "/tmp/oi-publication-ci-data-boundaries.txt",
+      "sha256": "8ac40350fd4fa2f6713fbcc947ba88ae1561237988136f18993a4d9ae11ed01b"
+    },
+    {
+      "path": "/tmp/oi-publication-syntax-checks.txt",
+      "sha256": "7dbe7f9272366eba995a8e1bb15e3be301b397f90210d28793cab6c84fab99a4"
+    }
+  ],
+  "local_snapshot_is_remote_commit": false,
+  "publication_base_pr": 137,
+  "publication_base_tree": "b7189613d1b9e9eca39a4501d9f9d3d7e3824cce",
+  "remote_main_ancestor": "24519839aa8ac1ea3aff88a956349ba72798a72a",
+  "baseline_materialized_files_verified_against_git_blobs": 148,
+  "live_provider_check": {
+    "checked_at_utc": "2026-11-02T21:15:30+00:00",
+    "query": {
+      "topic": "melanoma",
+      "page_size": 1
+    },
+    "scope": "One public title-topic metadata request; no patient context, article content or model call",
+    "status": "passed",
+    "returned_count": 1,
+    "hit_count": 89953,
+    "provider": "Europe PMC REST API",
+    "query_fingerprint": "84ae31d96bff1e49150a832e59f302a9996c2e12a80a917d3c76243545fdb6fa",
+    "metadata_hashes": [
+      "348da4ec61771c4e714527e4775b35eae26a2d22e6cee6b3ad57ebbea4b4a6f1"
+    ]
+  },
+  "hosted_results_location": "Published PR description; this file records pre-publication local verification only"
+}

@@ -1,5 +1,6 @@
 'use strict';
-// All displayed data is from local, synthetic records. No third-party scripts.
+// Case records are synthetic. Opt-in bibliographic results retain their public
+// provider identity and remain separate from case evidence. No third-party scripts.
 let caseId = null;
 let active = null;
 let refreshSequence = 0;
@@ -1058,6 +1059,100 @@ el('bibliography-form').addEventListener('submit', async event => {
     notice('Crossref bibliographic metadata retrieved. No paper content or patient context was used.');
   } catch (err) { notice(err.message, true); }
 });
+let europePmcEnabled = false;
+let europePmcBusy = false;
+function renderEuropePmc(page) {
+  clear('europe-pmc-results');
+  const container = el('europe-pmc-results');
+  const demo = page.mode === 'offline_demo';
+  container.append(node('p', demo ?
+    'Fictional search example — independently authored, not real publications.' :
+    `Europe PMC: ${page.returned_count} of ${page.hit_count} indexed matches shown.`, 'snapshot-meta'));
+  if (!page.results.length) container.append(node('p', 'No title matches in this search.', 'empty'));
+  for (const record of page.results) {
+    const card = node('article', null, 'source-card');
+    card.append(node('strong', record.title));
+    card.append(node('p', [record.journal, record.year].filter(x => x != null && x !== '').join(', '), 'snapshot-meta'));
+    if (record.authors) card.append(node('p', record.authors, 'muted'));
+    // Rebuild a destination from an allowlisted source and identifier. Provider
+    // strings are textContent, never HTML, and raw provider links are not used.
+    if (!demo && record.source === 'MED' && /^[1-9][0-9]{0,11}$/.test(record.id)) {
+      const link = node('a', 'Open publication record');
+      link.href = 'https://europepmc.org/article/MED/' + record.id;
+      link.target = '_blank'; link.rel = 'noopener noreferrer';
+      card.append(link);
+    }
+    const details = node('details', null, 'metadata-provenance');
+    details.append(node('summary', 'Citation provenance'));
+    details.append(node('p', 'Source: ' + record.source + ' · ID: ' + record.id, 'muted tiny'));
+    if (record.doi) details.append(node('p', 'DOI: ' + record.doi, 'muted tiny'));
+    if (record.pmcid) details.append(node('p', 'PMCID: ' + record.pmcid, 'muted tiny'));
+    if (record.first_publication_date) details.append(node('p',
+      'Provider publication date: ' + record.first_publication_date + ' (day precision unverified)', 'muted tiny'));
+    details.append(node('p', 'Selected metadata SHA-256: ' + record.metadata_sha256, 'muted tiny'));
+    card.append(details);
+    container.append(card);
+  }
+  const provenance = node('details', null, 'metadata-provenance');
+  provenance.append(node('summary', 'Search provenance and limits'));
+  provenance.append(node('p', 'Source: ' + page.provenance.provider, 'muted tiny'));
+  if (!demo) {
+    provenance.append(node('p', 'Retrieved: ' + page.provenance.retrieved_at, 'muted tiny'));
+    provenance.append(node('p', 'Query fingerprint: ' + page.provenance.query_fingerprint, 'muted tiny'));
+  }
+  provenance.append(node('p', 'Article-content rights are unassessed. No abstracts or full text were retrieved. Results are unsaved and not used as evidence.', 'muted tiny'));
+  if (page.has_more) provenance.append(node('p', 'Only this first page was retrieved. Narrow the topic or date range to refine the results.', 'muted tiny'));
+  container.append(provenance);
+}
+async function initializeEuropePmc() {
+  try {
+    const status = await api('/api/bibliography/europe-pmc/status');
+    europePmcEnabled = status.live_enabled === true;
+    el('europe-pmc-mode').textContent = europePmcEnabled ?
+      'Live public topic search enabled. The topic and optional date range will be sent to Europe PMC.' :
+      'Offline by default. The fictional example requires no external access.';
+  } catch (err) {
+    europePmcEnabled = false;
+    el('europe-pmc-mode').textContent = 'Public topic search is unavailable; live access is disabled.';
+  }
+  el('europe-pmc-search-button').disabled = !europePmcEnabled || europePmcBusy;
+}
+el('europe-pmc-example-button').addEventListener('click', async () => {
+  if (europePmcBusy) return;
+  europePmcBusy = true;
+  el('europe-pmc-search-button').disabled = true;
+  el('europe-pmc-example-button').disabled = true;
+  clear('europe-pmc-results');
+  try {
+    renderEuropePmc(await api('/api/bibliography/europe-pmc/example'));
+    notice('Fictional search example loaded. No external search was performed.');
+  } catch (err) { notice(err.message, true); }
+  finally {
+    europePmcBusy = false;
+    el('europe-pmc-search-button').disabled = !europePmcEnabled;
+    el('europe-pmc-example-button').disabled = false;
+  }
+});
+el('europe-pmc-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  if (!europePmcEnabled || europePmcBusy) return notice('Public topic search is disabled or already running.', true);
+  const request = {topic: el('europe-pmc-topic').value.trim(), page_size: Number(el('europe-pmc-page-size').value)};
+  const start = el('europe-pmc-start-date').value, end = el('europe-pmc-end-date').value;
+  if (start || end) { request.start_date = start; request.end_date = end; }
+  europePmcBusy = true;
+  el('europe-pmc-search-button').disabled = true;
+  el('europe-pmc-example-button').disabled = true;
+  clear('europe-pmc-results');
+  try {
+    renderEuropePmc(await api('/api/bibliography/europe-pmc/search', request));
+    notice('Europe PMC citation details retrieved for source review. Results are not saved.');
+  } catch (err) { notice(err.message, true); }
+  finally {
+    europePmcBusy = false;
+    el('europe-pmc-search-button').disabled = !europePmcEnabled;
+    el('europe-pmc-example-button').disabled = false;
+  }
+});
 el('timeline-filter').addEventListener('change', renderTimeline);
 async function loadModelTemplates() {
   try {
@@ -1243,6 +1338,7 @@ el('model-investigation-form').addEventListener('submit', async event => {
 });
 initialize();
 initializeBibliography();
+initializeEuropePmc();
 loadModelTemplates();
 
 const sectionMenu = document.querySelector('.section-menu');
