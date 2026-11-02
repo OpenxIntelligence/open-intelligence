@@ -31,7 +31,12 @@ def composer_lab_trend(store: CaseStore, case_id: str, question_id: int,
         raise InvalidInput("Current Composer context fingerprint is required")
     state = store.state(case_id)
     question, sources, assertions, assessments = _snapshot_rows_from_state(state, question_id)
-    current = _fingerprint(case_id, question, sources, assertions, assessments)
+    # Composer context-v2 binds accepted source assertions *and* the current
+    # rights-broker receipts. Never compare an old source-only fingerprint to
+    # a rights-bound preview or silently discard broker revocations.
+    broker_receipts = store._broker_context_inputs(case_id, question_id)[1]
+    current = _fingerprint(case_id, question, sources, assertions,
+                           assessments, broker_receipts)
     if not hmac.compare_digest(fingerprint, current):
         raise InvalidInput("stale Composer context; refresh source preview before calculation")
     result = build_lab_trend(state, finding_key)
