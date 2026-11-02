@@ -201,7 +201,18 @@ class CanonicalLabBridge:
             raise InvalidInput("revocation owns its transaction")
         self.db.execute("BEGIN IMMEDIATE")
         try:
-            self._binding(patient_id, case_id)
+            # Revocation reduces authority. A conflicting ingress identity must
+            # block reads/commands, but must not make its reviewed link
+            # impossible to revoke. Recheck the caller and exact active owner
+            # in this transaction without trusting the disputed adapter tuple.
+            self._allow(actor, patient_id, "case_revoke", purpose)
+            binding = self.db.execute(
+                "SELECT patient_id,status FROM identity_case_bindings WHERE case_id=?",
+                (case_id,),
+            ).fetchone()
+            if (binding is None or binding["patient_id"] != patient_id or
+                    binding["status"] != "active"):
+                raise PatientRegistryDenied("missing, revoked or mismatched case binding")
             self.db.execute(
                 """UPDATE identity_case_bindings
                    SET status='revoked',revoked_at=?,revocation_reason=?

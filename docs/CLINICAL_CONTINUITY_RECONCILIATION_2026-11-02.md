@@ -63,3 +63,40 @@ This is **not a globally atomic distributed snapshot**: the original source and 
 ### Remaining blocking production gates
 
 Canonical verified identity and proxies, purpose/consent engine with durable signed decisions, authoritative patient↔source reconciliation and rollback semantics, PostgreSQL migration/domain privileges, strict operational authorization, signed note/clinical review, FHIR R4/HL7 contracts, lab analyzer/QMS and CLIA workflow validation, source amendment/invalidation events for durable projections, cross-database consistency, PHI security and region/purpose controls, accessibility, independent clinical evaluation, and explicit OI-17 supply-chain/license clearance. **No release or real-patient data is authorized by this work.**
+
+
+## Revoking a disputed source link — implementation follow-up
+
+**Scope:** reversible correction to the existing `CanonicalLabBridge.revoke_case`,
+under the founder mandate to make revocation effective while retaining original
+records and history. The current synthetic identity/authorizer limits still apply.
+
+**Observed failure:** after an adapter subject contradicts the reviewed mapping,
+`_binding` correctly denies reads and commands, but `revoke_case` also calls it.
+An authorized revocation therefore raises `PatientRegistryDenied` before changing
+the disputed link. The new integrated regression reproduced this failure on
+the unchanged PR #95 source at `58d87ce07577bd6328f0f28bebcd4f6e65aed6f0`.
+
+**Approach:** keep full identity consistency checks on all reads and clinical
+commands. For the authority-reducing revocation alone, recheck actor, purpose,
+patient status and exact active patient/case ownership inside its existing write
+transaction. A contradictory adapter tuple is a reason to revoke a link, not a
+prerequisite for trusting that link. Do not infer a replacement patient or grant
+access. No new authority table, identity service or dependency is introduced.
+
+- [x] Reproduce the conflict-to-revocation failure with the real patient, EHR,
+  source, laboratory and receiver services using independently authored fixtures.
+- [x] Implement the narrow transaction guard and preserve audit rollback.
+- [x] Verify durable revocation, denied subsequent reads in both domains,
+  unchanged original source/note history, unauthorized denial and audit failure.
+- [x] Run the complete synthetic suite with local HTTP sockets enabled; retain
+  the initial sandbox socket-denial and missing-local-workflow results as setup
+  limitations rather than presenting them as passes.
+- [x] Obtain independent code review: no remaining production blocker; independent wrong-patient, wrong-case, revoked-mid-check and repeated-revocation checks passed.
+- [ ] Independent human review and merge decision; this remains a draft integration candidate.
+
+### Verification receipt for disputed-link revocation
+
+Preserved the concurrent upstream mid-read reauthorization changes through parent `d863bc2dc24dcf0a0b70972594768ebe19cd1d67`; no concurrent source or test change was discarded. The final combined candidate passed **358 tests in 169.067 seconds**, with zero failures/errors, using `PYTHONPATH=src:. python -m unittest discover -s tests -p 'test_*.py' -q`. The focused continuity suite passed **18 tests in 7.481 seconds**. Local loopback socket permission was enabled for the existing HTTP harness; only independently authored synthetic application fixtures were used. No live model or patient-data request was made. Initial sandbox socket errors and the corrected test-schema typo are not counted as passing runs. These are local results, not a claim about hosted CI at a later head or deployment.
+
+Independent review also exercised wrong-patient, missing/unbound-case, withdrawn in-transaction authority and repeated-revocation scenarios; no production blocker remained. Those supplemental checks are review evidence, not additional counted permanent tests. Production identity/consent, distributed invalidation, professional authority and clinical validation remain outside this fix.
