@@ -11,6 +11,7 @@ import os
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from urllib.error import HTTPError
@@ -19,6 +20,8 @@ from urllib.request import Request, urlopen
 from open_intelligence.__main__ import Handler, seed
 from open_intelligence.investigation import (
     InvestigationError,
+    ModelAPIConfigurationError,
+    meta_api_key,
     build_prompt,
     call_meta_api,
     validate_output,
@@ -83,6 +86,45 @@ class ValidationTests(unittest.TestCase):
         self.assertEqual(payload["claims"][0]["text"], claim()["text"])
 
 
+class MetaOperatorKeyTests(unittest.TestCase):
+    """Key selection is deterministic, backward compatible, and secret-safe."""
+
+    def test_meta_documented_key_is_supported(self):
+        with patch.dict(os.environ, {"MODEL_API_KEY": "documented-secret"}, clear=True):
+            self.assertEqual(meta_api_key(), "documented-secret")
+
+    def test_original_oi_key_alias_is_supported(self):
+        with patch.dict(os.environ, {"META_API_KEY": "legacy-secret"}, clear=True):
+            self.assertEqual(meta_api_key(), "legacy-secret")
+
+    def test_same_key_in_both_variables_is_unambiguous(self):
+        with patch.dict(os.environ, {"MODEL_API_KEY": "same-key",
+                                     "META_API_KEY": "same-key"}, clear=True):
+            self.assertEqual(meta_api_key(), "same-key")
+
+    def test_conflicting_keys_fail_closed_without_secret_leakage(self):
+        with patch.dict(os.environ, {"MODEL_API_KEY": "documented-secret",
+                                     "META_API_KEY": "legacy-secret"}, clear=True):
+            with self.assertRaises(ModelAPIConfigurationError) as error:
+                meta_api_key()
+            self.assertIn("conflicting", str(error.exception))
+            self.assertNotIn("documented-secret", str(error.exception))
+            self.assertNotIn("legacy-secret", str(error.exception))
+
+    def test_no_key_offers_replay_without_network(self):
+        with patch.dict(os.environ, {}, clear=True):
+            with self.assertRaises(ModelAPIConfigurationError) as error:
+                meta_api_key()
+            self.assertIn("replay", str(error.exception))
+            self.assertIn("MODEL_API_KEY", str(error.exception))
+
+    def test_whitespace_only_keys_are_not_valid(self):
+        with patch.dict(os.environ, {"MODEL_API_KEY": " ",
+                                     "META_API_KEY": "\t"}, clear=True):
+            with self.assertRaises(ModelAPIConfigurationError):
+                meta_api_key()
+
+
 class HttpInvestigationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -145,8 +187,7 @@ class HttpInvestigationTests(unittest.TestCase):
         self.assertEqual(status, 422)
 
     def test_live_without_key_offers_replay(self):
-        saved = os.environ.pop("META_API_KEY", None)
-        try:
+        with patch.dict(os.environ, {}, clear=True):
             status, data = self.request('/api/cases/CASE-ALPHA/questions',
                                         {'question': 'What do the sources report about this case?'})
             status, data = self.request('/api/cases/CASE-ALPHA/investigations',
@@ -154,9 +195,22 @@ class HttpInvestigationTests(unittest.TestCase):
                                          'template': 'evidence-summary', 'mode': 'live'})
             self.assertEqual(status, 503)
             self.assertIn("replay", data["error"])
-        finally:
-            if saved is not None:
-                os.environ["META_API_KEY"] = saved
+
+    def test_live_with_two_different_keys_fails_before_network_call(self):
+        with patch.dict(os.environ, {"MODEL_API_KEY": "key-a",
+                                     "META_API_KEY": "key-b"}, clear=True):
+            with patch("open_intelligence.__main__.call_meta_api") as network:
+                status, question = self.request('/api/cases/CASE-ALPHA/questions',
+                                                {'question': 'What do the sources report?'})
+                self.assertEqual(status, 201)
+                status, data = self.request('/api/cases/CASE-ALPHA/investigations',
+                                            {'question_id': question['question_id'],
+                                             'template': 'evidence-summary', 'mode': 'live'})
+                self.assertEqual(status, 503, data)
+                self.assertIn("conflicting", data["error"])
+                self.assertNotIn("key-a", data["error"])
+                self.assertNotIn("key-b", data["error"])
+                network.assert_not_called()
 
 
 if __name__ == '__main__':
