@@ -648,10 +648,15 @@ class CaseStore:
                     self.db.execute(f"UPDATE snapshots SET state='stale' WHERE id IN ({marks})", invalidated)
                     self.db.execute(f"""UPDATE questions SET state='open' WHERE case_id=? AND id IN
                         (SELECT question_id FROM snapshots WHERE id IN ({marks}))""", [case_id, *invalidated])
-                    # An amendment changes freshness for investigations too:
-                    # they cite the superseded source's facts, so mark them stale
-                    # rather than silently leaving them current.
-                    self.db.execute("UPDATE investigations SET stale=1 WHERE case_id=? AND stale=0", (case_id,))
+                # The model-investigation prompt considers all CURRENT case
+                # source assertions, not only sources linked to a hand-authored
+                # snapshot. A model-only abstention can also depend on the
+                # absent/old evidence. Therefore stale case-scoped model work
+                # whenever any canonical source is amended, even if no manual
+                # snapshot was invalidated. Never rewrite the historical output.
+                self.db.execute(
+                    "UPDATE investigations SET stale=1 WHERE case_id=? AND stale=0",
+                    (case_id,))
                 # OI-021, same transaction: only options in THIS case that
                 # cite the superseded version or a stale snapshot reopen.
                 invalidated_options = self._invalidate_options(
