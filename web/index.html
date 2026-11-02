@@ -105,6 +105,11 @@
         <div class="panel-head"><div><div class="eyebrow">PATIENT VIEW · SAME RECORD</div><h2 id="patient-view-heading">Your record and open questions</h2></div><span class="pill">Source-linked · fictional case</span></div>
         <p class="muted">Explore what the records say, what remains uncertain, and the questions to investigate. Open any finding to inspect its original wording. These are source statements from independently authored fictional records; they have not been clinically reviewed.</p>
         <p id="patient-record-status" role="status" aria-live="polite">Loading the selected case…</p>
+        <section aria-labelledby="patient-inventory-heading" class="patient-record-inventory">
+          <h3 id="patient-inventory-heading">Records available in this workspace</h3>
+          <p class="muted tiny">This is an inventory of documents supplied here, not a list of tests the patient should receive. “Not supplied” does not mean a test was never performed, and no record category is clinically required by this display.</p>
+          <div id="patient-record-inventory" class="questions" aria-live="polite"></div>
+        </section>
         <div class="patient-record-grid">
           <div><h3>What the records say</h3><div id="patient-findings" class="findings"></div></div>
           <div><h3>What needs clarification</h3><div id="patient-uncertainty" class="questions"></div>
