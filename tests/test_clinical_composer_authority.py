@@ -53,6 +53,16 @@ class AuthorizedClinicalComposerIntegrationTests(unittest.TestCase):
         self.assertEqual(result["composer"]["case_id"], CASE)
         self.assertEqual(result["composer"]["question_id"], question)
         self.assertEqual(len(result["composer"]["fingerprint"]), 64)
+        source_row = self.store.db.execute(
+            "SELECT sha256,document_id FROM source_versions WHERE case_id=? AND id=?",
+            (CASE, source)).fetchone()
+        # Clinical EHR note, laboratory release and Composer must be referring
+        # to the *same* canonical source version and original content hash.
+        self.assertIsNotNone(source_row)
+        bound = next(x for x in result["composer"]["current_sources"]
+                     if x["id"] == source)
+        self.assertEqual(bound["sha256"], source_row["sha256"])
+        self.assertEqual(bound["document_id"], source_row["document_id"])
         self.assertIn(source, [a["source_version_id"]
                               for a in result["composer"]["source_anchors"]])
         self.assertEqual(result["authority"]["actor_policy"],
