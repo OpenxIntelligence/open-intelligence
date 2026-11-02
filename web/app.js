@@ -1231,10 +1231,15 @@ el('model-investigation-form').addEventListener('submit', async event => {
   event.preventDefault();
   try {
     const requestedCase = readyCase();
+    const contextFingerprint = el('composer-context-fingerprint').value;
+    if (!/^[a-f0-9]{64}$/.test(contextFingerprint)) {
+      throw Error('Preview and verify the current Composer source context before running.');
+    }
     await api('/api/cases/' + requestedCase + '/investigations', {
       question_id: Number(el('model-investigation-question').value),
       template: el('model-investigation-template').value,
       mode: el('model-investigation-mode').value,
+      context_fingerprint: contextFingerprint,
     });
     if (requestedCase !== caseId) return;
     notice('Model investigation stored as a hypothesis pending review.');
