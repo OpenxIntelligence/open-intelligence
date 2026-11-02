@@ -13,7 +13,7 @@ import re
 import sqlite3
 from collections.abc import Callable
 
-from .patient_registry import PatientRegistry, PatientRegistryError
+from .patient_registry import PatientRegistry, PatientRegistryError, PatientRegistryDenied
 from .store import CaseStore, InvalidInput, now_utc
 
 
@@ -95,7 +95,7 @@ class ClinicalSourceProvenance:
             raise ClinicalSourceLinkDenied("Clinical source access denied")
         try:
             self.registry.require_patient(patient_id)
-        except PatientRegistryError:
+        except (PatientRegistryError, PatientRegistryDenied):
             raise ClinicalSourceLinkDenied("Unknown patient") from None
 
     @staticmethod
