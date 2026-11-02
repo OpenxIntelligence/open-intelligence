@@ -323,6 +323,32 @@
               <label for="threat-anchor">Anchor for a sourced threat date (10–300 characters)</label><textarea id="threat-anchor" rows="2" maxlength="300"></textarea>
               <button class="button" type="submit">Add threat</button>
             </form>
+            <div class="subhead">Record counterevidence (hold or invalidate)</div>
+            <p class="muted tiny">Fictional demo only. When new evidence arrives, record here whether it holds or invalidates an option. The reason and its triggering source or evidence note are kept as history. A held or invalidated option cannot be promoted; a new proposal is the only path forward.</p>
+            <form id="option-counterevidence-form">
+              <label for="counterevidence-option-choice">Option</label><select id="counterevidence-option-choice" required></select>
+              <label for="counterevidence-effect">Effect</label>
+              <select id="counterevidence-effect"><option value="hold">Hold — new evidence argues against this option</option><option value="invalidate">Invalidate — new evidence reopens review of this option</option></select>
+              <label for="counterevidence-reason">Reason in plain words (10–600 characters)</label><textarea id="counterevidence-reason" rows="2" minlength="10" maxlength="600" required placeholder="What the new fictional evidence shows, and why this option is held or invalidated."></textarea>
+              <label for="counterevidence-trigger-kind">Triggering evidence kind</label>
+              <select id="counterevidence-trigger-kind"><option value="source">Source version</option><option value="evidence_assessment">Evidence assessment</option></select>
+              <label for="counterevidence-source-choice">Triggering source version</label><select id="counterevidence-source-choice"></select>
+              <label for="counterevidence-assessment-choice">Triggering evidence assessment</label><select id="counterevidence-assessment-choice"></select>
+              <button class="button" type="submit">Record counterevidence</button>
+            </form>
+            <div class="subhead">Record safety uncertainty</div>
+            <p class="muted tiny">Fictional demo only. Safety uncertainty stays visible before any option is promoted. Tumor expression alone or tracer uptake alone never establishes benefit or toxicity. Preclinical notes are labeled preclinical only — never an observed patient response and never permission to administer.</p>
+            <form id="option-safety-form">
+              <label for="safety-option-choice">Option</label><select id="safety-option-choice" required></select>
+              <label for="safety-category">Uncertainty kind</label>
+              <select id="safety-category"><option value="expression_only">Tumor expression alone (does not establish benefit or toxicity)</option><option value="tracer_only">Tracer uptake alone (does not establish benefit or toxicity)</option><option value="preclinical_only">Preclinical only (not a patient response; not permission to administer)</option><option value="cross_modal_gap">Cross-modal gap (safety question across sources)</option><option value="other">Other safety uncertainty</option></select>
+              <label for="safety-detail">Detail in plain words (10–600 characters)</label><textarea id="safety-detail" rows="2" minlength="10" maxlength="600" required placeholder="What is uncertain, in plain words. Do not state benefit, toxicity, patient response, permission, or dosing."></textarea>
+              <label for="safety-trigger-kind">Triggering evidence (optional)</label>
+              <select id="safety-trigger-kind"><option value="none">None — general uncertainty</option><option value="source">Source version</option><option value="evidence_assessment">Evidence assessment</option></select>
+              <label for="safety-source-choice">Triggering source version</label><select id="safety-source-choice"></select>
+              <label for="safety-assessment-choice">Triggering evidence assessment</label><select id="safety-assessment-choice"></select>
+              <button class="button" type="submit">Record safety uncertainty</button>
+            </form>
             <div class="subhead">Record a reviewer action</div>
             <form id="option-review-form">
               <label for="review-option-choice">Option</label><select id="review-option-choice" required></select>

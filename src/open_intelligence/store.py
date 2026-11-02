@@ -428,6 +428,34 @@ CREATE INDEX IF NOT EXISTS idx_option_deps_target ON option_dependencies(depends
 CREATE INDEX IF NOT EXISTS idx_option_tasks_option ON preparation_tasks(option_id);
 CREATE INDEX IF NOT EXISTS idx_option_threats_option ON optionality_threats(option_id);
 CREATE INDEX IF NOT EXISTS idx_option_reviews_option ON option_review_events(option_id);
+-- Counterevidence and safety-uncertainty surfacing: append-only records over
+-- the existing option ledger. No row here is ever updated or deleted; a hold
+-- or invalidation stays visible as history even after its triggering source
+-- or evidence version is superseded or withdrawn. These tables add
+-- new state only; they never replace snapshots, options, or review history.
+CREATE TABLE IF NOT EXISTS option_counterevidence (
+  id INTEGER PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(case_id),
+  option_id INTEGER NOT NULL REFERENCES options(id),
+  effect TEXT NOT NULL CHECK(effect IN ('hold','invalidate')),
+  reason TEXT NOT NULL,
+  source_version_id INTEGER REFERENCES source_versions(id),
+  evidence_assessment_id INTEGER REFERENCES evidence_assessments(id),
+  created_at TEXT NOT NULL,
+  CHECK((source_version_id IS NULL) != (evidence_assessment_id IS NULL))
+);
+CREATE TABLE IF NOT EXISTS option_safety_flags (
+  id INTEGER PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(case_id),
+  option_id INTEGER NOT NULL REFERENCES options(id),
+  category TEXT NOT NULL CHECK(category IN
+    ('expression_only','tracer_only','preclinical_only','cross_modal_gap','other')),
+  detail TEXT NOT NULL,
+  source_version_id INTEGER REFERENCES source_versions(id),
+  evidence_assessment_id INTEGER REFERENCES evidence_assessments(id),
+  created_at TEXT NOT NULL,
+  CHECK(source_version_id IS NULL OR evidence_assessment_id IS NULL)
+);
+CREATE INDEX IF NOT EXISTS idx_counterevidence_option ON option_counterevidence(option_id);
+CREATE INDEX IF NOT EXISTS idx_safety_flags_option ON option_safety_flags(option_id);
 -- OI-020 biological-asset provenance: an extension of the existing case and
 -- source model, NOT a second ledger. Assets are immutable rows anchored to
 -- one exact source version at creation; liveness lives only in the separate
@@ -712,6 +740,61 @@ class CaseStore:
             raise InvalidInput(f"{field} must not state a clinical recommendation, order, or eligibility claim")
         return text.strip()
 
+    # ---- Counterevidence and safety-uncertainty surfacing ----
+    # New evidence can hold or invalidate a promising option; the reason and
+    # its triggering source or evidence assessment are recorded append-only.
+    # Single-modality notes (tumor expression alone, tracer uptake alone)
+    # never establish benefit or toxicity, and preclinical notes are always
+    # labeled preclinical, never a patient response or permission.
+    COUNTEREFFECTS = frozenset({"hold", "invalidate"})
+    SAFETY_CATEGORIES = frozenset({
+        "expression_only", "tracer_only", "preclinical_only",
+        "cross_modal_gap", "other"})
+    SAFETY_LABELS = {
+        "expression_only": ("Tumor expression alone — does not establish benefit or "
+                            "toxicity. Fictional data only."),
+        "tracer_only": ("Tracer uptake alone — does not establish benefit or "
+                        "toxicity. Fictional data only."),
+        "preclinical_only": ("Preclinical only — not an observed patient response; "
+                             "not permission to administer. Fictional data only."),
+        "cross_modal_gap": ("Cross-modal safety uncertainty — stays visible before any "
+                            "promotion. Fictional data only."),
+        "other": ("Safety uncertainty — for clinician review. Fictional data only."),
+    }
+    # Narrow guards, not classifiers: the canonical labels above carry the
+    # meaning, and human review remains the gate.
+    _ESTABLISHED_BENEFIT = re.compile(
+        r"\b(benefit|toxicity|efficac\w*|effective\w*)\b.{0,60}"
+        r"\b(established|proven|confirmed|shown|demonstrated)\b"
+        r"|\b(established|proven|confirmed)\b.{0,60}"
+        r"\b(benefit|toxicity|efficac\w*)\b", re.IGNORECASE | re.DOTALL)
+    _PATIENT_RESPONSE_OR_PERMISSION = re.compile(
+        r"(observed|patient)\s+(response|benefit)"
+        r"|permission to administer|may administer"
+        r"|administer to (the )?patient|safe to administer"
+        r"|observed patient improvement", re.IGNORECASE)
+    _DOSING = re.compile(r"\b\d+\s*(mg|mcg|microgram|gram)s?\b|\b\d+\s*ml\b", re.IGNORECASE)
+
+    @staticmethod
+    def _check_counterevidence_reason(reason: object) -> str:
+        text = CaseStore._check_no_clinical_language(reason, "Counterevidence reason")
+        if not 10 <= len(text) <= 600:
+            raise InvalidInput("Counterevidence reason must have 10–600 characters")
+        return text
+
+    @staticmethod
+    def _check_safety_detail(category: str, detail: object) -> str:
+        text = CaseStore._check_no_clinical_language(detail, "Safety detail")
+        if not 10 <= len(text) <= 600:
+            raise InvalidInput("Safety detail must have 10–600 characters")
+        if CaseStore._DOSING.search(text):
+            raise InvalidInput("Safety detail must not state dosing")
+        if category in ("expression_only", "tracer_only") and CaseStore._ESTABLISHED_BENEFIT.search(text):
+            raise InvalidInput("Tumor expression or tracer uptake alone never establishes benefit or toxicity")
+        if category == "preclinical_only" and CaseStore._PATIENT_RESPONSE_OR_PERMISSION.search(text):
+            raise InvalidInput("Preclinical notes are never an observed patient response or permission to administer")
+        return text
+
     @staticmethod
     def _check_lead(value: object) -> int | None:
         if value is None:
@@ -762,6 +845,56 @@ class CaseStore:
             JOIN evidence_assessments a ON a.id=d.evidence_assessment_id
             WHERE d.option_id=? AND a.relation='contradicts' LIMIT 1""", (option_id,)).fetchone()
         return row is not None
+
+    def _option_blocked_by_counterevidence(self, option_id: int) -> bool:
+        """Any recorded hold or invalidation blocks promotion, permanently.
+
+        The record is append-only history: a later amendment never deletes
+        it, and reconfirmation cannot clear it. A new proposal on current
+        inputs is the only path forward, mirroring contradicted handling.
+        """
+        row = self.db.execute("SELECT 1 FROM option_counterevidence WHERE option_id=? LIMIT 1",
+                              (option_id,)).fetchone()
+        return row is not None
+
+    def _option_safety_block(self, option_id: int) -> str | None:
+        """Why safety uncertainty blocks promotion, or None when clear.
+
+        Every flag stays visible in the derived view; promotion is refused
+        while any flag exists, so uncertainty is surfaced for clinician
+        review and never resolved by the platform itself.
+        """
+        rows = self.db.execute(
+            "SELECT category FROM option_safety_flags WHERE option_id=? ORDER BY id",
+            (option_id,)).fetchall()
+        if not rows:
+            return None
+        categories = [r["category"] for r in rows]
+        if "expression_only" in categories or "tracer_only" in categories:
+            return "Tumor expression or tracer uptake alone never establishes benefit or toxicity"
+        if "preclinical_only" in categories:
+            return ("Preclinical only — not an observed patient response; "
+                    "not permission to administer")
+        if "cross_modal_gap" in categories:
+            return "Cross-modal safety uncertainty stays visible before any promotion"
+        return "Safety uncertainty stays visible before any promotion"
+
+    def _counterevidence_trigger(self, case_id: str, source_version_id: int | None,
+                                 evidence_assessment_id: int | None) -> tuple[str, str]:
+        """Human-readable trigger label plus its current freshness state."""
+        if source_version_id is not None:
+            src = self.db.execute(
+                "SELECT document_id,version,state FROM source_versions WHERE id=?",
+                (source_version_id,)).fetchone()
+            if not src:
+                return "missing source", "missing"
+            return f"{src['document_id']}@{src['version']}", str(src["state"])
+        asm = self.db.execute("""SELECT a.relation,v.evidence_key,v.version,v.state
+            FROM evidence_assessments a JOIN evidence_versions v ON v.id=a.evidence_version_id
+            WHERE a.id=?""", (evidence_assessment_id,)).fetchone()
+        if not asm:
+            return "missing assessment", "missing"
+        return (f"{asm['evidence_key']}@{asm['version']} · {asm['relation']}", str(asm["state"]))
 
     def _invalidate_options(self, *, snapshot_ids: set[int], source_version_ids: set[int],
                             evidence_version_ids: set[int],
@@ -870,7 +1003,9 @@ class CaseStore:
                     target = self._option_row(case_id, dep["depends_on_option_id"])
                     if (target["review_state"] != "current" or
                         target["operational_status"] in ("rejected", "withdrawn", "expired") or
-                        self._option_contradicted(target["id"])):
+                        self._option_contradicted(target["id"]) or
+                        self._option_blocked_by_counterevidence(target["id"]) or
+                        self._option_safety_block(target["id"]) is not None):
                         raise InvalidInput("Prerequisite option is not current or is held; review its basis first")
                     pending.append(target["id"])
 
@@ -959,7 +1094,9 @@ class CaseStore:
                     raise InvalidInput("An option cannot depend on itself")
                 if target["operational_status"] in ("rejected", "withdrawn", "expired"):
                     raise InvalidInput("An option cannot depend on a rejected, withdrawn, or expired option")
-                if target["review_state"] != "current" or self._option_contradicted(depends_on_option_id):
+                if (target["review_state"] != "current" or self._option_contradicted(depends_on_option_id)
+                        or self._option_blocked_by_counterevidence(depends_on_option_id)
+                        or self._option_safety_block(depends_on_option_id) is not None):
                     raise InvalidInput("Dependent option is not current or is held")
                 self._require_current_option_dependencies(case_id, depends_on_option_id)
                 # Cycle check inside the immediate transaction.
@@ -1043,6 +1180,113 @@ class CaseStore:
             self._reopen_option_dependents(case_id, option_id, "threat_added")
             return int(cur.lastrowid)
 
+    def add_option_counterevidence(self, case_id: str, option_id: int, effect: str, reason: str, *,
+                                   source_version_id: int | None = None,
+                                   evidence_assessment_id: int | None = None) -> int:
+        """Record that newly arrived evidence holds or invalidates an option.
+
+        Append-only: the row keeps its reason and triggering evidence even
+        after later amendments supersede that trigger. A hold blocks
+        promotion and shows the option as held; an invalidation additionally
+        reopens review of the option and its dependents. Neither is ever
+        cleared by reconfirmation; a new proposal is the only path forward.
+        """
+        self._case(case_id)
+        if effect not in self.COUNTEREFFECTS:
+            raise InvalidInput("Counterevidence effect must be 'hold' or 'invalidate'")
+        reason_text = self._check_counterevidence_reason(reason)
+        triggers = [x for x in (source_version_id, evidence_assessment_id) if x is not None]
+        if len(triggers) != 1 or type(triggers[0]) is not int or triggers[0] < 1:
+            raise InvalidInput("Counterevidence requires exactly one triggering source or evidence assessment")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            option = self._option_row(case_id, option_id)
+            if option["operational_status"] in ("rejected", "withdrawn", "expired"):
+                raise InvalidInput("Preserve the terminal option; create a new proposal instead")
+            if source_version_id is not None:
+                src = self.db.execute("SELECT state FROM source_versions WHERE id=? AND case_id=?",
+                                      (source_version_id, case_id)).fetchone()
+                if not src:
+                    raise InvalidInput("Triggering source version not in this case")
+                if src["state"] != "current":
+                    raise InvalidInput("Triggering source must be current when recorded")
+            else:
+                asm = self.db.execute("""SELECT v.state FROM evidence_assessments a
+                    JOIN evidence_versions v ON v.id=a.evidence_version_id
+                    WHERE a.id=? AND a.case_id=?""",
+                    (evidence_assessment_id, case_id)).fetchone()
+                if not asm:
+                    raise InvalidInput("Triggering evidence assessment not in this case")
+                if asm["state"] != "current":
+                    raise InvalidInput("Triggering evidence must be current when recorded")
+            cur = self.db.execute("""INSERT INTO option_counterevidence
+                (case_id,option_id,effect,reason,source_version_id,evidence_assessment_id,created_at)
+                VALUES (?,?,?,?,?,?,?)""",
+                (case_id, option_id, effect, reason_text, source_version_id,
+                 evidence_assessment_id, now_utc()))
+            self._event(case_id, "option_counterevidence_recorded", option_id=option_id,
+                        counterevidence_id=cur.lastrowid, effect=effect)
+            if effect == "invalidate":
+                changed = self._invalidate_options(snapshot_ids=set(), source_version_ids=set(),
+                                                    evidence_version_ids=set(), option_ids={option_id})
+                if changed:
+                    self._event(case_id, "option_review_reopened", option_id=option_id,
+                                reason="counterevidence_invalidate", invalidated_options=changed)
+            else:
+                self._reopen_option_dependents(case_id, option_id, "counterevidence_hold",
+                                               include_reviewed_self=False)
+            return int(cur.lastrowid)
+
+    def add_option_safety_flag(self, case_id: str, option_id: int, category: str, detail: str, *,
+                               source_version_id: int | None = None,
+                               evidence_assessment_id: int | None = None) -> int:
+        """Record a visible safety uncertainty for an option.
+
+        Append-only: flags stay in the derived view before any promotion and
+        are never stripped or auto-resolved. Each flag carries a canonical
+        plain-language label from the server, so the UI cannot show a
+        single-modality note as established benefit/toxicity or a
+        preclinical note as a patient response or permission.
+        """
+        self._case(case_id)
+        if category not in self.SAFETY_CATEGORIES:
+            raise InvalidInput("Invalid safety category")
+        detail_text = self._check_safety_detail(category, detail)
+        if source_version_id is not None and evidence_assessment_id is not None:
+            raise InvalidInput("Safety flag takes at most one triggering source or assessment")
+        for value in (source_version_id, evidence_assessment_id):
+            if value is not None and (type(value) is not int or value < 1):
+                raise InvalidInput("Safety trigger IDs must be positive integers")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            option = self._option_row(case_id, option_id)
+            if option["operational_status"] in ("rejected", "withdrawn", "expired"):
+                raise InvalidInput("Preserve the terminal option; create a new proposal instead")
+            if source_version_id is not None:
+                src = self.db.execute("SELECT state FROM source_versions WHERE id=? AND case_id=?",
+                                      (source_version_id, case_id)).fetchone()
+                if not src:
+                    raise InvalidInput("Triggering source version not in this case")
+                if src["state"] != "current":
+                    raise InvalidInput("Triggering source must be current when recorded")
+            if evidence_assessment_id is not None:
+                asm = self.db.execute("""SELECT v.state FROM evidence_assessments a
+                    JOIN evidence_versions v ON v.id=a.evidence_version_id
+                    WHERE a.id=? AND a.case_id=?""",
+                    (evidence_assessment_id, case_id)).fetchone()
+                if not asm:
+                    raise InvalidInput("Triggering evidence assessment not in this case")
+                if asm["state"] != "current":
+                    raise InvalidInput("Triggering evidence must be current when recorded")
+            cur = self.db.execute("""INSERT INTO option_safety_flags
+                (case_id,option_id,category,detail,source_version_id,evidence_assessment_id,created_at)
+                VALUES (?,?,?,?,?,?,?)""",
+                (case_id, option_id, category, detail_text, source_version_id,
+                 evidence_assessment_id, now_utc()))
+            self._event(case_id, "option_safety_flag_recorded", option_id=option_id,
+                        safety_flag_id=cur.lastrowid, category=category)
+            return int(cur.lastrowid)
+
     def review_option(self, case_id: str, option_id: int, reviewer_label: str, action: str,
                       scope: str, snapshot_id: int | None = None) -> dict:
         """Record one reviewer action. Approve is re-checked inside the
@@ -1058,6 +1302,15 @@ class CaseStore:
         scope = self._check_no_clinical_language(scope, "Review scope")
         if not 10 <= len(scope) <= 300:
             raise InvalidInput("Review scope must have 10–300 characters")
+        if action in ("approve", "reconfirm"):
+            # Promotion-time wording guard (narrow, not a classifier): a
+            # reviewer scope that itself claims established benefit/toxicity
+            # or a patient response/permission is refused, so single-modality
+            # or preclinical notes cannot be promoted into such a claim.
+            if self._ESTABLISHED_BENEFIT.search(scope):
+                raise InvalidInput("Tumor expression or tracer uptake alone never establishes benefit or toxicity")
+            if self._PATIENT_RESPONSE_OR_PERMISSION.search(scope):
+                raise InvalidInput("Preclinical notes are never an observed patient response or permission to administer")
         with self.db:
             self.db.execute("BEGIN IMMEDIATE")
             option = self._option_row(case_id, option_id)
@@ -1077,6 +1330,11 @@ class CaseStore:
                     raise InvalidInput("Option review is not current; reconfirm it after amendment before approval")
                 if self._option_contradicted(option_id):
                     raise InvalidInput("A contradicted option cannot be approved; record a rejection or abstention")
+                if self._option_blocked_by_counterevidence(option_id):
+                    raise InvalidInput("Option is held by recorded counterevidence; create a new proposal instead")
+                safety_block = self._option_safety_block(option_id)
+                if safety_block is not None:
+                    raise InvalidInput(safety_block + "; create a new proposal after clinician review")
                 if operational == "reviewed":
                     raise InvalidInput("Option is already reviewed")
                 if operational in ("rejected",):
@@ -1101,6 +1359,11 @@ class CaseStore:
                     raise InvalidInput("Replacement snapshot is missing or stale")
                 if self._option_contradicted(option_id):
                     raise InvalidInput("A contradicted option cannot be reconfirmed; record a rejection or abstention")
+                if self._option_blocked_by_counterevidence(option_id):
+                    raise InvalidInput("Option is held by recorded counterevidence; create a new proposal instead")
+                safety_block = self._option_safety_block(option_id)
+                if safety_block is not None:
+                    raise InvalidInput(safety_block + "; create a new proposal after clinician review")
                 self.db.execute("""UPDATE options SET snapshot_id=?,review_state='current',
                     operational_status='proposed' WHERE id=?""", (snapshot_id, option_id))
                 target_snapshot = snapshot_id
@@ -1152,7 +1415,9 @@ class CaseStore:
             if (not current or current["review_state"] != "current" or
                 current["snapshot_state"] == "stale" or
                 current["operational_status"] in ("rejected", "withdrawn", "expired") or
-                self._option_contradicted(current_id)):
+                self._option_contradicted(current_id) or
+                self._option_blocked_by_counterevidence(current_id) or
+                self._option_safety_block(current_id) is not None):
                 unresolved.add("prerequisite requires review or is unavailable")
                 return
             path = path + [current_id]
@@ -1269,20 +1534,44 @@ class CaseStore:
                     target = f"{other['label']} ({other['operational_status']})" if other else "missing option"
                 deps.append({**dict(dep), "target": target})
             contradicted = option["epistemic_status"] == "contradicted" or self._option_contradicted(option_id)
+            held_by_counterevidence = self._option_blocked_by_counterevidence(option_id)
+            safety_block = self._option_safety_block(option_id)
             derived_epistemic = "contradicted" if contradicted else option["epistemic_status"]
             display_operational = option["operational_status"]
-            if contradicted and display_operational in ("proposed", "reviewed"):
+            if (contradicted or held_by_counterevidence) and display_operational in ("proposed", "reviewed"):
                 display_operational = "held"
+            counterevidence = []
+            for row in self.db.execute(
+                    "SELECT * FROM option_counterevidence WHERE option_id=? ORDER BY id",
+                    (option_id,)).fetchall():
+                label, trigger_state = self._counterevidence_trigger(
+                    case_id, row["source_version_id"], row["evidence_assessment_id"])
+                counterevidence.append({**dict(row), "trigger": label, "trigger_state": trigger_state})
+            safety_flags = []
+            for row in self.db.execute(
+                    "SELECT * FROM option_safety_flags WHERE option_id=? ORDER BY id",
+                    (option_id,)).fetchall():
+                if row["source_version_id"] is None and row["evidence_assessment_id"] is None:
+                    label, trigger_state = "no single trigger (general uncertainty)", "not_applicable"
+                else:
+                    label, trigger_state = self._counterevidence_trigger(
+                        case_id, row["source_version_id"], row["evidence_assessment_id"])
+                safety_flags.append({**dict(row), "trigger": label, "trigger_state": trigger_state,
+                                     "display_label": self.SAFETY_LABELS[str(row["category"])]})
             options.append({
                 **dict(option),
                 "snapshot_state": snap["state"] if snap else "missing",
                 "derived_epistemic_status": derived_epistemic,
                 "display_operational_status": display_operational,
+                "held_by_counterevidence": held_by_counterevidence,
+                "safety_block": safety_block,
                 "dependencies": deps,
                 "preparation_tasks": self._dicts(self.db.execute(
                     "SELECT * FROM preparation_tasks WHERE option_id=? ORDER BY id", (option_id,)).fetchall()),
                 "threats": self._dicts(self.db.execute(
                     "SELECT * FROM optionality_threats WHERE option_id=? ORDER BY id", (option_id,)).fetchall()),
+                "counterevidence": counterevidence,
+                "safety_flags": safety_flags,
                 "review_events": reviews,
                 "proposal_snapshot_id": origins.get(option_id),
                 "associated_snapshot_ids": sorted(associations),
@@ -1297,7 +1586,10 @@ class CaseStore:
             "projection_mode": "current_state_with_review_history",
             "disclaimer": ("For discussion only. This view states no clinical eligibility, safety, or next step. "
                            "A potential discussion deadline is not a clinical deadline. "
-                           "Snapshot filtering shows current state and recorded associations, not as-known-at replay."),
+                           "Snapshot filtering shows current state and recorded associations, not as-known-at replay. "
+                           "Recorded counterevidence holds and safety uncertainties stay visible; "
+                           "single-modality or preclinical notes never establish benefit, toxicity, "
+                           "patient response, or permission to administer."),
             "options": options,
         }
 
