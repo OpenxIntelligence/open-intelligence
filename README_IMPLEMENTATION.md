@@ -57,6 +57,21 @@ The UI can register an original fictional evidence item, attach a manually-autho
 
 The labels `supports`, `contradicts`, and `applicable` are human-entered **fictional engineering data**, not determinations of evidence quality, clinical benefit, trial eligibility, or clinical relevance. The prototype has no clinician identity verification or legal rights-verification service. Never use real patient records or copyrighted publication text. Run the unit/HTTP tests before reviewing the UI; browser execution requires a separate interactive verification.
 
+## Clinician review queue and sign-off receipts
+
+The case workspace includes a **Review queue** panel (nav link and case-overview button, `#review-queue`). It is a derived projection over the existing ledger — human investigation drafts, model investigations, amended source versions, held or re-review discussion options, and fictional evidence assessments — with age and status, oldest first. It creates no second ledger.
+
+```text
+GET  /api/cases/{CASE-ID}/review-queue
+POST /api/cases/{CASE-ID}/review-queue/receipts
+```
+
+A receipt posts `{"queue_key": "...", "action": "reviewed|acknowledged|returned", "reviewer_label": "...", "reason": "..."}`. Reviewed and acknowledged resolve the current version of the item; returned requires a 10–600 character reason and keeps the item visibly queued with that reason. Receipts are append-only: there is no update or delete path, and a second terminal decision for the same version is rejected.
+
+Each item carries a fingerprint of the ledger state it was reviewed against, so an amendment or evidence withdrawal reopens the item with its earlier decisions preserved as history instead of silently carrying them forward. The existing demo acknowledgment and option-review routes append a matching queue receipt in the same transaction, so no item leaves the queue without a recorded decision. Nothing is auto-approved, auto-dismissed, or removed because of age.
+
+A sign-off records that a person looked; it never approves, authorizes, or recommends any treatment, test, or procedure. Recommendation/order/eligibility language is rejected in reviewer labels and reasons. Reviewer labels are unverified demo text, not credentialed identity. This slice covers evidence assessments as new evidence; broker and discovery links are not yet queued.
+
 ## Bibliographic metadata panel
 
 The public bibliography panel is **not linked to the selected synthetic patient**. It displays an authored Crossref-format test record using an offline local JSON fixture. The local demo server denies live lookups by default. To explicitly enable an operator-requested DOI-only Crossref lookup:

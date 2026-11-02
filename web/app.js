@@ -61,7 +61,8 @@ async function initialize() {
     picker.addEventListener('change', () => {
       // An unfinished narrative must never silently become attached to another case.
       if ((['draft-observations', 'draft-summary', 'draft-assumptions', 'evidence-rationale',
-            'evidence-withdraw-reason', 'option-description'].some(id => el(id).value.trim()))) {
+            'evidence-withdraw-reason', 'option-description'].some(id => el(id).value.trim())) ||
+          [...el('review-awaiting').querySelectorAll('input, textarea')].some(x => x.value.trim())) {
         picker.value = caseId;
         notice('Save or explicitly clear the unfinished investigation draft before switching cases.', true);
         return;
@@ -553,6 +554,7 @@ function render() {
   }
   loadModelInvestigations();
   loadChangesSinceReview();
+  loadReviewQueue();
   clear('quarantine-list');
   for (const entry of active.quarantines) {
     el('quarantine-list').append(node('div', 'Quarantined #' + entry.id + ': declared ' + entry.declared_patient_id + ', not ' + caseId + ', no assertions imported', 'quarantine'));
@@ -997,6 +999,114 @@ function renderOptions() {
         e.action + ' by ' + e.reviewer_label + ' · scope: ' + e.scope).join(' ; '), 'snapshot-meta'));
     }
     el('option-list').append(box);
+  }
+}
+function reviewAgeText(days) {
+  if (!Number.isInteger(days) || days <= 0) return 'added today';
+  return days === 1 ? '1 day old' : days + ' days old';
+}
+async function loadReviewQueue() {
+  const requested = caseId;
+  for (const id of ['review-awaiting', 'review-resolved', 'review-receipts']) clear(id);
+  el('review-queue-disclaimer').textContent = '';
+  try {
+    const data = await api('/api/cases/' + requested + '/review-queue');
+    if (requested !== caseId || !active || active.case.case_id !== requested) return;
+    renderReviewQueue(data);
+  } catch (err) {
+    if (requested !== caseId) return;
+    el('review-queue-disclaimer').textContent = 'Review queue unavailable: ' + err.message;
+    empty(el('review-awaiting'), 'Review queue unavailable.');
+    empty(el('review-resolved'), 'Review queue unavailable.');
+    empty(el('review-receipts'), 'Review queue unavailable.');
+  }
+}
+function renderReviewQueue(data) {
+  el('review-queue-disclaimer').textContent = (data.synthetic ? 'Fictional synthetic data only. ' : '') + (data.disclaimer || '');
+  clear('review-awaiting');
+  const awaiting = data.awaiting || [];
+  if (!awaiting.length) empty(el('review-awaiting'), 'Nothing waiting for review in this fictional case.');
+  for (const item of awaiting) {
+    const box = node('div', null, 'snapshot');
+    const top = node('div', null, 'topline');
+    top.append(node('strong', item.title),
+      pill(item.kind, 'pill-neutral'),
+      pill(item.status === 'returned' ? 'returned' : 'waiting', item.status === 'returned' ? 'pill-warn' : 'pill-alert'),
+      pill(reviewAgeText(item.age_days)));
+    box.append(top, node('p', item.detail),
+      node('p', 'Listed since ' + item.created_at + '.', 'snapshot-meta'));
+    if (item.reopened_after_change)
+      box.append(node('p', 'Reopened after a change. Earlier decisions are kept below; they no longer cover the current version.', 'muted'));
+    if (item.status === 'returned')
+      box.append(node('p', 'Returned by ' + item.returned_by + ': ' + item.return_reason, 'muted'));
+    for (const prior of item.prior_receipts || [])
+      box.append(node('p', 'Earlier: ' + prior.action + ' by ' + prior.reviewer_label +
+        ' on ' + prior.created_at + ' (older version).', 'muted tiny'));
+    const form = document.createElement('form');
+    form.className = 'withdraw-form';
+    const reviewerLabel = document.createElement('label');
+    reviewerLabel.textContent = 'Reviewer label (unverified demo label)';
+    const reviewer = document.createElement('input');
+    reviewer.type = 'text'; reviewer.maxLength = 80; reviewer.required = true;
+    reviewer.placeholder = 'Synthetic reviewer (unverified)';
+    reviewerLabel.append(reviewer);
+    const actionLabel = document.createElement('label');
+    actionLabel.textContent = 'Decision';
+    const action = document.createElement('select');
+    for (const [value, text] of [['reviewed', 'Reviewed — I looked at this item'],
+        ['acknowledged', 'Acknowledged — I saw this item'],
+        ['returned', 'Returned — needs more work (reason required)']]) {
+      const opt = node('option', text); opt.value = value; action.append(opt);
+    }
+    actionLabel.append(action);
+    const reasonLabel = document.createElement('label');
+    reasonLabel.textContent = 'Reason (required when returned)';
+    const reason = document.createElement('textarea');
+    reason.rows = 2; reason.maxLength = 600;
+    reason.placeholder = 'What did you look at, or what is still needed? No treatment language.';
+    reasonLabel.append(reason);
+    const submit = node('button', 'Record sign-off', 'button minor');
+    submit.type = 'submit';
+    form.append(reviewerLabel, actionLabel, reasonLabel, submit);
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      try {
+        const requestedCase = readyCase();
+        await api('/api/cases/' + requestedCase + '/review-queue/receipts', {
+          queue_key: item.queue_key, action: action.value,
+          reviewer_label: reviewer.value, reason: reason.value.trim() || null,
+        });
+        if (requestedCase !== caseId) return;
+        notice(action.value === 'returned'
+          ? 'Returned with reason. The item stays visibly queued.'
+          : 'Sign-off recorded. This is an acknowledgment, not a treatment authorization.');
+        await refresh();
+      } catch (err) { notice(err.message, true); }
+    });
+    box.append(form);
+    el('review-awaiting').append(box);
+  }
+  clear('review-resolved');
+  const resolved = data.resolved || [];
+  if (!resolved.length) empty(el('review-resolved'), 'No recorded decisions yet in this fictional case.');
+  for (const item of resolved) {
+    const box = node('div', null, 'snapshot');
+    const top = node('div', null, 'topline');
+    top.append(node('strong', item.title), pill(item.kind, 'pill-neutral'), pill('decided'));
+    box.append(top, node('p', item.detail, 'muted'));
+    const by = item.resolved_by || {};
+    box.append(node('p', (by.action || 'decided') + ' by ' + (by.reviewer_label || 'unknown reviewer') +
+      ' on ' + (by.created_at || 'unknown time') +
+      (by.reason ? '. Note: ' + by.reason : ''), 'snapshot-meta'));
+    el('review-resolved').append(box);
+  }
+  clear('review-receipts');
+  const receipts = data.receipts || [];
+  if (!receipts.length) empty(el('review-receipts'), 'No sign-off records yet. Records are append-only and never edited or deleted.');
+  for (const receipt of receipts.slice().reverse()) {
+    const card = node('div', receipt.queue_key + ' — ' + receipt.action + ' by ' + receipt.reviewer_label, 'event');
+    card.append(node('small', receipt.created_at + (receipt.reason ? ' · ' + receipt.reason : '')));
+    el('review-receipts').append(card);
   }
 }
 function renderBibliography(record) {

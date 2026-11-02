@@ -166,6 +166,9 @@ class Handler(BaseHTTPRequestHandler):
             timeline = re.fullmatch(rf"/api/cases/{ID_PART}/timeline", path)
             if timeline:
                 return self._json(200, case_timeline(store, timeline[1]))
+            review_queue = re.fullmatch(rf"/api/cases/{ID_PART}/review-queue", path)
+            if review_queue:
+                return self._json(200, store.review_queue(review_queue[1]))
             inv_list = re.fullmatch(rf"/api/cases/{ID_PART}/investigations", path)
             if inv_list:
                 return self._json(200, {"investigations": store.list_investigations(inv_list[1])})
@@ -306,6 +309,11 @@ class Handler(BaseHTTPRequestHandler):
                 if review:
                     store.acknowledge_demo_review(review[1], int(review[2]), data.get("reviewer_label"))
                     return self._json(200, {"result": "acknowledged_in_demo"})
+                queue_receipt = re.fullmatch(rf"/api/cases/{ID_PART}/review-queue/receipts", path)
+                if queue_receipt:
+                    return self._json(201, store.add_review_receipt(
+                        queue_receipt[1], data.get("queue_key"), data.get("action"),
+                        data.get("reviewer_label"), data.get("reason")))
                 option_create = re.fullmatch(rf"/api/cases/{ID_PART}/options", path)
                 if option_create:
                     option_id = store.create_option(
