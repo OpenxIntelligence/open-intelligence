@@ -151,6 +151,20 @@ def install(conn: sqlite3.Connection) -> None:
           PRIMARY KEY(consumer_id,event_id)
         )
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS platform_consumer_aggregate_versions (
+          consumer_id TEXT NOT NULL,
+          issuer_namespace TEXT NOT NULL,
+          owner_domain TEXT NOT NULL,
+          aggregate_type TEXT NOT NULL,
+          aggregate_id TEXT NOT NULL,
+          subject_binding_id TEXT NOT NULL,
+          last_revision INTEGER NOT NULL CHECK(last_revision >= 1),
+          last_event_id TEXT NOT NULL,
+          PRIMARY KEY(consumer_id,issuer_namespace,owner_domain,aggregate_type,aggregate_id)
+        )
+    """)
+
 
 
 def enqueue(conn: sqlite3.Connection, event: Mapping[str, Any]) -> bool:
@@ -287,13 +301,66 @@ def consume_once(conn: sqlite3.Connection, consumer: str,
     ts = int(time.time()) if now is None else now
     if type(ts) is not int or ts < 0:
         raise OutboxContractError("invalid consumer epoch timestamp")
-    apply_effect(conn, canonical)
+    # Isolate callback writes even if its exception is caught by the caller.
+    # No callback may COMMIT or perform irreversible external side effects.
+    conn.execute("SAVEPOINT oi_consumer_effect")
     try:
+        apply_effect(conn, canonical)
         conn.execute(
             "INSERT INTO platform_inbox_receipts "
             "(consumer_id,event_id,event_hash,applied_at) VALUES (?,?,?,?)",
             (consumer, canonical["event_id"], digest, ts),
         )
-    except sqlite3.IntegrityError:
-        raise OutboxContractError("concurrent inbox receipt conflict; retry transaction") from None
+        conn.execute("RELEASE SAVEPOINT oi_consumer_effect")
+    except BaseException:
+        if conn.in_transaction:
+            conn.execute("ROLLBACK TO SAVEPOINT oi_consumer_effect")
+            conn.execute("RELEASE SAVEPOINT oi_consumer_effect")
+        raise
     return True
+
+
+def consume_ordered(conn: sqlite3.Connection, consumer: str,
+                    event: Mapping[str, Any],
+                    apply_effect: Callable[[sqlite3.Connection, dict[str, Any]], None],
+                    *, now: int | None = None) -> bool:
+    """Apply only sequential revisions to a stable, explicitly bound subject.
+
+    Reference fencing is not clinical authorization. Each caller must verify
+    trusted grants, actual patient/specimen mapping and source rights.
+    """
+    canonical = validate_event(event)
+    binding = canonical["subject_binding_id"]
+    if binding is None:
+        raise OutboxContractError("ordered consumer requires explicit subject binding")
+    agg = canonical["aggregate"]
+
+    def guarded(db: sqlite3.Connection, ev: dict[str, Any]) -> None:
+        key = (consumer, ev["issuer_namespace"], ev["owner_domain"], agg["type"], agg["id"])
+        previous = db.execute(
+            "SELECT subject_binding_id,last_revision FROM platform_consumer_aggregate_versions "
+            "WHERE consumer_id=? AND issuer_namespace=? AND owner_domain=? "
+            "AND aggregate_type=? AND aggregate_id=?", key,
+        ).fetchone()
+        if previous is not None and previous[0] != binding:
+            raise OutboxContractError("aggregate subject binding changed; reconcile explicitly")
+        expected = 1 if previous is None else previous[1] + 1
+        if agg["revision"] != expected:
+            raise OutboxContractError(f"aggregate revision expected {expected}; got {agg['revision']}")
+        apply_effect(db, ev)
+        if previous is None:
+            db.execute(
+                "INSERT INTO platform_consumer_aggregate_versions "
+                "(consumer_id,issuer_namespace,owner_domain,aggregate_type,aggregate_id,"
+                "subject_binding_id,last_revision,last_event_id) VALUES (?,?,?,?,?,?,?,?)",
+                key + (binding, agg["revision"], ev["event_id"]),
+            )
+        else:
+            db.execute(
+                "UPDATE platform_consumer_aggregate_versions SET last_revision=?,last_event_id=? "
+                "WHERE consumer_id=? AND issuer_namespace=? AND owner_domain=? "
+                "AND aggregate_type=? AND aggregate_id=?",
+                (agg["revision"], ev["event_id"]) + key,
+            )
+
+    return consume_once(conn, consumer, canonical, guarded, now=now)
