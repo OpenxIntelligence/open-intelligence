@@ -47,14 +47,14 @@ class SyntheticWorldModelTests(unittest.TestCase):
         record = self.store.import_report(
             "CASE-ALPHA", (FIXTURES / "alpha-pathology-original.txt").read_bytes()
         )
-        model = synthetic_world_model(self.store.state("CASE-ALPHA"))
+        model = synthetic_world_model(self.store.state("CASE-ALPHA"), "CASE-ALPHA")
         self.assertEqual(model["contract"], "oi.synthetic-world-model/1")
         self.assertEqual(model["case_id"], "CASE-ALPHA")
         self.assertEqual(model["authority"], "source_report_only_unreviewed")
         self.assertEqual(model["clinical_interpretation"], "not_generated")
         self.assertTrue(model["synthetic"])
         self.assertEqual(model["summary"]["current_sources"], 1)
-        self.assertEqual(model["summary"]["current_observations"], 2)
+        self.assertEqual(model["summary"]["current_observations"], 3)
         for observation in model["observations"]:
             self.assertEqual(observation["source_version_id"], record["source_id"])
             self.assertTrue(observation["document_id"])
@@ -73,12 +73,12 @@ class SyntheticWorldModelTests(unittest.TestCase):
         previous = self.store.import_report(
             "CASE-ALPHA", (FIXTURES / "alpha-pathology-original.txt").read_bytes()
         )
-        before = synthetic_world_model(self.store.state("CASE-ALPHA"))
+        before = synthetic_world_model(self.store.state("CASE-ALPHA"), "CASE-ALPHA")
         self.assertIn("not-reported", {x["reported_state"] for x in before["unresolved"]})
         amended = self.store.import_report(
             "CASE-ALPHA", (FIXTURES / "alpha-pathology-amended.txt").read_bytes()
         )
-        after = synthetic_world_model(self.store.state("CASE-ALPHA"))
+        after = synthetic_world_model(self.store.state("CASE-ALPHA"), "CASE-ALPHA")
         self.assertEqual(after["summary"]["current_sources"], 1)
         self.assertEqual(after["summary"]["superseded_sources"], 1)
         self.assertEqual({x["source_version_id"] for x in after["observations"]},
@@ -96,7 +96,7 @@ class SyntheticWorldModelTests(unittest.TestCase):
             "CASE-ALPHA", "SRC-ONE", "SPECIMEN-ONE", "marker-z", "reported"))
         self.store.import_report("CASE-ALPHA", fictional_report(
             "CASE-ALPHA", "SRC-TWO", "SPECIMEN-ONE", "marker-z", "negative"))
-        model = synthetic_world_model(self.store.state("CASE-ALPHA"))
+        model = synthetic_world_model(self.store.state("CASE-ALPHA"), "CASE-ALPHA")
         self.assertEqual(len(model["conflicts"]), 1)
         conflict = model["conflicts"][0]
         self.assertEqual(conflict["status"], "unresolved_source_disagreement")
@@ -114,7 +114,7 @@ class SyntheticWorldModelTests(unittest.TestCase):
             "CASE-ALPHA", "SRC-THREE", None, "marker-z", "negative"))
         self.store.import_report("CASE-ALPHA", fictional_report(
             "CASE-ALPHA", "SRC-FOUR", None, "marker-z", "reported"))
-        result = synthetic_world_model(self.store.state("CASE-ALPHA"))
+        result = synthetic_world_model(self.store.state("CASE-ALPHA"), "CASE-ALPHA")
         self.assertEqual(result["conflicts"], [])
         self.assertEqual(len(result["observations"]), 4)
 
@@ -123,8 +123,8 @@ class SyntheticWorldModelTests(unittest.TestCase):
             (FIXTURES / "beta-pathology.txt").read_bytes())
         self.store.import_report("CASE-ALPHA",
             (FIXTURES / "alpha-pathology-original.txt").read_bytes())
-        alpha = synthetic_world_model(self.store.state("CASE-ALPHA"))
-        beta = synthetic_world_model(self.store.state("CASE-BETA"))
+        alpha = synthetic_world_model(self.store.state("CASE-ALPHA"), "CASE-ALPHA")
+        beta = synthetic_world_model(self.store.state("CASE-BETA"), "CASE-BETA")
         self.assertEqual(alpha["case_id"], "CASE-ALPHA")
         self.assertEqual(beta["case_id"], "CASE-BETA")
         self.assertTrue(all(item["document_id"] != "PATH-BETA"
@@ -142,15 +142,15 @@ class SyntheticWorldModelTests(unittest.TestCase):
         snapshot = self.store.create_snapshot("CASE-ALPHA", question_id,
             "Fictional investigator summary only", [source["source_id"]])
         before_state = self.store.state("CASE-ALPHA")
-        first = synthetic_world_model(before_state)
-        second = synthetic_world_model(self.store.state("CASE-ALPHA"))
+        first = synthetic_world_model(before_state, "CASE-ALPHA")
+        second = synthetic_world_model(self.store.state("CASE-ALPHA"), "CASE-ALPHA")
         self.assertEqual(first, second)
         self.assertEqual(self.store.state("CASE-ALPHA")["events"],
                          before_state["events"])
         self.assertIn(snapshot, first["review_needed"]["draft_snapshot_ids"])
         self.store.import_report("CASE-ALPHA",
             (FIXTURES / "alpha-pathology-amended.txt").read_bytes())
-        after = synthetic_world_model(self.store.state("CASE-ALPHA"))
+        after = synthetic_world_model(self.store.state("CASE-ALPHA"), "CASE-ALPHA")
         self.assertIn(snapshot, after["review_needed"]["stale_snapshot_ids"])
         self.assertNotIn(snapshot, after["review_needed"]["draft_snapshot_ids"])
         self.assertIn(question_id, after["review_needed"]["open_question_ids"])
@@ -162,9 +162,9 @@ class SyntheticWorldModelTests(unittest.TestCase):
         copied = dict(state)
         copied["assertions"] = [dict(state["assertions"][0], source_version_id=99999)]
         with self.assertRaises(InvalidInput):
-            synthetic_world_model(copied)
+            synthetic_world_model(copied, "CASE-ALPHA")
         with self.assertRaises(InvalidInput):
-            synthetic_world_model(dict(state, case={"case_id": "wrong-case"}))
+            synthetic_world_model(dict(state, case={"case_id": "wrong-case"}), "CASE-ALPHA")
 
     def test_http_endpoint_is_explicitly_synthetic_and_case_scoped(self):
         self.store.import_report("CASE-ALPHA",
