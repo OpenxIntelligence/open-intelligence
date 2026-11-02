@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import hmac
 import json
+from decimal import Decimal, InvalidOperation
 
 from .clinical_knowledge_context import AuthorizedClinicalKnowledge
 from .clinical_continuity import ClinicalContinuityError
@@ -37,6 +38,10 @@ class PatientResearchReview:
             return []
         if payload.get("task_kind") != "deterministic_synthetic_numeric_comparison":
             raise ClinicalContinuityError("unexpected computation kind")
+        if (payload.get("tool_id") != "synthetic-lab-trend-v1" or
+                payload.get("question_id") != run["question_id"] or
+                payload.get("context_fingerprint") != run["context_fingerprint"]):
+            raise ClinicalContinuityError("computation receipt context mismatch")
         result = payload.get("result")
         if not isinstance(result, dict) or result.get("case_id") != case_id:
             raise ClinicalContinuityError("computation result has wrong subject")
@@ -76,6 +81,35 @@ class PatientResearchReview:
             verified.append({"source_version_id":r["id"],
                              "source_hash":r["sha256"],
                              "source_state":r["state"]})
+        if result.get("status") == "computed":
+            pts = result["points"]
+            if len(pts) < 2:
+                raise ClinicalContinuityError("computed result lacks two source observations")
+            ordered = sorted(pts, key=lambda p: (
+                p["source"]["event_date"], p["source"]["issued_at"],
+                p["source"]["received_at"], p["source"]["source_version_id"]))
+            if pts != ordered:
+                raise ClinicalContinuityError("computed measurement ordering changed")
+            units = {p["unit"] for p in pts}
+            if len(units) != 1 or any(
+                    p.get("qc") != "passed_declared_by_synthetic_source_not_independently_verified"
+                    for p in pts):
+                raise ClinicalContinuityError("numeric unit or QC receipt changed")
+            if len({p["source"]["event_date"] for p in pts}) != len(pts):
+                raise ClinicalContinuityError("ambiguous measured date sequence")
+            try:
+                delta = Decimal(pts[-1]["value"]) - Decimal(pts[0]["value"])
+            except (InvalidOperation, TypeError, ValueError):
+                raise ClinicalContinuityError("invalid numeric source receipt") from None
+            direction = ("numeric_increase" if delta > 0 else
+                         "numeric_decrease" if delta < 0 else "numeric_unchanged")
+            if (result.get("delta") != format(delta,"f") or
+                    result.get("direction") != direction or
+                    result.get("unit") != pts[0]["unit"] or
+                    result.get("start_date") != pts[0]["source"]["event_date"] or
+                    result.get("end_date") != pts[-1]["source"]["event_date"] or
+                    result.get("analysis_executed") is not True):
+                raise ClinicalContinuityError("stored arithmetic differs from original source values")
         return verified
 
     def snapshot(self, patient_id: str, case_id: str, question_id: int,
