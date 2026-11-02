@@ -200,6 +200,13 @@ class ClinicalContinuityView:
         ).fetchall()
         lab = [self._lab_record(patient_id, case_id, dict(r)) for r in rows]
         note_reviews = context["note_versions_requiring_source_review"]
+        # A case grant can be revoked between the clinical source read and the
+        # independent lab receiver read. Revalidate both policy boundaries
+        # before releasing even an evidence pointer. This narrows, but does
+        # not replace, the need for production cross-store snapshot control.
+        self._authorize(patient_id, case_id, actor, purpose)
+        self.provenance._allow(patient_id, case_id, actor=actor,
+                               purpose=purpose, action="patient_context.read")
         return {
             "contract": "oi.clinical-continuity-review/1",
             "patient_id": patient_id,
