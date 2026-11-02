@@ -37,7 +37,10 @@ jobs:
           set -o pipefail
           PYTHONPATH=src python tests/browser_journey.py 2>&1 | tee verification-artifacts/browser-tests.txt
       - name: Patient Mission browser journey (headless Chromium)
-        run: PYTHONPATH=src python tests/patient_mission_browser_journey.py
+        shell: bash
+        run: |
+          set -o pipefail
+          PYTHONPATH=src python tests/patient_mission_browser_journey.py 2>&1 | tee verification-artifacts/mission-tests.txt
       - name: Record exact synthetic source under test
         if: always()
         run: |

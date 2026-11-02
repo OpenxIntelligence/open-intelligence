@@ -4,6 +4,8 @@ let caseId = null;
 let active = null;
 let refreshSequence = 0;
 let renderedCaseId = null;
+let caseCatalog = [];
+let incomingBoardSequence = 0;
 const el = (id) => document.getElementById(id);
 function node(tag, text, className = '') {
   const item = document.createElement(tag);
@@ -45,6 +47,7 @@ function focusOverviewFromCasePicker(event) {
 async function initialize() {
   try {
     const cases = await api('/api/cases');
+    caseCatalog = cases;
     const picker = el('case-picker');
     picker.addEventListener('keydown', focusOverviewFromCasePicker);
     for (const entry of cases) {
@@ -57,7 +60,6 @@ async function initialize() {
       notice('Run PYTHONPATH=src python -m open_intelligence seed before opening the demo.', true);
       return;
     }
-    await renderIncomingBoard(cases);
     picker.addEventListener('change', () => {
       // An unfinished narrative must never silently become attached to another case.
       if ((['draft-observations', 'draft-summary', 'draft-assumptions', 'evidence-rationale',
@@ -80,9 +82,11 @@ async function initialize() {
   } catch (err) { notice(err.message, true); }
 }
 async function renderIncomingBoard(cases) {
+  const sequence = ++incomingBoardSequence;
   const list = el('incoming-list');
   clear('incoming-list');
   if (!cases.length) { empty(list, 'No fictional cases in this demo.'); return; }
+  empty(list, 'Refreshing fictional case summaries; these are not clinical triage.');
   const summaries = [];
   for (const entry of cases) {
     try {
@@ -93,12 +97,15 @@ async function renderIncomingBoard(cases) {
         label: entry.label, caseId: entry.case_id, latestEvent,
         currentSources: state.sources.filter(s => s.state === 'current').length,
         openQuestions: state.questions.filter(q => q.state === 'open').length,
+        reviewRequired: currentReviewQuestionIds(state).size,
         stale: state.snapshots.filter(s => s.state === 'stale').length,
       });
     } catch (err) {
       summaries.push({ label: entry.label, caseId: entry.case_id, latestEvent: '', error: err.message });
     }
   }
+  if (sequence !== incomingBoardSequence) return;
+  clear('incoming-list');
   // Most recent source event first. No urgency is inferred: the demo data
   // has no triage field, so sorting is by recency of the record only.
   summaries.sort((a, b) => b.latestEvent.localeCompare(a.latestEvent));
@@ -110,7 +117,8 @@ async function renderIncomingBoard(cases) {
     else text.append(node('p', 'Most recent source event: ' + (summary.latestEvent || 'none recorded') +
       ' · Current source documents: ' + summary.currentSources +
       ' · Open questions: ' + summary.openQuestions +
-      ' · Drafts needing another look: ' + summary.stale, 'muted'));
+      ' · Open source-change reviews: ' + summary.reviewRequired +
+      ' · Historical stale drafts: ' + summary.stale, 'muted'));
     const open = node('button', 'Open this case', 'button secondary minor');
     open.type = 'button';
     open.addEventListener('click', () => {
@@ -128,6 +136,13 @@ const CERTAINTY_PLAIN = {
   conflicting: 'different reports disagree', 'not-reported': 'not reported',
   'not-assessed': 'not assessed',
 };
+function currentReviewQuestionIds(state) {
+  // A historical snapshot remains stale after its question is resolved.
+  // Count distinct currently open questions, never retained history as work.
+  const open = new Set(state.questions.filter(q => q.state === 'open').map(q => Number(q.id)));
+  return new Set(state.snapshots.filter(s => s.state === 'stale' && open.has(Number(s.question_id)))
+    .map(s => Number(s.question_id)));
+}
 function renderPatientView() {
   clear('patient-timeline'); clear('patient-findings'); clear('patient-questions'); clear('patient-uncertainty');
   if (!active) return;
@@ -136,8 +151,17 @@ function renderPatientView() {
   for (const group of groups) {
     const item = node('div', null, 'question');
     const amended = group.versions.length > 1;
-    item.append(node('p', 'On ' + group.eventDate + ', a ' + group.kind + ' report (' + group.documentId + ') was recorded.' +
-      (amended ? ' This report was later corrected; the latest version is the one shown in the workspace, and older versions are kept.' : '')));
+    item.append(node('p', 'Reported event date: ' + group.eventDate + '. ' +
+      group.kind + ' report (' + group.documentId + ').' +
+      (amended ? ' Multiple versions of this report are kept; their dates are listed separately.' : '')));
+    // Event, report issue and workspace receipt are different clocks. A late
+    // arrival or amendment must not be presented as a new biological event.
+    const dateText = value => typeof value === 'string' && value.trim() ? value : 'not recorded';
+    for (const version of group.versions) {
+      item.append(node('p', 'Report version ' + version.version + ' (' + version.state + ')' +
+        ' · Issued: ' + dateText(version.issued_at) +
+        ' · Received by this workspace: ' + dateText(version.received_at), 'snapshot-meta'));
+    }
     el('patient-timeline').append(item);
   }
   if (!active.assertions.length) empty(el('patient-findings'), 'No reported findings yet in this fictional case.');
@@ -157,10 +181,18 @@ function renderPatientView() {
   }
   const stale = active.snapshots.filter(s => s.state === 'stale').length;
   const superseded = active.sources.filter(s => s.state !== 'current').length;
-  const notes = [];
-  if (stale) notes.push(stale + ' earlier draft(s) need another look because a report changed since they were written.');
+  const reviewRequired = currentReviewQuestionIds(active).size;
+  const notes = [reviewRequired + ' open source-change review(s) in this demonstration. ' +
+    'This counts open questions with older drafts affected by changed source material, not every historical draft.'];
+  if (stale) notes.push(stale + ' older draft(s) are retained as history; they are not current conclusions.');
+  if (open.length) notes.push(open.length + ' open question(s) remain unanswered in this demonstration.');
+  for (const assertion of active.assertions) {
+    if (['pending', 'indeterminate', 'conflicting', 'not-reported', 'not-assessed'].includes(assertion.certainty))
+      notes.push('Source says: ' + assertion.finding_key + ' — ' + CERTAINTY_PLAIN[assertion.certainty] +
+        '. Exact source version #' + assertion.source_version_id + ', line ' + assertion.source_line + '.');
+  }
   if (superseded) notes.push(superseded + ' older report version(s) have been replaced by a newer version; the older versions are still kept and can be inspected.');
-  if (!notes.length) notes.push('Nothing in this fictional case is currently flagged as changed or needing another look.');
+  notes.push('This view does not establish that the record is complete. A demo acknowledgment is not clinical sign-off.');
   for (const text of notes) {
     const row = node('div', null, 'question');
     row.append(node('p', text));
@@ -179,6 +211,9 @@ async function refresh() {
     active = response;
     el('case-heading').textContent = active.case.label;
     render();
+    // Re-read all summaries: shared evidence changes may affect other cases.
+    // Each row is a fetched state, not a transactionally consistent cross-case snapshot.
+    await renderIncomingBoard(caseCatalog);
   } catch (err) {
     if (sequence === refreshSequence && requestedCase === caseId) notice(err.message, true);
   }
@@ -366,14 +401,7 @@ function render() {
   const priorWithdrawTarget = sameCase ? el('evidence-withdraw-id').value : null;
   clear('metrics');
   const latest = active.sources.filter(s => s.state === 'current');
-  const stale = active.snapshots.filter(s => s.state === 'stale');
-  // Source-dependent review is CURRENT work only while its question is reopened.
-  // Keep superseded snapshots stale in history even after the replacement is acknowledged.
-  const reopenedQuestionIds = new Set(stale
-    .filter(snapshot => active.questions.some(q =>
-      Number(q.id) === Number(snapshot.question_id) && q.state === 'open'))
-    .map(snapshot => Number(snapshot.question_id)));
-  const reviewRequired = reopenedQuestionIds.size;
+  const reviewRequired = currentReviewQuestionIds(active).size;
   el('metrics').append(
     metric(latest.length, 'Current source documents'), metric(active.assertions.length, 'Reported statements'),
     metric(active.questions.filter(q => q.state === 'open').length, 'Open questions'), metric(reviewRequired, 'Review required'));
