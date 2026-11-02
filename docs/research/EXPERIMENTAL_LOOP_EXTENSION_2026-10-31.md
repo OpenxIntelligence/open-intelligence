@@ -13,7 +13,7 @@ Explore whether Open Intelligence can improve its existing **case → question/h
 
 | Existing owner or contract | Additive opportunity (proposed, not implemented) | Boundary |
 | --- | --- | --- |
-| Versioned patient case, source ledger and three-clock temporal model | Freeze an as-known-at snapshot for an evaluation, then attribute results to exactly that version | Never overwrite originals or convert an evaluation output directly into patient fact |
+| Versioned patient case, source ledger and separate event/documented/receipt temporal facets with as-known-at review position | Freeze an as-known-at snapshot for an evaluation, then attribute results to exactly that version | Never overwrite originals or convert an evaluation output directly into patient fact |
 | Durable questions, hypotheses and investigation state machine | Link multiple falsifiable, competing evaluation proposals to one scoped question | No parallel ungoverned “AI scientist” record system |
 | Evidence source/claim/applicability model | Track predicted observations, independent counterevidence, null results and confounders | Multiple model votes are not independent biomedical studies |
 | Agent tool contracts and human authority | Add typed, effect-classed run proposals and receipts to the existing task/authorization model | Only safe digital runs may be automatically executed within prior authorization |
@@ -68,7 +68,7 @@ EvaluationRunReceipt:
   invalidation dependencies, reviewer and review decision
 ```
 
-**State machine (illustrative mapping, not a competing orchestration engine):** draft → scoped → authorized → queued → running → result-ready → independently checked → human-review → accepted-as-evidence / rejected / inconclusive. Include quarantined, canceled, budget-exhausted and superseded. Reuse the repository's existing `Draft → Scoped → Authorized → Running → EvidenceReady → Verification → ClinicianReview → Closed` states and map experiment-specific status as metadata.
+**State machine (illustrative mapping, not a competing orchestration engine):** draft → scoped → authorized → queued → running → result-ready → independently checked → human-review → accepted-as-evidence / rejected / inconclusive. Include quarantined, canceled, budget-exhausted and superseded. Reuse the repository's existing question/snapshot/source states (`open`/`addressed` questions; `draft`/`reviewed_in_demo`/`stale` snapshots; `current`/`superseded` sources) and map experiment-specific status as metadata.
 
 Persist causal claims separately from temporal associations: “new biomarker after treatment” is not evidence that treatment caused the biomarker. Retain reference standards, assay limitations, batch artifacts, and unknown outcomes.
 
