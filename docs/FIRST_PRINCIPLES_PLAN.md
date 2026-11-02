@@ -4,6 +4,45 @@
 
 Original source checks: 29 October 2026. Source terms and guidance must be rechecked for each integration or deployment decision.
 
+## Founder architectural directive — 2 November 2026 (supersedes narrower recommendations)
+
+**ADOPTED PRODUCT SCOPE:** Open Intelligence is a complete, independently engineered, first-party, AI-native healthcare ecosystem. It must develop its own EHR/EMR, comprehensive oncology clinical operations, LIS/LIMS, pathology/digital pathology, diagnostics, RIS/PACS/imaging, genomics/bioinformatics, precision oncology, treatment/pharmacy, clinician/patient products, hospital administration, research, AI/ML/model and agent infrastructure, and governed cross-domain data/intelligence. External EHRs, protocols, vendors, standards and scientific models may accelerate delivery but never define the product boundary.
+
+**ADOPTED TECHNOLOGY EXCLUSION: NO NEXT.JS.** Earlier Next.js-centered hackathon ADR/BOMs are superseded historical proposals. Do not scaffold new Open Intelligence code with Next.js, choose it for an app/backend/domain service, or treat it as a candidate for the adopted target architecture. Permissive-source commercial freedom and independent deployment are mandatory procurement gates; an upstream project's public repository or top-level license badge is not legal clearance.
+
+**WHAT IS NOT SELECTED:** This decision does not automatically approve React/Vite, Angular, Java/Spring, .NET, Go, Rust, Python/AI stacks, Medplum, HAPI, a FHIR data store, Kafka, Temporal, Kubernetes, or a microservice topology. Validate technologies against each first-party domain's workload, transactional boundaries, security, independent source rights, and recoverable operation. The present Python/SQLite synthetic case ledger remains reproducible implementation evidence and must not be erased without a verified compatibility/migration plan.
+
+**FULL SYSTEM ENGINEERING, NOT DEMO-BASED SCOPE:** The first complete-system reference workflow connects first-party patient identity/consent and EHR order → LIS accession/specimen/assay → pathology source version and amendment → radiology and genomics asset relationships → oncology longitudinal record → source-bound scientific hypothesis → scoped professional review → properly qualified patient-facing projection → audit/replay. Domain services, operational data, modalities, identity, evidence/uncertainty and human authority must be specified together. An incremental deliverable is acceptable only as a vertically integrated part of this overall target, not as an excuse to truncate the target.
+
+**Permanent invariants:** distinguish observations, extraction proposals, interpretations, hypotheses and clinical decisions; preserve patient/episode/specimen/study identity; distinguish requests from deliveries/administrations; retain valid/documented/received/effective times; immutably preserve originals and amendments; invalidate only affected derived results; enforce consent, access revocation, medical content rights, source/model version, clinician approval and recovery/replay. Do not use real patient data or present synthetic engineering success as clinical validation.
+
+### Full-product domain contracts to engineer
+
+| First-party domain | Owned operational work | Cross-domain interface obligation |
+| --- | --- | --- |
+| Identity, consent and institutional authority | Person matching, delegation, institutions, purpose-bound grants, audit | Policy, access/revocation events and accountable actor |
+| EHR/EMR and oncology management | Encounters, charting, diagnoses, orders, episode and disease history | Orders, documented observations, treatment status, provenance |
+| LIS/LIMS, pathology and biological assets | Accession, sample custody, QC, assays, results, histopathology and digital slides | Specimen and assay identity, source report versions, corrections |
+| Imaging/RIS/PACS | Studies, series, modalities, pixel/WSI storage, measurements and reports | DICOM identities and source-linked measurements |
+| Genomics/precision oncology | Bioinformatics assays, variants, molecular boards, biomarker evidence | Reference build, specimen, pipeline/version and hypotheses |
+| Treatment, pharmacy and care operations | Regimens, medication orders/dispense/admin, toxicity, care tasks | Requests vs observed administrations vs outcomes |
+| Patient/caregiver and physician applications | Patient communications, records, consented collaboration, clinical review | Read-only qualified projections and authorised workflow commands |
+| Research, trials and scientific computing | Studies, cohorts, protocols, experiment records, external evidence | Research consent, rights, citations, distinct trial candidate vs eligibility |
+| Hospital enterprise and finance | Scheduling, facilities, inventory, workforce, billing and claims | Institutional events, reporting and scoped access |
+| AI/ML and agent infrastructure | Models/weights, tool permissions, governed workflows, monitoring and evaluation | Evidence/provenance, bounded execution, independent assessments |
+
+### Research obligations — founder-supplied comprehensive mandate
+
+The implementation program must cover **21 research categories**: EHR/EMR; oncology; LIS/LIMS; pathology; imaging; genomics; medication; patient/physician platforms; AI/ML; agents/orchestration; healthcare interoperability; clinical research; databases; infrastructure; backend languages; frontend engineering excluding Next.js; security; DevOps; healthcare administration; advanced science; uncovered and niche technologies.
+
+Maintain **12 inspectable deliverables**, updating existing owners rather than creating parallel canonical architectures: technology catalog; commercial license register; comparative technology matrix; build/adopt/extend/integrate/reject choices; target architecture; vertical architecture; data engineering blueprint; AI/ML blueprint; security/governance blueprint; implementation roadmap; decision register; and research gaps/backlog. For each item maintain verified upstream sources, exact license and dependency status, technical trade-offs, proposed/approved state, validation evidence, owner and next test.
+
+**First engineering gate:** produce a domain ownership/API/event/authority contract and run the complete fictional EHR→LIS→pathology→genomics→oncology review-and-amendment reference journey through actual code, with interrupt/resume, scoped rights, provenance, no fabricated patient facts and no false clinician authorization. Keep code changes separately testable and draft-reviewed. This is a starting implementation gate **within** the full platform, not a smaller replacement product.
+
+Cross-reference: canonical Notion architecture https://app.notion.com/p/40a3866f77ef818bb331d2906db8ba35 ; source and commercial rights policy https://app.notion.com/p/40a3866f77ef815a97d5e016ededf5b9 . The earlier first-workflow proposal and hackathon-specific stack paragraphs below remain as historical research where they conflict with the founder directive.
+
+---
+
 ## Decision and status
 
 Keep the full ambition: an accessible, AI-native operating environment for understanding a person's cancer, investigating unanswered questions, and coordinating evidence-informed review over time. Reorganize execution around a complete clinical workflow rather than an expanding list of repositories or screens.
@@ -51,7 +90,7 @@ The first success unit is a reviewed case investigation, not a chat answer. It h
 | Clinician-supported consultation investigation | A patient, coordinator and clinician can use a shared case to prepare, investigate and update a review | Requires real reviewers, a defined clinical setting and measured review burden | **Recommended initial workflow** |
 | Specialist molecular/tumor-board research | Deep biological context and evidence appraisal create value for complex cases | Specialist time, assay context, data access and stronger interpretation validation | Early design-partner path; enable as the foundation proves itself |
 
-A full EHR replacement would add prescribing, billing, enterprise operations and integrations without proving the central investigation thesis. Build interfaces to those systems as justified by the chosen workflow. Own the coherent case and investigation experience.
+> **Historical proposal (superseded by founder directive, 2 November 2026):** A full EHR replacement would add prescribing, billing, enterprise operations and integrations without proving the central investigation thesis. Build interfaces to those systems as justified by the chosen workflow. Own the coherent case and investigation experience. The current mandate is to design and build the entire first-party ecosystem, including EHR, LIS, RIS/PACS and operations. This older launch-positioning argument is retained solely to preserve decision history.
 
 **Provisional launch setting:** an adult oncology consultation, referral, second opinion or case-review service with an accountable oncology reviewer. Use one repeatable workflow and an initial cohort chosen with that partner. Use independently authored fictional cases for engineering, and do not let a synthetic example determine the market or imply a final disease scope.
 
