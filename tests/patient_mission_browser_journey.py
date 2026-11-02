@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -185,10 +186,28 @@ def main() -> None:
             if session is not None:
                 session.close()
             if browser is not None:
-                browser.terminate()
-                browser.wait(timeout=8)
+                # Chromium forks renderer/zygote processes which can outlive
+                # the browser parent. Stop the entire process group before
+                # TemporaryDirectory deletes its active browser profile,
+                # or teardown races Chrome shutdown and fails the journey
+                # after every assertion passed (seen 3x in CI).
+                try:
+                    os.killpg(browser.pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+                try:
+                    browser.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    try:
+                        os.killpg(browser.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                    browser.wait(timeout=5)
             server.terminate()
-            server.wait(timeout=8)
+            try:
+                server.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                server.kill()
 
 
 if __name__ == "__main__":
