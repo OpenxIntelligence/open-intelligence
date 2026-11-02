@@ -1,0 +1,347 @@
+"""Evidence packet → existing append-only review receipts, fictional data only.
+
+These are actual PatientRegistry, EHR, LIS, source, rights, Composer, source
+quote, and review queue domain objects. No verified real clinician or consent.
+"""
+import sqlite3
+import unittest
+from unittest.mock import patch
+from open_intelligence.store import CaseStore, InvalidInput
+
+from open_intelligence.authorized_evidence_review import AuthorizedEvidenceReviewHandoff
+from open_intelligence.evidence_review_packet import EvidenceReviewPacket
+from open_intelligence.knowledge_context import KnowledgeContextError
+from test_patient_clinical_knowledge_integration import (
+    AuthorizedPatientEvidenceIntegrationTests as Fixture, CASE,
+)
+
+EVIDENCE_KEY = "EVID-QUOTED"
+STATEMENT = "Independently authored fictional study claims no therapeutic outcomes."
+ORIGINAL = (f"OI-SYNTHETIC-EVIDENCE/1\n"
+            f"Evidence: {EVIDENCE_KEY}\n"
+            f"Title: Fictional research methods statement\n"
+            f"Issued-At: 2026-01-01\n"
+            f"Rights: original-synthetic\n"
+            f"Statement: {STATEMENT}\n").encode()
+AMENDED = (f"OI-SYNTHETIC-EVIDENCE/1\n"
+           f"Evidence: {EVIDENCE_KEY}\n"
+           f"Title: Fictional research methods corrected\n"
+           f"Issued-At: 2026-01-02\n"
+           f"Rights: original-synthetic\n"
+           f"Amends: {EVIDENCE_KEY}@1\n"
+           f"Statement: Corrected fictional evidence describes additional uncertainty.\n").encode()
+
+
+class ReviewHandoffTests(unittest.TestCase):
+    setUp = Fixture.setUp
+    actor = Fixture.actor
+    workflow = Fixture.workflow
+    _source = Fixture._source
+    prepare = Fixture.prepare
+
+    def candidate(self):
+        bridge, question, sources, proposals = self.prepare()
+        evidence = self.store.import_synthetic_evidence(ORIGINAL)["evidence_version_id"]
+        assertion = self.store.state(CASE)["assertions"][0]["id"]
+        aid = self.store.assess_synthetic_evidence(
+            CASE, question, evidence, "context", "limited",
+            "An independently authored fictional comparison awaiting human appraisal.")
+        sources[0]["id"] = EVIDENCE_KEY
+        sources[0]["version"] = "v1"
+        sources[0]["evidence_text"] = STATEMENT
+        proposals.append({
+            "assertion_id": assertion,
+            "knowledge_id": EVIDENCE_KEY,
+            "relation": "context",
+            "applicability": "limited",
+            "reviewer_note": "Fictional comparison, no clinical inference established",
+            "proposed_by": "TEST-REVIEWER",
+        })
+        selected = [{
+            "assertion_id": assertion, "knowledge_id": EVIDENCE_KEY,
+            "quote": "claims no therapeutic outcomes"
+        }]
+        return AuthorizedEvidenceReviewHandoff(
+            EvidenceReviewPacket(bridge),
+            return_authorizer=lambda actor, patient, action, purpose: (
+                actor == self.actor()["actor"] and patient == self.patient_id
+                and action == "evidence.review_return" and purpose == "care"
+            )), question, aid, sources, selected
+
+    def snapshot(self, handoff, question, aid, selected):
+        return handoff.preview(
+            self.patient_id, CASE, question, aid,
+            selected_quotes=selected, **self.actor())
+
+    def test_exact_versioned_quote_has_existing_queue_item_and_can_be_returned(self):
+        handoff, q, aid, _, quotes = self.candidate()
+        before = self.store.review_queue(CASE)
+        packet = self.snapshot(handoff, q, aid, quotes)
+        self.assertEqual(packet["contract"], "oi.synthetic-authorized-evidence-review-queue/1")
+        self.assertEqual(packet["queue_key"], f"evidence-assessment:{aid}")
+        self.assertEqual(packet["queue_status"], "awaiting_review")
+        self.assertEqual(packet["review_action_allowed"], "returned_only")
+        self.assertFalse(packet["clinician_signoff_authorized"])
+        self.assertEqual(len(before["receipts"]), 0)
+        outcome = handoff.return_for_review(
+            self.patient_id, CASE, q, aid, selected_quotes=quotes,
+            reason="Review required because fictional study evidence has not been appraised.",
+            **self.actor())
+        self.assertEqual(outcome["result"], "returned_for_independent_review")
+        self.assertFalse(outcome["clinical_signoff"])
+        current = self.store.review_queue(CASE)
+        item = next(x for x in current["awaiting"]
+                    if x["queue_key"] == f"evidence-assessment:{aid}")
+        self.assertEqual(item["status"], "returned")
+        self.assertEqual(item["receipts"][-1]["id"], outcome["receipt_id"])
+        self.assertEqual(item["receipts"][-1]["action"], "returned")
+        self.assertEqual(item["receipts"][-1]["reviewer_label"], self.actor()["actor"])
+        self.assertFalse(any(x["queue_key"] == item["queue_key"] for x in current["resolved"]))
+        self.assertEqual(len(current["receipts"]), 1)
+
+    def test_review_receipt_and_event_rollback_together(self):
+        handoff, q, aid, _, quotes = self.candidate()
+        with patch.object(self.store, "_event", side_effect=RuntimeError("audit failure")):
+            with self.assertRaisesRegex(RuntimeError, "audit failure"):
+                handoff.return_for_review(
+                    self.patient_id, CASE, q, aid, selected_quotes=quotes,
+                    reason="Independent fictional evidence reviewer must examine the source.",
+                    **self.actor())
+        self.assertEqual(self.store.review_queue(CASE)["receipts"], [])
+        # One later success; the earlier event failure cannot leave a receipt.
+        result = handoff.return_for_review(
+            self.patient_id, CASE, q, aid, selected_quotes=quotes,
+            reason="Independent fictional evidence reviewer must examine the source.",
+            **self.actor())
+        self.assertEqual(result["result"], "returned_for_independent_review")
+        self.assertEqual(len(self.store.review_queue(CASE)["receipts"]), 1)
+
+    def test_return_receipt_persists_after_new_database_connection(self):
+        handoff, q, aid, _, quotes = self.candidate()
+        result = handoff.return_for_review(
+            self.patient_id, CASE, q, aid, selected_quotes=quotes,
+            reason="An independent fictional reviewer must evaluate relevance and uncertainty.",
+            **self.actor())
+        another = CaseStore(self.store.path)
+        try:
+            item = next(x for x in another.review_queue(CASE)["awaiting"]
+                        if x["queue_key"] == f"evidence-assessment:{aid}")
+            self.assertEqual(item["status"], "returned")
+            self.assertEqual(item["receipts"][-1]["id"], result["receipt_id"])
+        finally:
+            another.close()
+
+    def test_review_receipt_cannot_be_updated_or_deleted_at_database_boundary(self):
+        handoff, q, aid, _, quotes = self.candidate()
+        result = handoff.return_for_review(
+            self.patient_id, CASE, q, aid, selected_quotes=quotes,
+            reason="Fictional evidence requires separate independent review.",
+            **self.actor())
+        receipt_id = result["receipt_id"]
+        for sql in (
+            "UPDATE review_receipts SET action='reviewed' WHERE id=?",
+            "DELETE FROM review_receipts WHERE id=?",
+        ):
+            with self.subTest(sql=sql):
+                with self.assertRaisesRegex(sqlite3.IntegrityError,
+                                             "Review receipts are immutable"):
+                    with self.store.db:
+                        self.store.db.execute(sql, (receipt_id,))
+        receipts = self.store.review_queue(CASE)["receipts"]
+        self.assertEqual(len(receipts), 1)
+        self.assertEqual(receipts[0]["id"], receipt_id)
+        self.assertEqual(receipts[0]["action"], "returned")
+
+    def test_nonboolean_policy_results_never_grant_review_write(self):
+        handoff, q, aid, _, quotes = self.candidate()
+        for invalid in (1, "allowed", [True], {"allow": True}, object(), 0):
+            with self.subTest(value=type(invalid).__name__):
+                handoff.return_authorizer = lambda *_args, value=invalid: value
+                # Authorization is checked before any sensitive packet read.
+                with patch.object(handoff.packet, "preview",
+                                  side_effect=AssertionError("preview must not run")):
+                    with self.assertRaisesRegex(PermissionError, "separate trusted grant"):
+                        handoff.return_for_review(
+                            self.patient_id, CASE, q, aid, selected_quotes=quotes,
+                            reason="Fictional work requires independent evidence appraisal.",
+                            **self.actor())
+        self.assertEqual(self.store.review_queue(CASE)["receipts"], [])
+
+    def test_nonboolean_grant_at_final_write_boundary_is_denied(self):
+        handoff, q, aid, _, quotes = self.candidate()
+        calls = {"count": 0}
+        def unstable_policy(*_args):
+            calls["count"] += 1
+            return True if calls["count"] == 1 else {"allow": True}
+        handoff.return_authorizer = unstable_policy
+        with self.assertRaisesRegex(PermissionError, "separate trusted grant"):
+            handoff.return_for_review(
+                self.patient_id, CASE, q, aid, selected_quotes=quotes,
+                reason="Fictional work requires independent evidence appraisal.",
+                **self.actor())
+        self.assertEqual(calls["count"], 2)
+        self.assertEqual(self.store.review_queue(CASE)["receipts"], [])
+
+    def test_authorizer_exception_denies_without_preview_or_receipt(self):
+        handoff, q, aid, _, quotes = self.candidate()
+        def broken_policy(*_args):
+            raise RuntimeError("test policy provider unavailable")
+        handoff.return_authorizer = broken_policy
+        with patch.object(handoff.packet, "preview",
+                          side_effect=AssertionError("preview must not run")):
+            with self.assertRaises(PermissionError):
+                handoff.return_for_review(
+                    self.patient_id, CASE, q, aid, selected_quotes=quotes,
+                    reason="Fictional work requires independent evidence appraisal.",
+                    **self.actor())
+        self.assertEqual(self.store.review_queue(CASE)["receipts"], [])
+
+    def test_read_permission_does_not_authorize_review_write(self):
+        handoff, q, aid, _, quotes = self.candidate()
+        # Readable sources alone cannot grant permission to append a receipt.
+        handoff.return_authorizer = None
+        self.assertEqual(self.snapshot(handoff, q, aid, quotes)["queue_status"],
+                         "awaiting_review")
+        with self.assertRaises(PermissionError):
+            handoff.return_for_review(
+                self.patient_id, CASE, q, aid, selected_quotes=quotes,
+                reason="Fictional study has not received independent appraisal.",
+                **self.actor())
+        self.assertEqual(self.store.review_queue(CASE)["receipts"], [])
+
+    def test_review_write_grant_revoked_mid_preflight_is_refused(self):
+        handoff, q, aid, _, quotes = self.candidate()
+        counter = {"calls": 0}
+        def check(actor, patient, action, purpose):
+            counter["calls"] += 1
+            return counter["calls"] == 1
+        handoff.return_authorizer = check
+        with self.assertRaises(PermissionError):
+            handoff.return_for_review(
+                self.patient_id, CASE, q, aid, selected_quotes=quotes,
+                reason="Fictional study has not received independent appraisal.",
+                **self.actor())
+        self.assertEqual(self.store.review_queue(CASE)["receipts"], [])
+
+    def test_amendment_between_authorized_preview_and_receipt_does_not_retarget(self):
+        handoff, q, aid, sources, quotes = self.candidate()
+        original_write = self.store.add_review_receipt
+
+        def amend_before_receipt(*args, **kwargs):
+            # Simulate a source correction after both preflight reads but
+            # before the durable write transaction begins.
+            self.store.import_synthetic_evidence(AMENDED)
+            return original_write(*args, **kwargs)
+
+        with patch.object(self.store, "add_review_receipt",
+                          side_effect=amend_before_receipt):
+            with self.assertRaisesRegex(InvalidInput, "changed since preview"):
+                handoff.return_for_review(
+                    self.patient_id, CASE, q, aid, selected_quotes=quotes,
+                    reason="Independently assess fictional evidence before any conclusion.",
+                    **self.actor())
+        self.assertEqual(self.store.review_queue(CASE)["receipts"], [])
+        item = next(x for x in self.store.review_queue(CASE)["awaiting"]
+                    if x["queue_key"] == f"evidence-assessment:{aid}")
+        self.assertEqual(item["status"], "awaiting_review")
+        self.assertIn("superseded", item["fingerprint"])
+
+    def test_atomic_receipt_fingerprint_precondition_rejects_stale_input(self):
+        handoff, q, aid, _, quotes = self.candidate()
+        packet = self.snapshot(handoff, q, aid, quotes)
+        with self.assertRaisesRegex(InvalidInput, "changed since preview"):
+            self.store.add_review_receipt(
+                CASE, packet["queue_key"], "returned",
+                reviewer_label=self.actor()["actor"],
+                reason="Fictional source requires independent verification.",
+                expected_fingerprint="intentionally-outdated-fingerprint")
+        self.assertEqual(self.store.review_queue(CASE)["receipts"], [])
+        result = self.store.add_review_receipt(
+            CASE, packet["queue_key"], "returned",
+            reviewer_label=self.actor()["actor"],
+            reason="Fictional source requires independent verification.",
+            expected_fingerprint=packet["queue_fingerprint"])
+        self.assertEqual(result["fingerprint"], packet["queue_fingerprint"])
+        self.assertEqual(len(self.store.review_queue(CASE)["receipts"]), 1)
+
+    def test_rights_revocation_fails_without_new_receipt(self):
+        handoff, q, aid, sources, quotes = self.candidate()
+        sources[0]["rights_state"] = "revoked"
+        with self.assertRaises(KnowledgeContextError):
+            self.snapshot(handoff, q, aid, quotes)
+        self.assertEqual(self.store.review_queue(CASE)["receipts"], [])
+
+    def test_missing_or_mismatched_local_source_denied(self):
+        handoff, q, aid, sources, quotes = self.candidate()
+        for field, value in [
+            ("version", "v2"), ("id", "EVID-DIFFERENT"),
+            ("source_date", "2026-01-03"), ("evidence_text", "Invented different text."),
+        ]:
+            old = sources[0][field]
+            sources[0][field] = value
+            with self.subTest(field=field), self.assertRaises(KnowledgeContextError):
+                self.snapshot(handoff, q, aid, quotes)
+            sources[0][field] = old
+        with self.assertRaises(KnowledgeContextError):
+            self.snapshot(handoff, q, 99999, quotes)
+        self.assertEqual(self.store.review_queue(CASE)["receipts"], [])
+
+    def test_amended_original_evidence_reopens_stored_queue_fingerprint(self):
+        handoff, q, aid, _, quotes = self.candidate()
+        handoff.return_for_review(
+            self.patient_id, CASE, q, aid, selected_quotes=quotes,
+            reason="Fictional supporting material requires another evidence assessment.",
+            **self.actor())
+        before = next(x for x in self.store.review_queue(CASE)["awaiting"]
+                      if x["queue_key"] == f"evidence-assessment:{aid}")
+        self.store.import_synthetic_evidence(AMENDED)
+        after = next(x for x in self.store.review_queue(CASE)["awaiting"]
+                     if x["queue_key"] == f"evidence-assessment:{aid}")
+        self.assertNotEqual(before["fingerprint"], after["fingerprint"])
+        self.assertEqual(after["status"], "awaiting_review")
+        self.assertEqual(len(after["prior_receipts"]), 1)
+        with self.assertRaises(KnowledgeContextError):
+            self.snapshot(handoff, q, aid, quotes)
+
+    def test_patient_source_amendment_denies_old_quote_approval(self):
+        handoff, q, aid, _, quotes = self.candidate()
+        self._source("ORDER-CONT-001", "clinical", "order", "negative", amendment=1)
+        with self.assertRaises(KnowledgeContextError):
+            self.snapshot(handoff, q, aid, quotes)
+        self.assertEqual(len(self.store.review_queue(CASE)["receipts"]), 0)
+
+    def test_invalid_actor_and_cross_case_refuse_review(self):
+        handoff, q, aid, _, quotes = self.candidate()
+        with self.assertRaises(PermissionError):
+            handoff.return_for_review(self.patient_id, CASE, q, aid,
+                 actor="UNTRUSTED-ACTOR", purpose="care",
+                 selected_quotes=quotes, reason="Test-only denied review.")
+        with self.assertRaises((PermissionError, ValueError)):
+            handoff.preview(self.patient_id, "CASE-CLIN-CONT-OTHER", q, aid,
+                 **self.actor(), selected_quotes=quotes)
+        self.assertEqual(self.store.review_queue(CASE)["receipts"], [])
+
+    def test_existing_demo_acknowledgment_uses_same_review_receipt_owner(self):
+        handoff, q, aid, sources, quotes = self.candidate()
+        original_source = next(x for x in self.store.state(CASE)["sources"]
+                               if x["state"] == "current")
+        snapshot_id = self.store.create_snapshot(
+            CASE, q, "Independently authored synthetic comparison awaiting inspection.",
+            [original_source["id"]])
+        self.store.acknowledge_demo_review(CASE, snapshot_id, "Demo reviewer")
+        queue = self.store.review_queue(CASE)
+        matching = [x for x in queue["resolved"]
+                    if x["queue_key"] == f"snapshot:{snapshot_id}"]
+        self.assertEqual(len(matching), 1)
+        self.assertEqual(matching[0]["resolved_by"]["action"], "acknowledged")
+        self.assertEqual(matching[0]["resolved_by"]["fingerprint"], "reviewed_in_demo")
+        self.assertFalse(any(x["queue_key"] == f"snapshot:{snapshot_id}"
+                             for x in queue["awaiting"]))
+        self.assertEqual(self.store.db.execute(
+            "SELECT COUNT(*) FROM review_receipts WHERE case_id=? AND queue_key=?",
+            (CASE, f"snapshot:{snapshot_id}")).fetchone()[0], 1)
+
+
+
+if __name__ == "__main__":
+    unittest.main()
