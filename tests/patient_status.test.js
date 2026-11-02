@@ -101,3 +101,58 @@ test('a slower older case-list response cannot replace a newer one', async () =>
   assert.match(get('incoming-list').textContent, /Newer summary/);
   assert.doesNotMatch(get('incoming-list').textContent, /Older summary/);
 });
+
+function datedSource(overrides = {}) {
+  return {id: 1, document_id: 'PATH-TEST', version: 1, state: 'current', kind: 'pathology',
+    event_date: '2026-01-03', issued_at: '2026-01-05', received_at: '2026-02-04T15:30:00+00:00',
+    specimen_id: 'SPEC-TEST', ...overrides};
+}
+test('patient timeline keeps late receipt separate from source event and report issue', () => {
+  const state = fixture(); state.sources.push(datedSource());
+  const {render, get} = setup(state); render();
+  const text = get('patient-timeline').textContent;
+  assert.match(text, /Reported event date: 2026-01-03/);
+  assert.match(text, /Report version 1 \(current\)/);
+  assert.match(text, /Issued: 2026-01-05/);
+  assert.match(text, /Received by this workspace: 2026-02-04T15:30:00\+00:00/);
+  assert.doesNotMatch(text, /On 2026-01-03,.*was recorded/);
+});
+test('patient timeline keeps all amendment issue and receipt dates on one source event', () => {
+  const state = fixture();
+  state.sources.push(datedSource({id: 2, version: 2, issued_at: '2026-02-06',
+    received_at: '2026-02-09T10:00:00+00:00'}), datedSource({state: 'superseded'}));
+  const original = JSON.stringify(state); const {render, get} = setup(state); render();
+  const rows = get('patient-timeline').children;
+  assert.equal(rows.length, 1);
+  const text = rows[0].textContent;
+  assert.match(text, /Report version 1 \(superseded\).*Issued: 2026-01-05.*2026-02-04T15:30:00\+00:00/);
+  assert.match(text, /Report version 2 \(current\).*Issued: 2026-02-06.*2026-02-09T10:00:00\+00:00/);
+  assert.ok(text.indexOf('Report version 1') < text.indexOf('Report version 2'));
+  assert.equal(JSON.stringify(state), original);
+});
+test('missing issue or receipt dates are explicit and are never copied from event date', () => {
+  const state = fixture(); state.sources.push(datedSource({issued_at: null, received_at: ''}));
+  const {render, get} = setup(state); render();
+  const text = get('patient-timeline').textContent;
+  assert.match(text, /Issued: not recorded/);
+  assert.match(text, /Received by this workspace: not recorded/);
+  assert.doesNotMatch(text, /Issued: 2026-01-03|workspace: 2026-01-03/);
+});
+test('receipt offset and full timestamp are preserved, not collapsed to local event day', () => {
+  const state = fixture();
+  state.sources.push(datedSource({received_at: '2026-02-04T23:55:00-05:00'}));
+  const {render, get} = setup(state); render();
+  assert.match(get('patient-timeline').textContent, /Received by this workspace: 2026-02-04T23:55:00-05:00/);
+});
+test('patient timeline clears earlier-case dates and keeps source labels as inert text', () => {
+  const state = fixture(); state.sources.push(datedSource());
+  const {context, render, get} = setup(state); render();
+  const second = fixture(); second.sources.push(datedSource({document_id: '<script>source-label</script>',
+    event_date: '2026-04-01', issued_at: '2026-04-02', received_at: '2026-04-03T00:00:00Z'}));
+  context.second = second;
+  vm.runInContext('active = second', context); render();
+  const text = get('patient-timeline').textContent;
+  assert.doesNotMatch(text, /2026-01-03|2026-02-04/);
+  assert.match(text, /<script>source-label<\/script>/);
+  assert.ok(get('patient-timeline').children[0].children.every(element => element.tag === 'p'));
+});

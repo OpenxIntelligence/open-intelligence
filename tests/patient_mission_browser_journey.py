@@ -16,6 +16,24 @@ from browser_journey import ChromeSession, free_port, wait_for
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def assert_patient_timeline(session: ChromeSession, app_url: str, case_id: str) -> None:
+    """Compare rendered dates to the actual local source ledger, not derived dates."""
+    with urlopen(app_url + '/api/cases/' + case_id + '/state', timeout=5) as response:
+        state = json.load(response)
+    rows = session.evaluate("""[...document.querySelectorAll('#patient-timeline > .question')]
+      .map(row => row.textContent)""")
+    assert len(rows) == len({source['document_id'] for source in state['sources']})
+    for source in state['sources']:
+        matches = [text for text in rows if '(' + source['document_id'] + ')' in text]
+        assert len(matches) == 1, 'Each report has one event group across versions'
+        text = matches[0]
+        assert 'Reported event date: ' + source['event_date'] in text
+        assert ('Report version ' + str(source['version']) + ' (' + source['state'] + ')' +
+                ' · Issued: ' + source['issued_at'] +
+                ' · Received by this workspace: ' + source['received_at']) in text
+        assert 'was recorded' not in text, 'Event date must not become recording date'
+
+
 def main() -> None:
     chrome = next((
         path for name in (
@@ -107,6 +125,7 @@ def main() -> None:
             assert session.evaluate(
                 "document.querySelector('#patient-uncertainty').textContent.includes('not certain yet')"
             )
+            assert_patient_timeline(session, url.rstrip('/'), 'CASE-ALPHA')
             assert session.evaluate(
                 "document.querySelector('#patient-mission').textContent.includes('Not a diagnosis or treatment recommendation')"
             )
@@ -130,6 +149,7 @@ def main() -> None:
             assert session.evaluate(
                 "document.querySelector('#mission-known').textContent.includes('not assessed for this sample')"
             )
+            assert_patient_timeline(session, url.rstrip('/'), 'CASE-BETA')
 
             session.evaluate("""(() => {
               const picker = document.querySelector('#case-picker');
@@ -191,6 +211,7 @@ def main() -> None:
                 "document.querySelector('#patient-uncertainty').textContent.includes('1 open source-change review(s)')",
                 "patient view preserves unresolved source-change review",
             )
+            assert_patient_timeline(session, url.rstrip('/'), 'CASE-ALPHA')
             session.wait(
                 "[...document.querySelectorAll('#incoming-list .question')].some(row => "
                 "row.textContent.includes('CASE-ALPHA') && row.textContent.includes('Open source-change reviews: 1'))",
@@ -231,7 +252,7 @@ def main() -> None:
             assert session.evaluate(
                 "[...document.querySelectorAll('#snapshot-list .pill')].some(pill => pill.textContent === 'stale')"
             )
-            print('PASS: patient/worklist review counts follow amendment and replacement acknowledgment; historical draft retained')
+            print('PASS: patient/worklist review counts follow amendment and replacement acknowledgment; historical draft retained; event/issue/receipt dates preserved across case switches and amendments')
         finally:
             if session is not None:
                 session.close()

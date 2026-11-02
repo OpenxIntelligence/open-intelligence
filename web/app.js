@@ -151,8 +151,17 @@ function renderPatientView() {
   for (const group of groups) {
     const item = node('div', null, 'question');
     const amended = group.versions.length > 1;
-    item.append(node('p', 'On ' + group.eventDate + ', a ' + group.kind + ' report (' + group.documentId + ') was recorded.' +
-      (amended ? ' This report was later corrected; the latest version is the one shown in the workspace, and older versions are kept.' : '')));
+    item.append(node('p', 'Reported event date: ' + group.eventDate + '. ' +
+      group.kind + ' report (' + group.documentId + ').' +
+      (amended ? ' Multiple versions of this report are kept; their dates are listed separately.' : '')));
+    // Event, report issue and workspace receipt are different clocks. A late
+    // arrival or amendment must not be presented as a new biological event.
+    const dateText = value => typeof value === 'string' && value.trim() ? value : 'not recorded';
+    for (const version of group.versions) {
+      item.append(node('p', 'Report version ' + version.version + ' (' + version.state + ')' +
+        ' · Issued: ' + dateText(version.issued_at) +
+        ' · Received by this workspace: ' + dateText(version.received_at), 'snapshot-meta'));
+    }
     el('patient-timeline').append(item);
   }
   if (!active.assertions.length) empty(el('patient-findings'), 'No reported findings yet in this fictional case.');
