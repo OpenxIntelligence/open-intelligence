@@ -21,11 +21,11 @@ from .knowledge_context import compile_context, KnowledgeContextError
 KnowledgeProvider = Callable[[str, str, int, str, str], dict]
 
 
-def _sealed(value: object) -> str:
+def _sealed(value: object) -> bytes:
     """Strict deterministic comparison, rejecting mutable/unserializable claims."""
     try:
         return json.dumps(value, sort_keys=True, ensure_ascii=False,
-                          separators=(",", ":"), allow_nan=False)
+                          separators=(",", ":"), allow_nan=False).encode("utf-8")
     except (TypeError, ValueError) as exc:
         raise KnowledgeContextError("invalid external knowledge record") from exc
 
