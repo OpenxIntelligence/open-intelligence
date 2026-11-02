@@ -39,7 +39,8 @@ def workspace_handler(db_path: str) -> type[Handler]:
         def do_GET(self) -> None:  # noqa: N802
             assets={'/intake.js':('intake.js','text/javascript; charset=utf-8'),
                     '/workspace-entry.js':('workspace-entry.js','text/javascript; charset=utf-8'),
-                    '/intake.css':('intake.css','text/css; charset=utf-8'),\n                    '/record-acquisition.js':('record-acquisition.js','text/javascript; charset=utf-8')}
+                    '/intake.css':('intake.css','text/css; charset=utf-8'),
+                    '/record-acquisition.js':('record-acquisition.js','text/javascript; charset=utf-8')}
             path=urlsplit(self.path).path
             if path in assets:
                 if not self._host_allowed():
