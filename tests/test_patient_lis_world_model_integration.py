@@ -230,6 +230,31 @@ class PatientLisWorldModelIntegration(unittest.TestCase):
         self.assertEqual(receiver.execute(
             "SELECT COUNT(*) FROM lab_world_model_review_candidates").fetchone()[0], 0)
 
+    def test_receiver_rejects_out_of_order_and_tampered_receipts(self):
+        self._workflow()
+        lab = [e for e in self._events() if e["owner_domain"] == "lab"]
+        receiver = self._receiver()
+        receiver.execute("BEGIN IMMEDIATE")
+        with receiver:
+            with self.assertRaisesRegex(OutboxContractError, "revision"):
+                consume_lab_review_event(
+                    receiver, self.bridge, lab[1], patient_id=self.patient_id,
+                    case_id=CASE, actor=ACTOR, purpose="care")
+        forged_id = dict(lab[0])
+        forged_id["event_id"] = "EV-LAB-UNTRUSTED"
+        with self.assertRaisesRegex(OutboxContractError, "identifier"):
+            consume_lab_review_event(
+                receiver, self.bridge, forged_id, patient_id=self.patient_id,
+                case_id=CASE, actor=ACTOR, purpose="care")
+        forged_revision = dict(lab[0])
+        forged_revision["aggregate"] = {**lab[0]["aggregate"], "revision": 12}
+        with self.assertRaisesRegex(OutboxContractError, "revision"):
+            consume_lab_review_event(
+                receiver, self.bridge, forged_revision, patient_id=self.patient_id,
+                case_id=CASE, actor=ACTOR, purpose="care")
+        self.assertEqual(receiver.execute(
+            "SELECT COUNT(*) FROM platform_inbox_receipts").fetchone()[0], 0)
+
     def test_restart_preserves_binding_and_prevents_duplicate_outbox(self):
         _, _ = self._workflow()
         count = self.store.db.execute(
