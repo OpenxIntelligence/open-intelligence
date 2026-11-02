@@ -81,7 +81,9 @@ product. It is server-side only and bounded by design:
   labeled `kind=hypothesis`, `review_state=pending`.
 - Live mode calls Meta Model API (`muse-spark-1.3`) with a fixed
   template plus the case's current assertions and fictional evidence
-  assessments; the operator key comes from `META_API_KEY` only.
+  assessments; the operator key comes from `MODEL_API_KEY` (official Meta
+  name) or the backward-compatible `META_API_KEY` alias. Differing values
+  in both names fail closed without making a request.
   Without the key, live returns 503 and points at replay.
 - Every model claim is validated before storage: citations must
   resolve, uncertainty must be low/moderate/high, and
@@ -100,7 +102,7 @@ Run it locally:
 PYTHONPATH=src python -m open_intelligence seed
 PYTHONPATH=src python -m open_intelligence serve
 # Create a question, then POST an investigation with mode=replay
-# (offline) or mode=live (with META_API_KEY set in the server env).
+# (offline) or mode=live (with MODEL_API_KEY or META_API_KEY set in the server env).
 ```
 
 Remaining proof step: a live-server run against the real API with
