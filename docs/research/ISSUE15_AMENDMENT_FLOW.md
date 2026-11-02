@@ -13,7 +13,7 @@
 | Durable ingest with versioning, hashing, duplicate detection, wrong-subject quarantine | `CaseStore.import_report` ([store.py](../../src/open_intelligence/store.py)) |
 | Amendment supersession (prior version → `superseded`, never rewritten) | `import_report`, same transaction |
 | Anchor-exact snapshot invalidation + question reopening | `import_report` (`snapshot_sources` join on the superseded id) |
-| Investigation staleness on amendment | `import_report` (`investigations.stale=1`) |
+| Investigation staleness on amendment | `import_report` (`investigations.stale=1`, only when at least one snapshot invalidates — see Step 2) |
 | Option and inventory-assertion anchor-exact invalidation | `_invalidate_options`, `biological_inventory_assertions` update |
 | Single-transaction atomicity (ingest + all invalidation + event) | `import_report` (`BEGIN IMMEDIATE`) |
 | Change projection since last review | `changes_since_review` ([changes.py](../../src/open_intelligence/changes.py)) |
@@ -33,8 +33,8 @@ The caller imports new bytes carrying `Amends: PATH-FLOW@1` via `import_report`.
 `import_report` marks version 1 `superseded`, inserts version 2 as `current` with `supersedes_id` pointing at version 1, writes the new assertions, and — in the same transaction — stales exactly the dependents of version 1:
 
 - snapshots citing version 1 → `stale`, their questions reopened;
-- case investigations → `stale=1` (they cited the superseded facts);
-- options citing version 1 or a now-stale snapshot → `needs_review` with an `option_review_reopened` event;
+- the case's investigations → `stale=1`, but only when at least one snapshot was invalidated (the implemented rule nests this update inside the snapshot-invalidation branch, since investigations attach to questions; an amendment with no dependent snapshots leaves investigations untouched);
+- options citing version 1 or a now-stale snapshot → `needs_review` with an `option_review_reopened` event (seeding is anchor-exact; invalidation then follows option→option edges transitively, per `_invalidate_options`);
 - inventory assertions anchored on version 1 → `stale`.
 
 Dependents of other versions, other documents, and other cases are untouched. Duplicates emit no events. One `source_imported` event records every invalidated id.

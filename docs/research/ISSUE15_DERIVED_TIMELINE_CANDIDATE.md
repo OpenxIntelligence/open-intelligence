@@ -99,7 +99,7 @@ A `derived_interpretation` or `hypothesis` candidate must list every competing r
 
 ## 5. Relation to the mock adapter
 
-The branch-only [mock adapter](../../tools/mock_specialist_adapter.py) emits `extracted_candidate`-level candidates only (mechanical normalization of caller-supplied statements onto the occurred/documented/received facets). It never emits `derived_interpretation` or `hypothesis`, demonstrating that higher levels require a separately qualified run.
+The branch-only [mock adapter](../../tools/mock_specialist_adapter.py) emits `extracted_candidate`-level candidates only (mechanical normalization of caller-supplied statements onto the occurred/documented/received facets). It never emits `derived_interpretation` or `hypothesis`, demonstrating that higher levels require a separately qualified run. The mock abstains at the input level (missing context, conflicting dates, non-full occurred dates) and therefore never emits a null-`occurred` candidate; null `occurred` with an abstention reason remains available to future qualified runs under this contract.
 
 ## 6. Open checks
 

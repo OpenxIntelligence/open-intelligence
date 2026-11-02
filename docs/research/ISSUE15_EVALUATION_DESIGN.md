@@ -43,7 +43,7 @@ Fixture hygiene: frozen bytes with recorded sha256; adjudication labels versione
 
 ## 4. Metrics (all reported with raw counts; confidence intervals where sample size permits)
 
-No invented performance claims. No universal clinical accuracy threshold. Thresholds below are illustrative design placeholders marked [PLACEHOLDER]; reviewers set final values before results are examined.
+No invented performance claims. No universal clinical accuracy threshold. No pass/fail thresholds are set here — not even placeholders; reviewers pre-register final values before results are examined (see §7).
 
 | Metric | Definition | Direction |
 |---|---|---|

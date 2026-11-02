@@ -72,11 +72,12 @@ A run is authorized only if **all** hold; any failure yields a `blocked` [ModelR
 
 1. The referenced capability record exists and is in `cleared` state.
 2. The run's task type and modality match the record exactly.
-3. Inputs validate against `input_schema`; required context keys are present.
+3. Inputs validate against `input_schema`. Inputs missing required context keys do not block the run; they abstain per the record's `abstention_conditions` — missing context is an abstention cause, not an authorization failure.
 4. The rights evaluation (`rights.permitted` over the case's applicable permissions, plus the record's own terms) returns allowed for every item/use the run needs; `unknown` or `denied` anywhere blocks.
 5. Every `retention_terms`, `training_use_terms`, `dependency_licenses`, and `per_use_rights` field needed for the run's execution mode is known and satisfied; any `unknown` blocks.
 6. The run's execution mode is listed in `execution_modes`.
 7. If `model_provider` is anything other than `local-mock` or `local-deterministic`, a non-null `provider_approval_ref` points at a separately recorded provider approval (which, under the decided boundary, must additionally be the Meta Model API); otherwise block.
+8. The run's data class is listed in `allowed_data_classes` and absent from `forbidden_data_classes`; either failure blocks.
 
 ## 5. Lifecycle
 
@@ -120,7 +121,7 @@ Real (non-mock) records would carry `evaluation_ref`, dated thresholds, and sour
 
 ## 7. Relation to the mock adapter
 
-The branch-only [mock adapter](../../tools/mock_specialist_adapter.py) consumes capability records in exactly this shape and enforces the §4 gate (with mock-scoped term statements). It demonstrates G-8 closure for the harness path without touching the decided live path.
+The branch-only [mock adapter](../../tools/mock_specialist_adapter.py) consumes capability records in exactly this shape and enforces the §4 gate (with mock-scoped term statements). It demonstrates G-8 closure for the harness path without touching the decided live path. The mock adds one execution layer on top of the §4 gate: a record that passes the gate but names a non-local provider, or a run requesting `authorized_remote` mode, is still refused by the mock (blocked receipt, gate `execution`), because the harness has no remote machinery and must not mint receipts for runs it cannot perform. Gate passage authorizes; only the execution layer runs. Two honesty notes on the mock's enforcement: schema-id validation is presence-only, with structural input validation done by the adapter's request-shape check (the schema ids are placeholders, §8); and the worked example's `qc_rules` and `abstention_conditions` are enforced structurally (anchor checks, vocabulary guard, per-input abstention) rather than dispatched by rule name.
 
 ## 8. Open checks
 

@@ -24,10 +24,11 @@ A ModelRunReceipt is a *projection over and extension of* these rows. Where the 
 
 | Field | Type | Meaning | Existing home, if any |
 |---|---|---|---|
-| `run_id` | string | Deterministic fingerprint of the run request (canonical JSON of capability ref + input refs + config + task version, sha256). Identical requests yield identical ids. | New (receipt field) |
+| `run_id` | string | Deterministic fingerprint of the effective execution request: canonical JSON of capability ref + provider + case scope + task + modality + mode + input refs + preprocessing version + task version, sha256. Purpose text and rights-evaluation context are excluded, so rewording a purpose or re-evaluating rights does not fork run identity; a denial receipt shares its request's `run_id` and is distinguished by `policy_decision`, `denial_reason`, and `egress_mode`. Receipt rows must not be keyed by `run_id` alone. | New (receipt field) |
 | `case_scope` | string | Fictional case id the run is scoped to. | `investigations.case_id` |
 | `investigation_id` | integer or null | Existing investigation row this receipt extends, when one exists. | `investigations.id` |
 | `task_type` | enum | One of `chronology_extraction`, `contradiction_detection`, `missingness_detection`, `context_preparation`. Closed set; anything else is rejected. | New (receipt field) |
+| `modality` | string | The run's claimed input modality (e.g. `text-report`). The capability gate matches it exactly against the record; the receipt records what was evaluated. | New (receipt field) |
 | `purpose` | string | Human-authored, reviewable statement of why the run was requested (5–500 chars). | New (receipt field) |
 | `task_interface_version` | string | Version of the task contract the run conforms to (e.g. `issue15-task/1`). | New (receipt field) |
 
@@ -56,8 +57,11 @@ A ModelRunReceipt is a *projection over and extension of* these rows. Where the 
 | Field | Type | Meaning | Existing home, if any |
 |---|---|---|---|
 | `egress_mode` | enum | `local_only`, `authorized_remote`, or `blocked`. Decided before any model contact. | New (receipt field) |
-| `policy_decision` | object | The evaluated rights check: capability permissions snapshot, per-item/use outcomes, revocation/supersession flags, deciding record ids, and the resulting allow/deny with reason. Denials are inspectable receipts, not silent drops. | Evaluated by `rights.permitted`; recorded on the receipt |
-| `token_compute_cost` | object or null | Tokens, compute, latency, cost when measurable; null when not. | New (receipt field) |
+| `policy_decision` | object | The evaluated rights check: capability permissions snapshot, per-item/use outcomes, revocation/supersession flags, deciding record ids, and the resulting allow/deny with reason. `policy_decision.gate` names the deciding gate (`capability`, `rights`, `execution`, or the combined allow string). Denials are inspectable receipts, not silent drops. | Evaluated by `rights.permitted`; recorded on the receipt |
+| `denial_reason` | string or null | Human-readable cause of a denial; null on allowed runs. Completing the inspectable-denial contract: a blocked receipt without a reason is malformed. | New (receipt field) |
+| `token_compute_cost` | object or null | Tokens, compute, latency, cost when measurable; null when not. The mock always emits null (a pure function has no metered cost). | New (receipt field) |
+
+Blocked receipts carry `egress_mode: blocked`, an empty candidate/derived-artifact set, `parse_result: not_applicable`, and a non-null `denial_reason`; allowed receipts carry `denial_reason: null`. Both shapes share the same `run_id` for the same effective request.
 
 ### 3.5 Outputs and review state
 
@@ -92,6 +96,7 @@ Every receipt carries `synthetic: true` and the fictional-data disclaimer: "Fict
   "case_scope": "CASE-FIXTURE-A",
   "investigation_id": null,
   "task_type": "chronology_extraction",
+  "modality": "text-report",
   "purpose": "Fictional demo: order two synthetic reports by occurred date.",
   "task_interface_version": "issue15-task/1",
   "model_provider": "local-mock",
@@ -106,7 +111,9 @@ Every receipt carries `synthetic: true` and the fictional-data disclaimer: "Fict
   "input_fingerprint": "sha256:<hex>",
   "preprocessing_version": "mock-preprocess/1",
   "egress_mode": "local_only",
-  "policy_decision": {"outcome": "allowed", "reason": "explicit mock allow-list in request"},
+  "policy_decision": {"outcome": "allowed", "gate": "capability+rights+execution",
+                      "reason": "explicit mock allow-list in request"},
+  "token_compute_cost": null,
   "output_hash": "sha256:<hex>",
   "parse_result": "parsed",
   "errors": [],
@@ -115,13 +122,14 @@ Every receipt carries `synthetic: true` and the fictional-data disclaimer: "Fict
   "review_state": "pending",
   "derived_artifacts": ["candidate:<run_id>:0"],
   "synthetic": true,
-  "disclaimer": "Fictional synthetic demonstration data only. ..."
+  "disclaimer": "Fictional synthetic demonstration data only. ...",
+  "denial_reason": null
 }
 ```
 
 ## 6. Relation to the mock adapter
 
-The branch-only [mock adapter](../../tools/mock_specialist_adapter.py) emits receipts in exactly this shape (with `model_provider: local-mock`), demonstrating G-3/G-6 closure for the harness path. It does not modify the `investigations` table or the decided live path.
+The branch-only [mock adapter](../../tools/mock_specialist_adapter.py) emits receipts in exactly this shape (with `model_provider: local-mock`), demonstrating G-3/G-6 closure for the harness path. It does not modify the `investigations` table or the decided live path. Note the mock's two layers: a cleared non-local capability record passes the registry gate, but the mock still refuses to execute it (blocked receipt, gate `execution`) rather than mint a mock-built receipt under a provider that never ran — and likewise for `authorized_remote` mode even when listed. Passing the gate is necessary but not sufficient for mock execution.
 
 ## 7. Open checks
 

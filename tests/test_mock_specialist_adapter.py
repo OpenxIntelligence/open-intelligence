@@ -6,6 +6,7 @@ capability gate, fail-closed denials) — not any model behavior. No network,
 no model, no Nano involvement anywhere in this file.
 """
 
+import ast
 import json
 import re
 import unittest
@@ -14,6 +15,7 @@ from pathlib import Path
 from open_intelligence.store import CaseStore
 from tools.mock_specialist_adapter import (
     AdapterError,
+    check_capability,
     contains_clinical_language,
     run_mock_specialist,
 )
@@ -97,6 +99,7 @@ def _adapter_inputs(store, case_id="CASE-MOCK"):
             "event_date": row["event_date"],
             "issued_at": row["issued_at"],
             "received_at": row["received_at"],
+            "state": "current",
             "specimen_id": row["specimen_id"],
             "episode_id": "EPISODE-MOCK-1",
             "lesion_id": None,
@@ -258,16 +261,45 @@ class MockSpecialistAdapterTests(unittest.TestCase):
         self.assertEqual(result["status"], "blocked_by_policy")
         self.assertIn("provider approval", result["receipt"]["denial_reason"])
 
-    def test_nonlocal_provider_with_approval_passes_gate(self):
+    def test_nonlocal_provider_with_approval_refuses_execution(self):
+        # The registry gate passes, but the mock still refuses to execute:
+        # minting a mock-built receipt under a non-local provider would be
+        # a hollow receipt. Gate and execution are two separate layers.
         store = _store_with_reports()
         try:
             capability = _capability(model_provider="external-x",
                                      provider_approval_ref="approval/fictional/1")
+            gate = check_capability(capability, task_type="chronology_extraction",
+                                    modality="text-report", execution_mode="local_only")
+            self.assertEqual(gate["outcome"], "allowed")
             result = run_mock_specialist(_request(store, capability=capability))
         finally:
             store.close()
-        self.assertEqual(result["status"], "completed")
-        self.assertEqual(result["receipt"]["model_provider"], "external-x")
+        self.assertEqual(result["status"], "blocked_by_policy")
+        self.assertEqual(result["candidates"], [])
+        receipt = result["receipt"]
+        self.assertEqual(receipt["policy_decision"]["gate"], "execution")
+        self.assertEqual(receipt["egress_mode"], "blocked")
+        self.assertIn("local providers only", receipt["denial_reason"])
+        self.assertEqual(receipt["model_provider"], "external-x")
+        self.assertTrue(receipt["synthetic"])
+
+    def test_authorized_remote_listed_still_refused(self):
+        # Even a capability record listing authorized_remote cannot make the
+        # mock claim a remote run: the harness has no remote machinery.
+        store = _store_with_reports()
+        try:
+            capability = _capability(execution_modes=["local_only", "authorized_remote"])
+            result = run_mock_specialist(_request(
+                store, capability=capability, execution_mode="authorized_remote"))
+        finally:
+            store.close()
+        self.assertEqual(result["status"], "blocked_by_policy")
+        self.assertEqual(result["candidates"], [])
+        receipt = result["receipt"]
+        self.assertEqual(receipt["policy_decision"]["gate"], "execution")
+        self.assertEqual(receipt["egress_mode"], "blocked")
+        self.assertIn("local_only", receipt["denial_reason"])
 
     def test_missing_schema_declaration_blocks(self):
         store = _store_with_reports()
@@ -301,6 +333,41 @@ class MockSpecialistAdapterTests(unittest.TestCase):
             with self.assertRaises(AdapterError):
                 run_mock_specialist(_request(
                     store, purpose="Recommend treatment for this fictional case."))
+        finally:
+            store.close()
+
+    def test_clinical_language_in_modality_raises(self):
+        store = _store_with_reports()
+        try:
+            with self.assertRaises(AdapterError):
+                run_mock_specialist(_request(store, modality="treatment-planning"))
+        finally:
+            store.close()
+
+    def test_clinical_language_in_case_scope_raises(self):
+        store = _store_with_reports()
+        try:
+            with self.assertRaises(AdapterError):
+                run_mock_specialist(_request(store, case_scope="TREATMENT-1"))
+        finally:
+            store.close()
+
+    def test_clinical_language_in_input_reference_raises(self):
+        store = _store_with_reports()
+        try:
+            request = _request(store)
+            request["inputs"][0]["received_at"] = "treatment o'clock"
+            with self.assertRaises(AdapterError):
+                run_mock_specialist(request)
+        finally:
+            store.close()
+
+    def test_clinical_language_in_required_context_raises(self):
+        store = _store_with_reports()
+        try:
+            capability = _capability(required_context=["treatment"])
+            with self.assertRaises(AdapterError):
+                run_mock_specialist(_request(store, capability=capability))
         finally:
             store.close()
 
@@ -343,6 +410,73 @@ class MockSpecialistAdapterTests(unittest.TestCase):
         self.assertEqual(len(result["abstentions"]), 2)
         for abstention in result["abstentions"]:
             self.assertEqual(abstention["reason"], "conflicting_evidence")
+
+    def test_partial_occurred_date_abstains_without_poisoning_sibling(self):
+        # G-4: a non-full occurred date abstains (never guessed into a
+        # candidate), and must not drag a sibling input into a conflict.
+        store = _store_with_reports()
+        try:
+            request = _request(store)
+            request["inputs"][0]["event_date"] = "2026-05"
+            request["inputs"][1]["specimen_id"] = "SPECIMEN-MOCKA"
+            result = run_mock_specialist(request)
+        finally:
+            store.close()
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(len(result["candidates"]), 1)
+        self.assertEqual(result["candidates"][0]["occurred"], "2026-06-10")
+        self.assertEqual(len(result["abstentions"]), 1)
+        self.assertEqual(result["abstentions"][0]["reason"], "insufficient_evidence")
+        self.assertIn("G-4", result["abstentions"][0]["detail"])
+
+    def test_superseded_input_fails_creation(self):
+        store = _store_with_reports()
+        try:
+            request = _request(store)
+            request["inputs"][0]["state"] = "superseded"
+            with self.assertRaises(AdapterError):
+                run_mock_specialist(request)
+        finally:
+            store.close()
+
+    def test_receipt_records_modality_cost_and_denial_fields(self):
+        store = _store_with_reports()
+        try:
+            completed = run_mock_specialist(_request(store))
+            perms = {"full_text": {"ml_use": "denied"}}
+            denied = run_mock_specialist(_request(store, permissions=perms))
+        finally:
+            store.close()
+        receipt = completed["receipt"]
+        self.assertEqual(receipt["modality"], "text-report")
+        self.assertIsNone(receipt["token_compute_cost"])
+        self.assertIsNone(receipt["denial_reason"])
+        self.assertEqual(receipt["policy_decision"]["gate"],
+                         "capability+rights+execution")
+        denial = denied["receipt"]
+        self.assertEqual(denial["modality"], "text-report")
+        self.assertIsNone(denial["token_compute_cost"])
+        self.assertTrue(denial["denial_reason"])
+
+    def test_run_id_ignores_purpose_but_separates_execution_target(self):
+        store = _store_with_reports()
+        try:
+            base = run_mock_specialist(_request(store))
+            reworded = run_mock_specialist(_request(
+                store, purpose="Fictional demo: reworded purpose, same run."))
+            remote_cap = _capability(execution_modes=["local_only", "authorized_remote"])
+            remote = run_mock_specialist(_request(
+                store, capability=remote_cap, execution_mode="authorized_remote"))
+            ext_cap = _capability(model_provider="external-x",
+                                  provider_approval_ref="approval/fictional/1")
+            external = run_mock_specialist(_request(store, capability=ext_cap))
+        finally:
+            store.close()
+        self.assertEqual(base["receipt"]["run_id"], reworded["receipt"]["run_id"])
+        self.assertNotEqual(base["receipt"]["run_id"], remote["receipt"]["run_id"])
+        self.assertNotEqual(base["receipt"]["run_id"], external["receipt"]["run_id"])
+        self.assertEqual(remote["status"], "blocked_by_policy")
+        self.assertEqual(external["status"], "blocked_by_policy")
 
     def test_runs_are_deterministic(self):
         store = _store_with_reports()
@@ -391,8 +525,20 @@ class MockSpecialistAdapterTests(unittest.TestCase):
         path = Path(__file__).resolve().parents[1] / "tools" / "mock_specialist_adapter.py"
         source = path.read_text(encoding="utf-8")
         for token in ("import urllib", "from urllib", "import socket",
-                      "import requests", "http.client", "urlopen("):
+                      "import requests", "from requests", "http.client", "urlopen(",
+                      "import os", "from os", "import sys", "import subprocess",
+                      "import pathlib", "import shutil", "import http"):
             self.assertNotIn(token, source)
+        roots = set()
+        for node in ast.walk(ast.parse(source)):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    roots.add(alias.name.split(".")[0])
+            elif isinstance(node, ast.ImportFrom):
+                if node.module:
+                    roots.add(node.module.split(".")[0])
+        self.assertLessEqual(
+            roots, {"__future__", "hashlib", "json", "re", "datetime"})
         self.assertIn("Fictional", source)
 
 

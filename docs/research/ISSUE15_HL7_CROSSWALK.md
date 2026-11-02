@@ -32,6 +32,17 @@ Consequence: this crosswalk maps the addendum's *checklist paraphrase* of HL7 co
 
 "Existing owner" entries are IN-REPO-VERIFIED with file pointers. "Gap" entries are genuine only where the cited machinery demonstrably lacks the capability; §4 records each gap's evidence.
 
+The issue's conceptual entity names map to repository entities as follows (each mapping verified against the cited file, not assumed from the name):
+
+| Issue-#15 term | Repository entity |
+|---|---|
+| SourceArtifact | `source_versions` row + receipt fields (`event_date`, `issued_at`, `received_at`, sha256) in [store.py](../../src/open_intelligence/store.py) |
+| ClinicalAssertion | `assertions` rows with `finding_key`, `certainty`, verbatim `quote`, `source_line` ([store.py](../../src/open_intelligence/store.py)) |
+| Consent | No entity — only free-text `consent_state`/`consent_value` on inventory assertions (genuine gap G-2) |
+| Provenance | `events` ledger rows plus per-version sha256 and supersession pointers ([store.py](../../src/open_intelligence/store.py)) |
+| Investigation | `investigations` rows plus `TEMPLATES`/`validate_output` ([store.py](../../src/open_intelligence/store.py), [investigation.py](../../src/open_intelligence/investigation.py)) |
+| review | `review_events` rows via `acknowledge_demo_review`, plus `review_option` with `option_review_events` ([store.py](../../src/open_intelligence/store.py)) |
+
 ### 3.1 Acquisition, permitted purpose, source origin, consent
 
 | Concern (ADDENDUM-DESCRIBED) | Existing owner (IN-REPO-VERIFIED) | Assessment |
@@ -76,7 +87,7 @@ Consequence: this crosswalk maps the addendum's *checklist paraphrase* of HL7 co
 
 | Concern (ADDENDUM-DESCRIBED) | Existing owner (IN-REPO-VERIFIED) | Assessment |
 |---|---|---|
-| Amendment-triggered selective invalidation | `import_report` supersedes the prior version and marks only dependent snapshots stale, reopens their questions, flags case investigations stale, and anchor-exactly stales options and inventory assertions — all in one transaction | Owned. The [amendment flow](ISSUE15_AMENDMENT_FLOW.md) builds on exactly this. |
+| Amendment-triggered selective invalidation | `import_report` supersedes the prior version and marks only dependent snapshots stale, reopens their questions, flags the case's investigations stale whenever at least one snapshot is invalidated (no dependent snapshots → investigations untouched), and anchor-exactly seeds option and inventory-assertion staleness (options then propagate transitively) — all in one transaction | Owned. The [amendment flow](ISSUE15_AMENDMENT_FLOW.md) builds on exactly this. |
 | Change projection since review | `changes_since_review` in [changes.py](../../src/open_intelligence/changes.py) | Owned. |
 | Scoped human review | `acknowledge_demo_review` (demo acknowledgment with `review_events` row; explicitly not clinical sign-off per [README](../../README.md)) and `review_option` with scoped actions | Owned as demo-scope review. No clinical-authority entity exists, by design at this stage. |
 | Display-ready derived candidates that never self-authorize | No candidate layer exists | **Genuine gap G-5** (shared with §3.3). |
@@ -88,7 +99,7 @@ Consequence: this crosswalk maps the addendum's *checklist paraphrase* of HL7 co
 | Task contract + language guard | `TEMPLATES`, `GUARD_PATTERNS`, `validate_output` in [investigation.py](../../src/open_intelligence/investigation.py); stored output always `kind=hypothesis`, `review_state=pending` | Owned for the Meta-only investigation path. |
 | Provider boundary | Meta Model API exclusively, key from `META_API_KEY`, server-side only ([META_MODEL_API.md](../META_MODEL_API.md)) | Decided and owned. Issue #15 does not reopen it. |
 | Capability registry (task/modality, schemas, QC, terms, cost, evaluation date) | `TEMPLATES` dict only; no per-capability terms, retention/training limits, QC metadata, or evaluation record | **Genuine gap G-7**, addressed by the proposed [ModelCapabilityRegistry](ISSUE15_MODEL_CAPABILITY_REGISTRY.md) spec. |
-| Unknown-permissions-means-blocked for model calls | `rights.py` implements fail-closed gating, but nothing wires it to the model-call boundary | **Genuine gap G-8**; the [mock adapter](../../tools/mock_specialist_adapter.py) demonstrates the wiring pattern without touching the decided live path. |
+| Unknown-permissions-means-blocked for model calls | `rights.py` implements fail-closed gating, but nothing wires it to the model-call boundary | **Genuine gap G-8**; the [mock adapter](../../tools/mock_specialist_adapter.py) demonstrates the wiring pattern without touching the decided live path. The mock enforces two layers: the registry/rights gate, then an execution layer that still refuses non-local providers and `authorized_remote` mode (blocked receipt, gate `execution`) rather than mint hollow receipts. |
 | Versioned benchmark + failure thresholds | Evaluation packet / preflight tooling exists (`tools/evaluation_packet.py`, `tools/evaluation_preflight.py`); no specialist-model benchmark exists | Evaluation design drafted in [ISSUE15_EVALUATION_DESIGN.md](ISSUE15_EVALUATION_DESIGN.md); no results run or claimed. |
 | Nano availability, license, API terms | No Nano dependency, runnable, license, or terms exist in-repo | UNVERIFIED in every respect; Nano remains a candidate name only (see §5). |
 
@@ -103,7 +114,7 @@ Consequence: this crosswalk maps the addendum's *checklist paraphrase* of HL7 co
 | G-5 | No derived-timeline-candidate layer distinct from canonical timeline | `timeline.py` admits only current ledger facts by construction | [DerivedTimelineCandidate](ISSUE15_DERIVED_TIMELINE_CANDIDATE.md) spec |
 | G-6 | Run receipts lack version/inputs/hash/egress-decision fields | `investigations` columns enumerated in §3.4 | [ModelRunReceipt](ISSUE15_MODEL_RUN_RECEIPT.md) spec |
 | G-7 | No model-capability registry | Only `TEMPLATES`; no terms/QC/evaluation metadata | [ModelCapabilityRegistry](ISSUE15_MODEL_CAPABILITY_REGISTRY.md) spec |
-| G-8 | Rights gate not wired to any model-call boundary | `permitted()` exists; no caller at the model boundary | Demonstrated by the branch-only [mock adapter](../../tools/mock_specialist_adapter.py); the decided live path is untouched |
+| G-8 | Rights gate not wired to any model-call boundary | `permitted()` exists; no caller at the model boundary | Demonstrated by the branch-only [mock adapter](../../tools/mock_specialist_adapter.py) (registry/rights gate plus an execution layer that refuses non-local and remote runs); the decided live path is untouched |
 
 Non-gaps confirmed: source versioning and receipts, byte-integrity hashing, wrong-subject quarantine, assertion anchors, missingness states, deterministic timeline, amendment supersession with anchor-exact invalidation, change projection, demo-scope review records, and fail-closed rights gating for broker/discovery content. None of these is duplicated by the issue-#15 proposals.
 
