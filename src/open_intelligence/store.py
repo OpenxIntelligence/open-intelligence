@@ -637,6 +637,7 @@ class CaseStore:
                     (case_id, source_id, finding.key, finding.state, finding.quote, finding.line))
             invalidated = []
             invalidated_options = []
+            newly_stale_models = []
             if previous:
                 invalidated = [row[0] for row in self.db.execute(
                     """SELECT snapshots.id FROM snapshots JOIN snapshot_sources
@@ -648,10 +649,25 @@ class CaseStore:
                     self.db.execute(f"UPDATE snapshots SET state='stale' WHERE id IN ({marks})", invalidated)
                     self.db.execute(f"""UPDATE questions SET state='open' WHERE case_id=? AND id IN
                         (SELECT question_id FROM snapshots WHERE id IN ({marks}))""", [case_id, *invalidated])
-                    # An amendment changes freshness for investigations too:
-                    # they cite the superseded source's facts, so mark them stale
-                    # rather than silently leaving them current.
-                    self.db.execute("UPDATE investigations SET stale=1 WHERE case_id=? AND stale=0", (case_id,))
+                # The model-investigation prompt considers all CURRENT case
+                # source assertions, not only sources linked to a hand-authored
+                # snapshot. A model-only abstention can also depend on the
+                # absent/old evidence. Therefore stale case-scoped model work
+                # whenever any canonical source is amended, even if no manual
+                # snapshot was invalidated. Never rewrite the historical output.
+                newly_stale_models = self.db.execute(
+                    """SELECT id,question_id FROM investigations
+                       WHERE case_id=? AND stale=0""", (case_id,)).fetchall()
+                if newly_stale_models:
+                    self.db.execute(
+                        "UPDATE investigations SET stale=1 WHERE case_id=? AND stale=0",
+                        (case_id,))
+                    affected_questions = sorted({
+                        int(row["question_id"]) for row in newly_stale_models})
+                    markers = ",".join("?" for _ in affected_questions)
+                    self.db.execute(
+                        f"UPDATE questions SET state='open' WHERE case_id=? AND id IN ({markers})",
+                        [case_id, *affected_questions])
                 # OI-021, same transaction: only options in THIS case that
                 # cite the superseded version or a stale snapshot reopen.
                 invalidated_options = self._invalidate_options(
@@ -681,9 +697,13 @@ class CaseStore:
             self._event(case_id, "source_imported", document_id=report.document_id,
                         version=version, source_id=source_id, amends_id=previous["id"] if previous else None,
                         invalidated_snapshots=invalidated, invalidated_options=invalidated_options,
+                        invalidated_model_investigation_ids=[
+                            int(x["id"]) for x in newly_stale_models],
                         invalidated_inventory_assertions=invalidated_inventory)
             return {"result": "imported", "source_id": source_id, "version": version,
                     "invalidated_snapshots": invalidated, "invalidated_options": invalidated_options,
+                    "invalidated_model_investigation_ids": [
+                        int(x["id"]) for x in newly_stale_models],
                     "invalidated_inventory_assertions": invalidated_inventory}
 
 
@@ -2181,9 +2201,19 @@ class CaseStore:
         }
 
     def save_investigation(self, case_id: str, question_id: int, template: str,
-                           validated, mode: str) -> int:
+                           validated, mode: str,
+                           context_fingerprint: str | None = None) -> int:
         self._case(case_id)
         with self.db:
+            if context_fingerprint is not None:
+                # Re-check AFTER model execution and INSIDE the same SQLite
+                # write transaction as the save. A concurrent source or
+                # assessment update must not promote work over stale inputs.
+                self.db.execute("BEGIN IMMEDIATE")
+                from .composer import composer_context_fingerprint
+                actual = composer_context_fingerprint(self, case_id, question_id)
+                if actual != context_fingerprint:
+                    raise InvalidInput("stale Composer context: sources or assessments changed; refresh")
             cur = self.db.execute(
                 """INSERT INTO investigations
                 (case_id,question_id,template,status,mode,model,claims_json,abstentions_json,dropped_json,created_at)

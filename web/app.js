@@ -1227,19 +1227,44 @@ function renderChangesSinceReview(data) {
     el('changes-questions').append(row);
   }
 }
+document.addEventListener('oi:composer-open-source', event => {
+  const detail = event.detail || {};
+  if (!active || detail.caseId !== caseId ||
+      !Number.isSafeInteger(detail.sourceId) || !Number.isSafeInteger(detail.line)) return;
+  const source = active.sources.find(x => x.id === detail.sourceId);
+  if (!source) return;
+  // The existing inspector expects an active-case source record, NOT a
+  // numeric identifier; it rechecks membership before fetching raw bytes.
+  void openSource(source, detail.line);
+});
+
 el('model-investigation-form').addEventListener('submit', async event => {
   event.preventDefault();
   try {
     const requestedCase = readyCase();
+    const contextFingerprint = el('composer-context-fingerprint').value;
+    if (!/^[a-f0-9]{64}$/.test(contextFingerprint)) {
+      throw Error('Preview and verify the current Composer source context before running.');
+    }
     await api('/api/cases/' + requestedCase + '/investigations', {
       question_id: Number(el('model-investigation-question').value),
       template: el('model-investigation-template').value,
       mode: el('model-investigation-mode').value,
+      context_fingerprint: contextFingerprint,
     });
     if (requestedCase !== caseId) return;
     notice('Model investigation stored as a hypothesis pending review.');
     await refresh();
-  } catch (err) { notice(err.message, true); }
+  } catch (err) {
+    // A legitimate source amendment can race an in-progress task. Never leave
+    // the user with a visually reusable old fingerprint after the server
+    // rejects the task; update both chart and Composer from canonical state.
+    if (String(err.message).includes('stale Composer context')) {
+      try { await refresh(); } catch (_) { /* notice below owns error feedback */ }
+      document.dispatchEvent(new Event('oi:composer-refresh'));
+    }
+    notice(err.message, true);
+  }
 });
 initialize();
 initializeBibliography();
