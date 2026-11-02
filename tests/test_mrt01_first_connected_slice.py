@@ -25,8 +25,8 @@ class FirstConnectedSlice(unittest.TestCase):
         self.tempdir = tempfile.TemporaryDirectory()
         self.db_path = str(Path(self.tempdir.name) / "mrt01.sqlite")
         # This handler is bound to a fresh, synthetic-only empty SQLite DB.
-        with CaseStore(self.db_path):
-            pass
+        initial = CaseStore(self.db_path)
+        initial.close()
         bound = type("MRT01BoundHandler", (Handler,), {
             "db_path": self.db_path, "allow_crossref_live": False,
         })
@@ -156,11 +156,14 @@ class FirstConnectedSlice(unittest.TestCase):
         self.assertEqual(self.api(beta + "/state")[1]["sources"][0]["state"], "current")
 
         # A fresh independent SQLite connection proves the state was stored.
-        with CaseStore(self.db_path) as reopened:
+        reopened = CaseStore(self.db_path)
+        try:
             historical = {s["id"]: s for s in reopened.state("CASE-ALPHA")["snapshots"]}
             self.assertEqual(historical[linked]["state"], "stale")
             self.assertEqual(historical[independent]["state"], "draft")
             self.assertEqual(reopened.state("CASE-BETA")["case"]["case_id"], "CASE-BETA")
+        finally:
+            reopened.close()
 
 
 if __name__ == "__main__":
