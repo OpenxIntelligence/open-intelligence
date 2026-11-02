@@ -1230,11 +1230,12 @@ function renderChangesSinceReview(data) {
 document.addEventListener('oi:composer-open-source', event => {
   const detail = event.detail || {};
   if (!active || detail.caseId !== caseId ||
-      !Number.isSafeInteger(detail.sourceId) || !Number.isSafeInteger(detail.line) ||
-      !active.sources.some(x => x.id === detail.sourceId)) return;
-  // This is the existing source inspector: it checks currently selected case
-  // and source membership again, then highlights the exact original line.
-  void openSource(detail.sourceId, detail.line);
+      !Number.isSafeInteger(detail.sourceId) || !Number.isSafeInteger(detail.line)) return;
+  const source = active.sources.find(x => x.id === detail.sourceId);
+  if (!source) return;
+  // The existing inspector expects an active-case source record, NOT a
+  // numeric identifier; it rechecks membership before fetching raw bytes.
+  void openSource(source, detail.line);
 });
 
 el('model-investigation-form').addEventListener('submit', async event => {
