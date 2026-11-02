@@ -86,6 +86,22 @@ def main():
                 "document.querySelector('#composer-context').textContent.includes('not verified')") or \
                 session.evaluate("document.querySelector('#composer-context').textContent.includes('not_verified')")
             assert session.evaluate(
+                "!![...document.querySelectorAll('#composer-context button[data-source-id]')]" +
+                ".find(b => b.textContent.includes('PATH-ALPHA'))"), (
+                "Source preview must open original source by exact identity and line")
+            session.evaluate(
+                "[...document.querySelectorAll('#composer-context button[data-source-id]')]" +
+                ".find(b => b.textContent.includes('PATH-ALPHA')).click()")
+            session.wait("document.querySelector('#source-dialog')?.open === true",
+                         "Composer opened original source dialog")
+            assert session.evaluate(
+                "document.querySelector('#dialog-title').textContent.includes('PATH-ALPHA@1')")
+            assert session.evaluate(
+                "document.querySelector('#dialog-text mark.source-highlight') !== null")
+            session.evaluate("document.querySelector('#dialog-close').click()")
+            assert session.evaluate(
+                "document.querySelector('#source-dialog')?.open === false")
+            assert session.evaluate(
                 "document.querySelector('#model-investigation-mode').value === 'replay'")
             session.evaluate(
                 "document.querySelector('#model-investigation-form').requestSubmit()")
@@ -123,6 +139,13 @@ def main():
             assert session.evaluate(
                 "document.querySelectorAll('#model-investigation-list .snapshot').length === 1"), (
                 "stale Composer context saved a second result")
+            session.wait(
+                "document.querySelector('#composer-context-fingerprint')?.value.length === 64 && " +
+                "document.querySelector('#composer-context-fingerprint').value !== " +
+                JSON.stringify(alpha_hash),
+                "automatic source-context refresh after amendment rejection")
+            assert session.evaluate(
+                "document.querySelector('#composer-context').textContent.includes('PATH-ALPHA@2')")
 
             session.evaluate("""(() => {
               const picker = document.querySelector('#case-picker');
