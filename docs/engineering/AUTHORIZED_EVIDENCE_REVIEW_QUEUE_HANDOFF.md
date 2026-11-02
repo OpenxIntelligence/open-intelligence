@@ -17,6 +17,12 @@ A separate **`evidence.review_return` write-action authorizer** is required, dis
 
 Only **`returned`** is permitted. The receipt's reviewer label is the actor from the existing synthetic policy callback, with reason; the item remains queued, its immutable history survives correction and source-evidence amendment changes its fingerprint. Neither the adapter nor a fictional receipt can issue `reviewed`, `acknowledged`, clinical signature, clinician clearance or treatment action. The queue is the existing single review owner; this feature does not mint another approval state.
 
+## Transaction-bound preview freshness (additional repair)
+
+The review handoff now passes its previously authorized `queue_fingerprint` to the **existing** `CaseStore.add_review_receipt(..., expected_fingerprint=...)` API. The review owner recomputes the current queue item *inside* its `BEGIN IMMEDIATE` transaction and rejects a mismatch before appending either a receipt or event. Without this condition, a corrected evidence version arriving just after the last external-rights preflight could have caused a receipt to be recorded against a different queue state than the one inspected. Existing callers not supplying a preview fingerprint preserve their original API behavior; a production action must supply a version-bound precondition.
+
+Regression tests intentionally amend a fictional evidence source **between preview and write**, verify no stale receipt or event, then test a successful exact-fingerprint return. This closes the same-DB queue-version race, **not** the separate-rights-provider or authenticated-grant races; no distributed transaction or clinical approval is claimed.
+
 ## Non-atomic external-rights boundary
 
 The external rights provider and review receiver are not part of one distributed transaction. Rechecks narrow but cannot eliminate races with independently stored permissions. Therefore a nonterminal `returned` receipt is safe as a review request; promoting to a terminal approved item requires a separate transactional, authenticated, version/authority-bound clinical-review API. Do not incorrectly call a textual actor label verified clinician identity.
