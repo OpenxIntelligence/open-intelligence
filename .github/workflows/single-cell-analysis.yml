@@ -23,7 +23,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install isolated fixture-only test dependencies
-        run: python -m pip install --only-binary=:all: numpy==2.3.5 h5py==3.15.1
+        run: 'python -m pip install --only-binary=:all: numpy==2.3.5 h5py==3.15.1'
       - name: Offline independently authored fictional HDF5 fixtures
         run: |
           set -o pipefail
