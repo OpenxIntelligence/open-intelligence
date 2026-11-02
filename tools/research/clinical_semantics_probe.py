@@ -221,6 +221,8 @@ def audit(cases: list[dict]) -> dict:
 
 
 def run_probe() -> dict:
+    """Retain synthetic semantic reducers without live patient acquisition."""
+    raise PermissionError('Patient-cohort clinical-semantics acquisition is disabled: use independently authored fictional fixtures only.')
     from public_evidence_probe import fetch_bytes
     raw, mapping_receipt = fetch_bytes('https://api.gdc.cancer.gov/cases/_mapping')
     validate_expansions(EXPAND, json.loads(raw).get('expand'))

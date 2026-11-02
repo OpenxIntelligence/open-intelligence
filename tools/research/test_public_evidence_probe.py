@@ -1,18 +1,22 @@
-"""Original fictional tests for public-data audit calculations; no patient data."""
+"""Hand-authored nonclinical rows and fictional objects; no patient datasets."""
 import unittest
 from public_evidence_probe import profile_csv, profile_gdc
 
 class ProfileTests(unittest.TestCase):
     def test_csv_counts_actual_rows(self):
-        self.assertEqual(profile_csv(b'Patient ID,EGFR\nR01-001,Wildtype\nR01-002,Not collected\n')['rows'], 2)
+        raw=b'Patient ID,FEATURE_A,FEATURE_B\nSYN-PROFILE-A,alpha,9\nSYN-PROFILE-B,beta,0\nSYN-PROFILE-C,gamma,13\n'
+        self.assertEqual(profile_csv(raw)['rows'], 3)
+        self.assertEqual(profile_csv(raw)['columns'], 3)
     def test_csv_unknown_is_not_negative(self):
-        r=profile_csv(b'Patient ID,EGFR\nR01-001,Wildtype\nR01-002,Not collected\nR01-003,\n')
-        self.assertEqual(r['missing_by_column'].get('EGFR',0), 2)
+        raw=b'Patient ID,FEATURE_A,FEATURE_B\nSYN-PROFILE-A,alpha,9\nSYN-PROFILE-B,Not collected,0\nSYN-PROFILE-C,,13\nSYN-PROFILE-D,delta,1\n'
+        r=profile_csv(raw)
+        self.assertEqual(r['missing_by_column'].get('FEATURE_A',0), 2)
+        self.assertEqual(r['missing_by_column'].get('FEATURE_B',0), 0)
     def test_csv_identifiers_not_in_aggregate_output(self):
         import json
-        self.assertNotIn('R01-001', json.dumps(profile_csv(b'Patient ID,EGFR\nR01-001,Wildtype\n')))
+        self.assertNotIn('SYN-PROFILE-A', json.dumps(profile_csv(b'Patient ID,FEATURE_A\nSYN-PROFILE-A,alpha\n')))
     def test_csv_duplicate_identifiers_counted(self):
-        self.assertEqual(profile_csv(b'Patient ID,X\nR01-001,1\nR01-001,2\n')['duplicate_identifiers'], 1)
+        self.assertEqual(profile_csv(b'Patient ID,FEATURE_A\nSYN-PROFILE-A,8\nSYN-PROFILE-B,21\nSYN-PROFILE-A,5\n')['duplicate_identifiers'], 1)
     def test_gdc_empty_has_no_coverage(self):
         self.assertEqual(profile_gdc([])['cases'], 0)
     def test_gdc_case_count_not_joined_rows(self):
@@ -41,15 +45,20 @@ class ProfileTests(unittest.TestCase):
         self.assertEqual(result['follow_ups'], 2)
         self.assertEqual(result['cases_with_followup_records'], 1)
 
-    def test_gdc_query_requests_case_level_followups(self):
-        import json
+    def test_public_metadata_fetch_helper_remains_available_with_mocked_transport(self):
+        import hashlib
         from unittest.mock import patch
-        from public_evidence_probe import gdc_probe
-        payload = json.dumps({'data': {'hits': [], 'pagination': {'total': 0}}}).encode()
-        with patch('public_evidence_probe.fetch_bytes', return_value=(payload, {})):
-            result = gdc_probe()
-        requested = result['query']['expand'].split(',')
-        self.assertIn('follow_ups', requested)
-        self.assertNotIn('diagnoses.follow_ups', requested)
+        from public_evidence_probe import fetch_bytes
+        url = 'https://example.invalid/fictional-publication-metadata'
+        payload = b'{"title":"Independently authored metadata fixture"}'
+        with patch('public_evidence_probe.urlopen') as opener:
+            response = opener.return_value.__enter__.return_value
+            response.read.return_value = payload
+            response.geturl.return_value = url
+            raw, receipt = fetch_bytes(url)
+            opener.assert_called_once()
+        self.assertEqual(raw, payload)
+        self.assertEqual(receipt['sha256'], hashlib.sha256(payload).hexdigest())
+        self.assertEqual(receipt['bytes'], len(payload))
 
 if __name__=='__main__': unittest.main(verbosity=2)

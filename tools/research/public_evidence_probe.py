@@ -90,6 +90,8 @@ def fetch_bytes(url: str, attempts: int=2) -> tuple[bytes,dict]:
     raise RuntimeError(type(last).__name__) from last
 
 def tcia_probe() -> dict:
+    """Historical patient-cohort adapter; use independently authored fixtures."""
+    raise PermissionError('TCIA patient-cohort acquisition is disabled: use independently authored fictional fixtures only.')
     raw, receipt=fetch_bytes(TCIA_CSV)
     columns,rows=read_csv(raw)
     ids={str(r.get(identifier_column(columns)) or '').strip() for r in rows}-{''}
@@ -119,6 +121,8 @@ def tcia_probe() -> dict:
     return result
 
 def gdc_probe() -> dict:
+    """Historical patient-cohort adapter; use independently authored fixtures."""
+    raise PermissionError('GDC patient-cohort acquisition is disabled: use independently authored fictional fixtures only.')
     filters={'op':'in','content':{'field':'project.project_id','value':['TCGA-LUAD']}}
     params={'filters':json.dumps(filters,separators=(',',':')), 'size':100,'sort':'case_id:asc',
         'expand':'diagnoses,diagnoses.treatments,follow_ups,samples,samples.portions,samples.portions.analytes,samples.portions.analytes.aliquots'}

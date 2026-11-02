@@ -1,19 +1,21 @@
-"""Bounded descriptive localization over a fixed public processed single-cell object.
+"""Bounded descriptive logic for independently authored synthetic single-cell input.
 
 This is a research adapter, not a clinical model or an independent annotation.
 Never equate AnnData.raw with raw counts, a source label with malignancy, or cells
-from one patient with independent patient replicates. Only aggregates leave RAM.
+with independent patient replicates. Only aggregates leave RAM. Historical
+case acquisition and its case-configured inspection entrypoint are retired.
 """
 from __future__ import annotations
 import argparse
 from collections import Counter, defaultdict
+from collections.abc import Mapping
 import hashlib
 import importlib.metadata
 import json
 import math
 from pathlib import Path
 import tempfile
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 import urllib.request
 
 TARGETS = ('FAP', 'CD276', 'PANX3', 'MDM2')
@@ -33,6 +35,8 @@ def _text(value):
 def _safe(parent, key):
     """Do not follow an HDF5 external or soft link supplied by an input file."""
     import h5py
+    if not isinstance(key, str) or not key or '/' in key or key in ('.', '..'):
+        raise ValueError('only direct child HDF5 fields are supported')
     if key not in parent or not isinstance(parent.get(key, getlink=True), h5py.HardLink):
         raise ValueError('required field missing or indirect HDF5 link')
     node = parent[key]
@@ -195,27 +199,61 @@ def acquire(url,path,limit):
 
 
 def inspect_and_analyze(path):
-    """Describe selected count-layer signals under source-predicted annotations.
+    """Retired case-configured entrypoint; use the explicit synthetic helper."""
+    raise PermissionError('Case-configured single-cell inspection is retired; use independently authored synthetic inputs with explicit configuration.')
 
-    Prior schema inspection established a counts layer, nonnegative log-like X,
-    exact symbols and three source clustering resolutions. We do not refit the
-    clustering, call malignant cells, or infer normal-organ specificity.
+
+def analyze_synthetic_h5ad(path, *, sample_dates, targets, controls, capture_types,
+                          annotation_columns):
+    """Describe a caller-authored fixture without case-derived defaults.
+
+    All sample dates, selected features, capture types and annotation column pairs
+    are explicit. No identity, patient count, clinical meaning or fixture origin
+    is inferred from these caller declarations. Input provenance remains the
+    caller's responsibility; this parser does not authorize real-patient inputs.
     """
+    if (not isinstance(sample_dates, Mapping) or not sample_dates
+            or any(not isinstance(sample, str) or not sample.strip()
+                   or not isinstance(day, str) for sample, day in sample_dates.items())):
+        raise ValueError('explicit sample identities and collection dates required')
+    for day in sample_dates.values():
+        if date.fromisoformat(day).isoformat() != day:
+            raise ValueError('collection dates must use YYYY-MM-DD')
+    if (not isinstance(capture_types, Mapping) or set(capture_types) != set(sample_dates)
+            or any(not isinstance(kind, str) or not kind.strip() for kind in capture_types.values())):
+        raise ValueError('every declared sample needs an explicit capture type')
+    if (not isinstance(targets, (list, tuple)) or not targets
+            or not isinstance(controls, (list, tuple))):
+        raise ValueError('explicit target and control sequences required')
+    selected = (*targets, *controls)
+    if (any(not isinstance(gene, str) or not gene.strip() for gene in selected)
+            or len(selected) != len(set(selected))):
+        raise ValueError('target and control features must be unique nonempty symbols')
+    if not isinstance(annotation_columns, Mapping) or not annotation_columns:
+        raise ValueError('explicit annotation column pairs required')
+    for resolution, columns in annotation_columns.items():
+        if (not isinstance(resolution, str) or not resolution.strip()
+                or not isinstance(columns, (list, tuple)) or len(columns) != 2
+                or any(not isinstance(column, str) or not column
+                       or '/' in column or column in ('.', '..') for column in columns)):
+            raise ValueError('annotation configuration requires direct child column names')
     import h5py
     import numpy as np
     with h5py.File(path, 'r') as f:
         obs=_safe(f,'obs');var=_safe(f,'var')
         samples=read_column(obs,'sample_id');dates=read_column(obs,'date')
         ids=read_column(obs,_text(obs.attrs.get('_index','_index')))
-        if not samples or len(samples)!=len(dates) or len(ids)!=len(samples) or len(ids)!=len(set(ids)):
+        if (not samples or len(samples)!=len(dates) or len(ids)!=len(samples)
+                or any(not isinstance(cell, str) or not cell.strip() for cell in ids)
+                or len(ids)!=len(set(ids))):
             raise ValueError('cell identity/date alignment unresolved')
-        if any(sample not in SAMPLE_DATES or SAMPLE_DATES[sample]!=day for sample,day in zip(samples,dates)):
-            raise ValueError('sample/date outside the fixed declared tumor scope')
+        if any(sample not in sample_dates or sample_dates[sample]!=day for sample,day in zip(samples,dates)):
+            raise ValueError('sample/date outside the explicitly configured fixture scope')
         symbols=read_column(var,_text(var.attrs.get('_index','_index')))
-        mapping=resolve_genes(var,(*TARGETS,*CONTROLS))
+        mapping=resolve_genes(var,selected)
         genes=[g for g,i in mapping.items() if i is not None]
         missing=[g for g,i in mapping.items() if i is None]
-        if any(mapping[g] is None for g in TARGETS):
+        if any(mapping[g] is None for g in targets):
             raise ValueError('a required target is not represented; do not report it as zero')
         n=len(samples);m=len(symbols);indices=[mapping[g] for g in genes]
         counts_node=_safe(_safe(f,'layers'),'counts')
@@ -226,9 +264,9 @@ def inspect_and_analyze(path):
             raise ValueError('count and processed X detection disagree for selected features')
         values=counts.tolist()
         resolutions={}
-        for resolution in ('0.5','1.0','1.5'):
-            clusters=read_column(obs,'leiden_res'+resolution)
-            labels=read_column(obs,'celltype_res'+resolution)
+        for resolution, (cluster_column, label_column) in annotation_columns.items():
+            clusters=read_column(obs,cluster_column)
+            labels=read_column(obs,label_column)
             resolutions[resolution]=summarize(values=values,genes=genes,samples=samples,clusters=clusters,labels=labels)
         summary=summarize(values=values,genes=genes,samples=samples,clusters=['all']*n,labels=[None]*n)
         per_sample={g['sample']:g['genes'] for g in summary['groups']}
@@ -237,10 +275,11 @@ def inspect_and_analyze(path):
         if len({json.dumps(v,sort_keys=True) for v in counts_by_res.values()}) != 1:
             raise ValueError('grouping changed source detection totals')
         return {
-            'question':'Where are the four previously nominated bulk-RNA targets detected among source-annotated cells?',
-            'n_cells':n,'n_source_features':m,'patient_count':1,'capture_count':len(set(samples)),
-            'sample_sizes':summary['sample_sizes'],'sample_collection_dates':{x:SAMPLE_DATES[x] for x in sorted(set(samples))},
-            'enriched_capture':'T3_CD45neg','separate_captures_preserved':True,
+            'question':'How are explicitly selected fixture features distributed within separately declared captures?',
+            'n_cells':n,'n_source_features':m,'patient_count':None,'capture_count':len(set(samples)),
+            'sample_sizes':summary['sample_sizes'],'sample_collection_dates':{x:sample_dates[x] for x in sorted(set(samples))},
+            'capture_types':{x:capture_types[x] for x in sorted(set(samples))},
+            'separate_captures_preserved':True,
             'matrix_path':'/layers/counts','matrix_encoding':_text(counts_node.attrs.get('encoding-type','dense')),
             'measurement':'source_declared_counts_validated_nonnegative_integers',
             'umi_authenticity_independently_established':False,
@@ -250,13 +289,13 @@ def inspect_and_analyze(path):
             'malignancy_established':False,'normal_tissue_specificity_established':False,
             'clinical_recommendation':None,'p_values':None,'historical_replay':False,
             'limitations':[
-                'One identified public case; cells are not independent patient replicates.',
+                'No patient count or population inference is established; cells are not independent patient replicates.',
                 'Use source annotation labels as hypotheses, not independently adjudicated cell identities.',
                 'Labels may use the same expression markers; localization is not independent validation of the labels.',
-                'CD45-negative enrichment and unsorted captures are not interchangeable tissue-composition samples.',
+                'Caller-declared capture types are not independently validated or interchangeable tissue-composition samples.',
                 'Positive count-layer entries mean detected in this processed assay; zero does not prove biological absence.',
                 'Mean counts depend on sequencing depth and preparation; no between-time differential-expression or response inference.',
-                'Three existing clustering resolutions are examined; no new annotation model was trained or run.',
+                'Only caller-selected annotation columns are examined; no new annotation model was trained or run.',
                 'No normal reference, protein assay, copy-number or somatic-genotype corroboration was performed.'
             ]
         }
