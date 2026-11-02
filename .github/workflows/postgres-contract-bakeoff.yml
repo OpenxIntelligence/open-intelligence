@@ -5,6 +5,9 @@ on:
     paths:
       - 'tools/research/postgres_bakeoff/**'
       - 'tests/test_postgres_contract_bakeoff.py'
+      - 'tests/test_postgres_registry_bakeoff.py'
+      - 'src/open_intelligence/postgres_registry.py'
+      - 'src/open_intelligence/patient_registry.py'
       - '.github/workflows/postgres-contract-bakeoff.yml'
   workflow_dispatch:
 
@@ -59,8 +62,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p b01-artifacts
-          python -m compileall -q tests/test_postgres_contract_bakeoff.py
-          python -m unittest discover -s tests -p 'test_postgres_contract_bakeoff.py' -v 2>&1 | tee b01-artifacts/tests.txt
+          python -m compileall -q src/open_intelligence/postgres_registry.py tests/test_postgres_contract_bakeoff.py tests/test_postgres_registry_bakeoff.py
+          python -m unittest discover -s tests -p 'test_postgres_*_bakeoff.py' -v 2>&1 | tee b01-artifacts/tests.txt
           # Fail closed if a missing Postgres connection or driver skipped a test.
           if grep -Eiq 'skipped|OK \(skipped=' b01-artifacts/tests.txt; then
             echo 'B-01 ERROR: integration tests skipped despite PG_BAKEOFF_REQUIRE=1' >&2
