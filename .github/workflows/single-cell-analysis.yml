@@ -21,13 +21,13 @@ jobs:
         with:
           python-version: '3.12'
       - name: Isolated HDF5 research reader, not application dependencies
-        run: python -m pip install --only-binary=:all: numpy==2.3.5 h5py==3.15.1
+        run: 'python -m pip install --only-binary=:all: numpy==2.3.5 h5py==3.15.1'
       - name: Inspect fixed processed object without publishing cell records
         shell: bash
         run: |
           mkdir -p sc-results
           python - <<'PY'
-          import json,hashlib,tempfile,urllib.request,collections,os
+          import json,hashlib,tempfile,urllib.request,collections
           from pathlib import Path
           from datetime import datetime,timezone
           import h5py,numpy as np
@@ -65,7 +65,7 @@ jobs:
                   for p in ['var','raw/var']:
                       if p in f:
                           out['structure'][p]['columns']={k:desc(f[p][k]) for k in f[p]}
-                          ik=f[p].attrs.get('_index','_index');ik=simple(ik)
+                          ik=simple(f[p].attrs.get('_index','_index'))
                           if ik in f[p]:
                               names=[simple(x) for x in f[p][ik][:]]
                               out['structure'][p]['selected_gene_indices']={g:[i for i,n in enumerate(names) if n==g] for g in ['FAP','CD276','PANX3','MDM2']}
