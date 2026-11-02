@@ -9,6 +9,8 @@
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
   <script src="/mission.js" defer></script>
+  <script src="/composer.js" defer></script>
+  <script src="/literature.js" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main-content">Skip to case workspace</a>
@@ -208,7 +210,11 @@
             <label for="model-investigation-question">Question</label><select id="model-investigation-question" required></select>
             <label for="model-investigation-template">Template</label><select id="model-investigation-template" required></select>
             <label for="model-investigation-mode">Mode</label><select id="model-investigation-mode"><option value="replay">Replay (recorded demonstration, works offline)</option><option value="live">Live (requires operator Meta API key)</option></select>
-            <button class="button" type="submit">Run bounded investigation</button>
+            <section id="composer-context" class="source-card" aria-label="Native Composer source context" aria-live="polite" aria-busy="true">
+              <p class="muted">Preparing exact source and evidence context for this fictional question…</p>
+            </section>
+            <input type="hidden" id="composer-context-fingerprint">
+            <button class="button" id="model-investigation-run" type="submit" disabled>Run bounded investigation</button>
           </form>
           <div id="model-investigation-list" class="snapshots"></div>
         </section>
@@ -336,7 +342,7 @@
           </section>
           <section class="panel" id="bibliography">
             <div class="panel-head"><h2>Bibliographic discovery</h2><span class="pill pill-neutral">Not case-linked</span></div>
-            <p class="muted">A publication identifier does not establish treatment benefit or applicability. This panel never sends patient information. Do not enter patient details. Live lookups send only a public DOI and require explicit local server opt-in.</p>
+            <p class="muted">Bibliographic records do not establish treatment benefit or applicability. Enter public identifiers or independently written public biomedical terms only. Live requests require explicit local operator enablement. Results are not saved or linked to a case.</p>
             <div id="bibliography-mode" class="muted tiny" role="status">Checking bibliography mode…</div>
             <form id="bibliography-form">
               <label for="bibliography-doi">Public DOI (not a patient identifier)</label>
@@ -347,6 +353,21 @@
               </div>
             </form>
             <div id="bibliography-result" class="cards" aria-live="polite"></div>
+            <h3>Search public literature metadata</h3>
+            <p class="muted">This search sends the terms you enter to Europe PMC. Do not enter patient information or derive a query from a case, record, or conversation. Results contain citation metadata; content rights and clinical evidence remain unassessed.</p>
+            <p id="literature-mode" class="muted tiny" role="status">Checking public metadata search status…</p>
+            <form id="literature-search-form" method="post" action="/api/literature/search">
+              <label for="literature-terms">Public biomedical search terms</label>
+              <input id="literature-terms" type="search" minlength="3" maxlength="240" autocomplete="off" required aria-describedby="literature-terms-help">
+              <p id="literature-terms-help" class="muted tiny">Use 3–240 characters. Public topics only; no names, identifiers, private details or copied patient text.</p>
+              <label class="check"><input id="literature-public-attestation" type="checkbox"> I wrote these public biomedical terms myself. They contain no patient information and were not derived from a case, record, or conversation.</label>
+              <div class="actions">
+                <button id="literature-live-button" type="submit" class="button" disabled>Search public metadata</button>
+                <button id="literature-clear-button" type="button" class="button secondary">Clear search</button>
+              </div>
+            </form>
+            <p id="literature-feedback" class="muted tiny" role="status" aria-live="polite"></p>
+            <div id="literature-results" class="cards" aria-live="polite"></div>
           </section>
 
           <section class="panel" id="import">

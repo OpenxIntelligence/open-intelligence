@@ -2,6 +2,8 @@
 
 **Public project foundation · Updated 31 October 2026 · Open Intelligence**
 
+**Precedence update, 2 November 2026:** this dated foundation remains historical design context. The definitive founder mandate, canonical Notion Identity/Decisions pages and [current execution audit](engineering/EXECUTION_AUDIT_2026-11-02.md) govern current scope and status. The complete first-party platform ambition is preserved; public narratives are methods research only, with no patient-data or patient-derived-fixture use. The bounded H1 FastAPI/PostgreSQL 16 and React/Vite/TypeScript choice is accepted; Next.js is excluded. Earlier candidate or undecided-stack language below is not a newer decision.
+
 Original source checks: 29 October 2026. Source terms and guidance must be rechecked for each integration or deployment decision.
 
 ## Decision and status

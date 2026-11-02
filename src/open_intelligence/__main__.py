@@ -23,6 +23,8 @@ from .investigation import (
     meta_api_key,
     validate_output,
 )
+from .composer import build_composer_context, composer_context_fingerprint
+from .literature import CLINICAL_USE, MAX_PAGE_SIZE, MAX_QUERY_LENGTH, LiteratureError, search_europe_pmc
 from .mission import build_patient_mission
 from .store import CaseStore, InvalidInput, MAX_SOURCE_BYTES
 from .timeline import case_timeline
@@ -31,6 +33,13 @@ ROOT = Path(__file__).resolve().parents[2]
 WEB = ROOT / "web"
 SYNTHETIC = ROOT / "examples" / "synthetic"
 ID_PART = r"([A-Z][A-Z0-9-]{1,39})"
+LITERATURE_ERRORS = {
+    "disabled": "Live literature search is disabled by the local operator.",
+    "invalid_input": "Public human-authored terms and bounded search options are required.",
+    "busy": "One literature search is already running. Try again later.",
+    "rate_limited": "Literature searches are rate limited. Try again later.",
+    "provider_unavailable": "Literature metadata service is unavailable. Try again later.",
+}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -40,10 +49,57 @@ class Handler(BaseHTTPRequestHandler):
     crossref_contact: str | None = None
     metadata_request_lock = Lock()
     metadata_last_request = 0.0
+    allow_literature_live = False
+    literature_request_lock = Lock()
+    literature_last_request: float | None = None
 
     def log_message(self, fmt: str, *args: object) -> None:
-        # Avoid logging source text, patient-like fields or query strings.
-        print("[local demo]", fmt % args)
+        # BaseHTTPRequestHandler diagnostics may contain raw request lines.
+        # Do not interpolate their format or arguments into any log.
+        print("[local demo] HTTP diagnostic")
+
+    def log_request(self, code: int | str = "-", size: int | str = "-") -> None:
+        method = self.command if self.command in {"GET", "POST", "HEAD", "OPTIONS"} else "OTHER"
+        print("[local demo]", method, code if isinstance(code, int) else "-",
+              size if type(size) is int else "-")
+
+    def _literature_error(self, status: int, code: str) -> None:
+        return self._json(status, {"code": code, "error": LITERATURE_ERRORS[code]})
+
+    def _search_public_literature(self, data: dict) -> None:
+        """An isolated metadata route: no case store, context, or persistence."""
+        if self.allow_literature_live is not True:
+            return self._literature_error(403, "disabled")
+        terms, page_size = data.get("terms"), data.get("page_size", 5)
+        if (urlsplit(self.path).query or
+            set(data) - {"terms", "human_authored", "public_terms_only", "page_size"} or
+            data.get("human_authored") is not True or data.get("public_terms_only") is not True or
+            not isinstance(terms, str) or not 3 <= len(terms) <= MAX_QUERY_LENGTH or len(terms.strip()) < 3 or
+            type(page_size) is not int or not 1 <= page_size <= MAX_PAGE_SIZE):
+            return self._literature_error(422, "invalid_input")
+        if not self.literature_request_lock.acquire(blocking=False):
+            return self._literature_error(429, "busy")
+        try:
+            current = monotonic()
+            last = type(self).literature_last_request
+            if last is not None and current - last < 1.0:
+                return self._literature_error(429, "rate_limited")
+            type(self).literature_last_request = current
+            try:
+                result = search_europe_pmc(terms, human_authored=data["human_authored"],
+                                           public_terms_only=data["public_terms_only"], page_size=page_size)
+            except LiteratureError as error:
+                # Codes, never exception text, determine the public response.
+                if error.code == "invalid_input":
+                    return self._literature_error(422, "invalid_input")
+                return self._literature_error(502, "provider_unavailable")
+            except Exception:
+                # Unexpected transport/provider failures must not echo a URL,
+                # query, raw response or exception into the browser or logs.
+                return self._literature_error(502, "provider_unavailable")
+            return self._json(200, result)
+        finally:
+            self.literature_request_lock.release()
 
     def _headers(self, status: int, kind: str, size: int) -> None:
         self.send_response(status)
@@ -106,6 +162,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._static("app.js", "text/javascript; charset=utf-8")
             if path == "/mission.js":
                 return self._static("mission.js", "text/javascript; charset=utf-8")
+            if path == "/composer.js":
+                return self._static("composer.js", "text/javascript; charset=utf-8")
+            if path == "/literature.js":
+                return self._static("literature.js", "text/javascript; charset=utf-8")
             if path == "/style.css":
                 return self._static("style.css", "text/css; charset=utf-8")
             if path == "/tokens.css":
@@ -120,6 +180,15 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, {"text": (SYNTHETIC / "wrong-patient.txt").read_text()})
             if path == "/api/bibliography/status":
                 return self._json(200, {"live_enabled": bool(self.allow_crossref_live)})
+            if path == "/api/literature/status":
+                return self._json(200, {
+                    "live_enabled": self.allow_literature_live is True, "provider": "europe_pmc",
+                    "metadata_only": True, "clinical_evidence_appraised": False,
+                    "rights_status": "not_assessed", "clinical_use": CLINICAL_USE,
+                })
+            if path.startswith("/api/literature/"):
+                return self._json(405 if path == "/api/literature/search" else 404,
+                                  {"error": "Literature route or method unavailable"})
             if path == "/api/bibliography/example":
                 # Original fictional metadata, not a publication or live lookup.
                 data = json.loads((SYNTHETIC / "crossref-metadata-fixture.json").read_text())
@@ -154,6 +223,16 @@ class Handler(BaseHTTPRequestHandler):
             case_mission = re.fullmatch(rf"/api/cases/{ID_PART}/mission", path)
             if case_mission:
                 return self._json(200, build_patient_mission(store.state(case_mission[1])))
+            composer_preview = re.fullmatch(rf"/api/cases/{ID_PART}/composer/context", path)
+            if composer_preview:
+                raw_question = parse_qs(urlsplit(self.path).query).get("question_id", [None])[0]
+                # Validate bounded ASCII and the SQLite integer range before
+                # conversion; Unicode isdigit() and enormous decimals can raise.
+                if (not raw_question or not re.fullmatch(r"[1-9][0-9]{0,18}", raw_question)
+                        or (len(raw_question) == 19 and raw_question > "9223372036854775807")):
+                    raise InvalidInput("Composer question_id must be a positive integer")
+                return self._json(200, build_composer_context(
+                    store, composer_preview[1], int(raw_question)))
             changes = re.fullmatch(rf"/api/cases/{ID_PART}/changes-since-review", path)
             if changes:
                 raw_since = parse_qs(urlsplit(self.path).query).get("since_event_id", [None])[0]
@@ -197,6 +276,11 @@ class Handler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         try:
             data = self._body()
+            if path == "/api/literature/search":
+                return self._search_public_literature(data)
+            if path.startswith("/api/literature/"):
+                return self._json(405 if path == "/api/literature/status" else 404,
+                                  {"error": "Literature route or method unavailable"})
             if path == "/api/bibliography/lookup":
                 if not self.allow_crossref_live:
                     return self._json(403, {"error": "Live Crossref lookup disabled by default; use explicit local server option"})
@@ -347,6 +431,11 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(200, store.review_option(
                         option_review[1], int(option_review[2]), data.get("reviewer_label"),
                         data.get("action"), data.get("scope"), data.get("snapshot_id")))
+                review_draft = re.fullmatch(rf"/api/cases/{ID_PART}/investigations/([0-9]+)/review-draft", path)
+                if review_draft:
+                    result = store.prepare_investigation_review_draft(
+                        review_draft[1], int(review_draft[2]), data.get("question_id"))
+                    return self._json(200 if result["duplicate"] else 201, result)
                 inv_create = re.fullmatch(rf"/api/cases/{ID_PART}/investigations", path)
                 if inv_create:
                     case_id = inv_create[1]
@@ -357,9 +446,23 @@ class Handler(BaseHTTPRequestHandler):
                     if mode not in ("live", "replay"):
                         raise InvalidInput("Mode must be live or replay")
                     question_id = data.get("question_id")
-                    if type(question_id) is not int:
-                        raise InvalidInput("question_id must be an integer")
-                    facts = store.investigation_facts(case_id, question_id)
+                    if type(question_id) is not int or question_id < 1:
+                        raise InvalidInput("question_id must be a positive integer")
+                    preview_fingerprint = data.get("context_fingerprint")
+                    if preview_fingerprint is not None:
+                        if (not isinstance(preview_fingerprint, str) or
+                                not re.fullmatch(r"[0-9a-f]{64}", preview_fingerprint)):
+                            raise InvalidInput("Invalid Composer context fingerprint")
+                    # Capture the inputs even when a caller did not request a
+                    # preview. One read transaction binds facts to the token;
+                    # save_investigation rechecks under its write lock after
+                    # execution. No transaction remains open during a model call.
+                    with store.db:
+                        store.db.execute("BEGIN")
+                        context_fingerprint = composer_context_fingerprint(store, case_id, question_id)
+                        if preview_fingerprint is not None and preview_fingerprint != context_fingerprint:
+                            raise InvalidInput("stale Composer context: refresh current sources and evidence")
+                        facts = store.investigation_facts(case_id, question_id)
                     if mode == "replay":
                         fixture = json.loads((SYNTHETIC / "demo-investigation.json").read_text())
                         # Replace placeholders with real current ids, then
@@ -381,7 +484,8 @@ class Handler(BaseHTTPRequestHandler):
                         payload = call_meta_api(prompt, meta_api_key())
                         validated = validate_output(payload, facts["valid_sources"], facts["valid_assessments"])
                     investigation_id = store.save_investigation(
-                        case_id, question_id, template, validated, mode)
+                        case_id, question_id, template, validated, mode,
+                        context_fingerprint=context_fingerprint)
                     return self._json(201, store.get_investigation(case_id, investigation_id))
                 return self._json(404, {"error": "Route not found"})
             finally:
@@ -422,6 +526,8 @@ def main() -> None:
                         help="Allow explicit public DOI-only metadata requests; disabled by default")
     parser.add_argument("--crossref-contact", default=None,
                         help="Optional operator email for Crossref polite pool, never patient email")
+    parser.add_argument("--enable-literature-live", action="store_true",
+                        help="Allow explicitly attested public literature metadata searches; disabled by default")
     args = parser.parse_args()
     if args.operation == "seed":
         seed(args.db)
@@ -429,10 +535,13 @@ def main() -> None:
     print(f"Synthetic-only Open Intelligence demo: http://127.0.0.1:{args.port}")
     print("No authentication; localhost only. Do not import real patient data.")
     print("Crossref DOI-only live lookup:", "ENABLED (explicit)" if args.enable_crossref_live else "DISABLED (default)")
+    print("Public literature metadata search:", "ENABLED (explicit)" if args.enable_literature_live else "DISABLED (default)")
     server_type = type("LocalOIHTTPServer", (ThreadingHTTPServer,), {"allow_reuse_address": True})
     bound_handler = type("BoundHandler", (Handler,), {
         "db_path": args.db, "allow_crossref_live": args.enable_crossref_live,
         "crossref_contact": args.crossref_contact,
+        "allow_literature_live": args.enable_literature_live,
+        "literature_request_lock": Lock(), "literature_last_request": None,
     })
     httpd = server_type(("127.0.0.1", args.port), bound_handler)
     try:

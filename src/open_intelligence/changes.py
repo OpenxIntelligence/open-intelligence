@@ -2,8 +2,8 @@
 
 This module never writes to the ledger and never infers clinical meaning from
 a change. It reports ledger facts only: which fictional sources arrived, which
-documents were amended, which drafts were marked stale by those amendments or
-by evidence changes, and which questions were created — all after an anchor
+documents were amended, which drafts were marked stale by those amendments,
+evidence changes or changed model inputs, and which questions were created — all after an anchor
 event. The anchor is the case's latest demo-review acknowledgment, or the
 case-creation event when nothing has been acknowledged yet. A caller may also
 pass an explicit event id as the anchor.
@@ -138,6 +138,14 @@ def changes_since_review(store: CaseStore, case_id: str, since_event_id: int | N
                         "cause": "evidence_change",
                         "reason": details.get("reason"),
                         "evidence_version_id": details.get("evidence_version_id"),
+                        "snapshot_id": snapshot_id,
+                    })
+            elif event["kind"] == "investigation_review_drafts_invalidated":
+                for snapshot_id in details.get("invalidated_snapshots", []):
+                    stale_causes.append({
+                        "event_id": event["id"],
+                        "occurred_at": event["occurred_at"],
+                        "cause": "investigation_context_change",
                         "snapshot_id": snapshot_id,
                     })
         new_questions: list[dict] = []
