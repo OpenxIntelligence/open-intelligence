@@ -58,12 +58,22 @@
     sourceList.setAttribute('aria-label', 'Source anchors for this question');
     for (const anchor of anchors.slice(0, 6)) {
       const entry = document.createElement('li');
-      const link = el('a',
+      const button = el('button',
         anchor.document_id + '@' + anchor.version + ', line ' +
         anchor.source_line + ' · ' + anchor.reported_state);
-      link.href = '#sources';
-      link.title = 'Go to the existing source history and original-source inspector';
-      entry.append(link);
+      button.type = 'button';
+      button.className = 'button secondary';
+      button.dataset.sourceId = String(anchor.source_version_id);
+      button.title = 'Open exact original source and highlight the cited line';
+      button.addEventListener('click', () => {
+        // The existing chart owns source opening and revalidates active case
+        // membership. Composer never bypasses its case/source-read gate.
+        document.dispatchEvent(new CustomEvent('oi:composer-open-source', {
+          detail: {caseId: data.case_id, sourceId: anchor.source_version_id,
+                   line: anchor.source_line},
+        }));
+      });
+      entry.append(button);
       sourceList.append(entry);
     }
     const missing = section('Not available in this application yet',
@@ -137,6 +147,7 @@
   const observer = new MutationObserver(() => { void refresh(); });
   observer.observe(question, {childList: true});
   question.addEventListener('change', () => { void refresh(); });
+  document.addEventListener('oi:composer-refresh', () => { void refresh(); });
   casePicker.addEventListener('change', () => {
     requestSequence += 1;
     reset('Changing fictional patient context; prior source selection cleared.');
