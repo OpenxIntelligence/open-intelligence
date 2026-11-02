@@ -1,0 +1,96 @@
+name: MRT-01 composed synthetic review boundary
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'validation/mrt01/**'
+      - 'tests/test_mrt01_first_connected_slice.py'
+      - '.github/workflows/mrt01-composed.yml'
+permissions:
+  contents: read
+jobs:
+  composed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SAFETY: '533afd3ca6dd0c011e2e47397d3d5cae04e62512'
+      LIFECYCLE: '94176658fe126647aaeea83886bff1ccf776aae8'
+      COMMON_BASE: '24519839aa8ac1ea3aff88a956349ba72798a72a'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.13'
+      - name: Compose exact existing owners without merging a remote branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p verification-artifacts
+          git fetch --no-tags origin "$SAFETY" "$LIFECYCLE" "$COMMON_BASE"
+          test "$(git rev-parse "$SAFETY:src/open_intelligence/store.py")" = "$(git rev-parse "$COMMON_BASE:src/open_intelligence/store.py")"
+          test "$(git rev-parse "$LIFECYCLE:src/open_intelligence/store.py")" = '9a5913ee27b10945e2270ecd4d447f6b8b4b9c10'
+          work="$RUNNER_TEMP/mrt01-composed"
+          git worktree add --detach "$work" "$SAFETY"
+          git show "$LIFECYCLE:src/open_intelligence/store.py" > "$work/src/open_intelligence/store.py"
+          git show "$LIFECYCLE:tests/test_investigation_question_lifecycle.py" > "$work/tests/test_investigation_question_lifecycle.py"
+          cp tests/test_mrt01_first_connected_slice.py "$work/tests/"
+          mkdir -p "$work/validation/mrt01"
+          cp validation/mrt01/review_boundary_gate.py "$work/validation/mrt01/"
+          git -C "$work" add src/open_intelligence/store.py tests/test_investigation_question_lifecycle.py tests/test_mrt01_first_connected_slice.py validation/mrt01/review_boundary_gate.py
+          git -C "$work" write-tree > verification-artifacts/tested-tree.txt
+          git -C "$work" diff --cached --check
+          git rev-parse HEAD > verification-artifacts/workflow-checkout.txt
+          python - <<'PY'
+          import hashlib,json,os,subprocess
+          from pathlib import Path
+          work=Path(os.environ['RUNNER_TEMP'])/'mrt01-composed'
+          paths=subprocess.check_output(['git','-C',str(work),'ls-files','-z']).split(b'\0')
+          hashes={p.decode():hashlib.sha256((work/p.decode()).read_bytes()).hexdigest() for p in paths if p}
+          receipt={'kind':'oi.synthetic-composition/1','workflow_checkout':Path('verification-artifacts/workflow-checkout.txt').read_text().strip(),
+                   'tested_commit':None,'tested_tree':Path('verification-artifacts/tested-tree.txt').read_text().strip(),
+                   'owners':{'safety_pr137':os.environ['SAFETY'],'lifecycle_pr136':os.environ['LIFECYCLE'],'common_base':os.environ['COMMON_BASE']},
+                   'source_sha256':hashes,'clinical_validation':False,'real_patient_use_authorized':False,
+                   'interpretation':'Uncommitted disposable composition; not a merged or deployed commit.'}
+          Path('verification-artifacts/composition.json').write_text(json.dumps(receipt,indent=2)+'\n')
+          PY
+      - name: Offline no-personal-data source and entrypoint guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/mrt01-composed"
+          python tools/audit_ci_data_boundaries.py | tee "$GITHUB_WORKSPACE/verification-artifacts/ci-boundary.txt"
+          python -m unittest discover -s tools/research -p 'test_restricted_research_entrypoints.py' -v 2>&1 | tee "$GITHUB_WORKSPACE/verification-artifacts/no-personal-data-tests.txt"
+      - name: Four strict connected review and counterevidence checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/mrt01-composed"
+          PYTHONPATH=src:. python validation/mrt01/review_boundary_gate.py -v 2>&1 | tee "$GITHUB_WORKSPACE/verification-artifacts/review-boundary-tests.txt"
+      - name: Whole synthetic application and existing browser journeys
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/mrt01-composed"
+          PYTHONPATH=src:. python -m compileall -q src tools tests validation/mrt01
+          node --check web/app.js
+          node --check web/mission.js
+          PYTHONPATH=src:. python -m unittest discover -s tests -v 2>&1 | tee "$GITHUB_WORKSPACE/verification-artifacts/unit-tests.txt"
+          PYTHONPATH=src:. python tests/browser_journey.py 2>&1 | tee "$GITHUB_WORKSPACE/verification-artifacts/browser-tests.txt"
+          PYTHONPATH=src:. python tests/patient_mission_browser_journey.py 2>&1 | tee "$GITHUB_WORKSPACE/verification-artifacts/patient-browser-tests.txt"
+      - name: Preserve exact staged source even on test failure
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if test -s verification-artifacts/tested-tree.txt; then
+            git -C "$RUNNER_TEMP/mrt01-composed" archive --format=zip --output="$GITHUB_WORKSPACE/verification-artifacts/source-under-test.zip" "$(cat verification-artifacts/tested-tree.txt)"
+          fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: mrt01-composed-${{ github.run_id }}-${{ github.run_attempt }}
+          path: verification-artifacts/
+          retention-days: 7
+          if-no-files-found: error
