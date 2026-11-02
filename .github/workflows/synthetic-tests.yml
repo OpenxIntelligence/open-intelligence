@@ -1,7 +1,7 @@
 name: Synthetic case ledger tests
 on:
   push:
-    branches: [main, feat/synthetic-case-ledger, feat/versioned-evidence-assessment]
+    branches: [main, feat/synthetic-case-ledger, feat/versioned-evidence-assessment, feat/composer-synthetic-lab-tool-20261102]
   pull_request:
     branches: [main, feat/synthetic-case-ledger]
 permissions:
@@ -44,6 +44,11 @@ jobs:
         run: |
           set -o pipefail
           PYTHONPATH=src python tests/composer_browser_journey.py 2>&1 | tee verification-artifacts/composer-browser-tests.txt
+      - name: Composer lab tool browser journey (headless Chromium)
+        shell: bash
+        run: |
+          set -o pipefail
+          PYTHONPATH=src python tests/composer_lab_browser_journey.py 2>&1 | tee verification-artifacts/composer-lab-browser-tests.txt
       - name: Record exact synthetic source under test
         if: always()
         run: |
