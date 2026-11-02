@@ -180,6 +180,26 @@ class ReviewHandoffTests(unittest.TestCase):
                  **self.actor(), selected_quotes=quotes)
         self.assertEqual(self.store.review_queue(CASE)["receipts"], [])
 
+    def test_existing_demo_acknowledgment_uses_same_review_receipt_owner(self):
+        handoff, q, aid, sources, quotes = self.candidate()
+        original_source = next(x for x in self.store.state(CASE)["sources"]
+                               if x["state"] == "current")
+        snapshot_id = self.store.create_snapshot(
+            CASE, q, "Independently authored synthetic comparison awaiting inspection.",
+            [original_source["id"]])
+        self.store.acknowledge_demo_review(CASE, snapshot_id, "Demo reviewer")
+        queue = self.store.review_queue(CASE)
+        matching = [x for x in queue["resolved"]
+                    if x["queue_key"] == f"snapshot:{snapshot_id}"]
+        self.assertEqual(len(matching), 1)
+        self.assertEqual(matching[0]["resolved_by"]["action"], "acknowledged")
+        self.assertEqual(matching[0]["resolved_by"]["fingerprint"], "reviewed_in_demo")
+        self.assertFalse(any(x["queue_key"] == f"snapshot:{snapshot_id}"
+                             for x in queue["awaiting"]))
+        self.assertEqual(len(self.store.state(CASE)["review_events"]) if
+                         "review_events" in self.store.state(CASE) else 1, 1)
+
+
 
 if __name__ == "__main__":
     unittest.main()
