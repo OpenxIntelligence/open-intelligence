@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
   <script src="/mission.js" defer></script>
+  <script src="/world-model.js" defer></script>
   <script src="/composer.js" defer></script>
   <script src="/literature.js" defer></script>
   <script src="/intake.js" defer></script>
@@ -143,6 +144,19 @@
         </div>
         <div class="subhead">Guardrails</div>
         <ul id="mission-guardrails" class="muted tiny"></ul>
+        <details id="world-model-detail" class="change-review" aria-labelledby="world-model-heading">
+          <summary id="world-model-heading">Inspect original-source World Model</summary>
+          <p class="muted tiny">A read-only projection of this fictional case. A reported observation is not a verified clinical fact. Conflicts are unadjudicated source disagreements; this is not an AI diagnosis.</p>
+          <p id="world-model-status" role="status" aria-live="polite">Expand to inspect source-linked observations.</p>
+          <div id="world-model-summary" class="metrics" aria-label="World Model source counts"></div>
+          <div class="subhead">Current reported observations and exact source anchors</div>
+          <ol id="world-model-observations" class="questions" aria-live="polite"></ol>
+          <div class="subhead">Source disagreements requiring review</div>
+          <ul id="world-model-conflicts" class="questions" aria-live="polite"></ul>
+          <div class="subhead">Historical amendments and review status</div>
+          <div id="world-model-history" class="questions" aria-live="polite"></div>
+          <p class="muted tiny"><a href="#sources">Inspect original documents and report versions</a>. No clinical authorization, consent, model reasoning or medical action is provided here.</p>
+        </details>
       </section>
 
       <section class="panel panel-timeline" id="timeline">
