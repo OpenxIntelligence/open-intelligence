@@ -103,20 +103,29 @@ class AuthorizedClinicalKnowledge:
         if not hmac.compare_digest(signature, _sealed(self._provider(
                 patient_id, case_id, question_id, actor, purpose))):
             raise KnowledgeContextError("external rights or knowledge state changed; retry review")
+        # The last provider call can outlive a source amendment, failed QC or
+        # note revision even when its own rights/evidence payload is unchanged.
+        # Re-read the complete authorized clinical projection *after* that call;
+        # checking only permissions or Composer's source hash misses QC/notes.
+        final = self.composer.snapshot(
+            patient_id, case_id, question_id, actor=actor, purpose=purpose)
+        if after != final:
+            raise ClinicalContinuityError(
+                "clinical or Composer context changed during final knowledge read")
         # Final sensitive-context gate after independently reading external
         # rights; still not an atomic distributed read or legal source proof.
         self.composer.clinical._authorize(patient_id, case_id, actor, purpose)
         self.composer.clinical.provenance._allow(
             patient_id, case_id, actor=actor, purpose=purpose,
             action="patient_context.read")
-        self._align_assertions(after["composer"], packet)
+        self._align_assertions(final["composer"], packet)
 
         return {
             "contract": "oi.synthetic-authorized-patient-evidence/1",
             "patient_id": patient_id,
             "case_id": case_id,
             "question_id": question_id,
-            "clinical_composer": after,
+            "clinical_composer": final,
             "knowledge": packet,
             "review_state": "pending_human_evidence_review",
             "model_execution_authorized": False,
