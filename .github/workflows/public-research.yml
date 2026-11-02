@@ -1,4 +1,4 @@
-name: Synthetic-only research interface regression
+name: Research contract tests (fictional inputs only)
 
 on:
   pull_request:
@@ -6,13 +6,15 @@ on:
     paths:
       - 'tools/research/**'
       - '.github/workflows/public-research.yml'
+      - 'tools/audit_ci_data_boundaries.py'
+      - 'tests/test_ci_data_boundaries.py'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  research:
+  offline-contracts:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -22,30 +24,42 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: '3.12'
-      - name: Independent fictional parser and projection regressions
+      - name: Verify no patient-case downloads are invoked by CI
+        run: python tools/audit_ci_data_boundaries.py
+      - name: Verify CI no-download policy regression tests
+        run: python -m unittest discover -s tests -p test_ci_data_boundaries.py -v
+      - name: Fictional research reducer and contract tests
+        shell: bash
         run: |
           set -o pipefail
           mkdir -p research-results
-          python -m unittest discover -s tools/research -p 'test_*.py' -v 2>&1 | tee research-results/tests.txt
-      - name: Reproducibility and boundary receipt
+          python -m unittest discover -s tools/research -p 'test_*.py' -v 2>&1 | tee research-results/unit-tests.txt
+      - name: Preserve reproducibility without patient files
         if: always()
+        shell: bash
         run: |
           python - <<'PY'
-          from pathlib import Path
           import hashlib,json,subprocess
-          paths=[p for p in Path('tools/research').glob('*.py')]+[Path('.github/workflows/public-research.yml')]
-          d={'checkout':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
-             'source_sha256':{str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in paths},
-             'live_patient_case_catalog_invoked':False,'live_public_subject_data_invoked':False,
-             'clinical_validation':False}
+          from pathlib import Path
+          audited=[Path('tools/audit_ci_data_boundaries.py'),Path('.github/workflows/public-research.yml')]
+          manifest={
+              'checkout':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
+              'patient_data_download_steps':0,
+              'external_patient_data_inputs':False,
+              'medical_validation':False,
+              'sources_sha256':{str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in audited}
+          }
           Path('research-results').mkdir(exist_ok=True)
-          Path('research-results/receipt.json').write_text(json.dumps(d,indent=2))
+          Path('research-results/receipt.json').write_text(json.dumps(manifest,indent=2))
           PY
-      - name: Save fictional tests and source receipts only
+      - name: Upload only offline test evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: synthetic-research-regression
-          path: research-results/
+          name: fictional-research-contracts
+          path: |
+            research-results/unit-tests.txt
+            research-results/receipt.json
+            tools/audit_ci_data_boundaries.py
           if-no-files-found: error
           retention-days: 7
