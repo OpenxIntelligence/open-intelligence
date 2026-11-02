@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
   <script src="/mission.js" defer></script>
+  <script src="/report.js" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main-content">Skip to case workspace</a>
@@ -34,6 +35,7 @@
           <a href="#incoming-board">Incoming board</a>
           <a href="#patient-view">Patient view</a>
           <a href="#patient-mission">Patient Mission</a>
+          <a href="#patient-report">Plain-language report</a>
           <a href="#assertions">Reported findings</a>
           <a href="#timeline">Timeline</a>
           <a href="#investigations">Investigation</a>
@@ -107,6 +109,7 @@
         <div class="subhead">What the records say</div><div id="patient-findings" class="findings"></div>
         <div class="subhead">Questions still open</div><div id="patient-questions" class="questions"></div>
         <div class="subhead">What is not certain yet</div><div id="patient-uncertainty" class="questions"></div>
+        <p><a class="button secondary" href="#patient-report">Open the printable plain-language report</a></p>
       </section>
 
       <section class="panel" id="patient-mission" aria-labelledby="patient-mission-title">
@@ -128,6 +131,18 @@
         </div>
         <div class="subhead">Guardrails</div>
         <ul id="mission-guardrails" class="muted tiny"></ul>
+      </section>
+
+      <section class="panel" id="patient-report" aria-labelledby="patient-report-title">
+        <div class="panel-head"><div><div class="eyebrow">PATIENT REPORT · READ-ONLY · PRINTABLE</div><h2 id="patient-report-title">Plain-language case report</h2></div><span class="pill pill-warn">FICTIONAL DEMO — not a real patient</span></div>
+        <p class="muted"><strong>Fictional demo report. This is not a real patient file, not clinical advice, and not reviewed by a clinician.</strong> <span id="report-reading-note"></span></p>
+        <p id="report-meta" class="muted tiny" role="status" aria-live="polite">Loading the plain-language report…</p>
+        <div class="report-actions">
+          <button id="report-print" class="button secondary" type="button">Print this report</button>
+          <a id="report-text-link" class="button secondary" href="#">Download plain text</a>
+        </div>
+        <div id="report-sections" class="report-sections" aria-live="polite"></div>
+        <p class="muted tiny">Fictional demo report. This is not a real patient file, not clinical advice, and not reviewed by a clinician.</p>
       </section>
 
       <section class="panel panel-timeline" id="timeline">

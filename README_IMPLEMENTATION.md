@@ -49,6 +49,19 @@ The panel automatically follows the selected synthetic case and refreshes after 
 
 This slice does **not** add identity, consent, patient goals, PHI support, medication intelligence, acute-safety escalation, diagnostic inference, literature appraisal, trial matching, treatment selection, therapeutic development, care coordination, outcome interpretation, or platform learning. It is a source-grounded workflow orientation surface for the synthetic engineering reference only.
 
+## Plain-language patient/caregiver report
+
+The portal includes a read-only **Plain-language report** view, reachable from the workspace navigation and from the patient view. It renders five sections — overview, timeline highlights, open questions, option portfolio status, goals — deterministically from the current recorded case state. No model is called and no new inference is performed; templates and recorded data only.
+
+```text
+GET /api/cases/{CASE-ID}/patient-report          # JSON
+GET /api/cases/{CASE-ID}/patient-report?format=text  # printable plain text
+```
+
+Behavior contract: every section names its source for each entry or states plainly that it has none; pending, unknown, stale, and quarantined states stay visibly unsettled and are never smoothed over; the report's own voice carries no clinical interpretation, recommendation, or directive language (fixed templates checked by a language guard at build time, with recorded entries shown verbatim as attributed quotations); the ledger has no goals entity, so the goals section reports that absence instead of inferring goals. The report and its UI are labeled fictional/demo throughout, and the view offers Print plus a plain-text download.
+
+This slice does **not** add patient goals tracking, clinical interpretation, recommendations, or any new ledger state. It is a presentation projection over the existing case record for the synthetic engineering reference only.
+
 ## Fictional evidence and case applicability slice
 
 The evidence form supports only the explicit `OI-SYNTHETIC-EVIDENCE/1` format with `Rights: original-synthetic`. Use the bundled `examples/synthetic/demo-evidence.txt` text. That declaration is not legal clearance for arbitrary user-supplied text. No third-party paper, article body, guideline, or real oncology data is retrieved or reused.
