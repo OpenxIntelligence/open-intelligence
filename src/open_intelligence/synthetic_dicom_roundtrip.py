@@ -143,6 +143,18 @@ class SyntheticObjectServer:
         self.object = None
         self.parsed = None
 
+    def validate(self, parsed):
+        # HTTP handlers use their own connection; Python SQLite connections
+        # cannot be shared across ThreadingHTTPServer request threads.
+        if self.store.path == ":memory:":
+            raise InvalidInput("Use a local fictional file-backed CaseStore for HTTP")
+        local = CaseStore(self.store.path)
+        try:
+            check_dicomweb_metadata(local,self.ref["case_id"],
+                                    [_qido(self.ref,parsed)])
+        finally:
+            local.close()
+
     def start(self):
         parent = self
         class Handler(BaseHTTPRequestHandler):
@@ -164,8 +176,7 @@ class SyntheticObjectServer:
                         raise InvalidInput("Invalid bounded byte count")
                     data = self.rfile.read(count)
                     parsed = _unpack(data)
-                    check_dicomweb_metadata(parent.store,parent.ref["case_id"],
-                                            [_qido(parent.ref,parsed)])
+                    parent.validate(parsed)
                     parent.object, parent.parsed = data,parsed
                     receipt = {"status":"stored_fictional_test_object",
                                "sha256":sha256(data).hexdigest()}
@@ -178,8 +189,7 @@ class SyntheticObjectServer:
                     return self.reply(404,b"no object","text/plain")
                 # Recheck current source version on every query/retrieval.
                 try:
-                    check_dicomweb_metadata(parent.store,parent.ref["case_id"],
-                                            [_qido(parent.ref,parent.parsed)])
+                    parent.validate(parent.parsed)
                 except InvalidInput:
                     return self.reply(409,b"source context changed","text/plain")
                 if path == "/studies":
