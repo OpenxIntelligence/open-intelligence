@@ -23,7 +23,7 @@ The browser journeys require an installed Chrome or Chromium executable. GitHub 
 
 For the demonstration: create a question in `CASE-ALPHA`, save an investigation draft linked to the pathology document, acknowledge it in demo mode, load the example amendment, and import it. The prior investigation becomes `stale`, the question reopens, and the original source remains accessible. Draft a replacement against the amended document. `CASE-BETA` remains unaffected.
 
-**Scope and warnings:** this is local-only software with no authentication, no access controls suitable for PHI, no clinical inference, no live literature or trials, and no clinical review. Never insert real patient data. The supported structured test format is `OI-SYNTHETIC-REPORT/1`, not a general-purpose clinical document parser. Source statements are author-supplied within report bytes. There is no treatment recommender, trial matching, or AI agent. The demo reviewer acknowledgment cannot attest professional credentials. The engineering controls are not evidence of medical safety or regulatory status.
+**Scope and warnings:** this is local-only software with no authentication, no access controls suitable for PHI, no clinical inference, no appraised live literature or trial screening, and no clinical review. Public bibliographic metadata lookup is available only through the explicit options below. Never insert real patient data. The supported structured test format is `OI-SYNTHETIC-REPORT/1`, not a general-purpose clinical document parser. Source statements are author-supplied within report bytes. There is no treatment recommender or trial matching. Optional bounded model investigation is described below; its output remains unreviewed. The demo reviewer acknowledgment cannot attest professional credentials. The engineering controls are not evidence of medical safety or regulatory status.
 
 The project distribution license remains undecided. Public source visibility is not an open-source license grant. All test reports and UI code are independently authored for this repository.
 
@@ -68,6 +68,16 @@ PYTHONPATH=src python -m open_intelligence serve --enable-crossref-live
 Optional: `--crossref-contact operator@example.org` adds the operator-supplied contact email to the DOI-only metadata request, not a patient address. Crossref's current [access policy](https://www.crossref.org/documentation/retrieve-metadata/rest-api/access-and-authentication/) describes rate limits and polite contact requirements. The prototype enforces one concurrent DOI lookup and a conservative one-second gap.
 
 Only the public DOI is transmitted to a fixed Crossref API endpoint, and only bibliographic metadata fields are rendered. Abstracts, article text, full-text links, evidence grades and patient identifiers are never included in the output. The UI does not attach metadata to a clinical assertion or claim patient relevance. Live service behavior and medical usefulness require separate evaluation. No patient data should ever be used in this demo.
+
+### Find publications by title with Europe PMC
+
+The same bibliography panel also supports a literal public title-topic search. Its fictional example works offline and contains no real publication identifiers or links. Enable live title search separately:
+
+```bash
+PYTHONPATH=src python -m open_intelligence serve --enable-europe-pmc-live
+```
+
+Use public research terms only. No case context is automatically added; syntax validation does not detect identifying information. Search returns one page of at most 25 citations, with optional paired publication dates. Results remain transient and unappraised. The adapter excludes abstracts, book summaries, full text and unknown provider fields; it records provider identity, retrieval time and hashes of the selected metadata. Live access is not approval of content rights or clinical use. See [the request and provenance contract](docs/EUROPE_PMC_METADATA_BOUNDARY.md) and [integration verification](docs/engineering/EUROPE_PMC_INTEGRATION_2026-11-02.md).
 
 ## Meta investigation layer (Meta Model API, OI-008)
 

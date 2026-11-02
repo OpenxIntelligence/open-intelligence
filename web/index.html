@@ -336,7 +336,7 @@
           </section>
           <section class="panel" id="bibliography">
             <div class="panel-head"><h2>Bibliographic discovery</h2><span class="pill pill-neutral">Not case-linked</span></div>
-            <p class="muted">A publication identifier does not establish treatment benefit or applicability. This panel never sends patient information. Do not enter patient details. Live lookups send only a public DOI and require explicit local server opt-in.</p>
+            <p class="muted">Find citation details for later source review. These results are not appraised evidence or linked to a case. Live lookups require local operator opt-in. No case context is added; enter only public research terms or identifiers.</p>
             <div id="bibliography-mode" class="muted tiny" role="status">Checking bibliography mode…</div>
             <form id="bibliography-form">
               <label for="bibliography-doi">Public DOI (not a patient identifier)</label>
@@ -347,6 +347,29 @@
               </div>
             </form>
             <div id="bibliography-result" class="cards" aria-live="polite"></div>
+            <div class="publication-search">
+              <h3>Find publications by title</h3>
+              <p class="muted tiny" id="europe-pmc-input-help">Europe PMC searches a literal title phrase in PubMed records. Do not enter patient details. Input validation checks syntax; it does not detect identifying information.</p>
+              <p id="europe-pmc-mode" class="muted tiny" role="status">Checking public topic search…</p>
+              <form id="europe-pmc-form">
+                <label for="europe-pmc-topic">Public title topic</label>
+                <input id="europe-pmc-topic" type="text" maxlength="120" pattern="[A-Za-z0-9 \-]+" placeholder="melanoma" aria-describedby="europe-pmc-input-help" required>
+                <details class="metadata-provenance">
+                  <summary>Date range and result limit</summary>
+                  <div class="publication-search-options">
+                    <div><label for="europe-pmc-start-date">First publication from</label><input id="europe-pmc-start-date" type="date" min="1500-01-01" max="2200-12-31"></div>
+                    <div><label for="europe-pmc-end-date">Through</label><input id="europe-pmc-end-date" type="date" min="1500-01-01" max="2200-12-31"></div>
+                    <div><label for="europe-pmc-page-size">Maximum results</label><input id="europe-pmc-page-size" type="number" min="1" max="25" value="10" required></div>
+                  </div>
+                  <p class="muted tiny">Supply both dates or neither. Provider publication dates may contain inferred months or days. One page is retrieved.</p>
+                </details>
+                <div class="actions">
+                  <button id="europe-pmc-example-button" type="button" class="button secondary">Load fictional search example</button>
+                  <button id="europe-pmc-search-button" type="submit" class="button" disabled>Search public titles</button>
+                </div>
+              </form>
+              <div id="europe-pmc-results" class="cards" aria-live="polite"></div>
+            </div>
           </section>
 
           <section class="panel" id="import">

@@ -587,6 +587,72 @@ def main() -> None:
             assert not cd.evaluate("document.querySelector('#bibliography-result').textContent.includes('COPYRIGHTED ABSTRACT')")
             assert cd.evaluate("document.querySelector('#bibliography-result').textContent.includes('No abstract')")
 
+            # Exercise the real Europe PMC panel against the local offline
+            # route. Guard browser fetches so a regression cannot contact an
+            # external provider while proving that live submission stays off.
+            cd.wait("document.querySelector('#europe-pmc-mode').textContent.includes('Offline by default')",
+                    "Europe PMC offline mode announced")
+            assert cd.evaluate("document.querySelector('#europe-pmc-search-button').disabled")
+            cd.evaluate("""(() => {
+              window.__oiPublicationRequests = [];
+              window.__oiOriginalPublicationFetch = window.fetch.bind(window);
+              window.fetch = async (input, options) => {
+                const target = new URL(input instanceof Request ? input.url : String(input), location.href);
+                if (target.origin !== location.origin) {
+                  window.__oiPublicationRequests.push('BLOCKED EXTERNAL REQUEST');
+                  throw new Error('Browser verification forbids external requests');
+                }
+                if (target.pathname.startsWith('/api/bibliography/europe-pmc/')) {
+                  window.__oiPublicationRequests.push(target.pathname);
+                }
+                const response = await window.__oiOriginalPublicationFetch(input, options);
+                if (target.pathname === '/api/bibliography/europe-pmc/example') {
+                  window.__oiPublicationExample = await response.clone().json();
+                }
+                return response;
+              };
+              document.querySelector('#europe-pmc-example-button').click();
+            })()""")
+            cd.wait("document.querySelectorAll('#europe-pmc-results .source-card').length === 2",
+                    "two independently authored citation examples rendered")
+            cd.wait("!document.querySelector('#europe-pmc-example-button').disabled",
+                    "Europe PMC example action completes")
+            assert cd.evaluate("""[...document.querySelectorAll('#europe-pmc-results .source-card strong')]
+              .every(e => e.textContent.startsWith('Fictional example:'))""")
+            assert cd.evaluate("document.querySelector('#europe-pmc-results').textContent.includes('Results are unsaved and not used as evidence')")
+            assert cd.evaluate("document.querySelectorAll('#europe-pmc-results a').length") == 0, (
+                "fictional citations must not have real publication links"
+            )
+            cd.evaluate("""(() => {
+              document.querySelector('#europe-pmc-topic').value = 'melanoma';
+              document.querySelector('#europe-pmc-form').requestSubmit();
+            })()""")
+            cd.wait("document.querySelector('#notice').textContent.includes('Public topic search is disabled')",
+                    "programmatic submission also respects disabled live access")
+            assert cd.evaluate("window.__oiPublicationRequests") == [
+                "/api/bibliography/europe-pmc/example"
+            ], "offline panel attempted a search or external request"
+
+            # Authored hostile text remains visible text in a real browser;
+            # even a supplied URL cannot turn a demo citation into a link.
+            cd.evaluate("""(() => {
+              const page = window.__oiPublicationExample;
+              renderEuropePmc({...page, results: [{...page.results[0],
+                title: '<img src=x onerror="window.__oiPublicationMarkupExecuted=true">',
+                canonical_url: 'javascript:window.__oiPublicationMarkupExecuted=true'
+              }]});
+            })()""")
+            assert cd.evaluate("document.querySelector('#europe-pmc-results strong').textContent.startsWith('<img ')")
+            assert cd.evaluate("document.querySelectorAll('#europe-pmc-results img, #europe-pmc-results script, #europe-pmc-results a').length") == 0
+            assert not cd.evaluate("window.__oiPublicationMarkupExecuted === true")
+            cd.evaluate("""(() => {
+              renderEuropePmc(window.__oiPublicationExample);
+              window.fetch = window.__oiOriginalPublicationFetch;
+            })()""")
+            assert cd.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1"), (
+                "publication search controls overflow the 390px viewport"
+            )
+
 
             # A historical stale snapshot must remain inspectable after the
             # corresponding reopened question receives a NEW demo acknowledgment.
@@ -707,7 +773,8 @@ def main() -> None:
             print("PASS: browser source drilldown, source comparison, review-attention resolution, "
                   "keyboard Escape/Tab and AX landmarks, "
                   "case switching, question/draft, review, amendment invalidation, "
-                  "original export, source-derived timeline, fictional evidence lifecycle, offline bibliography, 390px responsive layout, "
+                  "original export, source-derived timeline, fictional evidence lifecycle, offline bibliography, "
+                  "Europe PMC offline gating and literal text, 390px responsive layout, "
                   "browser duplicate and wrong-patient rejection")
         finally:
             if cd is not None:

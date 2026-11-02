@@ -12,6 +12,7 @@ from time import monotonic
 from urllib.parse import parse_qs, urlsplit
 
 from tools.crossref_metadata import MetadataInputError, fetch_public_doi, project_work
+from tools import europe_pmc_metadata
 
 from .changes import changes_since_review
 from .investigation import (
@@ -37,6 +38,7 @@ class Handler(BaseHTTPRequestHandler):
     # Purely local synthetic demonstration, with no authenticated user concept.
     db_path: str
     allow_crossref_live = False
+    allow_europe_pmc_live = False
     crossref_contact: str | None = None
     metadata_request_lock = Lock()
     metadata_last_request = 0.0
@@ -76,7 +78,7 @@ class Handler(BaseHTTPRequestHandler):
             raise InvalidInput("Request body exceeds local-demo limit")
         try:
             data = json.loads(self.rfile.read(n))
-        except (UnicodeDecodeError, json.JSONDecodeError):
+        except (ValueError, RecursionError):
             raise InvalidInput("Invalid JSON body") from None
         if not isinstance(data, dict):
             raise InvalidInput("JSON object required")
@@ -124,6 +126,11 @@ class Handler(BaseHTTPRequestHandler):
                 # Original fictional metadata, not a publication or live lookup.
                 data = json.loads((SYNTHETIC / "crossref-metadata-fixture.json").read_text())
                 return self._json(200, project_work(data, "10.5555/oi-synthetic-001"))
+            if path == "/api/bibliography/europe-pmc/status":
+                return self._json(200, {"live_enabled": bool(self.allow_europe_pmc_live),
+                                        "max_results": europe_pmc_metadata.MAX_RESULTS})
+            if path == "/api/bibliography/europe-pmc/example":
+                return self._json(200, europe_pmc_metadata.demo_search())
         except OSError:
             return self._json(404, {"error": "Resource unavailable"})
         # Each request uses a separate SQLite connection; never share a
@@ -197,6 +204,19 @@ class Handler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         try:
             data = self._body()
+            if path == "/api/bibliography/europe-pmc/search":
+                if not self.allow_europe_pmc_live:
+                    return self._json(403, {"error": "Live Europe PMC search is disabled by default; the local operator must opt in"})
+                try:
+                    # No case state is read, forwarded or persisted. The adapter
+                    # rejects unknown request fields before constructing egress.
+                    return self._json(200, europe_pmc_metadata.fetch_public_topic(data))
+                except europe_pmc_metadata.EuropePMCInputError as error:
+                    return self._json(422, {"error": str(error)})
+                except europe_pmc_metadata.EuropePMCRateLimited as error:
+                    return self._json(429, {"error": str(error)})
+                except europe_pmc_metadata.EuropePMCUnavailable as error:
+                    return self._json(502, {"error": str(error)})
             if path == "/api/bibliography/lookup":
                 if not self.allow_crossref_live:
                     return self._json(403, {"error": "Live Crossref lookup disabled by default; use explicit local server option"})
@@ -422,6 +442,8 @@ def main() -> None:
                         help="Allow explicit public DOI-only metadata requests; disabled by default")
     parser.add_argument("--crossref-contact", default=None,
                         help="Optional operator email for Crossref polite pool, never patient email")
+    parser.add_argument("--enable-europe-pmc-live", action="store_true",
+                        help="Allow explicit public title-topic discovery; syntax validation is not PHI detection")
     args = parser.parse_args()
     if args.operation == "seed":
         seed(args.db)
@@ -429,10 +451,12 @@ def main() -> None:
     print(f"Synthetic-only Open Intelligence demo: http://127.0.0.1:{args.port}")
     print("No authentication; localhost only. Do not import real patient data.")
     print("Crossref DOI-only live lookup:", "ENABLED (explicit)" if args.enable_crossref_live else "DISABLED (default)")
+    print("Europe PMC public title-topic lookup:", "ENABLED (explicit)" if args.enable_europe_pmc_live else "DISABLED (default)")
     server_type = type("LocalOIHTTPServer", (ThreadingHTTPServer,), {"allow_reuse_address": True})
     bound_handler = type("BoundHandler", (Handler,), {
         "db_path": args.db, "allow_crossref_live": args.enable_crossref_live,
         "crossref_contact": args.crossref_contact,
+        "allow_europe_pmc_live": args.enable_europe_pmc_live,
     })
     httpd = server_type(("127.0.0.1", args.port), bound_handler)
     try:
