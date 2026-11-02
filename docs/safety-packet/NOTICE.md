@@ -88,9 +88,12 @@ decision.
 
 ## Third-party notices
 
-No third-party code is shipped, so no third-party license notices are
-owed for shipped code. Referenced (not shipped) items are recorded
-for transparency:
+The legacy standard-library demo does not bundle third-party application code.
+The separate H1 API development image installs pinned Python dependencies and
+must retain its [artifact notices](../../apps/api/THIRD_PARTY_NOTICES.md) and
+[rights inventory](../../apps/api/dependency-license-inventory.json). This packet
+does not clear the complete image or select a project distribution license.
+Referenced (not shipped by the legacy demo) items are recorded for transparency:
 
 - Crossref bibliographic metadata: bibliographic metadata is factual and
   not subject to copyright; Crossref-generated data is released as CC0;

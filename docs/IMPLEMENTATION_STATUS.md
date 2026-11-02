@@ -4,6 +4,40 @@
 
 ## Current audit — 2 November 2026
 
+### H1 API composition-root candidate — issue #112
+
+The separate [`apps/api`](../apps/api/README.md) candidate starts from
+`533afd3ca6dd0c011e2e47397d3d5cae04e62512` (draft PR #137), not a silently
+rewritten main. Live branch/PR inspection found active owners for patient-port,
+clinical-spine, composer and review integrations; this slice supplies their API
+composition boundary and leaves their domain models intact.
+
+| Requirement/domain | Implementation location | Source/integration state | Verification boundary | Deployment / clinical validation | Missing work |
+|---|---|---|---|---|---|
+| Issue #112 / CMP-17, bounded CMP-15/CMP-19 | `apps/api/src/oi_api`, migrations, Compose and H1 workflow | Draft `feat/h1-fastapi-postgres-shell-20261102`, stacked on #137 | 26 API tests passed locally against actual PostgreSQL 16.15; 245 existing prototype tests passed. Hosted Compose/browser results belong to the exact PR-head run. | Local synthetic only; no production deployment or clinical validation | Canonical patient/domain migration and mounted domain contracts |
+| REQ-L-113 / local boundary | `apps/api/src/oi_api/app.py`, `__main__.py`, Compose | Loopback launch and Host validation; no auth claim | Rejected external Host, credential-safe errors, no patient endpoints | Not approved for non-local or real-patient operation | Authenticated identity, consent/purpose and professional authority |
+| Artifact rights / CMP-17 | `apps/api/dependency-license-inventory.json`, notices and gate | 24 pinned wheels, 99 supplier Rust entries, 13 embedded-runtime entries | Exact hashes/notices checked; approval restricted to local synthetic H1 development | Commercial distribution and complete image clearance remain held | Mako inherited-label review, link-map evidence, complete host/container inventory |
+| Patient World Model and evidence | Existing `CaseStore` and active integration branches | Existing prototype retained; no parallel ledger introduced | Existing synthetic regression remains a separate baseline | Not clinically validated | Reconcile reviewed canonical PostgreSQL port and source/evidence/review contracts |
+| Unified React/Vite experience | Issue #119 | Accepted target; no new frontend implementation in this slice | No React/browser-product completion claim from API health | Not deployed | Connect genuine patient-source APIs before extending the shell UI |
+
+This is **bounded audit coverage**, not a claim that every repository branch,
+architecture count, dependency, clinical domain or external source is fully
+audited. Historic patient-data outputs and retained artifacts remain outside the
+source-path review. #137 contains the existing safety correction; this branch
+does not merge it or independently certify historical artifacts.
+
+Technology discovery in this slice deeply qualifies the backend/driver and
+native-wheel dependencies needed for #112. Existing frontend, identity,
+documents/OCR, imaging/pathology, genomics, model weights, enterprise tooling and
+full deployment images remain separate discovery/qualification workstreams.
+NCCN content rights remain unresolved; current H1 permits only the separately
+defined metadata/version/link boundary. CIViC's official CC0/API documentation
+is a promising content input to research, not an implemented connector here.
+
+Exact test counts, source commit and hosted execution evidence belong in the
+draft PR and its linked workflow. Do not mark all of M-H1-0, MRT-01, a useful
+patient MVP or real-patient release complete from this infrastructure shell.
+
 The dated slice reports below are preserved as history; their absence statements and next-step lists are not a current inventory. The inspected application baseline was main [`52ea683`](https://github.com/OpenxIntelligence/open-intelligence/commit/52ea683fbe3537b17a05066dceff2ba01f758c5d): **236 synthetic application tests passed locally**, with loopback HTTP servers and mocked/fixture external transports. Subsequent main [`24519839`](https://github.com/OpenxIntelligence/open-intelligence/commit/24519839) adds the no-personal-case-data policy and CI blocking changes; those changes do not establish a newly passing application baseline.
 
 Inspected code includes `CaseStore` source/evidence versions, questions, snapshots, discovery/rights links, options/preparation tasks, biological assets/inventory, bounded model-investigation receipts, and mission/timeline/change projections. `patient_access` supplies a synthetic gate with in-memory bindings, not production authorization. Replay exercises the investigation contract; this audit did not reverify live model operation. Current runtime is Python/SQLite and vanilla JavaScript; the accepted H1 target is Python/FastAPI/PostgreSQL plus React/Vite/TypeScript, excluding Next.js.
