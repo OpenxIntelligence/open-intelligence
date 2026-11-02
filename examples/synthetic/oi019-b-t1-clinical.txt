@@ -1,0 +1,11 @@
+OI-SYNTHETIC-REPORT/1
+Patient: CASE-OI019-B
+Document: CLIN-OI019-B
+Type: clinical
+Event-Date: 2026-08-10
+Issued-At: 2026-08-11
+Finding: planned-treatment|reported|A fictional planned treatment is recorded in this synthetic record; no clinical recommendation is stated.
+Finding: hypothetical-criterion|reported|A hypothetical future trial criterion was described that might require a pre-treatment sample; no actual trial is identified in this fictional note.
+Finding: criterion-applicability|indeterminate|Whether any hypothetical criterion would apply to this fictional case is not determined.
+Finding: candidate-assay-option|reported|A candidate option using a Marker A-positive sample was listed for discussion in this fictional note.
+Finding: treatment-effect-on-criterion|indeterminate|Whether the planned treatment would affect any hypothetical criterion is not determined in this fictional note.

@@ -1,0 +1,55 @@
+name: Synthetic UI glance verification
+on:
+  pull_request:
+    paths:
+      - 'web/**'
+      - 'src/**'
+      - 'tests/**'
+      - '.github/workflows/ui-glance.yml'
+  push:
+    branches: [ui/clinician-glance-20261031]
+permissions:
+  contents: read
+jobs:
+  ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PYTHONPATH: src
+      OI_UI_ARTIFACT_DIR: ui-artifacts
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Compile and JavaScript syntax
+        run: |
+          python -m compileall -q src tests
+          node --check web/app.js
+      - name: Python and HTTP regression suite
+        run: python -m unittest discover -s tests -p 'test_*.py' -v
+      - name: Source-reader concurrency and lineage regressions
+        run: node --test tests/test_source_dialogs.js
+      - name: Existing integrated browser journey
+        run: python tests/browser_journey.py
+      - name: Source-dialog race browser journey
+        run: python tests/browser_source_dialogs.py
+      - name: Source-first layout and keyboard journey
+        if: always()
+        run: python tests/ui_glance_journey.py
+      - name: Record exact source under test
+        if: always()
+        run: |
+          mkdir -p ui-artifacts
+          git rev-parse HEAD > ui-artifacts/commit.txt
+          git archive --format=zip --output=ui-artifacts/source-under-test.zip HEAD
+      - name: Preserve fictional screenshots and reproducible source
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: synthetic-ui-glance-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ui-artifacts/
+          if-no-files-found: error
+          retention-days: 7
