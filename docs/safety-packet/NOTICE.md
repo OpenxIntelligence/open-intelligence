@@ -1,8 +1,12 @@
 # NOTICE — Open Intelligence demo
 
+For the current tree on branch `oi/safety-packet` (current `main`
+merged in; refreshed 2026-11-02).
+
 ## Fictional-data statement
 
-Every patient case, source report, finding, question, assessment, and
+Every patient case, source report, finding, question, assessment,
+discovery record, option, dependency, investigation output, and
 bibliographic entry in this demo is independently authored fictional
 content created for a software demonstration. No real patient is involved.
 No real patient record, clinical document, or identifiable health
@@ -10,14 +14,24 @@ information is shipped in this repository, and none may be entered into
 the demo. The demo's own documentation states this (`README.md`,
 `README_IMPLEMENTATION.md`); the UI labels the demo data as fictional.
 
+This covers the original Alpha/Beta fixtures and every newer fixture
+family: the OI-019 option-evaluation cases, the OI-017 patient-access
+fixtures, the discovery literature/trial records, and the recorded
+model-investigation replay fixture (see `ASSET_CATALOG.md`). All carry
+their fictional markers and are listed there file by file.
+
 ## What is not shipped, and what is not claimed
 
 - No third-party clinical content: no article body, guideline text, trial
   record, or real oncology data is retrieved or reused. The only
   third-party material referenced is Crossref bibliographic metadata, which
   is metadata-only (see `DATA_RIGHTS.md`). Publisher abstracts are
-  excluded by the adapter.
-- No model weights and no model: the demo on `main` makes no model call.
+  excluded by the adapter, and the discovery format rejects any
+  `Abstract` field.
+- No model weights are shipped. The only model use is the bounded,
+  operator-keyed Meta investigation path described in `SBOM.md`, whose
+  default replay mode runs fully offline; stored model output is always
+  a pending hypothesis for review, never a conclusion.
 - No unlicensed assets: the demo ships no fonts, images, icons, audio,
   video, or vendored third-party code. The `web/` directory contains only
   HTML, JavaScript, and CSS authored for this repository.
@@ -26,10 +40,16 @@ the demo. The demo's own documentation states this (`README.md`,
   engineering controls in this repository are not evidence of medical
   safety or regulatory status (per `README_IMPLEMENTATION.md`).
 - No treatment recommendation, trial matching, staging, grading, variant
-  interpretation, or response/progression inference is performed by the
+  interpretation, response/progression inference, eligibility or efficacy
+  determination, or clinical-deadline inference is performed by the
   demo. Labels such as `supports`, `contradicts`, and `applicable` are
   human-entered fictional engineering data, not determinations of evidence
   quality, clinical benefit, trial eligibility, or clinical relevance.
+  Discovery titles, summaries, and link rationales pass a fail-closed
+  guard that rejects eligibility/efficacy/benefit language; option
+  deadlines and threats accept a date only with a `sourced` basis and
+  anchor, and `unknown` otherwise. None of these guards is a clinical
+  determination.
 
 ## License status — undecided, explicitly
 
@@ -48,7 +68,7 @@ decision.
 ## Third-party notices
 
 No third-party code is shipped, so no third-party license notices are
-owed for shipped code. Two referenced (not shipped) items are recorded
+owed for shipped code. Referenced (not shipped) items are recorded
 for transparency:
 
 - Crossref bibliographic metadata: bibliographic metadata is factual and
@@ -57,8 +77,14 @@ for transparency:
   by the adapter. Verified against Crossref's Metadata Retrieval
   documentation on 2026-11-01 and recorded in
   `docs/CROSSREF_METADATA_BOUNDARY.md` (checked 31 October 2026 there).
+- Meta Model API (live investigation mode only): no Meta code or weights
+  are shipped. Live mode sends a bounded prompt of fictional case text to
+  the Meta API host only when the operator supplies a key and selects
+  live mode; terms of that operator-invoked service are UNVERIFIED in
+  this packet. Replay mode uses only the bundled fictional fixture.
 - GitHub Actions used in CI only (`actions/checkout@v4`,
-  `actions/setup-python@v5`): license terms UNVERIFIED in this packet;
+  `actions/setup-python@v5`, and the SHA-pinned
+  `actions/upload-artifact`): license terms UNVERIFIED in this packet;
   see `SBOM.md` for the re-verification step. They are not shipped.
 
 ## Precedence

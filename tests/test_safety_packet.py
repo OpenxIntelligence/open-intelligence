@@ -1,7 +1,7 @@
 """Guard tests for the submission safety packet.
 
 These assert load-bearing repository invariants the packet relies on:
-no third-party package manager files, only the two pinned CI actions,
+no third-party package manager files, only the three pinned CI actions,
 no externally fetched web resources, and synthetic markers on every
 example file. They read the repository itself, so a merge that breaks
 an invariant fails here rather than silently invalidating the packet.
@@ -13,7 +13,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
-KNOWN_ACTIONS = {"actions/checkout@v4", "actions/setup-python@v5"}
+KNOWN_ACTIONS = {
+    "actions/checkout@v4",
+    "actions/setup-python@v5",
+    "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+}
 
 
 class SafetyPacketTest(unittest.TestCase):
@@ -36,13 +40,25 @@ class SafetyPacketTest(unittest.TestCase):
         html = (ROOT / "web/index.html").read_text(encoding="utf-8")
         for match in re.finditer(r'<(?:script|link)[^>]+(?:src|href)="([^"]+)"', html):
             url = match.group(1)
-            self.assertFalse(url.startswith("http"),
+            self.assertFalse(url.startswith("http") or url.startswith("//"),
                              f"external web resource: {url}")
-        css = (ROOT / "web/style.css").read_text(encoding="utf-8")
-        self.assertNotIn("@import", css)
+        for name in ("style.css", "tokens.css", "base.css"):
+            css = (ROOT / "web" / name).read_text(encoding="utf-8")
+            for match in re.finditer(r"url\(\s*[\"']?([^\"')]+)", css):
+                url = match.group(1)
+                self.assertFalse(url.startswith("http") or url.startswith("//")
+                                 or url.startswith("data:"),
+                                 f"external CSS resource in {name}: {url}")
+        for name in ("app.js", "mission.js"):
+            js = (ROOT / "web" / name).read_text(encoding="utf-8")
+            for match in re.finditer(r"(?:\bapi|\bfetch)\(\s*[\"`]([^\"`]+)", js):
+                target = match.group(1)
+                self.assertTrue(target.startswith("/"),
+                                f"non-local request target in {name}: {target}")
 
     def test_example_files_carry_synthetic_markers(self):
         examples = sorted((ROOT / "examples/synthetic").glob("*.txt"))
+        examples += sorted((ROOT / "examples/patient-access").glob("*.txt"))
         self.assertTrue(examples, "no synthetic example files found")
         for path in examples:
             first = path.read_text(encoding="utf-8").splitlines()[0]
