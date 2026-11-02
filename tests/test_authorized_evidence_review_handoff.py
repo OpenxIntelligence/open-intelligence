@@ -58,7 +58,12 @@ class ReviewHandoffTests(unittest.TestCase):
             "assertion_id": assertion, "knowledge_id": EVIDENCE_KEY,
             "quote": "claims no therapeutic outcomes"
         }]
-        return AuthorizedEvidenceReviewHandoff(EvidenceReviewPacket(bridge)), question, aid, sources, selected
+        return AuthorizedEvidenceReviewHandoff(
+            EvidenceReviewPacket(bridge),
+            return_authorizer=lambda actor, patient, action, purpose: (
+                actor == self.actor()["actor"] and patient == self.patient_id
+                and action == "evidence.review_return" and purpose == "care"
+            )), question, aid, sources, selected
 
     def snapshot(self, handoff, question, aid, selected):
         return handoff.preview(
@@ -90,6 +95,33 @@ class ReviewHandoffTests(unittest.TestCase):
         self.assertEqual(item["receipts"][-1]["reviewer_label"], self.actor()["actor"])
         self.assertFalse(any(x["queue_key"] == item["queue_key"] for x in current["resolved"]))
         self.assertEqual(len(current["receipts"]), 1)
+
+    def test_read_permission_does_not_authorize_review_write(self):
+        handoff, q, aid, _, quotes = self.candidate()
+        # Readable sources alone cannot grant permission to append a receipt.
+        handoff.return_authorizer = None
+        self.assertEqual(self.snapshot(handoff, q, aid, quotes)["queue_status"],
+                         "awaiting_review")
+        with self.assertRaises(PermissionError):
+            handoff.return_for_review(
+                self.patient_id, CASE, q, aid, selected_quotes=quotes,
+                reason="Fictional study has not received independent appraisal.",
+                **self.actor())
+        self.assertEqual(self.store.review_queue(CASE)["receipts"], [])
+
+    def test_review_write_grant_revoked_mid_preflight_is_refused(self):
+        handoff, q, aid, _, quotes = self.candidate()
+        counter = {"calls": 0}
+        def check(actor, patient, action, purpose):
+            counter["calls"] += 1
+            return counter["calls"] == 1
+        handoff.return_authorizer = check
+        with self.assertRaises(PermissionError):
+            handoff.return_for_review(
+                self.patient_id, CASE, q, aid, selected_quotes=quotes,
+                reason="Fictional study has not received independent appraisal.",
+                **self.actor())
+        self.assertEqual(self.store.review_queue(CASE)["receipts"], [])
 
     def test_rights_revocation_fails_without_new_receipt(self):
         handoff, q, aid, sources, quotes = self.candidate()
