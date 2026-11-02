@@ -43,22 +43,53 @@ An ordinary API gateway (routing/policy) is **not** the same thing as a health-i
 
 ## Proposed synthetic evaluation (no external patient access authorized)
 
-Create independently authored fictional multi-institution oncology cases with conflicting pathology, distinct specimens, late amendments, a false patient match, missing molecular data, imaging reports without pixels, and a payer event without confirmation of administration. Define a per-source expected artifact inventory. Test each candidate adapter against **the same cases**, capturing:
+Create independently authored fictional multi-institution oncology cases with conflicting pathology, distinct specimens, late amendments, a false patient match, missing molecular data, imaging reports without pixels, and a payer event without confirmation of administration. Define a per-source expected artifact inventory. Test local adapters or recorded synthetic responses against **the same cases**, capturing:
 
-- Source coverage by organization and artifact class; false-match and omission rate.
+- Fixture-level artifact completeness, false attachment, omission and duplicate behavior against the authored expected inventory.
 - Raw-byte preservation, original source link, timestamps, source version, authorization receipt.
-- Duplicate handling and field-level transformation loss; preservation of conflict and unknown states.
+- Field-level transformation loss; preservation of conflict and unknown states.
 - Amendment-driven invalidation only for affected derived work.
-- Revocation/isolation/egress controls and absence of unauthorized external action.
-- End-to-end reviewer effort, vendor costs, and exit/portability evidence.
+- Simulated revocation/isolation/egress controls and absence of unauthorized external action.
+- Reproducible local processing effort and export/reimport fidelity; identify which costs and review burdens remain estimates.
+
+**Synthetic fixtures cannot establish actual network discovery, patient matching performance, population record completeness, vendor pricing, or clinical usefulness.** A fictional patient must not be submitted to a live clinical exchange as though it were a real authorized individual.
+
+| Evaluation tier | Permitted evidence claim | Not established |
+| --- | --- | --- |
+| Local synthetic fixtures | Behavior of the adapter and existing source/evidence/authority contracts for specified test cases | Real institutional coverage, live identity proofing or representative clinical error rates |
+| Separately authorized vendor sandbox | Compatibility with the named sandbox version, documented payloads and supported test identities | Production access rights, nationwide availability or real-patient completeness |
+| Separately authorized real-data evaluation | Observed results for the specified population, sites, dates, artifact classes and permitted protocol | Universal coverage, efficacy or clinical release approval |
+
+For any later real-data evaluation, define the reference inventory, retrieval window, denominator, adjudication method and source-specific missingness before comparison. Report unknown source availability separately from retrieval failure and data not exposed by the source. Compare identical evaluation scopes rather than unqualified vendor totals.
 
 No real records, live QHIN calls, commercial account creation, service agreements, patient outreach, or vendor commitment is authorized by this research document.
 
+## Route the broader research into existing work
+
+The earlier clinical, scientific, regulatory and commercial dossier is complementary research, **not a successor architecture or a newly accepted roadmap**. The following crosswalk routes questions to existing work packages; it neither creates new package identifiers nor changes their order, owners, dependencies or completion status.
+
+| Complementary research | Existing work | Bounded evidence to add |
+| --- | --- | --- |
+| Intended use, patient/clinician authority and privacy roles | OI-001, OI-012, OI-013 | Function-level intended-use and authority matrix; dated specialist review; consumer/provider access distinction |
+| National access, payer data and direct laboratory interfaces | OI-002, OI-005, OI-006; issue #17 | Artifact/access matrix, exact product and purpose, original-source fidelity, unknowns and exit path |
+| Provenance, chronology, specimen context and projections | OI-003, OI-006, OI-009 | Loss receipts, wrong-patient/specimen controls, as-known-at replay, conflict retention and amendment tests within the current model |
+| Knowledge, terminology, model and service rights | OI-004, OI-008, OI-018 | Use-specific permissions for access, storage, display, redistribution, retrieval, embeddings, training and evaluation; unresolved rights remain blocked |
+| Imaging, pathology, molecular and other biological assets | OI-016 | Separate registration, report review, native-artifact access and qualified analysis; rights, custody, QC and exact versions |
+| Trials, investigational possibilities and authorized follow-through | OI-007, OI-008, OI-012, OI-017 | Criterion-level evidence/unknowns, site confirmation requirements and scoped human-owned tasks; no implied eligibility, availability or clinical order |
+| Model assistance and independent clinical evaluation | OI-011, OI-014, OI-018 | Held-out task comparisons, source-faithful citations, abstention, consequential errors, reviewer correction burden and version-change controls |
+| Competitors, customers, partners and economics | OI-002, OI-015 | Compare measured workflows, coverage and fully loaded effort; treat positioning, cohort, buyer, pricing and partnerships as hypotheses |
+
+Research concerning individualized or hypothetically buildable therapies remains a separately qualified research question under the existing specialist-modality and authority boundaries. This crosswalk does not approve a therapy-development program or remove that long-term ambition.
+
+For each addition record: research question; existing module/backlog link; source and version; date actually checked; claim status (source-stated, independently checked, hypothesis or unresolved); rights status; falsification test; evidence still needed; and any scoped ADR required. Do not label an older source as newly verified just because it was copied into a document dated today.
+
 ## Decision gate
 
-Keep status **EVALUATE** until: exact vendor product and terms are confirmed; lawful data access and scope established; synthetic fidelity/isolation checks pass; clinical and privacy owners review intended use; and an ADR explicitly accepts a bounded adapter. Passing code tests is not clinical validation or release clearance.
+Keep status **EVALUATE** until: exact vendor product and terms are confirmed; lawful data access and scope established; synthetic fidelity/isolation checks pass; clinical and privacy owners review intended use; and an ADR explicitly accepts a bounded adapter. Passing code tests is not clinical validation or release clearance. Selection and deployment decisions must state which evaluation tier supplied their evidence and which real-world claims remain untested.
 
 ## Source links / follow-up
+
+These are carried-forward source pointers, not a claim that every external document or commercial term was freshly reverified in this editorial update. Check the applicable published version and effective date before relying on a legal, regulatory, vendor-access or licensing claim.
 
 - [Epic TEFCA IAS developer documentation](https://open.epic.com/Home/Interoperate/TEFCA/IAS)
 - [TEFCA RCE](https://rce.sequoiaproject.org/)
@@ -66,3 +97,6 @@ Keep status **EVALUATE** until: exact vendor product and terms are confirmed; la
 - [InterSystems Health Connect](https://www.intersystems.com/products/healthshare/health-connect/)
 - [HL7 FHIR ImagingStudy](https://hl7.org/fhir/R4/imagingstudy.html)
 - [Open Intelligence Notion interoperability page](https://app.notion.com/p/40a3866f77ef8137a47cf95794e33ea7)
+- [Complementary historical research and source crosswalk](https://app.notion.com/p/40a3866f77ef81e0a9e9c1a96773f8b9)
+- [Existing execution backlog](../EXECUTION_BACKLOG.csv)
+- [Existing bounded validation issue #17](https://github.com/OpenxIntelligence/open-intelligence/issues/17)
