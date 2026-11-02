@@ -78,9 +78,11 @@ This is an **additive contract map** to OI-16/18, not a new canonical decision. 
 
 **Historical query acceptance:** snapshot as-known-at at T0 must exclude later-arriving T1 findings even if their medical event happened before T0. A version-changing report must preserve original observed contents. Current repo filtered status must not be mistaken for a complete bitemporal as-known-at implementation.
 
-## 5. Discovered or sharpened candidate requirements
+## 5. Canonical coverage reconciliation and remaining specification opportunities
 
-These candidates are **PROPOSED; cross-check existing OI-06, OI-04, OI-09, OI-16 and 76-row audit before promoting**. A companion CSV maps each to owning documentation, existing implementation hints, negative tests, horizon and review state. This annex does not claim they were absent from the mature documentation.
+**November 2 follow-up correction:** The 30 OI-DISC rows are **crosswalk aliases**, not 30 independently discovered requirements or a new product backlog. I compared them with the extensive existing OI-04, OI-06, OI-09, OI-10, OI-16 and OI-18 primary documentation. Most already have named contracts, sections, research tasks or evaluation metrics. The [companion CSV](oi20-requirements-traceability-2026-11-02.csv) now identifies canonical IDs for every row and a next **nonduplicate** acceptance task. The existing OI-06 specification already defines ENT-P01–P52 (proposed), the ValueStatus taxonomy (§8.1), bitemporal query contracts (§9.6) and twelve D2 gaps. OI-04 specifies patient-view PV-01–PV-10 and content-safety CS-01–CS-15. OI-09 contains evaluation metrics M1–M29. OI-16 already owns the sixteen first-party product domains PD-01–16 and shared platform foundations PF-01–10. Those structures are not replaced by this document.
+
+**Evidence/classification rule:** `EXISTING_REQUIREMENT_PARTIALLY_BUILT` or `EXISTING_PROPOSED_DOMAIN_CONTRACT` in the CSV means that a requirement is already written, not that the feature is verified working. `ACTIVE_CODE` reflects ongoing draft PR #51/#53 with unmerged identity work and is not authorization to deploy. No OI-DISC item should become a canonical new requirement until an owner identifies a real missing contract or untested acceptance condition. The meaningful gap is usually **execution evidence and cross-domain boundary testing**, not another feature heading.
 
 **Identity, source and time**
 - OI-DISC-01: false patient/specimen binding quarantine and reversible adjudication, including two institutions with colliding identifiers.
@@ -112,6 +114,47 @@ These candidates are **PROPOSED; cross-check existing OI-06, OI-04, OI-09, OI-16
 - OI-DISC-26/27: build-scoped SBOM/right/NOTICE gate and disaster recovery, event replay and history preservation.
 - OI-DISC-28: machine-readable requirement → owner → contract → issue → commit → test → validation evidence.
 - OI-DISC-30: validate ordinary oncology, recurrence, survivorship, caregiver and resource-constrained journeys alongside unusual high-resource cases.
+
+### 5.1 Research-only contract candidate: adaptive diagnostic value-of-information investigation
+
+**Status:** UNDER-SPECIFIED RESEARCH PROPOSAL (OI-DISC-12), tied to existing PF-04/05/08, PD-03/06/14, ENT-P07–P10/P51/P52, OI-06 D2G-01, OI-09 metrics and OI-10 clinical gates. It is **not an authorized clinical test-recommendation or order engine**; it must not select a test for a real person or emit a treatment/diagnostic verdict. New capabilities must be assessed against the older complementary experimental-loop research, not introduced as a parallel architecture.
+
+**Scientific basis (separate from OI implementation evidence):**
+- [Chen & Willan, Statistics in Medicine 2014, PMID 24403241](https://pubmed.ncbi.nlm.nih.gov/24403241/) derives value-of-information methods for assessing diagnostics and future research needs; it does **not** validate Open Intelligence.
+- [Allenbrand, DECIDE-Lab, Diagnostics 2026, DOI 10.3390/diagnostics16152356](https://pubmed.ncbi.nlm.nih.gov/42587593/) describes a proposed Bayesian / sequential decision framework in illustrative simulations, comparing *decision-changing* usefulness, burden, delays and test properties. Its examples are methodological, not a qualified oncology test-selection policy.
+- [Manski, diagnostic decisions under ambiguity, 2013](https://pmc.ncbi.nlm.nih.gov/articles/PMC3568364/) cautions against assuming reliable probability distributions or utilities where data and credible priors do not exist. For OI this means **abstain from a numeric value-of-information estimate** rather than fabricate probabilities.
+
+**15-field implementation contract (proposed, not deployed):**
+
+| Field | Required boundary |
+| --- | --- |
+| Purpose | Map what uncertainty a *research* question might be able to reduce and whether any future clinician decision could be affected; avoid reflexive more-testing bias |
+| Users | Qualified clinician-researchers reviewing fictional cases first; no autonomous patient-facing deployment |
+| Trigger / workflow | A question with documented alternatives and an accountable reviewer → proposed discriminating observation → source/rights/specimen feasibility → assumptions → counterfactual branches → explicit research worksheet → human research disposition |
+| Inputs | Versioned Patient World Model snapshot, durable Question, existing source assertions, specimen inventory, permissible evidence, decision alternatives *as proposed by the qualified reviewer* |
+| Owned state | \`DiagnosticResearchQuestion\` points to existing question ID; \`CandidateInformationSource\` retains exact evidence and assay identity; \`CounterfactualBranch\` records possible results, uncertainty and consequences; never edits the underlying clinical record |
+| Output/UI | Show **"Unknown / cannot calculate"** if prerequisites are missing; explain which result might distinguish alternatives, and why evidence is too weak to compare options; show burden, time, access and specimen dependency separately |
+| Data contracts | Subject/episode/specimen, issued/learned/valid times, measurement method/version, diagnostic result states (including failed or indeterminate), rights class, model/policy version and source citations |
+| Architecture | Read-only research planner over existing question/provenance/specimen graph; a deterministic preflight validates inputs and authority, then optional isolated simulation, never a new patient state ledger |
+| External interfaces | Optional future terminology, assay, evidence and scheduling contracts, all rights/authorization checked; no live clinical order interface |
+| Intelligence | Deterministic baseline identifies unknown decision branches; model may propose *questions* and sources but never supply unverified test sensitivity, prevalence, patient risk or utility |
+| Authority | Research reviewer can accept/reject a question for discussion; only separately authorized clinician workflows can request tests. Proposal ≠ clinical authorization |
+| Evidence | Every assumption cites a source and version, with validated population and relevance; uncertain utility estimates and model applicability are visibly qualified |
+| Failure behavior | Unsupported probabilities/harms/turnaround, stale evidence, unavailable tissue, unverifiable consent, unlicensed data, inconsistent time or uncertain identity → \`ABSTAIN_INSUFFICIENT_BASIS\` and a list of missing prerequisites |
+| Verification | Adversarial fictional scenarios: clinically irrelevant additional information, uncalibrated likelihood, missing specimen, conflicting source, impossible timing, revoked permission and paper-only test; zero automatic orders; independent review of information and framing |
+| Dependencies/status/priority | Research specification P2 for full product; no implementation before domain owners approve requirements and security/clinical boundaries; the Nov-4 synthetic demo has **no** automatic diagnostic test planning |
+
+**Safety-critical reasoning rules for any future numeric research simulation:** The null strategy ("no additional test") must always be included; test performance is not identical to clinical utility; represent both false positive and false negative consequences; incorporate turnaround and delay rather than assuming information is free; do sensitivity/robustness analysis of assumptions and group/site differences. Never calculate a numeric expected benefit or "optimal test" if source-calibrated priors, likelihoods and reviewer-defined utilities are absent. Present conclusions as *hypothetical research comparisons*, never patient-specific clinical instructions. Any deployment with consequential clinical impact requires a separate FDA/intended-use and applicable jurisdictional review.
+
+**Synthetic acceptance cases to add to existing evaluation owner (not proof of completion):**
+1. A fictional proposed assay changes no permitted decision branch; the planner outputs "no demonstrated decision-changing information" rather than an ungrounded positive value.
+2. An assay has attractive analytical accuracy but no verified specimen or no licensed clinical performance source; abstain and identify the exact missing evidence.
+3. A later-amended source changes a critical assumption; previous research worksheet remains retrievable but marked stale, not silently updated.
+4. Two fictional sites differ in access or turnaround; comparison exposes the difference instead of assuming universal availability.
+5. Source identity is ambiguous or an evidence permission is revoked; the plan is unavailable to unauthorized users, including derived summaries.
+6. A model invents a numeric probability or proposes an executable order; deterministic validator rejects it, and the rejection is included in the evaluation receipt.
+
+**Promotion test:** establish a falsifiable incremental benefit over a simple human-authored "missing information and available research options" worksheet. If scientific estimates cannot be validated or reviewers gain no measurable benefit, keep this as a qualitative research gap-map instead of implementing an optimization engine.
 
 ## 6. Proposed single end-to-end fictional journey and negative-path acceptance
 
