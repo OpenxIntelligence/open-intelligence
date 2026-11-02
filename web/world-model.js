@@ -28,6 +28,37 @@
     history.replaceChildren();
     delete detail.dataset.caseId;
   }
+  // The question field belongs to the existing investigation workflow.
+  // A source reference in a draft is NOT an authoritative citation receipt:
+  // a user must review and submit it, then select the real source on the
+  // existing source-bound review form. Never submit or infer automatically.
+  function draftQuestion(finding, expectedCase) {
+    if (!detail.open || picker.value !== expectedCase ||
+        detail.dataset.caseId !== expectedCase) return;
+    const field = byId("question-text");
+    const form = byId("question-form");
+    if (!field || !form) {
+      status.textContent = "The investigation form is unavailable; nothing was saved.";
+      return;
+    }
+    if (field.value.trim()) {
+      status.textContent = "An unsaved question already exists. Finish or clear it before drafting another.";
+      field.focus();
+      return;
+    }
+    const key = txt(finding.finding_key).slice(0, 80);
+    const documentId = txt(finding.document_id).slice(0, 80);
+    const version = txt(finding.document_version);
+    const lineNumber = txt(finding.source_line);
+    field.value = (
+      "What remains uncertain about " + key + " as reported in " +
+      documentId + " v" + version + ", source line " + lineNumber +
+      "? Check the original source before drawing conclusions."
+    ).slice(0, 500);
+    location.hash = "#investigations";
+    field.focus();
+    status.textContent = "Question draft prepared from a fictional source reference. Review and submit it yourself; no investigation was run.";
+  }
   function render(payload, expectedCase) {
     if (payload.contract !== "oi.synthetic-world-model/1" ||
         payload.synthetic !== true || payload.case_id !== expectedCase ||
@@ -54,11 +85,19 @@
     for (const finding of payload.observations.slice(0, maxVisible)) {
       const source = txt(finding.document_id) + " v" + txt(finding.document_version) +
         ", source #" + txt(finding.source_version_id) + " line " + txt(finding.source_line);
-      line(observations, txt(finding.finding_key) + " · " +
+      const item = document.createElement("li");
+      item.textContent = txt(finding.finding_key) + " · " +
         txt(finding.reported_state) + " · " + txt(finding.source_statement) +
         " — " + source + "; event " + txt(finding.event_date) +
         "; issued " + txt(finding.issued_at) + "; received " + txt(finding.received_at) +
-        "; SHA-256 " + txt(finding.source_sha256));
+        "; SHA-256 " + txt(finding.source_sha256);
+      const draft = document.createElement("button");
+      draft.type = "button";
+      draft.className = "button secondary minor";
+      draft.textContent = "Draft question from this source";
+      draft.addEventListener("click", () => draftQuestion(finding, expectedCase));
+      item.append(draft);
+      observations.append(item);
     }
     if (!payload.observations.length) line(observations, "No current source-reported observations.");
     if (payload.observations.length > maxVisible) {
