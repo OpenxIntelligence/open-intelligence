@@ -199,6 +199,78 @@ def validate_output(payload: object, valid_sources: set[int],
     )
 
 
+
+# Server-owned adapter contract for the existing investigation function.
+# These are configuration identifiers, not endpoints, secrets, authority grants
+# or user-selected providers. Individual adapters require separate rights,
+# security and clinical-data review before they may be installed.
+PROVIDER_ID = re.compile(r"[a-z][a-z0-9_-]{0,39}\\Z")
+MODEL_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,79}\\Z")
+MAX_PROVIDER_PROMPT_CHARS = 32000
+
+
+def execute_bounded_model(
+    template_id: str,
+    facts: dict,
+    *,
+    invoke,
+    provider_id: str,
+    model_id: str,
+    data_class: str = "synthetic",
+    allowed_effects: tuple[str, ...] = ("propose_hypothesis",),
+) -> ValidatedInvestigation:
+    """Use one native evidence-and-review contract with any vetted adapter.
+
+    This function deliberately has NO access to the CaseStore, HTTP request,
+    credentials, tool bus, clinical approvals or writable medical operations.
+    Only the server may select/inject an adapter; the current HTTP surface
+    still exposes only the original Meta adapter and separately labeled replay.
+    Returning a structured object does not create an authoritative finding.
+    """
+    if data_class != "synthetic":
+        raise InvestigationError("Only synthetic demonstration data is permitted")
+    if allowed_effects != ("propose_hypothesis",):
+        raise InvestigationError("Only a review-pending hypothesis is permitted; clinical actions blocked")
+    if (not isinstance(provider_id, str) or
+            PROVIDER_ID.fullmatch(provider_id) is None):
+        raise InvestigationError("Invalid server-selected provider identifier")
+    if (not isinstance(model_id, str) or
+            MODEL_ID.fullmatch(model_id) is None):
+        raise InvestigationError("Invalid registered model identifier")
+    if not callable(invoke):
+        raise InvestigationError("No approved model adapter was supplied")
+    if (not isinstance(facts, dict) or
+            not isinstance(facts.get("question"), dict) or
+            not isinstance(facts["question"].get("question"), str) or
+            not isinstance(facts.get("assertions"), list) or
+            not isinstance(facts.get("assessments"), list) or
+            not isinstance(facts.get("valid_sources"), (set, frozenset)) or
+            not isinstance(facts.get("valid_assessments"), (set, frozenset))):
+        raise InvestigationError("Invalid source-bound model task context")
+    for identifiers in (facts["valid_sources"], facts["valid_assessments"]):
+        if any(type(item) is not int or item < 1 for item in identifiers):
+            raise InvestigationError("Model citation identifiers must be positive integers")
+    prompt = build_prompt(
+        template_id, facts["question"]["question"], facts["assertions"],
+        facts["assessments"])
+    if len(prompt) > MAX_PROVIDER_PROMPT_CHARS:
+        raise InvestigationError("Model prompt exceeds the bounded synthetic task limit")
+    # The adapter gets only the already-scoped prompt. Secrets are resolved
+    # within its server-owned closure and never included in model result rows.
+    payload = invoke(prompt)
+    if not isinstance(payload, dict):
+        raise InvestigationError("Model adapter response must be structured JSON")
+    if set(payload) - {"claims", "abstentions"}:
+        raise InvestigationError("Model response contains unexpected action or data fields")
+    validated = validate_output(
+        payload, facts["valid_sources"], facts["valid_assessments"])
+    # The model must not self-report its identity: label the result using the
+    # server-selected adapter metadata, then preserve old source/review rules.
+    validated.model = model_id
+    validated.mode = "live"
+    return validated
+
+
 def call_meta_api(prompt: str, api_key: str) -> dict:
     """One bounded Meta Model API call. Raises InvestigationError on failure."""
     body = json.dumps({
