@@ -2,6 +2,28 @@
 
 **Stage:** local experimental synthetic-only code. **Not released for clinical use.**
 
+## Current audit — 2 November 2026
+
+The dated slice reports below are preserved as history; their absence statements and next-step lists are not a current inventory. The inspected application baseline was main [`52ea683`](https://github.com/OpenxIntelligence/open-intelligence/commit/52ea683fbe3537b17a05066dceff2ba01f758c5d): **236 synthetic application tests passed locally**, with loopback HTTP servers and mocked/fixture external transports. Subsequent main [`24519839`](https://github.com/OpenxIntelligence/open-intelligence/commit/24519839) adds the no-personal-case-data policy and CI blocking changes; those changes do not establish a newly passing application baseline.
+
+Inspected code includes `CaseStore` source/evidence versions, questions, snapshots, discovery/rights links, options/preparation tasks, biological assets/inventory, bounded model-investigation receipts, and mission/timeline/change projections. `patient_access` supplies a synthetic gate with in-memory bindings, not production authorization. Replay exercises the investigation contract; this audit did not reverify live model operation. Current runtime is Python/SQLite and vanilla JavaScript; the accepted H1 target is Python/FastAPI/PostgreSQL plus React/Vite/TypeScript, excluding Next.js.
+
+**Unmerged draft candidate [#136](https://github.com/OpenxIntelligence/open-intelligence/pull/136):** `save_investigation()` preserves question state instead of automatically marking even an abstained or unreviewed attempt addressed. Four focused tests passed after first reproducing the failure, including restart, mission/HTTP visibility and preserved scoped demo acknowledgment. The isolated lifecycle branch passed **240 application tests** at [`94176658`](https://github.com/OpenxIntelligence/open-intelligence/commit/94176658fe126647aaeea83886bff1ccf776aae8). Existing addressed history is unchanged. This is not a merged capability or clinical review system.
+
+**Data-policy integration candidate:** current main plus reconciled CI/runtime retirement passed **245 application tests** and **204 research tests (191 passed, 13 optional HDF5 tests skipped locally)**. CI retains current main's pinned scientific dependencies to exercise those optional helpers. The static guard and receipt have nine regression tests; they do not prove arbitrary runtime network behavior. These counts belong to the isolated candidates, not to a tested combined platform. See the [bounded work-package record](engineering/PATIENT_DATA_CI_BOUNDARY_2026-11-02.md); hosted run evidence belongs in its review PR.
+
+### Integration sequence: reuse unmerged candidates
+
+These are integration candidates, not a verified combined product. Check each current head and dependencies before adoption; retain one canonical identity/source/evidence history.
+
+1. Integrate the reviewed main-based data-policy cleanup, preserving the founder prohibition without manual overrides. Re-run the applicable offline suites at the resulting exact commit.
+2. Review durable access bindings in [#53](https://github.com/OpenxIntelligence/open-intelligence/pull/53) alongside registry/EHR/LIS integration in [#95](https://github.com/OpenxIntelligence/open-intelligence/pull/95), reusing their constituent domains. Prove restart, revocation, case binding and source-version integrity before widening access.
+3. Reconcile Composer/integration candidates [#126](https://github.com/OpenxIntelligence/open-intelligence/pull/126), [#130](https://github.com/OpenxIntelligence/open-intelligence/pull/130) and [#132](https://github.com/OpenxIntelligence/open-intelligence/pull/132) against those contracts. Preserve source-bound run receipts and reviewable proposals; test interruption and retries without duplicate mutations.
+4. Review the question-lifecycle fix in [#136](https://github.com/OpenxIntelligence/open-intelligence/pull/136) alongside existing review/staleness work (#82/#91), then goals/follow-through (#80/#84). Project accepted state through Patient Mission rather than adding another ledger.
+5. Exercise the [eight-circumstance portfolio](FIRST_PRINCIPLES_PLAN.md#workflow-crosswalk-and-synthetic-portfolio--2-november-2026) through import, domain event, question, proposed investigation, explicit review and subsequent correction. Record each supported boundary and failure; passing separate PR suites is not combined-workflow validation.
+
+## Historical slice scope — 31 October 2026
+
 **Backlog coverage:** Part of OI-003, OI-006, OI-007, OI-009 and OI-010. Does not complete the broader investigation/evidence stage (OI-008), identity/governance (OI-012–013), or clinical evaluation (OI-014 onward).
 
 ## Behaviors built
