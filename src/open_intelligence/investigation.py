@@ -204,8 +204,8 @@ def validate_output(payload: object, valid_sources: set[int],
 # These are configuration identifiers, not endpoints, secrets, authority grants
 # or user-selected providers. Individual adapters require separate rights,
 # security and clinical-data review before they may be installed.
-PROVIDER_ID = re.compile(r"[a-z][a-z0-9_-]{0,39}\\Z")
-MODEL_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,79}\\Z")
+PROVIDER_ID = re.compile(r"[a-z][a-z0-9_-]{0,39}")
+MODEL_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,79}")
 MAX_PROVIDER_PROMPT_CHARS = 32000
 
 
