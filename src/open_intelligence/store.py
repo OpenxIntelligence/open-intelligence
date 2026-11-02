@@ -2515,8 +2515,9 @@ class CaseStore:
                 self.db.execute("INSERT INTO investigation_broker_inputs VALUES (?,?,?,?)",
                                 (investigation_id, receipt["broker_link_id"], receipt["rights_source_id"],
                                  json.dumps(receipt, sort_keys=True)))
-            self.db.execute("UPDATE questions SET state='addressed' WHERE id=? AND case_id=?",
-                            (question_id, case_id))
+            # A pending/abstained model hypothesis is not a reviewed conclusion.
+            # Preserve question state; the existing explicit demo review path
+            # remains a separate operation, per original owner PR #136.
             self._event(case_id, "investigation_created", investigation_id=investigation_id,
                         template=template, status=validated.status, mode=mode)
             return investigation_id
