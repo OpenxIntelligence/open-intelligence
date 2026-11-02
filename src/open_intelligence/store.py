@@ -461,6 +461,24 @@ CREATE TABLE IF NOT EXISTS biological_inventory_assertions (
 CREATE INDEX IF NOT EXISTS idx_biological_assets_case ON biological_assets(case_id, asset_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_assertions_asset ON biological_inventory_assertions(asset_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_assertions_source ON biological_inventory_assertions(source_version_id);
+-- Journey stages + care transitions: descriptive organizing labels only, never
+-- clinical determinations. Rows are append-only history; a later transition
+-- never updates or deletes an earlier row. Only the review_state flag may move
+-- from 'current' to 'needs_review' when a cited triggering source is amended,
+-- preserving every other column. The case's current stage is derived as the
+-- latest row's to_stage; it is not stored separately.
+CREATE TABLE IF NOT EXISTS journey_transitions (
+  id INTEGER PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(case_id),
+  from_stage TEXT CHECK(from_stage IN ('diagnosis','treatment','survivorship','advanced_disease')),
+  to_stage TEXT NOT NULL CHECK(to_stage IN ('diagnosis','treatment','survivorship','advanced_disease')),
+  reason TEXT NOT NULL,
+  transition_date TEXT NOT NULL,
+  triggering_source_version_id INTEGER REFERENCES source_versions(id),
+  review_state TEXT NOT NULL CHECK(review_state IN ('current','needs_review')),
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_journey_case ON journey_transitions(case_id, id);
+CREATE INDEX IF NOT EXISTS idx_journey_source ON journey_transitions(triggering_source_version_id);
 """
 
 
@@ -678,13 +696,32 @@ class CaseStore:
                     marks = ",".join("?" for _ in invalidated_inventory)
                     self.db.execute(f"UPDATE biological_inventory_assertions SET state='stale' WHERE id IN ({marks})",
                                     invalidated_inventory)
+            invalidated_journey: list[int] = []
+            if previous:
+                # Amendment-aware journey history: rows citing the superseded
+                # source stay preserved; only their review_state flag moves to
+                # needs_review. No journey row is updated otherwise or deleted.
+                invalidated_journey = [row[0] for row in self.db.execute(
+                    """SELECT id FROM journey_transitions
+                    WHERE case_id=? AND triggering_source_version_id=? AND review_state='current'""",
+                    (case_id, previous["id"])).fetchall()]
+                if invalidated_journey:
+                    marks = ",".join("?" for _ in invalidated_journey)
+                    self.db.execute(
+                        f"UPDATE journey_transitions SET review_state='needs_review' WHERE id IN ({marks})",
+                        invalidated_journey)
+                    self._event(case_id, "journey_review_reopened",
+                                source_version_id=previous["id"],
+                                invalidated_journey_transitions=invalidated_journey)
             self._event(case_id, "source_imported", document_id=report.document_id,
                         version=version, source_id=source_id, amends_id=previous["id"] if previous else None,
                         invalidated_snapshots=invalidated, invalidated_options=invalidated_options,
-                        invalidated_inventory_assertions=invalidated_inventory)
+                        invalidated_inventory_assertions=invalidated_inventory,
+                        invalidated_journey_transitions=invalidated_journey)
             return {"result": "imported", "source_id": source_id, "version": version,
                     "invalidated_snapshots": invalidated, "invalidated_options": invalidated_options,
-                    "invalidated_inventory_assertions": invalidated_inventory}
+                    "invalidated_inventory_assertions": invalidated_inventory,
+                    "invalidated_journey_transitions": invalidated_journey}
 
 
     # ---- OI-021: reviewed option/dependency view (derived projection) ----
@@ -2062,6 +2099,117 @@ class CaseStore:
                         source_version_id=source_version_id)
             return int(cur.lastrowid)
 
+    # ---- Journey stages + care transitions (descriptive labels only) ----
+    JOURNEY_STAGES = frozenset({"diagnosis", "treatment", "survivorship", "advanced_disease"})
+    JOURNEY_LABELS = {
+        "diagnosis": "Diagnosis",
+        "treatment": "Treatment",
+        "survivorship": "Survivorship",
+        "advanced_disease": "Advanced disease",
+    }
+    JOURNEY_DISCLAIMER = (
+        "Journey stages are descriptive labels for organizing this fictional record. "
+        "They are not diagnoses, prognoses, staging determinations, or care instructions."
+    )
+
+    def _current_journey_stage(self, case_id: str) -> str | None:
+        row = self.db.execute(
+            "SELECT to_stage FROM journey_transitions WHERE case_id=? ORDER BY id DESC LIMIT 1",
+            (case_id,)).fetchone()
+        return row["to_stage"] if row else None
+
+    def record_journey_transition(self, case_id: str, to_stage: str, reason: str,
+                                  transition_date: str,
+                                  triggering_source_version_id: int | None = None) -> int:
+        """Append one journey transition. The stage is recorded, never inferred.
+
+        The caller supplies the organizing label explicitly; nothing here
+        derives a stage from source text, findings, or evidence. History rows
+        are insert-only: this method performs no UPDATE or DELETE on
+        journey_transitions. Only a later source amendment may flip the
+        review_state flag of rows citing the superseded source, preserving
+        every other column.
+        """
+        self._case(case_id)
+        if to_stage not in self.JOURNEY_STAGES:
+            raise InvalidInput("Unknown journey stage; use diagnosis, treatment, survivorship, or advanced_disease")
+        reason = self._check_no_clinical_language(reason, "Transition reason")
+        if not 10 <= len(reason) <= 600:
+            raise InvalidInput("Transition reason must have 10-600 characters")
+        transition_date = valid_date(transition_date)
+        if triggering_source_version_id is not None:
+            if type(triggering_source_version_id) is not int or triggering_source_version_id < 1:
+                raise InvalidInput("Triggering source version ID must be a positive integer")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            from_stage = self._current_journey_stage(case_id)
+            if from_stage == to_stage:
+                current_label = self.JOURNEY_LABELS[from_stage] if from_stage else from_stage
+                raise InvalidInput(
+                    "Transition must move to a different organizing label; "
+                    f"the current label is already {current_label}")
+            if triggering_source_version_id is not None:
+                source = self.db.execute(
+                    "SELECT state FROM source_versions WHERE id=? AND case_id=?",
+                    (triggering_source_version_id, case_id)).fetchone()
+                if not source:
+                    raise InvalidInput("Triggering source is missing or belongs to another case")
+                if source["state"] != "current":
+                    raise InvalidInput("Triggering source is superseded; cite its current version explicitly")
+            cur = self.db.execute("""INSERT INTO journey_transitions
+                (case_id,from_stage,to_stage,reason,transition_date,
+                 triggering_source_version_id,review_state,created_at)
+                VALUES (?,?,?,?,?,?,'current',?)""",
+                (case_id, from_stage, to_stage, reason, transition_date,
+                 triggering_source_version_id, now_utc()))
+            transition_id = int(cur.lastrowid)
+            self._event(case_id, "journey_transition_recorded",
+                        transition_id=transition_id, from_stage=from_stage,
+                        to_stage=to_stage)
+            return transition_id
+
+    def journey_history(self, case_id: str) -> dict:
+        """Current organizing label plus append-only transition history."""
+        self._case(case_id)
+        rows = self._dicts(self.db.execute(
+            "SELECT * FROM journey_transitions WHERE case_id=? ORDER BY id",
+            (case_id,)).fetchall())
+        transitions = []
+        for position, row in enumerate(rows, start=1):
+            source_label = "No single triggering source recorded"
+            if row["triggering_source_version_id"] is not None:
+                source = self.db.execute(
+                    "SELECT document_id,version,state FROM source_versions WHERE id=?",
+                    (row["triggering_source_version_id"],)).fetchone()
+                if source:
+                    source_label = (f"{source['document_id']}@{source['version']} "
+                                    f"({source['state']})")
+                else:
+                    source_label = "Triggering source unavailable"
+            from_label = self.JOURNEY_LABELS[row["from_stage"]] if row["from_stage"] else "Record start"
+            to_label = self.JOURNEY_LABELS[row["to_stage"]]
+            if row["from_stage"]:
+                summary = (f"Step {position}: moved from {from_label} to {to_label} "
+                           f"on {row['transition_date']} because {row['reason']}")
+            else:
+                summary = (f"Step {position}: record opened under {to_label} "
+                           f"on {row['transition_date']} because {row['reason']}")
+            transitions.append({
+                **row,
+                "from_label": self.JOURNEY_LABELS.get(row["from_stage"]) if row["from_stage"] else None,
+                "to_label": to_label,
+                "triggering_source_label": source_label,
+                "summary": summary,
+            })
+        current = rows[-1]["to_stage"] if rows else None
+        return {
+            "case_id": case_id,
+            "current_stage": current,
+            "current_stage_label": self.JOURNEY_LABELS.get(current) if current else None,
+            "disclaimer": self.JOURNEY_DISCLAIMER,
+            "transitions": transitions,
+        }
+
     def add_question(self, case_id: str, question: str) -> int:
         self._case(case_id)
         if not isinstance(question, str) or not 5 <= len(question.strip()) <= 500:
@@ -2280,7 +2428,12 @@ class CaseStore:
                 FROM evidence_assessments a JOIN evidence_versions v ON v.id=a.evidence_version_id
                 WHERE a.case_id=? ORDER BY a.id DESC""", (case_id,)).fetchall())
             option_projection = self.option_view(case_id)
+            journey = self.journey_history(case_id)
             return {
+                "journey_current": journey["current_stage"],
+                "journey_current_label": journey["current_stage_label"],
+                "journey_transitions": journey["transitions"],
+                "journey_disclaimer": journey["disclaimer"],
                 "broker_links": broker_rows,
                 "rights_sources": rights_rows,
                 "biological_assets": self._dicts(self.db.execute(

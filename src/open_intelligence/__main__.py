@@ -166,6 +166,9 @@ class Handler(BaseHTTPRequestHandler):
             timeline = re.fullmatch(rf"/api/cases/{ID_PART}/timeline", path)
             if timeline:
                 return self._json(200, case_timeline(store, timeline[1]))
+            journey = re.fullmatch(rf"/api/cases/{ID_PART}/journey", path)
+            if journey:
+                return self._json(200, store.journey_history(journey[1]))
             inv_list = re.fullmatch(rf"/api/cases/{ID_PART}/investigations", path)
             if inv_list:
                 return self._json(200, {"investigations": store.list_investigations(inv_list[1])})
@@ -306,6 +309,13 @@ class Handler(BaseHTTPRequestHandler):
                 if review:
                     store.acknowledge_demo_review(review[1], int(review[2]), data.get("reviewer_label"))
                     return self._json(200, {"result": "acknowledged_in_demo"})
+                journey_create = re.fullmatch(rf"/api/cases/{ID_PART}/journey-transitions", path)
+                if journey_create:
+                    transition_id = store.record_journey_transition(
+                        journey_create[1], data.get("to_stage"), data.get("reason"),
+                        data.get("transition_date"),
+                        data.get("triggering_source_version_id"))
+                    return self._json(201, {"transition_id": transition_id})
                 option_create = re.fullmatch(rf"/api/cases/{ID_PART}/options", path)
                 if option_create:
                     option_id = store.create_option(
