@@ -1227,6 +1227,16 @@ function renderChangesSinceReview(data) {
     el('changes-questions').append(row);
   }
 }
+document.addEventListener('oi:composer-open-source', event => {
+  const detail = event.detail || {};
+  if (!active || detail.caseId !== caseId ||
+      !Number.isSafeInteger(detail.sourceId) || !Number.isSafeInteger(detail.line) ||
+      !active.sources.some(x => x.id === detail.sourceId)) return;
+  // This is the existing source inspector: it checks currently selected case
+  // and source membership again, then highlights the exact original line.
+  void openSource(detail.sourceId, detail.line);
+});
+
 el('model-investigation-form').addEventListener('submit', async event => {
   event.preventDefault();
   try {
@@ -1244,7 +1254,16 @@ el('model-investigation-form').addEventListener('submit', async event => {
     if (requestedCase !== caseId) return;
     notice('Model investigation stored as a hypothesis pending review.');
     await refresh();
-  } catch (err) { notice(err.message, true); }
+  } catch (err) {
+    // A legitimate source amendment can race an in-progress task. Never leave
+    // the user with a visually reusable old fingerprint after the server
+    // rejects the task; update both chart and Composer from canonical state.
+    if (String(err.message).includes('stale Composer context')) {
+      try { await refresh(); } catch (_) { /* notice below owns error feedback */ }
+      document.dispatchEvent(new Event('oi:composer-refresh'));
+    }
+    notice(err.message, true);
+  }
 });
 initialize();
 initializeBibliography();
