@@ -1,0 +1,54 @@
+name: Question source review handoff
+on:
+  pull_request:
+    branches: [main, fix/patient-review-state-20261101]
+  push:
+    branches: [feat/question-review-handoff-20261102]
+permissions:
+  contents: read
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Syntax
+        run: |
+          PYTHONPATH=src python -m compileall -q src tests
+          node --check web/app.js
+          node --check web/mission.js
+      - name: Python and HTTP tests
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p verification-artifacts
+          PYTHONPATH=src python -m unittest discover -s tests -v 2>&1 | tee verification-artifacts/unit-tests.txt
+      - name: Existing source and patient journeys
+        shell: bash
+        run: |
+          set -o pipefail
+          PYTHONPATH=src python tests/browser_journey.py 2>&1 | tee verification-artifacts/source-browser.txt
+          PYTHONPATH=src python tests/patient_mission_browser_journey.py 2>&1 | tee verification-artifacts/patient-browser.txt
+      - name: Overview source-to-review journey
+        shell: bash
+        run: |
+          set -o pipefail
+          PYTHONPATH=src python tests/question_review_browser.py 2>&1 | tee verification-artifacts/review-browser.txt
+      - name: Record exact source
+        if: always()
+        run: |
+          mkdir -p verification-artifacts
+          git rev-parse HEAD > verification-artifacts/commit.txt
+          git archive --format=zip --output=verification-artifacts/source-under-test.zip HEAD
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: question-review-${{ github.run_id }}-${{ github.run_attempt }}
+          path: verification-artifacts/
+          if-no-files-found: error
+          retention-days: 7
