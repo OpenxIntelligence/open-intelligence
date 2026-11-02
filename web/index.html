@@ -44,6 +44,7 @@
           <a href="#activity">Activity</a>
           <a href="#changes-since-review">What changed</a>
           <a href="#options">Options &amp; dependencies</a>
+          <a href="#portfolio">Option portfolio</a>
         </nav>
       </details>
       <div class="side-bottom">
@@ -364,6 +365,54 @@
           </section>
         </div>
       </div>
+
+      <section class="panel" id="portfolio" aria-labelledby="portfolio-heading">
+        <div class="panel-head"><div><div class="eyebrow">PORTFOLIO · DERIVED VIEW</div><h2 id="portfolio-heading">Option portfolio</h2></div><span class="pill pill-warn">FICTIONAL DEMO DATA — not a real patient</span></div>
+        <p class="muted">Every option ever proposed for this fictional case, in plain words: what it needs, what stands against it, what is recorded about access, what is still missing, and what would trigger another review. Deferred, rejected, and reserved options stay visible here with their recorded reasons — they are never silently dropped.</p>
+        <p class="muted"><strong>Reviewable records for a clinician, with sources cited.</strong> This surface states no eligibility, benefit, safety, next step, or authorization. A hypothesis stays a hypothesis; a note stays pending until a clinician acts.</p>
+        <p class="muted tiny" id="portfolio-disclaimer"></p>
+        <div class="subhead">Portfolio entries</div><div id="portfolio-list" class="snapshots"></div>
+        <div class="subhead">Record an objection, deferral, or reservation</div>
+        <form id="portfolio-flag-form">
+          <label for="flag-option-choice">Option</label><select id="flag-option-choice" required></select>
+          <label for="flag-kind">Kind</label>
+          <select id="flag-kind"><option value="objection">Objection (a documented reason to hold)</option><option value="deferred">Deferred (set aside for now, with a reason)</option><option value="reserved">Reserved (kept in reserve, with a reason)</option></select>
+          <label for="flag-label">Short label</label><input id="flag-label" type="text" maxlength="120" required placeholder="Fictional reason label">
+          <label for="flag-reason">Documented reason (no eligibility, benefit, or authorization claims)</label><textarea id="flag-reason" rows="3" minlength="10" maxlength="500" required placeholder="Why this option is held, in plain words, with its uncertainty."></textarea>
+          <label for="flag-source-choice">Source premise (optional, at most one premise)</label><select id="flag-source-choice"></select>
+          <label for="flag-assessment-choice">Evidence premise (optional, at most one premise)</label><select id="flag-assessment-choice"></select>
+          <label for="flag-author">Recorder label</label><input id="flag-author" type="text" maxlength="80" required placeholder="Synthetic recorder (unverified)">
+          <button class="button" type="submit">Record flag</button>
+        </form>
+        <div class="subhead">Resolve or reopen a recorded flag</div>
+        <form id="portfolio-flag-resolve-form">
+          <label for="flag-resolve-choice">Flag</label><select id="flag-resolve-choice" required></select>
+          <label for="flag-resolve-reviewer">Reviewer label</label><input id="flag-resolve-reviewer" type="text" maxlength="80" required placeholder="Synthetic reviewer (unverified)">
+          <label for="flag-resolve-action">Action</label>
+          <select id="flag-resolve-action"><option value="resolve">Resolve (the reason changed; reopens review)</option><option value="reopen">Reopen (the reason applies again; reopens review)</option></select>
+          <label for="flag-resolve-scope">Scope</label><textarea id="flag-resolve-scope" rows="2" minlength="10" maxlength="300" required placeholder="What changed, in plain words."></textarea>
+          <button class="button" type="submit">Record flag decision</button>
+        </form>
+        <div class="subhead">Record a dimension note (stays pending until acknowledged)</div>
+        <form id="portfolio-dimension-form">
+          <label for="dimension-option-choice">Option</label><select id="dimension-option-choice" required></select>
+          <label for="dimension-kind">Dimension</label>
+          <select id="dimension-kind"><option value="scientific_plausibility">Scientific plausibility</option><option value="technical_feasibility">Technical feasibility</option><option value="access">Access</option><option value="clinical_authorization">Clinical authorization (record only — never granted here)</option></select>
+          <label for="dimension-note">Note (no eligibility, benefit, or authorization claims)</label><textarea id="dimension-note" rows="3" minlength="10" maxlength="800" required placeholder="What a reviewer recorded about this dimension, with its uncertainty."></textarea>
+          <label for="dimension-anchor">Anchor: which source says so, or why it is unknown</label><textarea id="dimension-anchor" rows="2" minlength="10" maxlength="300" required placeholder="Name the source version or evidence item, or state what is unknown."></textarea>
+          <label for="dimension-source-choice">Source premise (optional, at most one premise)</label><select id="dimension-source-choice"></select>
+          <label for="dimension-assessment-choice">Evidence premise (optional, at most one premise)</label><select id="dimension-assessment-choice"></select>
+          <label for="dimension-recorder">Recorder label</label><input id="dimension-recorder" type="text" maxlength="80" required placeholder="Synthetic recorder (unverified)">
+          <button class="button" type="submit">Record dimension note</button>
+        </form>
+        <div class="subhead">Acknowledge a dimension note (seen, not authorized)</div>
+        <form id="portfolio-dimension-ack-form">
+          <label for="dimension-ack-choice">Pending note</label><select id="dimension-ack-choice" required></select>
+          <label for="dimension-ack-reviewer">Reviewer label</label><input id="dimension-ack-reviewer" type="text" maxlength="80" required placeholder="Synthetic reviewer (unverified)">
+          <label for="dimension-ack-scope">Scope</label><textarea id="dimension-ack-scope" rows="2" minlength="10" maxlength="300" required placeholder="What this acknowledgment covers, in plain words."></textarea>
+          <button class="button" type="submit">Acknowledge note</button>
+        </form>
+      </section>
 
       <section class="panel" id="changes-since-review" aria-labelledby="changes-heading">
         <div class="panel-head"><div><div class="eyebrow">REVIEW · WHAT CHANGED</div><h2 id="changes-heading">What changed since last review</h2></div><span class="pill pill-warn">FICTIONAL DEMO DATA — not a real patient</span></div>
