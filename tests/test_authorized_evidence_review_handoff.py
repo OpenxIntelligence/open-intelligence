@@ -3,6 +3,7 @@
 These are actual PatientRegistry, EHR, LIS, source, rights, Composer, source
 quote, and review queue domain objects. No verified real clinician or consent.
 """
+import sqlite3
 import unittest
 from unittest.mock import patch
 from open_intelligence.store import CaseStore, InvalidInput
@@ -129,6 +130,27 @@ class ReviewHandoffTests(unittest.TestCase):
             self.assertEqual(item["receipts"][-1]["id"], result["receipt_id"])
         finally:
             another.close()
+
+    def test_review_receipt_cannot_be_updated_or_deleted_at_database_boundary(self):
+        handoff, q, aid, _, quotes = self.candidate()
+        result = handoff.return_for_review(
+            self.patient_id, CASE, q, aid, selected_quotes=quotes,
+            reason="Fictional evidence requires separate independent review.",
+            **self.actor())
+        receipt_id = result["receipt_id"]
+        for sql in (
+            "UPDATE review_receipts SET action='reviewed' WHERE id=?",
+            "DELETE FROM review_receipts WHERE id=?",
+        ):
+            with self.subTest(sql=sql):
+                with self.assertRaisesRegex(sqlite3.IntegrityError,
+                                             "Review receipts are immutable"):
+                    with self.store.db:
+                        self.store.db.execute(sql, (receipt_id,))
+        receipts = self.store.review_queue(CASE)["receipts"]
+        self.assertEqual(len(receipts), 1)
+        self.assertEqual(receipts[0]["id"], receipt_id)
+        self.assertEqual(receipts[0]["action"], "returned")
 
     def test_read_permission_does_not_authorize_review_write(self):
         handoff, q, aid, _, quotes = self.candidate()
