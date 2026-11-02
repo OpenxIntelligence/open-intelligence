@@ -150,6 +150,28 @@ class DurableAdapterIdentityTest(unittest.TestCase):
             report(case="CASE-DUR-B", doc="PATH-DUR-B"))
         self.assertEqual(result["result"], "imported")
 
+    def test_report_kind_requires_declared_receipt_scope(self):
+        restricted = envelope()
+        restricted.authorization = AuthorizationReceipt(
+            "RECEIPT-DUR-2", "individual-access", ("laboratory",),
+            "2026-01-01", "2026-12-31")
+        with self.assertRaisesRegex(InvalidInput, "scope"):
+            self.adapter.deliver(restricted, report())
+        self.assertEqual(self.sources(), [])
+        self.assertEqual(self.store.db.execute(
+            "SELECT count(*) FROM adapter_identity_bindings").fetchone()[0], 0)
+
+    def test_scope_cannot_contain_empty_or_non_string_values(self):
+        for scope in (("pathology", ""), ("pathology", None)):
+            with self.subTest(scope=scope):
+                restricted = envelope()
+                restricted.authorization = AuthorizationReceipt(
+                    "RECEIPT-DUR-3", "individual-access", scope,
+                    "2026-01-01", "2026-12-31")
+                with self.assertRaisesRegex(InvalidInput, "scope"):
+                    self.adapter.deliver(restricted, report())
+        self.assertEqual(self.sources(), [])
+
     def test_existing_plain_import_path_remains_compatible(self):
         direct = self.store.import_report("CASE-DUR-A", report())
         self.assertEqual(direct["result"], "imported")
