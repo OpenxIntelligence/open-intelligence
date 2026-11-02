@@ -173,13 +173,12 @@ def classify_coverage(manifest: list[dict]) -> dict:
 
 
 class PatientAccessAdapter:
-    """Stateful (in-memory) binding/revocation gate over an existing CaseStore.
+    """Synthetic-only adapter for existing CaseStore import and source ledger.
 
-    Bindings and revocations live only for the life of this adapter object in
-    tests and in the recorded event ledger; they are not a second source
-    ledger. A production deployment would need a separately authorized,
-    durable authorization store -- this module deliberately does not build
-    one (see the OI-017 document, "what is NOT proved").
+    Actual CaseStore commits adapter bindings/revocations in its SQLite store,
+    atomically with accepted source and receipt events. Local dictionaries are
+    retained for explicit fake-ledger test doubles only. This does NOT establish
+    real identity proof, clinical authorization or production consent services.
     """
 
     def __init__(self, store: CaseStore):
@@ -201,6 +200,9 @@ class PatientAccessAdapter:
         """
         if not isinstance(reason, str) or not 10 <= len(reason.strip()) <= 600:
             raise InvalidInput("Revocation requires a 10–600 character reason")
+        if isinstance(self.store, CaseStore):
+            return self.store.revoke_adapter_receipt(case_id, receipt_id, reason)
+        # Explicit test-double fallback only; real CaseStore is durable.
         self._revoked_receipts.add(receipt_id)
         self.store.record_adapter_event(
             case_id, "adapter_authorization_revoked",
@@ -244,6 +246,27 @@ class PatientAccessAdapter:
                 return {"result": "rejected", "reason": "transformation_loss_undocumented"}
             if declared is not None and set(declared.dropped_fields) != set(computed.dropped_fields):
                 raise InvalidInput("Declared loss receipt does not match computed dropped fields")
+        if isinstance(self.store, CaseStore):
+            # No in-memory identity state is authoritative for an actual CaseStore.
+            # Verify identity, receipt revocation and source acceptance while
+            # holding the *same* SQLite write transaction and event ledger.
+            loss_receipt = None
+            if envelope.transformation is not None and envelope.transformation.is_lossy:
+                loss_receipt = {
+                    "dropped_fields": list(envelope.transformation.dropped_fields),
+                    "truncated_fields": list(envelope.transformation.truncated_fields),
+                    "cardinality_changes": list(envelope.transformation.cardinality_changes),
+                }
+            return self.store.import_adapter_report(
+                envelope.case_id, raw, source_organization=envelope.source_organization,
+                source_system=envelope.source_system,
+                source_subject_ref=envelope.source_subject_ref,
+                receipt_id=auth.receipt_id, adapter_id=envelope.adapter_id,
+                retrieved_at=envelope.retrieved_at, loss_receipt=loss_receipt,
+            )
+
+        # Isolated fake-ledger regressions use the old in-memory path below.
+        # This branch has no claim of durability, identity proof or clinical use.
         # Source identity is qualified by the issuing organization AND system.
         # Keep the case/source binding conservative: aliases need an explicit
         # reconciliation path rather than being silently merged here.
