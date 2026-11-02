@@ -138,12 +138,14 @@ merged in; refreshed 2026-11-02).
 - **New policy, 2 November 2026:** Named-person clinical, RNA, H5AD or
   public-case catalog data must not be required or fetched by product
   engineering, CI, demo, model training or evaluation. The existing
-  `tools/research/` source files include historical narrowly scoped
-  live-probe implementations; these are retained as *archival methodology*,
-  not executed by the modified `public-research.yml`,
-  `rna-analysis.yml` or `single-cell-analysis.yml` workflows. The new
-  workflows run only fictional/offline regression tests. This is a
-  **proposed repository change** in draft PR #123 until merged into main.
+  catalog, RNA and single-cell modules now retain only generic offline
+  helpers and refusal entrypoints in this draft; person-specific retrieval,
+  sample constants and cached case analysis have been retired. Their former
+  implementations remain in version history, without permission to execute.
+  The research workflows run only fictional/offline regression tests.
+  Main `24519839` already disabled named-person CI steps and blocked catalog
+  and single-cell acquisition. Draft PR #137 reconciles the remaining
+  runtime and workflow cleanup from #123/#133 onto that main; it is unmerged.
 - Historical runs may have retrieved personal-case or public-cohort
   material, even if they published aggregate receipts instead of raw
   rows. We have not proved previous artifacts/caches absent, erased or
@@ -226,7 +228,7 @@ merged in; refreshed 2026-11-02).
   engineering inventory, not legal clearance.
 
 
-## 2026-11-02 proposed CI policy enforcement receipt
+## Historical 2026-11-02 proposed CI policy enforcement receipt
 
 - Draft PR [#123](https://github.com/OpenxIntelligence/open-intelligence/pull/123)
   removes named-person and other public patient-data fetches from the
@@ -235,7 +237,9 @@ merged in; refreshed 2026-11-02).
 - Current feature-branch head before this documentation correction:
   `5839a5b98b15e61c14c42dbe810d711434773e09`. Six hosted workflows
   passed on that exact head (research, RNA, single-cell, synthetic ledger,
-  UI glance, Crossref), but the policy remains unmerged/not in force on main.
+  UI glance, Crossref). This historical record predates the newer main
+  prohibition and the consolidated runtime-removal draft #137; it must not
+  be read as permission to run the retired scripts.
 - The scanner matches known direct CI entrypoints; it cannot provide a
   network sandbox, identify all PHI, or prove exact permissions. A release
   still requires security, source rights and professional review.
