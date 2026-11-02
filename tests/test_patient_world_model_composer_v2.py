@@ -60,7 +60,7 @@ class PatientWorldModelComposerV2Integration(unittest.TestCase):
         }]
         return rights_id, investigation_id, queued["run_id"], selected
 
-    def view(self, run_id, quotes):
+    def world_preview(self, run_id, quotes):
         return self.world.preview(
             self.patient_id, CASE, self.question, run_id,
             selected_quotes=quotes, **self.actor())
@@ -73,7 +73,7 @@ class PatientWorldModelComposerV2Integration(unittest.TestCase):
     def test_current_patient_presentation_reconciles_v2_broker_hypothesis_and_numeric_review(self):
         rights_id, investigation_id, run_id, selected = self.configure_v2()
         case_before = self.store.state(CASE)["events"]
-        packet = self.view(run_id, selected)
+        packet = self.world_preview(run_id, selected)
         hypothesis = self.investigation(investigation_id)
         self.assertEqual(packet["contract"],
                          "oi.synthetic-authorized-world-model-review/1")
@@ -100,15 +100,15 @@ class PatientWorldModelComposerV2Integration(unittest.TestCase):
 
     def test_revoked_broker_rights_redact_model_and_stale_numeric_without_erasing_pwm(self):
         rights_id, investigation_id, run_id, selected = self.configure_v2()
-        before = self.view(run_id, selected)
+        before = self.world_preview(run_id, selected)
         self.store.revoke_rights_source(
             rights_id, "Independent fictional publication permissions withdrawn.")
-        after = self.view(run_id, selected)
+        after = self.world_preview(run_id, selected)
         held = self.investigation(investigation_id)
         self.assertEqual(after["unified_review"]["numeric_receipt"]["status"],
                          "historical_numeric_receipt_reassessment_required")
         self.assertEqual(after["unified_review"]["numeric_receipt"]["run"]
-                         ["run"]["result"]["delta"], "-0.4")
+                         ["result"]["result"]["delta"], "-0.4")
         self.assertEqual(held["review_status"],
                          "historical_investigation_reassessment_required")
         self.assertEqual(held["investigation"]["claims"], [])
@@ -122,7 +122,7 @@ class PatientWorldModelComposerV2Integration(unittest.TestCase):
         _, investigation_id, run_id, selected = self.configure_v2()
         self.store.import_report(
             CASE, numeric("NUM-LAB-2", "2026-03-01", "8.1", amendment=1))
-        packet = self.view(run_id, selected)
+        packet = self.world_preview(run_id, selected)
         model = self.investigation(investigation_id)
         self.assertEqual(packet["unified_review"]["numeric_receipt"]["status"],
                          "historical_numeric_receipt_reassessment_required")
