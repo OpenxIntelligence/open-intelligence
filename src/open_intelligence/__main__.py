@@ -17,6 +17,7 @@ from .changes import changes_since_review
 from .investigation import (
     TEMPLATES,
     InvestigationError,
+    ModelAPIConfigurationError,
     ValidatedInvestigation,
     build_prompt,
     call_meta_api,
@@ -391,7 +392,7 @@ class Handler(BaseHTTPRequestHandler):
         except InvestigationError as error:
             # Missing operator key is a configuration state, not a bug:
             # offer replay instead of a generic failure.
-            status = 503 if "META_API_KEY is not set" in str(error) else 502
+            status = 503 if isinstance(error, ModelAPIConfigurationError) else 502
             return self._json(status, {"error": str(error)})
         except (OverflowError, UnicodeEncodeError):
             return self._json(422, {"error": "Invalid text or identifier"})
