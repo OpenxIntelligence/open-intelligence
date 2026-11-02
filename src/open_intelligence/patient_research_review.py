@@ -120,3 +120,56 @@ class PatientResearchReview:
                 "laboratory results, verified content rights or clinician approval."
             ),
         }
+
+    def export_markdown(self, patient_id: str, case_id: str, question_id: int,
+                        run_id: int, *, actor: str, purpose: str) -> str:
+        """Generate a source-cited research handoff without external content export.
+
+        The knowledge preflight allows certain content to be *displayed* but
+        does not establish rights to redistribute it. Therefore this export
+        deliberately includes NO third-party article text, titles, summaries,
+        clinical note narrative or unreviewed biomedical comparisons.
+        """
+        reviewed = self.snapshot(
+            patient_id,case_id,question_id,run_id,actor=actor,purpose=purpose)
+        run = reviewed["durable_run"]
+        points = (run["result"] or {}).get("result",{}).get("points",[])
+        lines = [
+            "# Open Intelligence — fictional numeric research handoff",
+            "",
+            "**Not a clinical report, medical recommendation or clinician approval.**",
+            "",
+            f"Patient reference: `{patient_id}`",
+            f"Fictional case: `{case_id}`",
+            f"Question reference: `{question_id}`",
+            f"Original durable run: `{run_id}`",
+            f"Run status: `{run['state']}`",
+            f"Review state: `{reviewed['review_status']}`",
+            f"Source-context fingerprint: `{run['context_fingerprint']}`",
+            "",
+            "## Original fictional measurement sources",
+            "",
+        ]
+        if not points:
+            lines.append("No eligible numeric result; the original receipt remains inspectable.")
+        for point in points:
+            ref = point["source"]
+            lines.append(
+                f"- `{point['value']} {point['unit']}` from fictional "
+                f"source `{ref['document_id']}@{ref['source_version']}`, "
+                f"version ID `{ref['source_version_id']}`, "
+                f"line `{ref['source_line']}`, "
+                f"SHA-256 `{ref['source_sha256']}`"
+            )
+        lines.extend([
+            "",
+            "## Computation and evidence limitations",
+            "",
+            "Values were independently authored fictional source assertions. "
+            "The existing deterministic tool performs arithmetic only.",
+            "Published biomedical evidence and clinician conclusions were "
+            "not independently reviewed or authorized for redistribution.",
+            "A stale computation remains historical and must not be presented "
+            "as current. Re-run and independent human review are required.",
+        ])
+        return "\n".join(lines)+"\n"
