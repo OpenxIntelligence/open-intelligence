@@ -157,6 +157,20 @@ jobs:
           migration = json.loads(subprocess.check_output(['docker', 'inspect', migration_id], text=True))[0]
           assert migration['State']['Status'] == 'exited', migration['State']['Status']
           assert migration['State']['ExitCode'] == 0, migration['State']['ExitCode']
+          api_id = subprocess.check_output(compose + ['ps', '--quiet', 'api'], text=True).strip()
+          api = json.loads(subprocess.check_output(['docker', 'inspect', api_id], text=True))[0]
+          bindings = api['NetworkSettings']['Ports'].get('8000/tcp')
+          assert bindings == [{'HostIp': '127.0.0.1', 'HostPort': '8000'}], bindings
+          db_id = subprocess.check_output(compose + ['ps', '--quiet', 'db'], text=True).strip()
+          db = json.loads(subprocess.check_output(['docker', 'inspect', db_id], text=True))[0]
+          assert not any(db['NetworkSettings']['Ports'].values()), db['NetworkSettings']['Ports']
+          networks = json.loads(subprocess.check_output(
+              ['docker', 'network', 'inspect', *api['NetworkSettings']['Networks']], text=True))
+          internal = {network['Name'] for network in networks if network['Internal']}
+          assert len(internal) == 1 and len(networks) == 2, 'API needs internal DB and frontend bridge networks'
+          assert set(db['NetworkSettings']['Networks']) == internal, 'Database must stay internal-only'
+          assert set(migration['NetworkSettings']['Networks']) == internal, 'Migrator must stay internal-only'
+          print('Verified actual loopback port mapping and internal-only database/migrator')
           verify('After one-shot migration')
           subprocess.run(compose + ['restart', 'api'], check=True)
           verify('After API-only restart')

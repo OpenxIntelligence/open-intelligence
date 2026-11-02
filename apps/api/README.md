@@ -39,7 +39,10 @@ curl --fail http://127.0.0.1:8000/v1
 The database is not published on a host port. The API is published only on
 `127.0.0.1:8000`. A separate one-shot migration must succeed before the API
 starts. The API runs as an unprivileged user on a read-only filesystem, with an
-internal service network. Database state lives in the named synthetic volume.
+internal database network and a separate frontend bridge for loopback publication.
+The database and migration service remain internal-only. **The API frontend bridge
+also permits outbound routing; this is not an egress firewall.** The shell has no
+external content/model connector. Database state lives in the named synthetic volume.
 
 ```bash
 docker compose --file apps/api/compose.yaml restart api
@@ -179,6 +182,15 @@ that they ran or passed.
 - Docker and Chromium are absent in the session. The hosted workflow is the
   required separate evidence for actual Compose and browser execution; consult
   the exact-head run linked in the draft PR for its observed outcome.
+- The first hosted [run #41528664902](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41528664902)
+  passed the API/PG16 suite, original regressions and both browser journeys,
+  then failed the host-to-container HTTP check. The API was running internally,
+  but Docker does not publish ports for an internal-only container. The corrected
+  composition gives only the API an additional frontend bridge and retains the
+  loopback binding. CI now asserts actual port bindings and database/migrator
+  isolation before testing HTTP. See the
+  [Docker maintainer explanation](https://github.com/moby/moby/discussions/53256)
+  for the gateway requirement; the final PR-head run must verify the correction.
 
 ## Traceability and handoff
 

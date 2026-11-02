@@ -22,12 +22,16 @@ x-api-common: &api-common
     - no-new-privileges:true
   cap_drop:
     - ALL
+  networks:
+    - backend
 
 services:
   db:
     # Official PostgreSQL 16.15 release: 2026-08-13. No host database port.
     image: postgres:16.15-bookworm
     platform: linux/amd64
+    networks:
+      - backend
     environment:
       POSTGRES_DB: oi_api_synthetic
       POSTGRES_USER: oi_api
@@ -52,6 +56,11 @@ services:
   api:
     <<: *api-common
     init: true
+    # Docker publishes ports through a default-gateway network. An internal-only
+    # network silently leaves the requested host port unpublished.
+    networks:
+      - backend
+      - frontend
     ports:
       - "127.0.0.1:8000:8000"
     depends_on:
@@ -73,8 +82,11 @@ services:
 volumes:
   oi_api_synthetic_data:
 
-# Runtime services need only their local database. Dependency downloads happen
-# during the explicit image build, outside this internal service network.
+# Database and migrator stay internal-only. The API's ordinary frontend bridge
+# enables its loopback publication and also allows outbound routing; this is not
+# an API egress firewall. The shell implements no external data/model connector.
 networks:
-  default:
+  backend:
     internal: true
+  frontend:
+    driver: bridge
