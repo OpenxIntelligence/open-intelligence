@@ -6,6 +6,7 @@ on:
     paths:
       - 'tools/research/**'
       - '.github/workflows/public-research.yml'
+      - 'tools/verify_offline_research.py'
       - 'tools/audit_ci_data_boundaries.py'
       - 'tests/test_ci_data_boundaries.py'
   workflow_dispatch:
@@ -33,7 +34,7 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p research-results
-          python -m unittest discover -s tools/research -p 'test_*.py' -v 2>&1 | tee research-results/unit-tests.txt
+          python tools/verify_offline_research.py . tools/research 'test_*.py' 2>&1 | tee research-results/unit-tests.txt
       - name: Preserve reproducibility without patient files
         if: always()
         shell: bash

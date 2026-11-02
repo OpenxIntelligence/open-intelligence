@@ -7,7 +7,9 @@ on:
     paths:
       - 'tools/research/single_cell_probe.py'
       - 'tools/research/test_single_cell_probe.py'
+      - 'tools/research/test_sid_case_data_disabled.py'
       - '.github/workflows/single-cell-analysis.yml'
+      - 'tools/verify_offline_research.py'
 
 permissions:
   contents: read
@@ -25,7 +27,20 @@ jobs:
           python-version: '3.12'
       - name: Enforce patient-data-independent CI
         run: python tools/audit_ci_data_boundaries.py
+      - name: Fixture-only scientific parser dependencies
+        run: |
+          python -m pip install --only-binary=:all: numpy==2.3.5 h5py==3.15.1
+      - name: Require HDF5 fixture test prerequisites
+        run: |
+          python - <<'PY'
+          import h5py
+          import numpy
+          assert h5py.__version__ == '3.15.1', 'Pinned HDF5 fixture dependency required'
+          assert numpy.__version__ == '2.3.5', 'Pinned numeric fixture dependency required'
+          PY
       - name: Run independently authored fictional single-cell logic tests
-        run: python -m unittest discover -s tools/research -p test_single_cell_probe.py -v
+        run: OI_REQUIRE_HDF5=1 python tools/verify_offline_research.py . tools/research test_single_cell_probe.py
+      - name: Verify retired patient-data entrypoints fail before networking
+        run: python tools/verify_offline_research.py . tools/research test_sid_case_data_disabled.py
       # No processed patient H5AD, catalog, genomic file or research bucket is fetched.
       # Prior case-specific research scripts remain archival source, not a CI input.

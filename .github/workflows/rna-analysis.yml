@@ -7,7 +7,9 @@ on:
     paths:
       - 'tools/research/rna_expression_probe.py'
       - 'tools/research/test_rna_expression_probe.py'
+      - 'tools/research/test_sid_case_data_disabled.py'
       - '.github/workflows/rna-analysis.yml'
+      - 'tools/verify_offline_research.py'
 
 permissions:
   contents: read
@@ -26,6 +28,8 @@ jobs:
       - name: Enforce patient-data-independent CI
         run: python tools/audit_ci_data_boundaries.py
       - name: Run independently authored fictional numerical regression tests
-        run: python -m unittest discover -s tools/research -p test_rna_expression_probe.py -v
+        run: python tools/verify_offline_research.py . tools/research test_rna_expression_probe.py
+      - name: Verify retired patient-data entrypoints fail before networking
+        run: python tools/verify_offline_research.py . tools/research test_sid_case_data_disabled.py
       # Archived network-dependent investigation is NOT invoked, even manually.
       # Its original exploratory code is retained for separately governed review.

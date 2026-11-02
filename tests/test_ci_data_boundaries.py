@@ -35,5 +35,33 @@ class CIDataBoundaryTests(unittest.TestCase):
         self.assertEqual(audit.scan_workflow_text(sample,"sample.yml"),[])
 
 
+    def test_guard_rejects_module_execution_of_retired_patient_data_adapters(self):
+        modules=("public_case_intake","rna_expression_probe","single_cell_probe",
+                 "public_evidence_probe","gdc_projection_probe","clinical_semantics_probe")
+        for module in modules:
+            commands=(f"PYTHONPATH=tools/research python -m {module}",
+                      f"python3 -u -m tools.research.{module}",
+                      f"python3.12 -I -m research.{module}")
+            for command in commands:
+                with self.subTest(command=command):
+                    self.assertTrue(audit.scan_workflow_text(
+                        f"run: {command} --output fictional.json","sample.yml"))
+
+    def test_guard_preserves_public_metadata_and_offline_module_commands(self):
+        for command in ("python -m tools.crossref_metadata",
+                        "python -m trial_screening_probe",
+                        "python -m tools.research.trial_screening_probe",
+                        "python -m unittest discover -s tools/research",
+                        "python -m tools.research.rna_expression_probe_helper"):
+            with self.subTest(command=command):
+                self.assertEqual(audit.scan_workflow_text(
+                    f"run: {command}","sample.yml"),[])
+
+    def test_guard_checks_retired_modules_after_an_allowed_command(self):
+        sample=("run: python -m unittest --help && "
+                "PYTHONPATH=tools/research python -m gdc_projection_probe")
+        self.assertTrue(audit.scan_workflow_text(sample,"sample.yml"))
+
+
 if __name__=="__main__":
     unittest.main()

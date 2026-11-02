@@ -1,25 +1,35 @@
-"""Original fictional catalog fixtures; no copied clinical/genomic records."""
+"""Independently authored catalog fixtures with reserved .invalid origins.
+
+Trusted parser scope is injected only for offline tests; no catalog or asset is
+fetched. Dates, identifiers, locations and payloads are invented test inputs.
+"""
 import copy
 import json
 import unittest
+from unittest.mock import patch
+import public_case_intake as intake
 from public_case_intake import build_manifest, verify_manifest, plan_inputs, aggregate, validate_fetch_url
 
-NOW = '2026-11-02T00:00:00+00:00'
-URL = 'https://osteosarc.com/data/catalog/datasets.json'
+NOW = '2001-04-06T00:00:00+00:00'
+URL = 'https://catalog.synthetic.invalid/catalog/datasets.json'
+BUCKET = 'synthetic-fixtures.invalid'
+REGION = 'fixture-region'
+ASSET_HOST = 'objects.synthetic.invalid'
 
 def row(**kw):
     r = dict(section='bulk-rna', table='rna-processed', assay='WTS', data_type='counts',
-        sample_id=['SYN-T0'], specimen_id=['SYN-BLOCK-A'], collection_date=['2024-01-03'],
-        timepoint='T0', reference='GRCh38', status='ok', caveat='', other_donors='',
-        path='synthetic/2024.01.03/counts.tsv', path_kind='file', include_pattern='',
-        s3_uri='s3://sid-sijbrandij-osteosarc-dataset/synthetic/2024.01.03/counts.tsv',
-        https_url='', files=1, bytes=123, newest_modified='2026-10-29')
+        sample_id=['SYN-SAMPLE-A'], specimen_id=['SYN-BLOCK-A'], collection_date=['2001-02-03'],
+        timepoint='SYN-VISIT-A', reference='SYN-REFERENCE', status='ok', caveat='', other_donors='',
+        path='synthetic/2001.02.03/counts.tsv', path_kind='file', include_pattern='',
+        s3_uri=f's3://{BUCKET}/synthetic/2001.02.03/counts.tsv',
+        https_url=f'https://{ASSET_HOST}/synthetic/2001.02.03/counts.tsv',
+        files=1, bytes=123, newest_modified='2001-04-04')
     r.update(kw)
     return r
 
 def payload(rows=None, **kw):
-    c = dict(bucket='sid-sijbrandij-osteosarc-dataset',region='us-west-2',license='CC0-1.0',
-        listing_generated_at='2026-10-30T20:06:00Z', datasets=rows if rows is not None else [row()])
+    c = dict(bucket=BUCKET,region=REGION,license='CC0-1.0',
+        listing_generated_at='2001-04-05T10:00:00Z', datasets=rows if rows is not None else [row()])
     c.update(kw)
     return json.dumps(c).encode()
 
@@ -27,6 +37,18 @@ def manifest(rows=None, **kw):
     return build_manifest(payload(rows, **kw), NOW)
 
 class IntakeTests(unittest.TestCase):
+    def setUp(self):
+        trusted_scope = patch.multiple(intake, CATALOG_URL=URL, BUCKET=BUCKET,
+                                       REGION=REGION, ASSET_HOST=ASSET_HOST)
+        trusted_scope.start()
+        self.addCleanup(trusted_scope.stop)
+
+    def test_injected_synthetic_origin_has_valid_bound_locations(self):
+        m=manifest()
+        self.assertEqual(m['source_url'],URL)
+        self.assertEqual(m['bucket'],BUCKET)
+        self.assertNotIn('asset_location_unverified',m['entries'][0]['review_reasons'])
+
     def test_preserves_catalog_row_without_mutation(self):
         raw=payload([row(extra={'arbitrary': [1,2]})]); before=bytes(raw)
         m=build_manifest(raw,NOW)
@@ -49,8 +71,8 @@ class IntakeTests(unittest.TestCase):
         self.assertEqual(aggregate(m)['repeated_location_occurrences'],1)
 
     def test_collection_time_not_path_or_object_modification(self):
-        m=manifest([row(collection_date=['2024-06-11'])])
-        self.assertEqual(m['entries'][0]['source_record']['collection_date'],['2024-06-11'])
+        m=manifest([row(collection_date=['2001-07-09'])])
+        self.assertEqual(m['entries'][0]['source_record']['collection_date'],['2001-07-09'])
         self.assertIn('path_date_differs_from_collection',m['entries'][0]['review_reasons'])
 
     def test_no_missing_date_fallback(self):
@@ -59,11 +81,11 @@ class IntakeTests(unittest.TestCase):
         self.assertEqual(e['source_record']['collection_date'],[])
 
     def test_multi_dates_not_silently_selected(self):
-        e=manifest([row(collection_date=['2024-01-03','2024-01-07'])])['entries'][0]
+        e=manifest([row(collection_date=['2001-02-03','2001-02-07'])])['entries'][0]
         self.assertIn('multiple_collection_dates',e['review_reasons'])
 
     def test_invalid_date_is_held_not_repaired(self):
-        e=manifest([row(collection_date=['2024-02-31'])])['entries'][0]
+        e=manifest([row(collection_date=['2001-02-31'])])['entries'][0]
         self.assertIn('invalid_collection_date',e['review_reasons'])
 
     def test_missing_specimen_is_not_filled_from_sample(self):
@@ -106,7 +128,7 @@ class IntakeTests(unittest.TestCase):
         self.assertEqual(p['unclassified_inputs'],1)
 
     def test_historical_replay_rejects_catalog_date_as_availability(self):
-        p=plan_inputs(manifest(),mode='historical_replay',cutoff='2025-01-01T00:00:00Z')
+        p=plan_inputs(manifest(),mode='historical_replay',cutoff='2001-01-01T00:00:00Z')
         self.assertEqual(p['historical_inputs_eligible'],0)
         self.assertEqual(p['status'],'held_missing_historical_availability')
 
@@ -131,26 +153,26 @@ class IntakeTests(unittest.TestCase):
         with self.assertRaises(ValueError): manifest(license='unknown')
 
     def test_wrong_bucket_rejected(self):
-        with self.assertRaises(ValueError): manifest(bucket='some-private-bucket')
+        with self.assertRaises(ValueError): manifest(bucket='untrusted-bucket.invalid')
 
     def test_non_list_catalog_rejected(self):
         with self.assertRaises(ValueError): build_manifest(payload('not-a-list'),NOW)
 
     def test_non_list_identity_rejected(self):
-        with self.assertRaises(ValueError): manifest([row(sample_id='SYN-T0')])
+        with self.assertRaises(ValueError): manifest([row(sample_id='SYN-SAMPLE-A')])
 
     def test_boolean_size_is_not_a_valid_count(self):
         e=manifest([row(bytes=True)])['entries'][0]
         self.assertIn('invalid_listing_count',e['review_reasons'])
 
     def test_off_bucket_asset_path_held_without_fetch(self):
-        e=manifest([row(s3_uri='s3://other-private-bucket/data')])['entries'][0]
+        e=manifest([row(s3_uri='s3://untrusted-bucket.invalid/data')])['entries'][0]
         self.assertIn('asset_location_unverified',e['review_reasons'])
 
     def test_fetch_allowlist_rejects_other_urls(self):
-        for u in ('http://osteosarc.com/data/catalog/datasets.json',URL+'?secret=abc',
-                  'https://127.0.0.1/private','https://osteosarc.com@evil.example/data',
-                  'https://osteosarc.com/data/catalog/../record.json'):
+        for u in ('http://catalog.synthetic.invalid/catalog/datasets.json',URL+'?secret=abc',
+                  'https://other.invalid/private','https://catalog.synthetic.invalid@other.invalid/data',
+                  'https://catalog.synthetic.invalid/catalog/../record.json'):
             with self.subTest(u=u),self.assertRaises(ValueError): validate_fetch_url(u)
         self.assertEqual(validate_fetch_url(URL),URL)
 
@@ -167,12 +189,12 @@ class IntakeTests(unittest.TestCase):
 
     def test_catalog_prefix_selector_is_not_wrong_bucket(self):
         e=manifest([row(path='synthetic/pool_',path_kind='prefix',include_pattern='pool_*',
-            s3_uri='s3://sid-sijbrandij-osteosarc-dataset/synthetic/')])['entries'][0]
+            s3_uri=f's3://{BUCKET}/synthetic/',https_url='')])['entries'][0]
         self.assertIn('asset_selector_requires_review',e['review_reasons'])
         self.assertNotIn('asset_location_unverified',e['review_reasons'])
 
     def test_same_bucket_different_https_asset_is_not_bound(self):
-        e=manifest([row(https_url='https://sid-sijbrandij-osteosarc-dataset.s3.us-west-2.amazonaws.com/other.tsv')])['entries'][0]
+        e=manifest([row(https_url=f'https://{ASSET_HOST}/other.tsv')])['entries'][0]
         self.assertIn('asset_location_unverified',e['review_reasons'])
 
     def test_explicit_no_other_donors_is_not_treated_as_yes(self):
@@ -192,7 +214,7 @@ class IntakeTests(unittest.TestCase):
         with self.assertRaises(ValueError): NoRedirect().redirect_request(None,None,302,None,{},URL)
 
     def test_partial_collection_date_retains_precision(self):
-        for value in ('2024', '2024-01'):
+        for value in ('2001', '2001-02'):
             with self.subTest(value=value):
                 e=manifest([row(collection_date=[value])])['entries'][0]
                 self.assertIn('partial_collection_date',e['review_reasons'])
@@ -200,7 +222,7 @@ class IntakeTests(unittest.TestCase):
                 self.assertEqual(e['source_record']['collection_date'],[value])
 
     def test_unparsed_date_not_labeled_invalid_clinical_fact(self):
-        e=manifest([row(collection_date=['early 2024'])])['entries'][0]
+        e=manifest([row(collection_date=['early 2001'])])['entries'][0]
         self.assertIn('unparsed_collection_date',e['review_reasons'])
         self.assertNotIn('invalid_collection_date',e['review_reasons'])
 

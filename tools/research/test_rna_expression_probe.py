@@ -1,6 +1,7 @@
 """Original fictional data. Expectations are independent of real-case values."""
 import gzip
 import unittest
+from unittest.mock import patch
 import rna_expression_probe as p
 
 
@@ -76,9 +77,10 @@ class ExpressionTests(unittest.TestCase):
         r=p.compare_profiles(a,b)
         self.assertEqual(r['left_only'],1);self.assertEqual(r['right_only'],1)
     def test_key_is_fixed_sample_and_suffix(self):
-        self.assertEqual(p.validate_key('BG003082','.gene_tpm.gct.gz'),'rna-seq/reprocessed/BG003082/BG003082.gene_tpm.gct.gz')
-        for s,suffix in [('../secret','.gene_tpm.gct.gz'),('OTHER','.gene_tpm.gct.gz'),('BG003082','.bam')]:
-            with self.subTest(s=s,suffix=suffix), self.assertRaises(ValueError):p.validate_key(s,suffix)
+        with patch.object(p,'SAMPLES',('SYN-RNA-A',)):
+            self.assertEqual(p.validate_key('SYN-RNA-A','.gene_tpm.gct.gz'),'rna-seq/reprocessed/SYN-RNA-A/SYN-RNA-A.gene_tpm.gct.gz')
+            for s,suffix in [('../secret','.gene_tpm.gct.gz'),('SYN-RNA-OTHER','.gene_tpm.gct.gz'),('SYN-RNA-A','.bam')]:
+                with self.subTest(s=s,suffix=suffix), self.assertRaises(ValueError):p.validate_key(s,suffix)
     def test_header_shape_must_match(self):
         for raw in [b'#1.3\n1\t1\nName\tDescription\tTEST\nI\tA\t1\n', b'#1.2\n1\t2\nName\tDescription\tTEST\nI\tA\t1\n', b'#1.2\n1\t1\nwrong\tDescription\tTEST\nI\tA\t1\n']:
             with self.subTest(raw=raw),self.assertRaises(ValueError):p.parse_gct(raw,'TEST')

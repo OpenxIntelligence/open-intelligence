@@ -1,9 +1,11 @@
 # Data-rights note — Open Intelligence demo
 
-For the current tree on branch `oi/safety-packet` (current `main`
-merged in; refreshed 2026-11-02).
+For the local safety reconciliation on branch
+`safety/reconcile-data-boundary-20261102`, starting at exact main
+`24519839aa8ac1ea3aff88a956349ba72798a72a` with selected PR #123 files
+and bounded safety fixes. Refreshed 2026-11-02; no merge or deployment is claimed.
 
-## All demo data is independently authored fictional content
+## Bundled demo data and scope of this receipt
 
 - Case reports use the structured format `OI-SYNTHETIC-REPORT/1` and are
   authored for this repository. Case identifiers (`CASE-ALPHA`,
@@ -34,9 +36,11 @@ merged in; refreshed 2026-11-02).
   authored demonstration notes. The latter states its own provenance
   ("Independently authored synthetic fixtures; no real patient data, no
   PHI") and limits itself to synthetic contract evidence.
-- No real patient data, no personal health information, no genomic data,
-  and no clinical document of any real person appears anywhere in the
-  repository, its tests, or its fixtures.
+- The bundled product examples are intended as independently authored
+  fictional content. The correction below identified research fixtures
+  that still reused archival case identifiers/configuration despite their
+  fictional labels. This note does not establish a repository-wide or
+  historical-artifact absence of personal information.
 - The runtime SQLite database is created locally when the demo server is
   seeded. It contains only the fictional seed data and user-entered
   fictional content from the local session. It is not shipped.
@@ -97,9 +101,10 @@ merged in; refreshed 2026-11-02).
 - No training on user data: no model weights are shipped, and the only
   model path is the bounded investigation call above, which runs in
   offline replay unless the operator explicitly selects live mode.
-- No egress of case data by default: the local server binds to `127.0.0.1`;
-  the only external requests the code can make are the two opt-in paths
-  above (DOI-only Crossref lookup; bounded Meta investigation POST).
+- The local demo server binds to `127.0.0.1`; the application paths
+  described above opt in to DOI-only Crossref lookup or the bounded Meta
+  investigation POST. This is not an exhaustive egress guarantee for
+  arbitrary repository tools or operator-supplied code.
 - No inference about a real person: the demo never stages, grades,
   interprets variants, infers response or progression, determines trial
   eligibility or efficacy, infers clinical deadlines, or recommends
@@ -126,12 +131,17 @@ merged in; refreshed 2026-11-02).
 - `validation/iv01/protocol.json` (`status: not_activated`, all
   thresholds null) and `validation/iv01/results_template.csv`
   (header only) record no study, no reviewers, and no outcomes.
-- The `tools/research/` unit-test fixtures (`FICTIONAL-*`,
-  `SYN-*`) and the `CASE-JSON` parser fixtures in
-  `tests/test_evaluation_packet_json_boundary.py` are hand-derived
-  fictional cases asserting parser/calculation behavior only. No
-  patient records, clinical reference answers, or real-case values
-  are embedded or asserted.
+- Research fixtures and `CASE-JSON` parser examples assert engineering
+  behavior only; their labels do not prove independent provenance. The
+  current correction replaces case-dependent HDF5 configuration, an
+  archival RNA sample ID, real catalog origins, and TCIA-style CSV IDs.
+  The newly authored HDF5 matrix uses five invented cells, four `GENE_*`
+  features, `SYN-SAMPLE-A/B`, arbitrary 2001 dates and hand-calculated
+  expectations. Its generic analyzer requires explicit caller-provided
+  configuration and infers no patient count, malignancy or treatment
+  recommendation. Catalog tests inject `.invalid` scope and RNA path
+  tests inject a synthetic sample allowlist. No historical provenance
+  clearance or independent clinical ground truth is claimed.
 
 ## Historical live research probes — archived, not CI inputs after data-boundary change
 
@@ -195,12 +205,12 @@ merged in; refreshed 2026-11-02).
   network-dependent research runtime. The file itself is research-only:
   not an application dependency decision or security clearance.
   No package license in that lock has been reviewed in this packet.
-- The historical `single-cell-analysis` CI job installed
-  `numpy==2.3.5` and `h5py==3.15.1` for exploratory research.
-  Draft PR #123 replaces live analysis with fictional unit tests and
-  does not install this research environment. These are not
-  selected application dependencies. Their licenses remain UNVERIFIED
-  in this packet.
+- The reconciled `single-cell-analysis` CI job retains exact pins
+  `numpy==2.3.5` and `h5py==3.15.1` for independently authored HDF5
+  fixture tests, with an import/version prerequisite check. No processed
+  patient H5AD is installed or fetched. These are not selected application
+  dependencies. Their licenses and bundled native library terms remain
+  UNVERIFIED in this packet.
 - The demo itself remains Python standard library only, as recorded
   in `SBOM.md`; no new dependency is shipped with the demo.
 
@@ -219,23 +229,31 @@ merged in; refreshed 2026-11-02).
   TrialGPT characterization) are recorded as in-repo assertions
   only and are UNVERIFIED in this packet, as are the licenses of
   every package in `tools/research/requirements.lock` and of the
-  historical research-only `numpy`/`h5py` install. None of these is
+  fixture-only `numpy`/`h5py` install. None of these is
   shipped with the demo; the updated workflows do not execute those
   live-data probes.
 - No independent legal review of this note has been performed. It is an
   engineering inventory, not legal clearance.
 
 
-## 2026-11-02 proposed CI policy enforcement receipt
+## Historical PR #123 receipt and current local reconciliation
 
 - Draft PR [#123](https://github.com/OpenxIntelligence/open-intelligence/pull/123)
   removes named-person and other public patient-data fetches from the
   three research workflows, replacing them with independently authored
   fictional tests and an explicit no-download source guard.
-- Current feature-branch head before this documentation correction:
-  `5839a5b98b15e61c14c42dbe810d711434773e09`. Six hosted workflows
-  passed on that exact head (research, RNA, single-cell, synthetic ledger,
-  UI glance, Crossref), but the policy remains unmerged/not in force on main.
+- The prior PR note reported six hosted workflows passing at historical
+  head `5839a5b98b15e61c14c42dbe810d711434773e09`. That record is not
+  acceptance evidence for this reconciled tree; this review accessed no
+  Actions logs or artifacts.
+- The current local guarded run passed 219 research tests, including all
+  24 HDF5 cases, with zero skips and zero recorded network/process attempts.
+  Eight CI-boundary regressions passed. Main's catalog/acquire denials
+  remain intact; RNA and four patient-cohort paths now deny acquisition,
+  and case-configured single-cell inspection is retired. See
+  `docs/engineering/DATA_BOUNDARY_RECONCILIATION_VERIFICATION.md` for the
+  exact baseline, fixture correction and remaining limitations. No new
+  commit, hosted CI result, merge or artifact-history clearance is claimed.
 - The scanner matches known direct CI entrypoints; it cannot provide a
   network sandbox, identify all PHI, or prove exact permissions. A release
   still requires security, source rights and professional review.

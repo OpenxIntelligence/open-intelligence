@@ -116,6 +116,8 @@ class NoRedirect(HTTPRedirectHandler):
 
 
 def fetch(url: str, limit: int) -> tuple[bytes,dict]:
+    """Historical adapter only; personal-data acquisition is not authorized."""
+    raise PermissionError('Personal RNA dataset access is disabled: use independently authored fictional fixtures and public workflow narratives only.')
     allowed={CATALOG_URL,BASE+'rna-seq/reprocessed/README.md'}|{
         BASE+validate_key(s,x) for s in SAMPLES for x in ('.gene_tpm.gct.gz','.metrics.tsv')}
     if url not in allowed:raise ValueError('URL outside fixed read scope')

@@ -22,6 +22,7 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 CATALOG_URL = 'https://osteosarc.com/data/catalog/datasets.json'
 BUCKET = 'sid-sijbrandij-osteosarc-dataset'
 REGION = 'us-west-2'
+ASSET_HOST = f'{BUCKET}.s3.{REGION}.amazonaws.com'
 MAX_BYTES = 2 * 1024 * 1024
 MAX_ROWS = 10000
 DATE_IN_PATH = re.compile(r'(?<!\d)(\d{4})[.-](\d{2})[.-](\d{2})(?!\d)')
@@ -94,7 +95,7 @@ def _location_valid(record: dict) -> bool:
         if not isinstance(url, str):
             return False
         parsed = urlsplit(url)
-        if (parsed.scheme != 'https' or parsed.netloc != f'{BUCKET}.s3.{REGION}.amazonaws.com'
+        if (parsed.scheme != 'https' or parsed.netloc != ASSET_HOST
                 or parsed.query or parsed.fragment
                 or unquote(parsed.path).lstrip('/').rstrip('/') != path.rstrip('/')):
             return False
@@ -305,6 +306,8 @@ class NoRedirect(HTTPRedirectHandler):
 
 
 def fetch_catalog() -> tuple[bytes, dict]:
+    # The catalog contains case-specific patient data. No manual or CI opt-in is allowed.
+    raise PermissionError('Sid case data catalog access disabled: use public narrative accounts to study workflows, never patient data.')
     url = validate_fetch_url(CATALOG_URL)
     opener = build_opener(NoRedirect())
     for attempt in range(2):

@@ -176,6 +176,8 @@ def audit(cases: list[dict]) -> dict:
 
 
 def run_probe() -> dict:
+    """Retain synthetic projection reducers without live patient acquisition."""
+    raise PermissionError('GDC patient-cohort projection acquisition is disabled: use independently authored fictional fixtures only.')
     # Reuse the existing bounded network helper; it never prints raw responses.
     from public_evidence_probe import fetch_bytes
     raw, schema_receipt = fetch_bytes('https://api.gdc.cancer.gov/cases/_mapping')

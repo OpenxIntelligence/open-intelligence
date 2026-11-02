@@ -1,10 +1,16 @@
-"""Original fictional fixtures; no patient cell records are embedded."""
+"""Hand-authored fixture arithmetic, independent of archived case configuration.
+
+The full HDF5 example uses five invented cells, four invented feature symbols,
+two arbitrary 2001 dates and explicit capture/annotation configuration. Its
+literal counts and expected aggregates were authored together for these tests.
+"""
 import copy
 import importlib.util
 import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 import single_cell_probe as p
 
 
@@ -86,6 +92,12 @@ class AggregateTests(unittest.TestCase):
         self.assertEqual(sum(x['n_cells'] for x in out['groups']),4)
         json.dumps(out,allow_nan=False)
 
+    def test_case_configured_inspection_is_retired_before_file_access(self):
+        with patch('builtins.open', side_effect=AssertionError('File access forbidden')) as opener:
+            with self.assertRaises(PermissionError):
+                p.inspect_and_analyze('/never-opened/case.h5ad')
+            opener.assert_not_called()
+
 
 H5_AVAILABLE = importlib.util.find_spec('h5py') is not None and importlib.util.find_spec('numpy') is not None
 
@@ -131,6 +143,19 @@ class H5Tests(unittest.TestCase):
         self.obs['remote']=self.h5py.ExternalLink('/unavailable/not_allowed.h5','/secret')
         with self.assertRaises(ValueError):p.read_column(self.obs,'remote')
 
+    def test_nested_link_path_is_rejected_before_traversal(self):
+        self.obs['remote']=self.h5py.ExternalLink('/unavailable/not_allowed.h5','/secret')
+        with self.assertRaisesRegex(ValueError, 'direct child'):
+            p.read_column(self.obs,'remote/column')
+
+    def test_soft_links_and_external_storage_are_rejected(self):
+        self.obs.create_dataset('local',data=['SYN'],dtype=self.h5py.string_dtype())
+        self.obs['alias']=self.h5py.SoftLink('/obs/local')
+        with self.assertRaises(ValueError):p.read_column(self.obs,'alias')
+        self.obs.create_dataset('external_storage',shape=(1,),dtype='i',
+                                external=[('/unavailable/not_allowed.bin',0,4)])
+        with self.assertRaises(ValueError):p.read_column(self.obs,'external_storage')
+
     def test_dense_selected_columns_preserve_requested_order(self):
         x=self.f.create_dataset('X',data=[[0.,2.,0.],[3.,4.,0.],[0.,0.,5.]])
         actual=p.read_selected_matrix(x,[2,0],3,3)
@@ -171,44 +196,95 @@ class H5Tests(unittest.TestCase):
         with self.assertRaises(ValueError):p.read_selected_matrix(x,[0],3,3,require_integer=True)
 
     def full_fixture(self):
-        self.obs.create_dataset('_index',data=['CELL-SYN-1','CELL-SYN-2','CELL-SYN-3'],dtype=self.h5py.string_dtype())
-        for name,values in [('sample_id',['T1','T1','T3_CD45neg']),('date',['2024-06-06','2024-06-06','2025-04-17'])]:
+        self.obs.create_dataset('_index',data=['SYN-CELL-A1','SYN-CELL-A2','SYN-CELL-A3','SYN-CELL-B1','SYN-CELL-B2'],dtype=self.h5py.string_dtype())
+        for name,values in [('sample_id',['SYN-SAMPLE-A']*3+['SYN-SAMPLE-B']*2),
+                            ('date',['2001-02-03']*3+['2001-03-04']*2)]:
             self.obs.create_dataset(name,data=values,dtype=self.h5py.string_dtype())
-        for res in ('0.5','1.0','1.5'):
-            self.obs.create_dataset('leiden_res'+res,data=['0','1','0'],dtype=self.h5py.string_dtype())
-            self.obs.create_dataset('celltype_res'+res,data=['hypothesis-A','hypothesis-B','hypothesis-A'],dtype=self.h5py.string_dtype())
+        for name,values in [('cluster_coarse',['red','red','blue','red','blue']),
+                            ('cluster_fine',['a','b','c','a','b'])]:
+            self.obs.create_dataset(name,data=values,dtype=self.h5py.string_dtype())
+        for name in ('label_coarse','label_fine'):
+            self.cat(name,codes=(0,0,-1,0,1),categories=('fixture-type-X','fixture-type-Y'))
         var=self.f.create_group('var');var.attrs['_index']='_index'
-        var.create_dataset('_index',data=['FAP','CD276','PANX3','MDM2'],dtype=self.h5py.string_dtype())
-        counts=self.np.array([[0.,2.,1.,0.],[3.,0.,2.,0.],[0.,0.,0.,0.]])
+        var.create_dataset('_index',data=['GENE_A','GENE_B','GENE_C','GENE_ZERO'],dtype=self.h5py.string_dtype())
+        # By hand: A has sums (6,9,6,0), B has sums (8,0,8,0).
+        # Detection counts are A=(2,2,2,0), B=(1,0,2,0).
+        counts=self.np.array([[1,0,4,0],[0,3,0,0],[5,6,2,0],[0,0,7,0],[8,0,1,0]])
         self.f.create_group('layers').create_dataset('counts',data=counts)
         self.f.create_dataset('X',data=self.np.log1p(counts))
         self.f.flush()
 
+    def analyze(self, **overrides):
+        config = dict(sample_dates={'SYN-SAMPLE-A':'2001-02-03','SYN-SAMPLE-B':'2001-03-04'},
+                      targets=('GENE_A','GENE_B','GENE_ZERO'),
+                      controls=('GENE_C','GENE_MISSING'),
+                      capture_types={'SYN-SAMPLE-A':'fixture-capture-left','SYN-SAMPLE-B':'fixture-capture-right'},
+                      annotation_columns={'coarse':('cluster_coarse','label_coarse'),
+                                          'fine':('cluster_fine','label_fine')})
+        config.update(overrides)
+        return p.analyze_synthetic_h5ad(self.path, **config)
+
     def test_end_to_end_aggregates_with_no_cell_ids_published(self):
-        self.full_fixture();out=p.inspect_and_analyze(self.path)
-        self.assertEqual(out['n_cells'],3)
-        self.assertEqual(out['sample_sizes'],{'T1':2,'T3_CD45neg':1})
+        self.full_fixture();out=self.analyze()
+        self.assertEqual(out['n_cells'],5)
+        self.assertEqual(out['sample_sizes'],{'SYN-SAMPLE-A':3,'SYN-SAMPLE-B':2})
+        self.assertEqual(out['sample_collection_dates'],{'SYN-SAMPLE-A':'2001-02-03','SYN-SAMPLE-B':'2001-03-04'})
+        self.assertEqual(out['capture_types'],{'SYN-SAMPLE-A':'fixture-capture-left','SYN-SAMPLE-B':'fixture-capture-right'})
         self.assertEqual(out['count_vs_X_positive_disagreements'],0)
-        self.assertIn('PTPRC',out['genes_not_measured'])
-        self.assertEqual(out['sample_target_summaries']['T1']['PANX3']['positive_cells'],2)
-        self.assertEqual(out['sample_target_summaries']['T3_CD45neg']['FAP']['positive_cells'],0)
-        self.assertNotIn('CELL-SYN-1',json.dumps(out))
+        self.assertEqual(out['genes_not_measured'],['GENE_MISSING'])
+        expected = {
+            'SYN-SAMPLE-A':{'GENE_A':(2,2/3,2),'GENE_B':(2,2/3,3),'GENE_C':(2,2/3,2),'GENE_ZERO':(0,0,0)},
+            'SYN-SAMPLE-B':{'GENE_A':(1,0.5,4),'GENE_B':(0,0,0),'GENE_C':(2,1,4),'GENE_ZERO':(0,0,0)}}
+        for sample, features in expected.items():
+            for gene, (positive, fraction, mean) in features.items():
+                self.assertEqual(out['sample_target_summaries'][sample][gene],
+                                 {'positive_cells':positive,'fraction_positive':fraction,'mean_stored_value':mean})
+        self.assertNotIn('SYN-CELL-',json.dumps(out))
+        self.assertIsNone(out['patient_count'])
         self.assertFalse(out['malignancy_established'])
+        self.assertFalse(out['normal_tissue_specificity_established'])
+        self.assertIsNone(out['clinical_recommendation'])
+        self.assertIsNone(out['p_values'])
+        coarse=out['source_annotation_resolutions']['coarse']['groups']
+        self.assertTrue(any(row['source_predicted_label'] is None for row in coarse))
+
+    def test_generic_analysis_does_not_depend_on_archival_case_globals(self):
+        self.full_fixture()
+        with patch.object(p,'SAMPLE_DATES',{}), patch.object(p,'TARGETS',()), patch.object(p,'CONTROLS',()):
+            self.assertEqual(self.analyze()['sample_sizes'],{'SYN-SAMPLE-A':3,'SYN-SAMPLE-B':2})
+
+    def test_configuration_is_required_and_validated(self):
+        self.full_fixture()
+        with self.assertRaises(TypeError):p.analyze_synthetic_h5ad(self.path)
+        for config in (dict(sample_dates={}), dict(sample_dates={'SYN-SAMPLE-A':'2001-02-30'}),
+                       dict(targets=()), dict(controls=('GENE_A',)), dict(capture_types={}),
+                       dict(annotation_columns={}),
+                       dict(annotation_columns={'bad':('outside/cluster','label_coarse')})):
+            with self.subTest(config=config),self.assertRaises(ValueError):self.analyze(**config)
+
+    def test_count_and_X_detection_disagreement_is_rejected(self):
+        self.full_fixture();self.f['X'][0,0]=0;self.f.flush()
+        with self.assertRaisesRegex(ValueError,'detection disagree'):self.analyze()
+
+    def test_missing_required_feature_is_not_reported_as_zero(self):
+        self.full_fixture()
+        with self.assertRaisesRegex(ValueError,'required target'):
+            self.analyze(targets=('GENE_ABSENT',))
 
     def test_missing_counts_layer_does_not_fall_back_to_scaled_X(self):
         self.full_fixture();del self.f['layers/counts'];self.f.flush()
-        with self.assertRaises(ValueError):p.inspect_and_analyze(self.path)
+        with self.assertRaises(ValueError):self.analyze()
 
     def test_unexpected_sample_cannot_be_pooled_as_another_timepoint(self):
         self.full_fixture();self.obs['sample_id'][0]='UNEXPECTED-DONOR';self.f.flush()
-        with self.assertRaises(ValueError):p.inspect_and_analyze(self.path)
+        with self.assertRaises(ValueError):self.analyze()
 
     def test_wrong_sample_date_requires_resolution(self):
-        self.full_fixture();self.obs['date'][0]='2025-04-17';self.f.flush()
-        with self.assertRaises(ValueError):p.inspect_and_analyze(self.path)
+        self.full_fixture();self.obs['date'][0]='2001-03-04';self.f.flush()
+        with self.assertRaises(ValueError):self.analyze()
 
     def test_duplicate_cell_identity_requires_resolution(self):
-        self.full_fixture();self.obs['_index'][1]='CELL-SYN-1';self.f.flush()
-        with self.assertRaises(ValueError):p.inspect_and_analyze(self.path)
+        self.full_fixture();self.obs['_index'][1]='SYN-CELL-A1';self.f.flush()
+        with self.assertRaises(ValueError):self.analyze()
 
 if __name__=='__main__':unittest.main()

@@ -19,6 +19,9 @@ FORBIDDEN_SCRIPTS=frozenset({
     "clinical_semantics_probe",
     "trial_screening_probe",
 })
+# Patient-level acquisition modules retired independently of public trial or
+# publication metadata helpers, which remain available for permitted lookup.
+RETIRED_PATIENT_DATA_MODULES=FORBIDDEN_SCRIPTS-{"trial_screening_probe"}
 # Prevent direct command execution and other obvious reintroductions of
 # downloads. A Python function or imported module inside separate code still
 # needs review; source matching is not a network egress enforcement boundary.
@@ -26,6 +29,10 @@ SCRIPT_CALL=re.compile(
     # Only a Python command invokes the script. A path-filter reference such as
     # 'tools/research/rna_expression_probe.py' is not executable work.
     r"\bpython(?:3(?:\.\d+)?)?\s+(?:-u\s+)?(?:\./)?tools/research/([a-z_]+)\.py\b"
+)
+MODULE_CALL=re.compile(
+    r"\bpython(?:3(?:\.\d+)?)?\s+(?:-[uBIESs]+\s+)*-m\s+"
+    r"(?:(?:tools\.)?research\.)?([a-z_]+)(?![\w.])"
 )
 BLOCKED_PUBLIC_CASE_URL=re.compile(
     r"https?://[^\s'\"<>]*(?:sid-sijbrandij-osteosarc-dataset|osteosarc\.com/data/catalog/datasets\.json)",
@@ -41,8 +48,11 @@ def scan_workflow_text(text: str, filename: str) -> list[str]:
         stripped=line.strip()
         if not stripped or stripped.startswith("#"):
             continue
-        found=SCRIPT_CALL.search(stripped)
-        if found and found.group(1) in FORBIDDEN_SCRIPTS:
+        script_call=any(found.group(1) in FORBIDDEN_SCRIPTS
+                        for found in SCRIPT_CALL.finditer(stripped))
+        module_call=any(found.group(1) in RETIRED_PATIENT_DATA_MODULES
+                        for found in MODULE_CALL.finditer(stripped))
+        if script_call or module_call:
             issues.append(f"{filename}:{number}: prohibited live research entrypoint")
         if BLOCKED_PUBLIC_CASE_URL.search(stripped):
             issues.append(f"{filename}:{number}: named-person data endpoint")
