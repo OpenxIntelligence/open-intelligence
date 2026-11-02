@@ -1,0 +1,36 @@
+name: Authorized quoted evidence to existing review queue (synthetic)
+
+on:
+  pull_request:
+    branches:
+      - integration/inspectable-evidence-review-packet-20261102
+      - main
+    paths:
+      - 'src/open_intelligence/store.py'
+      - 'src/open_intelligence/authorized_evidence_review.py'
+      - 'tests/test_authorized_evidence_review_handoff.py'
+      - '.github/workflows/evidence-review-handoff.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.13'
+      - name: Compile original domain and tests
+        run: python -m compileall -q src tests
+      - name: Synthetic exact quote and durable return receipt integration
+        env:
+          PYTHONPATH: src:tests:.
+        run: |
+          python -m unittest discover -s tests -p 'test_authorized_evidence_review_handoff.py' -v
+          python -m unittest discover -s tests -p 'test_evidence_quote_review_integration.py' -v
+          python -m unittest discover -s tests -p 'test_patient_clinical_knowledge_integration.py' -v
