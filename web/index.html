@@ -36,6 +36,7 @@
           <a href="#patient-mission">Patient Mission</a>
           <a href="#assertions">Reported findings</a>
           <a href="#timeline">Timeline</a>
+          <a href="#journey">Journey</a>
           <a href="#investigations">Investigation</a>
           <a href="#sources">Sources and findings</a>
           <a href="#evidence">Evidence review</a>
@@ -156,6 +157,35 @@
           <p class="muted panel-note">Compare original report text and inspect which saved investigations used an earlier version. A textual amendment is not automatically a new biological event or a clinical change.</p>
           <div id="source-change-list" class="change-list"></div>
         </section>
+      </section>
+
+      <section class="panel" id="journey" aria-labelledby="journey-heading">
+        <div class="panel-head">
+          <div><div class="eyebrow">JOURNEY · ORGANIZING LABELS</div><h2 id="journey-heading">Care journey</h2></div>
+          <span class="pill pill-warn">FICTIONAL ORGANIZING LABELS ONLY</span>
+        </div>
+        <p class="muted" id="journey-disclaimer">Journey stages are descriptive labels for organizing this fictional record. They are not diagnoses, prognoses, staging determinations, or care instructions. Transitions are kept as history; a new entry never rewrites an earlier one.</p>
+        <div class="subhead">Current organizing label</div>
+        <div id="journey-current" class="questions" aria-live="polite"></div>
+        <div class="subhead">Journey history</div>
+        <div id="journey-list" class="snapshots" aria-live="polite"></div>
+        <div class="subhead">Record a journey transition</div>
+        <form id="journey-form">
+          <label for="journey-to-stage">Move record to this organizing label</label>
+          <select id="journey-to-stage" required>
+            <option value="diagnosis">Diagnosis (organizing label)</option>
+            <option value="treatment">Treatment (organizing label)</option>
+            <option value="survivorship">Survivorship (organizing label)</option>
+            <option value="advanced_disease">Advanced disease (organizing label)</option>
+          </select>
+          <label for="journey-date">Transition date</label>
+          <input id="journey-date" type="date" required>
+          <label for="journey-source-choice">Triggering source (optional, current fictional source)</label>
+          <select id="journey-source-choice"></select>
+          <label for="journey-reason">Reason in plain words (10–600 characters, no treatment advice)</label>
+          <textarea id="journey-reason" rows="3" minlength="10" maxlength="600" required placeholder="Why is this fictional record now grouped under this label? Describe the paperwork reason only."></textarea>
+          <button class="button" type="submit">Record journey transition</button>
+        </form>
       </section>
 
       <section class="panel panel-investigation" id="investigations" aria-labelledby="investigation-heading">

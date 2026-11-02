@@ -61,7 +61,7 @@ async function initialize() {
     picker.addEventListener('change', () => {
       // An unfinished narrative must never silently become attached to another case.
       if ((['draft-observations', 'draft-summary', 'draft-assumptions', 'evidence-rationale',
-            'evidence-withdraw-reason', 'option-description'].some(id => el(id).value.trim()))) {
+            'evidence-withdraw-reason', 'option-description', 'journey-reason'].some(id => el(id).value.trim()))) {
         picker.value = caseId;
         notice('Save or explicitly clear the unfinished investigation draft before switching cases.', true);
         return;
@@ -314,6 +314,54 @@ function renderSourceChanges() {
   }
 }
 
+function renderJourney() {
+  clear('journey-current'); clear('journey-list');
+  if (!active) return;
+  el('journey-disclaimer').textContent = active.journey_disclaimer ||
+    'Journey stages are descriptive labels for organizing this fictional record. They are not clinical determinations.';
+  if (!active.journey_current_label) {
+    empty(el('journey-current'), 'No organizing label recorded yet for this fictional case.');
+  } else {
+    const row = node('div', null, 'question');
+    row.append(node('p', 'Current organizing label: ' + active.journey_current_label +
+      '. This label organizes the fictional record; it is not a clinical determination.'));
+    el('journey-current').append(row);
+  }
+  const transitions = active.journey_transitions || [];
+  if (!transitions.length) {
+    empty(el('journey-list'), 'No journey transitions recorded yet. The history will appear here as readable steps.');
+  }
+  transitions.forEach((entry, index) => {
+    const box = node('div', null, 'snapshot');
+    const top = node('div', null, 'topline');
+    const title = entry.from_label
+      ? 'Step ' + (index + 1) + ': ' + entry.from_label + ' to ' + entry.to_label
+      : 'Step ' + (index + 1) + ': record opened under ' + entry.to_label;
+    top.append(node('strong', title),
+      pill(entry.review_state === 'needs_review' ? 'Needs another look' : 'Recorded',
+        entry.review_state === 'needs_review' ? 'pill-warn' : ''));
+    box.append(top, node('p', entry.summary),
+      node('p', 'Date: ' + entry.transition_date + ' · Triggering evidence: ' +
+        entry.triggering_source_label + ' · Recorded: ' + entry.created_at, 'snapshot-meta'));
+    if (entry.review_state === 'needs_review') {
+      box.append(node('p', 'The triggering source was amended. This entry is preserved as history; ' +
+        'record a new transition if the organizing label should change.', 'muted'));
+    }
+    el('journey-list').append(box);
+  });
+  const select = el('journey-source-choice');
+  const prior = select.value;
+  clear('journey-source-choice');
+  const none = node('option', 'No single triggering source');
+  none.value = '';
+  select.append(none);
+  for (const source of active.sources.filter(item => item.state === 'current')) {
+    const opt = node('option', source.document_id + '@' + source.version + ', ' + source.event_date);
+    opt.value = source.id;
+    select.append(opt);
+  }
+  if (prior && [...select.options].some(x => x.value === prior)) select.value = prior;
+}
 function renderBiologicalAssets() {
   clear('asset-list');
   const assets = active.biological_assets || [];
@@ -392,6 +440,7 @@ function render() {
         ' open question(s) are recorded. No conclusion is available to review.';
   renderTimeline();
   renderSourceChanges();
+  renderJourney();
   clear('source-list');
   if (!active.sources.length) empty(el('source-list'), 'No records received.');
   for (const source of active.sources) {
@@ -933,6 +982,24 @@ el('option-review-form').addEventListener('submit', async event => {
 });
 
 
+el('journey-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const sourceValue = el('journey-source-choice').value;
+    const created = await api('/api/cases/' + requestedCase + '/journey-transitions', {
+      to_stage: el('journey-to-stage').value,
+      transition_date: el('journey-date').value,
+      triggering_source_version_id: sourceValue === '' ? null : Number(sourceValue),
+      reason: el('journey-reason').value,
+    });
+    if (requestedCase !== caseId) return;
+    el('journey-reason').value = '';
+    el('journey-date').value = '';
+    notice('Journey transition #' + created.transition_id + ' recorded as history.');
+    await refresh();
+  } catch (err) { notice(err.message, true); }
+});
 function renderOptions() {
   el('option-disclaimer').textContent = active.option_disclaimer || '';
   const options = active.options || [];
