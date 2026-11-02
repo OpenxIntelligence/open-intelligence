@@ -91,6 +91,27 @@ class PatientResearchRunReviewIntegration(unittest.TestCase):
                               if q["id"]==self.question),"open")
         self.assertNotIn("Unverified fictional clinical note text",str(packet))
 
+    def test_source_cited_handoff_report_does_not_redistribute_external_content(self):
+        self.prepare()
+        exported = self.review.export_markdown(
+            self.patient_id,CASE,self.question,self.run["run_id"],**self.actor())
+        self.assertIn("fictional numeric research handoff",exported)
+        self.assertIn("NUM-LAB-1@1",exported)
+        self.assertIn("NUM-LAB-2@1",exported)
+        self.assertIn(self.completed["context_fingerprint"],exported)
+        self.assertIn("pending_human_review",exported)
+        self.assertNotIn("Fictional research methods statement",exported)
+        self.assertNotIn("Independently authored fictional study",exported)
+        self.assertNotIn("Unverified fictional clinical note text",exported)
+        self.assertNotIn("clinical approval granted",exported)
+        self.store.import_report(
+            CASE,numeric("NUM-LAB-2","2026-03-01","8.1",amendment=1))
+        historical = self.review.export_markdown(
+            self.patient_id,CASE,self.question,self.run["run_id"],**self.actor())
+        self.assertIn("historical_numeric_receipt_reassessment_required",historical)
+        self.assertIn("NUM-LAB-2@1",historical)
+        self.assertNotIn("value=8.1",historical)
+
     def test_amendment_keeps_original_result_and_flags_reassessment(self):
         self.prepare()
         previous = self.read()
