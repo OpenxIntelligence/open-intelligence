@@ -1,5 +1,19 @@
 # Implementation slice 01 — source and investigation ledger
 
+## Current additive checkpoint — 2 November 2026
+
+The platform mandate is now explicit in `AGENTS.md`: build a complete first-party cancer-care ecosystem incrementally, with a useful integrated MVP before advanced custom models. Public patient narratives inform workflow discovery only; Sid's patient data is excluded from development, training, evaluation, testing and synthetic derivation.
+
+The working change stacked on PR126 connects the existing persistent rights broker to Composer, bounded model input selection, broker citation validation and stored hypothesis receipts. It separates display and model-use permissions, includes supporting/contradicting evidence and applicability, captures server freshness even without a client token, and withholds all affected model-derived text after input or rights changes. The existing patient, source and evidence stores remain canonical.
+
+Local verification at this checkpoint: baseline301 Python tests; extended316 Python unit/HTTP tests passed. Four JavaScript test files pass, including a deliberately delayed same-case response test that failed before the UI generation-token fix and passed afterward. The workflow static guard passes. A new real-browser broker journey is present; local Chromium is unavailable, so hosted exact-head results are the browser acceptance gate and must be recorded separately. A read-only independent review found the same-case UI race and a premature browser wait; both have been corrected.
+
+Compatibility: `composer-context-v2` incorporates broker content, review and permissions into the hash. Old previews and queued work carrying v1 hashes require fresh context and may be rejected as stale. Existing investigation rows remain readable through additive receipt tables. Receipts preserve hashes and non-content provenance, not a full protected prompt archive. Recorded permissions are declarations rather than verified legal entitlements. Replay receipts describe a constructed prompt; they do not prove that a live model processed it.
+
+The five exact PR123 CI safety files are reused, and a dedicated pinned workflow checks the stacked PR head. The static guard does not enforce network isolation or retire every historical developer research entrypoint. No new dependency, external model call, clinical validation, production authorization, merge or deployment is established by this checkpoint.
+
+Research evidence is maintained as additive audit appendices under `docs/research/`, linked from the existing canonical Notion/Drive workspaces. Earlier dated implementation statements below describe their particular commits and are not current blanket capability assertions.
+
 **Stage:** local experimental synthetic-only code. **Not released for clinical use.**
 
 **Backlog coverage:** Part of OI-003, OI-006, OI-007, OI-009 and OI-010. Does not complete the broader investigation/evidence stage (OI-008), identity/governance (OI-012–013), or clinical evaluation (OI-014 onward).

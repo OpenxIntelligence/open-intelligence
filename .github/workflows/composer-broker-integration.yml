@@ -1,0 +1,143 @@
+name: Composer broker integration (synthetic only)
+
+on:
+  pull_request:
+    branches:
+      - integration/composer-evidence-run-freshness-20261102
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: composer-broker-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  synthetic-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    env:
+      PYTHONPATH: src
+      PYTHONUNBUFFERED: '1'
+      OI_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      OI_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+    steps:
+      - name: Checkout exact pull-request head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.13'
+      - name: Verify head and available browser runtime
+        run: |
+          mkdir -p composer-broker-artifacts
+          python - <<'PY'
+          import os, shutil, subprocess
+          actual = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+          if actual != os.environ['OI_PR_HEAD_SHA']:
+              raise SystemExit('Checkout does not match the exact pull-request head')
+          browser = next((shutil.which(name) for name in (
+              'google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser'
+          ) if shutil.which(name)), None)
+          if browser is None:
+              raise SystemExit('Chrome/Chromium is required; browser acceptance cannot be skipped')
+          print('Exact PR head:', actual)
+          print('Browser:', subprocess.check_output([browser, '--version'], text=True).strip())
+          print('Node:', subprocess.check_output(['node', '--version'], text=True).strip())
+          PY
+      - name: Reject known patient-data workflow execution
+        run: python tools/audit_ci_data_boundaries.py 2>&1 | tee composer-broker-artifacts/static-guard.txt
+      - name: Compile and JavaScript syntax
+        run: |
+          python -m compileall -q src tests
+          node --check web/app.js
+          node --check web/mission.js
+          node --check web/composer.js
+      - name: Synthetic application, HTTP and rights contracts
+        run: python -m unittest discover -s tests -p 'test_*.py' -v 2>&1 | tee composer-broker-artifacts/unit-tests.txt
+      - name: JavaScript contracts
+        run: node --test tests/test_source_dialogs.js tests/test_source_line_diff.js tests/test_text_changes.js tests/test_model_investigation_refresh.js 2>&1 | tee composer-broker-artifacts/javascript-tests.txt
+      - name: Composer browser journey
+        run: python tests/composer_browser_journey.py 2>&1 | tee composer-broker-artifacts/composer-browser.txt
+      - name: Composer lab browser journey
+        run: python tests/composer_lab_browser_journey.py 2>&1 | tee composer-broker-artifacts/composer-lab-browser.txt
+      - name: Durable Composer browser journey
+        run: python tests/composer_durable_browser_journey.py 2>&1 | tee composer-broker-artifacts/composer-durable-browser.txt
+      - name: Rights-qualified Composer broker browser journey
+        run: python tests/composer_broker_browser_journey.py 2>&1 | tee composer-broker-artifacts/composer-broker-browser.txt
+      - name: Record exact source and runtime receipt
+        if: always()
+        run: |
+          python - <<'PY'
+          import hashlib, json, os, platform, shutil, subprocess
+          from pathlib import Path
+
+          def version(command):
+              if not command[0]:
+                  return None
+              try:
+                  return subprocess.check_output(command, text=True, stderr=subprocess.STDOUT).strip()
+              except (OSError, subprocess.CalledProcessError) as exc:
+                  return 'unavailable: ' + type(exc).__name__
+
+          browser = next((shutil.which(name) for name in (
+              'google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser'
+          ) if shutil.which(name)), None)
+          paths = {Path('tools/audit_ci_data_boundaries.py')}
+          for directory, pattern in (
+              ('src', '**/*.py'), ('web', '*.js'), ('tests', '*.py'),
+              ('tests', '*.js'), ('.github/workflows', '*.yml'), ('.github/workflows', '*.yaml')
+          ):
+              paths.update(Path(directory).glob(pattern))
+          receipt = {
+              'checkout_sha': version(['git', 'rev-parse', 'HEAD']),
+              'pull_request_head_sha': os.environ.get('OI_PR_HEAD_SHA'),
+              'pull_request_base_sha': os.environ.get('OI_PR_BASE_SHA'),
+              'checkout_kind': 'pull_request_head',
+              'base_merge_tested': False,
+              'workflow_ref': os.environ.get('GITHUB_WORKFLOW_REF'),
+              'workflow_sha': os.environ.get('GITHUB_WORKFLOW_SHA'),
+              'run_id': os.environ.get('GITHUB_RUN_ID'),
+              'run_attempt': os.environ.get('GITHUB_RUN_ATTEMPT'),
+              'runner_os': os.environ.get('RUNNER_OS'),
+              'runner_arch': os.environ.get('RUNNER_ARCH'),
+              'runner_image_version': os.environ.get('ImageVersion'),
+              'python': platform.python_version(),
+              'node': version(['node', '--version']),
+              'browser_path': browser,
+              'browser_version': version([browser, '--version']),
+              'declared_input_scope': 'independently authored synthetic fixtures; loopback or mocked I/O',
+              'clinical_validation': False,
+              'source_sha256': {
+                  str(path): hashlib.sha256(path.read_bytes()).hexdigest()
+                  for path in sorted(paths) if path.is_file()
+              },
+          }
+          output = Path('composer-broker-artifacts')
+          output.mkdir(exist_ok=True)
+          (output / 'receipt.json').write_text(json.dumps(receipt, indent=2) + '\n')
+          print('Recorded source/runtime receipt for', receipt['checkout_sha'])
+          PY
+      - name: Preserve explicit synthetic verification logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: composer-broker-synthetic-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            composer-broker-artifacts/static-guard.txt
+            composer-broker-artifacts/unit-tests.txt
+            composer-broker-artifacts/javascript-tests.txt
+            composer-broker-artifacts/composer-browser.txt
+            composer-broker-artifacts/composer-lab-browser.txt
+            composer-broker-artifacts/composer-durable-browser.txt
+            composer-broker-artifacts/composer-broker-browser.txt
+            composer-broker-artifacts/receipt.json
+          if-no-files-found: error
+          retention-days: 7

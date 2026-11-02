@@ -1069,17 +1069,23 @@ async function loadModelTemplates() {
     }
   } catch (err) { notice(err.message, true); }
 }
+let modelInvestigationLoadSequence = 0;
 async function loadModelInvestigations() {
+  const sequence = ++modelInvestigationLoadSequence;
   const requested = caseId;
+  const stillCurrent = () => requested === caseId && sequence === modelInvestigationLoadSequence;
+  // A refresh can represent a rights withdrawal. Clear already displayed text
+  // immediately, and do not let an older same-case response put it back.
+  clear('model-investigation-list');
   try {
     const data = await api('/api/cases/' + caseId + '/investigations');
-    if (requested !== caseId) return;
+    if (!stillCurrent()) return;
     clear('model-investigation-list');
     const items = data.investigations || [];
     if (!items.length) { empty(el('model-investigation-list'), 'No model investigations yet.'); return; }
     for (const item of items) {
       const detail = await api('/api/cases/' + caseId + '/investigations/' + item.id);
-      if (requested !== caseId) return;
+      if (!stillCurrent()) return;
       const box = node('div', null, 'snapshot');
       const top = node('div', null, 'topline');
       top.append(node('strong', 'Model investigation #' + detail.id),
@@ -1089,7 +1095,7 @@ async function loadModelInvestigations() {
           detail.stale ? 'pill-alert' : 'pill-warn'));
       box.append(top, node('p', detail.model + ' · ' + detail.created_at, 'snapshot-meta'));
       for (const claim of detail.claims || []) {
-        box.append(node('p', claim.text));
+        box.append(node('p', claim.text, 'model-claim'));
         box.append(node('p', 'Uncertainty: ' + claim.uncertainty + ' · Cited: ' +
           (claim.citations || []).map(x => x.type + ' #' + x.id).join(', '), 'muted'));
         if (claim.limits) box.append(node('p', 'Limits: ' + claim.limits, 'muted'));
@@ -1100,12 +1106,22 @@ async function loadModelInvestigations() {
       if ((detail.dropped || []).length) {
         box.append(node('p', detail.dropped.length + ' claim(s) dropped by validation, never repaired', 'muted'));
       }
-      if (detail.stale) box.append(node('p', 'A source was amended. This investigation is stale until reconciled.', 'muted'));
+      if (detail.output_withheld) {
+        box.append(node('p', 'Output withheld: an evidence input or its permissions changed. ' +
+          'Review the current sources and run a new investigation. The original input receipt is retained.', 'muted'));
+      } else if (detail.stale) {
+        box.append(node('p', 'A source or evidence assessment changed. This investigation is stale until reconciled.', 'muted'));
+      }
+      if ((detail.input_receipts || []).length) {
+        box.append(node('p', 'Recorded external inputs: ' + detail.input_receipts.map(input =>
+          'broker #' + input.broker_link_id + ' / rights source #' + input.rights_source_id
+        ).join('; ') + '.', 'tiny muted'));
+      }
       box.append(node('p', detail.disclaimer || 'Research demonstration only.', 'muted'));
       el('model-investigation-list').append(box);
     }
   } catch (err) {
-    if (requested === caseId) notice(err.message, true);
+    if (stillCurrent()) notice(err.message, true);
   }
 }
 async function loadChangesSinceReview() {
