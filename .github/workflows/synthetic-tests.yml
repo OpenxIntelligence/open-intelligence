@@ -1,7 +1,7 @@
 name: Synthetic case ledger tests
 on:
   push:
-    branches: [main, feat/synthetic-case-ledger, feat/versioned-evidence-assessment]
+    branches: [main, feat/synthetic-case-ledger, feat/versioned-evidence-assessment, test/dicomweb-multipart-boundary-20261102]
   pull_request:
     branches: [main, feat/synthetic-case-ledger]
 permissions:
