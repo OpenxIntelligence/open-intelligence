@@ -74,7 +74,7 @@ class RecordAcquisition:
         self.store._case(case_id)
         if not isinstance(request_key, str) or not _KEY.fullmatch(request_key):
             raise InvalidInput("Request key must be an uppercase stable idempotency token")
-        if kind not in TYPES:
+        if not isinstance(kind, str) or kind not in TYPES:
             raise InvalidInput("Unsupported source category")
         label = _text(label, "Requested record", 140)
         organization = _text(organization, "Requested from", 100)
