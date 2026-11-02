@@ -53,6 +53,9 @@ jobs:
       - name: Trial registry, criterion uncertainty and prior-art characterization
         if: always()
         run: python tools/research/trial_screening_probe.py --output research-results/trial-screening.json
+      - name: Public-case catalog intake and specialist-input planning
+        if: always()
+        run: python tools/research/public_case_intake.py --live --output research-results/public-case-intake.json
       - name: Reproducibility receipt
         if: always()
         run: |
