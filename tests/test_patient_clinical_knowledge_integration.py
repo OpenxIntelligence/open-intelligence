@@ -90,6 +90,15 @@ class AuthorizedPatientEvidenceIntegrationTests(unittest.TestCase):
         self.assertNotIn("Unverified fictional clinical note text", str(result))
         self.assertNotIn("real_patient_authenticated", str(result))
 
+    def test_multilingual_source_metadata_and_content_compares_without_unicode_error(self):
+        bridge, question, entries, _ = self.prepare()
+        entries[0]["title"] = "Étude fictive sur les biomarqueurs — بحث تجريبي"
+        entries[0]["evidence_text"] = "Fictional multilingual study. 中文摘要 — données fictives."
+        packet = bridge.snapshot(self.patient_id, CASE, question, **self.actor())
+        self.assertIn("Étude fictive",
+                      packet["knowledge"]["knowledge_sources"][0]["title"])
+        self.assertFalse(packet["model_execution_authorized"])
+
     def test_unlicensed_content_and_metadata_only_do_not_enter_ai_context(self):
         bridge, question, entries, _ = self.prepare()
         entries[:] = [study(licensed=False)]
