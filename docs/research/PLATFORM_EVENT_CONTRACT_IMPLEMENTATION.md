@@ -50,3 +50,12 @@ Existing canonical references:
 - [Full healthcare domain-contract draft PR #49](https://github.com/OpenxIntelligence/open-intelligence/pull/49)
 - [Clinical/LIS operational PR #56](https://github.com/OpenxIntelligence/open-intelligence/pull/56)
 - [OI-17 licensing and commercial rights policy](https://app.notion.com/p/40a3866f77ef815a97d5e016ededf5b9)
+
+
+## Ordered domain stream enforcement — November 2, 2026
+
+The reusable SQLite consumer now provides `consume_ordered`, which records the highest accepted revision for each qualified (consumer, issuer namespace, owner domain, aggregate type, aggregate ID) stream, along with its explicit subject binding. First accepted revision must be 1; later events must be sequential. Duplicate deliveries are idempotent; gaps, out-of-order versions, and a changed patient/subject binding fail closed. Historical streams must be backfilled and reviewed explicitly; this tool must not silently bootstrap from version 3 or infer missing medical events.
+
+`consume_once` also uses a SQLite savepoint to roll back a partially written consuming-domain effect when a callback raises, even if an outer caller catches the exception and commits unrelated work. Consumer callbacks **must never commit** the caller transaction or perform irreversible external actions. Receipt/content checks, cursor changes and domain effects remain in one caller-owned transaction. Tests cover error caught by caller, strict revision and patient-binding consistency, rollback/restart and separate aggregate streams.
+
+**Still unresolved:** trusted identity/consent and clinical purpose resolution, real patient/episode/specimen provenance validation, cross-service source revocation, authorization of each command and recipient, external broker reliability, PostgreSQL production adapter, end-to-end domain conformance and independent clinical validation. The outbox accepts only metadata references, not clinical details, and passing its tests is not a claim that a complete EHR/LIS/PACS service exists.
