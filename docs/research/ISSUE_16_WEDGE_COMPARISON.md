@@ -5,6 +5,10 @@
 **Status:** Complementary strategic research. **Not** a product decision, wedge
 selection, demand claim, or authorization for engineering, outreach, or
 procurement.
+**Headline:** no wedge selected — every demand, win, and readiness rating is
+UNKNOWN (or LOW where the plan itself records unreadiness), and every wedge
+evidence rating is NONE. Content coverage of issue wedges A–E still awaits
+readable sources (matrix row F-06, DEFERRED).
 **Decision rule:** missing proof means UNKNOWN, not a positive rating. No
 forced wedge choice on an arithmetic score — no scores are computed here.
 
@@ -38,6 +42,8 @@ yet** — backlog OI-002, OI-014, OI-015 are unexecuted.
   established").
 - Prior research addenda in `docs/research/` establish no demand, willingness
   to pay, or procurement outcome.
+- Unaccessed Notion pages (audit pointers P-02, P-03, P-07) are not evidence:
+  an unread pointer contributes no rating in any direction.
 
 ## 2. Buyer / role / workflow hypotheses (in-repo statements, all unmeasured)
 
@@ -55,7 +61,14 @@ yet** — backlog OI-002, OI-014, OI-015 are unexecuted.
 
 H-8 and H-9 carry E = LOW rather than UNKNOWN because the plan itself records
 concrete unreadiness reasons; that is a negative readiness signal from a
-stated source, not a measurement. Everything else stays UNKNOWN.
+stated source, not a measurement. H-7 carries no plan-recorded unreadiness
+reason (the plan recommends that workflow), so it stays E = UNKNOWN.
+Everything else stays UNKNOWN.
+
+Source lines: launch setting `docs/FIRST_PRINCIPLES_PLAN.md:56`; role/buyer
+hypotheses `:58`; patient entry-point row `:50`; clinician entry-point row
+`:51`; specialist entry-point row `:52`; business hypotheses `:260`;
+evaluation dimensions and stop list `:213-228`.
 
 ## 3. Wedge comparison at equal depth
 
@@ -65,11 +78,11 @@ three in-repo candidate entry points (plan §3) against their best
 existing/manual alternatives **at equal depth** — each row gets the same
 treatment: named alternative, costed honestly, evidence status stated.
 
-| Wedge (in-repo) | Best existing/manual alternative | What would have to be true | Evidence status | A | W | E | K |
+| Wedge or layer (in-repo) | Best existing/manual alternative | What would have to be true | Evidence status | A | W | E | K |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | W-α Clinician-supported consultation investigation (plan §3 row 2; FP-1) | Partner's current manual preparation; simple source-search/timeline workflow | Total burden falls within error limits; reviewer owns follow-up | No timings measured; OI-002/OI-014 unexecuted | UNKNOWN | UNKNOWN | UNKNOWN | NONE |
 | W-β Patient-owned record coordination (plan §3 row 1; FP-3) | Unaided gathering; navigator-assisted gathering without workspace | Acquisition burden sustainable; questions usable; comprehension holds | No burden/comprehension measured; acquisition difficulty named but unquantified | UNKNOWN | UNKNOWN | LOW (see H-8) | NONE |
-| W-γ Specialist molecular / tumor-board research (plan §3 row 3; FP-4) | Manual specialist prep; existing institutional resources | Reviewer time + data/assay access sustained; validation bar reachable | No commitments delivered; all four difficulties unmeasured | UNKNOWN | UNKNOWN | LOW (see H-9) | NONE |
+| W-γ Specialist molecular / tumor-board research (plan §3 row 3; FP-4) | Manual specialist prep; institutional resources the partner names at preregistration (none nameable here without a partner) | Reviewer time + data/assay access sustained; validation bar reachable | No commitments delivered; all four difficulties unmeasured | UNKNOWN | UNKNOWN | LOW (see H-9) | NONE |
 | Buyer layer over all wedges: organization pays for workflow change (plan §13; FP-2) | Status quo staffing; cheapest buyer-named adequate substitute | Named budget owner; repeat paid use; sustainable unit cost | No procurement conversations recorded; OI-015 unexecuted | UNKNOWN | UNKNOWN | UNKNOWN | NONE |
 
 **No wedge is selected.** Selecting on this evidence would require treating
@@ -79,9 +92,15 @@ and rejection requires a falsification outcome from the protocols in
 [ISSUE_16_FALSIFICATION_PROTOCOLS.md](ISSUE_16_FALSIFICATION_PROTOCOLS.md),
 not a column comparison.
 
+Why wedge rows carry K = NONE while hypothesis rows carry K = STATED: K on
+a wedge row rates demand/burden/willingness evidence (timings, procurement,
+commitments — none measured, so NONE), whereas K = STATED on an H-row rates
+only that the hypothesis text exists in-repo. A well-stated hypothesis with
+zero measurements is exactly STATED-text plus NONE-evidence.
+
 ## 4. Mapping owed to issue wedges A–E (DEFERRED)
 
-| Issue wedge | In-repo analogue (guess — do not use) | Mapping status |
+| Issue wedge | In-repo analogue (withheld — do not guess) | Mapping status |
 | --- | --- | --- |
 | A | Unknown | DEFERRED — definition not readable (matrix F-06) |
 | B | Unknown | DEFERRED — definition not readable (matrix F-06) |
@@ -89,7 +108,7 @@ not a column comparison.
 | D | Unknown | DEFERRED — definition not readable (matrix F-06) |
 | E | Unknown | DEFERRED — definition not readable (matrix F-06) |
 
-The "guess" column is intentionally empty: mapping in-repo wedges onto
+The analogue column is intentionally empty: mapping in-repo wedges onto
 unread issue wedges by name similarity would fabricate alignment. When wedge
 definitions become readable in-repo, replace this table with verbatim
 definitions and re-run §§2–3 per wedge.
@@ -98,9 +117,10 @@ definitions and re-run §§2–3 per wedge.
 
 - OI-002 executed: observed workflow map + effort record → H-1/H-2/H-3/H-6/H-7
   move from K = STATED toward measured K, and W-α evidence status updates.
-- FP-1/FP-2/FP-3/FP-4 executed with preregistered thresholds → specific
-  hypotheses move to ANSWERED (survived) or falsified; failures recorded, not
-  rescored.
+- FP-1 executed under OI-014 governance / FP-2–FP-4 under OI-015-equivalent
+  governance, each with preregistered thresholds and OI-012/OI-013 clearance
+  where applicable → specific hypotheses move to ANSWERED (survived) or
+  falsified; failures recorded, not rescored.
 - Wedge A–E definitions + 68 questions + VI sections readable in-repo →
   DEFERRED rows in [ISSUE_16_COVERAGE_MATRIX.csv](ISSUE_16_COVERAGE_MATRIX.csv)
   become mappable; this document's §§2–4 get a per-wedge revision.

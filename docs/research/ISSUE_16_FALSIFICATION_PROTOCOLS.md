@@ -17,8 +17,8 @@ readable in-repo — the three entry points of
 
 | Protocol | In-repo hypothesis (source) | Issue-wedge mapping |
 | --- | --- | --- |
-| FP-1 | Clinician-supported consultation investigation reduces total preparation + review burden within consequential-error limits (plan §§3, 11; backlog OI-014) | DEFERRED — map to A–E when definitions are readable |
-| FP-2 | The organization operating the review workflow values a reliably prepared, updated case enough to change workflow and pay (plan §13; backlog OI-015) | DEFERRED — map to A–E when definitions are readable |
+| FP-1 | Clinician-supported consultation investigation reduces total preparation + review burden within consequential-error limits (plan §§3, 11; backlog OI-002 observation prerequisite, OI-014) | DEFERRED — map to A–E when definitions are readable |
+| FP-2 | The organization operating the review workflow values a reliably prepared, updated case enough to change workflow and pay (plan §3 buyer hypothesis + §13; backlog OI-015) | DEFERRED — map to A–E when definitions are readable |
 | FP-3 | Patient-owned record coordination: patients can gather records, see gaps, and prepare questions at acceptable acquisition burden (plan §3 row 1) | DEFERRED — map to A–E when definitions are readable |
 | FP-4 | Specialist molecular / tumor-board research as early design-partner path (plan §3 row 3) | DEFERRED — map to A–E when definitions are readable |
 
@@ -44,9 +44,11 @@ limits.
 
 **Population / denominator.** Consecutive referred cases in one accountable
 review service over a fixed window (denominator = all cases entering the
-service in-window, including ones with incomplete records). Matched /
-counterbalanced assignment across arms; hold out cases by patient; respect the
-evidence available at the historical cutoff (plan §11).
+service in-window, including ones with incomplete records). Window length,
+setting, and arm assignment are preregistered with the reviewers before the
+window opens. Matched / counterbalanced assignment across arms; hold out
+cases by patient; respect the evidence available at the historical cutoff
+(plan §11).
 
 **Baselines (all measured, none assumed).**
 
@@ -78,7 +80,9 @@ Model-generated self-review cannot substitute.
 
 **Bounded costs.** Reviewer/adjudicator hours, coordinator hours, case-brief
 preparation labor, compute/licensed-content spend, incident-handling overhead —
-tracked per reviewed initial case and per update. Token price alone is not the
+tracked per reviewed initial case and per update, with a preregistered spend
+and hours cap set with the evaluation lead before the window opens; no run
+beyond the cap without a new approval. Token price alone is not the
 unit economics (plan §13).
 
 **Stop criteria.** Stop the wedge if any failure outcome triggers, or if two
@@ -130,10 +134,11 @@ costs) that is not recorded and re-costed.
 the buyer's own budget owner confirms authority and price sensitivity. No
 internal vote substitutes for a signed paid commitment.
 
-**Bounded costs.** Bounded outreach list size, staff hours for preparation
-work and procurement conversations, pilot delivery cost — all pre-registered
-with a cap. Outreach itself needs separate authorization (backlog OI-002
-boundary); this protocol does not authorize it.
+**Bounded costs.** Bounded outreach list size (set by the product/evaluation
+leads before first contact), staff hours for preparation work and procurement
+conversations, pilot delivery cost — all pre-registered with a cap. Outreach
+itself needs separate authorization (backlog OI-002 boundary); this protocol
+does not authorize it.
 
 **Stop criteria.** Stop this wedge if the bounded list is exhausted with zero
 paid pilots, or if the only conversions require economics the cost model
@@ -179,17 +184,23 @@ records-access pathway changes mid-test for reasons unrelated to the wedge.
 
 **Reviewer authority.** Clinical reviewer rates question usability and brief
 readiness; patient/caregiver participants co-assess burden and comprehension;
-evaluation lead owns the protocol. Builder-team optimism about "simple UI"
-carries no weight against measured minutes.
+evaluation lead owns the protocol; privacy/clinical reviewers confirm the
+consent basis, data roles, and access pathway (backlog OI-012/OI-013) before
+any enrollment. Builder-team optimism about "simple UI" carries no weight
+against measured minutes.
 
 **Bounded costs.** Helper/support minutes, accessibility provision, record
 retrieval fees if any, participant compensation if any — per enrolled patient
-and per completed case. Records alone do not deliver the research promise, so
-no research-outcome value may be booked against these costs.
+and per completed case, with a preregistered cohort-size and spend cap set
+with the evaluation lead before enrollment. Records alone do not deliver the
+research promise, so no research-outcome value may be booked against these
+costs.
 
-**Stop criteria.** Stop this wedge if completion rate below the prespecified
-floor, or if required helper time per completed case exceeds the funded
-operating model. A simpler interface is not evidence until the minutes say so.
+**Stop criteria.** Stop this wedge if completion rate falls below the floor,
+or if required helper time per completed case exceeds the ceiling — both set
+by the evaluation lead with the clinical reviewer before enrollment and
+recorded in the preregistration. A simpler interface is not evidence until
+the minutes say so.
 
 ---
 
@@ -230,12 +241,17 @@ evaluation cases cherry-picked below the complexity the wedge claims;
 rights/permission status of inputs left unassessed.
 
 **Reviewer authority.** Modality experts plus the evaluation lead; rights
-reviewer gates every input (backlog OI-004/OI-012). No research output
-becomes a clinical fact through this protocol.
+reviewer gates every input (backlog OI-004/OI-012). The evaluation lead,
+with the modality experts, classifies delivery/data-access failures as
+structural versus scheduling for the stop rule below; scheduling failures
+do not count toward the two-failure stop, and the preregistration states
+how many scheduling extensions are allowed before the attempt is void. No
+research output becomes a clinical fact through this protocol.
 
-**Bounded costs.** Specialist reviewer hours (scarce — capped explicitly),
-data-access and compute costs, rights-review effort, per-case evaluation
-labor. Raw research outputs carry no clinical value in the costing.
+**Bounded costs.** Specialist reviewer hours (scarce — hour cap preregistered
+with the evaluation lead and the program owner before approach), data-access
+and compute costs, rights-review effort, per-case evaluation labor. Raw
+research outputs carry no clinical value in the costing.
 
 **Stop criteria.** Stop this wedge if reviewer delivery or data access fails
 twice consecutively for structural (not scheduling) reasons, or if the
@@ -248,6 +264,7 @@ this setting. Enablement waits on the foundation proving itself (plan §3).
 
 None of FP-1–FP-4 is authorized to start by this document. Each requires its
 own scoped approval covering: setting/partner, reviewer authority, real-data
-governance (OI-012/OI-013 where applicable), outreach authorization (OI-002
-boundary), budget cap, and preregistered thresholds. Until then, every wedge
-hypothesis remains UNKNOWN with K = NONE.
+governance (OI-012/OI-013 where applicable), rights review of every evidence
+input (OI-004), outreach authorization (OI-002 boundary), budget cap, and
+preregistered thresholds. Until then, every wedge hypothesis remains UNKNOWN
+with K = NONE.
