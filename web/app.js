@@ -42,39 +42,64 @@ function focusOverviewFromCasePicker(event) {
   event.preventDefault();
   overviewLink.focus();
 }
+// Intake reuses the canonical case API and existing switch/unsaved-work guards.
+let caseSelectionTask = Promise.resolve();
+function hasUnsavedCaseWork() {
+  return ['draft-observations', 'draft-summary', 'draft-assumptions', 'evidence-rationale',
+    'evidence-withdraw-reason', 'option-description'].some(id => el(id)?.value.trim());
+}
+function populateCasePicker(cases) {
+  const picker = el('case-picker');
+  picker.replaceChildren();
+  for (const entry of cases) {
+    const option = node('option', entry.label.replace(/^Fictional case /, '') + ', ' + entry.case_id);
+    option.value = entry.case_id;
+    picker.append(option);
+  }
+}
+async function activateCreatedCase(id) {
+  if (hasUnsavedCaseWork()) throw Error('Save or clear unfinished work before switching cases.');
+  const cases = await api('/api/cases');
+  if (!cases.some(entry => entry.case_id === id)) throw Error('Created case not present in the refreshed case list.');
+  populateCasePicker(cases);
+  el('case-picker').value = id;
+  el('case-picker').dispatchEvent(new Event('change'));
+  await caseSelectionTask;
+  if (caseId !== id || readyCase() !== id) throw Error('The created case was not activated. Refresh before importing.');
+  await renderIncomingBoard(cases);
+  el('new-case-details').open = false;
+}
 async function initialize() {
   try {
     const cases = await api('/api/cases');
     const picker = el('case-picker');
     picker.addEventListener('keydown', focusOverviewFromCasePicker);
-    for (const entry of cases) {
-      const option = node('option', entry.label.replace(/^Fictional case /, '') + ', ' + entry.case_id);
-      option.value = entry.case_id;
-      picker.append(option);
-    }
-    if (!cases.length) {
-      el('case-heading').textContent = 'No synthetic cases found';
-      notice('Run PYTHONPATH=src python -m open_intelligence seed before opening the demo.', true);
-      return;
-    }
-    await renderIncomingBoard(cases);
+    // Register before the empty-state return so a genuinely empty DB is usable.
     picker.addEventListener('change', () => {
-      // An unfinished narrative must never silently become attached to another case.
-      if ((['draft-observations', 'draft-summary', 'draft-assumptions', 'evidence-rationale',
-            'evidence-withdraw-reason', 'option-description'].some(id => el(id).value.trim()))) {
-        picker.value = caseId;
-        notice('Save or explicitly clear the unfinished investigation draft before switching cases.', true);
+      const allowed = document.dispatchEvent(new CustomEvent('oi:before-case-switch', {cancelable:true}));
+      if (!allowed || hasUnsavedCaseWork()) {
+        picker.value = caseId || '';
+        if (allowed) notice('Save or explicitly clear the unfinished investigation draft before switching cases.', true);
         return;
       }
       cancelSourceRead();
       caseId = picker.value;
-      active = null; // Reject writes while the next case is loading.
+      active = null;
       for (const id of ['question-text', 'report-text', 'evidence-rationale', 'draft-observations',
         'draft-summary', 'draft-assumptions']) el(id).value = '';
       if (el('source-dialog').open) el('source-dialog').close();
       if (el('compare-dialog').open) el('compare-dialog').close();
-      refresh();
+      document.dispatchEvent(new CustomEvent('oi:case-selected', {detail:{caseId}}));
+      caseSelectionTask = refresh();
     });
+    populateCasePicker(cases);
+    await renderIncomingBoard(cases);
+    if (!cases.length) {
+      el('case-heading').textContent = 'Create your first fictional research case';
+      el('new-case-details').open = true;
+      notice('Create a fictional case, then import supported original-fictional report files. No command-line seeding is required.');
+      return;
+    }
     caseId = cases[0].case_id;
     await refresh();
   } catch (err) { notice(err.message, true); }

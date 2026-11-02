@@ -1119,3 +1119,15 @@ dialog pre {
   .glance-review .review-attention { margin-block: var(--space-3); }
   .dialog-fictional-label { color: #000; background: #fff; border: 2px solid #000; }
 }
+
+/* Intake is part of the existing records workspace, not a new patient store. */
+.intake-create { margin:12px 0; padding:10px; border:1px solid var(--color-border, #cad5da); border-radius:8px; }
+.intake-create summary, .intake-paste summary { cursor:pointer; font-weight:650; }
+.intake-create input[type="text"] { width:100%; min-width:0; padding:8px; margin:4px 0 8px; }
+.intake-create label { font-size:12px; }
+.intake-confirm { display:flex; gap:8px; align-items:flex-start; margin:12px 0; font-size:13px; line-height:1.45; }
+.intake-confirm input { flex:0 0 auto; width:auto; margin-top:3px; }
+.intake-receipts { list-style:none; padding:0; display:grid; gap:8px; }
+#case-intake { padding-bottom:16px; }
+#intake-files { display:block; max-width:100%; }
+.intake-paste { margin-top:14px; }

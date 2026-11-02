@@ -3,7 +3,7 @@ on:
   push:
     branches: [main, feat/synthetic-case-ledger, feat/versioned-evidence-assessment]
   pull_request:
-    branches: [main, feat/synthetic-case-ledger, safety/no-personal-case-data-in-ci-20261102]
+    branches: [main, feat/synthetic-case-ledger, safety/no-personal-case-data-in-ci-20261102, integration/patient-evidence-review-20261102]
 permissions:
   contents: read
 jobs:
@@ -27,6 +27,7 @@ jobs:
           node --check web/mission.js
           node --check web/composer.js
           node --check web/literature.js
+          node --check web/intake.js
       - name: JavaScript behavior tests
         run: node --test tests/test_*.js
       - name: Unit and HTTP tests
@@ -47,6 +48,13 @@ jobs:
         run: |
           set -o pipefail
           PYTHONPATH=src python tests/composer_browser_journey.py 2>&1 | tee verification-artifacts/composer-browser-tests.txt
+      - name: Empty-case intake to reviewed report (headless Chromium)
+        shell: bash
+        run: |
+          set -o pipefail
+          PYTHONPATH=src python tests/intake_browser_journey.py 2>&1 | tee verification-artifacts/intake-browser-tests.txt
+      - name: Candidate source inventory (not release clearance)
+        run: python tools/generate_source_sbom.py --as-of 2026-11-02 --output verification-artifacts/intake-source-inventory.cdx.json
       - name: Record exact synthetic source under test
         if: always()
         run: |

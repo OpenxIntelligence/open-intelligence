@@ -11,6 +11,7 @@
   <script src="/mission.js" defer></script>
   <script src="/composer.js" defer></script>
   <script src="/literature.js" defer></script>
+  <script src="/intake.js" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main-content">Skip to case workspace</a>
@@ -28,6 +29,18 @@
     <aside class="rail">
       <label for="case-picker">Case</label>
       <select id="case-picker" aria-label="Select synthetic case"></select>
+      <details id="new-case-details" class="intake-create">
+        <summary>Create a fictional case</summary>
+        <p class="muted tiny">Research workspace only. Not an account or patient identity. Do not enter a real name or patient record.</p>
+        <form id="new-case-form">
+          <label for="intake-case-id">Unique case ID</label>
+          <input id="intake-case-id" type="text" pattern="[A-Z][A-Z0-9-]{1,39}" maxlength="40" required placeholder="CASE-EXAMPLE" autocomplete="off">
+          <label for="intake-case-label">Fictional label</label>
+          <input id="intake-case-label" type="text" maxlength="66" required placeholder="Example" autocomplete="off">
+          <label class="intake-confirm"><input id="intake-case-fictional" type="checkbox" required> This case is independently authored and fictional, not a real person.</label>
+          <button id="intake-create-button" class="button" type="submit">Create research case</button>
+        </form>
+      </details>
       <p class="muted tiny">Fictional case data stays on this local machine. There is no identity verification or patient login.</p>
       <details class="section-menu" open>
         <summary>Navigate</summary>
@@ -373,6 +386,20 @@
           <section class="panel" id="import">
             <div class="panel-head"><h2>Import synthetic source</h2></div>
             <p class="muted">Paste a structured synthetic report. The importer is deterministic and does not understand general clinical documents.</p>
+            <div id="case-intake" aria-busy="false">
+              <h3>Import report files</h3>
+              <p class="muted">Choose up to 20 original-fictional .txt reports in OI-SYNTHETIC-REPORT/1 format, 64 KiB each and 1 MiB per batch. PDF, scans, DICOM and general clinical extraction are not supported here. File selection alone sends nothing.</p>
+              <form id="file-intake-form">
+                <label for="intake-files">Supported fictional report files</label>
+                <input id="intake-files" type="file" accept=".txt,text/plain" multiple>
+                <p id="intake-selection" class="muted tiny">No files selected. Nothing uploaded.</p>
+                <label class="intake-confirm"><input id="intake-file-fictional" type="checkbox" required> I confirm these are independently authored fictional reports, not patient data or copied medical records.</label>
+                <button id="intake-import-button" class="button" type="submit">Import selected report files</button>
+              </form>
+              <p id="intake-complete" role="status" aria-live="polite" class="muted"></p>
+              <ol id="intake-receipts" class="intake-receipts" aria-label="Per-file import results"></ol>
+            </div>
+            <details class="intake-paste"><summary>Paste a supported fictional report instead</summary>
             <form id="import-form">
               <label for="report-text">Original report bytes (UTF-8)</label>
               <textarea id="report-text" rows="9" spellcheck="false" placeholder="OI-SYNTHETIC-REPORT/1&#10;Patient: CASE-ALPHA&#10;Document: …"></textarea>
@@ -381,6 +408,7 @@
                 <button class="button" type="submit">Import report</button>
               </div>
             </form>
+            </details>
             <div id="quarantine-list" class="quarantine-list"></div>
           </section>
         </div>
