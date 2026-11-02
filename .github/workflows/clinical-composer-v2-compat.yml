@@ -30,3 +30,11 @@ jobs:
         run: PYTHONPATH=src python -m unittest discover -s tests -p test_clinical_broker_v2_integration.py -v
       - name: All existing Python and HTTP tests
         run: PYTHONPATH=src python -m unittest discover -s tests -v
+      - name: Existing task-first JavaScript lineage checks
+        run: |
+          node --check web/app.js
+          node --test tests/test_source_dialogs.js
+      - name: Existing integrated synthetic browser journey
+        run: PYTHONPATH=src python tests/browser_journey.py
+      - name: Source-dialog concurrency browser journey
+        run: PYTHONPATH=src python tests/browser_source_dialogs.py
