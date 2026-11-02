@@ -154,7 +154,8 @@ class AuthorizedEvidenceReviewHandoff:
         # Distinct write-action authorization, rechecked at the effect boundary.
         self._authorize_return(patient_id, actor, purpose)
         receipt = self.store.add_review_receipt(
-            case_id, first["queue_key"], "returned", reviewer_label=actor, reason=reason)
+            case_id, first["queue_key"], "returned", reviewer_label=actor,
+            reason=reason, expected_fingerprint=first["queue_fingerprint"])
         # Returning an item remains unresolved. Do not call an acknowledgment
         # review a clinical signoff, even if a later preflight is interrupted.
         return {
