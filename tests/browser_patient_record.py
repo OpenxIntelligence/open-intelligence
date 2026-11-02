@@ -195,9 +195,9 @@ def main():
             )
             cd.evaluate("document.querySelector('#report-text').value = " + json.dumps(unicode_report) +
                         "; document.querySelector('#import-form').requestSubmit();")
-            cd.wait("document.querySelector('#patient-findings').textContent.includes('marker-a')", 'Unicode-delimited source projected')
+            cd.wait("document.querySelector('#patient-findings').textContent.includes('UNICODE-BETA')", 'Unicode-delimited source projected')
             ready('CASE-BETA')
-            cd.evaluate("[...document.querySelectorAll('#patient-findings article')].find(item => item.textContent.includes('marker-a')).querySelector('button').click()")
+            cd.evaluate("[...document.querySelectorAll('#patient-findings article')].find(item => item.querySelector('.quoted')?.textContent === 'Fictional statement A.' && item.querySelector('button')?.textContent.includes('UNICODE-BETA')).querySelector('button').click()")
             cd.wait("document.querySelector('#source-dialog').open", 'Unicode source anchor')
             assert cd.evaluate("document.querySelector('#dialog-text mark').textContent") == 'Finding: marker-a|reported|Fictional statement A.'
             assert cd.evaluate("document.querySelector('#dialog-text').textContent") == unicode_report
