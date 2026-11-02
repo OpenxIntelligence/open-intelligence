@@ -1,0 +1,44 @@
+name: Source-quoted clinical evidence review (fictional-only)
+
+on:
+  pull_request:
+    branches:
+      - integration/patient-composer-knowledge-20261102
+      - main
+    paths:
+      - 'src/open_intelligence/evidence_review_packet.py'
+      - 'src/open_intelligence/clinical_knowledge_context.py'
+      - 'tests/test_evidence_quote_review_integration.py'
+      - 'tests/test_evidence_review_parent_freshness.py'
+      - 'tests/test_patient_knowledge_final_read.py'
+      - '.github/workflows/source-quoted-review.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.13'
+      - name: Python syntax
+        run: python -m compileall -q src tests
+      - name: Existing patient/EHR/LIS to evidence review tests (synthetic only)
+        env:
+          PYTHONPATH: src:tests:.
+        run: |
+          python -m unittest discover -s tests -p 'test_evidence_quote_review_integration.py' -v
+          python -m unittest discover -s tests -p 'test_patient_clinical_knowledge_integration.py' -v
+      - name: Final review read and inherited parent freshness regressions
+        env:
+          PYTHONPATH: src:tests:.
+        run: |
+          python -m unittest discover -s tests -p 'test_evidence_review_parent_freshness.py' -v
+          python -m unittest discover -s tests -p 'test_patient_knowledge_final_read.py' -v
