@@ -152,6 +152,50 @@ class ReviewHandoffTests(unittest.TestCase):
         self.assertEqual(receipts[0]["id"], receipt_id)
         self.assertEqual(receipts[0]["action"], "returned")
 
+    def test_nonboolean_policy_results_never_grant_review_write(self):
+        handoff, q, aid, _, quotes = self.candidate()
+        for invalid in (1, "allowed", [True], {"allow": True}, object(), 0):
+            with self.subTest(value=type(invalid).__name__):
+                handoff.return_authorizer = lambda *_args, value=invalid: value
+                # Authorization is checked before any sensitive packet read.
+                with patch.object(handoff.packet, "preview",
+                                  side_effect=AssertionError("preview must not run")):
+                    with self.assertRaisesRegex(PermissionError, "separate trusted grant"):
+                        handoff.return_for_review(
+                            self.patient_id, CASE, q, aid, selected_quotes=quotes,
+                            reason="Fictional work requires independent evidence appraisal.",
+                            **self.actor())
+        self.assertEqual(self.store.review_queue(CASE)["receipts"], [])
+
+    def test_nonboolean_grant_at_final_write_boundary_is_denied(self):
+        handoff, q, aid, _, quotes = self.candidate()
+        calls = {"count": 0}
+        def unstable_policy(*_args):
+            calls["count"] += 1
+            return True if calls["count"] == 1 else {"allow": True}
+        handoff.return_authorizer = unstable_policy
+        with self.assertRaisesRegex(PermissionError, "separate trusted grant"):
+            handoff.return_for_review(
+                self.patient_id, CASE, q, aid, selected_quotes=quotes,
+                reason="Fictional work requires independent evidence appraisal.",
+                **self.actor())
+        self.assertEqual(calls["count"], 2)
+        self.assertEqual(self.store.review_queue(CASE)["receipts"], [])
+
+    def test_authorizer_exception_denies_without_preview_or_receipt(self):
+        handoff, q, aid, _, quotes = self.candidate()
+        def broken_policy(*_args):
+            raise RuntimeError("test policy provider unavailable")
+        handoff.return_authorizer = broken_policy
+        with patch.object(handoff.packet, "preview",
+                          side_effect=AssertionError("preview must not run")):
+            with self.assertRaises(PermissionError):
+                handoff.return_for_review(
+                    self.patient_id, CASE, q, aid, selected_quotes=quotes,
+                    reason="Fictional work requires independent evidence appraisal.",
+                    **self.actor())
+        self.assertEqual(self.store.review_queue(CASE)["receipts"], [])
+
     def test_read_permission_does_not_authorize_review_write(self):
         handoff, q, aid, _, quotes = self.candidate()
         # Readable sources alone cannot grant permission to append a receipt.
