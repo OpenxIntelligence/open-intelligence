@@ -21,7 +21,8 @@ jobs:
         with:
           python-version: '3.12'
       - name: Fixture-only scientific parser dependencies
-        run: python -m pip install --only-binary=:all: numpy==2.3.5 h5py==3.15.1
+        run: |
+          python -m pip install --only-binary=:all: numpy==2.3.5 h5py==3.15.1
       - name: Unit tests with invented fixture data only
         run: python -m unittest discover -s tools/research -p 'test_single_cell_probe.py' -v
       - name: Verify Sid dataset network acquisition is denied

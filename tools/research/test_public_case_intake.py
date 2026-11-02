@@ -5,20 +5,20 @@ import unittest
 from public_case_intake import build_manifest, verify_manifest, plan_inputs, aggregate, validate_fetch_url
 
 NOW = '2026-11-02T00:00:00+00:00'
-URL = 'https://osteosarc.com/data/catalog/datasets.json'
+URL = 'https://catalog.example.invalid/data/catalog/datasets.json'
 
 def row(**kw):
     r = dict(section='bulk-rna', table='rna-processed', assay='WTS', data_type='counts',
         sample_id=['SYN-T0'], specimen_id=['SYN-BLOCK-A'], collection_date=['2024-01-03'],
         timepoint='T0', reference='GRCh38', status='ok', caveat='', other_donors='',
         path='synthetic/2024.01.03/counts.tsv', path_kind='file', include_pattern='',
-        s3_uri='s3://sid-sijbrandij-osteosarc-dataset/synthetic/2024.01.03/counts.tsv',
+        s3_uri='s3://oi-independent-synthetic-fixtures/synthetic/2024.01.03/counts.tsv',
         https_url='', files=1, bytes=123, newest_modified='2026-10-29')
     r.update(kw)
     return r
 
 def payload(rows=None, **kw):
-    c = dict(bucket='sid-sijbrandij-osteosarc-dataset',region='us-west-2',license='CC0-1.0',
+    c = dict(bucket='oi-independent-synthetic-fixtures',region='us-west-2',license='CC0-1.0',
         listing_generated_at='2026-10-30T20:06:00Z', datasets=rows if rows is not None else [row()])
     c.update(kw)
     return json.dumps(c).encode()
@@ -148,9 +148,9 @@ class IntakeTests(unittest.TestCase):
         self.assertIn('asset_location_unverified',e['review_reasons'])
 
     def test_fetch_allowlist_rejects_other_urls(self):
-        for u in ('http://osteosarc.com/data/catalog/datasets.json',URL+'?secret=abc',
-                  'https://127.0.0.1/private','https://osteosarc.com@evil.example/data',
-                  'https://osteosarc.com/data/catalog/../record.json'):
+        for u in ('http://catalog.example.invalid/data/catalog/datasets.json',URL+'?secret=abc',
+                  'https://127.0.0.1/private','https://catalog.example.invalid@evil.example/data',
+                  'https://catalog.example.invalid/data/catalog/../record.json'):
             with self.subTest(u=u),self.assertRaises(ValueError): validate_fetch_url(u)
         self.assertEqual(validate_fetch_url(URL),URL)
 
@@ -167,12 +167,12 @@ class IntakeTests(unittest.TestCase):
 
     def test_catalog_prefix_selector_is_not_wrong_bucket(self):
         e=manifest([row(path='synthetic/pool_',path_kind='prefix',include_pattern='pool_*',
-            s3_uri='s3://sid-sijbrandij-osteosarc-dataset/synthetic/')])['entries'][0]
+            s3_uri='s3://oi-independent-synthetic-fixtures/synthetic/')])['entries'][0]
         self.assertIn('asset_selector_requires_review',e['review_reasons'])
         self.assertNotIn('asset_location_unverified',e['review_reasons'])
 
     def test_same_bucket_different_https_asset_is_not_bound(self):
-        e=manifest([row(https_url='https://sid-sijbrandij-osteosarc-dataset.s3.us-west-2.amazonaws.com/other.tsv')])['entries'][0]
+        e=manifest([row(https_url='https://oi-independent-synthetic-fixtures.s3.us-west-2.amazonaws.com/other.tsv')])['entries'][0]
         self.assertIn('asset_location_unverified',e['review_reasons'])
 
     def test_explicit_no_other_donors_is_not_treated_as_yes(self):
