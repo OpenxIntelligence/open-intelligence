@@ -47,3 +47,7 @@ The backend, model provider, and detailed application stack remain undecided. Se
 ## Completion reports
 
 Report what changed, why, what was verified, and what remains unproven. Separate software checks from clinical evidence. Never fabricate ingestion, model execution, citations, approvals, or deployment status.
+
+## Owner-controlled engineering governance (proposed addition, 2 November 2026)
+
+Before beginning new parallel engineering work, read `PRODUCT_CONSTITUTION.md` and `.agents/README.md`; they govern bounded execution, risk classification, shared-file coordination, and evidence-based handoff. Keep the existing Notion Sprint Board and Agent Playbook as the active assignment source; GitHub Issues/PRs are linked implementation records, not a second independently claimed task registry. A coding agent is not a clinical authority. Human founder approval is required for red product/architecture/release decisions, and separate professional, privacy, security, and rights reviews remain mandatory where applicable. This instruction is not an enforcement boundary; protect main via GitHub rulesets and limited credentials. Reconcile with open PR #49 before merge.
