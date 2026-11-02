@@ -38,6 +38,10 @@ jobs:
           PYTHONPATH=src python tests/browser_journey.py 2>&1 | tee verification-artifacts/browser-tests.txt
       - name: Patient Mission browser journey (headless Chromium)
         run: PYTHONPATH=src python tests/patient_mission_browser_journey.py
+      - name: New-source review interaction tests
+        run: node --test tests/test_new_source_review_ui.js
+      - name: New-source review browser journey
+        run: PYTHONPATH=src python tests/browser_new_source_review.py
       - name: Record exact synthetic source under test
         if: always()
         run: |

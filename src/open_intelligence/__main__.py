@@ -14,6 +14,7 @@ from urllib.parse import parse_qs, urlsplit
 from tools.crossref_metadata import MetadataInputError, fetch_public_doi, project_work
 
 from .changes import changes_since_review
+from .source_review import new_source_review_context, request_new_source_review
 from .investigation import (
     TEMPLATES,
     InvestigationError,
@@ -176,6 +177,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, {"templates": [
                     {"id": template_id, "description": text[:160]}
                     for template_id, text in TEMPLATES.items()]})
+            source_review = re.fullmatch(rf"/api/cases/{ID_PART}/snapshots/([0-9]+)/new-source-review", path)
+            if source_review:
+                return self._json(200, new_source_review_context(
+                    store, source_review[1], int(source_review[2])))
             source = re.fullmatch(rf"/api/cases/{ID_PART}/sources/([0-9]+)", path)
             if source:
                 return self._json(200, {"text": store.source_text(source[1], int(source[2]))})
@@ -302,6 +307,13 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(201, {"snapshot_id": store.create_snapshot(
                         drafts[1], data.get("question_id"), data.get("summary"), data.get("source_ids"),
                         data.get("evidence_assessment_ids"), data.get("broker_link_ids"))})
+                source_review = re.fullmatch(rf"/api/cases/{ID_PART}/snapshots/([0-9]+)/new-source-review", path)
+                if source_review:
+                    if set(data) != {"source_version_id", "source_line", "reviewer_label", "rationale"}:
+                        raise InvalidInput("New-source review requires exactly source_version_id, source_line, reviewer_label and rationale")
+                    return self._json(200, request_new_source_review(
+                        store, source_review[1], int(source_review[2]), data["source_version_id"],
+                        data["source_line"], data["reviewer_label"], data["rationale"]))
                 review = re.fullmatch(rf"/api/cases/{ID_PART}/snapshots/([0-9]+)/review", path)
                 if review:
                     store.acknowledge_demo_review(review[1], int(review[2]), data.get("reviewer_label"))
