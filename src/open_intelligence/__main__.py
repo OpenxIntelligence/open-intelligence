@@ -26,6 +26,7 @@ from .investigation import (
 from .mission import build_patient_mission
 from .store import CaseStore, InvalidInput, MAX_SOURCE_BYTES
 from .timeline import case_timeline
+from .world_model import synthetic_world_model
 
 ROOT = Path(__file__).resolve().parents[2]
 WEB = ROOT / "web"
@@ -166,6 +167,12 @@ class Handler(BaseHTTPRequestHandler):
             timeline = re.fullmatch(rf"/api/cases/{ID_PART}/timeline", path)
             if timeline:
                 return self._json(200, case_timeline(store, timeline[1]))
+            # Only fictional source-backed state; NOT a verified clinical PWM.
+            world = re.fullmatch(rf"/api/cases/{ID_PART}/world-model", path)
+            if world:
+                return self._json(200, synthetic_world_model(
+                    store.state(world[1]), world[1]
+                ))
             inv_list = re.fullmatch(rf"/api/cases/{ID_PART}/investigations", path)
             if inv_list:
                 return self._json(200, {"investigations": store.list_investigations(inv_list[1])})
