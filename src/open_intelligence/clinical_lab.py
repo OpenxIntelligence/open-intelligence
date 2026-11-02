@@ -10,6 +10,7 @@ records. Original report bytes and assertions remain in CaseStore.
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Callable, Mapping
 
 from .store import CaseStore, InvalidInput, now_utc, valid_id, KEY
 
@@ -94,14 +95,28 @@ class ClinicalLabOperations:
     Reviewer labels are NOT verified clinician credentials.
     """
 
-    def __init__(self, store: CaseStore):
+    def __init__(self, store: CaseStore, event_hook: Callable[[str, str, Mapping[str, object]], None] | None = None):
         if not isinstance(store, CaseStore):
             raise TypeError("ClinicalLabOperations requires an existing CaseStore")
         if store.db.in_transaction:
             raise InvalidInput("Initialize clinical laboratory tables outside a transaction")
         self.store = store
         self.db = store.db
+        self.event_hook = event_hook
         self.db.executescript(SCHEMA)
+
+    def _emit(self, case_id: str, kind: str, **details: object) -> None:
+        """Append local journal and optional transport in the SAME transaction.
+
+        A publisher MUST leave legacy-case events unbound to canonical patients
+        until PF-01 identity reconciliation is verified. The hook must not
+        commit or publish synchronously over the network.
+        """
+        if not self.db.in_transaction:
+            raise InvalidInput("Laboratory event requires active domain transaction")
+        self.store._event(case_id, kind, **details)
+        if self.event_hook is not None:
+            self.event_hook(case_id, kind, details)
 
     def _source(self, case_id: str, source_id: int, kind: str) -> sqlite3.Row:
         _positive_int(source_id, "Source")
@@ -171,7 +186,7 @@ class ClinicalLabOperations:
                    VALUES (?,?,?,?,?,'requested',?)""",
                 (case_id, order_key, source_version_id, test_label,
                  requested_by, now_utc()))
-            self.store._event(case_id, "clinical_lab_order_requested",
+            self._emit(case_id, "clinical_lab_order_requested",
                               order_id=cur.lastrowid, order_key=order_key,
                               source_version_id=source_version_id)
             return {"id": int(cur.lastrowid), "duplicate": False}
@@ -195,7 +210,7 @@ class ClinicalLabOperations:
             self.db.execute(
                 """UPDATE clinical_lab_orders SET state='cancelled',cancelled_reason=?
                    WHERE id=?""", (reason, order["id"]))
-            self.store._event(case_id, "clinical_lab_order_cancelled",
+            self._emit(case_id, "clinical_lab_order_cancelled",
                               order_id=order["id"], order_key=order_key)
             return {"id": int(order["id"]), "duplicate": False, "state": "cancelled"}
 
@@ -227,7 +242,7 @@ class ClinicalLabOperations:
                    VALUES (?,?,?,?,?,?)""",
                 (case_id, order["id"], accession_key, specimen_id,
                  received_by, now_utc()))
-            self.store._event(case_id, "clinical_lab_specimen_accessioned",
+            self._emit(case_id, "clinical_lab_specimen_accessioned",
                               accession_id=cur.lastrowid, order_id=order["id"],
                               accession_key=accession_key, specimen_id=specimen_id)
             return {"id": int(cur.lastrowid), "duplicate": False}
@@ -264,7 +279,7 @@ class ClinicalLabOperations:
                    VALUES (?,?,?,?,?,?,?)""",
                 (case_id, accession["id"], qc_key,
                  lab_source_version_id, outcome, checked_by, now_utc()))
-            self.store._event(case_id, "clinical_lab_qc_recorded",
+            self._emit(case_id, "clinical_lab_qc_recorded",
                               accession_id=accession["id"], qc_id=cur.lastrowid,
                               outcome=outcome, source_version_id=lab_source_version_id)
             return {"id": int(cur.lastrowid), "duplicate": False}
@@ -317,7 +332,7 @@ class ClinicalLabOperations:
                 (case_id, accession["id"], release_key, lab_source_version_id,
                  finding["id"], qc["id"], finding_key, finding["certainty"],
                  released_by, now_utc()))
-            self.store._event(case_id, "clinical_lab_observation_released",
+            self._emit(case_id, "clinical_lab_observation_released",
                               accession_id=accession["id"], release_id=cur.lastrowid,
                               source_version_id=lab_source_version_id,
                               assertion_id=finding["id"], qc_id=qc["id"])
