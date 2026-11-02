@@ -22,7 +22,9 @@ jobs:
       - name: Compile
         run: PYTHONPATH=src python -m compileall -q src
       - name: JavaScript syntax
-        run: node --check web/app.js
+        run: |
+          node --check web/app.js
+          node --check web/mission.js
       - name: Unit and HTTP tests
         shell: bash
         run: |
@@ -34,6 +36,8 @@ jobs:
         run: |
           set -o pipefail
           PYTHONPATH=src python tests/browser_journey.py 2>&1 | tee verification-artifacts/browser-tests.txt
+      - name: Patient Mission browser journey (headless Chromium)
+        run: PYTHONPATH=src python tests/patient_mission_browser_journey.py
       - name: Record exact synthetic source under test
         if: always()
         run: |
