@@ -158,7 +158,7 @@ function renderPatientView() {
   const stale = active.snapshots.filter(s => s.state === 'stale').length;
   const superseded = active.sources.filter(s => s.state !== 'current').length;
   const notes = [];
-  if (stale) notes.push(stale + ' earlier draft(s) need another look because a report changed since they were written.');
+  if (stale) notes.push(stale + ' earlier draft(s) are flagged for another review; inspect the recorded reason and source versions.');
   if (superseded) notes.push(superseded + ' older report version(s) have been replaced by a newer version; the older versions are still kept and can be inspected.');
   if (!notes.length) notes.push('Nothing in this fictional case is currently flagged as changed or needing another look.');
   for (const text of notes) {
@@ -542,8 +542,15 @@ function render() {
         } catch (err) { notice(err.message, true); }
       }); actions.append(button);
     }
+    const newer = node('button', snapshot.state === 'stale' ? 'View review requests' : 'Review newer source', 'button secondary minor');
+    newer.type = 'button';
+    newer.addEventListener('click', () => {
+      newer.disabled = true;
+      openNewSourceReview(snapshot, box).catch(err => notice(err.message, true));
+    });
+    actions.append(newer);
     box.append(top, description, meta, actions);
-    if (snapshot.state === 'stale') box.append(node('p', 'A source was amended. This version remains historical and cannot be acknowledged as current.', 'muted'));
+    if (snapshot.state === 'stale') box.append(node('p', 'This investigation requires review. Earlier content and sources remain historical; no replacement interpretation has been accepted.', 'muted'));
     el('snapshot-list').append(box);
   }
   clear('model-investigation-question');
@@ -1227,6 +1234,98 @@ function renderChangesSinceReview(data) {
     el('changes-questions').append(row);
   }
 }
+async function openNewSourceReview(snapshot, box) {
+  const requestedCase = readyCase();
+  const sequence = refreshSequence;
+  const region = node('section', null, 'snapshot');
+  region.append(node('p', 'Loading later-received sources and review receipts...', 'muted'));
+  box.append(region);
+  const stillCurrent = () => box.isConnected && region.isConnected && requestedCase === caseId && sequence === refreshSequence;
+  const endpoint = '/api/cases/' + requestedCase + '/snapshots/' + snapshot.id + '/new-source-review';
+  try {
+    const context = await api(endpoint);
+    if (!stillCurrent()) return;
+    region.replaceChildren();
+    region.append(node('h4', 'New-source review request'));
+    region.append(node('p', context.disclaimer, 'muted'));
+    for (const receipt of context.requests || []) {
+      region.append(node('p', 'Request event #' + receipt.event_id + ' · Source #' +
+        receipt.source_version_id + ', line ' + receipt.source_line + ' · ' + receipt.reviewer_label,
+        'snapshot-meta'));
+      region.append(node('p', receipt.rationale));
+      region.append(node('blockquote', receipt.source_quote));
+    }
+    if (!context.request_allowed) {
+      region.append(node('p', 'This investigation already requires review. Preserve this version and prepare a new draft.', 'muted'));
+      return;
+    }
+    const sources = context.sources || [];
+    if (!sources.length) {
+      region.append(node('p', 'No current first-version source was received after this draft. Amendments use the existing correction workflow.', 'muted'));
+      return;
+    }
+    const form = node('form');
+    const sourceChoice = node('select'); sourceChoice.required = true;
+    for (const source of sources) {
+      const choice = node('option', source.document_id + '@' + source.version + ' · received ' + source.received_at);
+      choice.value = source.source_version_id; sourceChoice.append(choice);
+    }
+    sourceChoice.value = String(sources[0].source_version_id);
+    const sourceLabel = node('label', 'Later-received source (not relevance-ranked)'); sourceLabel.append(sourceChoice);
+    const lineChoice = node('select'); lineChoice.required = true;
+    const lineLabel = node('label', 'Exact finding line'); lineLabel.append(lineChoice);
+    const quotation = node('blockquote');
+    const selectedSource = () => sources.find(source => source.source_version_id === Number(sourceChoice.value));
+    const showQuote = () => {
+      const finding = selectedSource()?.findings.find(item => item.source_line === Number(lineChoice.value));
+      quotation.textContent = finding ? finding.quote : 'Select an exact finding line.';
+    };
+    const loadLines = () => {
+      lineChoice.replaceChildren();
+      const findings = selectedSource()?.findings || [];
+      for (const finding of findings) {
+        const choice = node('option', 'Line ' + finding.source_line + ' · reported state: ' + finding.certainty);
+        choice.value = finding.source_line; lineChoice.append(choice);
+      }
+      lineChoice.value = findings.length ? String(findings[0].source_line) : '';
+      showQuote();
+    };
+    sourceChoice.addEventListener('change', loadLines); lineChoice.addEventListener('change', showQuote); loadLines();
+    const reviewer = node('input'); reviewer.required = true; reviewer.minLength = 2; reviewer.maxLength = 80;
+    reviewer.value = 'Synthetic reviewer (unverified)';
+    const reviewerLabel = node('label', 'Demo reviewer label'); reviewerLabel.append(reviewer);
+    const rationale = node('textarea'); rationale.required = true; rationale.minLength = 10; rationale.maxLength = 800;
+    const rationaleLabel = node('label', 'Why should this investigation be reconsidered?'); rationaleLabel.append(rationale);
+    const submit = node('button', 'Request review — no new conclusion', 'button secondary minor'); submit.type = 'submit';
+    form.append(sourceLabel, lineLabel, quotation, reviewerLabel, rationaleLabel, submit);
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      if (submit.disabled || !stillCurrent() || !form.reportValidity()) return;
+      try {
+        if (readyCase() !== requestedCase) return;
+        submit.disabled = true;
+        await api(endpoint, { source_version_id: Number(sourceChoice.value), source_line: Number(lineChoice.value),
+          reviewer_label: reviewer.value, rationale: rationale.value });
+        if (!stillCurrent()) return;
+        notice('Review requested. Earlier content is preserved; no replacement conclusion has been accepted.');
+        await refresh();
+      } catch (err) { if (stillCurrent()) notice(err.message, true); }
+      finally { submit.disabled = false; }
+    });
+    region.append(form);
+  } catch (err) {
+    if (!stillCurrent()) return;
+    region.replaceChildren(node('p', 'Could not load source review: ' + err.message, 'muted'));
+    const retry = node('button', 'Retry source review', 'button secondary minor'); retry.type = 'button';
+    retry.addEventListener('click', () => {
+      if (!stillCurrent()) return;
+      region.remove();
+      openNewSourceReview(snapshot, box).catch(error => notice(error.message, true));
+    });
+    region.append(retry);
+  }
+}
+
 el('model-investigation-form').addEventListener('submit', async event => {
   event.preventDefault();
   try {

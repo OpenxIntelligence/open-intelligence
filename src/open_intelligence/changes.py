@@ -130,6 +130,18 @@ def changes_since_review(store: CaseStore, case_id: str, since_event_id: int | N
                             "cause": "source_amendment",
                             "snapshot_id": snapshot_id,
                         })
+            elif event["kind"] == "new_source_review_requested":
+                for snapshot_id in details.get("invalidated_snapshots", []):
+                    stale_causes.append({
+                        "event_id": event["id"],
+                        "occurred_at": event["occurred_at"],
+                        "cause": "new_source_review_request",
+                        "snapshot_id": snapshot_id,
+                        "source_version_id": details["source_version_id"],
+                        "source_line": details["source_line"],
+                        "reviewer_label": details["reviewer_label"],
+                        "rationale": details["rationale"],
+                    })
             elif event["kind"] == "evidence_invalidated":
                 for snapshot_id in details.get("invalidated_snapshots", []):
                     stale_causes.append({
