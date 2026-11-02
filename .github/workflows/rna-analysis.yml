@@ -1,17 +1,18 @@
-name: Bounded molecular analysis
+name: Synthetic-only RNA methods regression
+
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/research/**'
+      - '.github/workflows/rna-analysis.yml'
   workflow_dispatch:
-    inputs:
-      approved_public_case_eval:
-        description: 'Manual opt-in only after ethics, per-file provenance and rights approval'
-        type: boolean
-        required: true
-        default: false
+
 permissions:
   contents: read
+
 jobs:
-  molecular:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.approved_public_case_eval == true }}
+  rna-methods:
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
@@ -21,36 +22,30 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: '3.12'
-      - name: Complete research regression suite
-        shell: bash
+      - name: Offline independently authored fictional RNA parser tests
         run: |
           set -o pipefail
           mkdir -p molecular-results
-          python -m unittest discover -s tools/research -p 'test_*.py' -v 2>&1 | tee molecular-results/tests.txt
-      - name: Execute fixed-scope five-library RNA investigation
-        run: python tools/research/rna_expression_probe.py --output molecular-results/analysis.json
-      - name: Preserve source receipt
+          python -m unittest discover -s tools/research -p 'test_rna_expression_probe.py' -v 2>&1 | tee molecular-results/tests.txt
+      - name: Source-only test receipt
         if: always()
-        shell: bash
         run: |
           python - <<'PY'
-          import hashlib,json,subprocess
           from pathlib import Path
-          paths=[Path('tools/research/rna_expression_probe.py'),Path('tools/research/test_rna_expression_probe.py'),Path('tools/research/public_case_intake.py'),Path('.github/workflows/rna-analysis.yml')]
-          d={'checkout':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'files':{str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in paths},'raw_matrices_published':False,'clinical_validation':False}
+          import hashlib,json,subprocess
+          paths=[Path('tools/research/rna_expression_probe.py'),Path('tools/research/test_rna_expression_probe.py'),Path('.github/workflows/rna-analysis.yml')]
+          d={'checkout':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
+             'files':{str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in paths},
+             'network_patient_data_access':False,'source_patient_data_required':False,
+             'clinical_validation':False}
           Path('molecular-results').mkdir(exist_ok=True)
           Path('molecular-results/receipt.json').write_text(json.dumps(d,indent=2))
           PY
-      - name: Retain bounded derived findings and original code, not full patient matrices
+      - name: Save fictional-methods regression receipt only
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: molecular-analysis-evidence
-          path: |
-            molecular-results/*.json
-            molecular-results/tests.txt
-            tools/research/*.py
-            .github/workflows/rna-analysis.yml
-          include-hidden-files: true
-          retention-days: 30
+          name: synthetic-rna-regression
+          path: molecular-results/
           if-no-files-found: error
+          retention-days: 7
