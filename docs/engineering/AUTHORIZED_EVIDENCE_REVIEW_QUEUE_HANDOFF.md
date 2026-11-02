@@ -13,6 +13,8 @@ The integration is deliberately limited to **independently authored fictional** 
 4. An unresolved queue item `evidence-assessment:<id>` already derived by the source-owned queue.
 5. A second fresh preflight and source-quote recheck before issuing a nonterminal return receipt.
 
+A separate **`evidence.review_return` write-action authorizer** is required, distinct from patient-source read permission. It is denied by default, checked before the two preflights and immediately again before appending the effect. A test-only policy callback may grant this action, but its textual actor label is not real authenticated professional identity. Revoking the write grant during preflight prevents receipt creation.
+
 Only **`returned`** is permitted. The receipt's reviewer label is the actor from the existing synthetic policy callback, with reason; the item remains queued, its immutable history survives correction and source-evidence amendment changes its fingerprint. Neither the adapter nor a fictional receipt can issue `reviewed`, `acknowledged`, clinical signature, clinician clearance or treatment action. The queue is the existing single review owner; this feature does not mint another approval state.
 
 ## Non-atomic external-rights boundary
