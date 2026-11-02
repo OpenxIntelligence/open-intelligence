@@ -97,7 +97,7 @@ class ComposerContextTest(unittest.TestCase):
         before = build_composer_context(self.store, "CASE-ALPHA", self.question)
         imported = self.store.import_synthetic_evidence(EVIDENCE)
         self.assertEqual(imported["result"], "imported")
-        evidence_version = imported["evidence_id"]
+        evidence_version = imported["evidence_version_id"]
         self.store.assess_synthetic_evidence(
             "CASE-ALPHA", self.question, evidence_version,
             "context", "limited",
