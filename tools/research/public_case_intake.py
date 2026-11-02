@@ -142,9 +142,15 @@ def build_manifest(raw: bytes, retrieved_at: str) -> dict:
         valid_dates = set()
         for value in dates:
             try:
-                if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', value):
-                    raise ValueError('Unsupported date precision')
-                valid_dates.add(date.fromisoformat(value).isoformat())
+                if re.fullmatch(r'\d{4}-\d{2}-\d{2}', value):
+                    valid_dates.add(date.fromisoformat(value).isoformat())
+                elif re.fullmatch(r'\d{4}(-\d{2})?', value):
+                    # Validate components without publishing an invented day.
+                    parts = [int(p) for p in value.split('-')]
+                    date(parts[0], parts[1] if len(parts) == 2 else 1, 1)
+                    reasons.append('partial_collection_date')
+                else:
+                    reasons.append('unparsed_collection_date')
             except ValueError:
                 reasons.append('invalid_collection_date')
         path = record.get('path', '')
@@ -193,8 +199,10 @@ def verify_manifest(manifest: dict, raw: bytes) -> bool:
         return False
 
 
-def capability(section: object) -> str | None:
-    """Only declared catalog sections route work; arbitrary prose is not code."""
+def capability(section: object, assay: object = None, table: object = None) -> str | None:
+    """Declared structured fields route review; arbitrary prose is not code."""
+    if assay == 'Radiology' and table == 'clinical-dicom':
+        return 'imaging'
     return {
         'bulk-dna': 'molecular', 'bulk-rna': 'molecular',
         'scrna-tumor': 'single_cell', 'scrna-pbmc': 'single_cell',
@@ -227,7 +235,8 @@ def plan_inputs(manifest: dict, mode: str = 'present_day', cutoff: str | None = 
     grouped_reasons = defaultdict(Counter)
     unknown = 0
     for entry in manifest['entries']:
-        domain = capability(entry['source_record'].get('section'))
+        record = entry['source_record']
+        domain = capability(record.get('section'), record.get('assay'), record.get('table'))
         if domain is None:
             unknown += 1
             continue

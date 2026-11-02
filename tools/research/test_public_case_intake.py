@@ -191,4 +191,22 @@ class IntakeTests(unittest.TestCase):
         from public_case_intake import NoRedirect
         with self.assertRaises(ValueError): NoRedirect().redirect_request(None,None,302,None,{},URL)
 
+    def test_partial_collection_date_retains_precision(self):
+        for value in ('2024', '2024-01'):
+            with self.subTest(value=value):
+                e=manifest([row(collection_date=[value])])['entries'][0]
+                self.assertIn('partial_collection_date',e['review_reasons'])
+                self.assertNotIn('invalid_collection_date',e['review_reasons'])
+                self.assertEqual(e['source_record']['collection_date'],[value])
+
+    def test_unparsed_date_not_labeled_invalid_clinical_fact(self):
+        e=manifest([row(collection_date=['early 2024'])])['entries'][0]
+        self.assertIn('unparsed_collection_date',e['review_reasons'])
+        self.assertNotIn('invalid_collection_date',e['review_reasons'])
+
+    def test_radiology_assay_under_pathology_section_routes_to_imaging(self):
+        p=plan_inputs(manifest([row(section='pathology',assay='Radiology',table='clinical-dicom')]))
+        self.assertEqual([t['capability'] for t in p['tasks']],['imaging'])
+        self.assertFalse(p['tasks'][0]['analysis_executed'])
+
 if __name__=='__main__': unittest.main()
