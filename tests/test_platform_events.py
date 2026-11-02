@@ -164,9 +164,11 @@ class PlatformEventTests(unittest.TestCase):
             calls.append(accepted["event_id"])
             conn.execute("INSERT INTO clinical_projection VALUES (?)", (accepted["event_id"],))
 
+        self.db.execute("BEGIN IMMEDIATE")
         with self.db:
             self.db.execute("SELECT COUNT(*) FROM platform_inbox_receipts")
             self.assertTrue(consume_once(self.db, "ONCOLOGY-READER", event, apply, now=12))
+        self.db.execute("BEGIN IMMEDIATE")
         with self.db:
             self.assertFalse(consume_once(self.db, "ONCOLOGY-READER", event, apply, now=13))
         self.assertEqual(calls, ["EV-PLATFORM-001"])
@@ -175,6 +177,7 @@ class PlatformEventTests(unittest.TestCase):
         )
         changed = fixture()
         changed["aggregate"]["revision"] = 3
+        self.db.execute("BEGIN IMMEDIATE")
         with self.db:
             with self.assertRaises(OutboxContractError):
                 consume_once(self.db, "ONCOLOGY-READER", changed, apply, now=14)
@@ -188,6 +191,7 @@ class PlatformEventTests(unittest.TestCase):
         def apply(conn, accepted):
             conn.execute("INSERT INTO clinical_projection VALUES (?)", (accepted["event_id"],))
 
+        self.db.execute("BEGIN IMMEDIATE")
         with self.assertRaisesRegex(RuntimeError, "rolled back"):
             with self.db:
                 self.assertTrue(
@@ -200,6 +204,7 @@ class PlatformEventTests(unittest.TestCase):
         self.assertEqual(
             self.db.execute("SELECT COUNT(*) FROM clinical_projection").fetchone()[0], 0
         )
+        self.db.execute("BEGIN IMMEDIATE")
         with self.db:
             self.assertTrue(consume_once(self.db, "ONCOLOGY-READER", fixture(), apply, now=12))
         self.assertEqual(
