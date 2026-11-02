@@ -23,8 +23,9 @@ FORBIDDEN_SCRIPTS=frozenset({
 # downloads. A Python function or imported module inside separate code still
 # needs review; source matching is not a network egress enforcement boundary.
 SCRIPT_CALL=re.compile(
-    r"\b(?:python(?:3(?:\.\d+)?)?\s+(?:-u\s+)?|"
-    r"(?:bash|sh)\s+)?(?:\./)?tools/research/([a-z_]+)\.py\b"
+    # Only a Python command invokes the script. A path-filter reference such as
+    # 'tools/research/rna_expression_probe.py' is not executable work.
+    r"\bpython(?:3(?:\.\d+)?)?\s+(?:-u\s+)?(?:\./)?tools/research/([a-z_]+)\.py\b"
 )
 BLOCKED_PUBLIC_CASE_URL=re.compile(
     r"https?://[^\s'\"<>]*(?:sid-sijbrandij-osteosarc-dataset|osteosarc\.com/data/catalog/datasets\.json)",
