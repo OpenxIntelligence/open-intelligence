@@ -196,8 +196,9 @@ class ReviewHandoffTests(unittest.TestCase):
         self.assertEqual(matching[0]["resolved_by"]["fingerprint"], "reviewed_in_demo")
         self.assertFalse(any(x["queue_key"] == f"snapshot:{snapshot_id}"
                              for x in queue["awaiting"]))
-        self.assertEqual(len(self.store.state(CASE)["review_events"]) if
-                         "review_events" in self.store.state(CASE) else 1, 1)
+        self.assertEqual(self.store.db.execute(
+            "SELECT COUNT(*) FROM review_receipts WHERE case_id=? AND queue_key=?",
+            (CASE, f"snapshot:{snapshot_id}")).fetchone()[0], 1)
 
 
 
