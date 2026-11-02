@@ -21,7 +21,8 @@ def fake_parse(raw):
 
 def raw_report(patient="CASE-A", document="REPORT-A"):
     return json.dumps(dict(patient_id=patient, document_id=document,
-                           event_date="2026-01-01", issued_at="2026-01-02")).encode()
+                           kind="pathology", event_date="2026-01-01",
+                           issued_at="2026-01-02")).encode()
 
 
 def envelope(case="CASE-A", org="ORG-A", system="SYS-A", subject="LOCAL-1"):
