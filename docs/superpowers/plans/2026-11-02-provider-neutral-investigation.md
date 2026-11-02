@@ -1,0 +1,18 @@
+# Provider-neutral model execution inside existing investigation path — 2026-11-02
+
+> Implementation method: test first, prove the failure, implement the smallest native change, re-run the existing suite, preserve source/provenance and review.
+
+**Goal:** Eliminate hard dependency on one model provider at the *bounded investigation entry point* while retaining the existing clinical evidence validation, review-pending semantics, exact source versioning and Composer stale-source guard. This prepares the first-party AI gateway without installing a second agent runtime, another patient store or any third-party dependency.
+
+**Existing owners:** `src/open_intelligence/investigation.py` (templates, prompt, output guard, existing Meta adapter); `src/open_intelligence/__main__.py` (case/source/question preflight, orchestration and atomic persist); `src/open_intelligence/store.py` (canonical history). Base unmerged Composer integration #126. The user-approved scope is the complete first-party platform, with NO NEXT.JS.
+
+**Technical direction:** Add `execute_bounded_model(template_id, facts, *, invoke, provider_id, model_id, data_class='synthetic', allowed_effects=('propose_hypothesis',))` to the *existing* investigation module. Accept only fictional demo source context, exactly one harmless hypothesis-producing effect and a server-selected adapter callable receiving a bounded prompt. Enforce fixed templates, source/evidence citation integrity, status/uncertainty validation, model metadata and no user-selected endpoint. The current Meta HTTP call remains the sole active network adapter; replay remains offline. Other local/cloud adapter implementations are **future, not installed**.
+
+**TDD:**
+1. Create `tests/test_provider_neutral_investigation.py` with two fake backend adapters that return different model strings but use identical source/review contracts, a test that blocks write/clinical effects before any callback, malformed facts/model/data-class rejection, output citations and unknown-model validations. Verify red on the old code.
+2. Add the bounded dispatch to `investigation.py`; change only the existing live branch in `__main__.py` to call it with a server-controlled `lambda prompt: call_meta_api(prompt, meta_api_key())`. Existing code patch points for Meta tests and replay are preserved. Do not select other providers over HTTP or send real data.
+3. Run exact-head hosted suite and Chromium journeys. Confirm test failures were not muted by permissive imports, no unsafe provider selection, no dependency or UI migration.
+4. Update existing Notion stack/architecture and Google Docs engineering roadmap with *proposed* target reference: React/TypeScript/Vite frontend, Python/FastAPI AI-domain services, PostgreSQL domain-owned transaction store, specialized object/media stores, model-agnostic adapters and governed tools. Spring Boot and ASP.NET Core remain evaluated strong-type domain-service alternatives, not mandatory platform rewrites. Candidate packages require exact-version T1 license/SBOM clearance, including model weights and assets. No Next.js.
+5. Draft PR stacked on #126; never merge or deploy automatically. Treat clinical identity, PHI permissions, validated models, actual FHIR, hospital orders and clinical safety as separate gates.
+
+**Accepted tests** must demonstrate use of the same source/citation validator and persisted model label after alternative fake provider injection, without letting the model issue any clinical action. This is a provider abstraction within current synthetic-only model invocation, **not live multi-provider inference**.
