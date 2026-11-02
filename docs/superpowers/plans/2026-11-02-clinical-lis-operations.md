@@ -62,3 +62,13 @@
 - [ ] Distinguish operational synthetic records from imported report narratives and from real hospital/LIS integration.
 - [ ] Require review of PR #51, then #53, then this PR; no auto-merge.
 - [ ] Record tests, known missing production capabilities, and next product interface/API work.
+
+## Verified engineering receipt — 2 November 2026
+
+**Implemented:** `src/open_intelligence/clinical_lab.py` provides the first-party synthetic operational tables and commands over the existing CaseStore SQLite connection and event/source ledger, with no added patient identity or source table. `tests/test_clinical_lab_operations.py` exercises nine actual-ledger scenarios, including successful operational order→accession→QC→source-anchored result release, unknown/pending/failed gates, wrong case/specimen, amendments and historical releases, idempotency conflicts, cancellation, restart and event-failure rollback.
+
+**Test-first result:** run [41481878093](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41481878093) failed because `open_intelligence.clinical_lab` was absent, preserving the red integration baseline. After implementation at feature commit `3063a4db6018f81035b0e5bf346c8c10c8be37e2`, hosted run [41482194748](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41482194748) passed **277 Python unit/HTTP tests**, compilation, JavaScript syntax and both existing synthetic Chromium/Patient Mission journeys. Source checkout in CI merge candidate is `995d982` (full hash in run source artifact). Separate UI-glance run [41482194778](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41482194778) and Crossref run [41482194848](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41482194848) succeeded. Existing SQLite unclosed-connection warnings remain; no clinical safety inference follows.
+
+**Contractual scope:** This is first-party operational state in fictional database records, not just reports describing a clinical workflow. It does *not* implement an authenticated clinical order, instrument interface, real specimen handling, healthcare terminology license, diagnostic device approval, a regulated LIS, longitudinal medication safety, real patient data, clinician review, production security or a full EHR/PACS/AI system. The release operation records a synthetic source-linked statement; it does not certify scientific validity. UI controls and real HTTP commands for these operations are not yet implemented.
+
+**PR integration:** Draft PR #56 is stacked on #53 (durability) and #51 (namespace identity); tests run against a combined merge candidate for main, but changes are not merged or deployed. The founder's full product scope and no-Next.js rule remain unchanged.
