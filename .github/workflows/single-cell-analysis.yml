@@ -12,7 +12,7 @@ permissions:
 jobs:
   single-cell:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -20,73 +20,38 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: '3.12'
-      - name: Isolated HDF5 research reader, not application dependencies
+      - name: Isolated HDF5 research environment, not application dependencies
         run: 'python -m pip install --only-binary=:all: numpy==2.3.5 h5py==3.15.1'
-      - name: Inspect fixed processed object without publishing cell records
+      - name: Complete research regression suite
         shell: bash
         run: |
+          set -o pipefail
           mkdir -p sc-results
+          python -m unittest discover -s tools/research -p 'test_*.py' -v 2>&1 | tee sc-results/tests.txt
+      - name: Execute fixed-scope cell-localization analysis
+        run: python tools/research/single_cell_probe.py --output sc-results/analysis.json
+      - name: Preserve reproducibility and dependency receipt
+        if: always()
+        shell: bash
+        run: |
           python - <<'PY'
-          import json,hashlib,tempfile,urllib.request,collections
+          import hashlib,json,subprocess,importlib.metadata
           from pathlib import Path
-          from datetime import datetime,timezone
-          import h5py,numpy as np
-          url='https://sid-sijbrandij-osteosarc-dataset.s3.us-west-2.amazonaws.com/kamil/tumor/analysis/run2/tumor_run2_analyzed.h5ad'
-          class NoRedirect(urllib.request.HTTPRedirectHandler):
-              def redirect_request(self,*args,**kwargs): raise ValueError('redirect denied')
-          op=urllib.request.build_opener(NoRedirect)
-          def simple(x):
-              if isinstance(x,bytes): return x.decode()
-              if isinstance(x,np.ndarray): return [simple(v) for v in x.tolist()]
-              if isinstance(x,np.generic): return x.item()
-              return x
-          def desc(x):
-              d={'attrs':{k:simple(v) for k,v in x.attrs.items()}}
-              if isinstance(x,h5py.Dataset): d.update(shape=x.shape,dtype=str(x.dtype))
-              else: d['keys']=list(x.keys())
-              return d
-          with tempfile.TemporaryDirectory() as tmp:
-              path=Path(tmp)/'source.h5ad'; total=0; h=hashlib.sha256()
-              with op.open(url,timeout=90) as r,path.open('wb') as f:
-                  while True:
-                      b=r.read(8*1024*1024)
-                      if not b: break
-                      total+=len(b)
-                      if total>2000000000: raise ValueError('size cap')
-                      h.update(b);f.write(b)
-              out={'analysis_executed':False,'source_url':url,'source_bytes':total,'sha256':h.hexdigest(),'retrieved_at':datetime.now(timezone.utc).isoformat(),'structure':{},'categories':{}}
-              with h5py.File(path,'r') as f:
-                  for p in ['X','layers','raw','raw/X','var','raw/var','obs','uns','uns/log1p']:
-                      if p in f: out['structure'][p]=desc(f[p])
-                  for p in ['X','raw/X']:
-                      if p in f:
-                          obj=f[p]; arr=obj['data'][:100000] if isinstance(obj,h5py.Group) and 'data' in obj else obj[:10,:]
-                          out['structure'][p]['value_probe']={'n':int(arr.size),'min':float(arr.min()),'max':float(arr.max()),'noninteger':int(np.count_nonzero(arr!=np.floor(arr)))}
-                  for p in ['var','raw/var']:
-                      if p in f:
-                          out['structure'][p]['columns']={k:desc(f[p][k]) for k in f[p]}
-                          ik=simple(f[p].attrs.get('_index','_index'))
-                          if ik in f[p]:
-                              names=[simple(x) for x in f[p][ik][:]]
-                              out['structure'][p]['selected_gene_indices']={g:[i for i,n in enumerate(names) if n==g] for g in ['FAP','CD276','PANX3','MDM2']}
-                  for k in ['sample_id','leiden_res0.5','leiden_res1.0','leiden_res1.5','celltype_res0.5','celltype_res1.0','celltype_res1.5','date']:
-                      if k not in f['obs']: continue
-                      x=f['obs'][k]
-                      if isinstance(x,h5py.Group) and 'codes' in x:
-                          cats=[simple(v) for v in x['categories'][:]];codes=x['codes'][:]
-                          vals=[None if n<0 else cats[int(n)] for n in codes]
-                      else: vals=[simple(v) for v in x[:]]
-                      out['categories'][k]=dict(collections.Counter(str(v) for v in vals))
-              Path('sc-results/h5ad-schema.json').write_text(json.dumps(out,indent=2))
-              print(json.dumps({'downloaded_bytes':total,'schema_inspected':True,'analysis_executed':False}))
+          paths=[Path('tools/research/single_cell_probe.py'),Path('tools/research/test_single_cell_probe.py'),Path('tools/research/public_case_intake.py'),Path('.github/workflows/single-cell-analysis.yml')]
+          deps={n:{'version':importlib.metadata.version(n),'license':importlib.metadata.metadata(n).get('License-Expression') or importlib.metadata.metadata(n).get('License')} for n in ('numpy','h5py')}
+          d={'checkout':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'files':{str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in paths},'research_dependencies':deps,'raw_matrices_published':False,'per_cell_records_published':False,'clinical_validation':False}
+          Path('sc-results').mkdir(exist_ok=True)
+          Path('sc-results/receipt.json').write_text(json.dumps(d,indent=2))
           PY
-      - name: Preserve schema receipt only, never full matrices or cell metadata
+      - name: Retain aggregate findings and original code only
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: single-cell-evidence
           path: |
             sc-results/*.json
+            sc-results/tests.txt
+            tools/research/*.py
             .github/workflows/single-cell-analysis.yml
           include-hidden-files: true
           retention-days: 30
