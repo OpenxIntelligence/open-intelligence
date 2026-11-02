@@ -131,7 +131,7 @@ class WholePatientWP01SyntheticIntegration(unittest.TestCase):
             "CASE-ALPHA", self.fixture("alpha-pathology-original.txt"))
         candidate = validate_output(
             {"claims": [{
-                "text": "Start the drug based on this report.",
+                "text": "I recommend starting the drug based on this report.",
                 "support": "supports",
                 "citations": [{"type": "source", "id": pathology["source_id"]}],
                 "uncertainty": "low",
