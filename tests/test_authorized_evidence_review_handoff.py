@@ -4,6 +4,8 @@ These are actual PatientRegistry, EHR, LIS, source, rights, Composer, source
 quote, and review queue domain objects. No verified real clinician or consent.
 """
 import unittest
+from unittest.mock import patch
+from open_intelligence.store import CaseStore
 
 from open_intelligence.authorized_evidence_review import AuthorizedEvidenceReviewHandoff
 from open_intelligence.evidence_review_packet import EvidenceReviewPacket
@@ -95,6 +97,38 @@ class ReviewHandoffTests(unittest.TestCase):
         self.assertEqual(item["receipts"][-1]["reviewer_label"], self.actor()["actor"])
         self.assertFalse(any(x["queue_key"] == item["queue_key"] for x in current["resolved"]))
         self.assertEqual(len(current["receipts"]), 1)
+
+    def test_review_receipt_and_event_rollback_together(self):
+        handoff, q, aid, _, quotes = self.candidate()
+        with patch.object(self.store, "_event", side_effect=RuntimeError("audit failure")):
+            with self.assertRaisesRegex(RuntimeError, "audit failure"):
+                handoff.return_for_review(
+                    self.patient_id, CASE, q, aid, selected_quotes=quotes,
+                    reason="Independent fictional evidence reviewer must examine the source.",
+                    **self.actor())
+        self.assertEqual(self.store.review_queue(CASE)["receipts"], [])
+        # One later success; the earlier event failure cannot leave a receipt.
+        result = handoff.return_for_review(
+            self.patient_id, CASE, q, aid, selected_quotes=quotes,
+            reason="Independent fictional evidence reviewer must examine the source.",
+            **self.actor())
+        self.assertEqual(result["result"], "returned_for_independent_review")
+        self.assertEqual(len(self.store.review_queue(CASE)["receipts"]), 1)
+
+    def test_return_receipt_persists_after_new_database_connection(self):
+        handoff, q, aid, _, quotes = self.candidate()
+        result = handoff.return_for_review(
+            self.patient_id, CASE, q, aid, selected_quotes=quotes,
+            reason="An independent fictional reviewer must evaluate relevance and uncertainty.",
+            **self.actor())
+        another = CaseStore(self.store.path)
+        try:
+            item = next(x for x in another.review_queue(CASE)["awaiting"]
+                        if x["queue_key"] == f"evidence-assessment:{aid}")
+            self.assertEqual(item["status"], "returned")
+            self.assertEqual(item["receipts"][-1]["id"], result["receipt_id"])
+        finally:
+            another.close()
 
     def test_read_permission_does_not_authorize_review_write(self):
         handoff, q, aid, _, quotes = self.candidate()
