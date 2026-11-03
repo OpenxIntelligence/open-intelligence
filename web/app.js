@@ -3,6 +3,7 @@
 let caseId = null;
 let active = null;
 let refreshSequence = 0;
+let boardSequence = 0;
 let renderedCaseId = null;
 let caseCatalog = [];
 let incomingBoardSequence = 0;
@@ -86,6 +87,7 @@ async function initialize() {
   } catch (err) { notice(err.message, true); }
 }
 async function renderIncomingBoard(cases) {
+  const boardSeq = ++boardSequence;
   const sequence = ++incomingBoardSequence;
   const list = el('incoming-list');
   clear('incoming-list');
@@ -112,6 +114,7 @@ async function renderIncomingBoard(cases) {
   clear('incoming-list');
   // Most recent source event first. No urgency is inferred: the demo data
   // has no triage field, so sorting is by recency of the record only.
+  if (boardSeq !== boardSequence) return;
   summaries.sort((a, b) => b.latestEvent.localeCompare(a.latestEvent));
   for (const summary of summaries) {
     const row = node('div', null, 'question');
@@ -215,9 +218,14 @@ async function refresh() {
     active = response;
     el('case-heading').textContent = active.case.label;
     render();
-    // Re-read all summaries: shared evidence changes may affect other cases.
-    // Each row is a fetched state, not a transactionally consistent cross-case snapshot.
-    await renderIncomingBoard(caseCatalog);
+    // The incoming board shows per-case counts for every case, so it goes
+    // stale after any write. Refresh it alongside the workspace panels.
+    api('/api/cases').then(cases => {
+      if (sequence !== refreshSequence || caseId !== requestedCase) return;
+      renderIncomingBoard(cases);
+    }).catch(err => {
+      if (sequence === refreshSequence && requestedCase === caseId) notice(err.message, true);
+    });
   } catch (err) {
     if (sequence === refreshSequence && requestedCase === caseId) notice(err.message, true);
   }
@@ -1058,10 +1066,11 @@ function renderJourney() {
 function renderOptions() {
   el('option-disclaimer').textContent = [active.option_disclaimer, active.option_receipt_disclaimer]
     .filter(x => x).join(' ');
+  const sameCase = renderedCaseId === caseId;
   const options = active.options || [];
   const fill = (id, items, labelFn, allowEmpty = false) => {
     const select = el(id);
-    const prior = select.value;
+    const prior = sameCase ? select.value : '';
     clear(id);
     if (allowEmpty) { const blank = node('option', '—'); blank.value = ''; select.append(blank); }
     for (const item of items) {
