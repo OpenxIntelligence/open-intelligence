@@ -104,7 +104,9 @@ def load(j: Journey, *, failures: int = 0, mode: str = 'http', route: str = 'inc
       if(config.mode==='chart-failure') probe.failCanonical=true;
     })();""".replace('CONFIG', config)
     j.cd.command('Page.addScriptToEvaluateOnNewDocument', {'source': script})
-    j.cd.command('Page.navigate', {'url': j.url + '#' + route})
+    # A fragment-only navigation can reuse the initial document and skip the
+    # new-document interceptor. The query forces a fresh app initialization.
+    j.cd.command('Page.navigate', {'url': j.url + '?startup-recovery=1#' + route})
     j.cd.wait('!!window.__startupProbe && document.body.classList.contains("ux-ready")', 'fresh startup document')
     j.cd.wait('window.__startupProbe.rosters >= 1', 'first real startup roster request')
     if mode.startswith('hold'):
