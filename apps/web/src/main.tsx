@@ -96,7 +96,16 @@ function App(){
        <p>Immutable original source identifiers, hashes and historical versions. These records are independently fictional.</p>
        <SourceIntake key={state.patient.patient_id+':'+state.sourceIndex.case_id} session={session} patientId={state.patient.patient_id} caseId={state.sourceIndex.case_id} sending={state.importOutcome==='sending'}/>
        <p>Source-reported statements are unreviewed quotations, not independently established clinical facts.</p>
-       <SourceReading index={state.sourceIndex} view={view} filters={filters} onFiltersChange={next=>setSourceFilters({scope:state.sourceIndex,...next})} busy={busy||state.recordsPhase.startsWith('loading')} onOpenOriginal={id=>void session.loadOriginal(id)}/>
+       <SourceReading index={state.sourceIndex} view={view} filters={filters}
+         onFiltersChange={next=>setSourceFilters({scope:state.sourceIndex,...next})}
+         busy={busy||state.recordsPhase.startsWith('loading')||state.worldPhase==='loading'}
+         onOpenOriginal={id=>void session.loadOriginal(id)}
+         onInvestigate={(id,line)=>{
+           const caseId=state.sourceIndex!.case_id;
+           session.dismissSourceQuotePacket();session.dismissSourceBrief();
+           navigate('Investigations');
+           void session.beginQuestionFromSourceReading(caseId,id,line);
+         }}/>
        <p className="muted">Amendments are preserved as separate versions. Use Investigations for source-linked questions and follow-up work, or Review for verification returns. Clinical approval is not supplied by this screen.</p>
       </section>}
      </div>}
