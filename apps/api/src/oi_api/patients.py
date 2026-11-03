@@ -670,10 +670,26 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
 
 
 
+    def final_question_authority(request: Request, initial: Principal,
+                                 patients: PostgresPatientRegistry,
+                                 patient_id: str, actions: tuple[str, ...]) -> None:
+        """Reauthenticate the exact principal and all needed question grants.
+
+        The domain service keeps the source-binding row lock through this
+        final check. A grant changed after it cannot be recalled from an
+        already returned HTTP payload; this is not distributed atomicity.
+        """
+        current = principal(request)
+        if (current.actor, current.organization, current.purpose) != (
+                initial.actor, initial.organization, initial.purpose):
+            raise PatientRegistryDenied("Source-question authority changed")
+        for action in ("patient_read", *actions):
+            records_authorized(patients, current, patient_id, action)
+
     @router.get("/{patient_id}/cases/{case_id}/questions",
                 response_model=SourceQuestionsList, responses=errors,
                 operation_id="list_source_questions_v1")
-    def list_source_questions(patient_id: str, case_id: str,
+    def list_source_questions(request: Request, patient_id: str, case_id: str,
                               context: Principal = Depends(principal)):
         if context.purpose != "operations":
             raise HTTPException(404, "Question intake unavailable")
@@ -682,10 +698,11 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
                 records_authorized(patients, context, patient_id, "question_read")
                 records_authorized(patients, context, patient_id, "source_read")
                 rows = PostgresSourceQuestions(patients).list(
-                    patient_id, case_id, organization=context.organization
+                    patient_id, case_id, organization=context.organization,
+                    recheck_authority=lambda: final_question_authority(
+                        request, context, patients, patient_id,
+                        ("question_read", "source_read")),
                 )
-                patients._allow(context.actor, patient_id,
-                                "question_read", context.purpose)
                 return SourceQuestionsList(patient_id=patient_id, case_id=case_id,
                                            questions=rows)
         except PatientRegistryDenied:
@@ -695,7 +712,7 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
                  response_model=SavedSourceQuestion, status_code=201,
                  responses={200: {"model": SavedSourceQuestion}, **errors},
                  operation_id="save_source_question_v1")
-    def save_source_question(patient_id: str, case_id: str,
+    def save_source_question(request: Request, patient_id: str, case_id: str,
                              payload: SaveSourceQuestion, response: Response,
                              context: Principal = Depends(principal)):
         if context.purpose != "operations":
@@ -712,6 +729,9 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
                     source_id=payload.source_id, source_line=payload.source_line,
                     expected_source_snapshot_sha256=payload.expected_source_snapshot_sha256,
                     expected_preflight_sha256=payload.expected_preflight_sha256,
+                    recheck_authority=lambda: final_question_authority(
+                        request, context, patients, patient_id,
+                        ("source_read", "composer_context_read", "question_create")),
                 )
         except PatientRegistryDenied:
             raise HTTPException(404, "Question intake unavailable") from None
@@ -722,7 +742,7 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
     @router.post("/{patient_id}/cases/{case_id}/composer/source-preflight",
                  response_model=PreparedSourceComposer, responses=errors,
                  operation_id="prepare_source_composer_v1")
-    def prepare_source_composer(patient_id: str, case_id: str,
+    def prepare_source_composer(request: Request, patient_id: str, case_id: str,
                                 payload: PrepareSourceComposer,
                                 context: Principal = Depends(principal)):
         if context.purpose != "operations":
@@ -743,8 +763,9 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
                 # An additional read-time policy check cannot validate later
                 # distributed actions, but it avoids releasing a prepared
                 # context when this request's authority is already withdrawn.
-                patients._allow(context.actor, patient_id,
-                                "composer_context_read", context.purpose)
+                final_question_authority(
+                    request, context, patients, patient_id,
+                    ("source_read", "composer_context_read"))
                 return PreparedSourceComposer(**result)
         except PatientRegistryDenied:
             raise HTTPException(404, "Source context unavailable") from None

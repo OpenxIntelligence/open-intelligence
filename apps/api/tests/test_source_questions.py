@@ -12,6 +12,8 @@ from unittest.mock import patch
 from sqlalchemy import text
 from http_support import running_server
 from oi_api.app import create_app
+from oi_api.composer_preflight import PostgresSourceComposerPreflight
+from oi_api.world_model_read import PostgresWorldModelRead
 from open_intelligence.postgres_registry import PostgresPatientRegistry
 
 from test_patients import TOKEN_A, TOKEN_B, request
@@ -286,6 +288,112 @@ class SourceQuestionHTTPTests(SourceFixture):
                     "WHERE event_type='investigation.question.created'"
                 )).scalar_one()
             self.assertEqual((count,events),(1,1))
+
+
+    def test_midflight_question_create_revocation_rolls_back_before_event(self):
+        """Grant withdrawn *during* locked source revalidation must deny write."""
+        with running_server(create_app(self.settings)) as base:
+            patient = self.setup_case(base)
+            source = self.ingest(base, patient)[1]["source_id"]
+            preflight = self.prepared(base, patient, source)
+            original = PostgresSourceComposerPreflight.preview_locked
+            observed = []
+            def revoke_during_preflight(subject, *args, **kwargs):
+                result = original(subject, *args, **kwargs)
+                observed.append(result["preflight_sha256"])
+                self.creds[0]["actions"].remove("question_create")
+                self.write()
+                return result
+            with patch.object(PostgresSourceComposerPreflight,
+                              "preview_locked", revoke_during_preflight):
+                status, body, _ = self.save(base, patient, preflight)
+            self.assertEqual(status, 404)
+            self.assertTrue(observed, "A real preflight must complete before revocation")
+            self.assertNotIn(preflight["question"], str(body))
+            with self.engine.connect() as db:
+                self.assertEqual(db.execute(text(
+                    "SELECT count(*) FROM investigation.source_questions"
+                )).scalar_one(), 0)
+                self.assertEqual(db.execute(text(
+                    "SELECT count(*) FROM identity.identity_domain_events "
+                    "WHERE event_type='investigation.question.created'"
+                )).scalar_one(), 0)
+            self.creds[0]["actions"].append("question_create")
+            self.write()
+            self.assertEqual(self.save(base, patient, preflight)[0], 201)
+
+    def test_midflight_question_list_revocation_hides_saved_history(self):
+        """A completed DB read is not permission to disclose after revocation."""
+        with running_server(create_app(self.settings)) as base:
+            patient = self.setup_case(base)
+            source = self.ingest(base, patient)[1]["source_id"]
+            prepared = self.prepared(base, patient, source)
+            self.assertEqual(self.save(base, patient, prepared)[0], 201)
+            original = PostgresWorldModelRead.read_locked
+            observed = []
+            def revoke_during_projection(subject, *args, **kwargs):
+                result = original(subject, *args, **kwargs)
+                observed.append(result["source_snapshot_sha256"])
+                self.creds[0]["actions"].remove("question_read")
+                self.write()
+                return result
+            with patch.object(PostgresWorldModelRead, "read_locked", revoke_during_projection):
+                status, body, _ = self.listing(base, patient)
+            self.assertTrue(observed)
+            self.assertEqual(status, 404)
+            self.assertNotIn(prepared["question"], str(body))
+            self.creds[0]["actions"].append("question_read")
+            self.write()
+            self.assertEqual(len(self.listing(base, patient)[1]["questions"]), 1)
+
+    def test_midflight_composer_preflight_revocation_hides_source_context(self):
+        """No prepared statement leaves an HTTP request with a withdrawn grant."""
+        with running_server(create_app(self.settings)) as base:
+            patient = self.setup_case(base)
+            source = self.ingest(base, patient)[1]["source_id"]
+            snapshot = self.world(base, patient)["source_snapshot_sha256"]
+            original = PostgresWorldModelRead.read
+            observed = []
+            def revoke_during_projection(subject, *args, **kwargs):
+                result = original(subject, *args, **kwargs)
+                observed.append(result["source_snapshot_sha256"])
+                self.creds[0]["actions"].remove("composer_context_read")
+                self.write()
+                return result
+            with patch.object(PostgresWorldModelRead, "read", revoke_during_projection):
+                status, body, _ = self.preflight(base, patient, source, snapshot)
+            self.assertTrue(observed)
+            self.assertEqual(status, 404)
+            self.assertNotIn(QUESTION, str(body))
+            self.creds[0]["actions"].append("composer_context_read")
+            self.write()
+            self.assertEqual(self.preflight(base, patient, source, snapshot)[0], 200)
+
+    def test_midflight_actor_substitution_does_not_inherit_previous_grants(self):
+        """Same token with a new actor cannot reuse old author's permission."""
+        with running_server(create_app(self.settings)) as base:
+            patient = self.setup_case(base)
+            source = self.ingest(base, patient)[1]["source_id"]
+            preflight = self.prepared(base, patient, source)
+            original = PostgresSourceComposerPreflight.preview_locked
+            def replace_actor(subject, *args, **kwargs):
+                result = original(subject, *args, **kwargs)
+                self.creds[0]["actor"] = "ACTOR-REPLACED"
+                self.write()
+                return result
+            with patch.object(PostgresSourceComposerPreflight,
+                              "preview_locked", replace_actor):
+                status, _, _ = self.save(base, patient, preflight,
+                                          request_key="ACTOR-CHANGED-INTENT")
+            self.assertEqual(status, 404)
+            with self.engine.connect() as db:
+                self.assertEqual(db.execute(text(
+                    "SELECT count(*) FROM investigation.source_questions"
+                )).scalar_one(), 0)
+            self.creds[0]["actor"] = "ACTOR-ALPHA"
+            self.write()
+            self.assertEqual(self.save(base, patient, preflight,
+                                       request_key="ACTOR-CHANGED-INTENT")[0], 201)
 
 
 if __name__=="__main__":
