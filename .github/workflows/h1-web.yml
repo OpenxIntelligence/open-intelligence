@@ -1,7 +1,7 @@
 name: H1 React patient workspace (fictional only)
 on:
   push:
-    branches: [feat/h1-react-patient-entry-20261102]
+    branches: [feat/h1-react-patient-entry-20261102, integration/h1-react-source-records-20261102]
   pull_request:
     paths: ['apps/web/**', '.github/workflows/h1-web.yml']
 permissions:
