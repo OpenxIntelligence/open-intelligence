@@ -14,6 +14,11 @@ from urllib.parse import parse_qs, urlsplit
 from tools.crossref_metadata import MetadataInputError, fetch_public_doi, project_work
 
 from .changes import changes_since_review
+from .enrichments import (
+    case_biological_context,
+    case_journey_stages,
+    case_visits,
+)
 from .investigation import (
     TEMPLATES,
     InvestigationError,
@@ -106,6 +111,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._static("app.js", "text/javascript; charset=utf-8")
             if path == "/mission.js":
                 return self._static("mission.js", "text/javascript; charset=utf-8")
+            if path == "/enrichments.js":
+                return self._static("enrichments.js", "text/javascript; charset=utf-8")
             if path == "/style.css":
                 return self._static("style.css", "text/css; charset=utf-8")
             if path == "/tokens.css":
@@ -166,6 +173,15 @@ class Handler(BaseHTTPRequestHandler):
             timeline = re.fullmatch(rf"/api/cases/{ID_PART}/timeline", path)
             if timeline:
                 return self._json(200, case_timeline(store, timeline[1]))
+            visits = re.fullmatch(rf"/api/cases/{ID_PART}/visits", path)
+            if visits:
+                return self._json(200, case_visits(store, visits[1]))
+            journey_stages = re.fullmatch(rf"/api/cases/{ID_PART}/journey-stages", path)
+            if journey_stages:
+                return self._json(200, case_journey_stages(store, journey_stages[1]))
+            bio_context = re.fullmatch(rf"/api/cases/{ID_PART}/biological-context", path)
+            if bio_context:
+                return self._json(200, case_biological_context(store, bio_context[1]))
             inv_list = re.fullmatch(rf"/api/cases/{ID_PART}/investigations", path)
             if inv_list:
                 return self._json(200, {"investigations": store.list_investigations(inv_list[1])})
