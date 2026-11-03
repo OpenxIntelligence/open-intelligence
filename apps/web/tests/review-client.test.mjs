@@ -1,6 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {RegistrySession} from '../.test-dist/registry-client.js';
+import {patientContinuity} from '../.test-dist/patient-continuity.js';
 
 const token='fictional_test_credential_000000000001';
 const patientId='PAT-EXAMPLE-001',caseId='CASE-ALPHA';
@@ -460,4 +461,43 @@ test(operation+' '+outcome+' clears source previews with the correct uncertain-r
   await s.retryReviewReturn();assert.deepEqual(bodies[1],bodies[0]);
   assert.deepEqual(s.snapshot().reviewReturn,saved(true));
  }
+});
+
+test('Overview recovery follows the case that the unchanged Review panel will open',async()=>{
+ let worldReads=0;const bodies=[];
+ const s=session(async(url,init)=>{
+  if(url.endsWith('/sources'))return response({...sourceIndex(),
+   case_id:url.includes('/cases/CASE-BETA/')?'CASE-BETA':caseId});
+  if(url.endsWith('/world-model'))return ++worldReads===1?response(world()):response({},503);
+  if(url===queuePath)return response(queue());
+  assert.equal(url,returnPath);bodies.push(JSON.parse(init.body));
+  return bodies.length===1?response({},503):response(saved(true));
+ });
+ await opened(s);
+ await s.loadSources('CASE-BETA');
+ await s.loadWorldModel(caseId);
+ await s.loadReviewQueue(caseId);
+ await s.returnReviewQuestion(questionId,fingerprint,reason);
+ const captured=s.snapshot().reviewReturnIntent;
+ assert.equal(s.snapshot().sourceIndex.case_id,'CASE-BETA');
+ assert.equal(patientContinuity(s.snapshot()).recoveryCaseId,caseId,
+  'A ready World Model is the Review panel winning case even if old record metadata remains');
+ await s.loadWorldModel(caseId);
+ const afterFailure=s.snapshot();
+ assert.equal(afterFailure.worldPhase,'error');assert.equal(afterFailure.worldModel,null);
+ assert.equal(afterFailure.sourceIndex.case_id,'CASE-BETA');
+ assert.equal(afterFailure.reviewReturnPhase,'unknown');assert.equal(afterFailure.reviewReturnIntent,captured);
+ assert.equal(patientContinuity(afterFailure).caseId,null);
+ assert.equal(patientContinuity(afterFailure).recoveryCaseId,null,
+  'Do not advertise ALPHA recovery when Review falls back to BETA and its inbox refresh would erase the exact ALPHA intent');
+ assert.equal(s.snapshot(),afterFailure,'Reading Overview must not mutate retained intent or session state');
+ assert.equal(bodies.length,1);
+ await s.loadSources(caseId);
+ assert.equal(s.snapshot().worldModel,null);
+ assert.equal(s.snapshot().sourceIndex.case_id,caseId);
+ assert.equal(patientContinuity(s.snapshot()).recoveryCaseId,caseId,
+  'A successful same-case source refresh restores discoverability without requiring a World Model');
+ assert.equal(s.snapshot().reviewReturnIntent,captured);assert.equal(bodies.length,1);
+ await s.retryReviewReturn();assert.deepEqual(bodies[1],bodies[0]);
+ assert.deepEqual(s.snapshot().reviewReturn,saved(true));
 });

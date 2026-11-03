@@ -161,3 +161,10 @@ h1:focus{outline:2px solid #174b48;outline-offset:5px}
 .skip{top:0;transform:translateY(calc(-100% - 20px));max-width:calc(100vw - 20px)}.skip:focus{transform:none;top:10px}
 @media(max-width:900px){.topbar{gap:12px}.reading-controls{width:100%}.reading-controls>div{flex:1 1 180px}}
 @media(max-width:600px){.source-filters{grid-template-columns:minmax(0,1fr);gap:0}.source-reading.clinical .source-dates,.source-reading.patient .source-dates{grid-template-columns:minmax(0,1fr)}.source-list .source-row{padding:12px}.connection{white-space:normal}.reading-controls{gap:8px}.reading-controls>div{flex:1 1 100%}.topbar{padding:12px 16px}}
+
+.continuity{margin-bottom:24px}
+.continuity-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:14px;margin:20px 0}
+.continuity-item{min-width:0;border:1px solid #c6d8c9;border-radius:8px;padding:16px;background:#f9fcf7}
+.continuity-item h3{font-size:17px;margin:0 0 12px}
+.continuity code,.continuity button{overflow-wrap:anywhere;white-space:normal}
+.continuity button{max-width:100%}

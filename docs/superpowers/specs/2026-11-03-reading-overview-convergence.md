@@ -26,7 +26,7 @@ The projection imports `ViewState` as a type only. Tests compile it directly; `r
 
 1. A contextual Investigations → Review → Questions round trip clears both prepared quotation and brief. Late actual responses cannot restore either after navigation.
 2. Overview resumes the same literal unfinished question and distinguishes unchecked/unavailable history from a checked empty result, current questions and source reassessment.
-3. An uncertain verification return remains discoverable after same-case source metadata refresh clears the World Model. The Overview link is neutral navigation; retry is explicit in the existing Review panel using the original intent.
+3. An uncertain verification return remains discoverable after same-case source metadata refresh clears the World Model. Its shortcut must match the case the existing Review panel will open, including fallback to older record metadata after a failed refresh. The Overview link is neutral navigation; retry is explicit in the existing Review panel using the original intent.
 4. Patient switch, disconnect, denied access, revoked case or contrary scope withhold the projection. No implicit clinical approval, delivery or notification is introduced.
 5. Existing source filters, reading preference, follow-through filters and drafts, keyboard focus, source amendment, actual downloads and narrow layouts continue to pass.
 6. All backend, session, domain, migration, contract, dependency and workflow files retain parent bytes and modes.
