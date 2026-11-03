@@ -71,6 +71,10 @@ def assert_read_only_recovery(before, after, expected_events):
     assert event_sequence in before["sequences"], "Access sequence absent"
     for sequence in before["sequences"].keys() - {event_sequence}:
         assert before["sequences"][sequence] == after["sequences"][sequence], "Business sequence changed"
+    prior_sequence = before["sequences"][event_sequence]
+    first_id = prior_sequence["last_value"] + int(prior_sequence["is_called"])
+    assert [row["id"] for row in fresh] == list(range(first_id, first_id + len(expected_events))), \
+        "Unaccounted access sequence allocation"
     assert after["sequences"][event_sequence] == {"last_value": max(current), "is_called": True}, \
         "Unexpected access sequence consumption"
 

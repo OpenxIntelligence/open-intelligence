@@ -102,6 +102,12 @@ class SourceRecoveryAssertions(unittest.TestCase):
                 changed["sequences"][sequence][field] = value
                 self.check(after=changed)
 
+    def test_rejects_unaccounted_sequence_allocation_before_read(self):
+        changed = deepcopy(self.after)
+        changed["tables"][EVENTS][-1]["id"] = 9
+        changed["sequences"][SEQUENCE]["last_value"] = 9
+        with self.assertRaises(AssertionError): self.check(after=changed)
+
     def test_rejects_empty_evidence_or_added_owner(self):
         with self.assertRaises(AssertionError): self.check(after=self.before, expected=[])
         changed = deepcopy(self.after)
