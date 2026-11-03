@@ -185,6 +185,41 @@ class PostgresSourceVersions:
         )
         return prepared
 
+    def _validated_original(self, case_id: str, source_id: str) -> tuple[dict, bytes]:
+        """Read the ONE source owner under caller's active case-binding lock.
+
+        Called by the source-linked DICOM custody port, not an independent
+        registry. It reuses the same literal original + amendment integrity
+        validator as the canonical source-original read operation.
+        """
+        row = self.registry._fetchone(
+            "SELECT raw,sha256,document_id,version,state,source_id,case_id,"
+            "kind,event_date,issued_at,specimen_id,supersedes_id "
+            "FROM clinical_source.source_versions "
+            "WHERE case_id=%s AND source_id=%s", (case_id, source_id),
+        )
+        if row is None:
+            raise PatientRegistryDenied("Source unavailable")
+        fields = ("raw", "sha256", "document_id", "version", "state", "source_id",
+                  "case_id", "kind", "event_date", "issued_at", "specimen_id", "supersedes_id")
+        stored = dict(zip(fields, row))
+        predecessor = None
+        if stored["supersedes_id"] is not None:
+            previous = self.registry._fetchone(
+                "SELECT source_id,case_id,document_id,version,kind,event_date,specimen_id,state "
+                "FROM clinical_source.source_versions "
+                "WHERE source_id=%s AND case_id=%s",
+                (stored["supersedes_id"], case_id),
+            )
+            if previous is not None:
+                predecessor = dict(zip(
+                    ("source_id", "case_id", "document_id", "version", "kind",
+                     "event_date", "specimen_id", "state"), previous,
+                ))
+        return stored, validate_original(
+            stored, requested_case_id=case_id, predecessor=predecessor,
+        )
+
     def original(self, patient_id: str, case_id: str, source_id: str, *,
                  organization: str, actor: str, purpose: str,
                  recheck_authority: Callable[[], None]) -> dict:
