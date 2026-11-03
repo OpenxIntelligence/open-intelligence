@@ -81,6 +81,7 @@ export class RegistrySession {
     this.#publish({worldModel:null,worldPhase:'idle',worldMessage:
       'Open an authorized patient and select a source case.'});
   }
+  clearWorldModel=()=>this.#resetWorld();
   #resetRecords(){
     this.#recordsRead++;this.#originalRead++;this.#worldRead++;
     this.#publish({records:null,recordsPhase:'idle',recordsMessage:'Open an authorized patient to inspect record requests.',
