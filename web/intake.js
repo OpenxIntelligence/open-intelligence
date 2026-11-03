@@ -22,6 +22,85 @@
     if (patients.length !== 1 || !/^Patient: [A-Z][A-Z0-9-]{1,39}$/.test(patients[0])) throw Error('The source needs one unambiguous Patient header.');
     return {text, declaredCase:patients[0].slice(9), byteLength:data.byteLength};
   }
+  const MAX_FILES=20, MAX_BATCH_BYTES=1048576;
+  // Single first-party intake owner: inspect exact bytes BEFORE all write attempts.
+  // Original identity is left untouched so mismatched subjects reach quarantine.
+  async function prepareBatch(files, caseId) {
+    if (!Array.isArray(files) || files.length < 1 || files.length > MAX_FILES ||
+        typeof caseId !== 'string' || !ID.test(caseId)) {
+      throw Error('Choose 1–20 fictional source files for an existing case.');
+    }
+    let size=0;
+    for (const file of files) {
+      if (!file || typeof file.name !== 'string' || !/\.txt$/i.test(file.name) ||
+          typeof file.arrayBuffer !== 'function' || !Number.isSafeInteger(file.size) ||
+          file.size < 1 || file.size > 65536) {
+        throw Error('Each source must have 1–65,536 original bytes.');
+      }
+      size+=file.size;
+      if(size>MAX_BATCH_BYTES) throw Error('The selected batch exceeds 1 MiB.');
+    }
+    const prepared=[];
+    for (const file of files) {
+      const original=new Uint8Array(await file.arrayBuffer());
+      if (original.byteLength!==file.size) throw Error('Original file size changed while inspecting.');
+      const record=decodeSource(original,file.name);
+      const roundtrip=new TextEncoder().encode(record.text);
+      if (roundtrip.length!==original.length ||
+          roundtrip.some((byte,index)=>byte!==original[index])) {
+        throw Error('Exact original UTF-8 bytes could not be preserved.');
+      }
+      prepared.push({name:file.name,caseId,...record});
+    }
+    return prepared;
+  }
+  // Reuse the canonical /imports endpoint. 4xx means rejected; 5xx, missing
+  // receipt, malformed response or network failure means UNKNOWN, not "failed".
+  // Never silently retry after an ambiguous outcome; earlier writes may persist.
+  async function importPreparedBatch(prepared,{caseId,send,isCurrent=()=>true,onReceipt=()=>{}}={}) {
+    if(!Array.isArray(prepared)||prepared.length<1||prepared.length>MAX_FILES ||
+       typeof caseId!=='string'||!ID.test(caseId)||typeof send!=='function'||
+       prepared.some(x=>x.caseId!==caseId||typeof x.text!=='string')) {
+      throw Error('A prepared, case-scoped batch and sender are required.');
+    }
+    const results=[];
+    let stop=false;
+    for (const item of prepared) {
+      let receipt;
+      if(stop||!isCurrent()) {
+        stop=true;
+        receipt={name:item.name,caseId,status:'not_attempted',
+          message:'Not sent. Reconcile the selected case and earlier receipts first.'};
+      } else {
+        let response=null;
+        try {response=await send(caseId,item.text);}catch (_) {/* status is unknown */}
+        const body=response?.body, status=response?.status;
+        if(status===200 && body && ['imported','duplicate'].includes(body.result) &&
+           Number.isSafeInteger(body.source_id)&&body.source_id>0 &&
+           Number.isSafeInteger(body.version)&&body.version>0) {
+          receipt={name:item.name,caseId,status:body.result,sourceId:body.source_id,
+            version:body.version,message:body.result==='duplicate'
+              ?'Existing exact original preserved; no duplicate created.'
+              :'Original source version preserved; clinical meaning is not established.'};
+        } else if(status===200 && body?.result==='quarantined' &&
+                  Number.isSafeInteger(body.quarantine_id)&&body.quarantine_id>0) {
+          receipt={name:item.name,caseId,status:'quarantined',
+            quarantineId:body.quarantine_id,
+            message:'Different declared patient: quarantined, with no findings attached.'};
+        } else if(Number.isInteger(status)&&status>=400&&status<500) {
+          receipt={name:item.name,caseId,status:'rejected',
+            message:'Local source validation rejected this file; no accepted receipt.'};
+        } else {
+          stop=true;
+          receipt={name:item.name,caseId,status:'unknown',
+            message:'This request may have been saved; inspect current originals before retrying. No rollback is claimed.'};
+        }
+      }
+      results.push(receipt);
+      onReceipt(receipt);
+    }
+    return results;
+  }
   function journey(state) {
     const current = (state?.sources || []).filter(s => s.state === 'current');
     const questions = state?.questions || [], snapshots = state?.snapshots || [];
@@ -42,11 +121,13 @@
     if (!createForm || !fileForm) return null;
     let creating=false, importing=false, sequence=0, pending=null, shownCase=null, hadSources=false;
     const tell=(id,text,error=false)=>{const target=$(id);target.textContent=text;target.dataset.error=String(error);};
-    const updateImport=()=>{$('source-upload-submit').disabled=importing || !pending || !$('source-upload-confirm').checked || !options.getCase();};
-    function resetScope() {
+    const updateImport=()=>{$('source-upload-submit').disabled=importing || !Array.isArray(pending) ||
+      !pending.length || !$('source-upload-confirm').checked || !options.getCase();};
+    function resetScope(retainReceipts=false) {
       sequence++;pending=null;$('source-file').value='';$('source-upload-confirm').checked=false;
       $('source-upload-preview').textContent='';$('source-preview-details').hidden=true;
-      tell('source-upload-status','Choose an original fictional text report. Nothing uploads automatically.');updateImport();
+      if(!retainReceipts)$('source-import-receipts').replaceChildren();
+      tell('source-upload-status','Choose original fictional reports. Nothing uploads automatically.');updateImport();
     }
     createForm.addEventListener('submit',async event=>{
       event.preventDefault();if(creating)return;
@@ -63,45 +144,84 @@
       finally {creating=false;$('case-create-submit').disabled=false;}
     });
     $('source-file').addEventListener('change',async()=>{
-      const file=$('source-file').files[0], caseId=options.getCase(), request=++sequence;
+      const files=[...$('source-file').files], selected=options.getCase(), token=++sequence;
       pending=null;$('source-upload-confirm').checked=false;updateImport();
+      $('source-import-receipts').replaceChildren();
       $('source-upload-preview').textContent='';$('source-preview-details').hidden=true;
-      if(!file)return;
+      if(!files.length)return;
       try {
-        if(!caseId)throw Error('Create or select a workspace before choosing a source.');
-        if(file.size>65536)throw Error('The source exceeds 65,536 bytes.');
-        const decoded=decodeSource(new Uint8Array(await file.arrayBuffer()),file.name);
-        if(request!==sequence || options.getCase()!==caseId)return;
-        pending={...decoded,caseId};
-        $('source-upload-preview').textContent=decoded.text;
+        if(!selected)throw Error('Create or select a fictional case before choosing originals.');
+        const batch=await prepareBatch(files,selected);
+        if(token!==sequence||options.getCase()!==selected)return;
+        pending=batch;
+        // One inspection surface, not another intake application. For a
+        // single file keep the exact plain-text preview unchanged.
+        $('source-upload-preview').textContent=batch.length===1 ? batch[0].text :
+          batch.map(file=>'FILE '+file.name+' ('+file.byteLength+' bytes)\n'+file.text)
+            .join('\n------ NEXT ORIGINAL ------\n');
         $('source-preview-details').hidden=false;
-        tell('source-upload-status',file.name+' · '+decoded.byteLength+' bytes · declared subject '+decoded.declaredCase+
-          (decoded.declaredCase!==caseId ? '. Different subject: the server will quarantine this, not attach its findings.' : '. Original text ready for inspection; not yet imported.'));
-      } catch(error) {if(request===sequence)tell('source-upload-status',error.message,true);}
+        const mismatched=batch.filter(item=>item.declaredCase!==selected).length;
+        tell('source-upload-status',batch.length+' original file(s) inspected · '+
+          batch.reduce((sum,item)=>sum+item.byteLength,0)+' bytes. '+mismatched+
+          ' declared subject(s) differ and will be quarantined by the original store. Review every file before confirming.');
+      } catch(error) {
+        if(token===sequence)tell('source-upload-status',error.message,true);
+      }
       updateImport();
     });
     $('source-upload-confirm').addEventListener('change',updateImport);
     fileForm.addEventListener('submit',async event=>{
       event.preventDefault();if(importing)return;
-      const selected=pending, request=sequence;
+      const batch=pending, token=sequence, selected=options.getCase();
       try {
-        if(!selected || selected.caseId!==options.getCase() || !$('source-upload-confirm').checked)throw Error('Choose a source for the current workspace and confirm it is independently authored fictional data.');
-        importing=true;updateImport();
-        const result=await options.api('/api/cases/'+encodeURIComponent(selected.caseId)+'/imports',{text:selected.text});
-        if(request!==sequence || options.getCase()!==selected.caseId)return;
-        resetScope();
-        tell('source-upload-status',result.result==='quarantined' ? 'Quarantined: the source belongs to a different case. No clinical findings were attached.' :
-          result.result==='duplicate' ? 'Already received: no duplicate source or findings created.' :
-          'Original source imported'+(result.version ? ' · version '+result.version : '')+'. Review the source-linked findings and timeline.');
-        await options.imported(selected.caseId);
-      } catch(error) {if(request===sequence)tell('source-upload-status',error.message,true);}
-      finally {importing=false;updateImport();}
+        if(!Array.isArray(batch)||!batch.length||
+           batch.some(item=>item.caseId!==selected)||
+           !$('source-upload-confirm').checked) {
+          throw Error('Inspect and confirm each fictional original for the current case first.');
+        }
+        importing=true;updateImport();$('source-file').disabled=true;$('case-picker').disabled=true;
+        $('source-import-receipts').replaceChildren();
+        const results=await importPreparedBatch(batch,{
+          caseId:selected,
+          isCurrent:()=>token===sequence&&options.getCase()===selected,
+          onReceipt:receipt=>{
+            if(token!==sequence||options.getCase()!==selected)return;
+            const li=document.createElement('li');
+            li.textContent=receipt.name+' — '+receipt.status+' · '+receipt.message;
+            li.dataset.status=receipt.status;
+            $('source-import-receipts').append(li);
+          },
+          send:async(id,text)=>{
+            const response=await fetch('/api/cases/'+encodeURIComponent(id)+'/imports',{
+              method:'POST',headers:{'Content-Type':'application/json'},
+              body:JSON.stringify({text}),cache:'no-store'});
+            let body=null;
+            try{body=await response.json();}catch(_){/* unknown outcome */}
+            return {status:response.status,body};
+          }
+        });
+        if(token!==sequence||options.getCase()!==selected)return;
+        const unknown=results.some(r=>r.status==='unknown'||r.status==='not_attempted');
+        const imported=results.filter(r=>r.status==='imported').length;
+        // A network error may follow a committed write; never blind-retry it.
+        resetScope(true);
+        tell('source-upload-status',results.length+' individual receipt(s) · '+imported+
+          ' newly imported. '+(unknown
+            ?'At least one outcome is unknown or unattempted; inspect the source ledger before retrying.'
+            :'Every attempted file has an explicit outcome. Inspect originals and their review status.'),
+          unknown);
+        await options.imported(selected);
+      } catch(error) {
+        if(token===sequence)tell('source-upload-status',error.message,true);
+      } finally {
+        importing=false;$('source-file').disabled=false;$('case-picker').disabled=false;updateImport();
+      }
     });
     function render(state) {
       const id=state?.case?.case_id || null;
       const hasSources=Boolean(state?.sources?.length);
       if(id!==shownCase || hasSources!==hadSources) {
-        resetScope();
+        resetScope(id===shownCase);
         $('workspace-start').open=!hasSources;
         $('source-intake').open=Boolean(state) && !hasSources;
         $('new-case-panel').open=!state;
@@ -120,7 +240,7 @@
     render(null);
     return {render,resetScope};
   }
-  const exported={casePayload,decodeSource,journey,mount};
+  const exported={casePayload,decodeSource,prepareBatch,importPreparedBatch,journey,mount};
   if(typeof module!=='undefined' && module.exports)module.exports=exported;
   root.OIIntake=exported;
 })(globalThis);

@@ -206,6 +206,34 @@ def main():
    })()""")
    cd.wait("document.querySelector('#case-heading').textContent==='Fictional case Start' && document.body.dataset.workspaceState==='ready'",
            'original case history reselected after denied switch')
+   # The same first-party intake owner must now support multiple fictional
+   # originals, while this clinical Composer v2 and governed review stack
+   # retains its original source authority and review history.
+   duplicate=Path(tmp)/'batch-amended-duplicate.txt';duplicate.write_bytes(AMENDED)
+   foreign=Path(tmp)/'batch-foreign-subject.txt'
+   foreign.write_bytes(ORIGINAL.replace(b'Patient: CASE-START',b'Patient: CASE-OTHER'))
+   cd.evaluate("document.querySelector('#source-intake').open=true")
+   dom=cd.command('DOM.getDocument')
+   input_node=cd.command('DOM.querySelector',{
+      'nodeId':dom['root']['nodeId'],'selector':'#source-file'})
+   cd.command('DOM.setFileInputFiles',{'files':[str(duplicate),str(foreign)],
+                                      'nodeId':input_node['nodeId']})
+   cd.wait("document.querySelector('#source-file').files.length===2 && !document.querySelector('#source-preview-details').hidden",
+           'two fictional originals inspected before any batch writes')
+   assert cd.evaluate("document.querySelector('#source-upload-preview').textContent.includes('batch-amended-duplicate.txt') && document.querySelector('#source-upload-preview').textContent.includes('batch-foreign-subject.txt')")
+   assert not cd.evaluate("document.querySelector('#source-import-receipts').children.length")
+   cd.evaluate("document.querySelector('#source-upload-confirm').click();document.querySelector('#source-upload-form').requestSubmit()")
+   cd.wait("document.querySelector('#source-import-receipts').children.length===2",
+           'separate original batch-import receipts')
+   receipt_status=cd.evaluate("[...document.querySelector('#source-import-receipts').children].map(n=>n.dataset.status).join(',')")
+   assert receipt_status=='duplicate,quarantined',receipt_status
+   after_batch=json.load(urlopen(url+'api/cases/'+CASE+'/state'))
+   assert len(after_batch['sources'])==2,'batch duplicate created a new source version'
+   assert len(after_batch['quarantines'])==1,'foreign patient was not quarantined'
+   assert len(after_batch['snapshots'])==2,'batch changed the original review lineage'
+   assert json.load(urlopen(url+'api/cases/CASE-OTHER/state'))['sources']==[], \
+      'foreign report incorrectly attached to the other case'
+   assert next(s for s in after_batch['sources'] if s['state']=='current')['sha256']==hashlib.sha256(AMENDED).hexdigest()
    cd.command('Emulation.setDeviceMetricsOverride',{'width':1440,'height':1000,'deviceScaleFactor':1,'mobile':False})
    artifacts=os.environ.get('OI_INTAKE_ARTIFACT_DIR')
    if artifacts:

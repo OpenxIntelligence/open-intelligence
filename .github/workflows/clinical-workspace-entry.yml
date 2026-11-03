@@ -3,7 +3,7 @@ on:
   push:
     branches: [integration/clinical-workspace-entry-20261102]
   pull_request:
-    branches: [integration/pwm-v2-report-review-20261102]
+    branches: [integration/pwm-v2-report-review-20261102, integration/clinical-workspace-entry-20261102]
 permissions:
   contents: read
 jobs:
