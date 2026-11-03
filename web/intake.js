@@ -42,7 +42,10 @@
     if (!createForm || !fileForm) return null;
     let creating=false, importing=false, sequence=0, pending=null, shownCase=null, hadSources=false;
     const tell=(id,text,error=false)=>{const target=$(id);target.textContent=text;target.dataset.error=String(error);};
-    const updateImport=()=>{$('source-upload-submit').disabled=importing || !pending || !$('source-upload-confirm').checked || !options.getCase();};
+    const updateImport=()=>{
+      $('source-upload-submit').disabled=importing || !pending || !$('source-upload-confirm').checked || !options.getCase();
+      $('source-discard-button').disabled=importing || !$('source-file').files.length;
+    };
     function resetScope() {
       sequence++;pending=null;$('source-file').value='';$('source-upload-confirm').checked=false;
       $('source-upload-preview').textContent='';$('source-preview-details').hidden=true;
@@ -79,6 +82,14 @@
           (decoded.declaredCase!==caseId ? '. Different subject: the server will quarantine this, not attach its findings.' : '. Original text ready for inspection; not yet imported.'));
       } catch(error) {if(request===sequence)tell('source-upload-status',error.message,true);}
       updateImport();
+    });
+    $('source-discard-button').addEventListener('click',()=>{
+      // Discard affects only a selected local File/preview. It never deletes
+      // an imported source, a prior source version, or an evidence receipt.
+      // Do not discard in-flight data after the user has submitted an import.
+      if (importing) return;
+      resetScope();
+      tell('source-upload-status','Selected original discarded locally. No record was imported.');
     });
     $('source-upload-confirm').addEventListener('change',updateImport);
     fileForm.addEventListener('submit',async event=>{

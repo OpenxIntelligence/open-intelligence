@@ -64,6 +64,37 @@ def main():
     assert cd.evaluate("document.querySelector('#source-upload-preview').textContent")==raw.decode('utf-8')
     assert cd.evaluate("document.querySelectorAll('#source-upload-preview script').length") == 0
     if name=='original.txt':
+     # A selected but unsubmitted original is also unfinished work.
+     # Changing patient must not silently discard the local File/preview;
+     # the user needs an explicit discard action before proceeding.
+     cd.evaluate("""(() => {
+       const picker=document.querySelector('#case-picker');
+       picker.value='CASE-OTHER';
+       picker.dispatchEvent(new Event('change'));
+     })()""")
+     assert cd.evaluate("document.querySelector('#case-picker').value==='CASE-START'"), 'unsubmitted original did not block patient switch'
+     assert cd.evaluate("document.querySelector('#source-file').files.length===1"), 'patient switch discarded unsubmitted source file'
+     assert cd.evaluate("document.querySelector('#source-upload-preview').textContent.length>0 && !document.querySelector('#source-preview-details').hidden"), 'patient switch erased unsubmitted source preview'
+     cd.evaluate("document.querySelector('#source-discard-button').click()")
+     assert cd.evaluate("document.querySelector('#source-file').files.length===0 && document.querySelector('#source-preview-details').hidden"), 'explicit discard did not clear original file'
+     cd.evaluate("""(() => {
+       const picker=document.querySelector('#case-picker');
+       picker.value='CASE-OTHER';
+       picker.dispatchEvent(new Event('change'));
+     })()""")
+     cd.wait("document.querySelector('#case-heading').textContent==='Fictional case Other'",'explicit discard permits patient switch')
+     assert json.load(urlopen(url+'api/cases/CASE-OTHER/state'))['sources']==[], 'discard must not import to the other patient'
+     cd.evaluate("""(() => {
+       const picker=document.querySelector('#case-picker');
+       picker.value='CASE-START';
+       picker.dispatchEvent(new Event('change'));
+     })()""")
+     cd.wait("document.querySelector('#case-heading').textContent==='Fictional case Start'",'return to original case for import')
+     dom=cd.command('DOM.getDocument')
+     node=cd.command('DOM.querySelector',{'nodeId':dom['root']['nodeId'],'selector':'#source-file'})
+     cd.command('DOM.setFileInputFiles',{'files':[str(file)],'nodeId':node['nodeId']})
+     cd.wait("!document.querySelector('#source-preview-details').hidden",'original source reinspected after explicit discard')
+     assert cd.evaluate("document.querySelector('#source-upload-preview').textContent")==raw.decode('utf-8')
      # A veto must preserve BOTH the unsaved question and the inspected file,
      # including the exact source preview and selected local File.
      cd.evaluate("""(() => {

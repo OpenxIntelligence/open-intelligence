@@ -60,11 +60,16 @@ async function initialize() {
     await renderIncomingBoard(cases);
     picker.addEventListener('change', () => {
       // An unfinished narrative must never silently become attached to another case.
-      if ((['question-text', 'draft-observations', 'draft-summary', 'draft-assumptions',
-            'evidence-rationale', 'evidence-withdraw-reason', 'option-description']
-            .some(id => el(id).value.trim()))) {
+      // Inspecting an original File is unfinished case-scoped work even
+      // before the user checks the explicit fictional-data import box.
+      // It must not disappear as a side effect of changing patients.
+      const unsentOriginal = Boolean(el('source-file')?.files?.length);
+      if (unsentOriginal ||
+          ['question-text', 'draft-observations', 'draft-summary', 'draft-assumptions',
+           'evidence-rationale', 'evidence-withdraw-reason', 'option-description']
+            .some(id => el(id).value.trim())) {
         picker.value = caseId;
-        notice('Save or explicitly clear the unfinished investigation draft or question before switching cases.', true);
+        notice('Save or explicitly clear the unfinished investigation draft or question, or discard the unsubmitted original source before switching cases.', true);
         return;
       }
       cancelSourceRead();
