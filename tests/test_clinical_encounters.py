@@ -470,5 +470,27 @@ class ClinicalEncounterTests(unittest.TestCase):
         self.assertEqual(self.store.db.execute('SELECT COUNT(*) FROM clinical_note_versions').fetchone()[0], 2)
 
 
+    def test_corrupted_note_digest_blocks_draft_revision(self):
+        """An invalid stored digest cannot be inherited by a new note draft."""
+        encounter_id = self.begin()['encounter_id']
+        self.ops.write_note('CASE-ONE', encounter_id, 'NOTE-001',
+                            'Fictional note before digest corruption', expected_version=0,
+                            request_key='req-digest-base-001', **self.actor)
+        with self.store.db:
+            self.store.db.execute('DROP TRIGGER clinical_note_versions_block_update')
+            self.store.db.execute('UPDATE clinical_note_versions SET sha256=? WHERE version=1',
+                                  ('0' * 64,))
+        before = self.store.db.execute('SELECT COUNT(*) FROM events').fetchone()[0]
+        with self.assertRaisesRegex(ClinicalConflict, 'integrity'):
+            self.ops.write_note('CASE-ONE', encounter_id, 'NOTE-001',
+                                'New fictional note that must not be persisted',
+                                expected_version=1, request_key='req-digest-update-001', **self.actor)
+        self.assertEqual(self.store.db.execute('SELECT COUNT(*) FROM events').fetchone()[0], before)
+        self.assertEqual(self.store.db.execute('SELECT COUNT(*) FROM clinical_note_versions').fetchone()[0], 1)
+        self.assertEqual(self.store.db.execute(
+            "SELECT COUNT(*) FROM clinical_encounter_commands WHERE request_key=?",
+            ('req-digest-update-001',)).fetchone()[0], 0)
+
+
 if __name__ == '__main__':
     unittest.main()
