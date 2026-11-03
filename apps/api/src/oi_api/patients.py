@@ -90,17 +90,48 @@ class RecordRequestReceipt(Contract):
     duplicate: bool
 
 
+class ReceiveRecordRequest(Contract):
+    synthetic: StrictBool
+    case_id: str = Field(min_length=6, max_length=40,
+                         pattern=r"^CASE-[A-Z0-9-]{1,35}$")
+    source_id: str = Field(pattern=r"^SRC-[0-9A-F]{32}$")
+
+    @field_validator("synthetic")
+    @classmethod
+    def fictional_only(cls, value):
+        if value is not True:
+            raise ValueError("Only fictional original-source receipts are allowed")
+        return value
+
+
+class ReceivedRecordRequest(Contract):
+    request_id: str
+    source_id: str
+    version: int = Field(ge=1)
+    duplicate: bool
+
+
+class ReceivedSourceReference(Contract):
+    case_id: str
+    source_id: str
+    version: int = Field(ge=1)
+    sha256: str
+
+
 class RecordRequest(Contract):
     request_id: str
     patient_id: str
     kind: str
     record_label: str
     source_organization: str
-    status: Literal["requested", "cancelled"]
+    status: Literal["requested", "received", "cancelled"]
     revision: int = Field(ge=1)
     created_at: datetime
     updated_at: datetime
-    receipt_status: Literal["unavailable_until_canonical_source_contract"]
+    receipt_status: Literal["not_received", "source_current_unreviewed",
+                            "source_superseded_reconciliation_required",
+                            "binding_revoked_not_usable"]
+    source_reference: ReceivedSourceReference | None
     external_request_sent: Literal[False]
 
 
@@ -109,7 +140,7 @@ class RecordRequests(Contract):
     requests: list[RecordRequest]
     synthetic: Literal[True] = True
     external_request_sent: Literal[False] = False
-    source_receipts_enabled: Literal[False] = False
+    source_receipts_enabled: Literal[True] = True
 
 
 
@@ -272,7 +303,7 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
                         return False
                     if action == "patient_create":
                         return subject == context.organization
-                    if action not in {"patient_read", "record_request_create", "record_request_read", "record_request_cancel", "case_binding_create", "case_binding_read", "case_binding_revoke", "source_import", "source_read", "source_original_read"} or subject not in context.patient_ids:
+                    if action not in {"patient_read", "record_request_create", "record_request_read", "record_request_cancel", "record_request_receive", "case_binding_create", "case_binding_read", "case_binding_revoke", "source_import", "source_read", "source_original_read"} or subject not in context.patient_ids:
                         return False
                     cursor = connection.cursor()
                     try:
@@ -341,8 +372,16 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
         try:
             with registry(context) as patients:
                 records_authorized(patients, context, patient_id, "record_request_read")
+                # Request-read permission alone exposes receipt state, not
+                # source identifiers. Original source metadata requires its
+                # independent source_read action; original bytes have a third.
+                source_grant = "source_read" in context.actions
+                if source_grant:
+                    patients._allow(context.actor, patient_id,
+                                    "source_read", context.purpose)
                 records = PostgresRecordRequests(patients).list(
-                    patient_id, organization=context.organization)
+                    patient_id, organization=context.organization,
+                    disclose_source=source_grant)
                 return RecordRequests(patient_id=patient_id, requests=records)
         except PatientRegistryDenied:
             raise HTTPException(404, "Patient unavailable") from None
@@ -379,6 +418,27 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
         except PatientRegistryDenied:
             raise HTTPException(404, "Patient unavailable") from None
         return RecordRequestReceipt(**result)
+
+
+    @router.post("/{patient_id}/record-requests/{request_id}/receive",
+                 response_model=ReceivedRecordRequest, status_code=201,
+                 responses={200: {"model": ReceivedRecordRequest}, **errors},
+                 operation_id="receive_original_record_request_v1")
+    def receive_record(patient_id: str, request_id: str,
+                       payload: ReceiveRecordRequest, response: Response,
+                       context: Principal = Depends(principal)):
+        try:
+            with registry(context) as patients:
+                records_authorized(patients, context, patient_id, "record_request_receive")
+                records_authorized(patients, context, patient_id, "source_read")
+                result = PostgresRecordRequests(patients).receive(
+                    patient_id, request_id, payload.case_id, payload.source_id,
+                    organization=context.organization, actor=context.actor,
+                    purpose=context.purpose)
+        except PatientRegistryDenied:
+            raise HTTPException(404, "Record request or source unavailable") from None
+        response.status_code = 200 if result["duplicate"] else 201
+        return ReceivedRecordRequest(**result)
 
 
     @router.get("/{patient_id}/case-bindings", response_model=CaseBindingList,
