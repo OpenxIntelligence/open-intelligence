@@ -81,7 +81,7 @@ class SourceBoundWadoTests(unittest.TestCase):
                          self.binding.original_dicom_sha256)
         self.assertFalse(result["caller_authenticated"])
         self.assertFalse(result["case_authorization_verified"])
-        self.assertFalse(result["upstream_object_access_revoked"])
+        self.assertFalse(result["upstream_revocation_verified"])
         self.assertFalse(result["pacs_adoption_approved"])
         self.assertEqual(result["clinical_review_state"], "not_performed")
         self.assertEqual(self.store.state("CASE-ALPHA"), before)

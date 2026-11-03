@@ -141,7 +141,7 @@ def read_source_bound_wado(
         "retrieved_original_dicom_sha256": digest,
         "original_bytes_verified": True,
         "source_current_before_and_after": True,
-        "upstream_object_access_revoked": False,
+        "upstream_revocation_verified": False,
         "caller_authenticated": False,
         "case_authorization_verified": False,
         "clinical_review_state": "not_performed",

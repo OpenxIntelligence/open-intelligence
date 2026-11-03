@@ -154,6 +154,10 @@ def multipart_dicom_parts(media_type: str, body: bytes) -> list[bytes]:
     message = BytesParser(policy=policy.default).parsebytes(headers + body)
     if message.get_content_type() != "multipart/related" or not message.is_multipart():
         raise InvalidInput("WADO response was not multipart/related")
+    if message.defects or (message.epilogue is not None and message.epilogue.strip()):
+        # The Python email parser tolerates arbitrary bytes after the closing
+        # MIME boundary. For original DICOM evidence, reject such ambiguity.
+        raise InvalidInput("Malformed WADO multipart framing or trailing data")
     items = list(message.iter_parts())
     if len(items) not in (1, 2):
         raise InvalidInput("WADO response has unexpected object count")
