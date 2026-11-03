@@ -12,11 +12,22 @@ Repository context: Meta Global AI Developer Hackathon, Indie track.
 
 ## Current status
 
+**3 November 2026 checkpoint:** main was observed at
+[`c4798ae85004713593f83458abd2102be6729095`](https://github.com/OpenxIntelligence/open-intelligence/commit/c4798ae85004713593f83458abd2102be6729095)
+and remains the Python/SQLite reference. The current H1 work continues the
+existing [draft #354](https://github.com/OpenxIntelligence/open-intelligence/pull/354):
+reviewed text/PDF originals and recoverable comparisons are locally composed with
+#368 review/evidence continuity, #369 strict task dates, #362 restored-document
+HTTP acceptance and #367 shared CI coverage. **Local composition verified;
+exact combined hosted acceptance pending.** The
+[current candidate record](docs/engineering/H1_CONNECTED_RIGHTS_CONVERGENCE.md#current-candidate--reviewed-document-convergence-in-354)
+pins every input and separates current acceptance from historical receipts.
+
 The repository now contains an **original, local synthetic-only Python/SQLite research prototype**, alongside the product plan and execution backlog. Its bounded case-workspace features include source-preserving report versions, authored findings with source-line references, persistent investigation questions and review drafts, amendment-triggered staleness, an event chronology, fictional evidence/applicability records, and an optional DOI-only bibliographic metadata view. These are demonstration and engineering capabilities, **not a clinically validated application**.
 
 The local prototype has **no real-patient authorization, verified clinician identity, production access control, clinical inference, treatment recommendations, comprehensive EHR interoperability, or licensed full-text literature analysis**. Do not enter actual patient records or treat demo acknowledgments as clinical sign-off. Scientific model and production architecture choices remain under review.
 
-**Inspected main baseline (2 November 2026):** commit [`52ea683`](https://github.com/OpenxIntelligence/open-intelligence/commit/52ea683fbe3537b17a05066dceff2ba01f758c5d). The application baseline ran 236 synthetic tests successfully during this audit. Current implementation, proposed changes, unmerged domain work and verification limits are distinguished in [implementation status](docs/IMPLEMENTATION_STATUS.md). Test success is not independent clinical validation.
+**Historical main baseline (2 November 2026):** commit [`52ea683`](https://github.com/OpenxIntelligence/open-intelligence/commit/52ea683fbe3537b17a05066dceff2ba01f758c5d). That application baseline ran 236 synthetic tests successfully during its audit; this is not a new run of current main or the H1 candidate. Current implementation, proposed changes, unmerged domain work and verification limits are distinguished in [implementation status](docs/IMPLEMENTATION_STATUS.md). Test success is not independent clinical validation.
 
 **Bounded implementation target:** Python/FastAPI/PostgreSQL with React/Vite/TypeScript; Next.js is excluded. This is the selected migration target, not the stack of the existing Python/SQLite prototype.
 
@@ -31,7 +42,7 @@ source owners #85/#148 and is stacked on #162/#137. Local verification passed
 evidence belongs to the exact draft-PR head. Those counts describe the historical
 identity milestone, before the subsequent connected workspace.
 
-**Current unmerged H1 continuation:** [draft #307](https://github.com/OpenxIntelligence/open-intelligence/pull/307)
+**Historical H1 convergence — #307:** [draft #307](https://github.com/OpenxIntelligence/open-intelligence/pull/307)
 converges #298's metadata citations and follow-through with #300's case-owned
 fictional originals, human-authored comparisons and immutable reports on the same
 canonical question. Both rights boundaries and migration histories remain intact.
@@ -43,7 +54,9 @@ an unmerged engineering candidate, with no clinical approval or deployment claim
 
 **Reviewed document continuation:** [draft #323](https://github.com/OpenxIntelligence/open-intelligence/pull/323) adds ordinary text/PDF preview, exact original custody, immutable passage corrections and Records downloads on #315. [Scope and verification](docs/engineering/H1_REVIEWED_DOCUMENTS.md) distinguish this implemented intake from the remaining manual-provenance integration into questions and reports.
 
-**Connected document candidate:** [draft #349](https://github.com/OpenxIntelligence/open-intelligence/pull/349) composes #323 with #335's source reading, evidence reports and follow-up. Text/PDF originals have a separate, initially collapsed Records control that retains local selections while collapsed. The [continuity record](docs/engineering/H1_EVIDENCE_CONTINUITY.md) and PR distinguish the tests-first failure, combined verification and remaining boundaries. Manual selections remain separately attributed and excluded from structured-source investigation snapshots.
+**Document integration checkpoint — #349:** [draft #349](https://github.com/OpenxIntelligence/open-intelligence/pull/349) composes #323 with #335's source reading, evidence reports and follow-up. Text/PDF originals have a separate, initially collapsed Records control that retains local selections while collapsed. The [continuity record](docs/engineering/H1_EVIDENCE_CONTINUITY.md) and PR distinguish the tests-first failure, combined verification and remaining boundaries. Manual selections remain separately attributed and excluded from structured-source investigation snapshots.
+
+**Preserved #354 foundation:** [draft #354](https://github.com/OpenxIntelligence/open-intelligence/pull/354) already combined that document workspace with #348/#359's recoverable in-memory comparison drafts and #339's dependency identity checks at `d9b81f08a97998e8f95d2a1cc7c43b4165e99862`. Drafts resume only after fresh matching access; uncertain submissions retain their exact retry intent. The current continuation above preserves those owners and adds the existing donor corrections. Manual-document provenance in structured questions/reports, clinical validation and production identity remain open.
 
 ## Start here
 

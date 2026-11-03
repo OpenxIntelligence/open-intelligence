@@ -1,8 +1,10 @@
 """Actual React/HTTP/PostgreSQL human evidence workflow; fictional authored inputs.
 
-The observer only records actual responses. One deliberate lost response occurs
-after the real server commits, to verify exact recovery through the visible UI.
-No patient/evidence/report response is fabricated or substituted.
+The observer records actual server responses. Deliberate post-commit delivery
+faults test exact recovery: one response is lost, and one real 201 assessment
+response is delivered with its duplicate bit contradicted. The latter is an
+explicit client fault injection, not genuine server behavior. Originals, writes,
+permission checks, persisted comparisons and all other responses remain real.
 """
 import base64
 import hashlib
@@ -36,7 +38,7 @@ AMENDED_SUPPORT = (
 
 _OBSERVE = r"""() => {
   const fetch=window.fetch, create=URL.createObjectURL;
-  const state={responses:[],blobs:0,loseAssessment:false};
+  const state={responses:[],blobs:0,loseAssessment:false,contradictAssessment:false,faults:[]};
   state.restore=()=>{window.fetch=fetch;URL.createObjectURL=create;delete window.__oiAuthoredEvidenceChecks;};
   URL.createObjectURL=function(blob){state.blobs++;return create.call(this,blob);};
   window.fetch=async(input,init)=>{
@@ -45,9 +47,17 @@ _OBSERVE = r"""() => {
     const result=await fetch.call(window,input,init);
     if(/\/questions\/QUESTION-[0-9A-F]{32}\/evidence(?:[/-]|$)/.test(path)){
       const payload=await result.clone().json();
-      state.responses.push({path,method,status:result.status,payload});
+      state.responses.push({path,method,status:result.status,payload,body:method==='POST'?String(init?.body??''):null});
       if(state.loseAssessment&&method==='POST'&&path.endsWith('/evidence-assessments')&&result.ok){
         state.loseAssessment=false;throw new TypeError('Simulated loss after actual evidence commit');
+      }
+      if(state.contradictAssessment&&method==='POST'&&path.endsWith('/evidence-assessments')&&result.status===201){
+        state.contradictAssessment=false;
+        state.faults.push({kind:'contradictory_duplicate_after_real_commit',path,
+          actual_status:result.status,actual_duplicate:payload.duplicate,
+          delivered_status:201,delivered_duplicate:true,assessment_id:payload.assessment_id});
+        return new Response(JSON.stringify({...payload,duplicate:true}),{
+          status:201,headers:{'Content-Type':'application/json'}});
       }
     }
     return result;
@@ -145,25 +155,81 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
         assert evidence['statement_line'] == statement_line and evidence['statement'] == statement
         return evidence
 
-    def assess(evidence, relation, quote, rationale, *, lose_response=False):
+    def assess(evidence, relation, quote, rationale, *, lose_response=False, contradictory_response=False):
+        post_count = len([r for r in responses() if r['method'] == 'POST'])
         click(f'[data-testid=evidence-version][data-evidence-id="{evidence["evidence_id"]}"] [data-testid=evidence-select]')
         value('[data-testid=evidence-quote]', quote)
         value('[data-testid=evidence-relation]', relation)
         value('[data-testid=evidence-applicability]', 'limited')
         value('[data-testid=evidence-rationale]', rationale)
+        assert len([r for r in responses() if r['method'] == 'POST']) == post_count
+        # Editing is local. An unchanged fresh read must retain the exact draft,
+        # and leaving the component must not silently discard it.
+        prior = len(responses())
+        click('[data-testid=evidence-refresh]')
+        cd.wait('window.__oiAuthoredEvidenceChecks.responses.length>' + str(prior)
+                + " && document.querySelector('[data-testid=evidence-rationale]')?.value==="
+                + json.dumps(rationale), 'unchanged access recheck preserves comparison draft')
+        assert cd.evaluate("document.querySelector('[data-testid=evidence-quote]').value") == quote
+        if lose_response:
+            cd.evaluate("document.querySelector('[data-testid=evidence-draft-status]').scrollIntoView()")
+            shot = cd.command('Page.captureScreenshot', {'format': 'png'})
+            (artifacts / 'h1-comparison-draft-desktop.png').write_bytes(base64.b64decode(shot['data']))
+        navigate('Overview')
+        assert cd.evaluate("!document.querySelector('[data-testid=evidence-rationale]')")
+        navigate('Investigations')
+        cd.wait("Boolean(document.querySelector('[data-testid=evidence-draft-resume]'))",
+                'unfinished draft offers explicit reauthorization after navigation')
+        if lose_response:
+            viewport = cd.evaluate('({width:window.innerWidth,height:window.innerHeight})')
+            cd.command('Emulation.setDeviceMetricsOverride', {'width': 390, 'height': 844,
+                       'deviceScaleFactor': 1, 'mobile': False})
+            cd.wait('window.innerWidth===390', 'comparison draft narrow viewport')
+            assert cd.evaluate('document.documentElement.scrollWidth<=window.innerWidth+1'), 'Draft resume overflows 390px'
+            assert not cd.evaluate("Boolean(document.querySelector('[data-testid=evidence-rationale]'))")
+            cd.evaluate("document.querySelector('[data-testid=evidence-draft-status]').scrollIntoView()")
+            shot = cd.command('Page.captureScreenshot', {'format': 'png'})
+            (artifacts / 'h1-comparison-resume-mobile.png').write_bytes(base64.b64decode(shot['data']))
+            cd.command('Emulation.setDeviceMetricsOverride', {**viewport, 'deviceScaleFactor': 1, 'mobile': False})
+        click('[data-testid=evidence-draft-resume]')
+        cd.wait("document.querySelector('[data-testid=evidence-rationale]')?.value==="
+                + json.dumps(rationale), 'matching question restores comparison inputs')
+        assert cd.evaluate("document.querySelector('[data-testid=evidence-quote]').value") == quote
+        assert cd.evaluate("document.querySelector('[data-testid=evidence-relation]').value") == relation
+        assert cd.evaluate("document.querySelector('[data-testid=evidence-applicability]').value") == 'limited'
+        assert len([r for r in responses() if r['method'] == 'POST']) == post_count
         before = len(responses())
+        assert not (lose_response and contradictory_response)
         if lose_response:
             cd.evaluate('window.__oiAuthoredEvidenceChecks.loseAssessment=true')
+        if contradictory_response:
+            cd.evaluate('window.__oiAuthoredEvidenceChecks.contradictAssessment=true')
         click('[data-testid=evidence-assess]')
-        if lose_response:
+        if lose_response or contradictory_response:
             cd.wait("Boolean(document.querySelector('[data-testid=evidence-write-retry]'))",
                     'uncertain committed assessment exposes exact recovery')
             first = last('/evidence-assessments', 'POST', 201)
+            assert first['duplicate'] is False, 'real server must have created the assessment'
+            if contradictory_response:
+                fault = cd.evaluate('window.__oiAuthoredEvidenceChecks.faults.at(-1)')
+                assert fault['assessment_id'] == first['assessment_id']
+                assert fault['actual_duplicate'] is False and fault['delivered_duplicate'] is True
+                assert cd.evaluate("document.querySelector('[data-testid=evidence-draft-discard]')?.disabled===true")
+                assert not cd.evaluate("Boolean(document.querySelector('[data-testid=evidence-rationale]'))")
+                assert 'unknown' in cd.evaluate("document.querySelector('[data-testid=evidence-write-status]').textContent").lower()
+                cd.evaluate("document.querySelector('[data-testid=evidence-write-retry]').scrollIntoView()")
+                shot = cd.command('Page.captureScreenshot', {'format': 'png'})
+                (artifacts / 'h1-evidence-contradictory-receipt.png').write_bytes(base64.b64decode(shot['data']))
             click('[data-testid=evidence-write-retry]')
-            cd.wait("window.__oiAuthoredEvidenceChecks.responses.some(r=>r.path.endsWith('/evidence-assessments')&&r.status===200)",
+            cd.wait('window.__oiAuthoredEvidenceChecks.responses.slice(' + str(before)
+                    + ").some(r=>r.path.endsWith('/evidence-assessments')&&r.status===200)",
                     'same intention recovered without another assessment')
             recovered = last('/evidence-assessments', 'POST', 200)
             assert recovered == {**first, 'duplicate': True}
+            writes = [r for r in responses()[before:] if r['method'] == 'POST'
+                      and r['path'] == scope + '/evidence-assessments']
+            assert len(writes) == 2 and writes[0]['body'] == writes[1]['body']
+            assert writes[0]['path'] == writes[1]['path']
             assessment_id = first['assessment_id']
         else:
             cd.wait('window.__oiAuthoredEvidenceChecks.responses.slice(' + str(before)
@@ -174,7 +240,9 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
             f'[data-testid=evidence-assessment][data-assessment-id="{assessment_id}"]') + '))',
             'persisted authored comparison in current packet')
         packet = last('/evidence')
-        assessment = next(a for a in packet['assessments'] if a['assessment_id'] == assessment_id)
+        matching = [a for a in packet['assessments'] if a['assessment_id'] == assessment_id]
+        assert len(matching) == 1, 'recovery must not duplicate the persisted comparison'
+        assessment = matching[0]
         assert assessment['quote'] == quote and assessment['relation'] == relation
         assert assessment['rationale'] == rationale and assessment['state'] == 'current_unreviewed'
         assert evidence['statement'][assessment['quote_start']:assessment['quote_start'] + len(quote)] == quote
@@ -257,7 +325,7 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
             'This authored fictional phrase is proposed as support, with no clinical appraisal.', lose_response=True)
         counter = upload(COUNTER, 'api_output', 'authored-violet-counter.txt')
         counter_assessment = assess(counter, 'contradicts', 'the entry was absent in this authored example',
-            'This independently invented counterexample is retained as a contradictory human proposal.')
+            'This independently invented counterexample is retained as a contradictory human proposal.', contradictory_response=True)
         first_report = report([support_assessment['assessment_id'], counter_assessment['assessment_id']])
         downloaded_path, downloaded, download_access = download(first_report)
         assert support['evidence_id'] in first_report['body'] and counter['evidence_id'] in first_report['body']
@@ -352,6 +420,11 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
                                                 (second_report, second_path, second_bytes, second_access))],
             'actual_api_restart_preserved_report': True,
             'lost_response_exact_retry_recovered_once': True,
+            'contradictory_receipt_exact_retry_recovered_once': True,
+            'contradictory_receipt_retained_locked_draft': True,
+            'explicit_client_delivery_faults': cd.evaluate('window.__oiAuthoredEvidenceChecks.faults'),
+            'comparison_draft_refresh_navigation_preserved': True,
+            'comparison_draft_editing_no_implicit_posts': True,
             'fresh_export_revocation_no_blob': True,
             'evidence_amendment_requires_reassessment': True,
             'historical_download_carries_fresh_status_and_receipt': True,
@@ -361,7 +434,7 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
         }
         (artifacts / 'question-evidence-workflow.json').write_text(json.dumps(receipt, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
         print('PASS QUESTION EVIDENCE: actual authored abstract/API-output imports, supporting and contradictory '
-              'human proposals, lost-response exact recovery, immutable report and fresh downloaded bytes, '
+              'human proposals, lost-response and contradictory-receipt exact recovery, immutable report and fresh downloaded bytes, '
               'separate export revocation, API restart, amendment/reassessment, historical content withdrawal '
               'and 390px layout. Independently fictional only; no clinical approval or model execution.')
     finally:

@@ -49,9 +49,28 @@ stream cancellation after its correction.
 Hosted acceptance runs real PostgreSQL migrations, immutable history and rollback
 checks, the built React PDF journey (page-two correction, exact binary download,
 restart, denied original access and 390px layout), and container recovery probes.
-The source probe compares reviewed-document rows through dump/restore and checks
-history/retry over HTTP after API/database restart. It does not claim HTTP access
-to these new documents against the restored database copy.
+Parent #349 compared reviewed-document rows through dump/restore and checked
+history/retry after API/database restart; it did not serve document HTTP from the
+restored copy. The dependent recovery continuation extends the existing source
+probe to recreate the API on an active restored database, confirm its configured
+engine target, and read both UTF-8/CRLF text and a two-page fictional PDF. It checks
+exact binary bytes/hashes, frozen page/line anchors, complete correction history,
+collection identity, and exact intake/correction retries across API/database restarts.
+
+Independent source-read, original-read, import and patient grants, changed patient
+scope/purpose, absent credentials and a wrong case exercise fail-closed behavior.
+A revoked binding is backed up from the restored copy and restored again with all
+grants enabled; reads, preview, import and correction retries must remain denied.
+Complete application rows and sequence states are compared. Returned access events
+must match their exact patient/case/source/hash/actor scopes in the serving copy;
+original and intermediate copies must remain unchanged. No runtime, schema,
+migration, permission or dependency changes are part of this increment.
+
+Local negative controls exercise the actual recovery assertion against changed
+originals/history, wrong or missing receipts and sequence drift. Hosted execution
+is pending until a commit-specific successful run and its retained
+`source-document-recovery.json` are recorded in the dependent draft PR. The existing
+five recovery gates and seven-day artifact retention remain in place.
 
 Manual document selections are deliberately excluded from the existing structured
 source World Model and question snapshots. Propagating their explicitly manual

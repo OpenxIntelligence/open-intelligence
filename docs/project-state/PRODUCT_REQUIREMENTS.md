@@ -2,7 +2,9 @@
 
 **Assessment date:** 3 November 2026 (America/New_York).  
 **Purpose:** interpret current requirements against the existing [execution backlog](../EXECUTION_BACKLOG.csv), without creating a competing backlog or replacing the architecture.  
-**Scope:** merged reference baseline `24519839aa8ac1ea3aff88a956349ba72798a72a`; selected H1 integration base [#276](https://github.com/OpenxIntelligence/open-intelligence/pull/276) at `c154bfbc5f99f76801d37903959943659c0b6a71`; separate draft work identified explicitly below. Final evidence for this candidate belongs in [PROJECT_STATE.md](PROJECT_STATE.md).
+**Current candidate:** existing #354, based on `d9b81f08a97998e8f95d2a1cc7c43b4165e99862`, composes frozen #368/#369/#362/#367 corrections. **Local composition verified; exact combined hosted acceptance pending.** The [candidate record](../engineering/H1_CONNECTED_RIGHTS_CONVERGENCE.md#current-candidate--reviewed-document-convergence-in-354) identifies actual local checks and remaining review/API/browser/recovery gates. Main `c4798ae85004713593f83458abd2102be6729095` remains the reference; the H1 candidate is unmerged and undeployed.
+
+**Historical assessment scope:** reference baseline `24519839aa8ac1ea3aff88a956349ba72798a72a`; connected H1 [#328](https://github.com/OpenxIntelligence/open-intelligence/pull/328) at `5a188d4e18e4d80bc2ba1d662c966abc3096301f`; the #330/#335/#339 composition and #355/#367 publication checkpoints remain in [PROJECT_STATE.md](PROJECT_STATE.md). Named historical passes below apply to those heads; they do not qualify the new combination. Older #276 acceptance text is preserved as historical evidence.
 
 ## Governing product direction
 
@@ -32,16 +34,16 @@ Every status is scoped to the named behavior, branch and test environment.
 | Patient need / requirement | Existing backlog | Current state and evidence boundary |
 |---|---|---|
 | Maintain one attributable patient identity across care settings | OI-005, OI-006, OI-013; GH-112 | **Partially implemented.** H1 has canonical PostgreSQL identity and qualified revocable case bindings. Production identity proofing and matching remain missing. [API contract](../../apps/api/README.md). |
-| Obtain and organize records without repeatedly entering the same information | OI-006, OI-010 | **Partially implemented.** H1 record requests, source import, original inspection and received-source pointers exist in selected draft. A request does not contact an external institution. Arbitrary PDF intake belongs to separate reference work. |
+| Obtain and organize records without repeatedly entering the same information | OI-006, OI-010; GH-323 | **Partially implemented.** #354 retains H1 record requests, structured-source import and bounded ordinary text/PDF originals with immutable manual selections. Requests do not contact an external institution. Manual selections remain separate from structured investigation provenance; the current combined acceptance is pending. |
 | Preserve exact originals, versions, dates, specimen context and uncertainty | OI-006, OI-009 | **Fully implemented and tested for the bounded synthetic source contract** on established branch receipts; broader real-world formats remain partial. Source bytes/line anchors, amendments, wrong-case quarantine and source integrity are in the H1 owner. [Source integrity](../engineering/H1_SOURCE_PROJECTION_INTEGRITY_2026-11-02.md). |
-| Ask a question about the patient's actual record | OI-007 | **Partially implemented.** #276 persists canonical source-linked questions; authored question entry from separate #280 is being reconciled. Question text must be user intent, not an invented clinical conclusion. |
-| Understand what the record says and what is uncertain | OI-007, OI-010 | **Partially implemented.** Current source statements and uncertainty are inspectable. Patient/clinical reading layouts exist in separate [#274](https://github.com/OpenxIntelligence/open-intelligence/pull/274); comprehension by patients has not been measured. |
-| Prepare a faithful question/source brief or packet for the next discussion | OI-007, OI-010, OI-013 | **Partially implemented.** #276 source-only brief has independent export authority; #280 exact-source packet must be composed and verified. Download is a new authorized read; it is not transmission to a care team. [Brief contract](../engineering/H1_SOURCE_LINKED_BRIEF.md). |
-| Keep questions, returns and source changes connected over time | OI-007, OI-009, OI-018 | **Fully implemented and tested for bounded source-question/verification-return behavior** in selected draft receipts. Amendment retains old anchors/history and requires reassessment. Dependency-specific clinical interpretation invalidation remains partial. [Return contract](../engineering/H1_SOURCE_QUESTION_REVIEW_RETURN.md). |
-| Investigate a question against permitted scientific evidence | OI-008, OI-011 | **Partially implemented across separate owners.** The reference lane contains source-quoted evidence/report/review work; its PostgreSQL H1 persistence adapter is not established. Bibliographic metadata alone is not evidence appraisal. [Evidence source](https://app.notion.com/p/40a3866f77ef81bd9b5de0234d9fbf7b). |
+| Ask a question about the patient's actual record | OI-007 | **Implemented and tested for the bounded #328 synthetic contract.** Authored questions persist against exact current source versions and quotations, with explicit save and retry recovery. Question text records user intent, not an invented clinical conclusion. |
+| Understand what the record says and what is uncertain | OI-007, OI-010 | **Partially implemented.** Current source statements, uncertainty and patient/clinical reading layouts are connected in #328. Independent patient comprehension has not been measured; reading layout does not grant authority. |
+| Prepare a faithful question/source brief or packet for the next discussion | OI-007, OI-010, OI-013 | **Implemented and tested for the bounded #328 synthetic contract.** Exact source/question packets and source-only briefs retain separate fresh export authority. Download is not transmission to a care team. [Brief contract](../engineering/H1_SOURCE_LINKED_BRIEF.md). |
+| Keep questions, returns and source changes connected over time | OI-007, OI-009, OI-018 | **Implemented and tested for bounded behavior at the named historical heads.** Amendment retains anchors/history and requires reassessment. Current #354 composition adds #368's memory-only unsent Review reasons; shared document-denial clearing still needs combined browser acceptance. Clinical interpretation invalidation remains partial. [Return contract](../engineering/H1_SOURCE_QUESTION_REVIEW_RETURN.md). |
+| Investigate a question against permitted scientific evidence | OI-008, OI-011 | **Partially implemented.** #328 composes canonical PostgreSQL fictional metadata, evidence originals, human-authored literal comparisons and immutable reports. Qualified biomedical retrieval, scientific/model appraisal and professional review remain unfinished. Bibliographic metadata alone is not claim support. [Evidence contract](../engineering/H1_AUTHORED_EVIDENCE_REPORTS.md). |
 | Keep professional review distinct from a request to verify source information | OI-007, OI-012, OI-013 | **Partially implemented.** H1 supports nonterminal returned-for-verification receipts, not clinician signoff, verified professional identity or notification. |
-| Coordinate tasks, owners, due dates and unresolved handoffs | OI-009, OI-010, OI-018 | **Partially implemented in separate reference work.** [#174](https://github.com/OpenxIntelligence/open-intelligence/pull/174) records source/question-linked follow-through and history; integrated H1 experience remains to prove. |
-| Carry images and modality-native context with the patient | OI-006, OI-013, OI-016 | **Partially implemented in separate drafts.** #242/#278 original-image custody and #277 archive-port disclosure are not included in selected #276 base. No complete imaging viewer, private PACS isolation or clinical image analysis is established. |
+| Coordinate tasks, owners, due dates and unresolved handoffs | OI-009, OI-010, OI-018 | **Partially implemented overall; bounded H1 task lifecycle is implemented.** The retained #328 lineage connects question-owned history, attention filters, amendment recheck and transition drafts. #369's strict timestamp checks are locally composed; malformed history must withhold actionable controls in combined acceptance. Recorded owner/completion is not external acceptance, notification or clinical action. |
+| Carry images and modality-native context with the patient | OI-006, OI-013, OI-016 | **Partially implemented in separate drafts.** Original-image custody and archive-port owners are not included in this #354 document/evidence composition. No complete imaging viewer, private PACS isolation or clinical image analysis is established by these branches. |
 | Access existing provider systems without replacement | OI-005, OI-006, OI-012 | **Blocked by external dependencies** for live providers. FHIR/HL7/document/DICOM adapters are designed or researched; production endpoints, permissions, identity and coverage are not proven. |
 | Operate independently of another EHR | OI-005, OI-006, OI-013; full platform mandate | **Partially implemented foundation; most clinical operations designed but not implemented in H1.** Existing reference clinical/LIS modules must be preserved; encounters, orders, medications and full operational workflows require qualified integration. |
 | Delegate to caregivers and professionals with revocable permissions | OI-012, OI-013 | **Designed but not implemented for production.** Fixture grants test action/patient separation; caregiver eligibility and actual consent are missing. |
@@ -50,7 +52,40 @@ Every status is scoped to the named behavior, branch and test environment.
 
 Do not use the number of tests, screens, PRs or catalog entries as a percentage of product completion.
 
-## Acceptance contract for the selected next increment
+## Complete founding MVP acceptance — distinct from the bounded H1 milestone
+
+The [founding mandate](https://chatgpt.com/library?file_id=libfile_9c425a252d3081918f3c62c3e5e91d35&account_id=personal)
+requires this 15-step independently authored synthetic scenario. The current
+engineering checkpoint implements only the bounded behavior described here;
+it does not silently redefine the full MVP or the later clinical release.
+
+| Step | Required outcome | #354 local convergence; combined execution pending | Existing next gate |
+|---|---|---|---|
+| 1 | Create synthetic patient | Implemented canonical creation and case binding | OI-005/013: combined API/browser/recovery evidence |
+| 2 | Upload representative medical records | Partial: structured reports plus bounded ordinary text/PDF originals and immutable manual selections in #354; general extraction is not established | OI-006/GH-323: combined document/recovery acceptance and explicit manual-provenance integration |
+| 3 | Extract clinical information | General extraction not established by the annotated-text parser | OI-006/011: reuse existing parser/annotation owners, source-grounded proposals, abstention and correction |
+| 4 | Create structured record | Partial source assertions; full typed clinical record/profile incomplete | OI-006: raw/normalized values, units, specimen/assay/episode context |
+| 5 | Construct longitudinal timeline | Bounded chronology implemented | OI-009: partial dates, multiple episodes, as-known-at replay |
+| 6 | Identify documented molecular/pathology findings | Source-authored findings represented; qualified extraction incomplete | OI-006/016: exact context and no inferred clinical meaning |
+| 7 | Retrieve permitted biomedical evidence | Fictional catalog/upload path implemented; real source qualification pending | OI-004/008: one permitted live or frozen source and operation-specific rights |
+| 8 | Investigate a scientific question | Saved question/manual comparison implemented; H1 scientific/model execution incomplete | OI-008/011: reuse bounded Composer, reproducible inputs and abstention |
+| 9 | Compare support and contradiction | Human-authored literal comparisons implemented | OI-008/014: independent appraisal of source quality and applicability |
+| 10 | Identify missing information | Bounded state/conflict projection | OI-006/009: clinical completeness and no-data controls |
+| 11 | Generate source-linked report | Immutable fictional comparison reports and fresh status covers implemented | OI-008/010: final combined acceptance; biomedical synthesis remains separate |
+| 12 | Present for human review | Inspection/nonterminal verification return implemented; professional sign-off incomplete | OI-007/012/013: qualified actor, exact artifact and scoped authority |
+| 13 | Add new synthetic information | Bounded original/amendment flow implemented | OI-006/009: new specimen versus amendment and other-patient isolation |
+| 14 | Reassess investigation | Stale/recheck and explicit new preparation implemented in bounded owners | OI-009/018: wider scientific/model/clinical dependency invalidation |
+| 15 | Preserve prior report and explain change | Bounded immutable source/report history implemented | OI-009/010: combined browser/recovery and clinical change interpretation |
+
+The [30-domain crosswalk](../research/PATIENT_JOURNEY_CAPABILITY_CROSSWALK_2026-11-03.md)
+retains patient, caregiver, clinician and researcher workspaces, the clinical
+spine and practical care/support domains. Extend existing OI-002/003/014
+acceptance packets for guardian transitions, multimorbidity, hematologic disease,
+limited access, disability/language needs, survivorship and palliative care.
+Do not replace these journeys with new navigation placeholders or treat an
+operator task transition as external completion.
+
+## Historical #276 acceptance contract
 
 Connect the existing patient question, source brief, exact-source packet and verification-return owners in one H1 candidate. The patient should be able to write a bounded question in ordinary language, attach it to an exact current statement, save it deliberately, inspect/download its faithful source context, and preserve that history when the source changes.
 

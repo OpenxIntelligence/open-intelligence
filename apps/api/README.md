@@ -4,15 +4,38 @@ This is the FastAPI/PostgreSQL 16 composition root for [issue #112](https://gith
 It mounts the existing canonical patient registry and a small synthetic record-request operational domain, with migrations and durable event receipts.
 The Python/SQLite prototype remains the evidence/investigation reference. This
 branch now connects canonical PostgreSQL sources, source questions and
-nonterminal verification-return receipts, and bounded fictional evidence
-metadata links. Evidence appraisal and report persistence remain separate
-integration work.
+nonterminal verification-return receipts, bounded fictional evidence metadata
+links, case-owned fictional evidence originals, human-authored comparisons,
+immutable evidence reports and question-linked follow-through. The latter
+owners are composed in the #307 → #322 → #328 lineage; see the
+[current checkpoint](../../docs/project-state/PROJECT_STATE.md) and
+[continuity evidence](../../docs/engineering/H1_EVIDENCE_CONTINUITY.md).
+Qualified biomedical retrieval, scientific/model appraisal and professional
+clinical approval remain separate work. Current source/evidence/report software
+does not establish those capabilities or a merged/clinical release.
 
 ## Reviewed ordinary documents
 
 Records uses source-owned ordinary text/PDF intake and immutable selection history.
 See [routes, grants, bounds and verification](../../docs/engineering/H1_REVIEWED_DOCUMENTS.md).
 Manual classifications remain separate from structured source assertions.
+
+### Current reviewed-document convergence checkpoint
+
+On 3 November 2026, the local continuation of existing draft #354 composes
+`d9b81f08a97998e8f95d2a1cc7c43b4165e99862` with the frozen #368/#369/#362/#367
+inputs in the [current candidate record](../../docs/engineering/H1_CONNECTED_RIGHTS_CONVERGENCE.md#current-candidate--reviewed-document-convergence-in-354).
+**Local composition verified; exact combined hosted acceptance pending.**
+Main `c4798ae85004713593f83458abd2102be6729095` remains the Python/SQLite
+reference; the H1 candidate is unmerged and undeployed.
+
+The existing source recovery probe now includes #362's restored-database
+reviewed-document HTTP assertions: exact text/PDF bytes, immutable selections,
+retry identities, independent grants and restored revoked-binding denial.
+Those checks must execute on the new combined head before acceptance is claimed.
+The production API, published migration history and exact dependency set remain
+unchanged. Manual selections do not enter structured investigation provenance;
+real identity/consent, professional review and clinical validation remain open.
 
 ## Question-scoped fictional evidence metadata
 
@@ -615,16 +638,22 @@ API restart, database restart and backup/restore. Docker and Chromium are absent
 in this local session. Hosted results must be attached to the exact PR head;
 this description or passing local tests alone does not prove those operations.
 
-**Current continuation:** [draft #307](../../docs/engineering/H1_EVIDENCE_CONTINUITY.md)
+**Historical evidence-convergence checkpoint:** [draft #307](../../docs/engineering/H1_EVIDENCE_CONTINUITY.md)
 converges the existing metadata/citation, authored-content/report and follow-through
 owners without copying PostgreSQL state into a competing SQLite chart. Its
 DDL-free `0011_evidence_convergence` joins the two published `0010` lineages;
-serving requires that exact single head. Original migration files and receipt
+serving at that checkpoint required that exact single head. The current document
+candidate explicitly upgrades to `0012_reviewed_documents`; original migration files and receipt
 meanings remain unchanged. Citation identity grants no content/assessment rights.
 Actual combined acceptance, populated upgrades and restored HTTP are recorded
 with the exact candidate head in that bounded receipt. Live permitted biomedical
-retrieval, full clinical/PDF/annotation parity, accounts, consent, EHR/LIS,
+retrieval, full clinical/annotation parity, accounts, consent, EHR/LIS,
 professional review and complete MRT-01 remain incomplete.
+
+The current #354 continuation retains ordinary text/PDF custody and manual
+selection history, adds the existing restored-document verification, and awaits
+its own combined API/recovery and browser result. See the current checkpoint
+above; historical local or parent-hosted counts are not substituted.
 
 See the [bounded implementation/continuation record](../../docs/superpowers/plans/2026-11-02-h1-patient-registry.md)
 for audit scope and regressions. No merge, deployment or clinical validation is

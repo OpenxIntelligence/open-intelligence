@@ -2,6 +2,7 @@ import {useEffect,useRef,useState} from 'react';
 import type {RegistrySession,ViewState} from './registry-client';
 import {declaredPermissions,downloadEvidenceOriginal,downloadEvidenceReport,visibleLine} from './authored-evidence';
 import type {ContentItem,Permission,Relation,Applicability} from './authored-evidence';
+import {activeComparisonDraft,evidenceSelectionMode} from './authored-evidence-session';
 import './authored-evidence.css';
 
 const relationLabel={supports:'Proposed support',contradicts:'Proposed contradiction',context:'Context only',unknown:'Relation unknown'};
@@ -14,8 +15,12 @@ export function AuthoredEvidencePanel({session,state,busy}:{session:RegistrySess
  const [original,setOriginal]=useState(''),[fileName,setFileName]=useState(''),[fileMessage,setFileMessage]=useState('');
  const [fictional,setFictional]=useState(false),[item,setItem]=useState<ContentItem>('abstract');
  const [display,setDisplay]=useState<Permission>('allowed'),[redistribute,setRedistribute]=useState<Permission>('allowed');
- const [selected,setSelected]=useState(''),[quote,setQuote]=useState(''),[rationale,setRationale]=useState('');
- const [relation,setRelation]=useState<Relation>('unknown'),[applicability,setApplicability]=useState<Applicability>('unknown');
+ const [selected,setSelected]=useState('');
+ const retainedDraft=state.evidenceComparisonDraft;
+ const currentDraft=activeComparisonDraft(state);
+ const comparison=currentDraft?.evidence_id===selected?currentDraft:null;
+ const quote=comparison?.quote??'',rationale=comparison?.rationale??'';
+ const relation=comparison?.relation??'unknown',applicability=comparison?.applicability??'unknown';
  const [reason,setReason]=useState(''),[chosen,setChosen]=useState<readonly string[]>([]);
  const fileRead=useRef(0),fileInput=useRef<HTMLInputElement>(null);
  const intent=state.evidenceWriteIntent,uncertain=state.evidenceWritePhase==='unknown';
@@ -25,7 +30,7 @@ export function AuthoredEvidencePanel({session,state,busy}:{session:RegistrySess
    packet.source_snapshot_sha256===state.worldModel?.snapshot_fingerprint;
  useEffect(()=>{
   fileRead.current++;setOriginal('');setFileName('');setFileMessage('');setFictional(false);
-  setSelected('');setQuote('');setRationale('');setReason('');setChosen([]);
+  setSelected(currentDraft?.evidence_id??'');setReason('');setChosen([]);
   if(fileInput.current)fileInput.current.value='';
  },[packet?.packet_sha256,packet?.question.question_id]);
  useEffect(()=>()=>{fileRead.current++;},[]);
@@ -43,10 +48,13 @@ export function AuthoredEvidencePanel({session,state,busy}:{session:RegistrySess
  }
  function selectEvidence(id:string){
   if(locked)return;
-  const row=packet?.evidence.find(e=>e.evidence_id===id);if(!row||row.state!=='current')return;
-  setSelected(id);setQuote(row.statement?Array.from(row.statement).slice(0,400).join(''):'');setRationale('');setReason('');setRelation('unknown');setApplicability('unknown');
+  const mode=evidenceSelectionMode(state,id);if(!mode)return;
+  // Withdrawal remains separate from comparison creation: stale source context
+  // or withheld quotation content must not prevent a deliberate family withdrawal.
+  if(mode==='comparison'&&(!q||!session.selectEvidenceComparison(q.question_id,id)))return;
+  setSelected(id);setReason('');
  }
- const canAssess=Boolean(current&&evidence?.state==='current'&&evidence.statement&&quote&&Array.from(quote).length<=400&&
+ const canAssess=Boolean(comparison&&current&&evidence?.state==='current'&&evidence.statement&&quote&&Array.from(quote).length<=400&&
   evidence.statement.includes(quote)&&evidence.statement.indexOf(quote)===evidence.statement.lastIndexOf(quote)&&visibleLine(rationale)&&
   !(relation==='supports'&&applicability==='not_applicable'));
  return <section className="authored-evidence-workspace" aria-label="Fictional evidence investigation">
@@ -58,6 +66,20 @@ export function AuthoredEvidencePanel({session,state,busy}:{session:RegistrySess
     <button type="button" data-testid="evidence-write-retry" disabled={busy||state.patient?.patient_id!==intent.patient_id||!state.cases?.some(c=>c.case_id===intent.case_id&&c.status==='active')} onClick={()=>void session.retryEvidenceWrite()}>Retry exact intent and recover receipt</button>
    </>}
   </section>}
+  {retainedDraft&&(retainedDraft.dirty||!currentDraft)&&state.connected&&retainedDraft.patient_id===state.patient?.patient_id&&
+   <section className="evidence-write-status" data-testid="evidence-draft-status" aria-label="Unfinished evidence comparison">
+    <p role="status" aria-live="polite">{uncertain
+     ?'An evidence submission has an unknown outcome. Recover its exact receipt before editing or discarding this comparison.'
+     :state.evidenceWritePhase==='saving'
+      ?'An evidence submission is in progress. Keep this comparison unchanged until its result is confirmed.'
+      :state.evidenceDraftMessage}</p>
+    <p>This working copy is kept only in the current browser session. A submission is not confirmed until its receipt is verified. Its quotation and rationale appear only after a fresh matching access check.</p>
+    {!currentDraft&&<button type="button" data-testid="evidence-draft-resume"
+     disabled={locked||state.evidencePhase==='loading'||!state.questions?.some(row=>row.question_id===retainedDraft.question_id&&row.case_id===retainedDraft.case_id)}
+     onClick={()=>void session.loadQuestionEvidence(retainedDraft.question_id)}>Recheck and resume unfinished comparison</button>}
+    <button type="button" data-testid="evidence-draft-discard" disabled={locked}
+     onClick={()=>{if(session.discardEvidenceComparison()){setSelected('');setReason('');}}}>Discard unfinished comparison</button>
+   </section>}
   {(packet||report)&&q&&<section data-testid="evidence-panel" aria-labelledby="question-evidence-heading">
    <div className="evidence-heading">
     <div><span className="step">FICTIONAL EVIDENCE · HUMAN PROPOSALS</span><h3 id="question-evidence-heading">Evidence for this question</h3></div>
@@ -92,23 +114,24 @@ export function AuthoredEvidencePanel({session,state,busy}:{session:RegistrySess
       <p>{row.content_item.replace('_',' ')} · version {row.version} · issued {row.issued_at}</p>
       {row.statement!==null?<blockquote>{row.statement}</blockquote>:<p className="evidence-notice">Content is withheld under current family permissions.</p>}
       <details><summary>Original and rights provenance</summary><p>Record <code>{row.evidence_key}</code> · <code>{row.evidence_id}</code>, statement line {row.statement_line}</p><p>Original SHA-256 <code>{row.sha256}</code></p><p>Rights SHA-256 <code>{row.rights_sha256}</code></p><p>Stored {row.created_at}. Rights are a fictional declaration, not publisher clearance.</p></details>
-      <div className="actions"><button type="button" data-testid="evidence-select" disabled={locked||row.state!=='current'} onClick={()=>selectEvidence(row.evidence_id)}>{selected===row.evidence_id?'Selected evidence':'Select evidence'}</button>
+      <div className="actions"><button type="button" data-testid="evidence-select" disabled={locked||!evidenceSelectionMode(state,row.evidence_id)} onClick={()=>selectEvidence(row.evidence_id)}>{selected===row.evidence_id?'Selected evidence':'Select evidence'}</button>
        <button type="button" data-testid="evidence-original-download" disabled={locked||row.statement===null} onClick={()=>void downloadEvidenceOriginal(session,q.question_id,row.evidence_id)}>Recheck and download original</button></div>
      </li>)}</ul>}
     </section>
     {evidence&&<section className="evidence-assessment-editor" aria-labelledby="evidence-assessment-heading">
      <h4 id="evidence-assessment-heading">Propose a comparison</h4><p>Selected <strong>{evidence.title??evidence.evidence_key}</strong>, version {evidence.version}. The relation below is your proposal, not a conclusion authored by the evidence source.</p>
-     {evidence.statement!==null?<>
-      <label htmlFor="evidence-quote">Exact unique passage<textarea id="evidence-quote" data-testid="evidence-quote" rows={3} value={quote} disabled={locked||!current} onChange={e=>setQuote(e.target.value)}/></label>
+     {evidence.statement!==null&&comparison?<>
+      <label htmlFor="evidence-quote">Exact unique passage<textarea id="evidence-quote" data-testid="evidence-quote" rows={3} value={quote} disabled={locked||!current} onChange={e=>session.editEvidenceComparison({quote:e.target.value})}/></label>
       <p className="muted">Choose 1–400 characters appearing once in the stored statement. The original statement line and Unicode character offset are retained.</p>
       <div className="evidence-form-grid">
-       <label htmlFor="evidence-relation">Proposed relation<select id="evidence-relation" data-testid="evidence-relation" value={relation} disabled={locked||!current} onChange={e=>setRelation(e.target.value as Relation)}><option value="unknown">Unknown</option><option value="supports">Supports</option><option value="contradicts">Contradicts</option><option value="context">Context only</option></select></label>
-       <label htmlFor="evidence-applicability">Proposed applicability<select id="evidence-applicability" data-testid="evidence-applicability" value={applicability} disabled={locked||!current} onChange={e=>setApplicability(e.target.value as Applicability)}><option value="unknown">Unknown</option><option value="limited">Limited</option><option value="applicable">Applicable</option><option value="not_applicable">Not applicable</option></select></label>
+       <label htmlFor="evidence-relation">Proposed relation<select id="evidence-relation" data-testid="evidence-relation" value={relation} disabled={locked||!current} onChange={e=>session.editEvidenceComparison({relation:e.target.value as Relation})}><option value="unknown">Unknown</option><option value="supports">Supports</option><option value="contradicts">Contradicts</option><option value="context">Context only</option></select></label>
+       <label htmlFor="evidence-applicability">Proposed applicability<select id="evidence-applicability" data-testid="evidence-applicability" value={applicability} disabled={locked||!current} onChange={e=>session.editEvidenceComparison({applicability:e.target.value as Applicability})}><option value="unknown">Unknown</option><option value="limited">Limited</option><option value="applicable">Applicable</option><option value="not_applicable">Not applicable</option></select></label>
       </div>
-      <label htmlFor="evidence-rationale">Your rationale and uncertainty<textarea id="evidence-rationale" data-testid="evidence-rationale" rows={3} value={rationale} disabled={locked||!current} onChange={e=>setRationale(e.target.value)}/></label>
+      <label htmlFor="evidence-rationale">Your rationale and uncertainty<textarea id="evidence-rationale" data-testid="evidence-rationale" rows={3} value={rationale} disabled={locked||!current} onChange={e=>session.editEvidenceComparison({rationale:e.target.value})}/></label>
       <p className="muted">One visible line, 10–600 characters. Saving a proposal does not establish clinical relevance or approve a decision.</p>
-      <button type="button" className="primary" data-testid="evidence-assess" disabled={locked||!canAssess} onClick={()=>void session.assessQuestionEvidence(q.question_id,evidence.evidence_id,quote,relation,applicability,rationale)}>Save human-authored comparison</button>
-     </>:<p>Comparison text is unavailable under current content permissions.</p>}
+      <button type="button" className="primary" data-testid="evidence-assess" disabled={locked||!canAssess} onClick={()=>void session.saveEvidenceComparison()}>Save human-authored comparison</button>
+     </>:<p>{evidence.statement===null?'Comparison text is unavailable under current content permissions.':
+      'A new comparison needs current source context and an explicitly selected draft. Withdrawal remains a separate action.'}</p>}
      <details className="evidence-withdrawal"><summary>Withdraw this evidence family</summary>
       <p>Withdrawal preserves original versions and earlier reports while withholding their evidence content. It cannot silently revive a withdrawn family.</p>
       <label htmlFor="evidence-withdraw-reason">Withdrawal reason<textarea id="evidence-withdraw-reason" data-testid="evidence-withdraw-reason" rows={2} value={reason} disabled={locked} onChange={e=>setReason(e.target.value)}/></label>

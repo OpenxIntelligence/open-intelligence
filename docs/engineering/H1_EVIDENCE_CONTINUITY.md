@@ -1,5 +1,56 @@
 # H1 question evidence and patient follow-through convergence
 
+## Current checkpoint — existing #354 reviewed-document candidate
+
+**3 November 2026: local composition verified; exact combined hosted acceptance
+pending.** The current work continues #354 from
+`d9b81f08a97998e8f95d2a1cc7c43b4165e99862`, composing frozen #368 review/evidence
+continuity, #369 task timestamps, #362 restored-document HTTP acceptance and
+#367 shared CI inputs. The [current candidate record](H1_CONNECTED_RIGHTS_CONVERGENCE.md#current-candidate--reviewed-document-convergence-in-354)
+contains the exact input heads, observed local checks and remaining gates; the
+[execution plan](../superpowers/plans/2026-11-03-reviewed-document-convergence.md)
+defines the bounded sequence. Main was separately observed at
+`c4798ae85004713593f83458abd2102be6729095` and remains the Python/SQLite reference.
+
+Preserve document-aware authority clearing alongside evidence and Review drafts,
+all existing immutable source/report histories, exact retry owners and the
+published `0012_reviewed_documents` migration. Current document denial must clear
+unsent Review text without resurrection after reauthorization; temporary or stale
+failures must preserve independently authorized newer work. Combined browser and
+restored-database HTTP verification must establish that interaction on one head.
+
+Manual selections remain separate from structured World Model/question/report
+provenance. No real patient data, model activation, professional clinical approval,
+new rights clearance, merge or deployment follows. The dated sections below are
+historical owner and publication checkpoints, including their then-pending gates;
+their former references to a current candidate do not select today's candidate.
+
+## Historical #355/#367 publication checkpoint — shared CI and documentation
+
+On 3 November 2026 the founder authorized the prepared candidate for publication
+and hosted verification. A fresh read found that [draft #355](https://github.com/OpenxIntelligence/open-intelligence/pull/355)
+at `6f836b451c2e8426e5c3b2be194408424f95c69f` already contains all 13 reviewed
+implementation/package/test/helper blobs from local candidate
+`c1484ed0ef6ac5a18359577446486e71a08845b6`, with identical modes and bytes.
+Its [web run 41677951355](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41677951355)
+passed on that exact head. That continuation therefore targeted #355's branch
+`integration/h1-connected-evidence-safety-20261103` and carries only the remaining
+workflow and documentation contribution. #355's backlog and safety plan are
+preserved unchanged. The earlier #328 composition below is historical evidence.
+
+The workflow change includes shared `src/**`, `tests/**` and the boundary script
+in H1 web triggers, and executes the existing static data-boundary check before
+package acquisition. It preserves all existing dependency, build and actual
+PostgreSQL/API/Chromium steps. Runtime, tests, dependencies, migrations, authority
+and recovery owners are unchanged from #355.
+
+Fresh local checks on the identical approved runtime again passed 310 client
+tests, 13 rights controls (18 installed, two optional uninspected, no errors) and
+287 reference tests. These are local evidence. This child's own published-head
+API/PostgreSQL/browser/recovery results must be recorded in its PR verification
+receipt after publication; #355's success is not inherited as the child's result.
+Publication authorization does not authorize merge, deployment or clinical use.
+
 **Status:** original convergence in draft #307; subsequent combined acceptance
 is recorded below. All contributions remain subject to explicit review.
 **Scope:** independently authored fictional engineering inputs only.
@@ -7,7 +58,7 @@ is recorded below. All contributions remain subject to explicit review.
 authored comparisons/reports and follow-up work in the same governed application.
 This is an integration of existing owners, not a new patient or evidence ledger.
 
-## Source ownership and current truth
+## Historical #307 source ownership and checkpoint
 
 The live audit on 3 November 2026 found `main` at
 `24519839aa8ac1ea3aff88a956349ba72798a72a`. The owners below remained draft and
@@ -399,3 +450,363 @@ combined head had a failed zero-job check suite rather than a running UI job.
 The command now uses a block scalar and parses unchanged. The final published
 head must pass that restored workflow as well as both H1 workflows; the earlier
 successful React run alone does not close acceptance.
+## Unfinished comparison in the connected workspace — 3 November 2026
+
+The following records #348's original scope. Its document/rights exclusions are
+superseded for the combined #354 candidate by
+[the explicit continuation receipt](H1_CONNECTED_RIGHTS_CONVERGENCE.md), which
+also includes #359's status/duplicate consistency correction. Historical runs
+below retain their original source identities.
+
+[Draft #348](https://github.com/OpenxIntelligence/open-intelligence/pull/348)
+brings #338's existing comparison draft into #335's combined source-reading,
+record-intake, evidence-report and follow-up workspace. A writer can refresh
+unchanged evidence or leave Investigations and resume the exact quote, relation,
+applicability and rationale after a fresh matching access check. Editing does
+not save an assessment. Existing OI-008/010/013 remain the acceptance owners.
+
+### Source ownership and boundaries
+
+- Base #335: `9d173843f924b40becba3a7dffd71717c12afb5d`, tree
+  `57165fc8b1c6305336752eb948710a437eda9cf9`.
+- Donor #338: `ac6d2be176ff4488aefde870a5f5286313a99210`. Its session
+  implementation, all 30 draft tests, historical spec and historical plan are
+  byte-identical. The new integration plan supersedes the donor plan's old
+  publication checkpoint, without rewriting that provenance.
+- Retain the current `AuthoredEvidencePanel` identity and CSS, the larger current
+  registry session, and separate `authored_evidence_journey.py` and
+  `question_metadata_journey.py` browser owners. The registry adds only the draft
+  patch type import and four delegates. No duplicate ledger or authority owner.
+- Draft identity binds patient, case, question, source snapshot, preflight,
+  evidence version/hash and rights hash. Dirty input cannot silently retarget.
+  Refresh/navigation conceal the draft until a fresh matching packet permits it;
+  stale or denied context cannot submit. Patient/case/credential/reload reset it.
+- Independent metadata or follow-through denial does not erase an independently
+  authorized comparison. Common patient, binding, source or question denial
+  clears the draft; a late earlier response cannot restore it.
+- An uncertain save retains the exact original retry intent and locks edits and
+  discard. A matching successful receipt clears the draft. This is in-memory
+  input retention only, not durable autosave or clinical review.
+- Backend, migrations, authorization contracts, workflow definitions,
+  dependencies, current report-download code, source-reading and intake owners
+  are unchanged. The separate #339 frontend rights correction, #330 strict-date
+  correction, #324 review drafts, #323 reviewed document intake, #327/#332 imaging
+  and archive convergence, and #321 DOI connector are not included by this PR.
+
+### Tests and independent review
+
+The tests-first commit `1611720ca8bb6e599d42f41edd87694fd66ba33e`
+(tree `396438ecedd833604966c61e0a87401277952769`) compiled successfully and
+produced 36 expected missing-behavior failures: the 30 unchanged donor tests and
+six new composed-session cases. These were behavior failures, not missing imports
+or setup failures. After adoption, all **336 compiled client tests passed** with
+zero failures/skips; the TypeScript/Vite production build and current dependency
+gate passed (18 installed packages, two optional uninspected, zero errors).
+
+A separate read-only automated reviewer inspected the complete donor session and
+integration diff, independently ran 64 focused tests, and found no important
+runtime finding. Its P3 observation was accepted: the actual-browser POST count
+now starts before selection/editing and is asserted both immediately after edits
+and after refresh/navigation. A second review confirmed that change and the
+correct metadata-helper path. This does not represent human or clinical review.
+
+### Published execution evidence
+
+Initial combined runtime `8d2ee0f4586db4dc5f7078d545262b3798c7b310`, tree
+`8463bd26010783b78584ddf67b2505223f8e4ee6`, passed the complete existing
+[hosted web workflow 41674964740](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41674964740):
+336 client tests, production build, frontend and exact-wheel dependency gates,
+and actual built React/FastAPI/PostgreSQL 16/Chromium journey. Artifact
+`13249174330`, SHA-256
+`2f73f3eaa1e2bca8a4b887f4e6cd0c929804471c71f7bd9024d6bf1c6975da4d`,
+was downloaded and its digest verified. Every one of its 410 source files and
+Git executable classifications matched the candidate tree. Local equivalent
+commit was `b6cc6b69073a0bcf54bd67922b8edee4f7ffb983`.
+
+The stronger browser assertion is published at
+`297c9d4928105a77c9cf132a17b244409611c018`, tree
+`b515b6379e373f92176cc23afa2f145438b4c0b7` (local equivalent
+`af096a5347b01692822be8741c86f473e1d58b3e`). Attempt 1 of
+[run 41675783452](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41675783452)
+passed all 336 client tests and build but stopped before app navigation: the
+Chromium debugging endpoint refused connections for 30 seconds. It never reached
+the comparison assertions. Browser startup code was unchanged; browser stderr
+was discarded by the inherited helper, so the underlying startup cause is not
+established. The failed attempt remains recorded.
+
+Attempt 2 on that **unchanged commit passed**, job `126057574593`: all 336 client
+tests (zero failures/skips), production build, both dependency gates and the full
+actual PostgreSQL/API/Chromium journey, including the stronger editing assertion.
+Artifact `13250885948`, SHA-256
+`267454af434fdb56f559859e87a25ba84d6c609119f006f0b5e8baa97b6eb3a2`,
+was downloaded and its digest verified. All 410 source files and executable
+classifications matched the strengthened candidate tree. The retry's three report
+files/body hashes and distinct receipts were independently checked again, and
+both draft captures were inspected. CI artifact retention ends 10 November 2026.
+The PR carries the final documentation head and its automatic workflow result;
+these documentation updates leave the verified application and browser code exact.
+
+The artifacts' desktop draft status and 390px resume captures were
+visually inspected; the browser asserts no horizontal overflow and no exposed
+rationale before explicit fresh resume. Its receipt records exact input retention,
+lost-response retry, real API restart, independent denial, amendment and
+withdrawal. All three downloaded report files were independently checked against
+whole-file/body hashes and distinct fresh access receipts; the earlier report's
+body remains byte-identical when its cover changes to historical status.
+
+This frontend-only increment does not claim another full standalone API or
+backup/restore suite. The inherited full backend verification remains separately
+recorded on #322. Browser evidence covers Chromium and independently authored
+fictional records only. Draft, unmerged and undeployed; no model execution,
+professional appraisal, production authorization or clinical validation.
+
+
+## Connected chronology, draft and receipt recovery composition — 3 November 2026
+
+Continues OI-008/009/010/013 from #355 `6f836b451c2e8426e5c3b2be194408424f95c69f` plus #359 `e2c888cf5b9065c8b6a60284666e6f35fe2c1e63`, including #348. Reuses eight exact donor application/test/browser files and historical design records. The new integration spec/plan is `docs/superpowers/plans/2026-11-03-evidence-safety-draft-recovery.md`. Both remote parent histories are to be preserved.
+
+The composed client keeps an unfinished comparison across authorized refresh/navigation, rejects contradictory HTTP-status/duplicate receipt pairs while preserving exact recovery intent, and rejects impossible evidence chronology. Two additional tests show malformed refreshed chronology clears disclosed draft input without a write and cannot erase or replace an uncertain command; a coherent recovery does not authorize an invalid packet. Independent task/metadata grants and shared patient/source denial retain their existing tested semantics.
+
+Observed local checks: baseline 310 client tests; tests-first 50 failures/322 passes; composed 372 client tests and 13 filesystem controls passed, zero failures/skips; 18 installed packages inspected, two optional uninspected, zero gate errors; TypeScript/Vite build and browser-helper compilation passed. Calendar-validation bypass makes both composition tests fail; restoring it makes both pass. Protected backend/migration/grant/lock/workflow and chronology/gate files remain byte-identical.
+
+New exact-head hosted browser verification and independent review remain pending at this publication checkpoint; their results belong in the draft PR receipt. Ancestor runs are not combined acceptance. No standalone full API/backup-restore execution, production identity, real patient use, professional clinical review, model activation, merge or deployment is claimed.
+
+## Truthful retained-comparison status continuation — 3 November 2026
+
+A live reconciliation found #363 `ecadf0d45871e6581d65fa542390f2959ab26394`
+already contains the #355/#359 convergence. This continuation starts from that
+exact tree rather than opening another composition. All 419 blobs and modes
+reproduce tree `f73caaca42a5fe1728e852764851a3564bbe065a`; its 163 production,
+backend and workflow files match the independently reviewed original candidate.
+The local reconstructed snapshot is not the upstream commit identity.
+
+The independent review found no Critical or Important issue and one Minor copy
+issue: a dirty comparison can coexist with an unrelated evidence import. If the
+import response is lost, the global write phase is unknown, but the draft banner
+previously said the comparison might already have been saved. The banner now
+describes the pending evidence submission without assigning that submission to
+the comparison. The adjacent exact-intent status still identifies the action and
+question. Draft locking, disclosure checks, receipt verification and retry bytes
+remain unchanged; no duplicate intent-matching logic was introduced.
+
+The new rendered regression uses the real session and composed panel. It fails
+on the unchanged #363 runtime with the inaccurate save claim, then passes with
+the two-line copy correction. It also verifies that the retained draft stays
+locked, retry preserves the exact import path/body, and an import receipt cannot
+clear the comparison. Two complementary receipt/chronology regressions cover
+both contradictory status/duplicate pairs, invalid assessment timestamps, cleared
+report access, frozen recovery identity and valid refresh after receipt recovery.
+Those two tests previously failed on unchanged #355 and pass on #363; #363's own
+two draft/chronology composition tests remain intact.
+
+Local acceptance: **375 compiled client tests**, **13 filesystem dependency-gate
+tests**, zero failures/skips/cancellations; production TypeScript/Vite build
+passes. The installed gate records 18 inspected artifacts, two optional artifacts
+explicitly uninspected, and zero errors. The full change is limited to six paths.
+All backend, migration, grants, package/lock, chronology, dependency-gate and
+browser-journey code remains byte-identical to #363.
+
+The patient-journey capability crosswalk is retained byte-for-byte from #360
+`f200dd107871d89703267ee0d1a14b2d1ca64d36` at
+`docs/research/PATIENT_JOURNEY_CAPABILITY_CROSSWALK_2026-11-03.md`. It remains
+complementary research, not acceptance evidence for the whole program. Existing
+OI-004/007/008/009/010/013 source owners remain authoritative.
+
+Plan: `docs/superpowers/plans/2026-11-03-evidence-recovery-status.md`. Publish an
+isolated draft targeting #363 and record the new head's actual hosted receipt in
+its PR body. No new hosted success is claimed at this local checkpoint; the web
+journey does not constitute a fresh standalone full API/backup-restore suite.
+Independently authored fictional inputs only; no external notification, model
+activation, real-patient processing, clinical approval, merge or deployment.
+
+## Follow-up history timestamp validity — 3 November 2026
+
+This bounded continuation extends OI-007/009/010 and the existing canonical
+question/follow-through work (#295/#121). Its base is #364
+`243d15fdaba112f93f7d3d258311d8b82e730015`. All 422 base source files were
+recovered from the verified artifact and matched to their Git blob identities.
+The existing patient-journey crosswalk and dependency-gate integration remain.
+
+The task client used `Date.parse` as timestamp validation. It accepted nonexistent
+calendar days, year zero, midnight rollover, minute-only timestamps and precision
+outside the task API's seconds/up-to-six-fractional-digit PostgreSQL format.
+A bad refreshed history therefore remained actionable. Sixteen independently
+fault-injected real-session controls reproduced this (ready instead of error);
+26 passing controls remained, including a valid timestamp preservation test.
+
+The task decoder now reuses the existing strict PostgreSQL-shaped citation
+validator. Both task creation and status-event timestamps must pass before the
+list is exposed. Valid offsets, leap dates and microseconds remain verbatim.
+Revision order is preserved; no clock-order assumption, timestamp rewriting,
+new patient ledger, dependency, backend, schema or authority change is introduced.
+
+Local validation: 72 task/attention/evidence-chronology controls and 13 filesystem
+rights controls passed, with zero failures/skips. Python browser-helper syntax and
+whitespace checks passed. Local TypeScript execution used Node's type stripping,
+not a compiler/build claim. The existing hosted workflow must run full `npm test`,
+TypeScript/Vite build, actual installed rights checks and PostgreSQL/API/Chromium
+acceptance on the published head.
+
+The browser regression corrupts only copies of actual authorized HTTP responses,
+retains original/injected values separately, and requires task history, attention
+counts and transition controls to disappear. Fresh valid reads must recover the
+unchanged original tasks with no additional write or grant change. It does not
+claim the genuine backend emits malformed timestamps. Exact hosted results belong
+in the draft PR description after execution; they are pending at this checkpoint.
+
+Independently authored fictional data only. No model activation, clinical
+approval, real-patient processing, merge or deployment.
+
+
+## Client chronology continuation — 3 November 2026
+
+The report/follow-through work in the interrupted handoff had already shipped as
+draft #174. This continuation uses the later connected source-reading/report
+candidate #322 at `19b75317701ae01fc93844077ac94c351fd982bd`, preserving its source,
+question, evidence, report and task owners. It addresses OI-008/009/010: dates in
+evidence history and preserved reports must represent actual calendar instants.
+
+The client accepted February 30, hour 24 and year zero in evidence/report history
+because JavaScript date parsing normalizes some impossible values. Citation
+history also accepted precision forms excluded by its existing API. One shared
+calendar/clock validator now enforces each existing evidence contract without
+normalizing the input: authored timestamps retain minute precision and longer
+fractions; citation timestamps require seconds and at most six fractional digits.
+Nested question timestamps and date-only source/evidence fields receive the same
+calendar checks at the authored-evidence boundary. Other source consumers are not
+changed or claimed to be comprehensively audited.
+
+Preserved report bodies, original offsets, fractional strings, hashes, status
+covers, independent permissions and fresh download authorization remain intact.
+Invalid refreshed history clears a previously opened report and prevents export;
+an explicit valid refresh restores access to the unchanged body. No backend,
+database, migration, dependency, workflow or clinical state changes.
+
+Verification sequence:
+
+- Original #322 client baseline: 278 tests passed, no skips.
+- Tests-only baseline reproduction: 12 targeted tests, 7 expected failures and
+  5 passing controls. All failures were assertion failures in the actual client,
+  not setup errors. These include the blocked-download regression.
+- Automated read-only review found two further nested-date gaps. Both added
+  regressions failed on the first correction before being fixed. Review is
+  engineering feedback, not independent clinical validation.
+- Final local implementation `74088fef9c7efb7d9a83cfe4be38634da70fc6ca`:
+  all 288 client tests passed with no skips, TypeScript/Vite production build
+  passed, and the existing dependency gate reported no errors (18 installed,
+  two optional artifacts uninspected). The lock and dependency selection did
+  not change. The following documentation-only commit does not alter runtime.
+- Hosted browser results belong to the continuation PR's exact published head.
+  Earlier passing runs are not substituted for final combined acceptance.
+
+The candidate remains draft, unmerged and undeployed. It uses only independently
+authored fictional test records; real-patient operation and clinical qualification
+remain outside this correction.
+
+## Historical local reconciliation — c1484ed, 3 November 2026
+
+The direct founder instruction was to investigate the documentation and actual
+repository, identify missing scope, then take concrete action. The audit read the
+complete founding mandate, all unique uploaded discussion content, existing
+Notion/Drive owners, live GitHub metadata and actual source. Research is
+complementary to accepted decisions; the current H1 stack and canonical owners
+remain authoritative.
+
+### Pinned composition and changes
+
+- Base #328: `5a188d4e18e4d80bc2ba1d662c966abc3096301f`.
+- Chronology #330: `312ad9379311901f8a69a7c20d4ea09f98027481`.
+- Native intake disclosure #335: `9d173843f924b40becba3a7dffd71717c12afb5d`.
+- Installed-package identity/rights #339:
+  `d694db4ca12206e815d6045b73baa9b6f7394290`.
+
+The application and regression donors are preserved. Two #339 files
+(`package.json` and `license-gate.mjs`) have only an extra trailing blank line
+removed; their behavior is unchanged. The workflow also removes its extra
+trailing blank line and gains the explicit changes below. Historical continuity
+appendices from #330 and #335 are both preserved; neither donor's pass is labeled
+as the new combination's hosted acceptance.
+
+A concrete coverage gap was confirmed: H1 web CI imports shared `src` and
+`tests/browser_journey.py` while its pull-request path filter omitted both.
+`h1-web.yml` now watches `src/**`, `tests/**`, and the existing
+`tools/audit_ci_data_boundaries.py`, and runs that same boundary scan before
+package acquisition. The existing rights step from #339 is retained. No new
+package, backend behavior, schema, migration, permission or canonical ledger
+is introduced.
+
+### Actual local verification
+
+| Check | Observed result |
+|---|---|
+| Pristine archived #328 client baseline | 300 passed, no failures/skips |
+| Donor chronology tests on the unfixed #328 client | 14 tests: nine intended assertion failures, five passing controls |
+| Donor rights tests on the old gate | 13 tests: eight intended negative-control failures, five passing controls |
+| Combined `npm test` | 310 passed, no failures/skips |
+| Combined `npm run build` | TypeScript and Vite production build passed |
+| Combined `npm run rights` | 13 controls passed; actual installed gate: 18 inspected, two optional uninspected, zero errors |
+| Existing synthetic boundary scan | Passed; this source-pattern scan is not runtime network enforcement |
+| Browser helper compilation | Passed; compilation is not browser execution |
+| Donor/source preservation | Exact donor comparisons recorded; API/shared-domain/test/lock/migration/recovery runtime unchanged from #328; only API README wording changed in those directories |
+| Whitespace review | `git diff --cached --check` passed after trailing-blank-line normalization |
+
+The original checkout carried two untracked donor files from its reconstruction.
+Early broad test commands therefore were not treated as pristine baseline
+receipts. The clean baseline above was created using `git archive` of the exact
+#328 commit and passed all 300 inherited tests. Reproduction and combined runs
+were then assessed separately.
+
+Local tooling has no PostgreSQL server, Docker or Chromium installed, so this
+candidate has **no local combined PostgreSQL/browser or backup/restore execution
+receipt**. Parent #322's successful API/PostgreSQL/recovery workflow
+[41664891742](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41664891742)
+remains evidence for its unchanged backend source, not a new run of this head.
+A fresh hosted H1 web run is required after separately approved publication.
+Owner/parent-chain review and any changed backend/migration acceptance remain
+required before integration. No clinical or commercial release is established.
+
+### Audit-driven documentation and next implementation gates
+
+The existing API README, project state, requirements, integration inventory and
+gap assessment now recognize the already implemented H1 evidence/report/task
+owners and distinguish the complete 15-step founding MVP from this bounded
+synthetic milestone. The existing #339 30-domain crosswalk is reused. All 28
+founding documentation responsibilities have an existing owner, partial content
+or an indexed source; they need evidence and scoped decisions rather than 28
+new competing documents.
+
+The next product gates are: (1) connect the existing supported-document and
+reviewed-assertion owners to the World Model; (2) connect one permitted evidence
+source to governed investigation and version-specific human review; (3) qualify
+account/profile/caregiver/professional authority through existing ports; and
+(4) evaluate the complete journey, including access constraints and practical
+care handoffs. Preserve source truth, uncertainty, consent, current authority,
+recovery and the synthetic-only development decision at every boundary.
+
+Publishing this local candidate, modifying existing PRs, merging and deployment
+remain subject to the founder's earlier explicit approval boundary. The local
+work and documentation reconciliation do not imply those actions occurred.
+
+### Independent code review of the local composition
+
+A fresh read-only reviewer found no introduced Critical, Important or Minor
+runtime/test/workflow issue. It independently checked donor identities, calendar
+contracts, report invalidation, disclosure mounting/context reset, filesystem
+rights controls and shared-source CI coverage. This is automated engineering
+review, not human owner acceptance, clinical validation or merge approval.
+
+One inherited minor test weakness remains under OI-010: the intake browser helper
+waits for the source index to disappear, which can occur at load start before the
+denial response finishes. The unchanged reading-convergence helper separately
+waits for terminal denial and checks no protected content. No runtime authority
+defect was observed. A later bounded test-hardening change should make the intake
+assertion wait for the same terminal condition.
+
+The final documentation pass found no material inaccurate claim in the seven
+coordinator-updated API/project-state/continuity/plan files. The completed local
+reference command `PYTHONPATH=src python -m unittest discover -s tests -v`
+reported 287 tests and `OK`. That is additional reference evidence, not a
+substitute for combined PostgreSQL/API/browser or restore acceptance. The
+preservation receipt checks 193 files: 192 unchanged, with only the API README
+changed; backend/shared runtime, tests, locks, migrations and recovery inputs
+remain unchanged.
