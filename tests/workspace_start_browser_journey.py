@@ -41,6 +41,13 @@ def main():
    assert json.load(urlopen(url+'api/cases'))==[]
    cd.evaluate("document.querySelector('#case-create-code').value='CASE-START';document.querySelector('#case-create-alias').value='Start';document.querySelector('#case-create-confirm').click();document.querySelector('#case-create-form').requestSubmit()")
    cd.wait("document.querySelector('#case-heading').textContent==='Fictional case Start' && document.body.dataset.workspaceState==='ready'",'new persistent case')
+   # Create a second fictional case through the real browser workspace.
+   # The original case must remain selected when an unfinished source-linked
+   # question later vetoes a patient switch.
+   cd.evaluate("document.querySelector('#case-create-code').value='CASE-OTHER';document.querySelector('#case-create-alias').value='Other';document.querySelector('#case-create-confirm').click();document.querySelector('#case-create-form').requestSubmit()")
+   cd.wait("document.querySelector('#case-heading').textContent==='Fictional case Other'",'second fictional workspace created')
+   cd.evaluate("document.querySelector('#case-picker').value='CASE-START';document.querySelector('#case-picker').dispatchEvent(new Event('change'))")
+   cd.wait("document.querySelector('#case-heading').textContent==='Fictional case Start'",'return to original workspace')
    cd.evaluate("document.querySelector('#record-acquisition').open=true;document.querySelector('#record-request-label').value='Fictional pathology report';document.querySelector('#record-request-from').value='Fictional pathology center';document.querySelector('#record-request-kind').value='pathology';document.querySelector('#record-request-form').requestSubmit()")
    cd.wait("document.querySelector('#record-request-list').textContent.includes('awaiting record')",'persistent record acquisition request')
    acquisitions=json.load(urlopen(url+'api/cases/'+CASE+'/record-requests'))
@@ -56,6 +63,20 @@ def main():
     cd.wait("!document.querySelector('#source-preview-details').hidden",'local file inspected')
     assert cd.evaluate("document.querySelector('#source-upload-preview').textContent")==raw.decode('utf-8')
     assert cd.evaluate("document.querySelectorAll('#source-upload-preview script').length") == 0
+    if name=='original.txt':
+     # A veto must preserve BOTH the unsaved question and the inspected file,
+     # including the exact source preview and selected local File.
+     cd.evaluate("""(() => {
+       document.querySelector('#question-text').value='What remains uncertain about this invented source?';
+       const picker=document.querySelector('#case-picker');
+       picker.value='CASE-OTHER';
+       picker.dispatchEvent(new Event('change'));
+     })()""")
+     assert cd.evaluate("document.querySelector('#case-picker').value==='CASE-START'"), 'case switched despite an unsaved question'
+     assert cd.evaluate("document.querySelector('#question-text').value.includes('invented source')"), 'unsaved question was erased'
+     assert cd.evaluate("document.querySelector('#source-upload-preview').textContent.length>0 && !document.querySelector('#source-preview-details').hidden"), 'veto discarded the inspected source preview'
+     assert cd.evaluate("document.querySelector('#source-file').files.length===1"), 'veto discarded selected original file'
+     cd.evaluate("document.querySelector('#question-text').value=''")
     cd.evaluate("document.querySelector('#source-upload-confirm').click();document.querySelector('#source-upload-form').requestSubmit()")
    upload(ORIGINAL,'original.txt')
    cd.wait("document.querySelectorAll('#source-list .source-card').length===1",'file import updates original record')
@@ -100,8 +121,20 @@ def main():
    cd.evaluate("[...document.querySelectorAll('#model-investigation-list button')].find(b=>b.textContent==='Prepare review draft').click()")
    cd.wait("document.querySelectorAll('#snapshot-list .snapshot').length===2",'new report; original history untouched')
    cd.command('Page.reload')
+   cd.wait("document.querySelector('#case-picker')?.options.length===2",'both cases restored after browser reload')
+   # A multi-case workspace may initially choose another case. Explicitly
+   # reselect the original before checking its preserved report history.
+   cd.evaluate("""(() => {
+     const picker=document.querySelector('#case-picker');
+     if(picker.value!=='CASE-START') {
+       picker.value='CASE-START';
+       picker.dispatchEvent(new Event('change'));
+     }
+   })()""")
+   cd.wait("document.querySelector('#case-heading').textContent==='Fictional case Start'",'original case restored after browser reload')
    cd.wait("document.querySelectorAll('#snapshot-list .snapshot').length===2",'persistent case and reports after browser reload')
-   assert len(json.load(urlopen(url+'api/cases')))==1
+   assert len(json.load(urlopen(url+'api/cases')))==2
+   assert json.load(urlopen(url+'api/cases/CASE-OTHER/state'))['sources']==[]
    assert json.load(urlopen(url+'api/cases/'+CASE+'/record-requests'))['requests'][0]['receipt_state']=='source_current'
    cd.evaluate("document.querySelector('#record-acquisition').open=true")
    cd.wait("document.querySelector('#record-request-list').textContent.includes('source current')",'durable request receipt after browser reload')

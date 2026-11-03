@@ -60,10 +60,11 @@ async function initialize() {
     await renderIncomingBoard(cases);
     picker.addEventListener('change', () => {
       // An unfinished narrative must never silently become attached to another case.
-      if ((['draft-observations', 'draft-summary', 'draft-assumptions', 'evidence-rationale',
-            'evidence-withdraw-reason', 'option-description'].some(id => el(id).value.trim()))) {
+      if ((['question-text', 'draft-observations', 'draft-summary', 'draft-assumptions',
+            'evidence-rationale', 'evidence-withdraw-reason', 'option-description']
+            .some(id => el(id).value.trim()))) {
         picker.value = caseId;
-        notice('Save or explicitly clear the unfinished investigation draft before switching cases.', true);
+        notice('Save or explicitly clear the unfinished investigation draft or question before switching cases.', true);
         return;
       }
       cancelSourceRead();
