@@ -6,8 +6,10 @@ on:
     paths:
       - 'tools/semantic_contract_probe.py'
       - 'tools/semantic_benchmark.py'
+      - 'tools/semantic_native_model.py'
       - 'tests/test_semantic_contract_probe.py'
       - 'tests/test_semantic_benchmark.py'
+      - 'tests/test_semantic_native_model.py'
       - 'tests/fixtures/semantic_benchmark_cases_v1.json'
       - '.github/workflows/semantic-metadata-pilot.yml'
 
@@ -38,7 +40,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p semantic-evidence
-          python -m compileall -q tools/semantic_contract_probe.py tools/semantic_benchmark.py tests/test_semantic_contract_probe.py tests/test_semantic_benchmark.py
+          python -m compileall -q tools/semantic_contract_probe.py tools/semantic_benchmark.py tools/semantic_native_model.py tests/test_semantic_contract_probe.py tests/test_semantic_benchmark.py tests/test_semantic_native_model.py
           python -m unittest discover -s tests -p 'test_semantic*.py' -v 2>&1 | tee semantic-evidence/tests.txt
       - name: Run frozen challenge set and enforce baseline contract
         shell: bash
@@ -60,6 +62,28 @@ jobs:
           assert x['external_model_calls'] == 0
           print('Offline semantic benchmark: PASS; NVIDIA runtime not executed')
           PY
+      - name: Generate zero-row NVIDIA-native sandbox for inspection
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/semantic_native_model.py --output-dir semantic-evidence/native-sandbox > semantic-evidence/native-builder.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import sys
+          sys.path.insert(0, 'tools')
+          from semantic_native_model import validate_native_model, verify_empty_sqlite
+          root=Path('semantic-evidence/native-sandbox')
+          receipt=json.loads((root/'receipt.json').read_text())
+          doc=json.loads((root/'oi_native_model.yaml').read_text())
+          assert validate_native_model(doc)['native_model_sha256']==receipt['native_model_sha256']
+          assert (receipt['table_count'],receipt['column_count'],receipt['term_count'],receipt['patient_rows'])==(3,22,3,0)
+          assert len(verify_empty_sqlite(root/'oi_metadata_sandbox.sqlite'))==3
+          assert receipt['vendor_runtime_executed'] is False
+          assert receipt['data_samples_included'] is False
+          assert receipt['model_endpoint_called'] is False
+          print('Native NVIDIA model shape and zero-row SQLite sandbox: PASS; no vendor runtime')
+          PY
       - name: Record evidence identity
         if: always()
         shell: bash
@@ -68,7 +92,7 @@ jobs:
           python - <<'PY'
           import hashlib,json,os,platform,subprocess
           from pathlib import Path
-          paths=['tools/semantic_contract_probe.py','tools/semantic_benchmark.py','tests/test_semantic_contract_probe.py','tests/test_semantic_benchmark.py','tests/fixtures/semantic_benchmark_cases_v1.json','.github/workflows/semantic-metadata-pilot.yml']
+          paths=['tools/semantic_contract_probe.py','tools/semantic_benchmark.py','tools/semantic_native_model.py','tests/test_semantic_contract_probe.py','tests/test_semantic_benchmark.py','tests/test_semantic_native_model.py','tests/fixtures/semantic_benchmark_cases_v1.json','.github/workflows/semantic-metadata-pilot.yml']
           receipt={'commit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
                    'github_run_id':os.environ.get('GITHUB_RUN_ID'),
                    'python':platform.python_version(),
