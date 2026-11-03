@@ -67,6 +67,34 @@
         </div>
       </section>
       <div class="metrics" id="metrics" aria-live="polite"></div>
+      <div class="glance-layout">
+        <section class="panel glance-findings" id="assertions" aria-labelledby="findings-heading">
+          <div class="panel-head">
+            <div><p class="view-question">GLANCE · THE AVAILABLE RECORD</p><h2 id="findings-heading">What do the sources report?</h2></div>
+            <span class="pill pill-neutral">Source statements, not clinical conclusions</span>
+          </div>
+          <p class="muted panel-note">Reported, pending, indeterminate and not reported stay distinct. Inspect each exact document version to verify the wording.</p>
+          <div id="assertion-list" class="findings"></div>
+        </section>
+        <aside class="glance-review" aria-label="Review context and next steps">
+          <section id="review-attention" class="review-attention" data-state="checking" aria-labelledby="review-attention-heading">
+            <div>
+              <p class="tiny muted review-eyebrow">SOURCE-DEPENDENT REVIEW · FICTIONAL DEMO</p>
+              <h2 id="review-attention-heading">Checking investigation freshness…</h2>
+              <p id="review-attention-summary" role="status" aria-live="polite">Loading source-linked review state.</p>
+            </div>
+            <a href="#investigations" class="button secondary">Inspect investigations</a>
+          </section>
+          <section class="glance-guide" aria-labelledby="glance-guide-heading">
+            <p class="view-question">INSPECT → VERIFY</p>
+            <h2 id="glance-guide-heading">Keep the source in view</h2>
+            <p>Open a finding’s exact source line. Compare report versions when a source changes. Then prepare a dated draft without changing the original record.</p>
+            <a href="#timeline">Inspect chronology and amendments</a>
+            <a href="#sources">Browse original documents</a>
+            <p class="muted tiny">These counts describe the available fictional records. Zero review flags do not mean a complete or clinically reviewed case.</p>
+          </section>
+        </aside>
+      </div>
       <section class="panel panel-journey" id="journey" aria-labelledby="journey-heading">
         <div class="panel-head">
           <div><div class="eyebrow">GUIDED JOURNEY · SIX STEPS OVER ONE SHARED RECORD</div><h2 id="journey-heading">Follow the case from first record to follow-through</h2></div>
@@ -124,34 +152,6 @@
           </article>
         </div>
       </section>
-      <div class="glance-layout">
-        <section class="panel glance-findings" id="assertions" aria-labelledby="findings-heading">
-          <div class="panel-head">
-            <div><p class="view-question">GLANCE · THE AVAILABLE RECORD</p><h2 id="findings-heading">What do the sources report?</h2></div>
-            <span class="pill pill-neutral">Source statements, not clinical conclusions</span>
-          </div>
-          <p class="muted panel-note">Reported, pending, indeterminate and not reported stay distinct. Inspect each exact document version to verify the wording.</p>
-          <div id="assertion-list" class="findings"></div>
-        </section>
-        <aside class="glance-review" aria-label="Review context and next steps">
-          <section id="review-attention" class="review-attention" data-state="checking" aria-labelledby="review-attention-heading">
-            <div>
-              <p class="tiny muted review-eyebrow">SOURCE-DEPENDENT REVIEW · FICTIONAL DEMO</p>
-              <h2 id="review-attention-heading">Checking investigation freshness…</h2>
-              <p id="review-attention-summary" role="status" aria-live="polite">Loading source-linked review state.</p>
-            </div>
-            <a href="#investigations" class="button secondary">Inspect investigations</a>
-          </section>
-          <section class="glance-guide" aria-labelledby="glance-guide-heading">
-            <p class="view-question">INSPECT → VERIFY</p>
-            <h2 id="glance-guide-heading">Keep the source in view</h2>
-            <p>Open a finding’s exact source line. Compare report versions when a source changes. Then prepare a dated draft without changing the original record.</p>
-            <a href="#timeline">Inspect chronology and amendments</a>
-            <a href="#sources">Browse original documents</a>
-            <p class="muted tiny">These counts describe the available fictional records. Zero review flags do not mean a complete or clinically reviewed case.</p>
-          </section>
-        </aside>
-      </div>
       <div id="notice" role="status" aria-live="polite" class="notice" hidden></div>
       <section class="panel" id="incoming-board">
         <div class="panel-head"><div><div class="eyebrow">00 / WORKLIST</div><h2>Incoming board</h2></div><span class="pill pill-warn">FICTIONAL DEMO CASES ONLY</span></div>
