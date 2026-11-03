@@ -12,7 +12,8 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1 --port 4173 --strictPort",
     "test": "tsc -p tsconfig.client.json && node --test tests/*.test.mjs",
-    "rights": "node tools/license-gate.mjs"
+    "test:rights": "node --test tools/license-gate.test.mjs",
+    "rights": "npm run test:rights && node tools/license-gate.mjs"
   },
   "dependencies": {
     "react": "19.3.1",
@@ -29,3 +30,4 @@
     "rollup": "npm:@rollup/wasm-node@4.67.4"
   }
 }
+
