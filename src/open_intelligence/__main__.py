@@ -24,6 +24,7 @@ from .investigation import (
     validate_output,
 )
 from .mission import build_patient_mission
+from .owned_questions import question_gap_rollup
 from .store import CaseStore, InvalidInput, MAX_SOURCE_BYTES
 from .timeline import case_timeline
 
@@ -174,6 +175,9 @@ class Handler(BaseHTTPRequestHandler):
             inv_one = re.fullmatch(rf"/api/cases/{ID_PART}/investigations/([0-9]+)", path)
             if inv_one:
                 return self._json(200, store.get_investigation(inv_one[1], int(inv_one[2])))
+            question_rollup = re.fullmatch(rf"/api/cases/{ID_PART}/questions/([0-9]+)/rollup", path)
+            if question_rollup:
+                return self._json(200, question_gap_rollup(store, question_rollup[1], int(question_rollup[2])))
             if path == "/api/investigations/templates":
                 return self._json(200, {"templates": [
                     {"id": template_id, "description": text[:160]}
@@ -241,7 +245,25 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(200, store.import_report(imports[1], raw.encode("utf-8")))
                 questions = re.fullmatch(rf"/api/cases/{ID_PART}/questions", path)
                 if questions:
-                    return self._json(201, {"question_id": store.add_question(questions[1], data.get("question"))})
+                    owner = data.get("owner_label")
+                    if isinstance(owner, str) and not owner.strip():
+                        owner = None
+                    return self._json(201, {"question_id": store.add_question(
+                        questions[1], data.get("question"), owner)})
+                question_owner = re.fullmatch(rf"/api/cases/{ID_PART}/questions/([0-9]+)/owner", path)
+                if question_owner:
+                    history_id = store.assign_question_owner(
+                        question_owner[1], int(question_owner[2]), data.get("owner_label"))
+                    return self._json(200, {"history_id": history_id})
+                question_triage = re.fullmatch(rf"/api/cases/{ID_PART}/questions/([0-9]+)/triage", path)
+                if question_triage:
+                    store.set_question_triage(question_triage[1], int(question_triage[2]), data.get("triage"))
+                    return self._json(200, {"result": "triage_updated"})
+                question_note = re.fullmatch(rf"/api/cases/{ID_PART}/questions/([0-9]+)/evidence-notes", path)
+                if question_note:
+                    note_id = store.add_question_evidence_note(
+                        question_note[1], int(question_note[2]), data.get("note"))
+                    return self._json(201, {"note_id": note_id})
                 evidence_assessment = re.fullmatch(rf"/api/cases/{ID_PART}/evidence-assessments", path)
                 if evidence_assessment:
                     return self._json(201, {"assessment_id": store.assess_synthetic_evidence(

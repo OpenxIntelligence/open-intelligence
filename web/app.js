@@ -67,6 +67,7 @@ async function initialize() {
       // An unfinished narrative must never silently become attached to another case.
       if ((['draft-observations', 'draft-summary', 'draft-assumptions', 'evidence-rationale',
             'evidence-withdraw-reason', 'option-description',
+            'owner-label-input', 'note-text',
             'scoped-decision-note', 'scoped-dissent-rationale'].some(id => el(id).value.trim()))) {
         picker.value = caseId;
         notice('Save or explicitly clear the unfinished investigation draft before switching cases.', true);
@@ -77,7 +78,8 @@ async function initialize() {
       active = null; // Reject writes while the next case is loading.
       draftQuestionFilter = null;
       draftFilterCaseId = null;
-      for (const id of ['question-text', 'report-text', 'evidence-rationale', 'draft-observations',
+      for (const id of ['question-text', 'question-owner', 'owner-label-input', 'note-text',
+        'report-text', 'evidence-rationale', 'draft-observations',
         'draft-summary', 'draft-assumptions']) el(id).value = '';
       if (el('source-dialog').open) el('source-dialog').close();
       if (el('compare-dialog').open) el('compare-dialog').close();
@@ -473,10 +475,21 @@ function render() {
   }
   renderBiologicalAssets();
   clear('question-list'); clear('question-choice');
+  clear('owner-question-choice'); clear('triage-question-choice');
+  clear('note-question-choice'); clear('rollup-question-choice');
+  clear('question-rollup');
   if (!active.questions.length) empty(el('question-list'), 'Add an unresolved question to begin.');
   for (const question of active.questions) {
     const row = node('div', null, 'question');
     row.append(node('p', question.question), pill(question.state, question.state === 'open' ? 'pill-warn' : ''));
+    row.append(node('p', 'Owner: ' + (question.owner_label || 'none recorded') +
+      ' · Follow-up marker: ' + (question.triage || 'unsorted'), 'muted'));
+    const notes = (active.question_evidence_notes || []).filter(n => Number(n.question_id) === Number(question.id));
+    if (notes.length) {
+      const latest = notes[notes.length - 1];
+      row.append(node('p', 'Needed-evidence notes: ' + notes.length +
+        ' · Latest (v' + latest.version + '): ' + latest.note, 'muted'));
+    }
     const draftsLink = document.createElement('a');
     draftsLink.href = '#investigation-history-heading';
     draftsLink.className = 'button secondary minor';
@@ -488,8 +501,11 @@ function render() {
     });
     row.append(draftsLink);
     el('question-list').append(row);
-    const opt = node('option', 'Q' + question.id + ', ' + question.question.slice(0, 62));
-    opt.value = question.id; el('question-choice').append(opt);
+    for (const id of ['question-choice', 'owner-question-choice', 'triage-question-choice',
+      'note-question-choice', 'rollup-question-choice']) {
+      const opt = node('option', 'Q' + question.id + ', ' + question.question.slice(0, 62));
+      opt.value = question.id; el(id).append(opt);
+    }
   }
   if (priorQuestion && [...el('question-choice').options].some(x => x.value === priorQuestion))
     el('question-choice').value = priorQuestion;
@@ -846,14 +862,103 @@ el('dialog-close').addEventListener('click', () => { cancelSourceRead(); el('sou
 el('compare-close').addEventListener('click', () => { cancelSourceRead(); el('compare-dialog').close(); });
 // Native Escape dispatches cancel before closing. Avoid a close-event handler:
 // queued programmatic close events must not cancel a newer read intent.
+function renderQuestionRollup(data) {
+  // Read-only ledger facts only: unresolved items with anchors, bound
+  // snapshots, versioned notes, owner history, and case coverage context.
+  clear('question-rollup');
+  const box = el('question-rollup');
+  const question = data.question || {};
+  box.append(node('p', 'Q' + question.id + ': ' + (question.question || '')));
+  box.append(node('p', 'State: ' + (question.state || '') + ' · Follow-up marker: ' +
+    (question.triage || '') + ' · Owner: ' + (question.owner_label || 'none recorded'), 'muted'));
+  box.append(node('p', data.ordering_rule || '', 'muted'));
+  const items = data.unresolved_items || [];
+  box.append(node('p', 'Unresolved source items: ' + items.length, 'subhead'));
+  if (!items.length) empty(box, 'No unresolved source items in this fictional case.');
+  for (const item of items) {
+    const row = node('div', null, 'question');
+    row.append(node('p', item.finding_key + ' · ' + item.state),
+      node('p', 'Source #' + item.source_version_id + ' (' + item.document_id + '@' + item.version +
+        '), line ' + item.source_line + ' · Occurred ' + item.occurred +
+        ' · Documented ' + item.documented, 'muted'),
+      node('p', item.quote || '', 'quoted'));
+    box.append(row);
+  }
+  const snapshots = data.snapshots || [];
+  box.append(node('p', 'Bound snapshots: ' + snapshots.length, 'subhead'));
+  for (const snapshot of snapshots) {
+    box.append(node('p', 'Snapshot #' + snapshot.id + ' · ' + snapshot.state +
+      ' · Sources: ' + (snapshot.source_ids || []).join(', '), 'muted'));
+  }
+  const notes = data.needed_evidence_notes || [];
+  box.append(node('p', 'Needed-evidence notes: ' + notes.length, 'subhead'));
+  for (const note of notes) {
+    box.append(node('p', 'v' + note.version + ' · ' + note.created_at + ': ' + note.note, 'muted'));
+  }
+  const history = data.owner_history || [];
+  box.append(node('p', 'Owner history: ' + history.length + ' assignment(s)', 'subhead'));
+  for (const entry of history) {
+    box.append(node('p', entry.owner_label + ' · ' + entry.assigned_at, 'muted'));
+  }
+  const coverage = data.case_coverage_context || {};
+  box.append(node('p', 'Case coverage context: ' + (coverage.gaps || []).length +
+    ' gap(s), ' + (coverage.date_conflicts || []).length + ' date conflict(s). ' +
+    (coverage.note || ''), 'muted'));
+  box.append(node('p', data.disclaimer || '', 'muted tiny'));
+}
 for (const id of ['source-dialog', 'compare-dialog'])
   el(id).addEventListener('cancel', cancelSourceRead);
 el('question-form').addEventListener('submit', async event => {
   event.preventDefault(); try {
     const requestedCase = readyCase();
-    await api('/api/cases/' + requestedCase + '/questions', { question: el('question-text').value });
+    await api('/api/cases/' + requestedCase + '/questions', {
+      question: el('question-text').value, owner_label: el('question-owner').value || null,
+    });
     if (requestedCase !== caseId) return;
-    el('question-text').value = ''; notice('Question persisted.'); await refresh();
+    el('question-text').value = ''; el('question-owner').value = '';
+    notice('Question persisted.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('question-owner-form').addEventListener('submit', async event => {
+  event.preventDefault(); try {
+    const requestedCase = readyCase();
+    const qid = Number(el('owner-question-choice').value);
+    await api('/api/cases/' + requestedCase + '/questions/' + qid + '/owner', {
+      owner_label: el('owner-label-input').value,
+    });
+    if (requestedCase !== caseId) return;
+    el('owner-label-input').value = ''; notice('Owner label assigned.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('question-triage-form').addEventListener('submit', async event => {
+  event.preventDefault(); try {
+    const requestedCase = readyCase();
+    const qid = Number(el('triage-question-choice').value);
+    await api('/api/cases/' + requestedCase + '/questions/' + qid + '/triage', {
+      triage: el('triage-value').value,
+    });
+    if (requestedCase !== caseId) return;
+    notice('Follow-up marker updated.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('question-note-form').addEventListener('submit', async event => {
+  event.preventDefault(); try {
+    const requestedCase = readyCase();
+    const qid = Number(el('note-question-choice').value);
+    await api('/api/cases/' + requestedCase + '/questions/' + qid + '/evidence-notes', {
+      note: el('note-text').value,
+    });
+    if (requestedCase !== caseId) return;
+    el('note-text').value = ''; notice('Needed-evidence note appended.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('rollup-button').addEventListener('click', async () => {
+  try {
+    const requestedCase = readyCase();
+    const qid = Number(el('rollup-question-choice').value);
+    const data = await api('/api/cases/' + requestedCase + '/questions/' + qid + '/rollup');
+    if (requestedCase !== caseId || !active || active.case.case_id !== requestedCase) return;
+    renderQuestionRollup(data);
   } catch (err) { notice(err.message, true); }
 });
 el('draft-form').addEventListener('submit', async event => {
