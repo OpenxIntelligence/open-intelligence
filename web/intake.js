@@ -32,7 +32,7 @@
     }
     let size=0;
     for (const file of files) {
-      if (!file || typeof file.name !== 'string' ||
+      if (!file || typeof file.name !== 'string' || !/\\.txt$/i.test(file.name) ||
           typeof file.arrayBuffer !== 'function' || !Number.isSafeInteger(file.size) ||
           file.size < 1 || file.size > 65536) {
         throw Error('Each source must have 1–65,536 original bytes.');
