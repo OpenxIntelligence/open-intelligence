@@ -20,6 +20,7 @@ ROOT=Path(__file__).resolve().parents[3]
 sys.path.insert(0,str(ROOT/'tests'))
 from browser_journey import ChromeSession,free_port,wait_for
 from workspace_ux_checks import check_workspace_navigation,check_source_presentation,check_case_switch,check_cleared_context,navigate
+from workspace_reading_checks import check_reading_workspace,check_readiness_states,assert_reading_checks
 
 
 class CheckedChromeSession(ChromeSession):
@@ -64,7 +65,7 @@ def main():
             targets=wait_for(lambda:json.load(urlopen(f'http://127.0.0.1:{port}/json/list',timeout=2)),'Chromium target',30)
             cd=CheckedChromeSession(next(t['webSocketDebuggerUrl'] for t in targets if t['type']=='page'))
             cd.command('Page.enable');cd.command('Runtime.enable');cd.command('Page.navigate',{'url':'http://127.0.0.1:4173'})
-            cd.wait("document.querySelector('[data-testid=readiness]')?.textContent==='PostgreSQL API ready'",'real proxied API readiness')
+            cd.wait("(()=>{const e=document.querySelector('[data-testid=readiness]');return e?.classList.contains('ready')&&Boolean(e.textContent.trim());})()",'real proxied API readiness')
             def value(selector,text):
                 # React tracks controlled input setters. Use the native setter plus a real input event.
                 cd.evaluate(f"(()=>{{const e=document.querySelector({json.dumps(selector)});Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,{json.dumps(text)});e.dispatchEvent(new Event('input',{{bubbles:true}}));}})()")
@@ -144,6 +145,7 @@ def main():
             assert cd.evaluate("document.querySelectorAll('[data-testid=source-statement]').length===1")
             check_source_presentation(cd,pid,2)
             check_case_switch(cd,add_synthetic,root)
+            reading_checks=check_reading_workspace(cd)
             # Read rights must be checked afresh; a denied refresh discards earlier findings.
             credentials[0]['actions'].remove('source_read');write_grants()
             cd.evaluate("document.querySelector('[data-testid=refresh-sources]').click()")
@@ -186,6 +188,8 @@ def main():
             cd.wait("document.querySelector('[data-testid=status]').textContent.includes('Patient unavailable')",'cross-organization read denied')
             cd.command('Page.reload');cd.wait("Boolean(document.querySelector('#credential'))",'reload forgets credential')
             assert cd.evaluate("document.querySelector('#credential').value==='' && document.querySelector('#patient-id').value==='' && localStorage.length===0 && sessionStorage.length===0")
+            reading_checks.extend(check_readiness_states(cd))
+            assert_reading_checks(reading_checks)
             assert not cd.runtime_errors,f'Unexpected uncaught JavaScript or console.error events: {cd.runtime_errors}'
             print('PASS: React/Vite -> actual FastAPI/PostgreSQL 16; identity/create/retry; exact case/source read, immutable amendment history, unreviewed quoted text and rights revocation; two-case source/filter isolation; long case/document/organization/quotation reflow; cross-organization isolation; expiry clears previously visible records; reload; keyboard filter recovery, landmarks, sticky focus and 320/390/768/1440px layout; no uncaught JavaScript or console.error events. Independently fictional records only; no clinical workflow or production identity claim.')
         finally:
