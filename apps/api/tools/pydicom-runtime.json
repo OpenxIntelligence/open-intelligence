@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "name": "pydicom",
+  "version": "3.0.2",
+  "approved_scope": "local-synthetic-h1-development",
+  "transformation": "oi-pydicom-code-only-v1",
+  "build": "1oi1",
+  "source": {
+    "filename": "pydicom-3.0.2-py3-none-any.whl",
+    "sha256": "abf971a5440f84dbaf42c4b6758e30e62480902584f8b270b9a5d146e278a07b",
+    "release_url": "https://pypi.org/project/pydicom/3.0.2/",
+    "publication_commit": "20aa4b73aef76bffb6fbc46a8827588dfa9bb89d",
+    "license_url": "https://github.com/pydicom/pydicom/blob/20aa4b73aef76bffb6fbc46a8827588dfa9bb89d/LICENSE"
+  },
+  "derived": {
+    "filename": "pydicom-3.0.2-1oi1-py3-none-any.whl",
+    "sha256": "cbd2edf9051da7cce3f53184cc16dde1238b065845acfa0ceb241d0e8f06acc4",
+    "retained_file_count": 84,
+    "excluded_file_count": 206
+  },
+  "retained": "Runtime .py modules and py.typed, complete upstream LICENSE, METADATA and entry_points.txt. Exactly one eager examples import is removed from pydicom/__init__.py; all other retained Python modules are byte-identical. WHEEL gains Build: 1oi1; RECORD is recomputed.",
+  "excluded": "All sample-data directories (test_files, charset_files, palettes), example helpers and all other non-code package assets, including download URL/hash manifests. Excluded ZIP entries are never opened or decompressed.",
+  "archive": "Sorted names; ZIP_STORED; 1980-01-01 00:00:00 timestamps; Unix regular files with mode 0644; empty ZIP extras/comments; UTF-8 CSV RECORD with SHA-256 and LF endings.",
+  "limits": "Code/dictionary use for independently authored synthetic H1 metadata parsing only. No extras, sample-data use, pixel decoding, clinical analysis, production or commercial-distribution clearance. This is a modified derived build: the pinned one-line import removal prevents core import from invoking example-path lookup/download fallback. Excluded example/sample modules are outside this runtime artifact.",
+  "patch": {
+    "path": "pydicom/__init__.py",
+    "operation": "remove-one-examples-import",
+    "source_sha256": "1b5e9bd8528924058e19a7b29ac430bfd7e0b84565cc680edeaa81542b55f876",
+    "derived_sha256": "8c0a529dbca6091707ded6f3e8fbdbe718148a6acf4ca98fea360f804480f469"
+  }
+}

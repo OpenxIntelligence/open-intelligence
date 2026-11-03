@@ -160,7 +160,9 @@ def main():
                 assert cd.evaluate("document.querySelector('[data-testid=source-index]').textContent.includes('Amended fictional marker is reported negative.')")
                 assert cd.evaluate("document.querySelectorAll('[data-testid=source-statement]').length===1")
                 from reading_convergence_journey import exercise as exercise_reading
-                exercise_reading(cd)
+                assert cd.evaluate("Boolean(document.querySelector('[data-testid=reviewed-document-disclosure]')) && !document.querySelector('[data-testid=reviewed-document-disclosure]').open"), 'Reviewed originals start collapsed beside the structured import'
+                assert cd.evaluate("!document.querySelector('[data-testid=reviewed-file]').checkVisibility()"), 'Closed reviewed intake preserves the reading-first workspace'
+                exercise_reading(cd,credentials,write_grants)
                 # The new Records action must recheck the canonical source before
                 # offering a question draft; no implicit question save or Composer call.
                 cd.evaluate("""(() => {
@@ -238,7 +240,7 @@ def main():
                 from authored_evidence_journey import exercise as exercise_evidence
                 from evidence_continuity_journey import exercise as exercise_evidence_continuity
                 exercise_evidence(cd,pid,case,connected_question['question_id'],new_receipt['source_id'],
-                    credentials,write_grants,directory,questions.artifacts,restart_api,
+                    credentials,write_grants,directory,questions.artifacts,restart_api,add_synthetic,
                     on_report=lambda report,path,body:exercise_evidence_continuity(cd,pid,case,
                         connected_question['question_id'],new_receipt['source_id'],credentials,
                         write_grants,questions.artifacts,report,path,body))
@@ -281,6 +283,8 @@ def main():
             exercise_reviewed_documents(cd,pid,directory,tokens[0],credentials,write_grants,out,restart_api)
             cd.evaluate("[...document.querySelectorAll('nav button')].find(e=>e.textContent.startsWith('Overview')).click()")
             cd.wait("Boolean(document.querySelector('#patient-id'))",'Overview restored after reviewed document journey')
+            from image_evidence_journey import exercise as exercise_image_evidence
+            exercise_image_evidence(cd,pid,tokens[0],credentials,write_grants,directory,out,restart_api)
             credentials[0]['patient_ids']=[];write_grants();read()
             cd.wait("!document.querySelector('[data-testid=patient-card]') && document.querySelector('[data-testid=status]').textContent.includes('Patient unavailable')",'revoked read removes prior view')
             credentials[0]['expires_at']=(datetime.now(timezone.utc)-timedelta(seconds=1)).isoformat();write_grants();read()

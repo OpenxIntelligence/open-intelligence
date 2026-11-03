@@ -215,30 +215,10 @@ class PostgresSourceVersions:
             binding_revision = self._binding(patient_id, case_id, organization, purpose)
             if self._is_reviewed(source_id):
                 raise PatientRegistryDenied("Use the reviewed-document original endpoint")
-            row = self.registry._fetchone(
-                "SELECT raw,sha256,document_id,version,state,source_id,case_id,"
-                "kind,event_date,issued_at,specimen_id,supersedes_id "
-                "FROM clinical_source.source_versions "
-                "WHERE case_id=%s AND source_id=%s", (case_id, source_id),
-            )
-            if row is None:
-                raise PatientRegistryDenied("Source unavailable")
-            stored = dict(zip(("raw", "sha256", "document_id", "version", "state", "source_id",
-                               "case_id", "kind", "event_date", "issued_at", "specimen_id", "supersedes_id"), row))
-            predecessor = None
-            if stored["supersedes_id"] is not None:
-                previous = self.registry._fetchone(
-                    "SELECT source_id,case_id,document_id,version,kind,event_date,specimen_id,state "
-                    "FROM clinical_source.source_versions WHERE source_id=%s AND case_id=%s",
-                    (stored["supersedes_id"], case_id),
-                )
-                if previous is not None:
-                    predecessor = dict(zip(("source_id", "case_id", "document_id", "version", "kind",
-                                            "event_date", "specimen_id", "state"), previous))
-            raw = validate_original(stored, requested_case_id=case_id, predecessor=predecessor)
+            stored, raw = self._validated_original(case_id, source_id)
             result = {"source_id": source_id, "case_id": case_id,
-                    "document_id": row[2], "version": row[3],
-                    "state": row[4], "sha256": row[1],
+                    "document_id": stored["document_id"], "version": stored["version"],
+                    "state": stored["state"], "sha256": stored["sha256"],
                     "original_text": raw.decode("utf-8"),
                     "synthetic": True, "clinical_review_state": "not_established"}
             result["access_receipt_id"] = "ACCESS-" + uuid.uuid4().hex.upper()
@@ -248,9 +228,38 @@ class PostgresSourceVersions:
                 binding_revision=binding_revision, event="source.original_read_authorized",
                 receipt_id=result["access_receipt_id"],
                 recheck_authority=recheck_authority, source_id=source_id,
-                sha256=row[1], source_version=row[3], source_state=row[4],
+                sha256=stored["sha256"], source_version=stored["version"], source_state=stored["state"],
             )
             return prepared
+
+    def _validated_original(self, case_id: str, source_id: str) -> tuple[dict, bytes]:
+        """Reuse exact-original validation inside the caller's locked transaction.
+
+        No authorization or transaction is opened here. Both report and image
+        owners first acquire the canonical patient/case locks through _binding.
+        Historical report access remains valid; the image owner adds freshness.
+        """
+        row = self.registry._fetchone(
+            "SELECT raw,sha256,document_id,version,state,source_id,case_id,"
+            "kind,event_date,issued_at,specimen_id,supersedes_id "
+            "FROM clinical_source.source_versions WHERE case_id=%s AND source_id=%s",
+            (case_id, source_id),
+        )
+        if row is None:
+            raise PatientRegistryDenied("Source unavailable")
+        stored = dict(zip(("raw", "sha256", "document_id", "version", "state", "source_id",
+                           "case_id", "kind", "event_date", "issued_at", "specimen_id", "supersedes_id"), row))
+        predecessor = None
+        if stored["supersedes_id"] is not None:
+            previous = self.registry._fetchone(
+                "SELECT source_id,case_id,document_id,version,kind,event_date,specimen_id,state "
+                "FROM clinical_source.source_versions WHERE source_id=%s AND case_id=%s",
+                (stored["supersedes_id"], case_id),
+            )
+            if previous is not None:
+                predecessor = dict(zip(("source_id", "case_id", "document_id", "version", "kind",
+                                        "event_date", "specimen_id", "state"), previous))
+        return stored, validate_original(stored, requested_case_id=case_id, predecessor=predecessor)
 
     def import_original(self, patient_id: str, case_id: str, original: bytes, *,
                         organization: str, actor: str, purpose: str,

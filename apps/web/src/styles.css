@@ -192,3 +192,12 @@ h1:focus{outline:2px solid #174b48;outline-offset:5px}
 .record-import-disclosure>summary{min-height:48px;align-content:center;padding:12px 0;font-weight:600;color:#174b48;cursor:pointer;overflow-wrap:anywhere}
 .record-import-disclosure>summary:focus-visible{outline:3px solid #ba8639;outline-offset:3px}
 .record-import-disclosure>.intake-panel{margin:12px 0 16px}
+.source-image-section{margin-top:14px;min-width:0}
+.source-image-inspection{margin-top:12px;padding:14px;border:1px solid #c6d8c9;border-radius:8px;background:#f9fcf7;min-width:0}
+.source-image-inspection h5{font-size:1rem;margin:0}.source-image-inspection code{overflow-wrap:anywhere;word-break:break-all}
+.source-image-list{padding-left:20px}.source-image-list>li+li{margin-top:18px}.source-image-list button{margin-top:10px;max-width:100%;white-space:normal}
+#opened-original:focus,#sources-heading:focus{outline:2px solid #174b48;outline-offset:5px}
+
+/* Explicit keyboard access to the bounded original-text reader. */
+.original-text:focus-visible{outline:3px solid #ba8639;outline-offset:3px}
+.original-panel .original-text{max-height:min(26rem,calc(100dvh - var(--workspace-offset,24px) - 48px))}

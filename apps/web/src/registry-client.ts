@@ -18,13 +18,15 @@ import {canPrepareSourceBrief,decodeSourceBrief} from './source-brief.js';
 import type {SourceBrief} from './source-brief.js';
 import {canCreateFollowthrough,decodeFollowthrough,decodeFollowthroughReceipt,
   validFollowthroughDraft,validFollowthroughTransition} from './followthrough-view.js';
-import type {FollowthroughDraft,FollowthroughIntent,FollowthroughList,
+import type {FollowthroughDraft,FollowthroughUnsentDraft,FollowthroughIntent,FollowthroughList,
   FollowthroughReceipt,FollowthroughTransition} from './followthrough-view.js';
 import {decodeQuestionEvidenceSearch,decodeQuestionEvidenceLinks,decodeQuestionEvidenceReceipt,
   validEvidenceQuery} from './question-evidence-view.js';
 import type {QuestionEvidenceSearch,QuestionEvidenceLinks,QuestionEvidenceIntent,
   QuestionEvidenceReceipt} from './question-evidence-view.js';
 import {QuestionEvidenceSession,emptyEvidenceState} from './authored-evidence-session.js';
+import {decodeSourceImages,readSourceImageOriginal,emptySourceImages} from './source-images.js';
+import type {SourceImagesState} from './source-images.js';
 import type {EvidenceState,EvidenceDraftPatch} from './authored-evidence-session.js';
 import type {ContentItem,Permissions,Relation,Applicability} from './authored-evidence.js';
 export type Patient = Readonly<{
@@ -37,7 +39,7 @@ export type ReviewReturnIntent=Readonly<{
 }>;
 export type QuestionDraft = Readonly<{case_id:string;source_id:string;source_line:number;
   snapshot_fingerprint:string;question:string}>;
-export type ViewState = Readonly<EvidenceState & {
+export type ViewState = Readonly<EvidenceState & SourceImagesState & {
   connected: boolean; phase: 'disconnected' | 'idle' | 'reading' | 'creating' | 'ready' | 'error';
   patient: Patient | null; created: CreatedPatient | null; message: string;
   cases: ReadonlyArray<CaseBinding> | null; sourceIndex: SourceIndex | null;
@@ -59,6 +61,7 @@ export type ViewState = Readonly<EvidenceState & {
   reviewReturnMessage:string;reviewReturnIntent:ReviewReturnIntent|null;
   sourceBrief:SourceBrief|null;briefPhase:'idle'|'loading'|'ready'|'error';briefMessage:string;
   followthrough:FollowthroughList|null;followthroughCaseId:string|null;
+  followthroughDrafts:Readonly<Record<string,FollowthroughUnsentDraft>>;
   followthroughPhase:'idle'|'loading'|'ready'|'error';followthroughMessage:string;
   followthroughReceipt:FollowthroughReceipt|null;followthroughIntent:FollowthroughIntent|null;
   followthroughWritePhase:'idle'|'saving'|'saved'|'unknown'|'error';followthroughWriteMessage:string;
@@ -92,6 +95,7 @@ const emptyReview=()=>({reviewQueue:null,reviewPhase:'idle' as const,
 const emptyBrief=()=>({sourceBrief:null,briefPhase:'idle' as const,
   briefMessage:'Prepare a source-linked brief from a current saved question. Each download checks permission again.'});
 const emptyFollowthrough=()=>({followthrough:null,followthroughCaseId:null,followthroughPhase:'idle' as const,
+  followthroughDrafts:Object.freeze({}) as Readonly<Record<string,FollowthroughUnsentDraft>>,
   followthroughMessage:'Choose an authorized case to inspect work recorded for its saved questions.',
   followthroughReceipt:null,followthroughIntent:null,followthroughWritePhase:'idle' as const,
   followthroughWriteMessage:'No follow-up action is in progress.'});
@@ -109,8 +113,8 @@ const emptyInvestigation=()=>({questionDraft:null,composerPreview:null,composerP
   questionListMessage:'Open an authorized case to inspect saved source questions.',
   ...emptyEvidenceState(),...emptyBrief(),sourceQuotePacket:null,sourceQuotePhase:'idle' as const,
   sourceQuoteMessage:'Select a saved question to inspect its source quotation and evidence gaps.'});
-const fresh = (): ViewState => Object.freeze({connected:false,phase:'disconnected',patient:null,created:null,message:'Connect a local synthetic credential to use the patient registry.',cases:null,sourceIndex:null,recordsPhase:'idle',recordMessage:'Open an authorized fictional patient in Overview first.',...emptyIntake(),...emptyWorld(),...emptyInvestigation(),...emptyReview(),...emptyFollowthrough(),...emptyEvidence()});
-const emptyRecords=()=>({...emptyIntake(),...emptyWorld(),cases:null,sourceIndex:null,recordsPhase:'idle' as const,recordMessage:'Load the current authorized case mappings to inspect original source metadata.'});
+const fresh = (): ViewState => Object.freeze({connected:false,phase:'disconnected',patient:null,created:null,message:'Connect a local synthetic credential to use the patient registry.',cases:null,sourceIndex:null,recordsPhase:'idle',recordMessage:'Open an authorized fictional patient in Overview first.',...emptyIntake(),...emptyWorld(),...emptyInvestigation(),...emptyReview(),...emptyFollowthrough(),...emptyEvidence(),...emptySourceImages()});
+const emptyRecords=()=>({...emptyIntake(),...emptyWorld(),...emptySourceImages(),cases:null,sourceIndex:null,recordsPhase:'idle' as const,recordMessage:'Load the current authorized case mappings to inspect original source metadata.'});
 function exact(value: unknown, fields: string[]): value is Record<string,unknown> {
   return value !== null && typeof value==='object' && !Array.isArray(value) &&
     Object.keys(value).length===fields.length && fields.every(k=>Object.hasOwn(value,k));
@@ -192,6 +196,7 @@ export class RegistrySession {
   #followRead=0; #followWrite=0; #savingFollowthrough=false;
   #evidenceRead=0; #evidenceWrite=0; #savingEvidence=false;
   #quoteRead=0;
+  #imageRead=0; #imageDownload=0;
   #inspectionQuestionId:string|null=null;
   #listeners=new Set<()=>void>(); #controllers=new Set<AbortController>(); #creating=false; #uploading=false;
   #evidenceSession:QuestionEvidenceSession;
@@ -233,13 +238,15 @@ export class RegistrySession {
   #resetFollowthrough(preserveCase?:string){
     this.#followRead++;this.#followWrite++;this.#savingFollowthrough=false;
     const intent=this.#state.followthroughIntent;
+    const drafts=Object.freeze(Object.fromEntries(Object.entries(this.#state.followthroughDrafts)
+      .filter(([,draft])=>draft.patient_id===this.#state.patient?.patient_id&&draft.case_id===preserveCase)));
     if(intent&&intent.patient_id===this.#state.patient?.patient_id&&intent.case_id===preserveCase&&
        ['saving','unknown'].includes(this.#state.followthroughWritePhase)){
-      return {...emptyFollowthrough(),followthroughCaseId:preserveCase,followthroughIntent:intent,
+      return {...emptyFollowthrough(),followthroughDrafts:drafts,followthroughCaseId:preserveCase,followthroughIntent:intent,
         followthroughWritePhase:'unknown' as const,followthroughWriteMessage:
           'The earlier write outcome is uncertain. Retry its exact recorded intent to recover the receipt, or explicitly abandon recovery.'};
     }
-    return {...emptyFollowthrough(),followthroughCaseId:preserveCase??null};
+    return {...emptyFollowthrough(),followthroughDrafts:drafts,followthroughCaseId:preserveCase??null};
   }
   #resetReview(preserveCase?:string){
     this.#reviewRead++;this.#reviewWrite++;this.#savingReview=false;
@@ -256,7 +263,7 @@ export class RegistrySession {
     this.#inspectionQuestionId=null;
     this.#worldRead++;this.#composerRead++;this.#questionRead++;this.#questionWrite++;this.#briefRead++;this.#quoteRead++;
     this.#questionKey='';this.#questionFingerprint='';this.#savingQuestion=false;
-    return {...emptyInvestigation(),...this.#resetReview(preserveReviewCase),...this.#resetFollowthrough(preserveFollowthroughCase),
+    return {...emptyInvestigation(),...this.#resetSourceImages(),...this.#resetReview(preserveReviewCase),...this.#resetFollowthrough(preserveFollowthroughCase),
       ...this.#resetEvidence(preserveEvidenceCase),...this.#evidenceSession.reset(preserveAuthoredEvidenceCase)};
   }
   #resetWorld(preserveReviewCase?:string){
@@ -358,7 +365,7 @@ export class RegistrySession {
       return;
     }
     const retainedCase=this.#state.reviewReturnIntent?.case_id,
-      retainedFollowthroughCase=this.#state.followthroughIntent?.case_id,
+      retainedFollowthroughCase=this.#state.followthroughIntent?.case_id??Object.values(this.#state.followthroughDrafts)[0]?.case_id,
       retainedEvidenceCase=this.#state.evidenceLinkIntent?.case_id,
       retainedAuthoredEvidenceCase=this.#state.evidenceWriteIntent?.case_id;
     const scope=this.#scope,read=this.#read,request=++this.#records;
@@ -379,7 +386,7 @@ export class RegistrySession {
       }
       const mappings=parseCaseBindingList(await json(res),patientId);
       if(!current())return;
-      const pendingCase=this.#state.followthroughIntent?.case_id;
+      const pendingCase=this.#state.followthroughIntent?.case_id??Object.values(this.#state.followthroughDrafts)[0]?.case_id;
       this.#publish({...((pendingCase&&!mappings.some(item=>item.case_id===pendingCase&&item.status==='active'))?this.#resetFollowthrough():{}),
         ...(retainedEvidenceCase&&!mappings.some(item=>item.case_id===retainedEvidenceCase&&item.status==='active')?this.#resetEvidence():{}),
         ...(retainedAuthoredEvidenceCase&&!mappings.some(item=>item.case_id===retainedAuthoredEvidenceCase&&item.status==='active')?this.#evidenceSession.reset():{}),
@@ -638,6 +645,9 @@ export class RegistrySession {
       const model=parseSourceWorldModel(await json(response,1048576),patientId,caseId);
       if(!current())return;
       this.#publish({worldModel:model,worldPhase:'ready',
+        followthroughDrafts:Object.freeze(Object.fromEntries(Object.entries(this.#state.followthroughDrafts)
+          .filter(([,draft])=>draft.patient_id===patientId&&draft.case_id===caseId&&
+            draft.source_snapshot_sha256===model.snapshot_fingerprint))),
         worldMessage:'Source-derived snapshot verified at last read; no clinical assessment or AI execution is authorized.'});
     }catch(_){
       if(current())this.#publish({...emptyWorld(),worldPhase:'error',
@@ -938,6 +948,10 @@ export class RegistrySession {
       if(!current())return;
       const pendingEvidence=this.#state.evidenceLinkIntent;
       this.#publish({questions:history.questions,questionsAccessReceiptId:history.access_receipt_id,
+        followthroughDrafts:Object.freeze(Object.fromEntries(Object.entries(this.#state.followthroughDrafts)
+          .filter(([id,draft])=>draft.patient_id===patientId&&draft.case_id===caseId&&history.questions.some(item=>
+            item.question_id===id&&item.preflight_sha256===draft.preflight_sha256&&
+            item.source_snapshot_sha256===draft.source_snapshot_sha256&&item.source_context_state==='current_unreviewed_question')))),
         ...(pendingEvidence&&!history.questions.some(item=>item.question_id===pendingEvidence.question_id)?this.#resetEvidence():{}),
         questionsCaseId:caseId,questionListPhase:'ready',
         questionListMessage:history.questions.length?
@@ -1167,6 +1181,28 @@ export class RegistrySession {
     return false;
   }
 
+  /** Memory only; no command or request key is allocated until explicit submission. */
+  editFollowthroughDraft(questionId:string,fields:FollowthroughDraft):void{
+    if(this.#followthroughBlocked())return;
+    const patientId=this.#state.patient?.patient_id,model=this.#state.worldModel;
+    const question=this.#state.questions?.find(item=>item.question_id===questionId);
+    if(!this.#token||!patientId||this.#state.phase!=='ready'||this.#uploading||
+       this.#state.worldPhase!=='ready'||this.#state.questionListPhase!=='ready'||!model||!question||
+       this.#state.questionsCaseId!==model.case_id||!canCreateFollowthrough(question,model)||
+       !this.#state.cases?.some(row=>row.case_id===model.case_id&&row.status==='active'))return;
+    const draft=Object.freeze({patient_id:patientId,case_id:model.case_id,
+      source_snapshot_sha256:question.source_snapshot_sha256,preflight_sha256:question.preflight_sha256,
+      fields:Object.freeze({...fields})});
+    this.#publish({followthroughCaseId:model.case_id,
+      followthroughDrafts:Object.freeze({...this.#state.followthroughDrafts,[questionId]:draft})});
+  }
+
+  clearFollowthroughDraft(questionId:string):void{
+    if(this.#followthroughBlocked())return;
+    const drafts={...this.#state.followthroughDrafts};delete drafts[questionId];
+    this.#publish({followthroughDrafts:Object.freeze(drafts)});
+  }
+
   async createFollowthrough(questionId:string,draft:FollowthroughDraft):Promise<void>{
     if(this.#followthroughBlocked())return;
     const patientId=this.#state.patient?.patient_id,model=this.#state.worldModel;
@@ -1241,7 +1277,9 @@ export class RegistrySession {
       if(!current())return;
       if(res.status===401){this.#httpError(401);return;}
       if([400,403,404,409,413,422].includes(res.status)){
-        this.#publish({...this.#resetFollowthrough(),followthroughCaseId:intent.case_id,followthroughWritePhase:'error',followthroughWriteMessage:res.status===409?
+        const drafts=this.#state.followthroughDrafts;
+        this.#publish({...this.#resetFollowthrough(),...(![403,404].includes(res.status)?{followthroughDrafts:drafts}:{}),
+          followthroughCaseId:intent.case_id,followthroughWritePhase:'error',followthroughWriteMessage:res.status===409?
           'The saved source context, task revision or request intent changed. Refresh the case and recorded work before a new action.':
           'This write was refused by the current grant or input contract. No successful action is assumed.'});return;
       }
@@ -1249,7 +1287,9 @@ export class RegistrySession {
       const saved=decodeFollowthroughReceipt(await json(res),intent);
       if(!current())return;if(control.signal.aborted){uncertain();return;}
       if((res.status===200)!==saved.duplicate)throw Error('task receipt status');
-      this.#publish({followthroughReceipt:saved,followthroughIntent:null,followthroughWritePhase:'saved',followthroughWriteMessage:saved.duplicate?
+      const drafts={...this.#state.followthroughDrafts};
+      if(intent.kind==='create')delete drafts[intent.question_id];
+      this.#publish({followthroughDrafts:Object.freeze(drafts),followthroughReceipt:saved,followthroughIntent:null,followthroughWritePhase:'saved',followthroughWriteMessage:saved.duplicate?
         'Original task receipt recovered. The same request was not recorded twice.':
         'Follow-up work recorded. No clinical approval, order or external notification was created.'});
       this.#savingFollowthrough=false;
@@ -1317,6 +1357,71 @@ export class RegistrySession {
   }
 
   /** Original is an independently permission-checked read; hash verification is not clinical validation. */
+  #resetSourceImages(){this.#imageRead++;this.#imageDownload++;return emptySourceImages();}
+  dismissSourceImages=()=>this.#publish(this.#resetSourceImages());
+  async loadSourceImages(sourceId:string):Promise<void>{
+    const patientId=this.#state.patient?.patient_id,index=this.#state.sourceIndex;
+    const source=index?.sources.find(item=>item.source_id===sourceId);
+    this.#publish(this.#resetSourceImages());
+    if(!this.#token||!patientId||this.#state.phase!=='ready'||!index||!source||
+       source.kind!=='imaging'||source.state!=='current'||this.#uploading||
+       !this.#state.cases?.some(item=>item.case_id===index.case_id&&item.status==='active')){
+      this.#publish({sourceImagesPhase:'error',sourceImagesMessage:'Choose a current imaging report in the authorized case first.'});return;
+    }
+    const scope=this.#scope,read=this.#read,request=this.#imageRead,caseId=index.case_id;
+    const current=()=>scope===this.#scope&&read===this.#read&&request===this.#imageRead&&
+      this.#state.patient?.patient_id===patientId&&this.#state.sourceIndex===index;
+    const control=new AbortController();this.#controllers.add(control);
+    const timeout=setTimeout(()=>{control.abort();if(current())this.#publish({sourceImages:null,
+      sourceImagesPhase:'error',sourceImagesMessage:'Image metadata request timed out. Recheck the source and try again.'});},10000);
+    this.#publish({sourceImagesSourceId:sourceId,sourceImagesPhase:'loading',sourceImagesMessage:'Checking linked image metadata and its current permission…'});
+    try{
+      const res=await this.transport('/v1/patients/'+encodeURIComponent(patientId)+'/cases/'+encodeURIComponent(caseId)+'/sources/'+encodeURIComponent(sourceId)+'/images',this.#init(control));
+      if(!current()||control.signal.aborted)return;
+      if(res.status===401){this.#httpError(401);return;}
+      if(res.status!==200){this.#publish({sourceImages:null,sourceImagesPhase:'error',sourceImagesMessage:'Linked images unavailable or permission denied. No earlier image list is retained.'});return;}
+      const sourceImages=decodeSourceImages(await json(res,524288),patientId,caseId,source);
+      if(!current()||control.signal.aborted)return;
+      this.#publish({sourceImages,sourceImagesPhase:'ready',sourceImagesMessage:'Linked original metadata checked for this source. Original bytes require a separate fresh read; images have not been interpreted.'});
+    }catch(_){if(current()&&!control.signal.aborted)this.#publish({sourceImages:null,sourceImagesPhase:'error',sourceImagesMessage:'Image metadata could not be verified or the service is unavailable. Recheck the source before retrying.'});}
+    finally{clearTimeout(timeout);this.#controllers.delete(control);}
+  }
+  async downloadSourceImage(sourceId:string,imageId:string):Promise<void>{
+    const patientId=this.#state.patient?.patient_id,index=this.#state.sourceIndex,images=this.#state.sourceImages;
+    const source=index?.sources.find(item=>item.source_id===sourceId),image=images?.images.find(item=>item.image_id===imageId);
+    const request=++this.#imageDownload;
+    this.#publish({sourceImageDownload:null,sourceImageDownloadPhase:'idle',sourceImageDownloadMessage:''});
+    if(!this.#token||!patientId||this.#state.phase!=='ready'||!index||!source||
+       source.kind!=='imaging'||source.state!=='current'||!images||!image||this.#uploading||
+       images.patient_id!==patientId||images.case_id!==index.case_id||images.source_id!==sourceId||
+       this.#state.sourceImagesPhase!=='ready'||!this.#state.cases?.some(item=>item.case_id===index.case_id&&item.status==='active')){
+      this.#publish({sourceImageDownloadPhase:'error',sourceImageDownloadMessage:'Inspect the exact current source image list before requesting original bytes.'});return;
+    }
+    const scope=this.#scope,read=this.#read,imageRead=this.#imageRead,caseId=index.case_id;
+    const current=()=>scope===this.#scope&&read===this.#read&&request===this.#imageDownload&&imageRead===this.#imageRead&&
+      this.#state.patient?.patient_id===patientId&&this.#state.sourceIndex===index&&this.#state.sourceImages===images;
+    const control=new AbortController();this.#controllers.add(control);
+    const timeout=setTimeout(()=>{control.abort();if(current())this.#publish({sourceImageDownload:null,
+      sourceImageDownloadPhase:'error',sourceImageDownloadMessage:'Original image request timed out. Nothing was downloaded. Recheck and try again.'});},10000);
+    this.#publish({sourceImageDownloadPhase:'loading',sourceImageDownloadMessage:'Rechecking original-image permission and exact bytes before download…'});
+    try{
+      const init=this.#init(control);init.headers={...init.headers,Accept:'application/dicom'};
+      const res=await this.transport('/v1/patients/'+encodeURIComponent(patientId)+'/cases/'+encodeURIComponent(caseId)+'/sources/'+encodeURIComponent(sourceId)+'/images/'+encodeURIComponent(imageId),init);
+      if(!current()||control.signal.aborted)return;
+      if(res.status===401){this.#httpError(401);return;}
+      if(res.status!==200){this.#publish({sourceImageDownload:null,sourceImageDownloadPhase:'error',sourceImageDownloadMessage:'Original image unavailable or permission denied. No cached bytes were downloaded.'});return;}
+      const verified=await readSourceImageOriginal(res,image);
+      if(!current()||control.signal.aborted)return;
+      const url=URL.createObjectURL(new Blob([verified.bytes],{type:'application/dicom'}));
+      try{const link=document.createElement('a');link.href=url;link.download='open-intelligence-original-'+imageId+'.dcm';
+        document.body.append(link);link.click();link.remove();}
+      finally{URL.revokeObjectURL(url);}
+      this.#publish({sourceImageDownload:Object.freeze({patient_id:patientId,case_id:caseId,source_id:sourceId,image_id:imageId,
+        sha256:image.sha256,byte_count:image.byte_count,access_receipt_id:verified.accessReceiptId}),sourceImageDownloadPhase:'ready',
+        sourceImageDownloadMessage:'Exact original bytes verified and offered for download. This read receipt is not continuing access or clinical approval.'});
+    }catch(_){if(current()&&!control.signal.aborted)this.#publish({sourceImageDownload:null,sourceImageDownloadPhase:'error',sourceImageDownloadMessage:'Original image failed byte verification or could not be downloaded. No previous original is reused.'});}
+    finally{clearTimeout(timeout);this.#controllers.delete(control);}
+  }
   dismissOriginal=()=>{
     this.#records++;
     this.#publish({...(this.#state.worldPhase==='loading'?emptyWorld():{}),original:null,recordsPhase:'ready'});

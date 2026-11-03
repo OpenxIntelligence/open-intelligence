@@ -74,7 +74,7 @@ class HTTPContractTests(unittest.TestCase):
             self.assertEqual(body["authentication"], "deny_all")
             self.assertFalse(body["patient_data_enabled"])
             self.assertTrue(body["synthetic_registry_enabled"])
-            self.assertEqual(body["capabilities"], ["synthetic_patient_create", "synthetic_patient_read", "synthetic_record_request_create", "synthetic_record_request_list", "synthetic_record_request_cancel", "synthetic_record_request_receive", "synthetic_case_binding_create", "synthetic_case_binding_list", "synthetic_case_binding_revoke", "synthetic_source_import", "synthetic_source_list", "synthetic_source_original_read", "synthetic_source_world_model_read", "synthetic_source_composer_preflight", "synthetic_source_question_create", "synthetic_source_question_list", "synthetic_source_review_queue_read", "synthetic_source_review_return", "synthetic_source_question_brief", "synthetic_source_review_packet_read", "synthetic_question_followthrough_read", "synthetic_question_followthrough_create", "synthetic_question_followthrough_update", "synthetic_question_evidence_search", "synthetic_question_evidence_link", "synthetic_question_evidence_list", "synthetic_question_evidence_read", "synthetic_question_evidence_import", "synthetic_question_evidence_assess", "synthetic_question_evidence_withdraw", "synthetic_question_evidence_original_read", "synthetic_question_evidence_report"])
+            self.assertEqual(body["capabilities"], ["synthetic_patient_create", "synthetic_patient_read", "synthetic_record_request_create", "synthetic_record_request_list", "synthetic_record_request_cancel", "synthetic_record_request_receive", "synthetic_case_binding_create", "synthetic_case_binding_list", "synthetic_case_binding_revoke", "synthetic_source_import", "synthetic_source_list", "synthetic_source_original_read", "synthetic_source_world_model_read", "synthetic_source_composer_preflight", "synthetic_source_question_create", "synthetic_source_question_list", "synthetic_image_import", "synthetic_image_list", "synthetic_image_original_read", "synthetic_source_review_queue_read", "synthetic_source_review_return", "synthetic_source_question_brief", "synthetic_source_review_packet_read", "synthetic_question_followthrough_read", "synthetic_question_followthrough_create", "synthetic_question_followthrough_update", "synthetic_question_evidence_search", "synthetic_question_evidence_link", "synthetic_question_evidence_list", "synthetic_question_evidence_read", "synthetic_question_evidence_import", "synthetic_question_evidence_assess", "synthetic_question_evidence_withdraw", "synthetic_question_evidence_original_read", "synthetic_question_evidence_report"])
 
     def test_missing_database_is_unready_not_a_fake_pass(self):
         with running_server(create_app(Settings.from_env({}))) as base:
@@ -131,7 +131,45 @@ class HTTPContractTests(unittest.TestCase):
                 missing_status, _, _ = get_json(base, path)
                 self.assertEqual(missing_status, 404)
         self.assertEqual(status, 200)
-        self.assertEqual(set(schema["paths"]), {'/v1/patients/{patient_id}/cases/{case_id}/documents','/v1/patients/{patient_id}/cases/{case_id}/documents/preview','/v1/patients/{patient_id}/cases/{case_id}/documents/{source_id}','/v1/patients/{patient_id}/cases/{case_id}/documents/{source_id}/original','/v1/patients/{patient_id}/cases/{case_id}/documents/{source_id}/annotations',"/health", "/health/ready", "/v1", "/v1/patients", "/v1/patients/{patient_id}", "/v1/patients/{patient_id}/record-requests", "/v1/patients/{patient_id}/record-requests/{request_id}/cancel", "/v1/patients/{patient_id}/record-requests/{request_id}/receive", "/v1/patients/{patient_id}/case-bindings", "/v1/patients/{patient_id}/case-bindings/{case_id}/revoke", "/v1/patients/{patient_id}/cases/{case_id}/sources", "/v1/patients/{patient_id}/cases/{case_id}/sources/{source_id}", "/v1/patients/{patient_id}/cases/{case_id}/world-model", "/v1/patients/{patient_id}/cases/{case_id}/composer/source-preflight", "/v1/patients/{patient_id}/cases/{case_id}/questions", "/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/brief", "/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/source-review-packet", "/v1/patients/{patient_id}/cases/{case_id}/review-queue", "/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/return-for-verification", "/v1/patients/{patient_id}/cases/{case_id}/followthrough", "/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/followthrough", "/v1/patients/{patient_id}/cases/{case_id}/followthrough/{task_id}/transitions", "/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/evidence-search", "/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/evidence-links", "/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/evidence", "/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/evidence/{evidence_id}/withdraw", "/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/evidence/{evidence_id}/original", "/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/evidence-assessments", "/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/evidence-reports", "/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/evidence-reports/{report_id}"})
+        self.assertEqual(set(schema["paths"]), {
+            "/health",
+            "/health/ready",
+            "/v1",
+            "/v1/patients",
+            "/v1/patients/{patient_id}",
+            "/v1/patients/{patient_id}/case-bindings",
+            "/v1/patients/{patient_id}/case-bindings/{case_id}/revoke",
+            "/v1/patients/{patient_id}/cases/{case_id}/composer/source-preflight",
+            "/v1/patients/{patient_id}/cases/{case_id}/documents",
+            "/v1/patients/{patient_id}/cases/{case_id}/documents/preview",
+            "/v1/patients/{patient_id}/cases/{case_id}/documents/{source_id}",
+            "/v1/patients/{patient_id}/cases/{case_id}/documents/{source_id}/annotations",
+            "/v1/patients/{patient_id}/cases/{case_id}/documents/{source_id}/original",
+            "/v1/patients/{patient_id}/cases/{case_id}/followthrough",
+            "/v1/patients/{patient_id}/cases/{case_id}/followthrough/{task_id}/transitions",
+            "/v1/patients/{patient_id}/cases/{case_id}/questions",
+            "/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/brief",
+            "/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/evidence",
+            "/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/evidence-assessments",
+            "/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/evidence-links",
+            "/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/evidence-reports",
+            "/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/evidence-reports/{report_id}",
+            "/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/evidence-search",
+            "/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/evidence/{evidence_id}/original",
+            "/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/evidence/{evidence_id}/withdraw",
+            "/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/followthrough",
+            "/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/return-for-verification",
+            "/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/source-review-packet",
+            "/v1/patients/{patient_id}/cases/{case_id}/review-queue",
+            "/v1/patients/{patient_id}/cases/{case_id}/sources",
+            "/v1/patients/{patient_id}/cases/{case_id}/sources/{source_id}",
+            "/v1/patients/{patient_id}/cases/{case_id}/sources/{source_id}/images",
+            "/v1/patients/{patient_id}/cases/{case_id}/sources/{source_id}/images/{image_id}",
+            "/v1/patients/{patient_id}/cases/{case_id}/world-model",
+            "/v1/patients/{patient_id}/record-requests",
+            "/v1/patients/{patient_id}/record-requests/{request_id}/cancel",
+            "/v1/patients/{patient_id}/record-requests/{request_id}/receive",
+        })
         self.assertEqual(schema["paths"]["/v1/patients"]["post"]["security"], [{"SyntheticFixture": []}])
         self.assertEqual(schema["paths"]["/v1/patients/{patient_id}/cases/{case_id}/world-model"]["get"]["security"], [{"SyntheticFixture": []}])
         queue = schema["paths"]["/v1/patients/{patient_id}/cases/{case_id}/review-queue"]["get"]

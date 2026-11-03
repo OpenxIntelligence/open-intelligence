@@ -8,7 +8,7 @@ Continue the authorized Open Intelligence H1 engineering work by joining the exi
 
 - Document/evidence/review/main composition #377: b13dd4810342d6a7ef08bbad53745502e0950801.
 - Socket/report qualification #370: cc624fe3b258e39a3b833a0053ed9e9f2ced57be.
-- Image audit-tail authority #376: 319e68b1445cb4547db56bb82d173ce47f88274b.
+- Image audit-tail authority #376: 513c54fada89505d64487c11ef6338b20713b0d8.
 - Test-fixture lifespan correction #373: e22dd159f3543452798dd124433c066e729eab42.
 
 These branches retain their respective ownership. Their historical test results are not acceptance of this new composition.
@@ -35,3 +35,7 @@ Retain Review draft checks before journeys that add further fictional cases. Run
 ## Limits
 
 Independently authored synthetic cases only. Next.js, real patient data, live PACS, new production services, clinical inference, clinical sign-off and distribution-license changes remain outside this engineering integration. Same-process/same-UID socket fixtures do not qualify external archive isolation or external archive recovery. Production identity/consent, manual-passage provenance integration, qualified biomedical/model access and independent clinical evaluation keep their separate owners and acceptance requirements.
+
+## Bounded input additions
+
+Include the separately verified #378 report-freshness, #379 unsent follow-up draft, #380 Review chronology and #382 source-reading keyboard corrections at the frozen revisions in the execution ledger. Preserve their full existing regression assertions when composing the same session and browser harness. Donor passes remain historical evidence until this candidate completes its own acceptance.

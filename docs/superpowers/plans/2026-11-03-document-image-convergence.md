@@ -30,9 +30,9 @@ Ruling: The existing continuation mandate and “proceed with all remaining” a
 
 ### Task 1: Establish tests-first integration evidence
 
-- [ ] Add `apps/api/tests/test_document_image_convergence.py` over the unchanged #377 runtime.
-- [ ] Observe route/graph assertion failures before importing absent image helpers.
-- [ ] Retain this baseline commit and its actual hosted result in the final PR receipt.
+- [x] Add `apps/api/tests/test_document_image_convergence.py` over the unchanged #377 runtime.
+- [x] Observe route/graph assertion failures before importing absent image helpers.
+- [x] Retain this baseline commit and its actual hosted result in the final PR receipt.
 
 ### Task 2: Compose the existing owners
 
@@ -51,3 +51,23 @@ Ruling: The existing continuation mandate and “proceed with all remaining” a
 - [ ] Record exact source/tree, results and limitations in the PR and existing Notion/Google engineering records.
 
 The checkboxes above record the initial publication checkpoint. Completed evidence is added to the PR and canonical records after the source is tested; documentation-only status changes must not create a misleading untested source claim.
+
+## Composition rulings and observed baseline
+
+Task 1 complete: retained tests-first source `ecda925d887c55e496dc3e6748337a8ddebd34ac`, tree `61f0bd922adafe0f6ef2d4711c7f0627d5710989`; hosted API run 41711711965 executed 441 tests with seven expected assertions in the five new methods, no errors or skips. Web run 41711711889 passed 415 client tests, 13 rights controls, build and actual browser. This proves the baseline lacks the proposed routes/join, not acceptance of the implementation.
+
+Ruling: Use corrected #376 `513c54fada89505d64487c11ef6338b20713b0d8` rather than the initial repaired head. Runtime is unchanged; four grant-denial expectations now match the existing Patient unavailable envelope. All status, rollback and retry assertions remain. Cost if wrong: inaccurate denial expectations could conceal a disclosure boundary, so combined actual HTTP execution remains required.
+
+Ruling: Include fixed #378 `ecc8f6d8066178573c950ab537faea8094a1e81c`, #379 `af7f4e69139709f47822c3174f741b0c18048deb`, #380 `8dde8efac386c9d32ce3ca60d4173a1ef1ffc95b` and #382 `0e243e175dfdfe6e6d055531032c3dc284a1adc1`. Their existing bounded corrections close stale report/comparison, same-case unsent task, timestamp and keyboard-reading gaps. Preserve both image and document props, focus cleanup, journey ordering, and the new authored-evidence helper argument at both callers. Cost if wrong: compositional regressions despite individually green owners; execute the complete joined browser.
+
+Ruling: Preserve historical image/report no-DDL assertions at `0012_image_report_convergence`, then explicitly upgrade to current 0013 before HTTP. Only current-head expectations change; published migration nodes do not. Cost if wrong: a current-head assertion could falsely replace historical preservation evidence; both old and new populated paths are tested.
+
+Ruling: Keep #383 with its active owner at this freeze; its Overview journey overlaps #379 and was still awaiting its own acceptance and independent review when inspected. Keep moving main separate from the pinned #377 input. Cost if wrong: a later verified improvement waits for deliberate adoption; no unreviewed owner is silently overwritten.
+
+Task 2 source prepared: preserved 26 exact package records and complete cumulative notices; joined their notice digest; preserved the code-only pydicom derivation and pypdf original evidence. All six recovery drivers, shared CI triggers and the 30-minute API budget remain.
+
+Independent source reviews: backend migration/test composition and frontend donor/caller/order review completed without a blocking source-composition finding. Their reviews did not execute this combined candidate. A separate source/document audit-tail authority gap was identified and requires an observed regression plus repair before completion.
+
+### Additional bounded regression before repair
+
+Add four actual PostgreSQL/HTTP tests with eleven grant-withdrawal subcases for the shared source/document access-event boundary. The real audit SQL executes before fixture authority changes; the oracle requires 404, no receipt/content, unchanged durable rows and a successful freshly authorized retry. PostgreSQL sequence allocation is not asserted to roll back. This regression is deliberately published before changing `_read_receipt`; observed failures and the subsequent central repair must be recorded before claiming completion.
