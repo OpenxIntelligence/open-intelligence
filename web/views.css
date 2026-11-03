@@ -228,9 +228,6 @@ html[data-view-role="patient"] .view-card { padding: var(--space-6); }
 /* Less on screen: the rail keeps the case picker and navigation only. The
    header banner and page footer still state the demo's boundaries. */
 .rail > .tiny, .rail .side-bottom { display: none; }
-.rail .view-nav-more > summary { display: flex; min-height: 40px; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-radius: var(--radius-control); color: var(--color-muted); font-weight: 550; cursor: pointer; list-style: none; }
-.rail .view-nav-more > summary::-webkit-details-marker { display: none; }
-.rail .view-nav-more > summary::before { content: "▸"; transition: transform 120ms ease; }
-.rail .view-nav-more[open] > summary::before { transform: rotate(90deg); }
-.rail .view-nav-more > a { padding-left: var(--space-6); }
-@media (max-width: 60rem) { .rail .view-nav-more { flex: none; } .rail .view-nav-more > a { padding-left: var(--space-3); } }
+
+/* Logo mark: the shared accent-ink is now white (button text), so colour it green. */
+.brand-mark { color: var(--color-accent); }

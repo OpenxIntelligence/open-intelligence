@@ -72,9 +72,8 @@ def main() -> None:
             # Every original section is still in the page, inside a panel and never duplicated.
             for section in EXPECTED_CARE_SECTIONS:
                 assert cd.evaluate(f"document.querySelectorAll('#{section}').length === 1 && !!document.querySelector('#{section}').closest('.view-panel, #view-parking')"), section
-            # Four main destinations; specialised tools under one collapsed "More".
-            assert cd.evaluate("document.querySelectorAll('#view-nav > a').length === 4 && document.querySelectorAll('#view-nav .view-nav-more a').length === 3 && !document.querySelector('#view-nav .view-nav-more').open"), \
-                'four main tabs plus More'
+            # All seven destinations stay directly in the sidebar (no "More" menu).
+            assert cd.evaluate("document.querySelectorAll('#view-nav > a').length === 7 && !document.querySelector('#view-nav details')"), 'seven flat tabs'
             # Clinicians start on the cross-case worklist, then open a focused case workspace.
             cd.wait("!document.querySelector('#view-board').hidden && document.querySelectorAll('#view-worklist tbody tr').length === 2", 'clinician starts on the worklist')
             assert cd.evaluate("document.querySelector('#view-casebar').hidden"), 'no case header on the cross-case worklist'

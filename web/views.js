@@ -19,17 +19,17 @@
   const remember = value => { try { localStorage.setItem(ROLE_KEY, value); } catch (_) { /* optional */ } };
   let role = params.get('role') in ROLES ? params.get('role') : (remembered() === 'patient' ? 'patient' : 'careteam');
 
-  // [tab key, nav label, block ids, under "More"]. The first id is the tab's
-  // link target. Anything not listed is parked: still in the page, out of view.
+  // [tab key, nav label, block ids]. The first id is the tab's link target.
+  // Anything not listed is parked: still in the page, out of view.
   const LAYOUT = {
     careteam: [
       ['board', 'Worklist', ['view-worklist', 'workspace-start', 'view-board-details']],
       ['overview', 'Overview', ['view-glance']],
+      ['records', 'Records & timeline', ['source-intake', 'timeline', 'sources', 'biological-assets', 'import']],
       ['investigations', 'Investigations', ['investigations']],
+      ['research', 'Evidence & research', ['evidence', 'bibliography']],
       ['review', 'Review & changes', ['changes-since-review', 'activity', 'view-mission']],
-      ['records', 'Records & timeline', ['source-intake', 'timeline', 'sources', 'biological-assets', 'import'], true],
-      ['research', 'Evidence & research', ['evidence', 'bibliography'], true],
-      ['options', 'Options & tasks', ['options'], true],
+      ['options', 'Options & tasks', ['options']],
     ],
     patient: [
       ['home', 'Home', ['pt-home']],
@@ -189,10 +189,7 @@
     for (const [id, block] of Object.entries(blocks)) if (!placed.has(id)) parking.append(block);
     panels.replaceChildren(...built);
     nav.replaceChildren();
-    // Main destinations stay in view; specialised tools sit under "More".
-    const more = make('details', null, 'view-nav-more');
-    more.append(make('summary', 'More'));
-    for (const [key, label, ids, extra] of LAYOUT[layoutRole]) {
+    for (const [key, label, ids] of LAYOUT[layoutRole]) {
       const link = make('a', null, key === 'board' ? 'view-nav-board' : '');
       link.href = '#' + ids[0];
       link.dataset.tab = key;
@@ -201,9 +198,8 @@
       badge.hidden = true;
       link.append(badge);
       link.addEventListener('click', () => show(key));
-      (extra ? more : nav).append(link);
+      nav.append(link);
     }
-    if (more.querySelector('a')) nav.append(more);
     currentTab = null;
     route();
     paint();
@@ -216,9 +212,6 @@
   function show(key) {
     if (!LAYOUT[arrangedRole].some(tab => tab[0] === key)) key = defaultTab();
     currentTab = key;
-    const tab = LAYOUT[arrangedRole].find(entry => entry[0] === key);
-    const more = nav.querySelector('.view-nav-more');
-    if (more && tab && tab[3]) more.open = true;
     for (const panel of panels.children) panel.hidden = panel.dataset.tab !== key;
     casebar.hidden = arrangedRole !== 'careteam' || key === 'board';
     if (key === 'board') paintWorklist();
