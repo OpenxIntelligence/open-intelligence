@@ -73,10 +73,16 @@ class PostgresQuestionEvidence:
 
         with self.registry.transaction():
             authority()
-            return PostgresSourceVersions(self.registry).list_locked(
+            prepared = PostgresSourceVersions(self.registry).list_locked(
                 patient_id, case_id, organization=organization, actor=actor,
                 purpose=purpose, prepare_response=prepare, recheck_authority=authority,
             )
+            # The source owner checks before writing its access receipt. Check
+            # again after that audit tail, still under the same record locks,
+            # so a trusted same-transaction callback cannot change the rights
+            # of metadata that was already encoded for disclosure.
+            authority()
+            return prepared
 
     def _record(self, record_id, version, rights_versions):
         row = self.registry._fetchone(

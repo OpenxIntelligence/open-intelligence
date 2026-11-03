@@ -292,3 +292,47 @@ class QuestionEvidencePostgresTests(SourceVersionFixture):
                     self.assertNotIn(record["title"], json.dumps(result))
                     self.assertNotIn("Private", json.dumps(result))
             self.assertEqual(self.links(base, patient, question)[1]["links"], [])
+
+    def test_rights_change_after_source_audit_withholds_prepared_json_and_rolls_back(self):
+        with running_server(create_app(self.settings)) as base:
+            patient, prepared, question = self.question(base)
+            record = self.search(base, patient, question)[1]["records"][0]
+            append_event = PostgresPatientRegistry.append_event
+            def revise_after_audit(registry, subject, event_type, **metadata):
+                result = append_event(registry, subject, event_type, **metadata)
+                if event_type == "source.read_authorized":
+                    self.catalog._rights_locked(registry, "FICT-RECORD-CONTINUITY", "1",
+                        permissions={}, revoked=True, superseded=False, recorded_by="FIXTURE-AUDIT-TAIL",
+                        reason="Synthetic same-transaction callback after prepared disclosure")
+                return result
+            # The first search has a rights dependency. An empty history has
+            # none, so use search and fresh link paths for this regression.
+            with patch.object(PostgresPatientRegistry, "append_event", revise_after_audit):
+                for operation in (
+                    lambda: self.search(base, patient, question),
+                    lambda: self.link(base, patient, prepared, question, record),
+                ):
+                    code, result, _ = operation()
+                    self.assertEqual(code, 404)
+                    self.assertNotIn(record["title"], json.dumps(result))
+            self.assertEqual(self.links(base, patient, question)[1]["links"], [])
+            self.assertEqual(self.search(base, patient, question)[1]["records"], [record])
+
+    def test_catalog_disclosure_holds_rights_row_lock_through_actual_encoding(self):
+        from oi_api import evidence_routes
+        with running_server(create_app(self.settings)) as base:
+            patient, _, question = self.question(base)
+            prepare = evidence_routes._prepare
+            inspected = []
+            def inspect_lock(model, value, **options):
+                response = prepare(model, value, **options)
+                with self.assertRaises(DBAPIError) as blocked:
+                    with self.engine.begin() as connection:
+                        connection.execute(text("SELECT record_id FROM investigation.evidence_catalog_records "
+                            "WHERE record_id='FICT-RECORD-CONTINUITY' AND version='1' FOR UPDATE NOWAIT"))
+                self.assertEqual(blocked.exception.orig.args[0]["C"], "55P03")
+                inspected.append(True)
+                return response
+            with patch.object(evidence_routes, "_prepare", inspect_lock):
+                self.assertEqual(self.search(base, patient, question)[0], 200)
+            self.assertEqual(inspected, [True])

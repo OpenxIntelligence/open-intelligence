@@ -1,11 +1,20 @@
 """Metadata discovery is distinct from evidence appraisal and clinical review."""
-import re
 import unicodedata
 from typing import Literal
+from urllib.parse import urlsplit
 
-from pydantic import Field, StrictBool, field_validator
+from pydantic import Field, StrictBool, field_validator, model_validator
 
 from .contracts import Contract
+
+CITATION_PATTERN = r"^FICT-[A-Z0-9-]{1,123}@[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+
+
+def _visible_metadata(value):
+    if value != value.strip() or any(
+            unicodedata.category(c) in {"Cc", "Cf", "Cs", "Zl", "Zp"} for c in value):
+        raise ValueError("Visible metadata required")
+    return value
 
 
 class EvidenceCommand(Contract):
@@ -32,7 +41,7 @@ class EvidenceSearch(EvidenceCommand):
 
 class EvidenceLinkCreate(EvidenceCommand):
     request_key: str = Field(strict=True, min_length=3, max_length=128)
-    citation: str = Field(strict=True, pattern=r"^FICT-[A-Z0-9-]+@[A-Za-z0-9._-]+$", max_length=193)
+    citation: str = Field(strict=True, pattern=CITATION_PATTERN, max_length=193)
     expected_metadata_sha256: str = Field(strict=True, pattern=r"^[0-9a-f]{64}$")
     source_snapshot_contract: Literal["oi.pg-source-world-model/1"]
     expected_source_snapshot_sha256: str = Field(strict=True, pattern=r"^[0-9a-f]{64}$")
@@ -40,16 +49,37 @@ class EvidenceLinkCreate(EvidenceCommand):
 
 
 class EvidenceMetadata(Contract):
-    citation: str = Field(max_length=193)
-    id: str = Field(pattern=r"^FICT-[A-Z0-9-]+$", max_length=128)
-    version: str = Field(pattern=r"^[A-Za-z0-9._-]+$", max_length=64)
+    citation: str = Field(strict=True, pattern=CITATION_PATTERN, max_length=193)
+    id: str = Field(strict=True, pattern=r"^FICT-[A-Z0-9-]+$", max_length=128)
+    version: str = Field(strict=True, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$", max_length=64)
     source_kind: Literal["fictional"]
-    title: str = Field(min_length=1, max_length=300)
-    licence: str = Field(min_length=1, max_length=128)
-    link: str = Field(max_length=512)
-    metadata_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    title: str = Field(strict=True, min_length=1, max_length=300)
+    licence: str = Field(strict=True, min_length=1, max_length=128)
+    link: str = Field(strict=True, max_length=512)
+    metadata_sha256: str = Field(strict=True, pattern=r"^[0-9a-f]{64}$")
     availability: Literal["metadata_only"] = "metadata_only"
     rights_status: Literal["granted"] = "granted"
+
+    @field_validator("title", "licence", "link")
+    @classmethod
+    def visible_metadata(cls, value):
+        return _visible_metadata(value)
+
+    @field_validator("link")
+    @classmethod
+    def fictional_link(cls, value):
+        url = urlsplit(value)
+        if (url.scheme != "https" or url.netloc != "example.invalid"
+                or not url.path.startswith("/fictional/") or url.query or url.fragment
+                or any(c.isspace() for c in value)):
+            raise ValueError("Explicit fictional source link required")
+        return value
+
+    @model_validator(mode="after")
+    def exact_identity(self):
+        if self.citation != f"{self.id}@{self.version}":
+            raise ValueError("Metadata identity must match its exact citation")
+        return self
 
 
 class EvidenceScope(Contract):
@@ -72,12 +102,22 @@ class EvidenceSearchResult(EvidenceScope):
 
 class EvidenceLink(Contract):
     link_id: str = Field(pattern=r"^EVIDENCE-LINK-[0-9A-F]{32}$")
-    citation: str
+    citation: str = Field(strict=True, pattern=CITATION_PATTERN, max_length=193)
     metadata_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     created_at: str
     actor_label: str = Field(max_length=128)
     status: Literal["available", "rights_restricted", "superseded", "unavailable"]
     record: EvidenceMetadata | None
+
+    @model_validator(mode="after")
+    def governed_metadata(self):
+        if (self.status == "available") != (self.record is not None):
+            raise ValueError("Only available evidence may disclose metadata")
+        if self.record is not None and (
+                self.record.citation != self.citation
+                or self.record.metadata_sha256 != self.metadata_sha256):
+            raise ValueError("Metadata must match the durable citation and fingerprint")
+        return self
 
 
 class EvidenceLinks(EvidenceScope):
@@ -87,6 +127,6 @@ class EvidenceLinks(EvidenceScope):
 
 class EvidenceLinkReceipt(Contract):
     link_id: str = Field(pattern=r"^EVIDENCE-LINK-[0-9A-F]{32}$")
-    citation: str
+    citation: str = Field(strict=True, pattern=CITATION_PATTERN, max_length=193)
     metadata_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     duplicate: StrictBool

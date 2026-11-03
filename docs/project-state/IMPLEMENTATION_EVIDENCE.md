@@ -115,3 +115,34 @@ Exact commit/tree identifiers, run links, execution totals, review resolution an
 This change advances OI-006/007/009/010/013 only within the described fictional source/question workflow. OI-008's scientific evidence investigation is still incomplete. It does not connect the separate reference evidence/report persistence, ordinary PDF correction history, imaging owner or patient overview merely by referring to those drafts.
 
 Production identity and delegation, clinical consent and professional review, real provider connections, qualified evidence rights, broad document ingestion, operational clinical domains, accessibility qualification and clinical evaluation remain in [INCOMPLETE_FEATURES.md](INCOMPLETE_FEATURES.md) and [IMPLEMENTATION_ROADMAP.md](IMPLEMENTATION_ROADMAP.md). The next convergence should port existing evidence/report owners through an explicit canonical H1 adapter, preserving source and question identity.
+
+
+## Subsequent canonical question follow-through — PR #293
+
+[Draft #293](https://github.com/OpenxIntelligence/open-intelligence/pull/293)
+extends the verified #287 runtime and preserves its evidence-only follow-up.
+Commit `635f357048eb27e52e6ec5c3d7b6714215070127` connects existing saved questions
+to immutable task origins and append-only assignment, acknowledgment, completion,
+deferral and reassignment history. Independent task grants, actual JSON-before-
+final-authorization preparation, exact retry recovery, source amendment flags and
+late-response case isolation are exercised through the same canonical owners.
+
+[API run 41633216511](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41633216511)
+passed 326 executions with no skips, all 245 reference tests, inherited browser
+journeys and the patient/source/review/task recovery probes. The new probe restores
+an actual PostgreSQL backup and serves identical tasks/retry receipts through the
+real API. [React run 41633216590](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41633216590)
+passed 195 client tests, production build and all combined browser journeys;
+[UI glance 41633216653](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41633216653)
+passed. Desktop/mobile captures and all 334 archived source blobs were checked.
+
+Independent review and actual execution found and repaired the actor-bound
+mismatch, creation-draft loss and patient-lock upgrade deadlock. Failing evidence,
+fixture corrections, exact tree/artifact hashes and limits remain in the
+[follow-through contract](../engineering/H1_QUESTION_FOLLOWTHROUGH.md).
+
+This is implemented and tested within the independently authored synthetic
+contract. It does not add scientific evidence appraisal, professional approval,
+notifications or deployment. OI-008 and the full OI-010 acceptance remain open;
+the next integration reuses the existing evidence/report owners behind explicit
+canonical H1 persistence and rights contracts.

@@ -24,6 +24,30 @@ Live `main` at initial discovery was `24519839aa8ac1ea3aff88a956349ba72798a72a`.
 
 The web package is private and marked `UNLICENSED`; no first-party distribution license is selected. The Python inventory retains cumulative native/historical terms, including the Mako inherited-notice issue and pydantic-core's broader native notice set. OS images, Python distribution, PostgreSQL server, developer tools, clinical content and model weights are outside that dependency clearance.
 
+## Immediate metadata slice and source-screening checkpoint — 3 November 2026
+
+The selected #293 baseline and current [#298 metadata/citation integration](https://github.com/OpenxIntelligence/open-intelligence/pull/298) use the same H1 dependency pins. Manifest and lockfile inspection found no dependency change for this increment. The source screen below is supporting research for existing OI-004/008/013 and the canonical technology/rights registers; it is not a new master catalog or an adoption decision. [Implementation state](PROJECT_STATE.md#evidence-metadata-slice--implementation-present-acceptance-pending) and [operation-specific data rights](../safety-packet/DATA_RIGHTS.md#h1-metadata-and-citation-boundary--3-november-2026) remain separate evidence.
+
+| Existing component | Exact retained version and rights evidence | Immediate metadata-slice use and limit |
+| --- | --- | --- |
+| React / React DOM | 19.3.1 in the existing manifest/lock. The installed React LICENSE is MIT, SHA-256 da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93. | Extend the current saved-question workspace and session owner. No new component library, patient state store or framework. |
+| Vite | 7.3.7. Installed LICENSE.md identifies MIT core plus BSD-2-Clause, CC0-1.0, ISC and MIT bundled terms; file SHA-256 a77a1c089806b39ad339535bdf3677f636c91d96693e8ad7b11fe733f650ea64. | Existing TypeScript/Vite build. Preserve all bundled notices; a top-level MIT label does not replace the package's full notice set. |
+| FastAPI | 0.162.0; existing locked wheel SHA-256 3785963de305dd09912426cb81f2d230fce98ab3521cdfe97265c8d14983128c. MIT in the [publisher metadata](https://pypi.org/project/fastapi/0.162.0/) and existing exact-wheel inventory. | Add routes to the current patient/question API. Existing development-scope determination does not clear extras, images, hosting or commercial distribution. |
+| PostgreSQL | 16.15, as pinned by the existing CI image; [official release](https://www.postgresql.org/docs/16/release-16-15.html) and [PostgreSQL License](https://www.postgresql.org/about/licence/). | Store metadata, rights history and citation links under the existing investigation schema and source/authority transaction. This does not qualify the complete server/container/OS artifact or establish production readiness. |
+
+| Capability / candidate | Disposition for this increment | Specific next evidence; no implied adoption |
+| --- | --- | --- |
+| #224 catalog/citation semantics on canonical H1 saved questions | Original project code selectively reused; implementation present, final review/acceptance pending | Inspect stored scope, exact version/hash, rights revocation and immutable citation history using existing owners. No new patient chart or external scientific claims. |
+| Live biomedical metadata adapters | RESEARCH; not activated in #298 | Versioned source terms, bounded acquisition, permitted storage/display, update/retraction handling and no patient-identifying public query payloads. Current fixtures remain original fictional metadata. |
+| Full-text retrieval, scientific/model investigation and evidence-rich reports | HOLD for this increment; existing separate owners retained | Item/operation-specific content rights, permitted model input, claim support/applicability and explicit H1 persistence/review adapters. A valid citation cannot establish these. |
+| pypdf 6.21.2 | RESEARCH; no new H1 dependency | [Publisher metadata](https://pypi.org/project/pypdf/6.21.2/) declares BSD-3-Clause. Review the exact artifact, optional extras and source-fidelity/extraction contract before use; this is a screened version, not a latest-version claim. |
+| PDF.js; prior source screen nominated 6.5.438 | RESEARCH; no new viewer or parser | [Official project page](https://mozilla.github.io/pdf.js/) distinguishes Apache-2.0 code from CC BY-SA 2.5 documentation. Exact release, bundled fonts/assets, workers and dependency closure remain unqualified. |
+| pydicom 3.0.2 | RESEARCH for this slice; preserve separately reviewed imaging owners | [Publisher metadata](https://pypi.org/project/pydicom/3.0.2/) identifies MIT core and distinct extras including gpl-license. Do not activate optional codecs, bundled data or a medical-image workflow by inheriting the core license. |
+| OHIF; prior source screen nominated 3.12.15 | RESEARCH / artifact HOLD | [Current upstream license](https://github.com/OHIF/Viewers/blob/master/LICENSE) is MIT. The exact v3.12.15 license URL was unavailable in this follow-up read; release/extension/asset/transitive review remains open. No PACS or viewer integration is selected here. |
+| Biopython 1.88 | HOLD pending use/file/artifact review | [Publisher metadata](https://pypi.org/project/biopython/1.88/) reports LicenseRef-Biopython-License-Agreement. Do not relabel the whole distribution BSD; qualify selected files, native/NumPy dependencies, data and operation separately. |
+
+The upstream policy and package pages above were read on 3 November 2026. None of these source-level findings grants project commercial clearance, selects a dependency, permits a patient dataset or authorizes model training. Retain exact-version artifact review and the existing OI-17 decision process.
+
 ## How to read the comparison
 
 **Retain** means accepted/current within the stated H1 scope. **Consider later** means a plausible option with no established present need. **Qualify separately** means a bounded evaluation must resolve rights, authority, operations or deployment constraints. **Excluded from H1** records an accepted boundary, not a claim that the technology is universally unsuitable.

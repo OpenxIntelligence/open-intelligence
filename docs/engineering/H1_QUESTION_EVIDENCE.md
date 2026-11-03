@@ -25,16 +25,16 @@ network fetch, provider, model, clinical authority, or content license is adopte
 
 ## Tasks and acceptance
 
-- [ ] Reproduce and fix the inherited catalog's scope, version-search and malformed
+- [x] Reproduce and fix the inherited catalog's scope, version-search and malformed
   rights-flag defects before reusing its pure contracts.
-- [ ] Add immutable versioned metadata, append-only rights decisions and immutable
+- [x] Add immutable versioned metadata, append-only rights decisions and immutable
   question/citation links in the existing `investigation` schema. Preserve all
   prior migrations; reject incompatible pre-existing objects. The new migration
   follows `0009_question_followthrough`, without rewriting earlier revisions.
-- [ ] Expose independently authorized metadata search, citation linking and history
+- [x] Expose independently authorized metadata search, citation linking and history
   on the existing patient/question router. Prepare actual JSON under source and
   evidence locks; check grants and evidence rights before committing access events.
-- [ ] Connect the saved-question UI. Show current/restricted/superseded and source
+- [x] Connect the saved-question UI. Show current/restricted/superseded and source
   reassessment states, clear obsolete results after context changes, and recover
   uncertain link writes with the same request key.
 - [ ] Verify actual API persistence, wrong-patient/tenant denial, unknown/revoked
@@ -56,6 +56,37 @@ the immutable link identity/history remains inspectable under patient access.
 An amendment preserves old links and flags their original question context stale.
 
 ## Current evidence and limits
+
+Implementation checkmarks mean authored code, not deployment or complete
+acceptance. The draft is [PR #298](https://github.com/OpenxIntelligence/open-intelligence/pull/298),
+stacked on the explicitly identified #293 commit. No contributor branch is
+rewritten and no PR is merged.
+
+Tests-first commit `9cdb89711228bcffde6476f9001626d645b6128c` produced
+[API run 41636114987](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41636114987):
+336 tests, seven failed endpoint/body-boundary assertions and eight missing
+adapter errors. These negative results are preserved. Backend candidate
+`100512e734361153d70bd4cd3da272b8bb49cf01` has the exact tree
+`d3bf2f09ec4b5ce9b866fc0559c8b2a828771e73`; its initial hosted PostgreSQL acceptance passed
+339 API/database tests and 282 reference tests with zero skips, plus the inherited
+browser and recovery probes, in [run 41638165761](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41638165761).
+
+Local integration checks include 13 HTTP/OpenAPI/migration graph tests. The
+source-owner catalog regression has 37 focused checks and 282 reference tests.
+An independent review identified the different-case patient-wide request-key
+race and a rights change during the audit tail. The former now uses a conflict
+receipt; the latter was reproduced with an explicitly doubled source lookup
+and connection, then fixed by a final authorization/rights check after the
+source receipt. Actual PostgreSQL versions of these failure paths are included
+in the combined acceptance suite. A unit double is not database evidence.
+The frontend has 219 passing local tests (195 inherited, 17 client and seven
+rendering) and a successful production build. The new browser and evidence
+restore probes still require their own combined-head hosted result.
+
+The retained dependency locks are unchanged. The donor pure modules and authored
+fixture are attributed to #224 at `57fb58bab63a931874e5e768858d741459aeb7fa`.
+No claim is made that the entire inherited application/container distribution
+has commercial clearance; existing native/runtime and content holds remain.
 
 The 334 tracked files of the base were compared to their published Git blobs;
 the complete tree and published commit were reconstructed exactly. Baseline

@@ -7,10 +7,10 @@ validation/citation helpers are shared with the original isolated catalog.
 """
 from __future__ import annotations
 
-from dataclasses import replace
 import hmac
 import json
 import re
+import sys
 import unicodedata
 from urllib.parse import urlsplit
 import uuid
@@ -193,15 +193,23 @@ def public_metadata(record, digest, *, case_id, organization):
 def main():
     from .config import Settings
     from .database import Database
-    database = Database(Settings.from_env())
+    database = None
     try:
+        database = Database(Settings.from_env())
         with database.registry_connection() as connection:
             seed_fictional_records(PostgresPatientRegistry(connection, lambda *args: False),
                                    fictional_records(), recorded_by="FIXTURE-AUTHOR")
         print("Original fictional metadata catalog seeded; no clinical content or external retrieval.")
+        return 0
+    except Exception:
+        # Driver errors can contain connection details and SQL. An operator
+        # failure is attributable by exit status without echoing configuration.
+        print("Fictional catalog unavailable; check configuration, migration and immutable fixture state.", file=sys.stderr)
+        return 2
     finally:
-        database.close()
+        if database is not None:
+            database.close()
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

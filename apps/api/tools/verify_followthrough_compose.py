@@ -42,7 +42,7 @@ def main():
         actions = ['patient_create', 'patient_read', 'case_binding_create', 'case_binding_read',
                    'case_binding_revoke', 'source_import', 'source_read', 'composer_context_read',
                    'question_create', 'question_read', 'followthrough_create',
-                   'followthrough_read', 'followthrough_update']
+                   'followthrough_read', 'followthrough_update', 'evidence_read', 'evidence_link']
         credential = {
             'token_sha256': hashlib.sha256(token.encode()).hexdigest(),
             'actor': 'ACTOR-FOLLOWTHROUGH-PROOF', 'organization': 'ORG-FOLLOWTHROUGH-PROOF',
@@ -102,6 +102,12 @@ def main():
                     FROM coordination.question_followthrough_events e),
                   'questions', (SELECT COALESCE(json_agg(q ORDER BY q.question_id),'[]'::json)
                     FROM investigation.source_questions q),
+                  'evidence_catalog', (SELECT COALESCE(json_agg(m ORDER BY m.record_id,m.version),'[]'::json)
+                    FROM investigation.evidence_catalog_records m),
+                  'evidence_rights', (SELECT COALESCE(json_agg(r ORDER BY r.record_id,r.version,r.revision),'[]'::json)
+                    FROM investigation.evidence_rights_decisions r),
+                  'evidence_links', (SELECT COALESCE(json_agg(l ORDER BY l.link_id),'[]'::json)
+                    FROM investigation.question_evidence_links l),
                   'sources', (SELECT json_agg(s ORDER BY s.document_id,s.version)
                     FROM (SELECT source_id,case_id,document_id,version,sha256,
                       encode(sha256(raw),'hex') AS raw_sha256,octet_length(raw) AS byte_length,
@@ -200,10 +206,22 @@ def main():
             before = snapshot(database)
             for path, body, receipt in writes:
                 assert request(path, body) == (200, receipt)
+            # Original citation identity survives revocation, source amendment,
+            # API/DB restart and actual restore. Metadata stays withheld.
+            status, citations = request(evidence_path)
+            assert status == 200 and citations['contract'] == 'oi.pg-question-evidence-links/1'
+            assert citations['source_context_state'] == 'source_reassessment_required'
+            assert citations['links'] == redacted_citations
+            assert all(item['record'] is None and item['status'] == 'rights_restricted'
+                       for item in citations['links'])
+            assert request(evidence_path, evidence_body) == (200, {**evidence_receipt, 'duplicate': True})
             after = snapshot(database)
             assert after['tasks'] == before['tasks'] and after['task_events'] == before['task_events']
             assert len(after['tasks']) == 3 and len(after['task_events']) == 9
             assert len(after['questions']) == 1
+            assert len(after['evidence_catalog']) == 2 and len(after['evidence_rights']) == 3
+            assert len(after['evidence_links']) == 1
+            assert len([e for e in after['events'] if e['event_type'] == 'evidence.citation.linked']) == 1
             business = [event for event in after['events']
                         if event['event_type'].startswith('coordination.followthrough.')]
             assert len(business) == 9, 'Replay duplicated a task business event'
@@ -219,6 +237,7 @@ def main():
             command(['config', '--quiet'])
             command(['up', '--build', '--detach', 'api'])
             ready()
+            command(['exec', '-T', 'api', 'python', '-m', 'oi_api.evidence_catalog'])
             status, created = request('/v1/patients', {
                 'synthetic': True, 'request_key': 'CREATE-FOLLOWTHROUGH-COMPOSE-PROOF'})
             assert status == 201 and created['duplicate'] is False
@@ -235,6 +254,43 @@ def main():
             status, source = request(prefix + '/sources', {'synthetic': True, 'original_text': ORIGINAL})
             assert status == 201 and source['version'] == 1
             question = save_question(source['source_id'])
+            evidence_path = prefix + '/questions/' + question['question_id'] + '/evidence-links'
+            status, search = request(prefix + '/questions/' + question['question_id'] + '/evidence-search',
+                                     {'synthetic': True, 'query': 'continuity'})
+            assert status == 200 and len(search['records']) == 1
+            metadata = search['records'][0]
+            assert metadata['citation'] == 'FICT-RECORD-CONTINUITY@1'
+            assert metadata['availability'] == 'metadata_only' and search['content_appraised'] is False
+            evidence_body = {
+                'synthetic': True, 'request_key': 'EVIDENCE-COMPOSE-LINK', 'citation': metadata['citation'],
+                'expected_metadata_sha256': metadata['metadata_sha256'],
+                'source_snapshot_contract': question['source_snapshot_contract'],
+                'expected_source_snapshot_sha256': question['source_snapshot_sha256'],
+                'expected_preflight_sha256': question['preflight_sha256'],
+            }
+            status, evidence_receipt = request(evidence_path, evidence_body)
+            assert status == 201 and evidence_receipt['duplicate'] is False
+            assert request(evidence_path)[1]['links'][0]['record'] == metadata
+            # Operator-only original fixture governance port; no UI can grant
+            # itself rights. Real biomedical content is not enabled here.
+            command(['exec', '-T', 'api', 'python', '-c', '''
+from oi_api.config import Settings
+from oi_api.database import Database
+from oi_api.evidence_catalog import append_rights_decision
+from open_intelligence.postgres_registry import PostgresPatientRegistry
+database = Database(Settings.from_env())
+try:
+    with database.registry_connection() as connection:
+        append_rights_decision(PostgresPatientRegistry(connection, lambda *args: False),
+            'FICT-RECORD-CONTINUITY', '1', permissions={'metadata': {'store': 'allowed', 'display': 'allowed'}},
+            revoked=True, superseded=False, recorded_by='FIXTURE-RESTORE-REVIEWER',
+            reason='Original fictional rights revocation for recovery verification')
+finally:
+    database.close()
+'''])
+            redacted_citations = request(evidence_path)[1]['links']
+            assert redacted_citations[0]['record'] is None
+            assert metadata['title'] not in json.dumps(redacted_citations)
             done = create_task('FOLLOWTHROUGH-COMPOSE-DONE', 'Prepare the fictional source discussion')['task_id']
             before = snapshot()
             path, body, _ = writes[0]
@@ -311,12 +367,17 @@ def main():
             before = snapshot(RESTORED)
             assert request(prefix + '/followthrough')[0] == 404
             assert request(writes[1][0], writes[1][1])[0] == 404
+            assert request(evidence_path)[0] == 404
+            assert request(evidence_path, evidence_body)[0] == 404
             assert snapshot(RESTORED) == before
             assert before['bindings'][0]['status'] == 'revoked'
             print('PASS FOLLOWTHROUGH COMPOSE: actual canonical HTTP lifecycle, acknowledgment gate, '
                   'exact retry identity, immutable provenance after source amendment, independent rights, '
                   'API/DB restarts, actual pg_dump/pg_restore, restored HTTP reads/replays and binding revocation; '
                   'three synthetic tasks and nine durable task events; no clinical approval.')
+            print('PASS EVIDENCE RECOVERY: fictional metadata, immutable citation, exact retry and append-only '
+                  'rights revocation survived API/DB restarts and actual pg_dump/pg_restore; restored HTTP '
+                  'withheld revoked title/URL and denied the revoked patient binding; no clinical appraisal.')
         except Exception:
             command(['logs', '--no-color', '--tail', '80'], check=False)
             raise
