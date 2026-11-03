@@ -126,6 +126,12 @@ class EvidenceLink(Contract):
                 r"(?:\.[0-9]{1,6})?(?:Z|[+-][0-9]{2}:[0-9]{2})",
                 value) is None):
             raise ValueError("Explicit visible ISO timestamp required")
+        # datetime.fromisoformat can normalize invalid numeric offset
+        # minutes (for example +05:99 becomes +06:39). Refuse such input
+        # *before* parsing rather than silently altering its interpretation.
+        if value[-1] != "Z" and (
+                int(value[-5:-3]) > 23 or int(value[-2:]) > 59):
+            raise ValueError("Invalid UTC offset fields")
         try:
             parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
             if parsed.tzinfo is None or parsed.utcoffset() is None:
