@@ -53,4 +53,44 @@ class WorkspaceStartHttpTests(unittest.TestCase):
   result=self.read('/api/cases/CASE-START/imports',{'text':RAW.decode().replace('CASE-START','CASE-OTHER')})
   self.assertEqual(result['result'],'quarantined')
   self.assertEqual(self.read('/api/cases/CASE-START/state')['sources'],[])
+ def test_bound_composer_preview_from_same_original_source_and_question(self):
+  self.read('/api/cases',{'case_id':'CASE-START','label':'Fictional case Start'})
+  imported=self.read('/api/cases/CASE-START/imports',{'text':RAW.decode()})
+  self.assertEqual(imported['result'],'imported')
+  qid=self.read('/api/cases/CASE-START/questions',
+                {'question':'Which fictional source finding requires clarification?'})['question_id']
+  context=self.read(f'/api/cases/CASE-START/composer/context?question_id={qid}')
+  self.assertEqual(context['context_kind'],'synthetic_source_bound_read_only')
+  self.assertEqual(context['case_id'],'CASE-START')
+  self.assertEqual(context['question_id'],qid)
+  self.assertRegex(context['fingerprint'],r'^[a-f0-9]{64}
+)
+  self.assertEqual(context['source_count'],1)
+  self.assertEqual(context['source_anchors'][0]['source_version_id'],imported['source_id'])
+  self.assertEqual(context['source_anchors'][0]['reported_state'],'reported')
+  self.assertEqual(context['rights_basis'],'recorded_declaration_only')
+  self.assertEqual(context['tool_status']['clinical_authorization'],'not_verified')
+  self.assertIn('model-investigation-run',self.read('/'))
+  self.assertIn('composer-context-fingerprint',self.read('/'))
+  self.assertIn('composer-context',self.read('/composer.js'))
+  amended=RAW.decode().replace('Issued-At: 2026-01-03','Issued-At: 2026-01-05').replace(
+   'Finding:','Amends: SOURCE-ONE@1\nFinding:',1)
+  self.read('/api/cases/CASE-START/imports',{'text':amended})
+  changed=self.read(f'/api/cases/CASE-START/composer/context?question_id={qid}')
+  self.assertNotEqual(context['fingerprint'],changed['fingerprint'])
+  self.assertEqual(changed['current_sources'][0]['version'],2)
+
+ def test_composer_preview_rejects_invalid_or_cross_case_question(self):
+  self.read('/api/cases',{'case_id':'CASE-START','label':'Fictional case Start'})
+  self.read('/api/cases',{'case_id':'CASE-OTHER','label':'Fictional case Other'})
+  qid=self.read('/api/cases/CASE-START/questions',
+                {'question':'Which original fictional report should be reviewed?'})['question_id']
+  for route in ('/api/cases/CASE-START/composer/context',
+                '/api/cases/CASE-START/composer/context?question_id=0',
+                '/api/cases/CASE-START/composer/context?question_id=bad',
+                f'/api/cases/CASE-OTHER/composer/context?question_id={qid}'):
+   with self.subTest(route=route), self.assertRaises(HTTPError) as err:
+    self.read(route)
+   self.assertEqual(err.exception.code,422)
+
 if __name__=='__main__':unittest.main()
