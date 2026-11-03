@@ -1,7 +1,9 @@
 """React -> FastAPI -> actual PostgreSQL. No mocked patient HTTP, identity or DB.
 
-Operator-controlled synthetic grants are updated outside the UI. No real account,
-PHI, clinical content, external model or production authorization is demonstrated.
+Operator-controlled synthetic grants are updated outside the UI. The optional
+DOI journey injects an independently authored provider protocol fixture; it does
+not replace patient HTTP, authorization or PostgreSQL. No live retrieval, real
+account, PHI, clinical content, model or production authorization is demonstrated.
 """
 from datetime import datetime,timedelta,timezone
 import base64
@@ -35,10 +37,15 @@ def main():
         def write_grants():
             p=directory/'next.json';p.write_text(json.dumps({'version':'oi.synthetic-access/1','credentials':credentials}));p.replace(directory/'access.json')
         write_grants()
-        env=dict(os.environ,PYTHONPATH=str(ROOT/'apps/api/src')+os.pathsep+str(ROOT/'src'),OI_API_ACCESS_FILE=str(directory/'access.json'))
+        env=dict(os.environ,PYTHONPATH=str(ROOT/'apps/api/src')+os.pathsep+str(ROOT/'src'),OI_API_ACCESS_FILE=str(directory/'access.json'),
+                 OI_CROSSREF_FIXTURE_VERIFICATION='1',
+                 OI_CROSSREF_PROTOCOL_FIXTURE_PATH=str(ROOT/'examples/synthetic/crossref-metadata-fixture.json'))
         subprocess.run([sys.executable,'-m','oi_api.migrate','upgrade','head'],env=env,cwd=ROOT,check=True)
         subprocess.run([sys.executable,'-m','oi_api.evidence_catalog'],env=env,cwd=ROOT,check=True)
-        api=subprocess.Popen([sys.executable,'-m','oi_api'],env=env,cwd=ROOT,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
+        api_command=[sys.executable,'-m','uvicorn','crossref_fixture_api:create_fixture_app','--factory',
+                     '--app-dir',str(ROOT/'apps/api/tools'),'--host','127.0.0.1','--port','8000',
+                     '--no-access-log','--no-proxy-headers']
+        api=subprocess.Popen(api_command,env=env,cwd=ROOT,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
         web=None;browser=None;cd=None
         try:
             wait_for(lambda:json.load(urlopen('http://127.0.0.1:8000/health/ready',timeout=2))['status']=='ready','PostgreSQL-backed API',30)
@@ -200,17 +207,21 @@ def main():
                     nonlocal api
                     os.killpg(api.pid, signal.SIGTERM)
                     api.wait(timeout=10)
-                    api=subprocess.Popen([sys.executable,'-m','oi_api'],env=env,cwd=ROOT,
+                    api=subprocess.Popen(api_command,env=env,cwd=ROOT,
                         stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
                     wait_for(lambda:json.load(urlopen('http://127.0.0.1:8000/health/ready',timeout=2))['status']=='ready',
                              'restarted PostgreSQL-backed evidence API',30)
                 from authored_evidence_journey import exercise as exercise_evidence
                 from evidence_continuity_journey import exercise as exercise_evidence_continuity
+                from crossref_citation_journey import exercise as exercise_crossref_citation
+                def verify_report_continuations(report,path,body):
+                    exercise_evidence_continuity(cd,pid,case,connected_question['question_id'],
+                        new_receipt['source_id'],credentials,write_grants,questions.artifacts,report,path,body)
+                    exercise_crossref_citation(cd,pid,case,connected_question['question_id'],
+                        credentials,write_grants,questions.artifacts,report,restart_api)
                 exercise_evidence(cd,pid,case,connected_question['question_id'],new_receipt['source_id'],
                     credentials,write_grants,directory,questions.artifacts,restart_api,
-                    on_report=lambda report,path,body:exercise_evidence_continuity(cd,pid,case,
-                        connected_question['question_id'],new_receipt['source_id'],credentials,
-                        write_grants,questions.artifacts,report,path,body))
+                    on_report=verify_report_continuations)
             # Current source metadata access is independent from the historical original bytes.
             # World Model recheck must clear the old view after source-read grant withdrawal.
             credentials[0]['actions'].remove('source_read');write_grants()

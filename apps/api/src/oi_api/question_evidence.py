@@ -28,7 +28,7 @@ class PostgresQuestionEvidence:
         self.registry = registry
 
     def _run(self, patient_id, case_id, question_id, *, organization, actor, purpose,
-             operation, recheck_authority, prepare_response, write=False):
+             operation, recheck_authority, prepare_response, write=False, extra_actions=()):
         patient_id = _key(patient_id, "patient_id")
         case_id = _case_id(case_id)
         organization = _key(organization, "organization")
@@ -41,7 +41,7 @@ class PostgresQuestionEvidence:
         def authority():
             recheck_authority()
             for action in ("patient_read", "question_read", "source_read", "evidence_read") + (
-                    ("evidence_link",) if write else ()):
+                    ("evidence_link",) if write else ()) + tuple(extra_actions):
                 self.registry._allow(actor, patient_id, action, purpose)
             # Record row locks serialize a different connection's rights append.
             # Also refuse a same-transaction callback changing inspected rights.
@@ -110,11 +110,11 @@ class PostgresQuestionEvidence:
                 "ORDER BY record_id,version LIMIT 1001 FOR SHARE", (case_id, organization),
             )
             if len(rows) > 1000:
-                raise PatientRegistryError("Fictional catalog exceeds bounded search limit")
+                raise PatientRegistryError("Metadata catalog exceeds bounded search limit")
             results = []
             for row in rows:
                 record, digest, decision = materialize_locked(self.registry, row)
-                visible = public_metadata(record, digest, case_id=case_id, organization=organization)
+                visible = public_metadata(record, digest, case_id=case_id, organization=organization, registry=self.registry)
                 # Never match an unauthorized title/terms and reveal its existence.
                 if visible is None:
                     continue
@@ -160,7 +160,7 @@ class PostgresQuestionEvidence:
                     status = "superseded"
                 else:
                     verified = verify_record(record, citation, case_id=case_id, organization=organization)
-                    visible = public_metadata(record, digest, case_id=case_id, organization=organization) if verified.ok else None
+                    visible = public_metadata(record, digest, case_id=case_id, organization=organization, registry=self.registry) if verified.ok else None
                     status = "available" if visible is not None else "rights_restricted"
                 links.append({"link_id": link_id, "citation": citation,
                               "metadata_sha256": expected, "created_at": created.isoformat(),
@@ -183,9 +183,13 @@ class PostgresQuestionEvidence:
             record_id, version = parse_citation(citation)
         except ValueError:
             raise PatientRegistryError("Malformed citation") from None
-        if (not record_id.startswith("FICT-") or version is None
-                or citation != f"{record_id}@{version}"):
-            raise PatientRegistryError("An exact fictional evidence version is required")
+        from .crossref_contract import exact_citation
+        try:
+            exact_citation(citation)
+        except ValueError:
+            raise PatientRegistryError("An exact permitted evidence version is required") from None
+        if version is None or citation != f"{record_id}@{version}":
+            raise PatientRegistryError("An exact permitted evidence version is required")
         if source_snapshot_contract != SOURCE_SNAPSHOT_CONTRACT:
             raise PatientRegistryConflict("Question context requires reassessment")
         for fingerprint in (expected_metadata_sha256, expected_source_snapshot_sha256,
@@ -221,7 +225,7 @@ class PostgresQuestionEvidence:
                 raise PatientRegistryConflict("Question source context changed")
             record, digest = self._record(record_id, version, rights_versions)
             verified = verify_record(record, citation, case_id=case_id, organization=organization)
-            if not verified.ok or public_metadata(record, digest, case_id=case_id, organization=organization) is None:
+            if not verified.ok or public_metadata(record, digest, case_id=case_id, organization=organization, registry=self.registry) is None:
                 raise PatientRegistryDenied("Evidence unavailable")
             if not hmac.compare_digest(digest, expected_metadata_sha256):
                 raise PatientRegistryConflict("Evidence version differs from the selected result")
@@ -256,7 +260,7 @@ class PostgresQuestionEvidence:
                         "metadata_sha256": prior[4], "duplicate": True}
             self.registry.append_event(
                 patient_id, "evidence.citation.linked", question_id=question_id, case_id=case_id,
-                link_id=link_id, record_id=record_id, record_version=version,
+                link_id=link_id, record_id=(record_id if record_id.startswith("FICT-") else hashlib.sha256(record_id.encode()).hexdigest()), record_version=version,
                 metadata_sha256=digest, rights_decision_id=rights_versions[(record_id, version)], actor=actor,
             )
             return {"link_id": link_id, "citation": citation,

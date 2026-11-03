@@ -14,6 +14,7 @@ from sqlalchemy import text
 from http_support import running_server
 from oi_api.app import create_app
 from oi_api.config import Settings
+from oi_api.contracts import SCHEMA_REVISION
 from oi_api.database import Database
 from oi_api.evidence_catalog import fictional_records, seed_fictional_records
 from open_intelligence.postgres_registry import PostgresPatientRegistry
@@ -57,8 +58,9 @@ class EvidenceConvergenceContractTests(unittest.TestCase):
         config = Config()
         config.set_main_option("script_location", str(Path(__file__).resolve().parents[1] / "migrations"))
         script = ScriptDirectory.from_config(config)
-        self.assertEqual(script.get_heads(), [MERGED_REVISION],
+        self.assertEqual(script.get_heads(), [SCHEMA_REVISION],
                          "The converged app needs one explicit head, not one abandoned owner")
+        self.assertEqual(script.get_revision(SCHEMA_REVISION).down_revision, MERGED_REVISION)
         self.assertEqual(set(script.get_revision(MERGED_REVISION).down_revision),
                          {"0010_question_evidence", "0010_authored_evidence_origin"})
         self.assertEqual(script.get_revision("0010_question_evidence").down_revision,

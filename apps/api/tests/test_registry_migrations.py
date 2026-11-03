@@ -19,7 +19,7 @@ from oi_api.migrate import migrate
 from open_intelligence.postgres_registry import PostgresPatientRegistry
 
 
-REGISTRY_REVISION = "0011_evidence_convergence"
+REGISTRY_REVISION = "0012_crossref_metadata"
 BASELINE_REVISION = "0001_h1_shell"
 TABLES = {"identity_patients", "identity_create_receipts", "identity_domain_events"}
 
@@ -63,6 +63,10 @@ class RegistryMigrationTests(unittest.TestCase):
             connection.execute(text("DROP TABLE IF EXISTS coordination.question_followthrough_tasks"))
             connection.execute(text("DROP FUNCTION IF EXISTS coordination.guard_question_followthrough_event_insert()"))
             connection.execute(text("DROP FUNCTION IF EXISTS coordination.guard_question_followthrough_task_insert()"))
+            connection.execute(text("ALTER TABLE IF EXISTS investigation.crossref_metadata_projections DROP CONSTRAINT IF EXISTS crossref_projection_origin"))
+            connection.execute(text("DROP TABLE IF EXISTS investigation.crossref_retrieval_receipts"))
+            connection.execute(text("DROP FUNCTION IF EXISTS investigation.guard_crossref_retrieval_insert()"))
+            connection.execute(text("DROP TABLE IF EXISTS investigation.crossref_metadata_projections"))
             connection.execute(text("DROP TABLE IF EXISTS investigation.question_evidence_links"))
             connection.execute(text("DROP FUNCTION IF EXISTS investigation.guard_question_evidence_insert()"))
             connection.execute(text("DROP TABLE IF EXISTS investigation.evidence_rights_decisions"))
