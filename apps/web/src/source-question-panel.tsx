@@ -8,13 +8,23 @@ export function SourceQuestionPanel({state,session,busy}:{state:ViewState;sessio
    draft.question.trim()===draft.question&&
    !Array.from(draft.question).some(ch=>ch.charCodeAt(0)<32||ch.charCodeAt(0)===127);
  const unresolvedWrite=state.questionSaveMessage.startsWith('Save outcome unknown.');
+ const stage=unresolvedWrite?'uncertain':state.composerPreview?'prepared':draft?'draft':'select';
  return <section data-testid="source-question-panel" aria-label="Source-linked question intake">
+   <div className="question-flow" data-testid="question-flow" aria-label="Question preparation steps">
+    <h3>Investigate a source statement</h3>
+    <ol>
+     <li data-stage={stage==='select'?'current':'complete'}><strong>1. Select a source</strong><span>{stage==='select'?'Choose a source statement below':'Source selected'}</span></li>
+     <li data-stage={stage==='draft'?'current':stage==='select'?'waiting':stage==='uncertain'?'attention':'complete'}><strong>2. Prepare context</strong><span>{stage==='uncertain'?'Save result uncertain':stage==='prepared'?'Source context prepared':stage==='draft'?'Check the current source':'Awaiting source'}</span></li>
+     <li data-stage={stage==='prepared'?'current':stage==='uncertain'?'attention':'waiting'}><strong>3. Save question</strong><span>{stage==='uncertain'?'Retry same save':stage==='prepared'?'Explicit action required':'Not yet saved'}</span></li>
+    </ol>
+    <p>Question intake only. No AI execution or clinical review.</p>
+   </div>
    {draft&&<section className="question-draft" data-testid="question-draft-editor"
        aria-labelledby="question-draft-heading">
      <span className="step">FICTIONAL QUESTION · IN-MEMORY DRAFT</span>
      <h3 id="question-draft-heading">Write your own source-linked question</h3>
-     <p><strong>Selected original:</strong> <code>{draft.source_id}</code> · line {draft.source_line}.
-       The source and case are fixed for this draft. Changing the question requires a new, independently authorized preflight.</p>
+     <p>The selected source and case remain fixed. Editing requires a new authorized source check.</p>
+     <details className="question-technical"><summary>Selected source and line</summary><p><code>{draft.source_id}</code> · line {draft.source_line}</p></details>
      <label htmlFor="source-question-text">Question to investigate</label>
      <textarea id="source-question-text" data-testid="question-draft" rows={3}
        maxLength={500} spellCheck={false} autoComplete="off" value={draft.question}
@@ -94,8 +104,10 @@ export function SourceQuestionPanel({state,session,busy}:{state:ViewState;sessio
              (item.source_snapshot_contract==='oi.pg-source-world-model/1'?'Source changed — reassessment required':'Earlier source context — reassessment required'):'Current source context — unreviewed'}
            </span>
           </div>
-          <p><strong>Original anchor:</strong> <code>{item.source_id}</code> · v{item.source_version}, line {item.source_line}.</p>
-          <p><strong>Saved question:</strong> <code>{item.question_id}</code></p>
+          <details className="question-technical" data-testid="saved-question-details"><summary>Original anchor and saved question ID</summary>
+           <p><strong>Original anchor:</strong> <code>{item.source_id}</code> · v{item.source_version}, line {item.source_line}.</p>
+           <p><strong>Saved question:</strong> <code>{item.question_id}</code></p>
+          </details>
           <details><summary>Recorded source provenance</summary>
            <p><strong>Source snapshot contract:</strong> <code>{item.source_snapshot_contract}</code></p>
            <p><strong>Original SHA-256:</strong> <code>{item.source_sha256}</code></p>
