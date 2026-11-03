@@ -287,3 +287,138 @@ test('late world model response cannot restore another patient after selection o
  t.disconnect();b.resolve(response(worldFixture()));await old;
  assert.equal(t.snapshot().worldModel,null);
 });
+
+// A deterministic standard question exercises context verification only;
+// it is not a stored patient question, clinical decision or AI prompt run.
+const composerQuestion='What source provenance and reported uncertainty require independent verification?';
+const composerFixture=()=>({
+ contract:'oi.synthetic-source-composer-preflight/1',
+ patient_id:receiptPatient,case_id:receiptCase,question:composerQuestion,
+ source_snapshot_sha256:'a'.repeat(64),
+ selected_source:{
+  source_id:receiptSource,document_id:'DOC-ONE',version:1,sha256,line:8,
+  finding_key:'marker',reported_state:'not-reported',
+  statement:'Independently fictional example.',kind:'pathology',
+  event_date:'2026-01-10',issued_at:'2026-01-11',specimen_id:'SPECIMEN-ONE'
+ },
+ source_context_only:true,biomedical_evidence_rights_verified:false,
+ model_execution_authorized:false,durable_question_created:false,
+ durable_review_connected:false,clinical_approval:false,
+ clinical_interpretation:'not_performed',
+ reassessment_policy:'revalidate_source_and_authority_before_any_future_write',
+ limitations:'Fictional source text only. No model, clinician review, real consent or medical conclusion.',
+ preflight_sha256:'b'.repeat(64),
+});
+const sourcePreflightPath='/v1/patients/'+receiptPatient+'/cases/'+receiptCase+
+ '/composer/source-preflight';
+test('Composer source preflight is a read-only bounded POST with independent grant semantics',async()=>{
+ const requests=[];
+ const s=new RegistrySession(async(url,opts)=>{
+  requests.push([url,opts]);
+  if(url===sourcePreflightPath)return response(composerFixture());
+  if(url.endsWith('/world-model'))return response(worldFixture());
+  return response(patient());
+ });
+ s.connect(token);
+ await s.read(receiptPatient);await s.loadWorldModel(receiptCase);
+ assert.equal(s.snapshot().composerPreview,null);
+ await s.prepareSourceContext(receiptSource,8,composerQuestion);
+ assert.equal(s.snapshot().composerPhase,'ready');
+ assert.equal(s.snapshot().composerPreview?.selected_source.source_id,receiptSource);
+ assert.equal(s.snapshot().composerPreview?.model_execution_authorized,false);
+ assert.equal(s.snapshot().composerPreview?.durable_review_connected,false);
+ assert.equal(s.snapshot().composerPreview?.durable_question_created,false);
+ assert.equal(s.snapshot().composerPreview?.clinical_approval,false);
+ assert.equal(requests.length,3);
+ assert.equal(requests[2][0],sourcePreflightPath);
+ assert.equal(requests[2][1].method,'POST');
+ assert.equal(requests[2][1].credentials,'omit');
+ assert.equal(requests[2][1].redirect,'error');
+ assert.equal(requests[2][1].cache,'no-store');
+ assert.deepEqual(JSON.parse(requests[2][1].body),{
+  synthetic:true,expected_source_snapshot_sha256:'a'.repeat(64),
+  source_id:receiptSource,source_line:8,question:composerQuestion
+ });
+});
+test('Composer preflight cannot be started without selected current source observation',async()=>{
+ let calls=0;
+ const s=new RegistrySession(async(url)=>{
+  calls++;return response(url.endsWith('/world-model')?worldFixture():patient());
+ });
+ s.connect(token);await s.prepareSourceContext(receiptSource,8);
+ assert.equal(calls,0);
+ await s.read(receiptPatient);await s.prepareSourceContext(receiptSource,8);
+ assert.equal(calls,1);
+ await s.loadWorldModel(receiptCase);
+ await s.prepareSourceContext(receiptSource,9);
+ assert.equal(calls,2);assert.equal(s.snapshot().composerPreview,null);
+});
+test('Composer preflight permission denial clears previously read World Model context',async()=>{
+ let reject=false;
+ const s=new RegistrySession(async(url)=>{
+  if(url===sourcePreflightPath)return reject?response({detail:'private'},404):response(composerFixture());
+  return response(url.endsWith('/world-model')?worldFixture():patient());
+ });
+ s.connect(token);await s.read(receiptPatient);await s.loadWorldModel(receiptCase);
+ await s.prepareSourceContext(receiptSource,8);
+ assert.ok(s.snapshot().composerPreview);
+ reject=true;await s.prepareSourceContext(receiptSource,8);
+ assert.equal(s.snapshot().composerPreview,null);
+ assert.equal(s.snapshot().worldModel,null);
+ assert.equal(s.snapshot().composerPhase,'error');
+ assert.ok(!JSON.stringify(s.snapshot()).includes('private'));
+});
+test('stale source snapshot demands refresh and cannot be used for an old preflight',async()=>{
+ let stale=false;
+ const s=new RegistrySession(async(url)=>{
+  if(url===sourcePreflightPath)return stale?response({detail:'stale source'},409):response(composerFixture());
+  return response(url.endsWith('/world-model')?worldFixture():patient());
+ });
+ s.connect(token);await s.read(receiptPatient);await s.loadWorldModel(receiptCase);
+ await s.prepareSourceContext(receiptSource,8);assert.ok(s.snapshot().composerPreview);
+ stale=true;await s.prepareSourceContext(receiptSource,8);
+ assert.equal(s.snapshot().worldModel,null);
+ assert.equal(s.snapshot().composerPreview,null);
+ assert.ok(s.snapshot().composerMessage.includes('Refresh Investigations'));
+});
+test('forged Composer authority, source line, patient or source statement is rejected',async()=>{
+ const wrong=[
+  {...composerFixture(),model_execution_authorized:true},
+  {...composerFixture(),clinical_approval:true},
+  {...composerFixture(),durable_review_connected:true},
+  {...composerFixture(),selected_source:{...composerFixture().selected_source,line:9}},
+  {...composerFixture(),selected_source:{...composerFixture().selected_source,statement:'fabricated'}},
+  {...composerFixture(),patient_id:'PAT-OTHER-001'},
+  {...composerFixture(),source_snapshot_sha256:'0'.repeat(64)},
+ ];
+ for(const forged of wrong){
+  const s=new RegistrySession(async(url)=>
+   response(url===sourcePreflightPath?forged:url.endsWith('/world-model')?worldFixture():patient()));
+  s.connect(token);await s.read(receiptPatient);await s.loadWorldModel(receiptCase);
+  await s.prepareSourceContext(receiptSource,8);
+  assert.equal(s.snapshot().composerPreview,null);
+  assert.equal(s.snapshot().composerPhase,'error');
+ }
+});
+test('source refresh, patient switch and disconnect invalidate pending Composer preflight',async()=>{
+ const delayed=deferred();
+ const s=new RegistrySession(async(url)=>{
+  if(url===sourcePreflightPath)return delayed.promise;
+  if(url.endsWith('/world-model'))return response(worldFixture());
+  return response(patient(url.endsWith('PAT-EXAMPLE-002')?'PAT-EXAMPLE-002':receiptPatient));
+ });
+ s.connect(token);await s.read(receiptPatient);await s.loadWorldModel(receiptCase);
+ const pending=s.prepareSourceContext(receiptSource,8);
+ await s.read('PAT-EXAMPLE-002');
+ delayed.resolve(response(composerFixture()));await pending;
+ assert.equal(s.snapshot().composerPreview,null);
+ assert.equal(s.snapshot().worldModel,null);
+ const t=new RegistrySession(async(url)=>
+  response(url===sourcePreflightPath?composerFixture():url.endsWith('/world-model')?worldFixture():patient()));
+ t.connect(token);await t.read(receiptPatient);await t.loadWorldModel(receiptCase);
+ await t.prepareSourceContext(receiptSource,8);
+ assert.ok(t.snapshot().composerPreview);
+ await t.loadWorldModel(receiptCase);
+ assert.equal(t.snapshot().composerPreview,null);
+ t.disconnect();assert.equal(t.snapshot().composerPreview,null);
+});
