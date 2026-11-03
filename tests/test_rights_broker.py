@@ -267,6 +267,8 @@ class BrokerHttpTests(unittest.TestCase):
 
     def request(self, path, data=None):
         headers = {"Content-Type": "application/json"} if data is not None else {}
+        # B-01: case routes require a fictional actor; seed() grants this one.
+        headers["X-Fictional-Actor"] = "FICTIONAL-NAVIGATOR-A"
         req = Request(f"http://127.0.0.1:{self.port}{path}",
                       data=None if data is None else json.dumps(data).encode(),
                       headers=headers)
