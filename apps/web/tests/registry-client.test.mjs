@@ -287,3 +287,65 @@ test('late world model response cannot restore another patient after selection o
  t.disconnect();b.resolve(response(worldFixture()));await old;
  assert.equal(t.snapshot().worldModel,null);
 });
+
+function briefFixture(model=worldFixture()) {
+ const body='Open Intelligence\nFictional source brief — not clinically reviewed.\n<script>literal</script>\n';
+ return {contract:'oi.synthetic-source-brief/1',synthetic:true,patient_id:model.patient_id,
+  case_id:model.case_id,source_snapshot_sha256:model.source_snapshot_sha256,
+  prepared_at:'2026-11-02T20:00:00Z',media_type:'text/plain;charset=utf-8',
+  body,body_sha256:createHash('sha256').update(body).digest('hex'),clinical_approval:false};
+}
+test('brief preparation posts the inspected fingerprint with existing in-memory credentials',async()=>{
+ let call;const s=new RegistrySession(async(url,init)=>{
+  if(url.endsWith('/brief')){call=[url,init];return response(briefFixture())}
+  return response(url.endsWith('/world-model')?worldFixture():patient());
+ });s.connect(token);await s.read(receiptPatient);await s.loadWorldModel(receiptCase);
+ const out=await s.prepareSourceBrief();assert.ok(out);assert.equal(s.snapshot().sourceBrief,out);
+ assert.equal(call[0],`/v1/patients/${receiptPatient}/cases/${receiptCase}/world-model/brief`);
+ assert.deepEqual(JSON.parse(call[1].body),{synthetic:true,source_snapshot_sha256:worldFixture().source_snapshot_sha256});
+ assert.equal(call[1].credentials,'omit');assert.equal(call[1].redirect,'error');assert.equal(call[1].cache,'no-store');
+ assert.equal(call[1].headers.Authorization,'Bearer '+token);
+ assert.ok(!JSON.stringify(s.snapshot()).includes(token));
+});
+test('brief requires a loaded authorized world model and never fabricates a result',async()=>{
+ let calls=0;const s=new RegistrySession(async()=>{calls++;return response(patient())});
+ s.connect(token);await s.read(receiptPatient);await s.prepareSourceBrief();assert.equal(calls,1);assert.equal(s.snapshot().sourceBrief,null);
+});
+test('brief wrong case, fingerprint, body hash, authority or media type is rejected',async()=>{
+ for(const patch of [{case_id:'CASE-BETA'},{source_snapshot_sha256:'f'.repeat(64)},
+  {body_sha256:'0'.repeat(64)},{clinical_approval:true},{media_type:'text/html'},
+  {prepared_at:'not-a-date'},{body:'changed quotation'}]){
+  const s=new RegistrySession(async(url)=>response(url.endsWith('/brief')?{...briefFixture(),...patch}:
+    url.endsWith('/world-model')?worldFixture():patient()));
+  s.connect(token);await s.read(receiptPatient);await s.loadWorldModel(receiptCase);
+  assert.equal(await s.prepareSourceBrief(),null);assert.equal(s.snapshot().sourceBrief,null);
+ }
+});
+test('export denial or stale context clears the prepared brief and observations',async()=>{
+ for(const code of [404,409]){
+  let denied=false;const s=new RegistrySession(async(url)=>url.endsWith('/brief')?
+   (denied?response({detail:'private server data'},code):response(briefFixture())):
+   response(url.endsWith('/world-model')?worldFixture():patient()));
+  s.connect(token);await s.read(receiptPatient);await s.loadWorldModel(receiptCase);await s.prepareSourceBrief();
+  assert.ok(s.snapshot().sourceBrief);denied=true;
+  assert.equal(await s.prepareSourceBrief(),null);assert.equal(s.snapshot().sourceBrief,null);
+  assert.equal(s.snapshot().worldModel,null);assert.ok(!JSON.stringify(s.snapshot()).includes('private server data'));
+ }
+});
+test('late brief after source refresh or navigation cannot become downloadable',async()=>{
+ for(const clear of [s=>s.clearWorldModel(),s=>s.loadWorldModel(receiptCase),s=>s.disconnect()]){
+  const pending=deferred();const s=new RegistrySession(async(url)=>url.endsWith('/brief')?
+    pending.promise:response(url.endsWith('/world-model')?worldFixture():patient()));
+  s.connect(token);await s.read(receiptPatient);await s.loadWorldModel(receiptCase);
+  const work=s.prepareSourceBrief();await clear(s);pending.resolve(response(briefFixture()));
+  assert.equal(await work,null);assert.equal(s.snapshot().sourceBrief,null);
+ }
+});
+test('patient A to B to A does not restore a pending brief from the old selection',async()=>{
+ const pending=deferred();const s=new RegistrySession(async(url)=>url.endsWith('/brief')?
+  pending.promise:response(url.endsWith('/world-model')?worldFixture():patient(url.split('/').at(-1))));
+ s.connect(token);await s.read(receiptPatient);await s.loadWorldModel(receiptCase);
+ const work=s.prepareSourceBrief();await s.read('PAT-EXAMPLE-002');await s.read(receiptPatient);
+ await s.loadWorldModel(receiptCase);pending.resolve(response(briefFixture()));
+ assert.equal(await work,null);assert.equal(s.snapshot().sourceBrief,null);
+});

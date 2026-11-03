@@ -1,3 +1,5 @@
+import {decodeSourceBrief} from './source-brief.js';
+import type {SourceBrief} from './source-brief.js';
 import {decodeOriginal,decodeRecordRequests} from './record-views.js';
 import {decodeSourceWorldModel} from './world-model-views.js';
 import type {SourceWorldModel} from './world-model-views.js';
@@ -15,6 +17,7 @@ export type ViewState = Readonly<{
   recordsPhase:'idle'|'loading'|'ready'|'error'; recordsMessage:string;
   original:OriginalSource|null;
   originalPhase:'idle'|'loading'|'ready'|'error'; originalMessage:string;
+  sourceBrief:SourceBrief|null;briefPhase:'idle'|'loading'|'ready'|'error';briefMessage:string;
   worldModel:SourceWorldModel|null;
   worldPhase:'idle'|'loading'|'ready'|'error';worldMessage:string;
 }>;
@@ -36,6 +39,7 @@ const fresh = (): ViewState => Object.freeze({
   message:'Connect a local synthetic credential to use the patient registry.',
   records:null,recordsPhase:'idle',recordsMessage:'Open an authorized patient to inspect record requests.',
   original:null,originalPhase:'idle',originalMessage:'Original text is never loaded automatically.',
+  sourceBrief:null,briefPhase:'idle',briefMessage:'Prepare a source-only brief after inspecting current sources.',
   worldModel:null,worldPhase:'idle',worldMessage:'Open an authorized patient and select a source case.',
 });
 function exact(value: unknown, fields: string[]): value is Record<string,unknown> {
@@ -70,25 +74,32 @@ function created(value: unknown): CreatedPatient {
   return Object.freeze(value as CreatedPatient);
 }
 export class RegistrySession {
-  #token=''; #scope=0; #read=0; #recordsRead=0; #originalRead=0; #worldRead=0; #state:ViewState=fresh();
+  #token=''; #scope=0; #read=0; #recordsRead=0; #originalRead=0; #worldRead=0; #briefRead=0; #state:ViewState=fresh();
   #listeners=new Set<()=>void>(); #controllers=new Set<AbortController>(); #creating=false;
   constructor(private readonly transport:Transport=(url,init)=>fetch(url,init)) {}
   snapshot=():ViewState=>this.#state;
   subscribe=(listener:()=>void):(()=>void)=>{this.#listeners.add(listener);return()=>this.#listeners.delete(listener);};
   #publish(patch:Partial<ViewState>){this.#state=Object.freeze({...this.#state,...patch});for(const listener of this.#listeners)listener();}
+  #resetBrief(){
+    this.#briefRead++;
+    this.#publish({sourceBrief:null,briefPhase:'idle',briefMessage:'Prepare a source-only brief after inspecting current sources.'});
+  }
   #resetWorld(){
+    this.#resetBrief();
     this.#worldRead++;
     this.#publish({worldModel:null,worldPhase:'idle',worldMessage:
       'Open an authorized patient and select a source case.'});
   }
   clearWorldModel=()=>this.#resetWorld();
   #resetRecords(){
+    this.#resetBrief();
     this.#recordsRead++;this.#originalRead++;this.#worldRead++;
     this.#publish({records:null,recordsPhase:'idle',recordsMessage:'Open an authorized patient to inspect record requests.',
       original:null,originalPhase:'idle',originalMessage:'Original text is never loaded automatically.',
       worldModel:null,worldPhase:'idle',worldMessage:'Open an authorized patient and select a source case.'});
   }
   disconnect=()=>{
+    this.#briefRead++;
     this.#scope++;this.#read++;this.#recordsRead++;this.#originalRead++;this.#worldRead++;this.#token='';this.#creating=false;
     for(const c of this.#controllers)c.abort();this.#controllers.clear();
     this.#state=fresh();for(const listener of this.#listeners)listener();
@@ -126,6 +137,7 @@ export class RegistrySession {
     finally{clearTimeout(timeout);this.#controllers.delete(control);}
   }
   async loadWorldModel(caseId:string):Promise<void>{
+    this.#resetBrief();
     const patientId=this.#state.patient?.patient_id;
     const query=++this.#worldRead,scope=this.#scope,selection=this.#read;
     // Every new read clears previous source observations before the request.
@@ -159,6 +171,41 @@ export class RegistrySession {
     }catch(_){
       if(current())this.#publish({worldModel:null,worldPhase:'error',worldMessage:
         'Unable to verify the source projection. No previous observation is displayed.'});
+    }finally{clearTimeout(timeout);this.#controllers.delete(control);}
+  }
+
+  async prepareSourceBrief():Promise<SourceBrief|null>{
+    if(this.#state.briefPhase==='loading')return null;
+    const model=this.#state.worldModel,patientId=this.#state.patient?.patient_id;
+    this.#resetBrief();
+    if(!this.#token||!model||patientId!==model.patient_id){
+      this.#publish({briefPhase:'error',briefMessage:'Inspect authorized sources before preparing a brief.'});return null;
+    }
+    const scope=this.#scope,selection=this.#read,world=this.#worldRead,request=++this.#briefRead;
+    const current=()=>scope===this.#scope&&selection===this.#read&&world===this.#worldRead&&
+      request===this.#briefRead&&this.#state.worldModel===model&&this.#state.patient?.patient_id===patientId;
+    const control=new AbortController();this.#controllers.add(control);
+    const timeout=setTimeout(()=>control.abort(),10000);
+    this.#publish({briefPhase:'loading',briefMessage:'Rechecking export permission and exact source versions…'});
+    try{
+      const url='/v1/patients/'+encodeURIComponent(patientId)+'/cases/'+encodeURIComponent(model.case_id)+'/world-model/brief';
+      const res=await this.transport(url,this.#init(control,JSON.stringify({synthetic:true,source_snapshot_sha256:model.source_snapshot_sha256})));
+      if(!current())return null;
+      if(res.status===401){this.#httpError(res.status);return null;}
+      if(res.status!==200){
+        if([403,404,409].includes(res.status))this.#resetWorld();
+        this.#publish({sourceBrief:null,briefPhase:'error',briefMessage:res.status===409?
+          'Sources changed. Inspect the current sources before preparing another brief.':
+          'Brief unavailable. A separate export grant and current source access are required; no file was prepared.'});
+        return null;
+      }
+      const result=await decodeSourceBrief(await json(res),patientId,model.case_id,model.source_snapshot_sha256);
+      if(!current())return null;
+      this.#publish({sourceBrief:result,briefPhase:'ready',briefMessage:'Source-only brief prepared. Clinical review is not established; download rechecks access.'});
+      return result;
+    }catch(_){
+      if(current())this.#publish({sourceBrief:null,briefPhase:'error',briefMessage:'Brief could not be verified. No partial file is available; retry explicitly.'});
+      return null;
     }finally{clearTimeout(timeout);this.#controllers.delete(control);}
   }
 

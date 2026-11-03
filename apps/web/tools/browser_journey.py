@@ -150,6 +150,42 @@ def main():
             assert "Review not established" in original_view
             assert "Clinical approval" not in original_view
 
+            # Viewing source observations is not an export grant. A denied
+            # operation must clear the draft before any downloaded text exists.
+            cd.evaluate("document.querySelector('[data-testid=brief-prepare]').click()")
+            cd.wait("!document.querySelector('[data-testid=world-model-result]') && document.body.textContent.includes('Brief unavailable')",
+                    'separate source_brief_export grant is required')
+            assert cd.evaluate("!document.querySelector('[data-testid=brief-body]')")
+            credentials[0]['actions'].append('source_brief_export');write_grants()
+            cd.evaluate("document.querySelector('[data-testid=world-case-id]').form.requestSubmit()")
+            cd.wait("Boolean(document.querySelector('[data-testid=brief-prepare]'))", 'reload after explicit export grant')
+            cd.evaluate("document.querySelector('[data-testid=brief-prepare]').click()")
+            cd.wait("Boolean(document.querySelector('[data-testid=brief-body]'))", 'authorized source-only brief preview')
+            prepared=cd.evaluate("document.querySelector('[data-testid=brief-body]').textContent")
+            assert sid in prepared and hashlib.sha256(raw.encode()).hexdigest() in prepared
+            assert 'Original line: 8' in prepared and 'not-reported' in prepared
+            assert 'Clinical review: not established.' in prepared
+            assert 'No external publications or clinical guidelines' in prepared
+            assert cd.evaluate("document.querySelector('[data-testid=brief-body]').children.length===0")
+            downloads=directory/'downloads';downloads.mkdir()
+            cd.command('Browser.setDownloadBehavior',{'behavior':'allow','downloadPath':str(downloads)})
+            cd.evaluate("document.querySelector('[data-testid=brief-download]').click()")
+            downloaded=downloads/'open-intelligence-source-brief.txt'
+            wait_for(lambda:downloaded.is_file(),'freshly authorized real text download',15)
+            saved_bytes=downloaded.read_bytes()
+            assert saved_bytes.decode('utf-8') == cd.evaluate("document.querySelector('[data-testid=brief-body]').textContent")
+            assert tokens[0].encode() not in saved_bytes
+            brief_out=Path(os.environ.get('OI_WEB_ARTIFACT_DIR',ROOT/'apps/web/.evidence'))
+            brief_out.mkdir(parents=True,exist_ok=True)
+            for width,height,label in ((1440,1100,'desktop'),(390,844,'narrow')):
+                cd.command('Emulation.setDeviceMetricsOverride',{'width':width,'height':height,'deviceScaleFactor':1,'mobile':False})
+                cd.wait(f'window.innerWidth==={width}', 'source brief viewport')
+                cd.evaluate("document.querySelector('[data-testid=brief-body]').scrollIntoView({block:'center'})")
+                assert cd.evaluate('document.documentElement.scrollWidth<=window.innerWidth+1')
+                screen=cd.command('Page.captureScreenshot',{'format':'png'})
+                (brief_out/f'h1-source-brief-{label}.png').write_bytes(base64.b64decode(screen['data']))
+            cd.command('Emulation.setDeviceMetricsOverride',{'width':1440,'height':1100,'deviceScaleFactor':1,'mobile':False})
+
             # A correction after receipt must never silently replace the
             # previously pinned original or describe it as current.
             amended=('OI-SYNTHETIC-REPORT/1\nPatient: CASE-ALPHA\n'
@@ -160,7 +196,15 @@ def main():
             status,correction=post(root+'/cases/CASE-ALPHA/sources',{
                 'synthetic':True,'original_text':amended})
             assert status==201 and correction['version']==2 and correction['source_id']!=sid
-            cd.evaluate("document.querySelector('[data-testid=world-refresh]').click()")
+            # Download is a new checked request, not a cached Blob. The old
+            # view must be refused after amendment without changing old files.
+            cd.evaluate("document.querySelector('[data-testid=brief-download]').click()")
+            cd.wait("!document.querySelector('[data-testid=world-model-result]') && document.body.textContent.includes('Sources changed')",
+                    'amendment rejects stale inspected-snapshot export')
+            assert cd.evaluate("!document.querySelector('[data-testid=brief-body]')")
+            assert downloaded.read_bytes()==saved_bytes
+            assert [x.name for x in downloads.iterdir()]==['open-intelligence-source-brief.txt']
+            cd.evaluate("document.querySelector('[data-testid=world-case-id]').form.requestSubmit()")
             cd.wait("document.querySelector('[data-testid=world-model-result]')?.textContent.includes('Amended fictional marker is negative.')",
                     'corrected PostgreSQL source replaces only current observations')
             current_view=cd.evaluate("document.querySelector('[data-testid=world-model-result]').textContent")
@@ -169,6 +213,21 @@ def main():
             assert "Superseded source versions" in current_view
             assert "Independently fictional browser source." not in current_view
             assert "Clinical review is not connected" in current_view
+            cd.evaluate("document.querySelector('[data-testid=brief-prepare]').click()")
+            cd.wait("document.querySelector('[data-testid=brief-body]')?.textContent.includes('Amended fictional marker is negative.')",
+                    'new authorized brief contains current correction and historical references')
+            corrected_brief=cd.evaluate("document.querySelector('[data-testid=brief-body]').textContent")
+            assert sid in corrected_brief and correction['source_id'] in corrected_brief
+            assert 'HISTORICAL SOURCE VERSIONS' in corrected_brief
+            assert 'Independently fictional browser source.' not in corrected_brief
+            credentials[0]['actions'].remove('source_brief_export');write_grants()
+            cd.evaluate("document.querySelector('[data-testid=brief-download]').click()")
+            cd.wait("!document.querySelector('[data-testid=brief-body]') && document.body.textContent.includes('Brief unavailable')",
+                    'export grant revocation clears prepared text and blocks file creation')
+            assert downloaded.read_bytes()==saved_bytes
+            assert [x.name for x in downloads.iterdir()]==['open-intelligence-source-brief.txt']
+            # Preserve baseline source-read grant for the independent original
+            # receipt and source-permission tests below.
             cd.evaluate("document.querySelector('[data-testid=records-nav]').click()")
             cd.wait("Boolean(document.querySelector('[data-testid=load-records]'))",
                     'return to records without losing patient selection')

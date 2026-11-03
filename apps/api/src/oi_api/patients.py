@@ -21,6 +21,7 @@ from .record_requests import PostgresRecordRequests
 from .case_bindings import CanonicalCaseBindings
 from .sources import PostgresSourceVersions
 from .world_model_read import PostgresWorldModelRead
+from .source_brief import render_source_brief
 
 TOKEN = re.compile(r"[A-Za-z0-9._~-]{32,256}\Z")
 
@@ -348,6 +349,38 @@ class WorldModelSourceRead(Contract):
     limitations: list[str]
 
 
+class PrepareSourceBrief(Contract):
+    synthetic: StrictBool
+    source_snapshot_sha256: str = Field(min_length=64, max_length=64)
+
+    @field_validator("synthetic")
+    @classmethod
+    def fictional_only(cls, value):
+        if value is not True:
+            raise ValueError("Only independently fictional source briefs are allowed")
+        return value
+
+    @field_validator("source_snapshot_sha256")
+    @classmethod
+    def exact_digest(cls, value):
+        if re.fullmatch(r"[0-9a-f]{64}", value) is None:
+            raise ValueError("Exact source snapshot required")
+        return value
+
+
+class SourceBrief(Contract):
+    contract: Literal["oi.synthetic-source-brief/1"]
+    synthetic: Literal[True]
+    patient_id: str
+    case_id: str
+    source_snapshot_sha256: str
+    prepared_at: str
+    media_type: Literal["text/plain;charset=utf-8"]
+    body: str
+    body_sha256: str
+    clinical_approval: Literal[False]
+
+
 def patient_router(database: Database, authentication: Authentication) -> APIRouter:
     router = APIRouter(prefix="/v1/patients", tags=["Synthetic patient registry"])
     bearer = HTTPBearer(auto_error=False, scheme_name="SyntheticFixture",
@@ -382,7 +415,7 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
                         return False
                     if action == "patient_create":
                         return subject == context.organization
-                    if action not in {"patient_read", "record_request_create", "record_request_read", "record_request_cancel", "record_request_receive", "case_binding_create", "case_binding_read", "case_binding_revoke", "source_import", "source_read", "source_original_read"} or subject not in context.patient_ids:
+                    if action not in {"patient_read", "record_request_create", "record_request_read", "record_request_cancel", "record_request_receive", "case_binding_create", "case_binding_read", "case_binding_revoke", "source_import", "source_read", "source_original_read", "source_brief_export"} or subject not in context.patient_ids:
                         return False
                     cursor = connection.cursor()
                     try:
@@ -585,6 +618,38 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
                 return WorldModelSourceRead(**result)
         except PatientRegistryDenied:
             raise HTTPException(404, "Source unavailable") from None
+
+    @router.post("/{patient_id}/cases/{case_id}/world-model/brief",
+                 response_model=SourceBrief, responses=errors,
+                 operation_id="prepare_source_brief_v1")
+    def prepare_source_brief(patient_id: str, case_id: str,
+                             payload: PrepareSourceBrief, request: Request,
+                             context: Principal = Depends(principal)):
+        try:
+            with registry(context) as patients:
+                records_authorized(patients, context, patient_id, "source_read")
+                records_authorized(patients, context, patient_id, "source_brief_export")
+                owner = PostgresWorldModelRead(patients)
+                model = owner.read(patient_id, case_id, organization=context.organization)
+                if model["source_snapshot_sha256"] != payload.source_snapshot_sha256:
+                    raise PatientRegistryConflict("Inspected source snapshot changed")
+                # Validate the existing source-owner response, never accept a
+                # caller-supplied projection or a cached browser quotation.
+                WorldModelSourceRead(**model)
+                result = render_source_brief(model, prepared_at=datetime.now(timezone.utc).isoformat())
+                # Reauthorize at this disclosure boundary; fixture changes are
+                # not cached. This is not atomic revocation of an exported file.
+                latest = principal(request)
+                if latest != context:
+                    raise PatientRegistryDenied("Source brief unavailable")
+                records_authorized(patients, latest, patient_id, "source_brief_export")
+                records_authorized(patients, latest, patient_id, "source_read")
+                final = owner.read(patient_id, case_id, organization=context.organization)
+                if final["source_snapshot_sha256"] != model["source_snapshot_sha256"]:
+                    raise PatientRegistryConflict("Source changed during preparation")
+                return SourceBrief(**result)
+        except PatientRegistryDenied:
+            raise HTTPException(404, "Source brief unavailable") from None
 
     @router.get("/{patient_id}/cases/{case_id}/sources", response_model=OriginalSourceIndex,
                 responses=errors, operation_id="list_original_sources_v1")

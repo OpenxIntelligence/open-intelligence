@@ -19,7 +19,7 @@ export function WorldModelPanel({state,session}:{state:ViewState;session:Registr
     <label htmlFor="world-case-id">Source case identifier</label>
     <div className="world-case-controls">
      <input id="world-case-id" data-testid="world-case-id" value={caseId}
-       onChange={e=>setCaseId(e.target.value)} autoComplete="off"
+       onChange={e=>{session.clearWorldModel();setCaseId(e.target.value)}} autoComplete="off"
        spellCheck={false} maxLength={40} pattern="CASE-[A-Z0-9-]{1,35}"
        placeholder="CASE-ALPHA" required/>
      <button type="submit" className="primary" data-testid="world-refresh"
@@ -30,6 +30,7 @@ export function WorldModelPanel({state,session}:{state:ViewState;session:Registr
    </form>
    <p className={'status '+(state.worldPhase==='error'?'error':'')}
       data-testid="world-status" role="status" aria-live="polite">{state.worldMessage}</p>
+   {!model&&state.briefPhase==='error'&&<p role="status" aria-live="polite" data-testid="brief-status">{state.briefMessage}</p>}
    {model&&<div data-testid="world-model-result">
     <div className="world-summary" aria-label="Source-only summary">
      <div><strong>{model.summary.current_sources}</strong><span>Current source versions</span></div>
@@ -41,6 +42,30 @@ export function WorldModelPanel({state,session}:{state:ViewState;session:Registr
      <code>{model.source_snapshot_sha256}</code></p>
     <p className="muted">Snapshot describes the source set at the last authorized read.
     Refresh before using any statement after an amendment. Clinical review is not connected.</p>
+    <section aria-labelledby="source-brief-heading">
+     <h3 id="source-brief-heading">Source-linked brief</h3>
+     <p>A readable copy of this source snapshot, with original references and uncertainty.
+       Requires separate export permission. No AI answer or clinical review is implied.</p>
+     <div className="actions">
+      <button type="button" data-testid="brief-prepare" disabled={state.briefPhase==='loading'}
+        onClick={()=>void session.prepareSourceBrief()}>Prepare source brief</button>
+      <button type="button" data-testid="brief-download"
+        disabled={!state.sourceBrief||state.briefPhase==='loading'} onClick={()=>{void (async()=>{
+          const brief=await session.prepareSourceBrief();
+          if(!brief||session.snapshot().sourceBrief!==brief)return;
+          const url=URL.createObjectURL(new Blob([brief.body],{type:brief.media_type}));
+          const link=document.createElement('a');link.href=url;link.download='open-intelligence-source-brief.txt';
+          document.body.append(link);link.click();link.remove();
+          setTimeout(()=>URL.revokeObjectURL(url),1000);
+        })()}}>Recheck and download text</button>
+     </div>
+     <p role="status" aria-live="polite" data-testid="brief-status">{state.briefMessage}</p>
+     {state.sourceBrief&&<details className="source-brief-preview" open>
+       <summary>Prepared source brief — not clinically reviewed</summary>
+       <pre data-testid="brief-body">{state.sourceBrief.body}</pre>
+       <p>Prepared {state.sourceBrief.prepared_at}. SHA-256: <code>{state.sourceBrief.body_sha256}</code></p>
+     </details>}
+    </section>
     <h3>Current source-reported observations</h3>
     {model.observations.length===0?<p>No current source-reported findings are available.</p>:
      <ul className="world-observations">{model.observations.map(o=>
