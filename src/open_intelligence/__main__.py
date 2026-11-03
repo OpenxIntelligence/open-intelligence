@@ -26,6 +26,7 @@ from .investigation import (
 from .mission import build_patient_mission
 from .owned_questions import question_gap_rollup
 from .store import CaseStore, InvalidInput, MAX_SOURCE_BYTES
+from .synthetic_metrics import fixture_run
 from .timeline import case_timeline
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -189,6 +190,18 @@ class Handler(BaseHTTPRequestHandler):
             if exported:
                 contents = store.export_markdown(exported[1], int(exported[2])).encode("utf-8")
                 return self._send(200, contents, "text/markdown; charset=utf-8")
+            metrics = re.fullmatch(r"/api/metrics/synthetic", path)
+            if metrics:
+                query = parse_qs(urlsplit(self.path).query)
+
+                def _manifest(values: list[str] | None) -> list[str]:
+                    names: list[str] = []
+                    for value in values or []:
+                        names.extend(part.strip() for part in value.split(","))
+                    return [name for name in names if name]
+
+                return self._json(200, fixture_run(
+                    store, _manifest(query.get("dev")), _manifest(query.get("held_out"))))
             re_review_list = re.fullmatch(rf"/api/cases/{ID_PART}/re-review-tasks", path)
             if re_review_list:
                 return self._json(200, store.list_re_review_tasks(re_review_list[1]))
