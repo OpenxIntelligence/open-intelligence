@@ -12,7 +12,7 @@ import sys
 import tempfile
 from urllib.request import urlopen
 
-from browser_journey import ChromeSession, free_port, wait_for
+from browser_journey import ChromeSession, free_port, wait_for, wait_for_browser
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -45,7 +45,8 @@ def main() -> None:
         raise AssertionError("No Chrome/Chromium executable; Patient Mission UI was not verified")
 
     env = dict(os.environ, PYTHONPATH=str(ROOT / "src"))
-    with tempfile.TemporaryDirectory(prefix="oi-mission-browser-") as directory:
+    with tempfile.TemporaryDirectory(prefix="oi-mission-browser-") as directory, \
+            (Path(directory) / "chrome-stderr.log").open("wb") as chrome_stderr:
         db = str(Path(directory) / "mission.sqlite")
         subprocess.run(
             [sys.executable, "-m", "open_intelligence", "seed", "--db", db],
@@ -92,15 +93,10 @@ def main() -> None:
                     "about:blank",
                 ],
                 stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stderr=chrome_stderr,
                 start_new_session=True,
             )
-            targets = wait_for(
-                lambda: json.load(urlopen(
-                    f"http://127.0.0.1:{debug_port}/json/list", timeout=1
-                )),
-                "Chrome DevTools target",
-            )
+            targets = wait_for_browser(browser, Path(chrome_stderr.name), debug_port)
             pages = [item for item in targets if item.get("type") == "page"]
             if not pages:
                 raise AssertionError("Chrome did not expose a page target")
@@ -284,3 +280,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+

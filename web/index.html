@@ -31,6 +31,7 @@
         <summary>Navigate</summary>
         <nav id="workspace-nav" aria-label="Workspace sections">
           <a href="#overview">Case overview</a>
+          <a href="#journey">Guided journey</a>
           <a href="#incoming-board">Incoming board</a>
           <a href="#patient-view">Patient view</a>
           <a href="#patient-mission">Patient Mission</a>
@@ -43,6 +44,7 @@
           <a href="#import">Updates</a>
           <a href="#activity">Activity</a>
           <a href="#changes-since-review">What changed</a>
+          <a href="#re-review-tasks">Re-review tasks</a>
           <a href="#options">Options &amp; dependencies</a>
         </nav>
       </details>
@@ -94,6 +96,63 @@
           </section>
         </aside>
       </div>
+      <section class="panel panel-journey" id="journey" aria-labelledby="journey-heading">
+        <div class="panel-head">
+          <div><div class="eyebrow">GUIDED JOURNEY · SIX STEPS OVER ONE SHARED RECORD</div><h2 id="journey-heading">Follow the case from first record to follow-through</h2></div>
+          <span class="pill pill-warn">FICTIONAL DEMO DATA — not a real patient</span>
+        </div>
+        <p class="muted">These six steps link the existing parts of this workspace in the sequence a fictional case usually passes through. Each step opens a part that already exists below — nothing here is a second copy, and an empty step means nothing has been entered yet, not that the case is complete. Keeping records here is descriptive only: it is not medical advice and not clinical software.</p>
+        <div class="journey-grid">
+          <article class="journey-step">
+            <div class="eyebrow">STEP 1 OF 6 · INTAKE</div>
+            <h3>Add records</h3>
+            <p class="muted">This step is where new fictional reports arrive in the case. It is not a check on whether the reports are complete or correct.</p>
+            <p class="muted tiny"><span id="journey-intake-pill" class="pill pill-neutral">Loading…</span></p>
+            <p id="journey-intake-status" class="muted" role="status">Loading fictional counts…</p>
+            <a class="button secondary" href="#import">Open intake</a>
+          </article>
+          <article class="journey-step">
+            <div class="eyebrow">STEP 2 OF 6 · SOURCES</div>
+            <h3>Read what the reports say</h3>
+            <p class="muted">This step is the shelf of recorded reports, read version by version. It is not a summary, and it holds no reading of what the reports mean.</p>
+            <p class="muted tiny"><span id="journey-sources-pill" class="pill pill-neutral">Loading…</span></p>
+            <p id="journey-sources-status" class="muted" role="status">Loading fictional counts…</p>
+            <a class="button secondary" href="#sources">Open sources</a>
+          </article>
+          <article class="journey-step">
+            <div class="eyebrow">STEP 3 OF 6 · QUESTIONS</div>
+            <h3>List what stays unresolved</h3>
+            <p class="muted">This step is the shared list of what stays unresolved. It is not a set of answers, and it makes no care choices.</p>
+            <p class="muted tiny"><span id="journey-questions-pill" class="pill pill-neutral">Loading…</span></p>
+            <p id="journey-questions-status" class="muted" role="status">Loading fictional counts…</p>
+            <a class="button secondary" href="#investigations">Open questions</a>
+          </article>
+          <article class="journey-step">
+            <div class="eyebrow">STEP 4 OF 6 · REVIEW</div>
+            <h3>Re-check after changes</h3>
+            <p class="muted">This step is where changed sources flag the drafts that cited them, so a person can take another look. It is not clinical sign-off: a demo acknowledgment is not credentialed review.</p>
+            <p class="muted tiny"><span id="journey-review-pill" class="pill pill-neutral">Loading…</span></p>
+            <p id="journey-review-status" class="muted" role="status">Loading fictional counts…</p>
+            <a class="button secondary" href="#changes-since-review">Open review</a>
+          </article>
+          <article class="journey-step">
+            <div class="eyebrow">STEP 5 OF 6 · REPORT</div>
+            <h3>Keep dated drafts</h3>
+            <p class="muted">This step is the set of dated drafts, each pinned to the exact source versions it used. It is not a validated conclusion, and a draft can turn stale when a source changes.</p>
+            <p class="muted tiny"><span id="journey-report-pill" class="pill pill-neutral">Loading…</span></p>
+            <p id="journey-report-status" class="muted" role="status">Loading fictional counts…</p>
+            <a class="button secondary" href="#investigation-history-heading">Open drafts</a>
+          </article>
+          <article class="journey-step">
+            <div class="eyebrow">STEP 6 OF 6 · FOLLOW-THROUGH</div>
+            <h3>Track discussion items</h3>
+            <p class="muted">This step is the list of discussion items with named owners and dependencies. It is not a set of care instructions, and it places no clinical label on the case.</p>
+            <p class="muted tiny"><span id="journey-followthrough-pill" class="pill pill-neutral">Loading…</span></p>
+            <p id="journey-followthrough-status" class="muted" role="status">Loading fictional counts…</p>
+            <a class="button secondary" href="#options">Open discussion items</a>
+          </article>
+        </div>
+      </section>
       <div id="notice" role="status" aria-live="polite" class="notice" hidden></div>
       <section class="panel" id="incoming-board">
         <div class="panel-head"><div><div class="eyebrow">00 / WORKLIST</div><h2>Incoming board</h2></div><span class="pill pill-warn">FICTIONAL DEMO CASES ONLY</span></div>
@@ -374,6 +433,12 @@
         <div class="subhead">Amendments since the anchor</div><div id="changes-amendments" class="cards" aria-live="polite"></div>
         <div class="subhead">Stale investigations with cause</div><div id="changes-stale" class="snapshots" aria-live="polite"></div>
         <div class="subhead">New questions since the anchor</div><div id="changes-questions" class="questions" aria-live="polite"></div>
+      </section>
+
+      <section class="panel" id="re-review-tasks" aria-labelledby="re-review-heading">
+        <div class="panel-head"><div><div class="eyebrow">REVIEW · FOLLOW-UP OWNERSHIP</div><h2 id="re-review-heading">Re-review tasks</h2></div><span class="pill pill-warn">FICTIONAL DEMO DATA — not a real patient</span></div>
+        <p class="muted">Each task records one earlier draft that a source, evidence, or rights change marked stale, the fictional owner label recorded for follow-up, and what changed. A task closes only when a new draft on current sources is named or when a reviewer records that no change is needed. Rows appear in creation order; nothing here is ordered by importance.</p>
+        <div id="re-review-list" class="snapshots" aria-live="polite"></div>
       </section>
 
       <footer>Open Intelligence is an original, dependency-free reference implementation. No real patient information, patient login, credentialed clinical review, automated clinical inference, treatment recommendations, or regulatory clearance.</footer>
