@@ -31,6 +31,7 @@ from .durable_runs import DurableComposerRuns
 from .mission import build_patient_mission
 from .store import CaseStore, InvalidInput, MAX_SOURCE_BYTES
 from .timeline import case_timeline
+from .world_model import synthetic_world_model
 
 ROOT = Path(__file__).resolve().parents[2]
 WEB = ROOT / "web"
@@ -163,6 +164,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._static("composer.js", "text/javascript; charset=utf-8")
             if path == "/intake.js":
                 return self._static("intake.js", "text/javascript; charset=utf-8")
+            if path == "/patient-record.js":
+                return self._static("patient-record.js", "text/javascript; charset=utf-8")
             if path == "/style.css":
                 return self._static("style.css", "text/css; charset=utf-8")
             if path == "/tokens.css":
@@ -202,6 +205,11 @@ class Handler(BaseHTTPRequestHandler):
             case_state = re.fullmatch(rf"/api/cases/{ID_PART}/state", path)
             if case_state:
                 return self._json(200, store.state(case_state[1]))
+            world = re.fullmatch(rf"/api/cases/{ID_PART}/world-model", path)
+            if world:
+                # One existing transactionally consistent synthetic snapshot.
+                # Case scoping is not patient authorization or clinical review.
+                return self._json(200, synthetic_world_model(store.state(world[1]), world[1]))
             case_options = re.fullmatch(rf"/api/cases/{ID_PART}/options", path)
             if case_options:
                 query = parse_qs(urlsplit(self.path).query)

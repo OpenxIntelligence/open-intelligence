@@ -272,3 +272,25 @@ specimen/amendment, and `manual_transcription_confirmed: true`. Findings are
 `{key, state, quote, line}`. Exact source evidence and user classification are
 retained separately. Preview/commit JSON fields are strict; unknown fields,
 duplicate keys, noncanonical base64 and over-limit requests fail closed.
+
+
+### Patient-record projection convergence — 3 November 2026 UTC
+
+[Draft PR #215](https://github.com/OpenxIntelligence/open-intelligence/pull/215),
+based on #189, reuses #161's read-only World Model and Patient
+view. It carries manual classification, frozen extraction identity and physical
+page anchors through current findings, unresolved observations and historical
+source references. Original bytes, document intake and snapshot/review storage
+remain unchanged. Verification for this integration is maintained in
+[SYNTHETIC_WORLD_MODEL_PROJECTION.md](SYNTHETIC_WORLD_MODEL_PROJECTION.md); the
+#189 test counts above belong to its own exact source tree.
+
+Verified runtime `284b9ac1be1e27ccc4863eaf60dfa7432e8d9d46` passed exact-head
+[run 41562716040](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41562716040)
+and [UI run 41562716468](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41562716468):
+420 Python/HTTP tests, 123 JavaScript checks, 80 offline checks (18 optional
+skips), five integration browser journeys and four UI journeys. The extended
+PDF journey verifies page-two record/source jumps, manual status, rejected
+forged-page projection, support/counterevidence, recorded replay, human report,
+amendment, actual restart and replacement review preserving stale history.
+No new source table, dependency, clinical authority or live model is added.

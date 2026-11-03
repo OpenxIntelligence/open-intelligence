@@ -37,6 +37,8 @@ jobs:
         run: node --test tests/test_source_dialogs.js
       - name: Existing integrated browser journey
         run: python tests/browser_journey.py
+      - name: Patient record, source anchors and question handoff
+        run: python tests/browser_patient_record.py
       - name: Source-dialog race browser journey
         run: python tests/browser_source_dialogs.py
       - name: Source-first layout and keyboard journey

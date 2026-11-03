@@ -65,6 +65,21 @@ record](docs/engineering/DOCUMENT_INTAKE.md) for API, source ownership and limit
 
 The project distribution license remains undecided. Public source visibility is not an open-source license grant. All test reports and UI code are independently authored for this repository.
 
+## Source-linked patient record
+
+The existing **Patient view** now has a read-only Patient World Model projection
+at `GET /api/cases/{CASE-ID}/world-model`. Current findings and earlier records
+link to the same original source owner. A PDF finding identifies its physical
+page and extracted line; its manually selected classification remains separate
+from the source quotation and from clinical review.
+
+Choose **Investigate question** to select an existing durable question across
+Composer, evidence review and the human-authored report controls. A source
+amendment preserves historical reports while making affected work require
+reassessment. An explicit demo acknowledgment is not professional approval.
+See [the projection contract and verification record](docs/engineering/SYNTHETIC_WORLD_MODEL_PROJECTION.md)
+for scope, receipts and the remaining trusted-authorization integration.
+
 ## Patient Mission workflow projection
 
 The portal now includes a read-only **Patient Mission** panel near the top of the existing case workspace. It projects the canonical case ledger into five workflow questions:

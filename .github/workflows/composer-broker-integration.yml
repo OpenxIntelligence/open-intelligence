@@ -6,6 +6,7 @@ on:
       - integration/composer-evidence-run-freshness-20261102
       - integration/composer-rights-context-20261102
       - feat/reviewed-document-intake-20261102
+      - feat/bounded-pdf-document-intake-20261103
       - main
 
 permissions:
@@ -66,13 +67,14 @@ jobs:
           node --check web/mission.js
           node --check web/composer.js
           node --check web/intake.js
+          node --check web/patient-record.js
       - name: Synthetic application, HTTP and rights contracts
         run: python -m unittest discover -s tests -p 'test_*.py' -v 2>&1 | tee composer-broker-artifacts/unit-tests.txt
       - name: Retired acquisition and independent offline parser checks
         run: PYTHONPATH=src:tools/research python -m unittest test_restricted_research_entrypoints test_rna_expression_probe test_single_cell_probe test_public_case_intake -v 2>&1 | tee composer-broker-artifacts/offline-research-tests.txt
       - name: JavaScript contracts
         run: |
-          for suite in tests/test_source_dialogs.js tests/test_source_line_diff.js tests/test_text_changes.js tests/test_model_investigation_refresh.js tests/test_document_intake_ui.js; do
+          for suite in tests/test_source_dialogs.js tests/test_source_line_diff.js tests/test_text_changes.js tests/test_model_investigation_refresh.js tests/test_document_intake_ui.js tests/test_patient_record.js tests/test_model_investigation_freshness.js; do
             node "$suite" 2>&1 | tee -a composer-broker-artifacts/javascript-tests.txt
           done
       - name: Reviewed document intake browser journey

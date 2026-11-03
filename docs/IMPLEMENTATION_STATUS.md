@@ -1,5 +1,38 @@
 # Implementation slice 01 — source and investigation ledger
 
+## Source intake to patient record integration — 3 November 2026 UTC
+
+Implemented and verified in [draft PR #215](https://github.com/OpenxIntelligence/open-intelligence/pull/215),
+based on #189 at `ed20a68664289c8e539db34d645aa1d2f0f7a0e5` and selectively
+reusing #161's read-only projection/patient-record view. Manual passage origin,
+review hash, original/extraction identity and physical PDF page anchors now
+survive the Patient World Model and its source/question handoffs. Wrong-case
+state, incomplete provenance and omitted/duplicated disagreement groups fail
+closed. The existing source, evidence, Composer v2 and human review owners remain.
+
+Runtime head `284b9ac1be1e27ccc4863eaf60dfa7432e8d9d46` passed
+[exact-head integration 41562716040](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41562716040)
+and [UI 41562716468](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41562716468):
+**420 Python/HTTP, 123 JavaScript, 80 offline checks with 18 optional skips,
+all 5 integration Chromium journeys and all 4 UI journeys**. The PDF journey
+includes evidence comparison, labeled recorded replay, explicit human report,
+source amendment, real server restart and replacement review with preserved
+stale history. Four HTTP/provider-boundary tests additionally check constructed
+prompts and permission revocation, without a live model call.
+
+The initial UI run caught a real Unicode source-highlight mismatch; the original
+#161 renderer was restored with two red-to-green tests and the unchanged browser
+assertion passed. All 223 archived source files matched; artifact checksums and
+desktop/narrow screenshots were inspected. Five inherited SQLite resource warnings
+remain in the Python 3.13 UI log. Full receipt and limits are in
+[the maintained projection record](engineering/SYNTHETIC_WORLD_MODEL_PROJECTION.md).
+
+No new dependency, migration or ledger. Synthetic-only, unauthenticated loopback
+reference; draft/unmerged, not deployed or clinically validated. The separate
+#175 authorized report library and accepted H1 FastAPI/PostgreSQL/React migration
+remain open integration work. #190's text annotation revisions are not PDF
+revision support. This increment does not claim completion of the whole MVP.
+
 ## Bounded PDF intake checkpoint — 3 November 2026 UTC
 
 This unmerged extension starts from reviewed text intake PR #173, implementation

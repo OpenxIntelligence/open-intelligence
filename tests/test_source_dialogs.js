@@ -182,3 +182,30 @@ test('source highlighting preserves the original text and invalid anchors are ho
   assert.equal(h.ctx.renderOriginalSource(text,999),false);
   assert.equal(h.el('dialog-text').textContent,text);
 });
+
+test('Unicode-separated source opens the exact parser-numbered finding without moving its anchor', async()=>{
+  const h=harness();
+  const text='OI-SYNTHETIC-REPORT/1\nPatient: CASE-A\nDocument: PATH-A\n' +
+    'Type: pathology\nEvent-Date: 2026-06-01\nIssued-At: 2026-06-02\u2028' +
+    'Specimen: INVENTED-A\nFinding: marker-a|reported|Fictional statement A.\n' +
+    'Finding: marker-b|negative|Fictional statement B.\n';
+  const pending=h.ctx.openSource(h.before,8);
+  h.requests[0].resolve({text}); await pending;
+  assert.equal(h.el('source-dialog').open,true);
+  assert.equal(h.el('dialog-text').querySelector('mark.source-highlight').textContent,
+    'Finding: marker-a|reported|Fictional statement A.');
+  assert.equal(h.el('dialog-text').textContent,text);
+});
+
+test('source anchors follow parser line boundaries while preserving every original separator',()=>{
+  for (const separator of ['\n','\r\n','\u000b','\u000c','\u001c','\u001d','\u001e','\u0085','\u2028','\u2029']) {
+    const h=harness();
+    const text='Header'+separator+'Finding: marker-a|reported|Fictional statement A.\nFinding: marker-b|negative|Fictional statement B.\n';
+    assert.equal(h.ctx.renderOriginalSource(text,2),true);
+    assert.equal(h.el('dialog-text').querySelector('mark.source-highlight').textContent,
+      'Finding: marker-a|reported|Fictional statement A.');
+    assert.equal(h.el('dialog-text').textContent,text);
+    assert.equal(h.ctx.renderOriginalSource(text,4),false, 'A final separator must not invent another source line');
+    assert.equal(h.el('dialog-text').textContent,text);
+  }
+});

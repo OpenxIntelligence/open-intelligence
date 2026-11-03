@@ -18,7 +18,8 @@ function element(text = '') {
 function textOf(item) {return item.text + item.children.map(textOf).join(' ');}
 function harness() {
   const list = element(), pending = [], notices = [];
-  const ctx = vm.createContext({caseId: 'CASE-ALPHA',
+  const ctx = vm.createContext({caseId: 'CASE-ALPHA', renderedCaseId: 'CASE-ALPHA', refreshSequence: 1,
+    active: {case: {case_id: 'CASE-ALPHA'}},
     api: async route => route.endsWith('/investigations')
       ? {investigations: [{id: 1}]}
       : new Promise((resolve, reject) => pending.push({resolve, reject})),
