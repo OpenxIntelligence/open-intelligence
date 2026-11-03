@@ -1,9 +1,11 @@
-"""Actual disposable Compose acceptance for H1 original-image custody.
+"""Actual Compose recovery of canonical questions and original-image custody.
 
 Reuses the canonical registry, source, access-fixture and Compose owners. All
 objects are independently authored by the stdlib-only test fixture generator;
 no patient images, external PACS, optional codecs or new service are involved.
 The returned receipts attest prepared disclosure, not delivery to a client.
+Both populated domains are reopened through the API after a real pg_restore;
+this is neither a model investigation nor a clinical review handoff.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -50,6 +52,10 @@ AMENDED = (
     "Amends: IMG-COMPOSE@1\n"
     "Finding: image|not-assessed|Independently fictional amended image review is not assessed.\n"
 )
+QUESTIONS = (
+    "What remains unresolved in this independently fictional imaging report?",
+    "What changed in the independently fictional amended imaging report?",
+)
 
 
 def authored_originals():
@@ -81,11 +87,12 @@ def main():
         access.chmod(0o755)
         env = dict(os.environ, OI_API_ACCESS_DIRECTORY=directory)
         token = secrets.token_urlsafe(32)
-        # Image actions are independent; source_read/source_original_read are
-        # deliberately absent even for successful list and original reads.
-        actions = ["patient_create", "patient_read", "case_binding_create",
-                   "case_binding_revoke", "source_import", "image_import",
-                   "image_read", "image_original_read"]
+        image_actions = ["patient_create", "patient_read", "case_binding_create",
+                         "case_binding_revoke", "source_import", "image_import",
+                         "image_read", "image_original_read"]
+        question_actions = ["source_read", "composer_context_read",
+                            "question_create", "question_read"]
+        actions = image_actions + question_actions
         credential = {
             "token_sha256": hashlib.sha256(token.encode()).hexdigest(),
             "actor": "ACTOR-IMAGE-PROOF", "organization": "ORG-IMAGE-PROOF",
@@ -94,6 +101,10 @@ def main():
         }
         expected_access = []
         image_ids = []
+        expected_questions = {}
+        question_intents = {}
+        source_access_receipts = set()
+        active_database = "oi_api_synthetic"
 
         def save_access():
             pending = access / "access.new"
@@ -106,9 +117,10 @@ def main():
             return subprocess.run(compose + args, cwd=ROOT, env=env,
                                   check=check, timeout=180, **kwargs)
 
-        def query(sql, database="oi_api_synthetic"):
+        def query(sql, database=None):
             result = command(["exec", "-T", "db", "psql", "-X", "-U", "oi_api",
-                              "-d", database, "-v", "ON_ERROR_STOP=1", "-At", "-c", sql],
+                              "-d", database or active_database,
+                              "-v", "ON_ERROR_STOP=1", "-At", "-c", sql],
                              capture_output=True, text=True)
             return json.loads(result.stdout)
 
@@ -153,7 +165,7 @@ def main():
                     raise RuntimeError("Synthetic image API did not become ready")
                 time.sleep(0.25)
 
-        def history(database="oi_api_synthetic"):
+        def history(database=None):
             return query(
                 "SELECT COALESCE(json_agg(e ORDER BY e.id),'[]'::json) FROM "
                 "(SELECT id,patient_id,event_type,metadata_json,occurred_at "
@@ -164,6 +176,128 @@ def main():
             assert type(receipt) is str and re.fullmatch(r"ACCESS-[0-9A-F]{32}", receipt), \
                 "Invalid opaque access receipt"
             expected_access.append((receipt, event_type))
+
+        def remember_source_access(value):
+            receipt = value["access_receipt_id"]
+            assert type(receipt) is str and re.fullmatch(r"ACCESS-[0-9A-F]{32}", receipt)
+            assert receipt not in source_access_receipts
+            assert receipt not in {item[0] for item in expected_access}
+            source_access_receipts.add(receipt)
+
+        def prepare_question(source_id, version, original, *, expected_fingerprint=None):
+            status, world, _ = request(case_path + "/world-model")
+            assert status == 200 and world["contract"] == "oi.pg-source-world-model/1"
+            assert (world["patient_id"], world["case_id"]) == (patient, CASE)
+            assert world["clinical_interpretation"] is False
+            assert world["composer_execution_authorized"] is False
+            remember_source_access(world)
+            fingerprint = world["snapshot_fingerprint"]
+            assert re.fullmatch(r"[0-9a-f]{64}", fingerprint)
+            if expected_fingerprint is not None:
+                assert fingerprint == expected_fingerprint, "Image activity changed source context"
+            line = 7 if version == 1 else 8
+            payload = {
+                "synthetic": True, "source_id": source_id, "source_line": line,
+                "question": QUESTIONS[version - 1],
+                "expected_source_snapshot_sha256": fingerprint,
+            }
+            status, prepared, _ = request(case_path + "/composer/source-preflight", payload)
+            assert status == 200 and prepared["contract"] == "oi.synthetic-source-composer-preflight/2"
+            assert (prepared["patient_id"], prepared["case_id"]) == (patient, CASE)
+            assert prepared["source_snapshot_contract"] == "oi.pg-source-world-model/1"
+            assert prepared["source_snapshot_sha256"] == fingerprint
+            assert prepared["question"] == QUESTIONS[version - 1]
+            assert prepared["model_execution_authorized"] is False
+            assert prepared["durable_review_connected"] is False
+            assert prepared["clinical_approval"] is False
+            anchor = prepared["selected_source"]
+            assert (anchor["source_id"], anchor["version"], anchor["line"]) == (source_id, version, line)
+            assert anchor["sha256"] == hashlib.sha256(original.encode()).hexdigest()
+            assert anchor["statement"] == original.splitlines()[line - 1].split("|", 2)[2]
+            assert re.fullmatch(r"[0-9a-f]{64}", prepared["preflight_sha256"])
+            remember_source_access(prepared)
+            return payload, prepared
+
+        def create_question(source_id, version, original):
+            payload, prepared = prepare_question(source_id, version, original)
+            intent = {
+                **payload, "request_key": "COMPOSE-QUESTION-V" + str(version),
+                "expected_preflight_sha256": prepared["preflight_sha256"],
+            }
+            status, saved, _ = request(case_path + "/questions", intent)
+            assert status == 201 and saved["duplicate"] is False
+            question_id = saved["question_id"]
+            assert re.fullmatch(r"QUESTION-[0-9A-F]{32}", question_id)
+            assert question_id not in expected_questions
+            expected_questions[question_id] = {
+                "question_id": question_id, "patient_id": patient, "case_id": CASE,
+                "question": QUESTIONS[version - 1], "source_id": source_id,
+                "source_line": payload["source_line"], "source_version": version,
+                "source_sha256": hashlib.sha256(original.encode()).hexdigest(),
+                "source_snapshot_contract": "oi.pg-source-world-model/1",
+                "source_snapshot_sha256": prepared["source_snapshot_sha256"],
+                "preflight_sha256": prepared["preflight_sha256"],
+                "source_context_state": "current_unreviewed_question",
+                "human_review_state": "not_submitted",
+                "clinical_approval": False, "model_executed": False,
+            }
+            question_intents[question_id] = intent
+            read_questions()
+            return question_id
+
+        def read_questions():
+            status, value, _ = request(case_path + "/questions")
+            assert status == 200 and value["contract"] == "oi.synthetic-source-questions/2"
+            assert (value["patient_id"], value["case_id"]) == (patient, CASE)
+            assert value["synthetic"] is True
+            assert value["clinical_review_connected"] is False and value["clinical_approval"] is False
+            remember_source_access(value)
+            rows = {row["question_id"]: row for row in value["questions"]}
+            assert len(rows) == len(value["questions"]) == len(expected_questions)
+            assert set(rows) == set(expected_questions), "Recovered question identity changed"
+            for question_id, expected in expected_questions.items():
+                if "created_at" not in expected:
+                    created = rows[question_id]["created_at"]
+                    assert datetime.fromisoformat(created.replace("Z", "+00:00")).tzinfo is not None
+                    expected["created_at"] = created
+                assert rows[question_id] == expected, "Question anchors, status or history changed"
+            return value["access_receipt_id"]
+
+        def retry_questions():
+            before = snapshot()
+            creation_events = [row for row in before["events"]
+                               if row["event_type"] == "investigation.question.created"]
+            for question_id, intent in question_intents.items():
+                status, value, _ = request(case_path + "/questions", intent)
+                assert status == 200 and value == {"question_id": question_id, "duplicate": True}
+            after = snapshot()
+            assert after["questions"] == before["questions"], "Retry rewrote a question"
+            assert [row for row in after["events"]
+                    if row["event_type"] == "investigation.question.created"] == creation_events
+            # A successful retry still authorizes source disclosure and records
+            # a fresh source receipt; it must not mint another question event.
+            added = after["events"][len(before["events"]):]
+            assert len(added) == len(question_intents)
+            assert all(row["event_type"] == "source.read_authorized" for row in added)
+
+        def denied_question_requests(paths, *, authenticated=True):
+            before = snapshot()
+            for path, body in paths:
+                status, value, headers = request(path, body, authenticated=authenticated)
+                assert status == (404 if authenticated else 401), "Question denial did not fail closed"
+                assert type(value) is dict and set(value) == {"detail"}
+                assert headers.get("X-OI-Access-Receipt") is None
+            assert snapshot() == before, "Denied question request changed durable state"
+
+        def denied_questions():
+            paths = [(case_path + "/questions", None), (case_path + "/world-model", None)]
+            for intent in question_intents.values():
+                paths.append((case_path + "/questions", intent))
+                paths.append((case_path + "/composer/source-preflight", {
+                    key: value for key, value in intent.items()
+                    if key not in {"request_key", "expected_preflight_sha256"}
+                }))
+            denied_question_requests(paths)
 
         def check_history():
             rows = history()
@@ -245,9 +379,11 @@ def main():
                 assert headers.get("X-OI-Access-Receipt") is None
             assert history() == before, "Denied image request minted an access receipt"
 
-        def snapshot(database="oi_api_synthetic"):
-            # Exact allowlisted metadata and raw digests, never image bodies in
-            # a snapshot/log/artifact. PG16 sha256(bytea) needs no extension.
+        def snapshot(database=None):
+            # Exact allowlisted metadata and content digests; neither image
+            # bodies nor question text enters snapshots/logs/artifacts. Reopened
+            # HTTP responses separately check literal text and original bytes.
+            # PG16 sha256(bytea) needs no extension.
             return query("""
                 SELECT json_build_object(
                   'objects', (SELECT json_agg(o ORDER BY o.image_id) FROM
@@ -270,13 +406,21 @@ def main():
                   'patients', (SELECT json_agg(p ORDER BY p.patient_id) FROM
                     (SELECT patient_id,origin_org,created_at,created_by,status,revision
                      FROM identity.identity_patients) p),
+                  'questions', (SELECT COALESCE(json_agg(q ORDER BY q.question_id),'[]'::json) FROM
+                    (SELECT question_id,patient_id,case_id,origin_org,request_key,
+                      intent_sha256,actor,purpose,
+                      encode(sha256(convert_to(question,'UTF8')),'hex') AS question_sha256,
+                      octet_length(question) AS question_byte_count,
+                      source_id,source_line,source_sha256,source_version,
+                      source_snapshot_sha256,preflight_sha256,created_at,source_snapshot_contract
+                     FROM investigation.source_questions) q),
                   'events', (SELECT json_agg(e ORDER BY e.id) FROM
                     (SELECT id,patient_id,event_type,metadata_json,occurred_at
                      FROM identity.identity_domain_events) e),
                   'revision', (SELECT version_num FROM public.alembic_version))
             """, database)
 
-        def verify_stored_originals(database="oi_api_synthetic"):
+        def verify_stored_originals(database=None):
             # Compare the two fixture originals after real pg_restore as bytes,
             # not only their stored digest columns. Captured data is never logged.
             values = query("""SELECT json_agg(o ORDER BY o.image_id) FROM
@@ -287,6 +431,75 @@ def main():
             assert set(by_id) == set(image_ids)
             for image_id, original in zip(image_ids, originals):
                 assert by_id[image_id] == original, "Stored or restored original bytes changed"
+
+        def check_question_history():
+            state = snapshot()
+            assert len(state["questions"]) == len(expected_questions) > 0
+            assert {row["question_id"] for row in state["questions"]} == set(expected_questions)
+            for row in state["questions"]:
+                expected = expected_questions[row["question_id"]]
+                assert row["question_sha256"] == hashlib.sha256(expected["question"].encode()).hexdigest()
+                assert row["question_byte_count"] == len(expected["question"].encode())
+                for key in ("patient_id", "case_id", "source_id", "source_line", "source_sha256",
+                            "source_version", "source_snapshot_sha256", "preflight_sha256",
+                            "source_snapshot_contract"):
+                    assert row[key] == expected[key], "Persisted question provenance changed"
+            creation = [row for row in state["events"]
+                        if row["event_type"] == "investigation.question.created"]
+            assert len(creation) == len(expected_questions)
+            assert {row["metadata_json"]["question_id"] for row in creation} == set(expected_questions)
+            for row in creation:
+                expected = expected_questions[row["metadata_json"]["question_id"]]
+                assert row["patient_id"] == expected["patient_id"]
+                for key in ("case_id", "source_id", "source_line",
+                            "source_snapshot_sha256", "source_snapshot_contract"):
+                    assert row["metadata_json"][key] == expected[key]
+            source_receipts = [row["metadata_json"]["receipt_id"] for row in state["events"]
+                               if row["event_type"] == "source.read_authorized"]
+            assert len(source_receipts) == len(set(source_receipts))
+            assert source_access_receipts <= set(source_receipts)
+            assert not (set(source_receipts) & {item[0] for item in expected_access})
+            audit = json.dumps(state["events"], ensure_ascii=False)
+            assert token not in audit and all(question not in audit for question in QUESTIONS)
+            return state
+
+        def restore_database(database):
+            assert re.fullmatch(r"oi_api_test_[a-z_]+", database)
+            before = check_question_history()
+            assert before["revision"] == EXPECTED_SCHEMA_REVISION
+            dump = command(["exec", "-T", "db", "pg_dump", "-U", "oi_api", "-d",
+                            active_database, "--format=custom"], capture_output=True).stdout
+            command(["exec", "-T", "db", "createdb", "-U", "oi_api", database])
+            command(["exec", "-T", "db", "pg_restore", "-U", "oi_api", "-d", database,
+                     "--exit-on-error", "--no-owner"], input=dump)
+            assert snapshot(database) == before, "Restore changed populated question/image custody or audit history"
+            assert history(database) == check_history()
+            verify_stored_originals(database)
+            return before
+
+        def use_restored_database(database):
+            nonlocal active_database
+            assert re.fullmatch(r"oi_api_test_[a-z_]+", database)
+            # Recreate the same API service with one test-only setting override.
+            # --no-deps avoids running migration against an already restored DB.
+            override = access / "restored-api.compose.json"
+            override.write_text(json.dumps({"services": {"api": {"environment": {
+                "OI_API_DATABASE_URL": "postgresql+pg8000://oi_api:oi_h1_synthetic_only@db:5432/" + database,
+            }}}}))
+            if str(override) not in compose:
+                compose.extend(("--file", str(override)))
+            command(["config", "--quiet"])
+            command(["up", "--detach", "--no-deps", "--force-recreate", "api"])
+            active_database = database
+            ready()
+            # Check the recreated API container's selected DB without exposing
+            # the URL/fixture credential. A new HTTP receipt below also proves
+            # that actual requests write to this DB rather than the source DB.
+            command(["exec", "-T", "api", "python", "-c",
+                     "import sys; from oi_api.config import Settings; "
+                     "from sqlalchemy.engine import make_url; "
+                     "assert make_url(Settings.from_env().database_url).database == sys.argv[1], "
+                     "'Restored API database selection mismatch'", database])
 
         save_access()
         try:
@@ -307,11 +520,14 @@ def main():
                 "review_ref": "REVIEW-IMAGE-COMPOSE"})
             assert status == 201 and binding["patient_id"] == patient
             assert binding["source_identity_verified"] is False
-            source_path = patient_path + "/cases/" + CASE + "/sources"
+            case_path = patient_path + "/cases/" + CASE
+            source_path = case_path + "/sources"
             status, receipt, _ = request(source_path, {"synthetic": True, "original_text": ORIGINAL})
             assert (status, receipt["result"], receipt["version"]) == (201, "imported", 1)
             source_one = receipt["source_id"]
             assert re.fullmatch(r"SRC-[0-9A-F]{32}", source_one)
+            question_one = create_question(source_one, 1, ORIGINAL)
+            first_fingerprint = expected_questions[question_one]["source_snapshot_sha256"]
             for index in range(2):
                 ingest_image(source_one, index, "imported")
             before_retry = snapshot()
@@ -320,7 +536,13 @@ def main():
             assert snapshot() == before_retry, "Idempotent image retries changed durable state"
             read_images(source_one)
             read_originals(source_one)
+            _, prepared = prepare_question(source_one, 1, ORIGINAL,
+                                           expected_fingerprint=first_fingerprint)
+            assert prepared["preflight_sha256"] == expected_questions[question_one]["preflight_sha256"]
+            read_questions()
+            retry_questions()
             check_history()
+            check_question_history()
 
             for missing, arguments in (
                 ("image_import", {"index": False, "original": False, "ingest": True}),
@@ -331,33 +553,60 @@ def main():
                 credential["actions"] = [action for action in actions if action != missing]
                 save_access()
                 denied(source_one, **arguments)
+                if missing == "patient_read":
+                    denied_questions()
+                else:
+                    read_questions()
+            for missing, body in (("question_read", None),
+                                  ("question_create", question_intents[question_one])):
+                credential["actions"] = [action for action in actions if action != missing]
+                save_access()
+                denied_question_requests([(case_path + "/questions", body)])
+                read_images(source_one)
+                read_originals(source_one)
+            # Image reads still succeed with no source disclosure, Composer or
+            # question grant. Their grants cannot authorize the question path.
+            credential["actions"] = list(image_actions)
+            save_access()
+            denied_questions()
+            read_images(source_one)
+            read_originals(source_one)
             credential["actions"] = list(actions)
             credential["patient_ids"] = []
             save_access()
             denied(source_one, ingest=True)
+            denied_questions()
             credential["patient_ids"] = [patient]
             credential["purpose"] = "research"
             save_access()
             denied(source_one, ingest=True)
+            denied_questions()
             credential["purpose"] = "operations"
             save_access()
             denied(source_one, ingest=True, authenticated=False)
+            denied_question_requests([(case_path + "/questions", None)], authenticated=False)
 
             for service in ("api", "db"):
                 before = snapshot()
                 command(["restart", service])
                 ready()
-                assert snapshot() == before, "Restart changed image originals, links or history"
+                assert snapshot() == before, "Restart changed populated question/image custody or history"
                 read_images(source_one)
                 read_originals(source_one)
+                read_questions()
+                retry_questions()
                 check_history()
+                check_question_history()
                 verify_stored_originals()
-                print("Two exact image originals and access receipts survived " + service + " restart")
+                print("Populated v1 question, exact image originals and receipts survived " + service + " restart")
 
             status, receipt, _ = request(source_path, {"synthetic": True, "original_text": AMENDED})
             assert (status, receipt["result"], receipt["version"]) == (201, "imported", 2)
             source_two = receipt["source_id"]
             assert re.fullmatch(r"SRC-[0-9A-F]{32}", source_two) and source_two != source_one
+            original_question_row = snapshot()["questions"]
+            expected_questions[question_one]["source_context_state"] = "source_reassessment_required"
+            read_questions()
             denied(source_one, ingest=True)
             for index in range(2):
                 ingest_image(source_two, index, "linked")
@@ -368,8 +617,15 @@ def main():
             read_images(source_two)
             read_originals(source_two)
             denied(source_one)
+            assert snapshot()["questions"] == original_question_row, "Relinking rewrote the historical question"
+            read_questions()
+            question_two = create_question(source_two, 2, AMENDED)
+            assert question_two != question_one
+            second_fingerprint = expected_questions[question_two]["source_snapshot_sha256"]
+            assert second_fingerprint != first_fingerprint
+            retry_questions()
             check_history()
-            state = snapshot()
+            state = check_question_history()
             assert len(state["objects"]) == 2 and len(state["links"]) == 4
             assert {(row["source_id"], row["image_id"]) for row in state["links"]} == {
                 (source_id, image_id) for source_id in (source_one, source_two) for image_id in image_ids}
@@ -380,12 +636,66 @@ def main():
             event_kinds = [row["event_type"] for row in state["events"]]
             assert event_kinds.count("image.original_imported") == 2
             assert event_kinds.count("image.source_linked") == 2
+            assert event_kinds.count("investigation.question.created") == 2
+
+            # Both historical and current questions now exist. Restart the
+            # actual services with this populated amended state before backup.
+            for service in ("api", "db"):
+                before = snapshot()
+                command(["restart", service])
+                ready()
+                assert snapshot() == before, "Restart changed amended question/image history"
+                read_questions()
+                retry_questions()
+                read_images(source_two)
+                read_originals(source_two)
+                denied(source_one)
+                check_history()
+                check_question_history()
+                print("Historical v1/current v2 questions and linked image originals survived " + service + " restart")
+
+            # Restore an ACTIVE populated case and then recreate the same API
+            # against that database, so reopened states and retries are served
+            # from restored rows rather than from the still-running source DB.
+            source_database = active_database
+            restored_database = "oi_api_test_images_questions_restore"
+            before = restore_database(restored_database)
+            assert before["bindings"][0]["status"] == "active"
+            assert len(before["questions"]) == 2
+            use_restored_database(restored_database)
+            assert snapshot() == before, "Recreated API changed restored data before reads"
+            restored_receipt = read_questions()
+            receipt_query = (
+                "SELECT to_json(count(*)) FROM identity.identity_domain_events "
+                "WHERE event_type='source.read_authorized' AND metadata_json->>'receipt_id'='"
+                + restored_receipt + "'"
+            )
+            assert query(receipt_query) == 1, "Restored HTTP response lacks a receipt in the restored DB"
+            assert query(receipt_query, source_database) == 0, "HTTP still used the pre-restore DB"
+            retry_questions()
+            read_images(source_two)
+            read_originals(source_two)
+            denied(source_one, ingest=True)
+            _, prepared = prepare_question(source_two, 2, AMENDED,
+                                           expected_fingerprint=second_fingerprint)
+            assert prepared["preflight_sha256"] == expected_questions[question_two]["preflight_sha256"]
+            credential["actions"] = [action for action in actions if action != "question_read"]
+            save_access()
+            denied_question_requests([(case_path + "/questions", None)])
+            read_originals(source_two)
+            credential["actions"] = list(actions)
+            save_access()
+            read_questions()
+            check_history()
+            check_question_history()
+            print("Active restored API reopened exact v1/v2 questions, original images and idempotent retries")
 
             status, revoked, _ = request(patient_path + "/case-bindings/" + CASE + "/revoke", {
                 "synthetic": True, "reason": "Withdraw the independently fictional image Compose binding"})
             assert status == 200 and revoked["duplicate"] is False
             denied(source_one, ingest=True)
             denied(source_two, ingest=True)
+            denied_questions()
             before = snapshot()
             assert before["revision"] == EXPECTED_SCHEMA_REVISION
             assert before["bindings"][0]["status"] == "revoked"
@@ -395,18 +705,28 @@ def main():
                 assert (row["patient_id"], row["issuer"], row["study_date"]) == (
                     SUBJECT, ISSUER, "2026-05-17")
             verify_stored_originals()
-            dump = command(["exec", "-T", "db", "pg_dump", "-U", "oi_api", "-d",
-                            "oi_api_synthetic", "--format=custom"], capture_output=True).stdout
-            restored_database = "oi_api_test_images_restore"
-            command(["exec", "-T", "db", "createdb", "-U", "oi_api", restored_database])
-            command(["exec", "-T", "db", "pg_restore", "-U", "oi_api", "-d", restored_database,
-                     "--exit-on-error", "--no-owner"], input=dump)
-            assert snapshot(restored_database) == before, "Restore changed image custody or authority history"
-            assert history(restored_database) == check_history()
-            verify_stored_originals(restored_database)
-            print("PASS: exact synthetic DICOM HTTP originals, independent grants, distinct access receipts, "
-                  "API/DB restart, amendment denial, explicit same-object relinking, "
-                  "binding revocation and actual PostgreSQL dump/restore")
+            for service in ("api", "db"):
+                command(["restart", service])
+                ready()
+                assert snapshot() == before, "Restart changed restored revocation/history"
+                denied(source_one, ingest=True)
+                denied(source_two, ingest=True)
+                denied_questions()
+            # Retain the original revoked-state backup proof as well. A second
+            # tiny restore must not reactivate the binding or disclose either
+            # image originals or questions, and denied reads mint no receipts.
+            revoked_database = "oi_api_test_images_questions_revoked"
+            assert restore_database(revoked_database) == before
+            use_restored_database(revoked_database)
+            assert snapshot() == before
+            denied(source_one, ingest=True)
+            denied(source_two, ingest=True)
+            denied_questions()
+            assert snapshot() == before, "Restored revoked access changed durable history"
+            print("PASS: populated canonical v1/v2 questions and exact synthetic DICOM originals; "
+                  "independent grants, immutable anchors, distinct receipts, API/DB restart, "
+                  "amendment reassessment, explicit same-object relinking, active restored HTTP/retries, "
+                  "and revoked restored denial through actual PostgreSQL dump/restore")
         except Exception:
             command(["logs", "--no-color", "--tail", "80"], check=False)
             raise

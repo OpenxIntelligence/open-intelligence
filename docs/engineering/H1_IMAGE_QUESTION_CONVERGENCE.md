@@ -93,6 +93,41 @@ image restart/dump-restore and package-rights gates remain in the workflows.
 Exact hosted results are recorded on the draft PR and in the existing engineering
 record after execution. Local checks alone do not establish those hosted results.
 
+### Combined recovery and final-disclosure acceptance
+
+The focused acceptance follow-up preserves the implementation above and extends
+the existing `apps/api/tools/verify_images_compose.py` gate. It creates real
+canonical source-linked questions alongside the independently authored images,
+then checks both domains across API restart, database restart and PostgreSQL
+dump/restore. The restore snapshot includes every persisted question field
+(text as a UTF-8 hash and byte count) and the original event journal, as well as
+image bytes, links, sources and identity. Reopened HTTP responses check the
+exact question text.
+The same API image is explicitly pointed at the restored database before any
+restored HTTP behavior is claimed.
+
+The flow preserves the v1 question's source/line/hash after amendment, requires
+reassessment, explicitly relinks the same images to v2 and saves a fresh v2
+question. Restored same-key retries must preserve question IDs without creating
+another question or creation event. Source-access receipts are separate and may
+advance on a successful authorized retry. Independent source/question/image
+grants and a restored revoked binding must continue to deny access without
+committing an unauthorized receipt.
+
+`test_image_disclosure_authority.py` preserves the read regressions introduced
+in #253, adapted to decoded PostgreSQL JSONB metadata. It changes the operation
+grant, patient-read grant, patient scope, actor, organization, purpose and expiry
+after actual metadata or binary response preparation. It also removes the
+authority provider, forces preparation failure and observes real patient/case
+locks before the matching receipt commits. These checks complement the existing
+new-object, duplicate and relink preparation tests; they do not introduce another
+authorization implementation.
+
+The acceptance follow-up changes tests, the existing recovery helper and
+documentation only. Runtime code, published migrations, dependencies and original
+source owners remain unchanged. Its exact-head hosted result must be inspected
+separately from #260's original verification.
+
 ## Boundaries
 
 The existing image profile is unchanged: independently authored fictional
