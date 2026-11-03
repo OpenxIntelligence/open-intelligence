@@ -49,9 +49,13 @@ text includes the actual frozen permission values as well as their digest.
 
 A subsequent live refresh found two newly published owners after the initial
 audit: #296 (`09651d35fb2d495330026db78eb82debd936d7e4`) is a pure proposed
-provenance bridge without persistence/API/UI, and #298
-(`9cdb89711228bcffde6476f9001626d645b6128c`) is tests-first metadata search and
-citation linkage on #293. #298 owns `/evidence-search`, `/evidence-links` and its
+provenance bridge without persistence/API/UI. #298 initially published tests-first
+metadata search and citation linkage at `9cdb89711228bcffde6476f9001626d645b6128c`;
+the final owner refresh found its combined implementation candidate at
+`f4750327537a5febf764d25f43873be50ac7265a`, with new combined hosted acceptance
+still pending in that PR's receipt. It is based on #293's verified
+`e44f225e3ce4953d754ad0e6e1409e22b696a29f`. #298 owns
+`/evidence-search`, `/evidence-links` and its
 metadata catalog, explicitly leaving literal appraisal/report work separate.
 This slice owns case-scoped authored original bytes, human comparisons and reports;
 its modules and read/write actions use `authored_evidence` to avoid expanding a
@@ -304,7 +308,72 @@ ambiguous backfill refusal, and rejection of originless writes by the retired
 writer. The published 0009 migration remains byte-identical. Independent client
 correction review passes its 28 focused checks and 13 additional probes.
 
-Final exact-head PostgreSQL/browser/recovery acceptance and independent correction
-review remain pending at this checkpoint. The PR receipt records the final tested
-commit, actual gate outcomes, artifact hashes and any further correction. No local
-database skip or earlier passing parent gate is represented as that final result.
+Independent backend correction review found no remaining blocking finding at
+local `4f34a719a880117bdf84b947a04bdb53590f7058`. Its 15 executable focused tests
+passed (three database tests explicitly skipped locally). Independent list-row
+recovery/redirection probes and old/new renderer comparisons passed. Acceptance
+harness review found no new blocker after the withdrawal settling wait and full
+sequence-state restore comparison.
+
+### Repaired runtime verification
+
+Repaired published candidate `e1170ddd69af5169027a35d1996163f959bbb503` corresponds
+to local `4f34a719a880117bdf84b947a04bdb53590f7058`, identical tree
+`be206c8b61a10d72662ca4d3c7b78fff90e4d8a1`.
+
+The [React workflow](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41639707349)
+passed all 206 client tests with no skips, the production build, dependency gates
+and the complete actual PostgreSQL/FastAPI/React/Chromium journey. It preserved
+all inherited connected checks and exercised original evidence download, two
+human-proposed relations, a lost successful response and exact recovery, report
+preparation/download, independent export revocation, actual API restart, amendment,
+explicit reassessment, old-report preservation and withdrawal. The 390 px report
+and Overview screenshots were inspected.
+
+The [inherited UI workflow](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41639707324)
+passed 250 reference tests, 16 client lineage/race checks, both browser journeys
+and the source-first layout/keyboard checks. This workflow uses GitHub's proposed
+merge commit `a5ac22dc9ac3188f0d9fd8e3e88b398d829a1a1e`; its tree was checked and
+is identical to the repaired runtime tree above. These overlapping reference
+checks are not additional distinct capabilities.
+
+Downloaded browser artifact **13231842845**, SHA-256
+`c8417d48fe63c42e65d3e87325db00bff1482bac59dd09262f8a273d41120722`, contains
+**352 source files**, all byte-matched to the immutable local candidate. Fresh
+extraction verified four retained source-only brief downloads, the exact authored
+original, all three distinct evidence versions and assessments, and two distinct
+downloaded reports (3,859 and 3,860 bytes). Scope, original/rights/body digests,
+literal quotation offsets and clinical/model flags were checked. The original
+and later report remain separate artifacts. Artifact retention expires on
+10 November 2026.
+
+The [API/PostgreSQL workflow](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41639707343)
+passed **347 tests with zero failures, errors or skips**, followed by **250
+reference tests**, both retained browser journeys and all four actual Compose
+recovery probes. All six new origin/migration checks passed against PostgreSQL,
+including populated upgrade and rejection of a retired originless writer. The
+original failed exact-retry assertions passed unchanged.
+
+The new recovery probe preserved four evidence versions, three assessments, two
+reports, ten exact-command receipts, five creating-command origins and 59 canonical
+events. Actual API/database restart preserved original report bodies and hashes.
+Actual `pg_dump`/`pg_restore` matched complete rows across thirteen tables and all
+four sequence states, including source history and schema revision. The probe
+also rejected new stale assessments after source amendment while recovering the
+exact earlier command, and withheld historical abstract content after an API-output
+amendment lacking abstract permission. It does not claim to have served evidence
+HTTP requests from the separately restored database; logical restored records and
+sequence equality are the verified boundary.
+
+Downloaded recovery artifact **13232497488**, SHA-256
+`6a50a3f528fc8320b32fbdc0e6c8c8163f5e59222f71b91f397cd0fbfa78e354`, was checked
+against its JSON receipt, distinct object counts, migration head, restart/restore
+flags and explicit clinical/model exclusions.
+
+All three hosted workflows pass on the repaired runtime. The final documentation
+commit preserves that runtime and updates this receipt, project state, source
+ownership, backlog and completed plan. Its automatic checks and exact published
+head are recorded in draft #300. No local database skip or earlier parent gate is
+substituted for the named candidate's acceptance. The draft remains unmerged and
+undeployed; no professional review, publisher clearance, production authorization
+or clinical validity follows from these software results.

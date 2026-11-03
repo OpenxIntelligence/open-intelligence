@@ -32,5 +32,17 @@
   "network_acquisition": false,
   "model_executed": false,
   "clinical_approval": false,
-  "production_identity_qualified": false
+  "production_identity_qualified": false,
+  "complementary_owner_checkpoints": {
+    "followthrough": {
+      "pr": 293,
+      "published_commit": "e44f225e3ce4953d754ad0e6e1409e22b696a29f",
+      "status_at_refresh": "verified draft; separate 0009_question_followthrough migration"
+    },
+    "metadata_catalog": {
+      "pr": 298,
+      "published_commit": "f4750327537a5febf764d25f43873be50ac7265a",
+      "status_at_refresh": "combined candidate; its new combined hosted acceptance pending in owner receipt; separate 0010_question_evidence migration"
+    }
+  }
 }
