@@ -48,6 +48,12 @@ jobs:
         run: |
           python -m pip install --only-binary=:all: --no-deps --require-hashes \
             -r tools/imaging/requirements-pacsnode-research.txt
+      - name: DICOM serialization and integrity regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest discover -s tools/imaging -p 'test_pacsnode_probe_integration.py' -v 2>&1 |
+            tee verification-artifacts/pacsnode-dicom-regression-tests.txt
       - name: Fetch exact upstream source into isolated evaluation directory
         shell: bash
         run: |
@@ -148,6 +154,7 @@ jobs:
           name: synthetic-pacsnode-source-and-roundtrip-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             verification-artifacts/pacsnode-harness-tests.txt
+            verification-artifacts/pacsnode-dicom-regression-tests.txt
             verification-artifacts/pacsnode-upstream-commit.txt
             verification-artifacts/pacsnode-cargo-lock-sha256.txt
             verification-artifacts/rustc-version.txt
