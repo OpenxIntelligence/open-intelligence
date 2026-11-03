@@ -72,6 +72,12 @@ def main() -> None:
             # Every original section is still in the page, inside a panel and never duplicated.
             for section in EXPECTED_CARE_SECTIONS:
                 assert cd.evaluate(f"document.querySelectorAll('#{section}').length === 1 && !!document.querySelector('#{section}').closest('.view-panel')"), section
+            # Clinicians start on the cross-case worklist, then open a focused case workspace.
+            cd.wait("!document.querySelector('#view-board').hidden && document.querySelectorAll('#view-worklist tbody tr').length === 2", 'clinician starts on the worklist')
+            assert cd.evaluate("document.querySelector('#view-casebar').hidden"), 'no case header on the cross-case worklist'
+            cd.evaluate("[...document.querySelectorAll('#view-worklist tbody tr')].find(r => r.textContent.includes('CASE-ALPHA')).querySelector('button').click()")
+            cd.wait("!document.querySelector('#view-overview').hidden && !document.querySelector('#view-casebar').hidden && document.querySelector('#view-casebar').textContent.includes('CASE-ALPHA')",
+                    'worklist opens the case under a persistent case header')
             assert visible('#assertions') and not visible('#investigations'), 'Overview tab shows facts, hides authoring'
             cd.evaluate("document.querySelector('#view-nav a[data-tab=investigations]').click()")
             cd.wait("!document.querySelector('#view-investigations').hidden && document.querySelector('#view-overview').hidden", 'Investigations tab')
@@ -118,11 +124,14 @@ def main() -> None:
             cd.wait("document.querySelectorAll('#model-investigation-list .snapshot').length===1", 'recorded replay')
             cd.evaluate("[...document.querySelectorAll('#model-investigation-list button')].find(b=>b.textContent==='Prepare review draft').click()")
             cd.wait("document.querySelectorAll('#snapshot-list .snapshot').length===1", 'draft report')
+            # Origin labels: a recorded replay is never presented as a live AI run.
+            cd.wait("document.querySelector('#model-investigation-list .view-origin')?.textContent === 'Recorded replay · not a live AI run' && "
+                    "(document.querySelector('#snapshot-list .view-origin')?.textContent || '').startsWith('Draft from a recorded replay')", 'honest origin labels')
 
             # Side-by-side demo mode: a patient window with ?live=1 stays open while the
             # corrected report arrives elsewhere through the existing import API.
             cd.command('Page.navigate', {'url': url + '?role=patient&live=1'})
-            cd.wait("document.documentElement.dataset.viewRole === 'patient' && document.querySelector('#pt-home h2')?.textContent === 'Alpha'", 'patient demo window')
+            cd.wait("document.documentElement.dataset.viewRole === 'patient' && (document.querySelector('#pt-home .view-eyebrow')?.textContent || '').startsWith('Alpha')", 'patient demo window')
             assert not cd.evaluate("!!document.querySelector('#pt-home .view-change')"), 'no change shown before the amendment'
             request = Request(url + 'api/cases/CASE-ALPHA/imports', data=json.dumps({'text': AMENDED}).encode(), headers={'Content-Type': 'application/json'})
             with urlopen(request, timeout=5) as response:
@@ -130,6 +139,7 @@ def main() -> None:
             cd.wait("!!document.querySelector('#pt-home .view-change')", 'live patient window picks up the amendment without a reload')
             cd.evaluate("document.querySelector('.view-role-group button[data-role=careteam]').click()")
             cd.wait("document.querySelectorAll('#view-nav a').length === 7", 'care-team view')
+            cd.wait("(document.querySelector('#view-worklist tbody tr')?.textContent || '').includes('Source amended')", 'worklist lists the case needing reassessment first')
             cd.wait("document.querySelector('#review-attention').dataset.state === 'needs-review' && !!document.querySelector('#view-compare-changed:not([hidden])')",
                     'needs-review offers a direct comparison')
             cd.evaluate("location.hash = '#overview'")
@@ -150,6 +160,10 @@ def main() -> None:
             cd.wait("document.querySelector('#pt-home .view-change')?.textContent.includes('Marker A')", 'patient sees what changed')
             change = cd.evaluate("document.querySelector('#pt-home .view-change').textContent")
             assert 'Not reported' in change and 'Negative' in change, change
+            assert 'The earlier summary needs another look' in change, 'plain wording for an amended report'
+            assert cd.evaluate("document.querySelector('#pt-home .view-primary').textContent") == 'See what changed'
+            assert cd.evaluate("[...document.querySelectorAll('#pt-next li')].some(li => li.textContent.includes('Reopened'))"), 'next-conversation list shows the reopened question'
+            assert 1 <= cd.evaluate("document.querySelectorAll('#pt-recent li').length") <= 3, 'short recent timeline'
             assert cd.evaluate("!!document.querySelector('#view-parking #investigations') && !!document.querySelector('#view-parking #options')"), 'care-team tools parked, not removed'
             assert not visible('#investigations') and visible('#pt-home'), 'patient sees no authoring tools'
             assert not cd.evaluate("!document.querySelector('#notice').hidden && document.querySelector('#notice').textContent.includes('while you were editing')"), \
@@ -157,7 +171,9 @@ def main() -> None:
             assert cd.evaluate("[...document.querySelectorAll('#pt-questions li')].some(li => li.textContent.includes('Reopened'))"), 'reopened question shown plainly'
             no_overflow('patient 1440')
             shot('patient-home.png')
-            cd.evaluate("document.querySelector('#pt-home .view-table button').click()")
+            cd.evaluate("document.querySelector('#view-nav a[data-tab=reports]').click()")
+            cd.wait("!document.querySelector('#view-reports').hidden && !!document.querySelector('#pt-results .view-table button')", 'My records lists results')
+            cd.evaluate("document.querySelector('#pt-results .view-table button').click()")
             cd.wait("document.querySelector('#source-dialog').open && !!document.querySelector('#dialog-text mark.source-highlight')", 'patient opens the exact source line')
             cd.evaluate("document.querySelector('#dialog-close').click()")
 
@@ -199,7 +215,8 @@ def main() -> None:
             box = cd.evaluate("document.querySelector('#pt-home .view-change').innerText")
             assert 'New lesion' in box and 'New in the corrected report' in box, box
             assert 'Comparison' in box and 'No longer in the corrected report' in box, box
-            assert 'PATH-ALPHA' not in cd.evaluate("document.querySelector('#pt-home').innerText.split('My results')[0]"), 'reviewed correction no longer listed as new'
+            assert 'PATH-ALPHA' not in cd.evaluate("[...document.querySelectorAll('#pt-home .view-change')].map(b => b.textContent).join(' ')"), \
+                'reviewed correction no longer listed as new'
             print('PASS: grouped care-team tabs keep every original section; live patient window picks up the amendment; '
                   'needs review -> docked v1/v2 comparison; '
                   'patient view shows the change, results and reopened question read-only; no horizontal overflow at 1440/390.')

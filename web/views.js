@@ -22,7 +22,7 @@
   // [tab key, nav label, block ids]. The first id is the tab's link target.
   const LAYOUT = {
     careteam: [
-      ['board', 'Incoming board', ['incoming-board']],
+      ['board', 'Worklist', ['view-worklist', 'view-board-details']],
       ['overview', 'Overview', ['overview', 'workspace-start', 'source-intake', 'metrics', 'view-glance', 'view-next']],
       ['records', 'Records & timeline', ['timeline', 'sources', 'biological-assets', 'import']],
       ['investigations', 'Investigations', ['investigations']],
@@ -31,13 +31,14 @@
       ['options', 'Options & tasks', ['options']],
     ],
     patient: [
-      ['home', 'Overview', ['pt-home']],
-      ['reports', 'My reports', ['timeline', 'sources', 'patient-view']],
-      ['research', 'Research', ['pt-research', 'bibliography']],
+      ['home', 'Home', ['pt-home', 'pt-next', 'pt-recent']],
+      ['reports', 'My records', ['pt-results', 'timeline', 'sources', 'patient-view']],
       ['questions', 'My questions', ['pt-questions']],
+      ['research', 'Research', ['pt-research', 'bibliography']],
     ],
   };
-  const DEFAULT_TAB = {careteam: 'overview', patient: 'home'};
+  // Clinicians start from the cross-case worklist; patients from their home.
+  const DEFAULT_TAB = {careteam: 'board', patient: 'home'};
 
   const main = $('main-content');
   const blocks = {};
@@ -95,13 +96,22 @@
     return {section, body};
   }
   const next = card('view-next', 'Next investigation', 'Which question to work on');
-  const home = card('pt-home', 'Summary', 'Loading…');
+  const worklist = card('view-worklist', 'All fictional cases', 'Worklist');
+  const home = card('pt-home', null, 'Your care, in one place');
+  const prepare = card('pt-next', null, 'For your next conversation');
+  const recent = card('pt-recent', null, 'Recently');
+  const results = card('pt-results', null, 'My results');
   const research = card('pt-research', 'Research', 'Research about my case');
   const questions = card('pt-questions', 'My questions', 'Questions for my care team');
-  blocks['view-next'] = next.section;
-  blocks['pt-home'] = home.section;
-  blocks['pt-research'] = research.section;
-  blocks['pt-questions'] = questions.section;
+  home.section.classList.add('view-hello');
+  for (const [id, item] of Object.entries({'view-next': next, 'view-worklist': worklist, 'pt-home': home, 'pt-next': prepare,
+    'pt-recent': recent, 'pt-results': results, 'pt-research': research, 'pt-questions': questions})) blocks[id] = item.section;
+  // The original board stays available, collapsed, under the worklist.
+  const boardDetails = make('details', null, 'panel view-disclosure view-mission');
+  boardDetails.id = 'view-board-details';
+  boardDetails.append(make('summary', 'Incoming board · original view'), blocks['incoming-board']);
+  blocks['view-board-details'] = boardDetails;
+  delete blocks['incoming-board'];
 
   // Containers: panels for the active role, parking for everything else.
   const panels = make('div', null, 'view-panels');
@@ -111,6 +121,11 @@
   parking.hidden = true;
   main.insertBefore(panels, main.firstChild);
   main.insertBefore($('notice'), panels);
+  // Persistent case header for the clinician workspace (not on the worklist).
+  const casebar = make('div', null, 'view-casebar');
+  casebar.id = 'view-casebar';
+  casebar.setAttribute('aria-live', 'polite');
+  main.insertBefore(casebar, panels);
   main.insertBefore(parking, main.querySelector(':scope > footer'));
   for (const leftover of main.querySelectorAll(':scope > .workspace, :scope > .glance-layout')) {
     if (!leftover.children.length) leftover.hidden = true;
@@ -185,10 +200,17 @@
     filterNotice();
   }
 
+  // An empty workspace starts at setup (the worklist has nothing to list yet).
+  const defaultTab = () => arrangedRole === 'careteam' && document.body.dataset.workspaceState === 'empty'
+    ? 'overview' : DEFAULT_TAB[arrangedRole];
+  const caseTab = () => arrangedRole === 'patient' ? 'home' : 'overview';
+
   function show(key) {
-    if (!LAYOUT[arrangedRole].some(tab => tab[0] === key)) key = DEFAULT_TAB[arrangedRole];
+    if (!LAYOUT[arrangedRole].some(tab => tab[0] === key)) key = defaultTab();
     currentTab = key;
     for (const panel of panels.children) panel.hidden = panel.dataset.tab !== key;
+    casebar.hidden = arrangedRole !== 'careteam' || key === 'board';
+    if (key === 'board') paintWorklist();
     for (const link of nav.querySelectorAll('a')) {
       if (link.dataset.tab === key) link.setAttribute('aria-current', 'page');
       else link.removeAttribute('aria-current');
@@ -203,17 +225,26 @@
       show(panel.dataset.tab);
       requestAnimationFrame(() => target.scrollIntoView({block: 'start'}));
     } else if (!currentTab) {
-      show(DEFAULT_TAB[arrangedRole]);
+      show(defaultTab());
     }
   }
   addEventListener('hashchange', route);
   // The board's "Open this case" scrolls to #overview, which sits in another
   // tab here. After the owner's handler switches the case, show that tab.
-  $('incoming-list').addEventListener('click', event => {
+  // (Found through its wrapper: the board is not in the document until arrange().)
+  boardDetails.querySelector('#incoming-list').addEventListener('click', event => {
     if (!event.target.closest('button')) return;
-    show(DEFAULT_TAB[arrangedRole]);
+    show(caseTab());
     requestAnimationFrame(() => scrollTo(0, 0));
   });
+  // Worklist rows switch the case through the owner's picker (which may refuse
+  // while a draft is unsaved and says so), then open its workspace.
+  function openCase(id) {
+    const picker = $('case-picker');
+    if (picker.value !== id) { picker.value = id; picker.dispatchEvent(new Event('change')); }
+    show(caseTab());
+    requestAnimationFrame(() => scrollTo(0, 0));
+  }
 
   function setRole(next) {
     if (!(next in ROLES) || next === role) return;
@@ -300,37 +331,122 @@
     } catch (_) { /* The existing Review & changes panel reports errors. */ }
   }
 
+  const UNRESOLVED = ['pending', 'indeterminate', 'conflicting', 'not-reported', 'not-assessed'];
+  const shortDate = value => String(value || '').slice(0, 10);
+  const stamp = value => String(value || '').replace('T', ' ').slice(0, 16);
+  const link = (text, hash) => { const a = make('a', text); a.href = hash; return a; };
+  const compareButton = (pair, text) => {
+    const button = make('button', text, 'view-link-button');
+    button.type = 'button';
+    button.addEventListener('click', () => openComparison({id: pair.previous.id}, {id: pair.current.id}));
+    return button;
+  };
+
+  // One amended report, explained without implying the person's condition changed.
+  function changeBox(state, item) {
+    const box = make('div', null, 'view-change');
+    box.append(make('strong', 'A report was updated'),
+      make('p', 'The earlier summary needs another look. You can still view both versions.', 'view-change-lead'),
+      make('span', item.document_id + ' · version ' + item.superseded_version + ' → ' + item.version, 'view-label'));
+    const diff = item.finding_key_diff || {};
+    const row = (...parts) => { const line = make('div', null, 'view-change-row'); line.append(...parts); box.append(line); };
+    for (const change of diff.reported_state_changes || [])
+      row(make('span', plainName(change.finding_key) + ':'), make('span', plainState(change.previous_reported_state), 'view-was'),
+        make('span', '→'), make('span', plainState(change.reported_state), 'view-now'));
+    for (const key of diff.added_finding_keys || []) {
+      const added = state.assertions.find(a => Number(a.source_version_id) === Number(item.source_id) && a.finding_key === key);
+      row(make('span', plainName(key) + ':'), make('span', 'New in the corrected report'),
+        make('span', added ? plainState(added.certainty) : '', 'view-now'));
+    }
+    for (const key of diff.removed_finding_keys || [])
+      row(make('span', plainName(key) + ':'), make('span', 'No longer in the corrected report', 'view-was'));
+    const current = state.sources.find(s => Number(s.id) === Number(item.source_id));
+    const previous = state.sources.find(s => Number(s.id) === Number(item.supersedes_source_id));
+    if (current && previous) box.append(compareButton({previous, current}, 'View both versions'));
+    return box;
+  }
+
+  // Patient home: introduction, the most relevant update, then (separate
+  // cards) what to bring to the next conversation and a short timeline.
   function paintHome(state) {
     const {section, body} = home;
     body.replaceChildren();
+    section.querySelector(':scope > .view-eyebrow')?.remove();
     if (!state) return;
-    section.querySelector('h2').textContent = state.case.label.replace(/^Fictional case /, '');
-    const pending = reopened(state).size;
+    const current = state.sources.filter(s => s.state === 'current');
     const amendments = amendmentsFor(state);
-    // "Updated" only while there are corrections since the last review.
-    const status = make('p', pending ? 'A corrected report is waiting for your care team’s review'
-      : amendments.length ? 'Your records were updated since the last review' : 'No changes waiting for review', 'view-status');
-    if (pending) status.dataset.tone = 'attention';
-    body.append(status);
-    for (const item of amendments) {
-      const box = make('div', null, 'view-change');
-      box.append(make('strong', item.document_id + ' was corrected (version ' + item.superseded_version + ' → ' + item.version + ')'));
-      const diff = item.finding_key_diff || {};
-      const row = (...parts) => { const line = make('div', null, 'view-change-row'); line.append(...parts); box.append(line); };
-      for (const change of diff.reported_state_changes || [])
-        row(make('span', plainName(change.finding_key) + ':'), make('span', plainState(change.previous_reported_state), 'view-was'),
-          make('span', '→'), make('span', plainState(change.reported_state), 'view-now'));
-      for (const key of diff.added_finding_keys || []) {
-        const added = state.assertions.find(a => Number(a.source_version_id) === Number(item.source_id) && a.finding_key === key);
-        row(make('span', plainName(key) + ':'), make('span', 'New in the corrected report'),
-          make('span', added ? plainState(added.certainty) : '', 'view-now'));
-      }
-      for (const key of diff.removed_finding_keys || [])
-        row(make('span', plainName(key) + ':'), make('span', 'No longer in the corrected report', 'view-was'));
-      box.append(make('span', 'The earlier version is kept. Your care team reviews what this change means.', 'view-label'));
-      body.append(box);
+    const open = state.questions.filter(q => q.state === 'open');
+    const unresolved = state.assertions.filter(a => UNRESOLVED.includes(a.certainty));
+    const latest = current.map(s => s.issued_at).sort().pop();
+    section.prepend(make('p', state.case.label.replace(/^Fictional case /, '') + ' · fictional case', 'view-eyebrow'));
+    body.append(make('p', current.length
+      ? current.length + ' current report' + (current.length === 1 ? '' : 's') + ' in your record' +
+        (latest ? ', the latest issued ' + shortDate(latest) : '') + '.'
+      : 'No reports are in your record yet. Your care team adds them here.', 'view-intro'));
+    if (!current.length) return;
+    // One primary action, chosen from the situation.
+    const pair = amendedPair(state);
+    const action = make('a', null, 'button view-primary');
+    if (amendments.length && pair) {
+      action.textContent = 'See what changed';
+      action.href = '#pt-home';
+      action.addEventListener('click', event => { event.preventDefault(); openComparison({id: pair.previous.id}, {id: pair.current.id}); });
+    } else if (open.length || unresolved.length) { action.textContent = 'Review my questions'; action.href = '#pt-questions'; }
+    else { action.textContent = 'Open my records'; action.href = '#pt-results'; }
+    body.append(action);
+    for (const item of amendments) body.append(changeBox(state, item));
+    if (!amendments.length) body.append(make('p', 'Nothing has changed since your care team’s last review.', 'view-status'));
+  }
+
+  function paintPrepare(state) {
+    const {body} = prepare;
+    body.replaceChildren();
+    if (!state) return;
+    const reopenedIds = reopened(state);
+    const list = make('ul', null, 'view-list');
+    for (const question of state.questions.filter(q => q.state === 'open')) {
+      const row = make('li');
+      const label = make('span', reopenedIds.has(Number(question.id)) ? 'Reopened because a report changed' : 'Saved question', 'view-label');
+      if (reopenedIds.has(Number(question.id))) label.dataset.tone = 'attention';
+      row.append(make('span', question.question), label);
+      list.append(row);
     }
-    body.append(make('h3', 'My results'));
+    for (const assertion of state.assertions.filter(a => UNRESOLVED.includes(a.certainty))) {
+      const row = make('li');
+      const text = make('div');
+      text.append(make('span', plainName(assertion.finding_key) + ': ' + plainState(assertion.certainty).toLowerCase()),
+        make('span', assertion.quote, 'view-quote'));
+      const source = state.sources.find(s => s.id === assertion.source_version_id);
+      row.append(text, viewSource('Report says…' + (source ? ' (' + source.document_id + ')' : ''), assertion.source_version_id, assertion.source_line));
+      list.append(row);
+    }
+    if (!list.children.length) body.append(make('p', 'No open questions or unclear results right now.', 'muted'));
+    else body.append(make('p', 'Saved questions and results that are not settled yet, with the report behind each.', 'muted'), list);
+    body.append(link('All my questions', '#pt-questions'));
+  }
+
+  function paintRecent(state) {
+    const {body} = recent;
+    body.replaceChildren();
+    if (!state) return;
+    // Most recent by the report's own issue date, as a patient would read them.
+    const events = state.sources.slice().sort((a, b) => String(b.issued_at).localeCompare(String(a.issued_at))).slice(0, 3);
+    const list = make('ul', null, 'view-list');
+    for (const source of events) {
+      const row = make('li');
+      row.append(make('span', plainName(source.kind) + ' report ' + source.document_id +
+        (source.version > 1 ? ' corrected (version ' + source.version + ')' : '')), make('span', 'Issued ' + shortDate(source.issued_at), 'view-label'));
+      list.append(row);
+    }
+    if (events.length) body.append(list);
+    body.append(link('See your full record', '#pt-results'));
+  }
+
+  function paintResults(state) {
+    const {body} = results;
+    body.replaceChildren();
+    if (!state) return;
+    body.append(make('p', 'Each result as the report states it, with the exact report line.', 'muted'));
     if (!state.assertions.length) { body.append(make('p', 'No results in your records yet.', 'muted')); return; }
     const table = make('table', null, 'view-table');
     const tbody = make('tbody');
@@ -402,7 +518,7 @@
     if (!open.length) { body.append(make('p', 'No open questions.', 'muted'), link); return; }
     const first = open.find(q => reopenedIds.has(Number(q.id))) || open[0];
     const label = make('p', reopenedIds.has(Number(first.id))
-      ? 'Reopened by an amended source · prepare a new draft' : 'Open', 'view-label');
+      ? 'Source amended · dependent draft requires reassessment' : 'Open', 'view-label');
     if (reopenedIds.has(Number(first.id))) label.dataset.tone = 'attention';
     body.append(make('p', 'Q' + first.id + ' · ' + first.question), label, link);
   }
@@ -442,19 +558,121 @@
 
   let paintQueued = false;
   let paintedCase = null;
+  // Clinician worklist across cases, from recorded workflow facts only (no
+  // clinical urgency is inferred). Reads the same endpoints as the owner's board.
+  let worklistSequence = 0;
+  async function paintWorklist() {
+    const sequence = ++worklistSequence;
+    let cases;
+    try { cases = await api('/api/cases'); } catch (_) { return; }
+    const rows = await Promise.all(cases.map(async entry => {
+      const id = encodeURIComponent(entry.case_id);
+      try {
+        const [state, delta] = await Promise.all([api('/api/cases/' + id + '/state'), api('/api/cases/' + id + '/changes-since-review')]);
+        return {entry, state, delta};
+      } catch (error) { return {entry, error}; }
+    }));
+    if (sequence !== worklistSequence) return;
+    const {body} = worklist;
+    body.replaceChildren();
+    if (!rows.length) { body.append(make('p', 'No fictional cases yet. Create one from Overview.', 'muted')); return; }
+    const facts = rows.map(row => {
+      if (row.error) return {...row, review: 0, last: ''};
+      const last = (row.state.events || []).map(e => e.occurred_at).sort().pop() || '';
+      return {...row, review: reopened(row.state).size, last};
+    }).sort((a, b) => (b.review - a.review) || String(b.last).localeCompare(String(a.last)));
+    const table = make('table', null, 'view-table view-worklist-table');
+    const head = make('thead');
+    const headRow = make('tr');
+    for (const label of ['Case', 'New since review', 'Review status', 'Open questions', 'Last update', ''])
+      headRow.append(Object.assign(make('th', label), {scope: 'col'}));
+    head.append(headRow);
+    const tbody = make('tbody');
+    for (const row of facts) {
+      const tr = make('tr');
+      const name = make('th', row.entry.label.replace(/^Fictional case /, ''));
+      name.scope = 'row';
+      name.append(make('span', row.entry.case_id + (row.entry.case_id === caseId ? ' · open now' : ''), 'view-quote'));
+      if (row.error) { tr.append(name, make('td', 'Summary unavailable', 'muted')); tbody.append(tr); continue; }
+      const counts = row.delta.counts || {};
+      const fresh = [counts.amendments ? counts.amendments + ' amended' : '', counts.new_sources ? counts.new_sources + ' new' : '']
+        .filter(Boolean).join(' · ') || '—';
+      const status = make('span', row.review ? 'Source amended · draft needs reassessment'
+        : row.state.snapshots.length ? 'No open review' : 'No drafts yet', 'view-label');
+      if (row.review) status.dataset.tone = 'attention';
+      const statusCell = make('td'); statusCell.append(status);
+      const open = make('button', 'Open', 'view-link-button');
+      open.type = 'button';
+      open.addEventListener('click', () => openCase(row.entry.case_id));
+      const action = make('td'); action.append(open);
+      tr.append(name, make('td', fresh), statusCell,
+        make('td', String(row.state.questions.filter(q => q.state === 'open').length)), make('td', stamp(row.last)), action);
+      tbody.append(tr);
+    }
+    table.append(head, tbody);
+    body.append(make('p', 'Sorted by review status, then most recent recorded activity. No clinical urgency is inferred.', 'muted'), table);
+  }
+
+  function paintCasebar(state) {
+    casebar.replaceChildren();
+    if (!state) return;
+    const current = state.sources.filter(s => s.state === 'current');
+    const received = state.sources.map(s => s.received_at).sort().pop();
+    casebar.append(make('strong', state.case.label.replace(/^Fictional case /, '')), make('span', state.case.case_id, 'view-casebar-id'),
+      make('span', current.length + ' current record' + (current.length === 1 ? '' : 's')),
+      make('span', received ? 'Information received up to ' + stamp(received) : 'No records yet'),
+      make('span', 'Fictional case', 'view-casebar-tag'));
+  }
+
+  // Make the origin of each draft explicit: recorded replay, live model output,
+  // hand-written, or a demo acknowledgment (never presented as clinical review).
+  function setOrigin(item, text, origin) {
+    let tag = item.querySelector(':scope > .view-origin');
+    if (!tag) { tag = make('span', '', 'view-origin'); item.prepend(tag); }
+    if (tag.textContent !== text) tag.textContent = text;
+    if (tag.dataset.origin !== origin) tag.dataset.origin = origin;
+  }
+  function paintOrigins(state) {
+    for (const item of document.querySelectorAll('#model-investigation-list .snapshot')) {
+      const replay = /recorded-replay/.test(item.textContent);
+      setOrigin(item, replay ? 'Recorded replay · not a live AI run' : 'AI draft · Meta Muse Spark · unreviewed', replay ? 'replay' : 'ai');
+    }
+    for (const item of document.querySelectorAll('#snapshot-list .snapshot')) {
+      const match = /Investigation #(\d+)/.exec(item.textContent);
+      const snapshot = state && match && state.snapshots.find(s => Number(s.id) === Number(match[1]));
+      if (!snapshot) continue;
+      const modelBased = /Model-assisted/.test(item.textContent);
+      const replay = /recorded-replay/.test(item.textContent);
+      const basis = !modelBased ? 'Hand-written draft' : replay ? 'Draft from a recorded replay' : 'AI-assisted draft (Meta Muse Spark)';
+      const [text, origin] = snapshot.state === 'stale' ? ['Out of date · a source changed · kept in history', 'stale']
+        : snapshot.state === 'draft' ? [basis + ' · unreviewed', modelBased && !replay ? 'ai' : 'replay']
+        : snapshot.state === 'reviewed_in_demo' ? ['Demo acknowledgment · not a clinical review', 'demo']
+        : [String(snapshot.state).replace(/_/g, ' '), 'replay'];
+      setOrigin(item, text, origin);
+    }
+  }
+
   function paint() {
     paintQueued = false;
     const state = ready();
-    if (state && paintedCase !== state.case.case_id + ':' + state.sources.length + ':' + state.snapshots.length) {
-      paintedCase = state.case.case_id + ':' + state.sources.length + ':' + state.snapshots.length;
+    const key = state && [state.case.case_id, state.sources.map(s => s.id + s.state).join(','),
+      state.snapshots.map(s => s.id + s.state).join(',')].join('|');
+    if (state && paintedCase !== key) {
+      paintedCase = key;
       loadChanges(state);
     }
     paintHome(state);
+    paintPrepare(state);
+    paintRecent(state);
+    paintResults(state);
     paintResearch(state);
     paintQuestions(state);
     paintNext(state);
     paintAttention(state);
     paintBadges(state);
+    paintCasebar(state);
+    paintOrigins(state);
+    if (currentTab === 'board') paintWorklist();
   }
   function schedule() {
     if (paintQueued) return;
@@ -462,7 +680,7 @@
     queueMicrotask(paint);
   }
   const watch = new MutationObserver(schedule);
-  for (const id of ['case-heading', 'assertion-list', 'snapshot-list', 'source-list', 'question-list', 'evidence-list'])
+  for (const id of ['case-heading', 'assertion-list', 'snapshot-list', 'source-list', 'question-list', 'evidence-list', 'model-investigation-list'])
     watch.observe($(id), {childList: true, subtree: true});
   watch.observe($('review-attention'), {attributes: true, attributeFilter: ['data-state']});
   // Draft-editing warnings belong to the care team's authoring tools, which the
