@@ -19,6 +19,7 @@ are not mock functions or pre-rendered example responses.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import re
 import sqlite3
@@ -229,7 +230,22 @@ class ClinicalEncounters:
                               JOIN clinical_note_versions v ON v.note_id=n.id AND v.version=n.latest_version
                               WHERE n.encounter_id=? AND n.note_key=?""",
                                     (encounter_id, note_key)).fetchone()
+        if row is not None:
+            self._check_note_integrity(row)
         return row
+
+    @staticmethod
+    def _check_note_integrity(row: sqlite3.Row | dict) -> None:
+        """Reject mismatched stored text and digest before clinical use.
+
+        This detects changed/corrupt bytes on a restored or faulty store,
+        but is not proof of source authenticity or a clinical signature.
+        """
+        body, digest = row["body"], row["sha256"]
+        if (not isinstance(body, str) or not isinstance(digest, str)
+                or not hmac.compare_digest(
+                    hashlib.sha256(body.encode("utf-8")).hexdigest(), digest)):
+            raise ClinicalConflict("Clinical note integrity mismatch; source review required")
 
     def _command(self, patient_id: str, actor: str, purpose: str, action: str,
                  request_key: str, data: dict[str, Any], mutate: Callable[[], dict]) -> dict:
@@ -243,8 +259,14 @@ class ClinicalEncounters:
             if previous:
                 if previous["operation"] != action or previous["request_hash"] != digest:
                     raise ClinicalConflict("Idempotency key reused for a different command")
+                # An older successful command does not authorize its disclosure
+                # after current permission has been revoked.
+                self._allow(actor, patient_id, action, purpose)
                 return json.loads(previous["result_json"])
             result = mutate()
+            # Revalidate the grant before persisting command, event and receipt.
+            # PG also enforces its own transaction-exit policy check.
+            self._allow(actor, patient_id, action, purpose)
             self._execute("""INSERT INTO clinical_encounter_commands
                (patient_id,request_key,operation,request_hash,result_json,occurred_at)
                VALUES(?,?,?,?,?,?)""", (patient_id, request_key, action, digest,
@@ -386,18 +408,24 @@ class ClinicalEncounters:
 
     def list_encounters(self, patient_id: str, *, actor: str, purpose: str) -> list[dict]:
         self._allow(actor, patient_id, "encounter.read", purpose)
-        return [dict(row) for row in self._execute(
+        rows = [dict(row) for row in self._execute(
             "SELECT * FROM clinical_encounters WHERE patient_id=? ORDER BY service_date,id",
             (patient_id,)).fetchall()]
+        self._allow(actor, patient_id, "encounter.read", purpose)
+        return rows
 
     def note_history(self, patient_id: str, encounter_id: int, note_key: str, *,
                      actor: str, purpose: str) -> list[dict]:
         self._allow(actor, patient_id, "note.read", purpose)
         self._encounter(patient_id, encounter_id)
         note_key = valid_id(note_key)
-        return [dict(row) for row in self._execute("""
+        rows = [dict(row) for row in self._execute("""
           SELECT v.id,v.version,v.status,v.body,v.sha256,v.authored_by,v.created_at,
                  v.supersedes_id,v.amendment_reason
           FROM clinical_note_headers n JOIN clinical_note_versions v ON v.note_id=n.id
           WHERE n.encounter_id=? AND n.note_key=? ORDER BY v.version
           """, (encounter_id, note_key)).fetchall()]
+        for row in rows:
+            self._check_note_integrity(row)
+        self._allow(actor, patient_id, "note.read", purpose)
+        return rows
