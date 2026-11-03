@@ -1,5 +1,7 @@
 # H1 question evidence and patient follow-through convergence
 
+Latest preparation record: [main reconciliation and chronology corrections](#main-reconciliation-and-chronology-corrections--3-november-2026). Earlier receipts below retain their original pinned scope.
+
 **Status:** original convergence in draft #307; subsequent combined acceptance
 is recorded below. All contributions remain subject to explicit review.
 **Scope:** independently authored fictional engineering inputs only.
@@ -11,8 +13,11 @@ This is an integration of existing owners, not a new patient or evidence ledger.
 
 The live audit on 3 November 2026 found `main` at
 `24519839aa8ac1ea3aff88a956349ba72798a72a`. The owners below remained draft and
-unmerged. Existing Notion/Drive progress stopped at #298, so their proposed next
-passage/report implementation was already overtaken by #300. Accepted product,
+unmerged. At initial inspection, the existing Notion/Drive progress records stopped at
+#298, so their proposed next passage/report implementation was already overtaken
+by #300. A fresh read before publication found the later #302 restored-HTTP
+receipt; this integration retains that contribution and extends its same-question
+metadata/task coverage. Accepted product,
 rights, source, identity and clinical-authority constraints remain applicable.
 
 | Input | Pinned commit | Responsibility retained |
@@ -89,8 +94,8 @@ migration contract and same-question client/composition regressions.
   subcases before bounding offset hours/minutes. All 16 pure contract methods then
   passed, including unchanged legacy report hashes and valid timestamp bytes.
   This is a focused extension of #303, not normalization of stored timestamps.
-- The final combined candidate remains to be verified below. Donor success is not
-  substituted for a combined-head result. #303's first API attempt passed its
+- The final combined candidate is independently verified below. Donor success is
+  not substituted for a combined-head result. #303's first API attempt passed its
   database/reference suites but failed inherited Chrome startup; its unchanged
   rerun subsequently passed. That failure remains part of the donor record.
 
@@ -101,18 +106,130 @@ reset corrections. The transient 503 case still retains exact recovery intent
 without authorizing a retry before renewed access. No unauthorized server write
 was demonstrated. The corrected local Node runtime suite passes 258 non-render
 tests; it uses Node's type stripping and is not a TypeScript/React build claim.
-All 287 reference tests also pass locally. Full database/browser acceptance is
-still the required combined gate.
+All 287 reference tests also pass locally. The subsequent hosted acceptance below
+provides the actual combined database/browser result.
+
+## Published code and browser verification
+
+The combined runtime is `477f24826a8a102c7437c993d69877c1f250b951`, tree
+`cd8d909ad2844e7fbd37ae30a9a10b9123374666`, in
+[draft PR #307](https://github.com/OpenxIntelligence/open-intelligence/pull/307).
+
+[React/browser run 41658525265](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41658525265)
+checks out that exact feature commit. It passed **266 client tests, zero skips**,
+TypeScript checking, the production Vite build and the actual React/FastAPI/
+PostgreSQL 16 journey. Both original evidence journeys, source custody, questions,
+review returns, Overview, follow-through and cross-case clearing remain present.
+
+The new browser receipt records the same canonical patient, case, question,
+original source snapshot and preflight for a saved fictional citation and an
+immutable authored comparison report. Independent metadata-read and report-export
+denials returned 404; denied export created no Blob and did not change an earlier
+download. Metadata does not authorize content, and a report does not appraise a
+catalog entry. This browser callback does **not** establish a task on that same
+question; that belongs to the combined API/recovery acceptance.
+
+Downloaded browser artifact **13241475582** was verified against archive SHA-256
+`abe9604cb4adabfd542d3c9a7590adffb95ed5076fc4f24d83636a79264f0053`.
+All **398 tracked source files** in its source archive match the published commit
+byte for byte. Its actual original evidence download is 301 bytes, and its two
+report downloads are 3,859 and 3,860 bytes. The files' SHA-256 values match their
+respective stored receipts, including unchanged historical report bytes and
+literal Unicode quotation anchors. The archived receipt explicitly records
+`synthetic: true`, `model_executed: false` and `clinical_approval: false`.
+
+Desktop and 390 px screenshots were visually inspected. No blocking overlap or
+horizontal overflow was observed in the inspected captures. The narrow report
+uses nested vertical scrolling; those captures do not establish a complete
+accessibility or user study. Narrow-browser verification introduces no mobile-app
+commitment. Artifacts expire on **10 November 2026**; this receipt and the pinned
+source/tests retain the durable engineering evidence.
+
+[Inherited UI run 41658525058](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41658525058)
+passed **287 reference Python/HTTP tests**, **16 Node tests** and the original
+browser/layout/race journeys. Its actual checkout is temporary PR merge
+`5510bb874c323cb7177db7f14620c2725ef2b361`, whose Git tree was independently verified
+to equal `cd8d909ad2844e7fbd37ae30a9a10b9123374666`. It is not misreported as a direct
+feature-head checkout.
+
+The retained frontend dependency inventory has no scanner errors and records
+exact installed package notices. Its scope remains local fictional development;
+`commercial_release_cleared` and `native_object_linkage_reviewed` are false. The
+two uninstalled optional platform packages remain explicitly uninspected. This
+is a bounded inherited dependency gate, not a newly cleared production stack.
+
+## Actual PostgreSQL and complete recovery acceptance
+
+[API/PostgreSQL run 41658525044](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41658525044),
+job **125995235121**, attempt 1, completed successfully on the exact published
+runtime `477f24826a8a102c7437c993d69877c1f250b951`:
+
+- **414 API/PostgreSQL tests passed, zero skips**, in 466.419 seconds. Both
+  populated old evidence heads upgrade through the actual migrations while
+  preserving complete prior rows, sequences, report bytes and exact retries.
+  A genuine two-head state remains unready until the explicit merge.
+- **287 reference tests passed** in 12.186 seconds; inherited browser journeys
+  also passed. These are repeated regression checks, not independent clinical
+  cases or additional patient outcomes.
+- **All five recovery probes passed:** patient registry, original sources,
+  canonical review returns, follow-through with metadata, and authored evidence
+  with the combined same-question citation/report/task extension.
+- No timeout or deadlock occurred. A longer-than-base unit step was inspected;
+  no code, timeout or assertion was weakened in response.
+
+Downloaded recovery artifact **13240724729** matches ZIP SHA-256
+`8fc0c6b6e5baff42e2a821c40ac82e39efcc39909fe01170ac352d04ff1cd51c`.
+Its `oi.h1-evidence-recovery-acceptance/3` receipt records the exact merged schema,
+**18 tables and four sequence states**, with one patient, one canonical question,
+two source versions, four evidence versions, three assessments, two immutable
+reports, one metadata citation and one follow-through task. The record also
+retains their exact identifiers and report hashes.
+
+Actual HTTP is served against four independently restored checkpoints: readable
+originals/report; content-class restriction before withdrawal; withdrawn evidence
+plus amended patient source; and a revoked binding backed up from a recovered
+copy and restored again. `current_database()` verifies the serving target. The
+same citation, report and task survive restart/restore on their canonical
+question. Original report/retry identities remain intact; open work requires
+recheck after source amendment. Content withholding neither grants nor revokes
+independent metadata access.
+
+The receipt records **11 / 8 / 15** fresh access events in the readable,
+rights-restricted and withheld restored copies. The added citation read requires
+exactly one correctly scoped metadata-read event alongside source-read receipts;
+new business writes, changed business sequences, unexpected audit events and
+mutations to the original database remain rejected. A subsequently restored
+revoked binding denies originals, reports, citation/task reads and exact retries
+without durable effects. Both `clinical_approval` and `model_executed` are false.
+
+## Current-truth and next integration
+
+The final live branch recheck still found main at
+`24519839aa8ac1ea3aff88a956349ba72798a72a`; #307 is an open draft based on #298 and
+has not changed main. This cycle deeply inspected the selected API/web owners,
+published migrations, affected authorization boundaries, tests, workflows and
+artifact source. It is not a complete audit of every open branch or every
+technology category. No new patient-journey case research, publisher license,
+model evaluation or commercial technology clearance is claimed in this cycle.
+
+The next integration task is to reconcile the existing connected source-reading
+owners #305/#308/#309/#310 with this same canonical question/evidence path, after
+checking their then-current heads and conflicts. Preserve their ownership rather
+than recreating their UI. Separately qualify one real biomedical connector and
+its allowed operations before replacing fictional catalog retrieval. Production
+identity/delegation, clinical/PDF/annotation parity and professional review
+remain distinct backlog items; #306's fictional grant editor does not close
+production identity. Existing OI-004/007/008/009/010/013 remain open.
 
 ## Acceptance and remaining boundary
 
-The combined candidate must preserve one patient/source/question through metadata
-search/link, an independently imported authored original, literal comparison,
-immutable report, follow-through task, source amendment, historical reopening,
-independent permission denial and exact retry. Upgrade paths, actual restart and
-restored HTTP, current rights, case-switch clearing and both browser paths must
-also pass. Existing tests must remain effective; changing assertions to suppress
-a convergence defect is not acceptance.
+The combined candidate passed the bounded one-patient/source/question scenario
+through metadata search/link, independently imported authored originals, literal
+comparison, immutable reports, follow-through, source amendment, historical
+reopening, independent permission denial and exact retry. Populated upgrade paths,
+actual restart/restored HTTP, current rights, case-switch clearing and both
+browser paths also passed. These results apply to the pinned runtime and stated
+fictional contracts; later source changes require their own relevant acceptance.
 
 This remains deterministic, human-authored software verification. It does not
 establish live biomedical retrieval, model execution, scientific applicability,
@@ -257,6 +374,51 @@ Next: converge owner-reviewed candidates and exercise the same connected workflo
 with reviewed document intake and the separately governed DOI connector. These
 are separate pending branches, not capabilities delivered by this increment.
 
+## Client chronology continuation — 3 November 2026
+
+The report/follow-through work in the interrupted handoff had already shipped as
+draft #174. This continuation uses the later connected source-reading/report
+candidate #322 at `19b75317701ae01fc93844077ac94c351fd982bd`, preserving its source,
+question, evidence, report and task owners. It addresses OI-008/009/010: dates in
+evidence history and preserved reports must represent actual calendar instants.
+
+The client accepted February 30, hour 24 and year zero in evidence/report history
+because JavaScript date parsing normalizes some impossible values. Citation
+history also accepted precision forms excluded by its existing API. One shared
+calendar/clock validator now enforces each existing evidence contract without
+normalizing the input: authored timestamps retain minute precision and longer
+fractions; citation timestamps require seconds and at most six fractional digits.
+Nested question timestamps and date-only source/evidence fields receive the same
+calendar checks at the authored-evidence boundary. Other source consumers are not
+changed or claimed to be comprehensively audited.
+
+Preserved report bodies, original offsets, fractional strings, hashes, status
+covers, independent permissions and fresh download authorization remain intact.
+Invalid refreshed history clears a previously opened report and prevents export;
+an explicit valid refresh restores access to the unchanged body. No backend,
+database, migration, dependency, workflow or clinical state changes.
+
+Verification sequence:
+
+- Original #322 client baseline: 278 tests passed, no skips.
+- Tests-only baseline reproduction: 12 targeted tests, 7 expected failures and
+  5 passing controls. All failures were assertion failures in the actual client,
+  not setup errors. These include the blocked-download regression.
+- Automated read-only review found two further nested-date gaps. Both added
+  regressions failed on the first correction before being fixed. Review is
+  engineering feedback, not independent clinical validation.
+- Final local implementation `74088fef9c7efb7d9a83cfe4be38634da70fc6ca`:
+  all 288 client tests passed with no skips, TypeScript/Vite production build
+  passed, and the existing dependency gate reported no errors (18 installed,
+  two optional artifacts uninspected). The lock and dependency selection did
+  not change. The following documentation-only commit does not alter runtime.
+- Hosted browser results belong to the continuation PR's exact published head.
+  Earlier passing runs are not substituted for final combined acceptance.
+
+The candidate remains draft, unmerged and undeployed. It uses only independently
+authored fictional test records; real-patient operation and clinical qualification
+remain outside this correction.
+
 ## Verified #322 / #328 integration review — 3 November 2026
 
 This checkpoint records live GitHub reads, immutable source review and retained
@@ -319,3 +481,127 @@ the child into an obsolete parent branch without an explicit retargeting plan.
 No source change, merge, deployment, branch-protection change, real-patient
 use or clinical approval is authorized by this evidence record.
 
+## Main reconciliation and chronology corrections — 3 November 2026
+
+This is a locally prepared continuation of the verified #365 candidate. The
+proposed destination is a new draft integration PR against main, with #322 then
+#328 retained in Git ancestry. It is not approval to merge either original PR,
+change its base or history, close an owner PR, or deploy. Published #365 remains
+unchanged at `b71b5390b4d587bbad77d57c8edf9f80c070f2b8`.
+
+### Frozen inputs and selective reuse
+
+| Input | Pinned identity | Treatment |
+| --- | --- | --- |
+| Verified #365 | `b71b5390b4d587bbad77d57c8edf9f80c070f2b8` | Preserve the combined #322/#328 implementation and its audit record |
+| Accepted main | `824ed8c415068bd31c67929cb9f79e79b2df0892` | Retain all 13 commits beyond the previous `24519839` baseline; all 44 changed paths have no overlap with the original H1 delta |
+| #360 | `f200dd107871d89703267ee0d1a14b2d1ca64d36` | Reuse #330 chronology and #339 dependency-identity corrections; preserve the shared document histories |
+| #367 workflow | Git blob `0052ad3c134b55f681838b617db6df94835aa70f` | Reuse this exact H1 web workflow only; include shared source/reference paths and the existing synthetic-data audit |
+| #369 follow-through | `3c028ddfb4b408571b36140a5e5b52115c7bd790` | Reuse its exact validator, client-test and browser-helper files; these three files' donor bases equal the #365 files |
+| #307 final documentation | `c35219dc5eb244874a7df6e9bf00cfbfda18251f` | Reconcile its four final evidence documents with the later continuity additions |
+| #193 omitted regression | Test blob `e400814e082efafb7e3e8b7581feda9caea60baa` | Restore the exact owner test file; no production API change |
+
+#360's artifact `13254432621` was downloaded and independently hashed:
+`ccd34323ba053accdf159ea2a8c80c348f4450a425bf08525c2456367aa95f06`.
+Its commit record and all 407 source blobs match the donor tree; executable
+modes were retained. The #367 workflow matches its exact published blob.
+No new package, H1 schema, canonical ledger, grant or model is introduced.
+
+The 13 accepted main commits retain their existing prototype owners, including
+the already accepted fictional actor-grant and subject-binding work. This
+reconciliation does not design a replacement H1 permission system or turn
+synthetic actor fixtures into production identity.
+
+### Findings resolved in the proposal
+
+The evidence clients' permissive JavaScript date parsing accepted impossible
+calendar values; #330's existing strict validator, carried by #360, addresses
+that gap. The same issue remained in follow-through history. Running #369's
+unchanged tests before its production fix produced 16 failures and 26 passing
+controls. The failed cases included February 30, non-leap February 29, year zero,
+hour 24, missing seconds and excess fractional precision in task creation or
+history timestamps. The exact donor correction rejects these responses, removes
+actionable history/counts, and requires a fresh valid read.
+
+The original installed-package gate did not require package identity and declared
+license to match the lock, and followed filesystem links. #339's existing
+correction adds those checks and 13 filesystem regression controls. The
+inventory still records two absent optional packages as uninspected and does
+not claim commercial-release or native-linkage clearance.
+
+The original H1 web PR filter omitted shared `src/**`, reference `tests/**`
+and the existing boundary audit. The exact #367 workflow covers those paths and
+executes the boundary audit before acquiring packages. A newly named branch
+requires an opened or synchronized matching PR; its push trigger alone is not a
+validation mechanism.
+
+Ancestry review identified two historical differences. #314 consumes #307's
+verified runtime `477f24826a8a102c7437c993d69877c1f250b951`, but not its later
+four-document receipt. #200 diverges from the final #193 head by two test
+commits. The candidate retained the datetime instant comparisons but omitted
+the 28-line amendment-before-first-receipt test. Its exact restored owner file
+checks rejection of the superseded source, no durable receipt on rejection,
+and successful receipt of the current source. The runtime guard was retained;
+this finding establishes test-coverage loss, not a demonstrated production
+regression.
+
+### Executed local checks and remaining hosted evidence
+
+- 327 compiled React client tests passed, with zero failures, skips or
+  cancellations. TypeScript checking and the Vite production build passed.
+- 13 dependency-gate controls passed. The real installed gate inspected 18
+  locked packages, reported no errors, and left two absent optional packages
+  explicitly uninspected.
+- After the final accepted-main refresh, 406 reference Python/HTTP tests passed
+  with no skips. The separately invoked reference Node suite passed 15 tests.
+  These counts overlap in exercised behavior and are not summed.
+- The existing static synthetic-data entrypoint audit passed. The restored
+  PostgreSQL test and reused browser helper parse successfully; parsing is not
+  execution of either acceptance path.
+- The client/build/rights checks preceded the last main refresh. That refresh
+  changed reference-source/test/UI files only; all web client, test, package,
+  lock and dependency-gate inputs remain byte-identical to the tested inputs.
+- One mistakenly unscoped `node --test` invocation ran from the repository root
+  and failed web test setup because it did not use the web package's prescribed
+  working directory. The corrected scoped reference Node command passed;
+  the prescribed `npm test` web command independently passed all 327 tests.
+- Source whitespace checking retains five trailing-blank-line warnings from
+  unchanged donor/main files. No clean whitespace-check claim is made.
+
+#365's successful web run
+[41699683211](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41699683211)
+and API run
+[41699683626](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41699683626)
+still apply to that immutable head: 300 client, 416 API and 287 reference tests,
+plus real PostgreSQL/browser/recovery acceptance. They are not relabelled as
+verification of this new proposal. Fresh exact-head H1 API/PostgreSQL,
+React/Chromium, reference UI and restart/dump/restore evidence remains required,
+including execution of the restored #193 regression and #369 browser controls.
+
+### Review boundary and next gate
+
+The automated CI/dependency review confirmed the two gate corrections within its
+inspected scope. The inherited API revisit covered authentication, connection
+ownership, case/source scope, source disclosure, canonical questions and part of
+authored-evidence integrity; it did not finish every follow-through, migration,
+historical-report or restored-authority path. No full-chain approval is inferred.
+
+A source-based frontend review identified inherited P2 loss of unsent task
+creation and transition inputs when navigation unmounts their component. The
+existing #379 continuation owns this issue; its implementation and final
+acceptance were not included in this minimum correction. No browser reproduction
+of this finding was executed in this review. Resolve or explicitly accept that
+bounded issue before final merge.
+
+The 28 inspected original, parent and correction PRs had no submitted GitHub
+reviews. The branch API reported main unprotected and the rulesets list was
+empty, but the detailed branch-protection endpoint returned 403. This is not an
+administrative certification or permission to change governance.
+
+Before publication, recheck the pinned heads, present the exact proposed patch
+and source tree, and obtain the repository-change approval required by the
+integration review. After approval, create a new draft targeting main and run
+the existing acceptance workflows on its frozen published head. Preserve the
+original PRs and record any new main movement explicitly. Human owner acceptance,
+whole-chain review, final merge authorization and clinical/production qualification
+remain separate. All engineering inputs remain independently fictional.

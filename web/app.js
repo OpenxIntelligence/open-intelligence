@@ -3,7 +3,16 @@
 let caseId = null;
 let active = null;
 let refreshSequence = 0;
+let boardSequence = 0;
 let renderedCaseId = null;
+// B-01 fictional actor: workflow governance only — not identity verification,
+// not a login, not credentialed review. Sent on every API call; the server
+// gates case routes on a live grant for this actor and ignores it elsewhere.
+let fictionalActor = 'FICTIONAL-NAVIGATOR-A';
+let caseCatalog = [];
+let incomingBoardSequence = 0;
+let draftQuestionFilter = null;
+let draftFilterCaseId = null;
 const el = (id) => document.getElementById(id);
 function node(tag, text, className = '') {
   const item = document.createElement(tag);
@@ -19,12 +28,17 @@ function notice(message, error = false) {
   item.hidden = false;
 }
 async function api(path, payload) {
-  const response = await fetch(path, payload === undefined ? undefined : {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+  const actorHeaders = { 'X-Fictional-Actor': fictionalActor };
+  const response = await fetch(path, payload === undefined ? { headers: actorHeaders } : {
+    method: 'POST', headers: { ...actorHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
   });
   const type = response.headers.get('content-type') || '';
   const data = type.includes('json') ? await response.json() : await response.text();
-  if (!response.ok) throw Error(data.error || 'Request failed');
+  if (!response.ok) {
+    const failure = Error(data.error || 'Request failed');
+    failure.status = response.status;
+    throw failure;
+  }
   return data;
 }
 function pill(value, style = '') { return node('span', value, 'pill ' + style); }
@@ -42,26 +56,120 @@ function focusOverviewFromCasePicker(event) {
   event.preventDefault();
   overviewLink.focus();
 }
-async function initialize() {
+function unfinishedDraftPresent() {
+  return ['draft-observations', 'draft-summary', 'draft-assumptions', 'evidence-rationale',
+    'evidence-withdraw-reason', 'option-description', 'synthesis-note-text',
+    'synthesis-note-author', 'owner-label-input', 'note-text',
+    'scoped-decision-note', 'scoped-dissent-rationale'].some(id => el(id).value.trim());
+}
+function renderActorIndicator() {
+  // The Patient Mission renderer (mission.js) reads this dataset value so
+  // both scripts send the same fictional actor without sharing state.
+  document.body.dataset.fictionalActor = fictionalActor;
+  el('actor-input').value = fictionalActor;
+  el('actor-status').textContent = 'Acting as ' + fictionalActor +
+    ' (fictional grant only — not identity verification).';
+}
+async function loadCaseList() {
+  const cases = await api('/api/cases');
+  const picker = el('case-picker');
+  picker.replaceChildren();
+  for (const entry of cases) {
+    const option = node('option', entry.label.replace(/^Fictional case /, '') + ', ' + entry.case_id);
+    option.value = entry.case_id;
+    picker.append(option);
+  }
+  return cases;
+}
+async function applyActor() {
+  const next = el('actor-input').value.trim();
+  if (!/^[A-Z][A-Z0-9-]{1,39}$/.test(next)) {
+    el('actor-input').value = fictionalActor;
+    notice('Fictional actor ids use uppercase A–Z, numbers and hyphens.', true);
+    return;
+  }
+  if (next === fictionalActor) return;
+  // An unfinished narrative must never silently become attached to another actor's view.
+  if (unfinishedDraftPresent()) {
+    el('actor-input').value = fictionalActor;
+    notice('Save or explicitly clear the unfinished investigation draft before switching actors.', true);
+    return;
+  }
+  fictionalActor = next;
+  renderActorIndicator();
+  cancelSourceRead();
+  caseId = null;
+  active = null; // Reject writes while the next case list is loading.
+  if (el('source-dialog').open) el('source-dialog').close();
+  if (el('compare-dialog').open) el('compare-dialog').close();
   try {
-    const cases = await api('/api/cases');
-    const picker = el('case-picker');
-    picker.addEventListener('keydown', focusOverviewFromCasePicker);
-    for (const entry of cases) {
-      const option = node('option', entry.label.replace(/^Fictional case /, '') + ', ' + entry.case_id);
-      option.value = entry.case_id;
-      picker.append(option);
-    }
+    const cases = await loadCaseList();
+    caseCatalog = cases;
+    await renderIncomingBoard(cases);
     if (!cases.length) {
-      el('case-heading').textContent = 'No synthetic cases found';
-      notice('Run PYTHONPATH=src python -m open_intelligence seed before opening the demo.', true);
+      el('case-heading').textContent = 'No granted cases for this fictional actor';
+      renderedCaseId = null;
+      clear('metrics');
+      clearCaseViews('No case data shown: this fictional actor holds no active grant.');
+      el('changes-anchor').textContent = 'Changes unavailable: this fictional actor holds no active grant.';
+      el('changes-disclaimer').textContent = '';
+      notice('This fictional actor holds no active grant on any case in this demo. Apply a granted fictional actor.', true);
       return;
     }
-    await renderIncomingBoard(cases);
+    caseId = cases[0].case_id;
+    await refresh();
+  } catch (err) { notice(err.message, true); }
+}
+function clearCaseViews(denied) {
+  for (const id of ['assertion-list', 'question-list', 'snapshot-list', 'source-list',
+      'source-change-list', 'asset-list', 'event-list', 'option-list',
+      'evidence-assessment-list', 'quarantine-list', 'model-investigation-list',
+      'source-choice', 'evidence-choice', 'patient-timeline', 'patient-findings',
+      'patient-questions', 'patient-uncertainty', 'changes-new-sources',
+      'changes-amendments', 'changes-stale', 'changes-questions']) {
+    clear(id);
+    empty(el(id), denied);
+  }
+  clear('timeline-events');
+  const item = node('li', null, 'timeline-entry');
+  item.append(node('p', denied, 'muted'));
+  el('timeline-events').append(item);
+  for (const id of ['question-choice', 'evidence-question-choice', 'evidence-source-choice',
+      'evidence-withdraw-id', 'model-investigation-question', 'option-snapshot-choice',
+      'dependency-option-choice', 'task-option-choice', 'threat-option-choice',
+      'review-option-choice', 'dependency-option-target-choice', 'dependency-source-choice',
+      'dependency-assessment-choice', 'dependency-task-choice', 'review-snapshot-choice'])
+    clear(id);
+  el('option-disclaimer').textContent = '';
+}
+function renderAccessDenied(requestedCase) {
+  // Never leave the previously rendered case visible under a denied case:
+  // clear every case-bound view and block writes until a granted case loads.
+  active = null;
+  renderedCaseId = null;
+  el('case-heading').textContent = 'Access denied for this fictional actor';
+  el('review-attention-heading').textContent = 'Investigation review status';
+  el('review-attention-summary').textContent = 'Review state unavailable: access denied for this fictional actor.';
+  el('review-attention').dataset.state = 'no-open-review';
+  clear('metrics');
+  clearCaseViews('No case data shown: this fictional actor holds no active grant.');
+  el('changes-anchor').textContent = 'Changes unavailable: access denied for this fictional actor.';
+  el('changes-disclaimer').textContent = '';
+  notice('Fictional actor ' + fictionalActor + ' holds no active grant for ' + requestedCase +
+    '. Switch to a granted case or apply a granted fictional actor.', true);
+}
+async function initialize() {
+  try {
+    renderActorIndicator();
+    el('actor-apply').addEventListener('click', applyActor);
+    const picker = el('case-picker');
+    picker.addEventListener('keydown', focusOverviewFromCasePicker);
     picker.addEventListener('change', () => {
       // An unfinished narrative must never silently become attached to another case.
       if ((['draft-observations', 'draft-summary', 'draft-assumptions', 'evidence-rationale',
-            'evidence-withdraw-reason', 'option-description'].some(id => el(id).value.trim()))) {
+            'evidence-withdraw-reason', 'option-description', 'synthesis-note-text',
+            'synthesis-note-author', 'owner-label-input', 'note-text',
+            'scoped-decision-note', 'scoped-dissent-rationale'].some(id => el(id).value.trim()))) {
         picker.value = caseId;
         notice('Save or explicitly clear the unfinished investigation draft before switching cases.', true);
         return;
@@ -69,20 +177,33 @@ async function initialize() {
       cancelSourceRead();
       caseId = picker.value;
       active = null; // Reject writes while the next case is loading.
-      for (const id of ['question-text', 'report-text', 'evidence-rationale', 'draft-observations',
-        'draft-summary', 'draft-assumptions']) el(id).value = '';
+      draftQuestionFilter = null;
+      draftFilterCaseId = null;
+      for (const id of ['question-text', 'question-owner', 'owner-label-input', 'note-text',
+        'report-text', 'evidence-rationale', 'draft-observations',
+        'draft-summary', 'draft-assumptions', 'synthesis-note-text', 'synthesis-note-author']) el(id).value = '';
       if (el('source-dialog').open) el('source-dialog').close();
       if (el('compare-dialog').open) el('compare-dialog').close();
       refresh();
     });
+    const cases = await loadCaseList();
+    if (!cases.length) {
+      el('case-heading').textContent = 'No synthetic cases found';
+      notice('Run PYTHONPATH=src python -m open_intelligence seed before opening the demo.', true);
+      return;
+    }
+    await renderIncomingBoard(cases);
     caseId = cases[0].case_id;
     await refresh();
   } catch (err) { notice(err.message, true); }
 }
 async function renderIncomingBoard(cases) {
+  const boardSeq = ++boardSequence;
+  const sequence = ++incomingBoardSequence;
   const list = el('incoming-list');
   clear('incoming-list');
   if (!cases.length) { empty(list, 'No fictional cases in this demo.'); return; }
+  empty(list, 'Refreshing fictional case summaries; these are not clinical triage.');
   const summaries = [];
   for (const entry of cases) {
     try {
@@ -93,14 +214,18 @@ async function renderIncomingBoard(cases) {
         label: entry.label, caseId: entry.case_id, latestEvent,
         currentSources: state.sources.filter(s => s.state === 'current').length,
         openQuestions: state.questions.filter(q => q.state === 'open').length,
+        reviewRequired: currentReviewQuestionIds(state).size,
         stale: state.snapshots.filter(s => s.state === 'stale').length,
       });
     } catch (err) {
       summaries.push({ label: entry.label, caseId: entry.case_id, latestEvent: '', error: err.message });
     }
   }
+  if (sequence !== incomingBoardSequence) return;
+  clear('incoming-list');
   // Most recent source event first. No urgency is inferred: the demo data
   // has no triage field, so sorting is by recency of the record only.
+  if (boardSeq !== boardSequence) return;
   summaries.sort((a, b) => b.latestEvent.localeCompare(a.latestEvent));
   for (const summary of summaries) {
     const row = node('div', null, 'question');
@@ -110,7 +235,8 @@ async function renderIncomingBoard(cases) {
     else text.append(node('p', 'Most recent source event: ' + (summary.latestEvent || 'none recorded') +
       ' · Current source documents: ' + summary.currentSources +
       ' · Open questions: ' + summary.openQuestions +
-      ' · Drafts needing another look: ' + summary.stale, 'muted'));
+      ' · Open source-change reviews: ' + summary.reviewRequired +
+      ' · Historical stale drafts: ' + summary.stale, 'muted'));
     const open = node('button', 'Open this case', 'button secondary minor');
     open.type = 'button';
     open.addEventListener('click', () => {
@@ -128,6 +254,13 @@ const CERTAINTY_PLAIN = {
   conflicting: 'different reports disagree', 'not-reported': 'not reported',
   'not-assessed': 'not assessed',
 };
+function currentReviewQuestionIds(state) {
+  // A historical snapshot remains stale after its question is resolved.
+  // Count distinct currently open questions, never retained history as work.
+  const open = new Set(state.questions.filter(q => q.state === 'open').map(q => Number(q.id)));
+  return new Set(state.snapshots.filter(s => s.state === 'stale' && open.has(Number(s.question_id)))
+    .map(s => Number(s.question_id)));
+}
 function renderPatientView() {
   clear('patient-timeline'); clear('patient-findings'); clear('patient-questions'); clear('patient-uncertainty');
   if (!active) return;
@@ -136,8 +269,17 @@ function renderPatientView() {
   for (const group of groups) {
     const item = node('div', null, 'question');
     const amended = group.versions.length > 1;
-    item.append(node('p', 'On ' + group.eventDate + ', a ' + group.kind + ' report (' + group.documentId + ') was recorded.' +
-      (amended ? ' This report was later corrected; the latest version is the one shown in the workspace, and older versions are kept.' : '')));
+    item.append(node('p', 'Reported event date: ' + group.eventDate + '. ' +
+      group.kind + ' report (' + group.documentId + ').' +
+      (amended ? ' Multiple versions of this report are kept; their dates are listed separately.' : '')));
+    // Event, report issue and workspace receipt are different clocks. A late
+    // arrival or amendment must not be presented as a new biological event.
+    const dateText = value => typeof value === 'string' && value.trim() ? value : 'not recorded';
+    for (const version of group.versions) {
+      item.append(node('p', 'Report version ' + version.version + ' (' + version.state + ')' +
+        ' · Issued: ' + dateText(version.issued_at) +
+        ' · Received by this workspace: ' + dateText(version.received_at), 'snapshot-meta'));
+    }
     el('patient-timeline').append(item);
   }
   if (!active.assertions.length) empty(el('patient-findings'), 'No reported findings yet in this fictional case.');
@@ -157,10 +299,18 @@ function renderPatientView() {
   }
   const stale = active.snapshots.filter(s => s.state === 'stale').length;
   const superseded = active.sources.filter(s => s.state !== 'current').length;
-  const notes = [];
-  if (stale) notes.push(stale + ' earlier draft(s) need another look because a report changed since they were written.');
+  const reviewRequired = currentReviewQuestionIds(active).size;
+  const notes = [reviewRequired + ' open source-change review(s) in this demonstration. ' +
+    'This counts open questions with older drafts affected by changed source material, not every historical draft.'];
+  if (stale) notes.push(stale + ' older draft(s) are retained as history; they are not current conclusions.');
+  if (open.length) notes.push(open.length + ' open question(s) remain unanswered in this demonstration.');
+  for (const assertion of active.assertions) {
+    if (['pending', 'indeterminate', 'conflicting', 'not-reported', 'not-assessed'].includes(assertion.certainty))
+      notes.push('Source says: ' + assertion.finding_key + ' — ' + CERTAINTY_PLAIN[assertion.certainty] +
+        '. Exact source version #' + assertion.source_version_id + ', line ' + assertion.source_line + '.');
+  }
   if (superseded) notes.push(superseded + ' older report version(s) have been replaced by a newer version; the older versions are still kept and can be inspected.');
-  if (!notes.length) notes.push('Nothing in this fictional case is currently flagged as changed or needing another look.');
+  notes.push('This view does not establish that the record is complete. A demo acknowledgment is not clinical sign-off.');
   for (const text of notes) {
     const row = node('div', null, 'question');
     row.append(node('p', text));
@@ -179,8 +329,19 @@ async function refresh() {
     active = response;
     el('case-heading').textContent = active.case.label;
     render();
+    // The incoming board shows per-case counts for every case, so it goes
+    // stale after any write. Refresh it alongside the workspace panels.
+    api('/api/cases').then(cases => {
+      if (sequence !== refreshSequence || caseId !== requestedCase) return;
+      renderIncomingBoard(cases);
+    }).catch(err => {
+      if (sequence === refreshSequence && requestedCase === caseId) notice(err.message, true);
+    });
   } catch (err) {
-    if (sequence === refreshSequence && requestedCase === caseId) notice(err.message, true);
+    if (sequence === refreshSequence && requestedCase === caseId) {
+      if (err.status === 403) renderAccessDenied(requestedCase);
+      else notice(err.message, true);
+    }
   }
 }
 function readyCase() {
@@ -357,6 +518,8 @@ function renderBiologicalAssets() {
 }
 function render() {
   const sameCase = renderedCaseId === caseId;
+  if (!sameCase) { draftQuestionFilter = null; draftFilterCaseId = null; }
+  if (draftFilterCaseId !== null && draftFilterCaseId !== caseId) { draftQuestionFilter = null; draftFilterCaseId = null; }
   const priorQuestion = sameCase ? el('question-choice').value : null;
   const priorInputs = sameCase ? [...el('source-choice').querySelectorAll('input')] : [];
   const priorSourceIds = new Set(priorInputs.filter(x => x.checked).map(x => Number(x.value)));
@@ -366,14 +529,7 @@ function render() {
   const priorWithdrawTarget = sameCase ? el('evidence-withdraw-id').value : null;
   clear('metrics');
   const latest = active.sources.filter(s => s.state === 'current');
-  const stale = active.snapshots.filter(s => s.state === 'stale');
-  // Source-dependent review is CURRENT work only while its question is reopened.
-  // Keep superseded snapshots stale in history even after the replacement is acknowledged.
-  const reopenedQuestionIds = new Set(stale
-    .filter(snapshot => active.questions.some(q =>
-      Number(q.id) === Number(snapshot.question_id) && q.state === 'open'))
-    .map(snapshot => Number(snapshot.question_id)));
-  const reviewRequired = reopenedQuestionIds.size;
+  const reviewRequired = currentReviewQuestionIds(active).size;
   el('metrics').append(
     metric(latest.length, 'Current source documents'), metric(active.assertions.length, 'Reported statements'),
     metric(active.questions.filter(q => q.state === 'open').length, 'Open questions'), metric(reviewRequired, 'Review required'));
@@ -430,13 +586,37 @@ function render() {
   }
   renderBiologicalAssets();
   clear('question-list'); clear('question-choice');
+  clear('owner-question-choice'); clear('triage-question-choice');
+  clear('note-question-choice'); clear('rollup-question-choice');
+  clear('question-rollup');
   if (!active.questions.length) empty(el('question-list'), 'Add an unresolved question to begin.');
   for (const question of active.questions) {
     const row = node('div', null, 'question');
     row.append(node('p', question.question), pill(question.state, question.state === 'open' ? 'pill-warn' : ''));
+    row.append(node('p', 'Owner: ' + (question.owner_label || 'none recorded') +
+      ' · Follow-up marker: ' + (question.triage || 'unsorted'), 'muted'));
+    const notes = (active.question_evidence_notes || []).filter(n => Number(n.question_id) === Number(question.id));
+    if (notes.length) {
+      const latest = notes[notes.length - 1];
+      row.append(node('p', 'Needed-evidence notes: ' + notes.length +
+        ' · Latest (v' + latest.version + '): ' + latest.note, 'muted'));
+    }
+    const draftsLink = document.createElement('a');
+    draftsLink.href = '#investigation-history-heading';
+    draftsLink.className = 'button secondary minor';
+    draftsLink.textContent = 'Open saved drafts';
+    draftsLink.addEventListener('click', () => {
+      draftQuestionFilter = question.id;
+      draftFilterCaseId = caseId;
+      render();
+    });
+    row.append(draftsLink);
     el('question-list').append(row);
-    const opt = node('option', 'Q' + question.id + ', ' + question.question.slice(0, 62));
-    opt.value = question.id; el('question-choice').append(opt);
+    for (const id of ['question-choice', 'owner-question-choice', 'triage-question-choice',
+      'note-question-choice', 'rollup-question-choice']) {
+      const opt = node('option', 'Q' + question.id + ', ' + question.question.slice(0, 62));
+      opt.value = question.id; el(id).append(opt);
+    }
   }
   if (priorQuestion && [...el('question-choice').options].some(x => x.value === priorQuestion))
     el('question-choice').value = priorQuestion;
@@ -521,8 +701,24 @@ function render() {
   if ([...priorSourceIds].some(id => !latest.some(x => x.id === id)))
     notice('An investigation source changed while you were editing. Review the narrative and explicitly reconcile source selections before saving.', true);
   clear('snapshot-list');
+  if (draftQuestionFilter !== null && draftFilterCaseId === caseId) {
+    const filterNotice = node('p', 'Showing drafts for Q' + draftQuestionFilter + ' in this fictional case. This list shows only drafts for that question.', 'muted');
+    el('snapshot-list').append(filterNotice);
+    const showAll = document.createElement('a');
+    showAll.href = '#investigation-history-heading';
+    showAll.className = 'button secondary minor';
+    showAll.textContent = 'Show all drafts';
+    showAll.addEventListener('click', () => {
+      draftQuestionFilter = null;
+      draftFilterCaseId = null;
+      render();
+    });
+    el('snapshot-list').append(showAll);
+  }
   if (!active.snapshots.length) empty(el('snapshot-list'), 'No investigation drafts yet.');
+  if (draftQuestionFilter !== null && draftFilterCaseId === caseId && active.snapshots.length && !active.snapshots.some(s => Number(s.question_id) === Number(draftQuestionFilter))) empty(el('snapshot-list'), 'No drafts for this question yet in this fictional case.');
   for (const snapshot of active.snapshots) {
+    if (draftQuestionFilter !== null && draftFilterCaseId === caseId && Number(snapshot.question_id) !== Number(draftQuestionFilter)) continue;
     const box = node('div', null, 'snapshot'); const top = node('div', null, 'topline');
     top.append(node('strong', 'Investigation #' + snapshot.id), pill(snapshot.state,
       snapshot.state === 'stale' ? 'pill-alert' : snapshot.state === 'draft' ? 'pill-warn' : ''));
@@ -542,7 +738,26 @@ function render() {
         } catch (err) { notice(err.message, true); }
       }); actions.append(button);
     }
+    const questionLink = document.createElement('a');
+    questionLink.href = '#question-pane-heading';
+    questionLink.className = 'button secondary minor';
+    questionLink.textContent = 'Back to question Q' + snapshot.question_id;
+    actions.append(questionLink);
+    if (snapshot.state === 'reviewed_in_demo') {
+      const followLink = document.createElement('a');
+      followLink.href = '#options';
+      followLink.className = 'button secondary minor';
+      followLink.textContent = 'Continue to discussion items';
+      actions.append(followLink);
+    }
     box.append(top, description, meta, actions);
+    const scoped = snapshot.scoped_review || {};
+    const scopedOpen = scoped.open_items || [];
+    box.append(node('p', 'Scoped review: extraction ' + (scoped.extraction || 'unreviewed') +
+      ' · interpretation ' + (scoped.interpretation || 'unreviewed') +
+      (scopedOpen.length ? ' · Open: ' + scopedOpen.join(', ') : ' · No open scope items') +
+      ((scoped.dissents || []).length ? ' · ' + scoped.dissents.length + ' disagreement(s) recorded' : '') +
+      (scoped.assignee ? ' · With reviewer: ' + scoped.assignee : ''), 'snapshot-meta'));
     if (snapshot.state === 'stale') box.append(node('p', 'A source was amended. This version remains historical and cannot be acknowledged as current.', 'muted'));
     el('snapshot-list').append(box);
   }
@@ -553,6 +768,9 @@ function render() {
   }
   loadModelInvestigations();
   loadChangesSinceReview();
+  renderSynthesisChoices();
+  loadSynthesis();
+  loadReReviewTasks();
   clear('quarantine-list');
   for (const entry of active.quarantines) {
     el('quarantine-list').append(node('div', 'Quarantined #' + entry.id + ': declared ' + entry.declared_patient_id + ', not ' + caseId + ', no assertions imported', 'quarantine'));
@@ -564,6 +782,8 @@ function render() {
   }
   renderPatientView();
   renderOptions();
+  renderScopedReview();
+  renderJourney();
   renderedCaseId = caseId;
 }
 function renderOriginalSource(text, lineNumber) {
@@ -755,14 +975,103 @@ el('dialog-close').addEventListener('click', () => { cancelSourceRead(); el('sou
 el('compare-close').addEventListener('click', () => { cancelSourceRead(); el('compare-dialog').close(); });
 // Native Escape dispatches cancel before closing. Avoid a close-event handler:
 // queued programmatic close events must not cancel a newer read intent.
+function renderQuestionRollup(data) {
+  // Read-only ledger facts only: unresolved items with anchors, bound
+  // snapshots, versioned notes, owner history, and case coverage context.
+  clear('question-rollup');
+  const box = el('question-rollup');
+  const question = data.question || {};
+  box.append(node('p', 'Q' + question.id + ': ' + (question.question || '')));
+  box.append(node('p', 'State: ' + (question.state || '') + ' · Follow-up marker: ' +
+    (question.triage || '') + ' · Owner: ' + (question.owner_label || 'none recorded'), 'muted'));
+  box.append(node('p', data.ordering_rule || '', 'muted'));
+  const items = data.unresolved_items || [];
+  box.append(node('p', 'Unresolved source items: ' + items.length, 'subhead'));
+  if (!items.length) empty(box, 'No unresolved source items in this fictional case.');
+  for (const item of items) {
+    const row = node('div', null, 'question');
+    row.append(node('p', item.finding_key + ' · ' + item.state),
+      node('p', 'Source #' + item.source_version_id + ' (' + item.document_id + '@' + item.version +
+        '), line ' + item.source_line + ' · Occurred ' + item.occurred +
+        ' · Documented ' + item.documented, 'muted'),
+      node('p', item.quote || '', 'quoted'));
+    box.append(row);
+  }
+  const snapshots = data.snapshots || [];
+  box.append(node('p', 'Bound snapshots: ' + snapshots.length, 'subhead'));
+  for (const snapshot of snapshots) {
+    box.append(node('p', 'Snapshot #' + snapshot.id + ' · ' + snapshot.state +
+      ' · Sources: ' + (snapshot.source_ids || []).join(', '), 'muted'));
+  }
+  const notes = data.needed_evidence_notes || [];
+  box.append(node('p', 'Needed-evidence notes: ' + notes.length, 'subhead'));
+  for (const note of notes) {
+    box.append(node('p', 'v' + note.version + ' · ' + note.created_at + ': ' + note.note, 'muted'));
+  }
+  const history = data.owner_history || [];
+  box.append(node('p', 'Owner history: ' + history.length + ' assignment(s)', 'subhead'));
+  for (const entry of history) {
+    box.append(node('p', entry.owner_label + ' · ' + entry.assigned_at, 'muted'));
+  }
+  const coverage = data.case_coverage_context || {};
+  box.append(node('p', 'Case coverage context: ' + (coverage.gaps || []).length +
+    ' gap(s), ' + (coverage.date_conflicts || []).length + ' date conflict(s). ' +
+    (coverage.note || ''), 'muted'));
+  box.append(node('p', data.disclaimer || '', 'muted tiny'));
+}
 for (const id of ['source-dialog', 'compare-dialog'])
   el(id).addEventListener('cancel', cancelSourceRead);
 el('question-form').addEventListener('submit', async event => {
   event.preventDefault(); try {
     const requestedCase = readyCase();
-    await api('/api/cases/' + requestedCase + '/questions', { question: el('question-text').value });
+    await api('/api/cases/' + requestedCase + '/questions', {
+      question: el('question-text').value, owner_label: el('question-owner').value || null,
+    });
     if (requestedCase !== caseId) return;
-    el('question-text').value = ''; notice('Question persisted.'); await refresh();
+    el('question-text').value = ''; el('question-owner').value = '';
+    notice('Question persisted.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('question-owner-form').addEventListener('submit', async event => {
+  event.preventDefault(); try {
+    const requestedCase = readyCase();
+    const qid = Number(el('owner-question-choice').value);
+    await api('/api/cases/' + requestedCase + '/questions/' + qid + '/owner', {
+      owner_label: el('owner-label-input').value,
+    });
+    if (requestedCase !== caseId) return;
+    el('owner-label-input').value = ''; notice('Owner label assigned.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('question-triage-form').addEventListener('submit', async event => {
+  event.preventDefault(); try {
+    const requestedCase = readyCase();
+    const qid = Number(el('triage-question-choice').value);
+    await api('/api/cases/' + requestedCase + '/questions/' + qid + '/triage', {
+      triage: el('triage-value').value,
+    });
+    if (requestedCase !== caseId) return;
+    notice('Follow-up marker updated.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('question-note-form').addEventListener('submit', async event => {
+  event.preventDefault(); try {
+    const requestedCase = readyCase();
+    const qid = Number(el('note-question-choice').value);
+    await api('/api/cases/' + requestedCase + '/questions/' + qid + '/evidence-notes', {
+      note: el('note-text').value,
+    });
+    if (requestedCase !== caseId) return;
+    el('note-text').value = ''; notice('Needed-evidence note appended.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('rollup-button').addEventListener('click', async () => {
+  try {
+    const requestedCase = readyCase();
+    const qid = Number(el('rollup-question-choice').value);
+    const data = await api('/api/cases/' + requestedCase + '/questions/' + qid + '/rollup');
+    if (requestedCase !== caseId || !active || active.case.case_id !== requestedCase) return;
+    renderQuestionRollup(data);
   } catch (err) { notice(err.message, true); }
 });
 el('draft-form').addEventListener('submit', async event => {
@@ -931,14 +1240,104 @@ el('option-review-form').addEventListener('submit', async event => {
     notice('Reviewer action recorded: ' + outcome.result + '.'); await refresh();
   } catch (err) { notice(err.message, true); }
 });
+el('scoped-decision-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const outcome = await api('/api/cases/' + requestedCase + '/snapshots/' +
+      Number(el('scoped-decision-snapshot').value) + '/scoped-decisions', {
+      reviewer_label: el('scoped-decision-reviewer').value, scope: el('scoped-decision-scope').value,
+      note: el('scoped-decision-note').value,
+    });
+    if (requestedCase !== caseId) return;
+    el('scoped-decision-note').value = '';
+    notice('Scope note recorded: ' + outcome.scope + '.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('scoped-dissent-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const outcome = await api('/api/cases/' + requestedCase + '/snapshots/' +
+      Number(el('scoped-dissent-snapshot').value) + '/scoped-dissents', {
+      reviewer_label: el('scoped-dissent-reviewer').value, claim_ref: el('scoped-dissent-claim').value,
+      rationale: el('scoped-dissent-rationale').value,
+    });
+    if (requestedCase !== caseId) return;
+    el('scoped-dissent-claim').value = ''; el('scoped-dissent-rationale').value = '';
+    notice('Disagreement recorded on finding ' + outcome.claim_ref + '.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('scoped-handoff-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const outcome = await api('/api/cases/' + requestedCase + '/snapshots/' +
+      Number(el('scoped-handoff-snapshot').value) + '/scoped-handoffs', {
+      from_reviewer: el('scoped-handoff-from').value, to_reviewer: el('scoped-handoff-to').value,
+    });
+    if (requestedCase !== caseId) return;
+    notice('Open items handed to ' + el('scoped-handoff-to').value + ' (handoff #' + outcome.handoff_id + ').'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
 
 
+function journeyStep(prefix, pillText, statusText) {
+  // textContent assignment atomically replaces the previous case's text,
+  // so no stale list content survives a case switch. render() is already
+  // case-guarded, and this runs only inside render().
+  el(prefix + '-pill').textContent = pillText;
+  el(prefix + '-status').textContent = statusText;
+}
+function renderJourney() {
+  if (!active) return;
+  const sources = active.sources || [];
+  const current = sources.filter(s => s.state === 'current').length;
+  const documents = new Set(sources.map(s => s.document_id)).size;
+  const quarantined = (active.quarantines || []).length;
+  const questions = active.questions || [];
+  const openQuestions = questions.filter(q => q.state === 'open').length;
+  const snapshots = active.snapshots || [];
+  const stale = snapshots.filter(s => s.state === 'stale').length;
+  const drafts = snapshots.filter(s => s.state === 'draft').length;
+  const reviewed = snapshots.filter(s => s.state === 'reviewed_in_demo').length;
+  const options = active.options || [];
+  const openTasks = options.flatMap(o => o.preparation_tasks || [])
+    .filter(t => t.status === 'not_started' || t.status === 'in_progress' || t.status === 'blocked').length;
+  const pillFor = (count) => count ? 'Has entries' : 'Nothing yet';
+  journeyStep('journey-intake', pillFor(sources.length), sources.length
+    ? documents + ' fictional report(s) received across ' + sources.length + ' version(s). ' +
+      quarantined + ' mismatched item(s) kept out of the case.'
+    : 'No reports have been added to this fictional case yet. Adding the first report starts step 2.');
+  journeyStep('journey-sources', pillFor(sources.length), sources.length
+    ? current + ' current source document(s) · ' + (active.assertions || []).length + ' reported statement(s).'
+    : 'No records are available to read yet. This step fills in once intake holds a report.');
+  journeyStep('journey-questions', pillFor(questions.length), questions.length
+    ? openQuestions + ' open question(s) of ' + questions.length + ' recorded.'
+    : 'No questions have been written down yet. Later steps work from the questions listed here.');
+  journeyStep('journey-review',
+    snapshots.length ? (stale + drafts ? 'Needs a look' : 'Nothing flagged') : 'Nothing yet',
+    snapshots.length
+      ? stale + ' draft(s) needing another look · ' + drafts + ' draft(s) awaiting review · ' +
+        reviewed + ' acknowledged in demo.' + (stale + drafts ? '' : ' No draft currently needs another look.')
+      : 'No drafts exist yet, so there is nothing to re-check.');
+  journeyStep('journey-report', pillFor(snapshots.length), snapshots.length
+    ? snapshots.length + ' saved draft(s): ' + drafts + ' awaiting review · ' + stale +
+      ' needing another look · ' + reviewed + ' acknowledged in demo. ' +
+      'Each draft stays pinned to the exact source versions it used.'
+    : 'No drafts have been saved yet. A draft appears here once a question has a written narrative.');
+  journeyStep('journey-followthrough', pillFor(options.length), options.length
+    ? options.length + ' discussion item(s) · ' + openTasks + ' open preparation task(s).'
+    : 'No discussion items have been proposed yet. An item appears here once a draft exists to discuss.');
+}
 function renderOptions() {
-  el('option-disclaimer').textContent = active.option_disclaimer || '';
+  el('option-disclaimer').textContent = [active.option_disclaimer, active.option_receipt_disclaimer]
+    .filter(x => x).join(' ');
+  const sameCase = renderedCaseId === caseId;
   const options = active.options || [];
   const fill = (id, items, labelFn, allowEmpty = false) => {
     const select = el(id);
-    const prior = select.value;
+    const prior = sameCase ? select.value : '';
     clear(id);
     if (allowEmpty) { const blank = node('option', '—'); blank.value = ''; select.append(blank); }
     for (const item of items) {
@@ -969,9 +1368,16 @@ function renderOptions() {
       pill(option.derived_epistemic_status, option.derived_epistemic_status === 'contradicted' ? 'pill-alert' : ''),
       pill(option.display_operational_status, option.display_operational_status === 'held' ? 'pill-alert' : ''),
       pill('review: ' + option.review_state, option.review_state === 'needs_review' ? 'pill-warn' : ''));
+    if (option.dependency_loss && option.dependency_loss.present) {
+      top.append(pill('dependency loss: ' + option.dependency_loss.causes.length + ' cause(s)', 'pill-alert'));
+    }
     box.append(top, node('p', option.description),
       node('p', 'Based on investigation #' + option.snapshot_id + ' (' + option.snapshot_state + ') · ' +
         option.potential_discussion_deadline.label, 'snapshot-meta'));
+    if (option.dependency_loss && option.dependency_loss.present) {
+      box.append(node('p', 'Dependency loss (derived, never a stored threat): ' +
+        option.dependency_loss.causes.join('; '), 'snapshot-meta'));
+    }
     if (option.dependencies.length) {
       const deps = node('ul');
       for (const dep of option.dependencies) {
@@ -985,7 +1391,14 @@ function renderOptions() {
     if (option.preparation_tasks.length) {
       box.append(node('p', 'Preparation tasks: ' + option.preparation_tasks.map(t =>
         t.label + ' · owner ' + t.owner_label + ' · ' + t.status +
+        (t.receipt_id ? ' · receipt #' + t.receipt_id :
+          (t.receipt_marker === 'receipt_predates_slice' ? ' · receipt predates this view' : ' · no receipt')) +
         (t.lead_time_days !== null && t.lead_time_days !== undefined ? ' · lead ' + t.lead_time_days + 'd' : '')).join('; '), 'snapshot-meta'));
+      if (Array.isArray(option.open_task_ids) && Array.isArray(option.receipted_task_ids)) {
+        const open = option.open_task_ids.map(n => '#' + n).join(', ') || 'none';
+        const receipted = option.receipted_task_ids.map(n => '#' + n).join(', ') || 'none';
+        box.append(node('p', 'Open tasks: ' + open + ' · Receipted tasks: ' + receipted, 'snapshot-meta'));
+      }
     }
     if (option.threats.length) {
       box.append(node('p', 'Optionality threats: ' + option.threats.map(t =>
@@ -996,7 +1409,62 @@ function renderOptions() {
       box.append(node('p', 'Review history: ' + option.review_events.map(e =>
         e.action + ' by ' + e.reviewer_label + ' · scope: ' + e.scope).join(' ; '), 'snapshot-meta'));
     }
+    const investigationLink = document.createElement('a');
+    investigationLink.href = '#investigation-history-heading';
+    investigationLink.className = 'button secondary minor';
+    investigationLink.textContent = 'View investigation #' + option.snapshot_id;
+    box.append(investigationLink);
     el('option-list').append(box);
+  }
+}
+function renderScopedReview() {
+  const fill = (id, items, labelFn) => {
+    const select = el(id);
+    const prior = select.value;
+    clear(id);
+    for (const item of items) {
+      const opt = node('option', labelFn(item));
+      opt.value = item.id; select.append(opt);
+    }
+    if (prior && [...select.options].some(x => x.value === prior)) select.value = prior;
+  };
+  const label = s => 'Investigation #' + s.id + ' · ' + s.state;
+  fill('scoped-decision-snapshot', active.snapshots, label);
+  fill('scoped-dissent-snapshot', active.snapshots, label);
+  fill('scoped-handoff-snapshot', active.snapshots, label);
+  clear('scoped-review-list');
+  if (!active.snapshots.length) empty(el('scoped-review-list'), 'No investigation drafts yet.');
+  for (const snapshot of active.snapshots) {
+    const scoped = snapshot.scoped_review || {
+      extraction: 'unreviewed', interpretation: 'unreviewed',
+      open_items: [], decisions: [], dissents: [], handoffs: [],
+    };
+    const box = node('div', null, 'snapshot');
+    const top = node('div', null, 'topline');
+    top.append(node('strong', 'Investigation #' + snapshot.id),
+      pill('extraction: ' + scoped.extraction, scoped.extraction === 'extraction_accepted' ? '' : 'pill-warn'),
+      pill('interpretation: ' + scoped.interpretation, scoped.interpretation === 'interpretation_endorsed' ? '' : 'pill-warn'));
+    box.append(top);
+    if ((scoped.open_items || []).length)
+      box.append(node('p', 'Open scope items: ' + scoped.open_items.join(', ') + ' — no settled note recorded.', 'snapshot-meta'));
+    else box.append(node('p', 'No open scope items: both dimensions have a settled note.', 'snapshot-meta'));
+    for (const item of (scoped.decisions || [])) {
+      box.append(node('p', 'Note #' + item.id + ' by ' + item.reviewer_label + ': ' + item.scope +
+        ' · sources ' + (item.source_version_ids.map(x => '#' + x).join(', ') || 'none') +
+        ' · ' + item.decided_at, 'snapshot-meta'), node('p', item.note, 'muted'));
+    }
+    for (const item of (scoped.dissents || [])) {
+      box.append(node('p', 'Disagreement #' + item.id + ' by ' + item.reviewer_label + ' on finding `' +
+        item.claim_ref + '` · ' + item.dissented_at + ' (noted views above are unchanged).', 'snapshot-meta'),
+        node('p', item.rationale, 'muted'));
+    }
+    for (const item of (scoped.handoffs || [])) {
+      box.append(node('p', 'Handoff #' + item.id + ': ' + item.from_reviewer + ' handed open items to ' +
+        item.to_reviewer + ' · snapshot #' + item.snapshot_id + ' · sources ' +
+        (item.source_version_ids.map(x => '#' + x).join(', ') || 'none') + ' · prior decisions ' +
+        (item.prior_decision_ids.map(x => '#' + x).join(', ') || 'none') + ' · ' + item.handed_at, 'snapshot-meta'));
+    }
+    el('scoped-review-list').append(box);
   }
 }
 function renderBibliography(record) {
@@ -1215,6 +1683,11 @@ function renderChangesSinceReview(data) {
             ' at ' + cause.occurred_at + ').';
       box.append(node('p', causeText, 'muted'));
     }
+    const staleDraftsLink = document.createElement('a');
+    staleDraftsLink.href = '#investigation-history-heading';
+    staleDraftsLink.className = 'button secondary minor';
+    staleDraftsLink.textContent = 'Open saved drafts';
+    box.append(staleDraftsLink);
     el('changes-stale').append(box);
   }
   clear('changes-questions');
@@ -1225,6 +1698,105 @@ function renderChangesSinceReview(data) {
     row.append(node('p', 'Q' + item.question_id + ': ' + item.question),
       node('p', 'Event #' + item.event_id + ' · State: ' + item.state + ' · Created ' + item.created_at, 'muted'));
     el('changes-questions').append(row);
+  }
+}
+async function loadReReviewTasks() {
+  const requested = caseId;
+  clear('re-review-list');
+  try {
+    const data = await api('/api/cases/' + requested + '/re-review-tasks');
+    if (requested !== caseId || !active || active.case.case_id !== requested) return;
+    renderReReviewTasks(data);
+  } catch (err) {
+    if (requested !== caseId) return;
+    empty(el('re-review-list'), 'Re-review task listing unavailable: ' + err.message);
+  }
+}
+function renderReReviewTasks(tasks) {
+  // Ledger facts only: owner labels are fictional attribution, due dates are
+  // descriptive, and rows stay in creation order. Never infer importance.
+  clear('re-review-list');
+  const list = el('re-review-list');
+  if (!tasks.length) {
+    empty(list, 'No re-review tasks recorded for this fictional case.');
+    return;
+  }
+  const causeText = {
+    source_amendment: 'a bound source was amended',
+    evidence_change: 'fictional evidence changed',
+    revocation: 'a rights source was revoked',
+    correction: 'a rights source was corrected',
+    review: 'a broker link was re-reviewed',
+  };
+  for (const task of tasks) {
+    const box = node('div', null, 'snapshot');
+    const top = node('div', null, 'topline');
+    top.append(node('strong', 'Re-review task #' + task.id),
+      pill(task.status, task.status === 'open' ? 'pill-warn' : 'pill-neutral'));
+    if (task.overdue) top.append(pill('past due', 'pill-alert'));
+    box.append(top);
+    box.append(node('p', 'Earlier draft #' + task.snapshot_id + ' for question Q' + task.question_id +
+      ' was marked stale because ' + (causeText[task.cause] || task.cause) +
+      ' (recorded under event #' + task.invalidating_event_id + ').', 'snapshot-meta'));
+    const diff = task.finding_key_diff || {};
+    const added = diff.added_finding_keys || [];
+    const removed = diff.removed_finding_keys || [];
+    const stateChanges = diff.reported_state_changes || [];
+    if (task.cause === 'source_amendment') {
+      box.append(node('p', 'Superseding source version #' + task.superseding_source_version_id +
+        ' replaces #' + task.superseded_source_version_id +
+        '. Mechanical finding-key diff — added: ' + (added.length ? added.join(', ') : 'none') +
+        ' · removed: ' + (removed.length ? removed.join(', ') : 'none') + '.', 'muted'));
+      for (const change of stateChanges)
+        box.append(node('p', change.finding_key + ': reported state ' +
+          change.previous_reported_state + ' → ' + change.reported_state, 'muted'));
+    } else if (task.evidence_version_id) {
+      box.append(node('p', 'Changed fictional evidence version #' + task.evidence_version_id + '.', 'muted'));
+    } else if (task.rights_source_id) {
+      box.append(node('p', 'Rights source row #' + task.rights_source_id +
+        (task.superseding_rights_source_id ? ' superseded by row #' + task.superseding_rights_source_id : '') +
+        (task.broker_link_id ? ', broker link #' + task.broker_link_id : '') + '.', 'muted'));
+    }
+    box.append(node('p', 'Recorded owner (fictional label): ' + task.assignee_label +
+      ' · ' + (task.due_date ? 'Due ' + task.due_date : 'No due date recorded') +
+      ' · Created ' + task.created_at + '.', 'muted'));
+    if (task.status !== 'open') {
+      box.append(node('p', task.closing_snapshot_id
+        ? 'Closed with replacement draft #' + task.closing_snapshot_id + ' at ' + task.closed_at + '. The earlier draft stays in history.'
+        : 'Closed with a recorded no-change note at ' + task.closed_at + ': ' + (task.close_note || ''), 'muted'));
+    } else {
+      const form = node('div', null, 'actions');
+      const noteInput = node('input', null, '');
+      noteInput.type = 'text';
+      noteInput.placeholder = 'No-change note (10–600 characters)';
+      noteInput.setAttribute('aria-label', 'No-change note for task ' + task.id);
+      const draftInput = node('input', null, '');
+      draftInput.type = 'text';
+      draftInput.placeholder = 'Replacement draft #';
+      draftInput.setAttribute('aria-label', 'Replacement draft id for task ' + task.id);
+      const closeButton = node('button', 'Close task', 'button secondary minor');
+      closeButton.type = 'button';
+      closeButton.addEventListener('click', async () => {
+        try {
+          const current = readyCase();
+          const note = noteInput.value.trim();
+          const draftRaw = draftInput.value.trim();
+          if (draftRaw && !/^[0-9]+$/.test(draftRaw)) {
+            notice('Replacement draft must be a snapshot number.', true);
+            return;
+          }
+          const payload = {};
+          if (note) payload.no_change_note = note;
+          if (draftRaw) payload.closing_snapshot_id = Number(draftRaw);
+          await api('/api/cases/' + current + '/re-review-tasks/' + task.id + '/close', payload);
+          notice('Re-review task #' + task.id + ' recorded as done. The earlier draft stays in history.');
+          await refresh();
+        } catch (err) { notice(err.message, true); }
+      });
+      form.append(noteInput, draftInput, closeButton);
+      box.append(form);
+    }
+    list.append(box);
   }
 }
 el('model-investigation-form').addEventListener('submit', async event => {
@@ -1240,6 +1812,249 @@ el('model-investigation-form').addEventListener('submit', async event => {
     notice('Model investigation stored as a hypothesis pending review.');
     await refresh();
   } catch (err) { notice(err.message, true); }
+});
+// Begin contradiction synthesis (B-08): read-only grouping plus human notes.
+const SYNTHESIS_GROUPS = [
+  ['supporting', 'Supporting items'],
+  ['contradicting', 'Contradicting items'],
+  ['context', 'Context items'],
+  ['unknown_limited', 'Unknown or limited items'],
+];
+const SYNTHESIS_EMPTY = {
+  supporting: 'None included; no supporting item is linked at this cutoff.',
+  contradicting: 'None included; no contradicting item is linked at this cutoff.',
+  context: 'None included; no context item is linked at this cutoff.',
+  unknown_limited: 'None included; no unknown or limited item is linked at this cutoff.',
+};
+function fillSelect(id, options, keepValue) {
+  const select = el(id);
+  const prior = keepValue ? select.value : null;
+  clear(id);
+  for (const [value, label] of options) {
+    const opt = node('option', label);
+    opt.value = value;
+    select.append(opt);
+  }
+  if (prior && [...select.options].some(opt => opt.value === prior)) select.value = prior;
+}
+function renderSynthesisChoices() {
+  if (!active) return;
+  const sameCase = renderedCaseId === caseId;
+  const questionOptions = active.questions.map(q => [String(q.id), 'Q' + q.id + ': ' + q.question]);
+  const snapshotOptions = active.snapshots.map(s =>
+    [String(s.id), 'Snapshot #' + s.id + ' · Q' + s.question_id + ' · ' + s.state]);
+  fillSelect('synthesis-question-choice', questionOptions.length ? questionOptions : [['', 'No questions yet']], sameCase);
+  fillSelect('synthesis-snapshot-choice', snapshotOptions.length ? snapshotOptions : [['', 'No snapshots yet']], sameCase);
+  fillSelect('synthesis-note-question', questionOptions.length ? questionOptions : [['', 'No questions yet']], sameCase);
+  renderSynthesisNoteTargets();
+}
+function renderSynthesisNoteTargets() {
+  if (!active) return;
+  const qid = Number(el('synthesis-note-question').value);
+  const kind = el('synthesis-note-target-kind').value;
+  let options = [];
+  if (kind === 'assessment') {
+    options = (active.evidence_assessments || []).filter(a => a.question_id === qid)
+      .map(a => [String(a.id), 'Assessment #' + a.id + ' · ' + a.evidence_key + '@' + a.version + ' · ' + a.relation]);
+  } else {
+    options = (active.broker_links || []).filter(a => a.question_id === qid)
+      .map(a => [String(a.id), 'Link #' + a.id + ' · ' + a.source_key + ' ' + (a.version_label || '') + ' · ' + a.relation]);
+  }
+  fillSelect('synthesis-note-target', options.length ? options : [['', 'No records for this question yet']], false);
+}
+function synthesisItemLabel(item) {
+  const anchor = item.anchor || {};
+  if (item.kind === 'evidence_assessment') {
+    return 'Assessment #' + item.id + ' · ' + anchor.evidence_key + '@' + anchor.version +
+      ' · line ' + anchor.statement_line;
+  }
+  return 'Link #' + item.id + ' · ' + anchor.source_key + ' ' + (anchor.version_label || '') +
+    ' · ' + (anchor.mode || 'citation identity');
+}
+function renderSynthesisGroups(data) {
+  clear('synthesis-groups');
+  const counts = data.counts || {};
+  const head = node('div', null, 'question');
+  head.append(node('p', 'Linked items: ' + (counts.total || 0) +
+    ' (supporting ' + (counts.supporting || 0) +
+    ' · contradicting ' + (counts.contradicting || 0) +
+    ' · context ' + (counts.context || 0) +
+    ' · unknown/limited ' + (counts.unknown_limited || 0) + ')'));
+  const cutoff = data.cutoff || {};
+  head.append(node('p', 'Cutoff event #' + cutoff.event_id + ' at ' + (cutoff.occurred_at || 'unknown time') +
+    '. No quality number is computed here.', 'muted'));
+  el('synthesis-groups').append(head);
+  for (const [key, title] of SYNTHESIS_GROUPS) {
+    const items = (data.groups || {})[key] || [];
+    const box = node('div', null, 'snapshot');
+    const top = node('div', null, 'topline');
+    top.append(node('strong', title + ' (' + items.length + ')'),
+      pill(key === 'contradicting' && items.length ? 'dissent visible' : 'listed', 'pill-neutral'));
+    box.append(top);
+    if (!items.length) box.append(node('p', SYNTHESIS_EMPTY[key], 'muted'));
+    for (const item of items) {
+      box.append(node('p', synthesisItemLabel(item) + ' · ' + item.relation + ', ' + item.applicability +
+        ' · review state: ' + item.review_state));
+      box.append(node('p', 'Reviewer rationale: ' + item.rationale, 'muted'));
+      for (const note of item.limitation_notes || []) {
+        box.append(node('p', 'Limitation note by ' + note.author_label + ': ' + note.note, 'muted'));
+      }
+    }
+    el('synthesis-groups').append(box);
+  }
+}
+async function loadSynthesis() {
+  const requested = caseId;
+  clear('synthesis-groups');
+  clear('synthesis-report-meta');
+  const qid = Number(el('synthesis-question-choice').value);
+  const sid = Number(el('synthesis-snapshot-choice').value);
+  if (!qid) {
+    empty(el('synthesis-groups'), 'No question selected in this fictional case.');
+    return;
+  }
+  try {
+    const data = await api('/api/cases/' + requested + '/questions/' + qid + '/synthesis');
+    if (requested !== caseId || !active || active.case.case_id !== requested) return;
+    renderSynthesisGroups(data);
+    if (sid) {
+      const snapshotData = await api('/api/cases/' + requested + '/snapshots/' + sid + '/synthesis');
+      if (requested !== caseId || !active || active.case.case_id !== requested) return;
+      const basis = snapshotData.basis || {};
+      const meta = node('div', null, 'question');
+      meta.append(node('p', 'Snapshot #' + sid + ' · state: ' + (basis.snapshot_state || 'unknown') +
+        ' · cutoff event #' + ((snapshotData.cutoff || {}).event_id || '?')));
+      meta.append(node('p', basis.stale_basis
+        ? 'REVIEW-PENDING: the record changed after this snapshot. The bounded report reads as history.'
+        : 'No basis change is recorded at this cutoff. The bounded report still needs human review.', 'muted'));
+      el('synthesis-report-meta').append(meta);
+    } else {
+      empty(el('synthesis-report-meta'), 'No snapshot selected in this fictional case.');
+    }
+  } catch (err) {
+    if (requested !== caseId) return;
+    empty(el('synthesis-groups'), 'Synthesis unavailable: ' + err.message);
+    empty(el('synthesis-report-meta'), 'Report cutoff unavailable.');
+  }
+}
+async function openSynthesisReport(patient) {
+  let read;
+  try {
+    read = beginSourceRead();
+    const sid = Number(el('synthesis-snapshot-choice').value);
+    if (!sid) throw Error('Select an investigation snapshot first.');
+    const suffix = patient ? '/synthesis-report-patient' : '/synthesis-report';
+    const text = await api('/api/cases/' + read.caseId + '/snapshots/' + sid + suffix);
+    if (!sourceReadIsCurrent(read)) return;
+    if (typeof text !== 'string' || !text) throw Error('Bounded report text is unavailable.');
+    el('dialog-title').textContent = patient
+      ? 'Snapshot #' + sid + ', plain-words bounded report'
+      : 'Snapshot #' + sid + ', workspace bounded report';
+    renderOriginalSource(text, null);
+    el('dialog-context').textContent = 'FICTIONAL DEMO DATA. Bounded to its cutoff; a REVIEW-PENDING banner means the record changed after it.';
+    showSourceView('source-dialog');
+  } catch (err) {
+    if (!read || sourceReadIsCurrent(read)) notice(err.message, true);
+  }
+}
+el('synthesis-question-choice').addEventListener('change', () => { loadSynthesis(); });
+el('synthesis-snapshot-choice').addEventListener('change', () => { loadSynthesis(); });
+el('synthesis-note-question').addEventListener('change', () => { renderSynthesisNoteTargets(); });
+el('synthesis-note-target-kind').addEventListener('change', () => { renderSynthesisNoteTargets(); });
+el('synthesis-report-button').addEventListener('click', () => { openSynthesisReport(false); });
+el('synthesis-patient-report-button').addEventListener('click', () => { openSynthesisReport(true); });
+el('synthesis-note-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const kind = el('synthesis-note-target-kind').value;
+    const targetId = Number(el('synthesis-note-target').value);
+    if (!targetId) throw Error('Select a target record for this note.');
+    const payload = {
+      question_id: Number(el('synthesis-note-question').value),
+      note: el('synthesis-note-text').value,
+      author_label: el('synthesis-note-author').value,
+    };
+    if (kind === 'assessment') payload.assessment_id = targetId;
+    else payload.broker_link_id = targetId;
+    await api('/api/cases/' + requestedCase + '/limitation-notes', payload);
+    if (requestedCase !== caseId) return;
+    el('synthesis-note-text').value = '';
+    notice('Limitation note recorded. Notes stay in history and are never rewritten.');
+    await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+// End contradiction synthesis (B-08).
+function renderMetricsAggregate(containerId, block) {
+  // Descriptive fixture counts only; every value arrives as a number or a
+  // fixed label string, rendered via textContent-only node().
+  clear(containerId);
+  const container = el(containerId);
+  const aggregate = (block && block.aggregate) || {};
+  const corrections = aggregate.corrections || {};
+  const lag = (aggregate.stale_lag && aggregate.stale_lag.summary) || {};
+  container.append(
+    metric(aggregate.case_count || 0, 'Cases in set'),
+    metric(corrections.total || 0, 'Corrections (amendments + evidence changes)'),
+    metric(aggregate.abstention_entries || 0, 'Abstention entries'),
+    metric(aggregate.guard_drop_entries || 0, 'Guard-drop entries'),
+    metric(aggregate.invalidated_total || 0, 'Invalidated items'),
+    metric(aggregate.untouched_total || 0, 'Untouched items'));
+  const lagText = 'Stale-item lag over ' + (lag.resolved || 0) + ' resolved correction(s)' +
+    ', ' + (lag.pending || 0) + ' pending' +
+    (lag.resolved ? ': min ' + lag.min_seconds + 's, median ' + lag.median_seconds +
+      's, max ' + lag.max_seconds + 's (ledger timestamps).' : ' (ledger timestamps).');
+  container.append(node('p', lagText, 'muted'));
+  const abstentions = aggregate.abstentions_by_reason || {};
+  const drops = aggregate.guard_drops_by_reason || {};
+  const reasons = Object.keys(abstentions).sort()
+    .map(reason => reason + ': ' + abstentions[reason]).join('; ') || 'none recorded';
+  const dropReasons = Object.keys(drops).sort()
+    .map(reason => reason + ': ' + drops[reason]).join('; ') || 'none recorded';
+  container.append(node('p', 'Abstentions by reason — ' + reasons, 'muted tiny'));
+  container.append(node('p', 'Guard drops by reason — ' + dropReasons, 'muted tiny'));
+}
+function renderSyntheticMetrics(data) {
+  const run = data.run || {};
+  const manifest = run.manifest || {};
+  el('metrics-status').textContent = 'Run ' + (run.run_id || 'unknown') +
+    ' as of ledger time ' + (run.as_of_ledger_time || 'unknown') +
+    '. Dev: ' + (manifest.dev_cases || []).join(', ') +
+    '. Held-out: ' + ((manifest.held_out_cases || []).join(', ') || 'none') +
+    '. Synthetic fixtures only — non-transferable.';
+  el('metrics-disclaimer').textContent = ((data.dev && data.dev.labels) || []).join('. ') +
+    '. ' + ((data.dev && data.dev.disclaimer) || '');
+  renderMetricsAggregate('metrics-dev', data.dev);
+  renderMetricsAggregate('metrics-heldout', data.held_out);
+  clear('metrics-run');
+  const runBox = el('metrics-run');
+  const card = node('article', null, 'source-card');
+  const positions = run.ledger_positions || {};
+  card.append(node('p', 'Run id ' + (run.run_id || 'unknown') +
+    ' reflects ledger positions ' + Object.keys(positions).sort()
+      .map(name => name + ' @ event #' + positions[name].latest_event_id).join('; ') +
+    '. Recompute any time: derived values come from the ledger, not from a stored metric history.'));
+  runBox.append(card);
+}
+async function loadSyntheticMetrics() {
+  const devRaw = el('metrics-dev-input').value;
+  const heldOutRaw = el('metrics-heldout-input').value;
+  el('metrics-status').textContent = 'Computing fixture metrics…';
+  try {
+    const data = await api('/api/metrics/synthetic?dev=' + encodeURIComponent(devRaw) +
+      '&held_out=' + encodeURIComponent(heldOutRaw));
+    // The manifest may change while a response is in flight; never render
+    // counts underneath a manifest they were not computed for.
+    if (el('metrics-dev-input').value !== devRaw || el('metrics-heldout-input').value !== heldOutRaw) return;
+    renderSyntheticMetrics(data);
+  } catch (err) {
+    if (el('metrics-dev-input').value !== devRaw || el('metrics-heldout-input').value !== heldOutRaw) return;
+    el('metrics-status').textContent = 'Fixture metrics unavailable: ' + err.message;
+  }
+}
+el('metrics-form').addEventListener('submit', event => {
+  event.preventDefault();
+  loadSyntheticMetrics();
 });
 initialize();
 initializeBibliography();

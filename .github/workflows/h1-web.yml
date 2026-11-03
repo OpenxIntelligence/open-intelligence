@@ -3,7 +3,8 @@ on:
   push:
     branches: [feat/h1-react-patient-entry-20261102, integration/h1-react-source-records-20261102, feat/h1-react-record-import-20261102]
   pull_request:
-    paths: ['apps/web/**', 'apps/api/**', '.github/workflows/h1-web.yml']
+    # The API imports shared src; the browser harness imports tests/browser_journey.py.
+    paths: ['apps/web/**', 'apps/api/**', 'src/**', 'tests/**', 'tools/audit_ci_data_boundaries.py', '.github/workflows/h1-web.yml']
 permissions:
   contents: read
 jobs:
@@ -40,6 +41,8 @@ jobs:
         run: |
           node --version
           npm --version
+      - name: Check the inherited synthetic-data boundary
+        run: python tools/audit_ci_data_boundaries.py
       - name: Acquire candidate packages without lifecycle scripts
         working-directory: apps/web
         run: npm ci --omit=optional --ignore-scripts --no-audit --no-fund
@@ -49,7 +52,7 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p ../../verification-web
-          node tools/license-gate.mjs
+          npm run rights 2>&1 | tee ../../verification-web/rights-gate-tests.txt
           npm audit --omit=optional --audit-level=high --json | tee ../../verification-web/audit.json
       - name: Compile client and build actual React UI
         working-directory: apps/web
