@@ -553,6 +553,7 @@ function render() {
   }
   loadModelInvestigations();
   loadChangesSinceReview();
+  loadPacketSummary();
   clear('quarantine-list');
   for (const entry of active.quarantines) {
     el('quarantine-list').append(node('div', 'Quarantined #' + entry.id + ': declared ' + entry.declared_patient_id + ', not ' + caseId + ', no assertions imported', 'quarantine'));
@@ -751,6 +752,84 @@ async function downloadSnapshot(id) {
     document.body.append(link); link.click(); link.remove(); URL.revokeObjectURL(url);
   } catch (err) { notice(err.message, true); }
 }
+async function downloadPacket(format) {
+  try {
+    const requestedCase = readyCase();
+    const suffix = format === 'text' ? '?format=text' : '';
+    const data = await api('/api/cases/' + requestedCase + '/packet' + suffix);
+    if (requestedCase !== caseId) return;
+    const text = format === 'text' ? data : JSON.stringify(data, null, 2);
+    const mime = format === 'text' ? 'text/plain' : 'application/json';
+    const ext = format === 'text' ? '.txt' : '.json';
+    const url = URL.createObjectURL(new Blob([text], { type: mime }));
+    const link = document.createElement('a'); link.href = url; link.download = 'synthetic-packet-' + requestedCase + ext;
+    document.body.append(link); link.click(); link.remove(); URL.revokeObjectURL(url);
+    notice('Fictional demo packet downloaded for ' + requestedCase + '.');
+  } catch (err) { notice(err.message, true); }
+}
+async function loadPacketSummary() {
+  const requested = caseId;
+  const statusEl = el('packet-status');
+  if (statusEl) statusEl.textContent = 'Loading fictional packet summary…';
+  clear('packet-summary');
+  try {
+    const data = await api('/api/cases/' + requested + '/packet');
+    if (requested !== caseId || !active || active.case.case_id !== requested) return;
+    renderPacketSummary(data);
+  } catch (err) {
+    if (requested !== caseId) return;
+    if (statusEl) statusEl.textContent = 'Packet summary unavailable: ' + err.message;
+    empty(el('packet-summary'), 'Fictional packet summary unavailable.');
+  }
+}
+function renderPacketSummary(data) {
+  const cover = data.cover || {};
+  const position = cover.report_position || {};
+  const statusEl = el('packet-status');
+  if (statusEl) statusEl.textContent = 'Fictional demo packet for ' + (cover.case_id || caseId) +
+    ' at event #' + (position.as_of_event_id ?? 'none') + '. Same sections as the workspace, same source references.';
+  clear('packet-summary');
+  const journey = data.journey_stage || {};
+  const where = journey.where_am_i || {};
+  const timeline = data.timeline || {};
+  const counts = timeline.counts || {};
+  const changes = data.changes_since_review || {};
+  const changeCounts = changes.counts || {};
+  const rows = [
+    ['Journey stage', String(journey.workflow_status || 'unknown') + ' · ' +
+      (where.current_source_documents ?? 0) + ' current sources, ' +
+      (where.open_questions ?? 0) + ' open questions'],
+    ['Reported findings', String((data.reported_findings || {}).count ?? 0) + ' source statements'],
+    ['Timeline', String(counts.entries ?? 0) + ' entries, ' + String(counts.gaps ?? 0) +
+      ' gaps, ' + String(counts.conflicts ?? 0) + ' conflicts'],
+    ['Questions', String((data.questions || {}).items ? data.questions.items.length : 0) + ' recorded'],
+    ['Investigations', String((data.investigations || {}).snapshots ? data.investigations.snapshots.length : 0) +
+      ' drafts, ' + String((data.investigations || {}).model_investigations ? data.investigations.model_investigations.length : 0) +
+      ' hypotheses pending review'],
+    ['Evidence', String((data.evidence || {}).assessments ? data.evidence.assessments.length : 0) + ' assessments'],
+    ['Sources', String((data.sources || {}).items ? data.sources.items.length : 0) + ' versions'],
+    ['Changes since review', String(changeCounts.new_sources ?? 0) + ' new, ' +
+      String(changeCounts.amendments ?? 0) + ' amendments, ' +
+      String(changeCounts.stale_investigations ?? 0) + ' stale'],
+    ['Options', String((data.options || {}).items ? data.options.items.length : 0) + ' proposed'],
+    ['Follow ups', String((data.follow_ups || {}).next_actions ? data.follow_ups.next_actions.length : 0) + ' bounded actions'],
+    ['Biological assets', String((data.biological_assets || {}).assets ? data.biological_assets.assets.length : 0) + ' recorded'],
+    ['Recent activity', String((data.activity || {}).items ? data.activity.items.length : 0) + ' ledger events'],
+    ['Limitations', String((data.limitations || {}).items ? data.limitations.items.length : 0) + ' limits noted'],
+  ];
+  for (const [label, detail] of rows) {
+    const card = node('article', null, 'source-card');
+    const top = node('div', null, 'source-top');
+    top.append(node('span', label, 'source-title'), pill('FICTIONAL DEMO DATA', 'pill-warn'));
+    card.append(top, node('p', detail, 'snapshot-meta'));
+    el('packet-summary').append(card);
+  }
+}
+el('packet-download-json').addEventListener('click', () => downloadPacket('json'));
+el('packet-download-text').addEventListener('click', () => downloadPacket('text'));
+el('packet-print').addEventListener('click', () => {
+  try { readyCase(); window.print(); } catch (err) { notice(err.message, true); }
+});
 el('dialog-close').addEventListener('click', () => { cancelSourceRead(); el('source-dialog').close(); });
 el('compare-close').addEventListener('click', () => { cancelSourceRead(); el('compare-dialog').close(); });
 // Native Escape dispatches cancel before closing. Avoid a close-event handler:

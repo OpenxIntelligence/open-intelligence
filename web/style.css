@@ -1119,3 +1119,9 @@ dialog pre {
   .glance-review .review-attention { margin-block: var(--space-3); }
   .dialog-fictional-label { color: #000; background: #fff; border: 2px solid #000; }
 }
+@media print {
+  #packet { display: block; }
+  #packet-summary { display: block; }
+  #packet .actions { display: none; }
+  #packet .pill-warn { color: #000; background: #fff; border: 2px solid #000; }
+}

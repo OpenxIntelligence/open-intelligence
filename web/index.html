@@ -44,6 +44,7 @@
           <a href="#activity">Activity</a>
           <a href="#changes-since-review">What changed</a>
           <a href="#options">Options &amp; dependencies</a>
+          <a href="#packet">Case packet</a>
         </nav>
       </details>
       <div class="side-bottom">
@@ -374,6 +375,18 @@
         <div class="subhead">Amendments since the anchor</div><div id="changes-amendments" class="cards" aria-live="polite"></div>
         <div class="subhead">Stale investigations with cause</div><div id="changes-stale" class="snapshots" aria-live="polite"></div>
         <div class="subhead">New questions since the anchor</div><div id="changes-questions" class="questions" aria-live="polite"></div>
+      </section>
+
+      <section class="panel" id="packet" aria-labelledby="packet-heading">
+        <div class="panel-head"><div><div class="eyebrow">PACKET · PRINTABLE</div><h2 id="packet-heading">Case packet</h2></div><span class="pill pill-warn">FICTIONAL DEMO DATA — not a real patient</span></div>
+        <p class="muted">One printable packet for this fictional case only. It gathers the same sections the workspace shows, with the same source references. Nothing new is written.</p>
+        <div class="actions">
+          <button id="packet-download-json" type="button" class="button secondary">Download packet (JSON)</button>
+          <button id="packet-download-text" type="button" class="button secondary">Download packet (text)</button>
+          <button id="packet-print" type="button" class="button secondary">Print packet</button>
+        </div>
+        <p id="packet-status" class="muted tiny" role="status" aria-live="polite">Packet not loaded yet.</p>
+        <div class="subhead">Packet summary</div><div id="packet-summary" class="cards" aria-live="polite"></div>
       </section>
 
       <footer>Open Intelligence is an original, dependency-free reference implementation. No real patient information, patient login, credentialed clinical review, automated clinical inference, treatment recommendations, or regulatory clearance.</footer>

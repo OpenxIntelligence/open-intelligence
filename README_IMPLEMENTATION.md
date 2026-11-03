@@ -106,3 +106,53 @@ PYTHONPATH=src python -m open_intelligence serve
 Remaining proof step: a live-server run against the real API with
 the operator key set, before the demo. The API completion itself
 was verified separately on 2026-10-31.
+
+## Consolidated case packet export
+
+One printable, downloadable packet per fictional case, composed from
+existing projections and never re-derived.
+
+```text
+GET /api/cases/{CASE-ID}/packet
+GET /api/cases/{CASE-ID}/packet?format=text
+```
+
+- JSON by default; plain text on `?format=text` (`text/plain`).
+- Backend: `src/open_intelligence/packet.py` calls `CaseStore.state()`,
+  `build_patient_mission`, `case_timeline`, `changes_since_review`,
+  `list_investigations`/`get_investigation`, and
+  `case_discovery_links`, then assembles. Options reuse
+  `state()["options"]` (which itself comes from `option_view`), so
+  citations stay identical to the individual views.
+- Cover block carries case id, fictional/demo marking, a
+  generated-from statement, and the report position (ledger `as_of`
+  event plus source/statement/question/draft counts). Every
+  page-equivalent block repeats the fictional marking. A limitations
+  block keeps unknowns unknown and pending pending; hypotheses stay
+  labeled `kind=hypothesis`, `review_state=pending`, separate from
+  facts. Amendments supersede in history; nothing is deleted.
+- Global catalogs (`evidence_versions`, `rights_sources`,
+  `discovery_items`) are shared across cases and are excluded to
+  preserve strict case isolation. Case-scoped links to them
+  (assessments, broker links, discovery links) are included with
+  anchors. Bibliography and the cross-case incoming board are not
+  case data and are excluded.
+- Unknown case ids return `422 Unknown case` through the existing
+  store boundary, as elsewhere.
+- UI: a `Case packet` section in the case view with `Download packet
+  (JSON)`, `Download packet (text)`, and `Print packet` buttons, plus
+  a plain-language summary. Rendering is `textContent`-only via the
+  existing `node()`/`pill()` helpers, reuses existing CSS classes
+  only, labels every item fictional, and follows the existing
+  case-switch guards (`readyCase`, `requested !== caseId`,
+  `clear('packet-summary')`). Print uses a new `@media print` hook
+  for `#packet` following the existing print patterns (hide actions,
+  high-contrast fictional pills).
+- Tests: `tests/test_packet_export.py` (store + HTTP + UI-contract).
+  Seeded packets equal their builders citation-for-citation; empty
+  packets state emptiness without invention; text has no markup
+  leakage; every block carries the fictional marking; isolation
+  holds; unknown ids return 422.
+
+Nothing in this slice was executed here: files were authored only.
+A reviewer runs the full suite, commits, pushes, and opens a draft PR.

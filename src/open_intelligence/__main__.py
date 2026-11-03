@@ -14,6 +14,7 @@ from urllib.parse import parse_qs, urlsplit
 from tools.crossref_metadata import MetadataInputError, fetch_public_doi, project_work
 
 from .changes import changes_since_review
+from .packet import build_case_packet, render_packet_text
 from .investigation import (
     TEMPLATES,
     InvestigationError,
@@ -183,6 +184,15 @@ class Handler(BaseHTTPRequestHandler):
             if exported:
                 contents = store.export_markdown(exported[1], int(exported[2])).encode("utf-8")
                 return self._send(200, contents, "text/markdown; charset=utf-8")
+            packet = re.fullmatch(rf"/api/cases/{ID_PART}/packet", path)
+            if packet:
+                query = parse_qs(urlsplit(self.path).query)
+                fmt = query.get("format", [None])[0]
+                data = build_case_packet(store, packet[1])
+                if fmt == "text":
+                    contents = render_packet_text(data).encode("utf-8")
+                    return self._send(200, contents, "text/plain; charset=utf-8")
+                return self._json(200, data)
             return self._json(404, {"error": "Route not found"})
         except InvalidInput as error:
             return self._json(422, {"error": str(error)})
