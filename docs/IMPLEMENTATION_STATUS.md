@@ -2,6 +2,16 @@
 
 ## Document intake checkpoint — 2 November 2026
 
+**Hosted verification update — 3 November 2026:** [PR #173](https://github.com/OpenxIntelligence/open-intelligence/pull/173)
+implementation head `fe8a6368245bb52944e6ebc7f3e6f5b43daf69d0` passed
+[dedicated exact-head run 41550282180](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41550282180):
+349 Python/HTTP tests, 47 JavaScript cases, 80 offline checks plus 18 optional
+skips, and five Chromium journeys including real record intake through
+question/draft/export/amendment. [UI run 41550282107](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41550282107)
+also passed its existing browser/keyboard/race checks on the generated merge.
+The initial mobile overflow failure was corrected without weakening the gate.
+Verified artifacts and source hashes are in the linked intake contract.
+
 The current feature adds ordinary UTF-8 `.txt` file upload, read-only preview,
 manual exact-line passage selection, confirmed metadata, original-byte download,
 and the existing timeline/question/Composer/report path. It extends the original
@@ -17,9 +27,8 @@ An amendment uses the existing atomic invalidation and review mechanism.
 At this checkpoint, 349 Python/domain/HTTP tests passed locally, including 19
 intake domain tests and 14 intake HTTP tests. Six direct JavaScript intake cases
 passed. A subsequent 43-test projection-specific regression run verifies manual
-origin in Patient Mission, timeline and change review. Exact-head hosted browser
-acceptance remains pending until a run is recorded on the feature PR. Local
-Chrome/Chromium is unavailable; a test file's presence is not browser evidence.
+origin in Patient Mission, timeline and change review. Local Chrome/Chromium is
+unavailable; hosted browser acceptance is established by the executed runs above.
 
 The feature is stacked on verified PR #140. It is unmerged synthetic-only code,
 not an authenticated clinical release. Limits include no PDF/OCR, no trusted

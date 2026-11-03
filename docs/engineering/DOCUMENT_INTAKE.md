@@ -1,6 +1,7 @@
 # Reviewed plain-text document intake
 
-Status: implemented locally; hosted acceptance pending, 2 November 2026. Extends OI-006, OI-007,
+Status: hosted engineering acceptance verified on 3 November 2026; draft and
+unmerged in [PR #173](https://github.com/OpenxIntelligence/open-intelligence/pull/173). Extends OI-006, OI-007,
 OI-009 and OI-010; this is a bounded source-ingestion feature, not a new platform
 architecture or clinical release.
 
@@ -86,6 +87,29 @@ trusted identity/permissions through the canonical patient/adapter owners.
 
 ## Verification receipt
 
+The implementation at `fe8a6368245bb52944e6ebc7f3e6f5b43daf69d0`
+passed [exact-head run 41550282180](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41550282180):
+349 Python/domain/HTTP tests, 47 JavaScript cases, 80 offline checks with 18
+optional dependency skips, and all five Chromium journeys. The new intake
+journey proves actual file selection, read-only preview, exact original byte
+download, visible manual classification, question/Composer/draft/export,
+amendment staleness, source history, field labels, 390 px layout and delayed
+case-switch isolation. No live model or patient-data service was invoked.
+
+[UI run 41550282107](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41550282107)
+also passed its 349 tests and existing integrated, source-dialog and keyboard/
+layout browser checks. It tested GitHub's generated merge `9477738cf5a9472747b6bf4e209fcf427c31fb2d`
+of the implementation into #140; the dedicated run above tested the authored
+head directly. Chromium 156.0.8078.47 / Python 3.13.17.
+
+The verified artifact `13191720636` has SHA-256
+`19ac5e28c1106657db91ec69cfc1221b80d678cd35724531970c41d1fcf9d636`.
+Its download digest matched; desktop/mobile screenshots were inspected and the
+intake receipt records `status=passed`, exact original download and two preserved
+source versions. These are synthetic engineering results, not clinical validation.
+
+### Local and earlier verification
+
 Local application suite: 349 Python/domain/HTTP tests passed, including 19 new
 intake domain tests and 14 real HTTP tests. Six direct JavaScript intake cases
 pass. Existing source reader, line comparison, text-change and model-refresh
@@ -100,16 +124,14 @@ Original-byte retention, transaction rollback, concurrent amendments, stale
 model/snapshot handling and legacy v2 fingerprint compatibility are covered.
 
 Local Chromium is unavailable. `tests/document_intake_browser_journey.py` is the
-hosted acceptance gate, including real file input, source modal, export,
-amendment, case isolation, accessibility labels and a narrow viewport. Its
-execution result must be recorded separately on the exact feature commit.
+hosted acceptance gate; the executed result is recorded above.
 
 First hosted attempt at `98d7ea1c6068a806d428840a035d827777b24d97`
 ([run 41549856886](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41549856886))
 passed the Python, offline and JavaScript checks, then exposed 14 px of intake
 panel overflow at a 390 px viewport. The layout correction constrains fieldset
-and native control widths; the strict browser assertion remains. Subsequent
-exact-head browser results must establish the corrected workflow.
+and native control widths; the strict browser assertion remains and passed in
+the subsequent exact-head run. The failed first attempt remains inspectable.
 
 ### API
 
