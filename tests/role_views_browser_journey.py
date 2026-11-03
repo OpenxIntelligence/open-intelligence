@@ -71,7 +71,10 @@ def main() -> None:
                     'care-team view with grouped navigation')
             # Every original section is still in the page, inside a panel and never duplicated.
             for section in EXPECTED_CARE_SECTIONS:
-                assert cd.evaluate(f"document.querySelectorAll('#{section}').length === 1 && !!document.querySelector('#{section}').closest('.view-panel')"), section
+                assert cd.evaluate(f"document.querySelectorAll('#{section}').length === 1 && !!document.querySelector('#{section}').closest('.view-panel, #view-parking')"), section
+            # Four main destinations; specialised tools under one collapsed "More".
+            assert cd.evaluate("document.querySelectorAll('#view-nav > a').length === 4 && document.querySelectorAll('#view-nav .view-nav-more a').length === 3 && !document.querySelector('#view-nav .view-nav-more').open"), \
+                'four main tabs plus More'
             # Clinicians start on the cross-case worklist, then open a focused case workspace.
             cd.wait("!document.querySelector('#view-board').hidden && document.querySelectorAll('#view-worklist tbody tr').length === 2", 'clinician starts on the worklist')
             assert cd.evaluate("document.querySelector('#view-casebar').hidden"), 'no case header on the cross-case worklist'
@@ -107,7 +110,7 @@ def main() -> None:
             assert not visible('#incoming-board .panel-head .pill-warn'), 'duplicate FICTIONAL DEMO pill hidden'
             assert cd.evaluate("[...document.querySelectorAll('#options .panel-head .pill-warn')].some(p => p.textContent.includes('DISCUSSION ONLY') && getComputedStyle(p).display !== 'none')"), \
                 'DISCUSSION ONLY boundary label stays visible'
-            assert visible('.rail .side-bottom'), 'rail boundary note stays visible'
+            assert 'treatment recommendations' in cd.evaluate("document.querySelector('.main > footer').innerText"), 'footer keeps the boundary statement'
             # Inspector opened after scrolling keeps its title and Close button on screen.
             cd.evaluate("document.querySelector('#view-nav a[data-tab=records]').click()")
             cd.evaluate('scrollTo(0, 700)')
@@ -163,12 +166,11 @@ def main() -> None:
             assert 'The earlier summary needs another look' in change, 'plain wording for an amended report'
             assert cd.evaluate("document.querySelector('#pt-home .view-primary').textContent") == 'See what changed'
             assert cd.evaluate("[...document.querySelectorAll('#pt-next li')].some(li => li.textContent.includes('Reopened'))"), 'next-conversation list shows the reopened question'
-            assert 1 <= cd.evaluate("document.querySelectorAll('#pt-recent li').length") <= 3, 'short recent timeline'
             assert cd.evaluate("!!document.querySelector('#view-parking #investigations') && !!document.querySelector('#view-parking #options')"), 'care-team tools parked, not removed'
             assert not visible('#investigations') and visible('#pt-home'), 'patient sees no authoring tools'
             assert not cd.evaluate("!document.querySelector('#notice').hidden && document.querySelector('#notice').textContent.includes('while you were editing')"), \
                 'care-team draft warning is not shown to the patient'
-            assert cd.evaluate("[...document.querySelectorAll('#pt-questions li')].some(li => li.textContent.includes('Reopened'))"), 'reopened question shown plainly'
+            assert cd.evaluate("!!document.querySelector('#view-questions #pt-next')"), 'My questions holds the next-conversation list'
             no_overflow('patient 1440')
             shot('patient-home.png')
             cd.evaluate("document.querySelector('#view-nav a[data-tab=reports]').click()")

@@ -19,26 +19,31 @@
   const remember = value => { try { localStorage.setItem(ROLE_KEY, value); } catch (_) { /* optional */ } };
   let role = params.get('role') in ROLES ? params.get('role') : (remembered() === 'patient' ? 'patient' : 'careteam');
 
-  // [tab key, nav label, block ids]. The first id is the tab's link target.
+  // [tab key, nav label, block ids, under "More"]. The first id is the tab's
+  // link target. Anything not listed is parked: still in the page, out of view.
   const LAYOUT = {
     careteam: [
-      ['board', 'Worklist', ['view-worklist', 'view-board-details']],
-      ['overview', 'Overview', ['overview', 'workspace-start', 'source-intake', 'metrics', 'view-glance', 'view-next']],
-      ['records', 'Records & timeline', ['timeline', 'sources', 'biological-assets', 'import']],
+      ['board', 'Worklist', ['view-worklist', 'workspace-start', 'view-board-details']],
+      ['overview', 'Overview', ['view-glance']],
       ['investigations', 'Investigations', ['investigations']],
-      ['research', 'Evidence & research', ['evidence', 'bibliography']],
       ['review', 'Review & changes', ['changes-since-review', 'activity', 'view-mission']],
-      ['options', 'Options & tasks', ['options']],
+      ['records', 'Records & timeline', ['source-intake', 'timeline', 'sources', 'biological-assets', 'import'], true],
+      ['research', 'Evidence & research', ['evidence', 'bibliography'], true],
+      ['options', 'Options & tasks', ['options'], true],
     ],
     patient: [
-      ['home', 'Home', ['pt-home', 'pt-next', 'pt-recent']],
+      ['home', 'Home', ['pt-home']],
       ['reports', 'My records', ['pt-results', 'timeline', 'sources', 'patient-view']],
-      ['questions', 'My questions', ['pt-questions']],
+      ['questions', 'My questions', ['pt-next']],
       ['research', 'Research', ['pt-research', 'bibliography']],
+    ],
+    // No case yet: only the owner's setup, as the original entry flow expects.
+    empty: [
+      ['overview', 'Get started', ['overview', 'workspace-start']],
     ],
   };
   // Clinicians start from the cross-case worklist; patients from their home.
-  const DEFAULT_TAB = {careteam: 'board', patient: 'home'};
+  const DEFAULT_TAB = {careteam: 'board', patient: 'home', empty: 'overview'};
 
   const main = $('main-content');
   const blocks = {};
@@ -46,6 +51,7 @@
     'patient-mission', 'timeline', 'sources', 'biological-assets', 'import', 'investigations', 'evidence',
     'bibliography', 'changes-since-review', 'activity', 'options']) blocks[id] = $(id);
   blocks['view-glance'] = main && main.querySelector(':scope > .glance-layout');
+  if (blocks['view-glance'] && !blocks['view-glance'].id) blocks['view-glance'].id = 'view-glance';
   const missing = Object.keys(blocks).filter(id => !blocks[id]);
   if (!main || missing.length) {
     // Leave the original page fully intact rather than guess at a changed template.
@@ -162,7 +168,7 @@
 
   let currentTab = null;
   let arrangedRole = null;
-  const effectiveRole = () => document.body.dataset.workspaceState === 'empty' ? 'careteam' : role;
+  const effectiveRole = () => document.body.dataset.workspaceState === 'empty' ? 'empty' : role;
 
   function arrange() {
     const layoutRole = effectiveRole();
@@ -183,7 +189,10 @@
     for (const [id, block] of Object.entries(blocks)) if (!placed.has(id)) parking.append(block);
     panels.replaceChildren(...built);
     nav.replaceChildren();
-    for (const [key, label, ids] of LAYOUT[layoutRole]) {
+    // Main destinations stay in view; specialised tools sit under "More".
+    const more = make('details', null, 'view-nav-more');
+    more.append(make('summary', 'More'));
+    for (const [key, label, ids, extra] of LAYOUT[layoutRole]) {
       const link = make('a', null, key === 'board' ? 'view-nav-board' : '');
       link.href = '#' + ids[0];
       link.dataset.tab = key;
@@ -192,22 +201,24 @@
       badge.hidden = true;
       link.append(badge);
       link.addEventListener('click', () => show(key));
-      nav.append(link);
+      (extra ? more : nav).append(link);
     }
+    if (more.querySelector('a')) nav.append(more);
     currentTab = null;
     route();
     paint();
     filterNotice();
   }
 
-  // An empty workspace starts at setup (the worklist has nothing to list yet).
-  const defaultTab = () => arrangedRole === 'careteam' && document.body.dataset.workspaceState === 'empty'
-    ? 'overview' : DEFAULT_TAB[arrangedRole];
+  const defaultTab = () => DEFAULT_TAB[arrangedRole];
   const caseTab = () => arrangedRole === 'patient' ? 'home' : 'overview';
 
   function show(key) {
     if (!LAYOUT[arrangedRole].some(tab => tab[0] === key)) key = defaultTab();
     currentTab = key;
+    const tab = LAYOUT[arrangedRole].find(entry => entry[0] === key);
+    const more = nav.querySelector('.view-nav-more');
+    if (more && tab && tab[3]) more.open = true;
     for (const panel of panels.children) panel.hidden = panel.dataset.tab !== key;
     casebar.hidden = arrangedRole !== 'careteam' || key === 'board';
     if (key === 'board') paintWorklist();
@@ -335,12 +346,6 @@
   const shortDate = value => String(value || '').slice(0, 10);
   const stamp = value => String(value || '').replace('T', ' ').slice(0, 16);
   const link = (text, hash) => { const a = make('a', text); a.href = hash; return a; };
-  const compareButton = (pair, text) => {
-    const button = make('button', text, 'view-link-button');
-    button.type = 'button';
-    button.addEventListener('click', () => openComparison({id: pair.previous.id}, {id: pair.current.id}));
-    return button;
-  };
 
   // One amended report, explained without implying the person's condition changed.
   function changeBox(state, item) {
@@ -360,9 +365,6 @@
     }
     for (const key of diff.removed_finding_keys || [])
       row(make('span', plainName(key) + ':'), make('span', 'No longer in the corrected report', 'view-was'));
-    const current = state.sources.find(s => Number(s.id) === Number(item.source_id));
-    const previous = state.sources.find(s => Number(s.id) === Number(item.supersedes_source_id));
-    if (current && previous) box.append(compareButton({previous, current}, 'View both versions'));
     return box;
   }
 
@@ -391,7 +393,7 @@
       action.textContent = 'See what changed';
       action.href = '#pt-home';
       action.addEventListener('click', event => { event.preventDefault(); openComparison({id: pair.previous.id}, {id: pair.current.id}); });
-    } else if (open.length || unresolved.length) { action.textContent = 'Review my questions'; action.href = '#pt-questions'; }
+    } else if (open.length || unresolved.length) { action.textContent = 'Review my questions'; action.href = '#pt-next'; }
     else { action.textContent = 'Open my records'; action.href = '#pt-results'; }
     body.append(action);
     for (const item of amendments) body.append(changeBox(state, item));
@@ -422,7 +424,6 @@
     }
     if (!list.children.length) body.append(make('p', 'No open questions or unclear results right now.', 'muted'));
     else body.append(make('p', 'Saved questions and results that are not settled yet, with the report behind each.', 'muted'), list);
-    body.append(link('All my questions', '#pt-questions'));
   }
 
   function paintRecent(state) {
@@ -692,7 +693,18 @@
         AUTHORING_NOTICES.some(text => notice.textContent.startsWith(text))) notice.hidden = true;
   };
   new MutationObserver(filterNotice).observe(notice, {childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ['hidden']});
-  new MutationObserver(() => { if (effectiveRole() !== arrangedRole) arrange(); })
+  // "Create workspace" in the rail opens the setup form, which lives on the
+  // Worklist here; show it before the owner's handler focuses the form.
+  document.addEventListener('click', event => {
+    if (event.target.closest('#new-workspace-button') && arrangedRole === 'careteam') show('board');
+  }, true);
+  new MutationObserver(() => {
+    const before = arrangedRole;
+    if (effectiveRole() === before) return;
+    arrange();
+    // First case just created: continue where the owner's flow continues, adding records.
+    if (before === 'empty' && arrangedRole === 'careteam') { show('records'); $('source-intake').open = true; }
+  })
     .observe(document.body, {attributes: true, attributeFilter: ['data-workspace-state']});
 
   // Demo helper: ?live=1 re-reads the selected case so two windows stay in step.
