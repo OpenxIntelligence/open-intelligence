@@ -26,6 +26,7 @@ from .investigation import (
 )
 from .clinician_overview import build_clinician_overview
 from .mission import build_patient_mission
+from .provenance import case_provenance
 from .patient_report import build_patient_report, render_text
 from .owned_questions import question_gap_rollup
 from .store import CaseStore, InvalidInput, MAX_SOURCE_BYTES
@@ -186,6 +187,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._static("app.js", "text/javascript; charset=utf-8")
             if path == "/mission.js":
                 return self._static("mission.js", "text/javascript; charset=utf-8")
+            if path == "/provenance.js":
+                return self._static("provenance.js", "text/javascript; charset=utf-8")
             if path == "/consent.js":
                 return self._static("consent.js", "text/javascript; charset=utf-8")
             if path == "/clinician-overview.js":
@@ -251,6 +254,9 @@ class Handler(BaseHTTPRequestHandler):
             case_mission = re.fullmatch(rf"/api/cases/{ID_PART}/mission", path)
             if case_mission:
                 return self._json(200, build_patient_mission(store.state(case_mission[1])))
+            case_provenance_route = re.fullmatch(rf"/api/cases/{ID_PART}/provenance", path)
+            if case_provenance_route:
+                return self._json(200, case_provenance(store, case_provenance_route[1]))
             case_overview = re.fullmatch(rf"/api/cases/{ID_PART}/clinician-overview", path)
             if case_overview:
                 return self._json(200, build_clinician_overview(store.state(case_overview[1])))
