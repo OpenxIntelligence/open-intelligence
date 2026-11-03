@@ -2,20 +2,41 @@ import {useState} from 'react';
 import type {RegistrySession,ViewState} from './registry-client.js';
 import type {SourceQuestion} from './source-questions-view.js';
 import type {QuestionEvidenceRecord} from './question-evidence-view.js';
-import {safeFictionalEvidenceLink,validEvidenceQuery} from './question-evidence-view.js';
+import {safeFictionalEvidenceLink,safeDoiEvidenceLink,validEvidenceQuery,normalizePublicDoi} from './question-evidence-view.js';
 import {canPrepareSourceBrief} from './source-brief.js';
 
 function CitationMetadata({record}:{record:QuestionEvidenceRecord}){
+ const bibliography=record.source_kind==='crossref'?record.bibliography:null;
  return <div className="evidence-metadata">
   <dl>
    <div><dt>Exact citation</dt><dd><code>{record.citation}</code></dd></div>
    <div><dt>Catalog ID</dt><dd><code>{record.id}</code></dd></div>
-   <div><dt>Version</dt><dd><code>{record.version}</code></dd></div>
-   <div><dt>License</dt><dd>{record.licence}</dd></div>
-   <div><dt>Available content</dt><dd>Metadata only · fictional fixture</dd></div>
-   <div><dt>Metadata rights</dt><dd>Granted for this fixture</dd></div>
+   <div><dt>{bibliography?'Catalog snapshot':'Version'}</dt><dd><code>{record.version}</code></dd></div>
+   <div><dt>{bibliography?'Metadata rights basis':'License'}</dt><dd>{record.licence}</dd></div>
+   <div><dt>Available content</dt><dd>{bibliography?'Bibliographic metadata only · Crossref':'Metadata only · fictional fixture'}</dd></div>
+   <div><dt>Metadata rights</dt><dd>{bibliography?'Current metadata storage and display check passed':'Granted for this fixture'}</dd></div>
   </dl>
-  {safeFictionalEvidenceLink(record.link)?<p><a href={record.link} target="_blank" rel="noopener noreferrer"
+  {bibliography?<div data-testid="evidence-bibliography">
+   <p><strong>{bibliography.acquisition_mode==='protocol_fixture'?'Offline protocol fixture — no live provider request.':
+     'Public metadata obtained through a Crossref provider lookup.'}</strong></p>
+   <dl>
+    <div><dt>Publication year</dt><dd>{bibliography.year??'Not supplied'}</dd></div>
+    <div><dt>Journal</dt><dd>{bibliography.journal??'Not supplied'}</dd></div>
+    <div><dt>Publication type</dt><dd>{bibliography.publication_type??'Not supplied'}</dd></div>
+    <div><dt>Authors</dt><dd>{bibliography.authors.length?bibliography.authors.join('; '):'Not supplied'}</dd></div>
+   </dl>
+   <p data-testid="evidence-retrieved-at"><strong>First retrieved for this snapshot:</strong>{' '}
+    <time dateTime={bibliography.retrieved_at}>{bibliography.retrieved_at}</time>.</p>
+   <p className="muted">The catalog snapshot identifies selected metadata. It is not a publisher article edition, an article-content license or a clinical assessment.</p>
+   {safeDoiEvidenceLink(record.link,record.id)?<p><a href={record.link} target="_blank" rel="noopener noreferrer"
+     data-testid="evidence-doi-link">Open DOI reference: {bibliography.doi}</a></p>:<p>DOI link unavailable.</p>}
+   <details><summary>Bibliography provenance</summary>
+    <p>Adapter <code>{bibliography.adapter_version}</code> · metadata projection SHA-256 <code>{bibliography.projection_sha256}</code>.</p>
+    <p>Provider record: <code>{bibliography.record_url}</code></p>
+    <p><a href="https://www.crossref.org/documentation/retrieve-metadata/" target="_blank" rel="noopener noreferrer">Crossref metadata policy</a>{' · '}
+     <a href="https://www.crossref.org/documentation/retrieve-metadata/rest-api/access-and-authentication/" target="_blank" rel="noopener noreferrer">Crossref access policy</a></p>
+   </details>
+  </div>:safeFictionalEvidenceLink(record.link)?<p><a href={record.link} target="_blank" rel="noopener noreferrer"
     data-testid="evidence-fixture-link">{record.link}</a><br/>
     <span className="muted">Fictional fixture address on example.invalid; this is not a publisher or clinical source.</span></p>:
    <p>Fixture link unavailable.</p>}
@@ -58,6 +79,7 @@ export function QuestionEvidenceRecovery({state,session,busy,showReadError=true}
 /** Progressive inspection within the existing saved-question workspace. */
 export function QuestionEvidencePanel({question,state,session,busy}:{question:SourceQuestion;state:ViewState;session:RegistrySession;busy:boolean}){
  const [query,setQuery]=useState('');
+ const [doi,setDoi]=useState(''),[publicDoiAcknowledged,setPublicDoiAcknowledged]=useState(false);
  const selected=state.evidenceQuestionId===question.question_id;
  const links=selected&&state.evidenceLinks?.question_id===question.question_id?state.evidenceLinks:null;
  const search=selected&&!links&&state.evidenceSearch?.question_id===question.question_id?state.evidenceSearch:null;
@@ -68,27 +90,38 @@ export function QuestionEvidencePanel({question,state,session,busy}:{question:So
  const stale=question.source_context_state==='source_reassessment_required'||
   search?.source_context_state==='source_reassessment_required'||links?.source_context_state==='source_reassessment_required';
  const canSave=!blocked&&!stale&&state.worldPhase==='ready'&&canPrepareSourceBrief(question,state.worldModel);
- const panelId='evidence-'+question.question_id,queryId=panelId+'-query',hintId=panelId+'-hint';
+ const panelId='evidence-'+question.question_id,queryId=panelId+'-query',hintId=panelId+'-hint',doiId=panelId+'-doi';
  const ownRecovery=state.evidenceLinkIntent?.question_id===question.question_id;
  return <section className="question-evidence" data-testid="question-evidence-panel" aria-label="Question evidence citations">
   <button type="button" data-testid="metadata-evidence-open" aria-expanded={selected} aria-controls={panelId}
    disabled={busy||writing||reading} onClick={()=>void session.loadQuestionEvidenceLinks(question.question_id)}>
-   {selected?'Refresh saved evidence citations':'Find fictional evidence for this question'}
+   {selected?'Refresh saved evidence citations':'Find evidence citations for this question'}
   </button>
   {selected&&<div id={panelId} className="evidence-workspace" data-testid="evidence-workspace">
    <h4>Evidence citations for this question</h4>
-   <p id={hintId}>Search an original fictional metadata catalog. Content is not appraised. No model runs or clinical approval is created.</p>
+   <p id={hintId}>Search the permitted catalog or explicitly look up a public DOI. Content is not appraised. No model runs or clinical approval is created.</p>
    {stale&&<p className="evidence-reassessment" role="note" data-testid="evidence-stale">
-    Source reassessment required. You can inspect citation history and search the catalog. Prepare a question from current source context before saving another link.
+    Source reassessment required. You can inspect citation history and search the catalog. Prepare a question from current source context before looking up a DOI or saving another link.
    </p>}
+   <form className="evidence-search" aria-label="Public DOI lookup" onSubmit={event=>{event.preventDefault();void session.lookupQuestionDoi(question.question_id,doi,publicDoiAcknowledged);}}>
+    <label htmlFor={doiId}>Public publication DOI</label>
+    <input id={doiId} data-testid="evidence-doi-input" type="text" value={doi} maxLength={200}
+     autoComplete="off" spellCheck={false} disabled={blocked||stale} aria-describedby={doiId+'-hint'}
+     placeholder="Enter a public DOI identifier" onChange={event=>{setDoi(event.target.value);setPublicDoiAcknowledged(false);}}/>
+    <p id={doiId+'-hint'} className="muted">Only the DOI is sent to Crossref. Patient records and question text are never added automatically. Public lookup is disabled by default and requires a separate permission.</p>
+    <label className="evidence-check"><input type="checkbox" data-testid="evidence-doi-acknowledge" checked={publicDoiAcknowledged}
+     disabled={blocked||stale} onChange={event=>setPublicDoiAcknowledged(event.target.checked)}/>
+     <span>I confirm this is a public DOI identifier and contains no patient information.</span></label>
+    <button type="submit" data-testid="evidence-doi-lookup" disabled={blocked||stale||reading||!publicDoiAcknowledged||!normalizePublicDoi(doi)}>Look up public DOI metadata</button>
+   </form>
    <form className="evidence-search" onSubmit={event=>{event.preventDefault();void session.searchQuestionEvidence(question.question_id,query);}}>
     <label htmlFor={queryId}>Your catalog search terms</label>
     <input id={queryId} data-testid="evidence-query" type="search" value={query} maxLength={200}
      autoComplete="off" spellCheck={false} disabled={blocked} aria-describedby={hintId}
-     placeholder="Try fictional source or review terms" onChange={event=>setQuery(event.target.value)}/>
+     placeholder="Search metadata already in the catalog" onChange={event=>setQuery(event.target.value)}/>
     <p className="muted">Enter 1–200 visible characters. The query is yours; patient records and question text are not added automatically.</p>
     <button type="submit" data-testid="evidence-search" disabled={blocked||reading||!validEvidenceQuery(query)}>
-     {state.evidenceSearchPhase==='loading'?'Searching fictional metadata…':'Search fictional catalog'}
+     {state.evidenceSearchPhase==='loading'?'Reading metadata…':'Search permitted catalog'}
     </button>
    </form>
    {unresolved&&!ownRecovery&&<p role="note">Another citation save needs recovery. Resolve its exact intent before starting a new search or save.</p>}

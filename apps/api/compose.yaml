@@ -84,7 +84,8 @@ volumes:
 
 # Database and migrator stay internal-only. The API's ordinary frontend bridge
 # enables its loopback publication and also allows outbound routing; this is not
-# an API egress firewall. The shell implements no external data/model connector.
+# an API egress firewall. The DOI metadata connector is disabled by default;
+# enabling it does not establish an egress policy or source/release clearance.
 networks:
   backend:
     internal: true

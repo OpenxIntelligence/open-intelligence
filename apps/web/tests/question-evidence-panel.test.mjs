@@ -47,6 +47,10 @@ test('stale source context disables the save control while retaining metadata in
   source_context_state:'source_reassessment_required',query:'fictional',records:[record]}}));
  assert.ok(html.includes(record.citation));assert.match(html,/<button[^>]*data-testid="evidence-save"[^>]*disabled/);
  assert.match(html,/reassessment/i);
+ assert.match(html,/<input[^>]*data-testid="evidence-doi-input"[^>]*disabled/);
+ assert.match(html,/<input[^>]*data-testid="evidence-doi-acknowledge"[^>]*disabled/);
+ assert.doesNotMatch(html,/<input[^>]*data-testid="evidence-query"[^>]*disabled/);
+ assert.match(html,/before looking up a DOI or saving another link/);
 });
 
 test('restricted citation history shows status and immutable identifiers without stale metadata',()=>{
@@ -95,4 +99,39 @@ test('rendering treats titles as text and refuses unsafe anchor destinations',()
   records:[{...record,title:'Fictional <script>alert(1)</script>',link:'javascript:alert(1)'}]}}));
  assert.ok(!html.includes('<script>'));assert.ok(!html.includes('javascript:'));
  assert.ok(html.includes('&lt;script&gt;'));
+});
+
+const publicDoi='10.5555/oi-synthetic-001',projection='e'.repeat(64);
+const crossref={...record,source_kind:'crossref',id:publicDoi,version:projection,citation:publicDoi+'@'+projection,
+ title:'Authored public metadata fixture <script>hostile()</script>',
+ licence:'Crossref factual bibliographic metadata; article rights not granted',link:'https://doi.org/10.5555%2Foi-synthetic-001',
+ bibliography:{doi:publicDoi,journal:'Fictional journal',year:2025,publication_type:'journal-article',authors:['Fictional Author'],
+  retrieved_at:'2026-11-03T12:34:56+00:00',record_url:'https://api.crossref.org/works/10.5555%2Foi-synthetic-001',
+  rights_basis:'https://www.crossref.org/documentation/retrieve-metadata/',
+  access_policy:'https://www.crossref.org/documentation/retrieve-metadata/rest-api/access-and-authentication/',
+  adapter_version:'oi.crossref-metadata/1',projection_sha256:projection,acquisition_mode:'protocol_fixture'}};
+test('public DOI entry starts empty with explicit acknowledgement and disabled submission',()=>{
+ const html=render(state());
+ assert.match(html,/<input[^>]*data-testid="evidence-doi-input"[^>]*value=""/);
+ assert.match(html,/data-testid="evidence-doi-acknowledge"/);
+ assert.match(html,/<button[^>]*data-testid="evidence-doi-lookup"[^>]*disabled/);
+ assert.match(html,/Only the DOI|only the DOI/);assert.match(html,/disabled by default/i);
+});
+
+test('public DOI presentation identifies Crossref and retrieval snapshot without labelling the publication fictional',()=>{
+ const html=render(state({evidenceSearch:{contract:'oi.pg-question-evidence-search/1',...scope,query:publicDoi,records:[crossref]}}));
+ assert.match(html,/data-testid="evidence-bibliography"/);assert.match(html,/data-testid="evidence-doi-link"/);
+ assert.match(html,/href="https:\/\/doi.org\/10.5555%2Foi-synthetic-001"/);
+ assert.match(html,/First retrieved|first retrieved/);assert.ok(html.includes('2025'));
+ assert.ok(html.includes(crossref.bibliography.retrieved_at));assert.ok(html.includes(crossref.bibliography.journal));
+ assert.ok(html.includes(crossref.bibliography.authors[0]));assert.match(html,/metadata only/i);
+ assert.ok(!html.includes('Metadata only · fictional fixture'));assert.ok(!html.includes('Granted for this fixture'));
+ assert.match(html,/protocol fixture/i);assert.match(html,/no live provider request/i);
+ assert.ok(!html.includes('<script>'));assert.ok(html.includes('&lt;script&gt;'));
+});
+
+test('public DOI panel refuses a forged DOI destination even when given an unvalidated component prop',()=>{
+ const html=render(state({evidenceSearch:{contract:'oi.pg-question-evidence-search/1',...scope,query:publicDoi,
+  records:[{...crossref,link:'https://evil.test/article'}]}}));
+ assert.ok(!html.includes('href="https://evil.test/'));assert.ok(!html.includes('data-testid="evidence-doi-link"'));
 });

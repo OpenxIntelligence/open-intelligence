@@ -1,6 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {RegistrySession} from '../.test-dist/registry-client.js';
+import {decodeQuestionEvidenceSearch,decodeQuestionEvidenceLinks} from '../.test-dist/question-evidence-view.js';
 
 // Original fictional metadata and sources. Only the network boundary is replaced.
 const token='fictional_evidence_credential_000000000001';
@@ -50,6 +51,157 @@ function session(transport){return new RegistrySession(async(url,init)=>{
  return transport(url,init);
 });}
 async function ready(s){s.connect(token);await s.read(pid);await s.loadCases();await s.loadWorldModel(cid);await s.loadSavedQuestions(cid);}
+
+// Independently authored provider-shaped metadata, never a real publication or patient.
+const doi='10.5555/oi-synthetic-001',projection='f'.repeat(64);
+const crossrefRecord=(overrides={})=>({citation:doi+'@'+projection,id:doi,version:projection,source_kind:'crossref',
+ title:'Independently authored public DOI metadata fixture',licence:'Crossref factual bibliographic metadata; article rights not granted',
+ link:'https://doi.org/10.5555%2Foi-synthetic-001',metadata_sha256:metadata,availability:'metadata_only',rights_status:'granted',
+ bibliography:{doi,journal:'Fictional methods journal',year:2025,publication_type:'journal-article',authors:['Fictional Author'],
+  retrieved_at:'2026-11-03T12:34:56+00:00',record_url:'https://api.crossref.org/works/10.5555%2Foi-synthetic-001',
+  rights_basis:'https://www.crossref.org/documentation/retrieve-metadata/',
+  access_policy:'https://www.crossref.org/documentation/retrieve-metadata/rest-api/access-and-authentication/',
+  adapter_version:'oi.crossref-metadata/1',projection_sha256:projection,acquisition_mode:'protocol_fixture'},...overrides});
+const doiSearch=(rows=[crossrefRecord()],overrides={})=>search(rows,{query:doi,...overrides});
+const doiLinked=(overrides={})=>linked({citation:crossrefRecord().citation,record:crossrefRecord(),...overrides});
+
+test('Crossref metadata retains native DOI identity and immutable bibliography without becoming appraised content',()=>{
+ const found=decodeQuestionEvidenceSearch(doiSearch(),pid,cid,qid,doi);
+ assert.deepEqual(found.records,[crossrefRecord()]);
+ assert.equal(Object.isFrozen(found.records[0].bibliography),true);
+ assert.equal(Object.isFrozen(found.records[0].bibliography.authors),true);
+ const history=decodeQuestionEvidenceLinks(links([doiLinked()]),pid,cid,qid);
+ assert.equal(history.links[0].record.bibliography.retrieved_at,'2026-11-03T12:34:56+00:00');
+ assert.equal(found.content_appraised,false);assert.equal(found.clinical_approval,false);
+});
+
+test('Crossref decoding rejects identity, source URL, rights provenance, date and prohibited-content drift',()=>{
+ const b=crossrefRecord().bibliography;
+ const bad=[crossrefRecord({id:'10.5555/other'}),crossrefRecord({version:'publisher-v1'}),
+  crossrefRecord({bibliography:{...b,doi:'10.5555/other'}}),crossrefRecord({bibliography:{...b,projection_sha256:'a'.repeat(64)}}),
+  crossrefRecord({link:'https://doi.org/10.5555%2Fother'}),crossrefRecord({link:'https://doi.org.evil.test/10.5555%2Foi-synthetic-001'}),
+  crossrefRecord({bibliography:{...b,record_url:'https://evil.test/works/'+doi}}),
+  crossrefRecord({bibliography:{...b,rights_basis:'https://evil.test/policy'}}),
+  crossrefRecord({bibliography:{...b,access_policy:'https://evil.test/access'}}),
+  crossrefRecord({bibliography:{...b,adapter_version:'unknown'}}),crossrefRecord({bibliography:{...b,acquisition_mode:'live_assumed'}}),
+  crossrefRecord({bibliography:{...b,acquisition_mode:['protocol_fixture']}}),
+  crossrefRecord({bibliography:{...b,retrieved_at:'2026-02-30T12:34:56Z'}}),
+  crossrefRecord({bibliography:{...b,retrieved_at:'2026-11-03T12:34:56+01:90'}}),
+  crossrefRecord({bibliography:{...b,retrieved_at:'2026-11-03'}}),
+  ...['0000-01-01T00:00:00Z','0001-01-01T00:00:00+14:00','9999-12-31T23:59:59-14:00']
+   .map(retrieved_at=>crossrefRecord({bibliography:{...b,retrieved_at}})),
+  crossrefRecord({bibliography:{...b,authors:['hidden\u202Eauthor']}}),
+  crossrefRecord({bibliography:{...b,year:true}}),crossrefRecord({bibliography:{...b,year:1499}}),
+  crossrefRecord({bibliography:{...b,abstract:'Prohibited provider abstract canary'}}),
+  crossrefRecord({abstract:'Prohibited provider abstract canary'}),
+  crossrefRecord({source_kind:'fictional'}),crossrefRecord({source_kind:'unreviewed-provider'})];
+ for(const row of bad)assert.throws(()=>decodeQuestionEvidenceSearch(doiSearch([row]),pid,cid,qid,doi));
+});
+
+test('DOI lookup is explicit, acknowledged and forwards only a normalized public identifier',async()=>{
+ const calls=[];const s=session(async(url,init)=>{if(url.endsWith('/evidence-doi')){calls.push([url,init]);return response(doiSearch());}return basic(url);});
+ await ready(s);assert.equal(calls.length,0);
+ assert.equal(typeof s.lookupQuestionDoi,'function','the explicit DOI action must exist');
+ await s.lookupQuestionDoi(qid,doi,false);assert.equal(calls.length,0);
+ for(const value of ['',question().question,' https://doi.org/'+doi,'https://doi.org/'+doi,doi+'\n',
+  '10.5555/'+ 'x'.repeat(193),'10.5555/'+'('.repeat(192)])
+  await s.lookupQuestionDoi(qid,value,true);
+ assert.equal(calls.length,0);
+ await s.lookupQuestionDoi(qid,doi.toUpperCase(),true);
+ assert.equal(calls.length,1);assert.equal(calls[0][0],path+'/evidence-doi');
+ assert.deepEqual(JSON.parse(calls[0][1].body),{synthetic:true,public_doi_acknowledged:true,doi});
+ assert.equal(calls[0][1].credentials,'omit');assert.equal(calls[0][1].cache,'no-store');assert.equal(calls[0][1].redirect,'error');
+ assert.ok(!calls[0][1].body.includes(question().question));assert.ok(!calls[0][1].body.includes(pid));
+ assert.equal(s.snapshot().evidenceSearchPhase,'ready');assert.deepEqual(s.snapshot().evidenceSearch.records,[crossrefRecord()]);
+ assert.equal(s.snapshot().evidenceLinkReceipt,null,'lookup never saves a citation automatically');
+});
+
+test('DOI result must be one matching Crossref item and cannot return another source under the requested DOI',async()=>{
+ for(const value of [doiSearch([record()]),doiSearch([crossrefRecord(),crossrefRecord()]),doiSearch([]),
+  doiSearch([crossrefRecord({id:'10.5555/other'})]),doiSearch(undefined,{query:'10.5555/other'})]){
+  const s=session(async(url)=>url.endsWith('/evidence-doi')?response(value):basic(url));await ready(s);
+  assert.equal(typeof s.lookupQuestionDoi,'function');await s.lookupQuestionDoi(qid,doi,true);
+  assert.equal(s.snapshot().evidenceSearch,null);assert.equal(s.snapshot().evidenceSearchPhase,'error');
+ }
+});
+
+test('disabled and unavailable DOI lookup clear earlier metadata, redact details and preserve an authored question draft',async()=>{
+ for(const status of [403,404,429,502,503]){
+  const s=session(async(url)=>url.endsWith('/evidence-doi')?response({detail:'private provider diagnostic'},status):
+   url.endsWith('/evidence-search')?response(search()):basic(url));await ready(s);
+  s.chooseQuestionDraft(sid,8);s.changeQuestionDraft('Keep this independently authored question while looking up a public DOI.');
+  const draft=s.snapshot().questionDraft;await s.searchQuestionEvidence(qid,'fictional');
+  assert.equal(typeof s.lookupQuestionDoi,'function');await s.lookupQuestionDoi(qid,doi,true);
+  assert.equal(s.snapshot().evidenceSearch,null);assert.equal(s.snapshot().evidenceLinks,null);
+  assert.equal(s.snapshot().evidenceSearchPhase,'error');assert.equal(s.snapshot().questionDraft,draft);
+  assert.ok(!JSON.stringify(s.snapshot()).includes('private provider diagnostic'));
+ }
+});
+
+test('known stale question context blocks provider lookup but preserves catalog and history inspection',async()=>{
+ for(const origin of ['question','search','history']){
+  let lookups=0;
+  const stale={source_context_state:'source_reassessment_required'};
+  const s=session(async(url)=>{
+   if(url.endsWith('/evidence-doi')){lookups++;return response(doiSearch());}
+   if(url.endsWith('/questions'))return response(questions([question(origin==='question'?stale:{})]));
+   if(url.endsWith('/evidence-search'))return response(search(undefined,origin==='search'?stale:{}));
+   if(url.endsWith('/evidence-links'))return response(links(undefined,origin==='history'?stale:{}));
+   return basic(url);
+  });
+  await ready(s);
+  if(origin==='search')await s.searchQuestionEvidence(qid,'fictional');
+  if(origin==='history')await s.loadQuestionEvidenceLinks(qid);
+  await s.lookupQuestionDoi(qid,doi,true);
+  assert.equal(lookups,0,origin+' reassessment must prevent a provider request');
+  assert.match(s.snapshot().evidenceSearchMessage,/source reassessment/i);
+  await s.searchQuestionEvidence(qid,'fictional');assert.equal(s.snapshot().evidenceSearchPhase,'ready');
+  await s.loadQuestionEvidenceLinks(qid);assert.equal(s.snapshot().evidenceLinksPhase,'ready');
+ }
+});
+
+test('DOI source conflict clears prior metadata and explains reassessment without exposing server detail',async()=>{
+ const s=session(async(url)=>url.endsWith('/evidence-doi')?response({detail:'private conflict diagnostic'},409):
+  url.endsWith('/evidence-search')?response(search()):basic(url));
+ await ready(s);await s.searchQuestionEvidence(qid,'fictional');await s.lookupQuestionDoi(qid,doi,true);
+ assert.equal(s.snapshot().evidenceSearch,null);assert.equal(s.snapshot().evidenceLinks,null);
+ assert.equal(s.snapshot().evidenceSearchPhase,'error');
+ assert.match(s.snapshot().evidenceSearchMessage,/source reassessment/i);
+ assert.match(s.snapshot().evidenceSearchMessage,/current source context/i);
+ assert.ok(!JSON.stringify(s.snapshot()).includes('private conflict diagnostic'));
+});
+
+test('late DOI responses cannot restore a changed patient, case, question or rights-restricted view',async()=>{
+ for(const change of [s=>s.read('PAT-EXAMPLE-002'),s=>s.loadWorldModel(otherCase),
+  s=>s.loadQuestionSourcePacket(otherQuestion),s=>s.disconnect(),s=>s.loadQuestionEvidenceLinks(qid)]){
+  const delayed=deferred();const s=session(async(url)=>url.endsWith('/evidence-doi')?delayed.promise:
+   url.endsWith('/evidence-links')?response(links([doiLinked({status:'rights_restricted',record:null})])):basic(url));
+  await ready(s);assert.equal(typeof s.lookupQuestionDoi,'function');
+  const pending=s.lookupQuestionDoi(qid,doi,true);await change(s);delayed.resolve(response(doiSearch()));await pending;
+  assert.equal(s.snapshot().evidenceSearch,null);assert.ok(!JSON.stringify(s.snapshot()).includes(crossrefRecord().title));
+ }
+});
+
+test('DOI citation saves use the existing exact link intent and uncertain retry without another lookup',async()=>{
+ const writes=[];let lookups=0,changed=false;
+ const s=session(async(url,init)=>{
+  if(url.endsWith('/evidence-doi')){lookups++;return response(doiSearch());}
+  if(url.endsWith('/evidence-links')&&init.method==='POST'){
+   writes.push(init.body);if(writes.length===1)throw Error('committed response lost');
+   return response(receipt(true,{citation:crossrefRecord().citation}));
+  }
+  if(url.endsWith('/world-model'))return response(world(cid,changed?'e'.repeat(64):snapshot));
+  if(url.endsWith('/questions'))return response(questions([question(changed?{source_context_state:'source_reassessment_required'}:{})]));
+  return response(links([doiLinked()],changed?{source_context_state:'source_reassessment_required'}:{}));
+ });
+ await ready(s);assert.equal(typeof s.lookupQuestionDoi,'function');await s.lookupQuestionDoi(qid,doi,true);
+ await s.saveQuestionEvidence(qid,crossrefRecord().citation);assert.equal(s.snapshot().evidenceLinkPhase,'unknown');
+ const intent=s.snapshot().evidenceLinkIntent;await s.lookupQuestionDoi(qid,doi,true);
+ assert.equal(lookups,1);assert.equal(s.snapshot().evidenceLinkIntent,intent);
+ changed=true;await s.loadWorldModel(cid);await s.loadSavedQuestions(cid);await s.retryQuestionEvidenceLink();
+ assert.equal(writes.length,2);assert.equal(writes[0],writes[1]);assert.equal(s.snapshot().evidenceLinkReceipt.duplicate,true);
+ assert.equal(JSON.parse(writes[0]).citation,doi+'@'+projection);
+});
 
 test('manual evidence search stays question-scoped and displays only validated fictional metadata',async()=>{
  const calls=[];const s=session(async(url,init)=>{if(url.endsWith('/evidence-search')){calls.push([url,init]);return response(search());}return basic(url);});

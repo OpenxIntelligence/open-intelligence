@@ -85,6 +85,9 @@ def _rights_locked(registry, record_id, version, *, permissions, revoked, supers
                    recorded_by, reason):
     if type(revoked) is not bool or type(superseded) is not bool:
         raise PatientRegistryError("Rights flags must be exact booleans")
+    if type(record_id) is str and record_id.startswith("10."):
+        from .crossref_evidence import lock_doi_family
+        lock_doi_family(registry, record_id)
     normalized = normalize_permissions(permissions)
     _key(recorded_by, "recorded_by")
     _visible(reason, 500, minimum=3)
@@ -164,30 +167,50 @@ def materialize_locked(registry, row):
         "WHERE record_id=%s AND version=%s ORDER BY revision DESC LIMIT 1",
         (record_id, version),
     )
-    record = _fictional(EvidenceRecord(
+    record = EvidenceRecord(
         id=record_id, version=version, source_kind=kind, title=title,
         terms=tuple(terms), licence=licence, link=link, case_id=case, organization=org,
         permissions=rights[1] if rights else {},
         revoked=rights[2] if rights else True, superseded=rights[3] if rights else False,
-    ))
+    )
+    if kind == "fictional":
+        record = _fictional(record)
+    elif kind == "crossref":
+        from .crossref_evidence import projection_locked
+        from .crossref_contract import catalog_record
+        selected, _, _ = projection_locked(registry, record_id, version)
+        expected_record = catalog_record(selected, version, permissions=record.permissions,
+            revoked=record.revoked, superseded=record.superseded)
+        if record != expected_record:
+            raise PatientRegistryError("Crossref catalog differs from immutable projection")
+    else:
+        raise PatientRegistryError("Unregistered catalog source")
     if not hmac.compare_digest(record_fingerprint(record), digest):
         raise PatientRegistryError("Evidence metadata integrity unavailable")
     return record, digest, rights[0] if rights else None
 
 
-def public_metadata(record, digest, *, case_id, organization):
+def public_metadata(record, digest, *, case_id, organization, registry=None):
     """Searchable metadata needs storage AND display; a title is not a citation."""
     hit = metadata_hit(record, case_id=case_id, organization=organization)
     if (hit is None or hit.title is None
             or not permitted(record.permissions, "metadata", "display",
                              revoked=record.revoked, superseded=record.superseded)):
         return None
-    return {
+    result = {
         "citation": f"{record.id}@{record.version}", "id": record.id,
         "version": record.version, "source_kind": record.source_kind,
         "title": hit.title, "licence": hit.licence, "link": hit.link,
         "metadata_sha256": digest, "availability": "metadata_only", "rights_status": "granted",
     }
+    if record.source_kind == "crossref":
+        if registry is None:
+            raise PatientRegistryError("Canonical projection owner required")
+        from .crossref_evidence import projection_locked
+        from .crossref_contract import bibliography
+        selected, first_retrieved_at, mode = projection_locked(registry, record.id, record.version)
+        result["bibliography"] = bibliography(selected, first_retrieved_at, mode)
+    return result
 
 
 def main():

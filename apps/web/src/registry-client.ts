@@ -21,7 +21,7 @@ import {canCreateFollowthrough,decodeFollowthrough,decodeFollowthroughReceipt,
 import type {FollowthroughDraft,FollowthroughIntent,FollowthroughList,
   FollowthroughReceipt,FollowthroughTransition} from './followthrough-view.js';
 import {decodeQuestionEvidenceSearch,decodeQuestionEvidenceLinks,decodeQuestionEvidenceReceipt,
-  validEvidenceQuery} from './question-evidence-view.js';
+  validEvidenceQuery,normalizePublicDoi} from './question-evidence-view.js';
 import type {QuestionEvidenceSearch,QuestionEvidenceLinks,QuestionEvidenceIntent,
   QuestionEvidenceReceipt} from './question-evidence-view.js';
 import {QuestionEvidenceSession,emptyEvidenceState} from './authored-evidence-session.js';
@@ -96,7 +96,7 @@ const emptyFollowthrough=()=>({followthrough:null,followthroughCaseId:null,follo
   followthroughReceipt:null,followthroughIntent:null,followthroughWritePhase:'idle' as const,
   followthroughWriteMessage:'No follow-up action is in progress.'});
 const emptyEvidenceMetadata=()=>({evidenceSearch:null,evidenceSearchPhase:'idle' as const,
-  evidenceSearchMessage:'Enter your own terms to search the original fictional catalog.',
+  evidenceSearchMessage:'Enter your own catalog terms or explicitly look up a public DOI.',
   evidenceLinks:null,evidenceLinksPhase:'idle' as const,
   evidenceLinksMessage:'Refresh saved citations to check their current availability.'});
 const emptyEvidence=()=>({...emptyEvidenceMetadata(),evidenceQuestionId:null,evidenceLinkIntent:null,evidenceLinkReceipt:null,
@@ -912,12 +912,37 @@ export class RegistrySession {
     await this.#readQuestionEvidence(questionId,query);
   }
 
+  /** Explicit opt-in DOI lookup reuses citation state; patient text is never added. */
+  async lookupQuestionDoi(questionId:string,doi:string,publicDoiAcknowledged:boolean):Promise<void>{
+    if(this.#savingEvidence)return;
+    if(this.#state.evidenceLinkPhase==='unknown'){
+      this.#publish({evidenceLinkMessage:'Resolve the earlier uncertain citation save before looking up or saving another citation.'});return;
+    }
+    const question=this.#state.questions?.find(item=>item.question_id===questionId);
+    const stale=question?.source_context_state==='source_reassessment_required'||
+      (this.#state.evidenceQuestionId===questionId&&
+       (this.#state.evidenceSearch?.source_context_state==='source_reassessment_required'||
+        this.#state.evidenceLinks?.source_context_state==='source_reassessment_required'));
+    if(stale){
+      this.#focusSavedQuestion(questionId);this.#evidenceRead++;
+      this.#publish({evidenceQuestionId:questionId,evidenceSearchPhase:'error',
+        evidenceSearchMessage:'Source reassessment required. Prepare a question from current source context before looking up a DOI. Citation history and permitted catalog searches remain available.'});return;
+    }
+    const normalized=normalizePublicDoi(doi);
+    if(!normalized||publicDoiAcknowledged!==true){
+      this.#evidenceRead++;
+      this.#publish({...emptyEvidenceMetadata(),evidenceQuestionId:questionId,evidenceSearchPhase:'error',
+        evidenceSearchMessage:'Enter one public DOI identifier, at most 200 characters, and confirm that it contains no patient information.'});return;
+    }
+    await this.#readQuestionEvidence(questionId,normalized,true);
+  }
+
   async loadQuestionEvidenceLinks(questionId:string):Promise<void>{
     if(this.#savingEvidence)return;
     await this.#readQuestionEvidence(questionId);
   }
 
-  async #readQuestionEvidence(questionId:string,query?:string):Promise<void>{
+  async #readQuestionEvidence(questionId:string,query?:string,doiLookup=false):Promise<void>{
     this.#focusSavedQuestion(questionId);
     const patientId=this.#state.patient?.patient_id,caseId=this.#state.questionsCaseId;
     const question=this.#state.questions?.find(item=>item.question_id===questionId);
@@ -941,13 +966,15 @@ export class RegistrySession {
       this.#inspectionQuestionId===questionId&&this.#state.questionsCaseId===caseId;
     const control=new AbortController();this.#controllers.add(control);
     const timeout=setTimeout(()=>control.abort(),10000);
-    this.#publish(search?{evidenceSearchPhase:'loading',evidenceSearchMessage:'Checking permission and searching fictional catalog metadata…'}:
+    this.#publish(search?{evidenceSearchPhase:'loading',evidenceSearchMessage:doiLookup?
+      'Checking lookup permission and requesting public DOI metadata…':'Checking permission and searching catalog metadata…'}:
       {evidenceLinksPhase:'loading',evidenceLinksMessage:'Rechecking saved citation versions and current metadata permissions…'});
     try{
       const base='/v1/patients/'+encodeURIComponent(patientId)+'/cases/'+encodeURIComponent(caseId)+
         '/questions/'+encodeURIComponent(questionId);
-      const res=await this.transport(base+(search?'/evidence-search':'/evidence-links'),
-        this.#init(control,search?JSON.stringify({synthetic:true,query}):undefined));
+      const body=doiLookup?{synthetic:true,public_doi_acknowledged:true,doi:query}:{synthetic:true,query};
+      const res=await this.transport(base+(doiLookup?'/evidence-doi':search?'/evidence-search':'/evidence-links'),
+        this.#init(control,search?JSON.stringify(body):undefined));
       if(!current())return;
       if(res.status===401){this.#httpError(401);return;}
       if(res.status!==200){
@@ -959,7 +986,12 @@ export class RegistrySession {
             ...(receipt?{evidenceLinkReceipt:receipt,evidenceLinkPhase:'saved' as const,
               evidenceLinkMessage:'The citation save receipt is recorded. Current metadata access is unavailable.'}:{})});
         }
-        failed('Evidence metadata is unavailable under current permissions or service state. No previous titles or links are shown.');return;
+        failed(doiLookup?(res.status===403?
+          'Public DOI lookup is disabled or not permitted for this credential. No previous metadata is shown.':
+          res.status===409?'Source reassessment required. Refresh the source and prepare a question from current source context before looking up a DOI. No previous metadata is shown.':
+          res.status===429?'Public DOI lookup is busy. Retry explicitly later; no result is assumed.':
+          'Public DOI metadata is unavailable under current permissions or provider state. No previous metadata is shown.'):
+          'Evidence metadata is unavailable under current permissions or service state. No previous titles or links are shown.');return;
       }
       if(control.signal.aborted)throw Error('evidence timeout');
       const value=await json(res,1048576);
@@ -967,9 +999,12 @@ export class RegistrySession {
         decodeQuestionEvidenceLinks(value,patientId,caseId,questionId);
       if(!current())return;if(control.signal.aborted)throw Error('evidence timeout');
       if(search){const found=result as QuestionEvidenceSearch;
+        if(doiLookup&&(found.records.length!==1||found.records[0].source_kind!=='crossref'||found.records[0].id!==query))
+          throw Error('DOI response identity');
         this.#publish({evidenceSearch:found,evidenceSearchPhase:'ready',evidenceSearchMessage:found.records.length?
-          'Fictional metadata found. Inspect its exact citation and rights before saving a link.':
-          'No fictional catalog metadata matched these terms. No conclusion follows from an empty search.'});
+          (doiLookup?'DOI bibliographic metadata found. Inspect its source, acquisition mode and rights before saving a citation.':
+          'Catalog metadata found. Inspect its exact citation and rights before saving a link.'):
+          'No permitted catalog metadata matched these terms. No conclusion follows from an empty search.'});
       }else{const found=result as QuestionEvidenceLinks;
         this.#publish({evidenceLinks:found,evidenceLinksPhase:'ready',evidenceLinksMessage:found.links.length?
           'Saved citation links read from the server. Availability is checked on every refresh.':
@@ -994,7 +1029,7 @@ export class RegistrySession {
        search.source_context_state!=='current_unreviewed_question'||!canPrepareSourceBrief(question,model)||
        !this.#state.cases?.some(item=>item.case_id===model.case_id&&item.status==='active')){
       this.#publish({evidenceLinkReceipt:null,evidenceLinkPhase:'error',evidenceLinkMessage:
-        'Inspect a current fictional search result for this exact saved question before saving. Changed source context requires reassessment.'});return;
+        'Inspect a current metadata result for this exact saved question before saving. Changed source context requires reassessment.'});return;
     }
     const body=Object.freeze({synthetic:true as const,request_key:crypto.randomUUID(),citation:record.citation,
       expected_metadata_sha256:record.metadata_sha256,source_snapshot_contract:'oi.pg-source-world-model/1' as const,

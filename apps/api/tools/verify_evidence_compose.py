@@ -1,7 +1,9 @@
 """Actual disposable HTTP, restart and dump/restore proof for H1 case evidence.
 
-Uses independently authored fictional originals only. Rights declarations are
-fixture facts, not publisher clearance or clinical evidence. No model is called.
+Uses independently authored fictional originals and a Crossref protocol fixture
+only. The disposable factory replaces the external provider, while HTTP, patient
+authority, metadata persistence and PostgreSQL stay real. Rights declarations
+are fixture facts, not publisher clearance or clinical evidence. No model runs.
 """
 from datetime import datetime, timedelta, timezone
 import hashlib
@@ -51,12 +53,27 @@ def main():
         access = Path(directory)
         access.chmod(0o755)
         env = dict(os.environ, OI_API_ACCESS_DIRECTORY=directory)
+        fixture_override = access / 'crossref-verification.compose.json'
+        fixture_override.write_text(json.dumps({'services': {'api': {
+            'environment': {
+                'OI_CROSSREF_FIXTURE_VERIFICATION': '1',
+                'OI_CROSSREF_PROTOCOL_FIXTURE_PATH': '/app/crossref-response.json',
+            },
+            'volumes': [
+                str(ROOT / 'apps/api/tools/crossref_fixture_api.py') + ':/app/crossref_fixture_api.py:ro',
+                str(ROOT / 'examples/synthetic/crossref-metadata-fixture.json') + ':/app/crossref-response.json:ro',
+            ],
+            'command': ['python', '-m', 'uvicorn', 'crossref_fixture_api:create_fixture_app',
+                        '--factory', '--host', '0.0.0.0', '--port', '8000',
+                        '--no-access-log', '--no-proxy-headers'],
+        }}}))
+        compose.extend(['--file', str(fixture_override)])
         token = secrets.token_urlsafe(32)
         actions = ['patient_create', 'patient_read', 'case_binding_create', 'case_binding_read',
                    'case_binding_revoke', 'source_import', 'source_read', 'composer_context_read',
                    'question_create', 'question_read', 'authored_evidence_read', 'authored_evidence_import',
                    'authored_evidence_assess', 'authored_evidence_withdraw', 'authored_evidence_original_read', 'evidence_report_export',
-                   'evidence_read', 'evidence_link', 'followthrough_read', 'followthrough_create']
+                   'evidence_read', 'evidence_link', 'evidence_lookup', 'followthrough_read', 'followthrough_create']
         credential = {'token_sha256': hashlib.sha256(token.encode()).hexdigest(),
                       'actor': 'ACTOR-EVIDENCE-RECOVERY', 'organization': 'ORG-EVIDENCE-RECOVERY',
                       'purpose': 'operations', 'actions': list(actions), 'patient_ids': [],
@@ -85,6 +102,7 @@ def main():
                       'investigation.question_evidence_reports', 'investigation.evidence_commands',
                       'investigation.evidence_command_origins',
                       'investigation.evidence_catalog_records', 'investigation.evidence_rights_decisions',
+                      'investigation.crossref_metadata_projections', 'investigation.crossref_retrieval_receipts',
                       'investigation.question_evidence_links', 'coordination.question_followthrough_tasks',
                       'coordination.question_followthrough_events',
                       'identity.identity_domain_events', 'public.alembic_version']
@@ -196,7 +214,7 @@ def main():
             assert metadata_reads[0]['patient_id'] == patient
             assert metadata_reads[0]['metadata_json'] == {
                 'question_id': question_id, 'case_id': CASE,
-                'actor': credential['actor'], 'link_count': 1,
+                'actor': credential['actor'], 'link_count': 2,
             }, 'Metadata read audit changed its canonical scope'
             assert all(row['event_type'] in ('source.read_authorized', 'evidence.links.read_authorized')
                        for row in fresh), 'Exact retry unexpectedly emitted a new business event'
@@ -251,6 +269,22 @@ def main():
                                'expected_metadata_sha256': metadata['metadata_sha256'], **context}
             status, citation_receipt = request(url + '/evidence-links', citation_intent)
             assert status == 201 and citation_receipt['duplicate'] is False
+            doi = '10.5555/oi-synthetic-001'
+            doi_lookup = {'synthetic': True, 'public_doi_acknowledged': True, 'doi': doi}
+            status, doi_result = request(url + '/evidence-doi', doi_lookup)
+            assert status == 200 and len(doi_result['records']) == 1, doi_result
+            doi_metadata, = doi_result['records']
+            assert doi_metadata['id'] == doi and doi_metadata['source_kind'] == 'crossref'
+            assert doi_metadata['version'] == doi_metadata['bibliography']['projection_sha256']
+            assert doi_metadata['bibliography']['acquisition_mode'] == 'protocol_fixture'
+            assert 'COPYRIGHTED ABSTRACT' not in json.dumps(doi_result)
+            doi_intent = {'synthetic': True, 'request_key': 'EVIDENCE-CROSSREF-CITATION',
+                          'citation': doi_metadata['citation'],
+                          'expected_metadata_sha256': doi_metadata['metadata_sha256'], **context}
+            status, doi_receipt = request(url + '/evidence-links', doi_intent)
+            assert status == 201 and doi_receipt['duplicate'] is False
+            assert request(url + '/evidence-links', doi_intent) == (200, {**doi_receipt, 'duplicate': True})
+            doi_restricted = False
             task_intent = {'synthetic': True, 'request_key': 'EVIDENCE-CONTINUITY-TASK', **context,
                            'title': 'Revisit the independently authored comparison', 'detail': '',
                            'owner_label': '', 'due_date': None,
@@ -262,9 +296,14 @@ def main():
             def assert_continuity(receipt_ids, *, stale=False):
                 status, linked = request(url + '/evidence-links')
                 assert status == 200 and linked['question_id'] == question_id
-                assert len(linked['links']) == 1
-                assert linked['links'][0]['link_id'] == citation_receipt['link_id']
-                assert linked['links'][0]['record'] == metadata
+                assert len(linked['links']) == 2
+                by_id = {entry['link_id']: entry for entry in linked['links']}
+                assert by_id[citation_receipt['link_id']]['record'] == metadata
+                public_link = by_id[doi_receipt['link_id']]
+                assert public_link['citation'] == doi_metadata['citation']
+                assert public_link['metadata_sha256'] == doi_metadata['metadata_sha256']
+                assert public_link['record'] == (None if doi_restricted else doi_metadata)
+                assert public_link['status'] == ('rights_restricted' if doi_restricted else 'available')
                 expected = 'source_reassessment_required' if stale else 'current_unreviewed_question'
                 assert linked['source_context_state'] == expected
                 receipt_ids.append(linked['source_access_receipt_id'])
@@ -278,6 +317,7 @@ def main():
                 assert task['clinical_approval'] is False
                 receipt_ids.append(tasks['access_receipt_id'])
                 assert request(url + '/evidence-links', citation_intent) == (200, {**citation_receipt, 'duplicate': True})
+                assert request(url + '/evidence-links', doi_intent) == (200, {**doi_receipt, 'duplicate': True})
                 assert request(url + '/followthrough', task_intent) == (200, {**task_receipt, 'duplicate': True})
 
             def packet():
@@ -435,6 +475,34 @@ def main():
             assert request(withdraw_url, withdrawal) == (200, {**withdrawn, 'duplicate': True})
             assert request(url + '/evidence/' + support['evidence_id'] + '/original')[0] == 404
 
+            # The same DOI cannot recreate a metadata grant after an operator
+            # withdraws it. Store only identity in an exact citation retry, and
+            # retain the restriction when restored through the actual API.
+            withdraw_metadata = (
+                'from oi_api.config import Settings\n'
+                'from oi_api.database import Database\n'
+                'from oi_api.evidence_catalog import append_rights_decision\n'
+                'from open_intelligence.postgres_registry import PostgresPatientRegistry\n'
+                'database=Database(Settings.from_env())\n'
+                'try:\n'
+                '    with database.registry_connection() as connection:\n'
+                '        append_rights_decision(PostgresPatientRegistry(connection,lambda *args:False),'
+                + repr(doi_metadata['id']) + ',' + repr(doi_metadata['version'])
+                + ',permissions={},revoked=True,superseded=False,recorded_by="RIGHTS-RECOVERY-OPERATOR",'
+                'reason="Withdraw the fictional Crossref protocol metadata for recovery verification")\n'
+                'finally:\n'
+                '    database.close()\n'
+            )
+            command(['exec', '-T', 'api', 'python', '-c', withdraw_metadata])
+            doi_restricted = True
+            prior = snapshot()
+            assert request(url + '/evidence-doi', doi_lookup)[0] in (403, 404)
+            after_denial = snapshot()
+            for table in ('investigation.evidence_catalog_records', 'investigation.evidence_rights_decisions',
+                          'investigation.crossref_metadata_projections', 'investigation.crossref_retrieval_receipts'):
+                assert after_denial[table] == prior[table], 'Denied lookup restored or altered metadata rights'
+            assert_continuity([])
+
             status, _ = request(prefix + '/sources', {'synthetic': True, 'original_text': SOURCE_AMENDMENT})
             assert status == 201
             assert packet()['question']['source_context_state'] == 'source_reassessment_required'
@@ -506,6 +574,8 @@ def main():
                                  (url + '/evidence-reports', report_commands[0][0]),
                                  (url + '/evidence-links', None),
                                  (url + '/evidence-links', citation_intent),
+                                 (url + '/evidence-links', doi_intent),
+                                 (url + '/evidence-doi', doi_lookup),
                                  (prefix + '/followthrough', None),
                                  (url + '/followthrough', task_intent)):
                 status, denied = request(path, intent)
@@ -513,7 +583,7 @@ def main():
             assert snapshot(revoked_database) == revoked_before, 'Denied restored binding caused effects'
             assert snapshot(restored) == revoked_before, 'Revoked restore touched its source database'
             assert snapshot() == before, 'Restored verification changed original database'
-            receipt = {'contract': 'oi.h1-evidence-recovery-acceptance/3', 'patient_id': patient,
+            receipt = {'contract': 'oi.h1-evidence-recovery-acceptance/4', 'patient_id': patient,
                        'case_id': CASE, 'question_id': question_id, 'source_id': source['source_id'],
                        'evidence_ids': [e['evidence_id'] for e in (support, counter, amended, changed)],
                        'assessment_ids': [a1[0], a2[0], a3[0]],
@@ -531,6 +601,11 @@ def main():
                        'restored_revoked_binding_denial': True, 'original_database_unchanged': True,
                        'citation_link_id': citation_receipt['link_id'], 'followthrough_task_id': task_receipt['task_id'],
                        'restored_same_question_citation_report_and_task': True,
+                       'crossref_citation': doi_metadata['citation'], 'crossref_link_id': doi_receipt['link_id'],
+                       'crossref_acquisition_mode': 'protocol_fixture', 'live_crossref_verified': False,
+                       'crossref_projection_sha256': doi_metadata['version'],
+                       'crossref_rights_restriction_survived_restore': True,
+                       'crossref_exact_retry_did_not_disclose_withdrawn_metadata': True,
                        'authored_withholding_does_not_grant_or_revoke_metadata': True,
                        'restored_readable_access_events': readable_access_count,
                        'restored_rights_access_events': rights_access_count,
@@ -543,7 +618,9 @@ def main():
                   'content-specific rights, exact retry after evidence/source amendment, historical withholding, '
                   'API/DB restart, complete dump/restore equality and actual restored HTTP; '
                   'readable/withheld reports, same-key recovery, independent grants and restored revoked binding; '
-                  'original database unchanged; no clinical/model execution.')
+                  'native DOI metadata and rights restriction survived restored HTTP using only an '
+                  'independently authored provider protocol fixture; original database unchanged; '
+                  'no live provider verification or clinical/model execution.')
         except Exception:
             command(['logs', '--no-color', '--tail', '80'], check=False)
             raise

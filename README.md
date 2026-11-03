@@ -31,7 +31,23 @@ source owners #85/#148 and is stacked on #162/#137. Local verification passed
 evidence belongs to the exact draft-PR head. Those counts describe the historical
 identity milestone, before the subsequent connected workspace.
 
-**Current unmerged H1 continuation:** [draft #307](https://github.com/OpenxIntelligence/open-intelligence/pull/307)
+**Current connected DOI continuation:** [draft #357](https://github.com/OpenxIntelligence/open-intelligence/pull/357)
+joins the DOI owner below to #335's source-reading, intake, evidence-report and
+follow-up workspace. It retains strict citation timestamps and current-status
+downloads. Its exact combined verification is recorded on that draft; donor-only
+results are not combined acceptance. Live retrieval remains default off.
+
+**Preserved DOI owner:** [draft #321](https://github.com/OpenxIntelligence/open-intelligence/pull/321)
+adds a deliberately supplied public DOI and explicit citation save to the same
+canonical question/catalog/rights workflow. Its [verification and limits](docs/CROSSREF_METADATA_BOUNDARY.md#verified-implementation--draft-321)
+record 434 API/PostgreSQL, 298 reference and 276 client tests, actual browser
+acceptance and recovery through restored HTTP. Provider transport uses an
+independently authored protocol fixture in verification; live source activation
+is unverified and default off. Bibliography does not establish article rights,
+scientific support or clinical approval. This candidate is unmerged and
+undeployed. This paragraph records the donor's original verification scope.
+
+**Preserved unmerged H1 predecessor:** [draft #307](https://github.com/OpenxIntelligence/open-intelligence/pull/307)
 converges #298's metadata citations and follow-through with #300's case-owned
 fictional originals, human-authored comparisons and immutable reports on the same
 canonical question. Both rights boundaries and migration histories remain intact.
