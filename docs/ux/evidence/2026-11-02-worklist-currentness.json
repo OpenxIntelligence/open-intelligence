@@ -64,5 +64,30 @@
     "model behavior",
     "production dependencies",
     "existing fictional fixtures"
-  ]
+  ],
+  "first_complete_hosted_run": {
+    "run_id": 41567203227,
+    "head": "44da50ea400389e5536c7abbc29bb6a4771dca62",
+    "result": "Stopped at responsive navigation after successful Python/JavaScript and preceding browser steps.",
+    "navigation_checks": 154,
+    "navigation_failed": 1,
+    "browser_errors": 0,
+    "failure": "The ten native Tab checks ended on the visible skip link; the following Menu pointer hit was correctly rejected.",
+    "artifact_sha256": "5f7f0f03a7c12b7be679189ca253b727acb4ac2ac2b1f469610558db14f4df16"
+  },
+  "navigation_focus_replay": {
+    "run_id": 41567749020,
+    "probe_commit": "6963e1c3b3e764c41d220c529d64d7f53f95eea3",
+    "checks": 792,
+    "passed": 792,
+    "screenshots": 22,
+    "browser_errors": 0,
+    "observed_skip_focus_widths": [
+      320,
+      390
+    ],
+    "correction": "Return focus to the known Menu control between keyboard and pointer subtests; retain every keyboard and pointer assertion.",
+    "runtime_changed": false,
+    "artifact_sha256": "fc2fc17d6e2477309132d75b9ef5879abdc02d7940fff309b9decf251761b625"
+  }
 }

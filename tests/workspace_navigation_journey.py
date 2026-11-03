@@ -518,6 +518,10 @@ def exercise_connected(j: Journey) -> None:
             for _ in range(10):
                 j.key('Tab', 9)
                 j.check(j.cd.evaluate("!document.activeElement.closest('#workspace-rail')"), f'{width}px: Tab cannot enter the closed rail')
+            # Finish this keyboard subtest at a known control before the pointer
+            # journey. Its fixed Tab count can wrap onto the focused skip link,
+            # which correctly appears above the menu until focus moves away.
+            j.cd.evaluate("document.querySelector('#menu-toggle').focus()")
         for route in dict.fromkeys(clinician_primary):
             j.follow_nav(route)
             j.no_overflow(f'{width}px clinician {route}')
