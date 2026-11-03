@@ -19,7 +19,7 @@ from oi_api.migrate import migrate
 from open_intelligence.postgres_registry import PostgresPatientRegistry
 
 
-REGISTRY_REVISION = "0005_source_versions"
+REGISTRY_REVISION = "0006_source_questions"
 BASELINE_REVISION = "0001_h1_shell"
 TABLES = {"identity_patients", "identity_create_receipts", "identity_domain_events"}
 
@@ -59,6 +59,9 @@ class RegistryMigrationTests(unittest.TestCase):
         # unexpected dependent object must stop cleanup rather than be erased.
         with self.engine.begin() as connection:
             connection.execute(text("DROP TABLE IF EXISTS public.oi_registry_external_reference"))
+            connection.execute(text("DROP TABLE IF EXISTS investigation.source_questions"))
+            connection.execute(text("DROP FUNCTION IF EXISTS investigation.guard_question_insert()"))
+            connection.execute(text("DROP SCHEMA IF EXISTS investigation"))
             connection.execute(text("DROP TABLE IF EXISTS clinical_source.assertions"))
             connection.execute(text("DROP TABLE IF EXISTS clinical_source.quarantine"))
             connection.execute(text("DROP TABLE IF EXISTS clinical_source.source_versions"))
