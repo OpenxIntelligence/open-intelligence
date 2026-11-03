@@ -6,7 +6,19 @@ import {WorldModelView} from './world-model-view';
 import './styles.css';
 import './source-intake.css';
 const session=new RegistrySession();
-const navigation=['Overview','Journey','Records','Investigations','Review'];
+const navigationGroups=[
+ {title:'Patient context',items:['Overview']},
+ {title:'Source workflow',items:['Journey','Records','Investigations','Review']},
+] as const;
+const navigationHints:Record<string,string>={Overview:'Identity and access',Journey:'Source chronology',Records:'Original records',Investigations:'Source questions',Review:'Not connected · unavailable'};
+function WorkspaceContext({section,patientId,readiness}:{section:string;patientId:string|null;readiness:'checking'|'ready'|'unavailable'}){
+ return <header className="topbar" aria-label="Current workspace context">
+  <div className="workspace-context"><span className="workspace-location">Patient workspace <span className="muted">/ {section}</span></span>
+   <span className="workspace-identity" data-testid="workspace-identity">{patientId?<><span className="workspace-context-label">Authorized fictional patient</span> <code>{patientId}</code></>:<span className="muted">No authorized patient open</span>}</span>
+  </div>
+  <span className={'connection '+readiness} data-testid="readiness">{readiness==='checking'?'Checking API':readiness==='ready'?'PostgreSQL API ready':'API unavailable'}</span>
+ </header>;
+}
 function App(){
  const state=useSyncExternalStore(session.subscribe,session.snapshot);
  const [token,setToken]=useState(''),[patientId,setPatientId]=useState(''),[confirmed,setConfirmed]=useState(false);
@@ -30,12 +42,17 @@ function App(){
   <aside className="rail" aria-label="Workspace navigation">
    <div className="brand"><span className="mark" aria-hidden="true">oi</span><span>Open<br/>Intelligence</span></div>
    <div className="environment">Development · fictional identities only</div>
-   <nav aria-label="Patient workspace">{navigation.map(name=><button type="button" key={name} aria-current={name===section?'page':undefined} onClick={()=>setSection(name)}><span>{name}</span>{name==='Records'?<span className="nav-hint">Original records</span>:name==='Journey'?<span className="nav-hint">Source view</span>:name==='Investigations'?<span className="nav-hint">Source questions</span>:name!=='Overview'?<span className="nav-hint">Not connected</span>:null}</button>)}</nav>
+   <nav aria-label="Patient workspace">{navigationGroups.map(group=><section className="nav-group" aria-label={group.title} key={group.title}>
+    <h2 className="nav-group-title">{group.title}</h2>
+    {group.items.map(name=><button type="button" key={name} aria-current={name===section?'page':undefined} onClick={()=>setSection(name)} data-testid={'nav-'+name.toLowerCase()}>
+     <span>{name}</span><span className="nav-hint">{navigationHints[name]}</span>
+    </button>)}
+   </section>)}</nav>
    <div className="rail-note">One patient context.<br/>Original sources.<br/>Human clinical authority.</div>
   </aside>
-  <div className="body"><header className="topbar"><span>Patient workspace <span className="muted">/ {section}</span></span><span className={'connection '+readiness} data-testid="readiness">{readiness==='checking'?'Checking API':readiness==='ready'?'PostgreSQL API ready':'API unavailable'}</span></header>
+  <div className="body"><WorkspaceContext section={section} patientId={state.connected&&state.patient?state.patient.patient_id:null} readiness={readiness}/>
    <main id="main" tabIndex={-1}>
-    <div className="heading"><div><p className="eyebrow">OPEN INTELLIGENCE · H1</p><h1>{section==='Overview'?'Start with the right patient.':section}</h1><p className="lede">{section==='Overview'?'A connected foundation for the patient’s story, evidence and care.':section==='Records'?'Inspect authorized fictional case mappings, original source history and unreviewed source statements.':section==='Journey'?'View source-linked chronology, uncertainty and disagreements without implying clinical assessment.':section==='Investigations'?'Prepare exact source context, save a question and inspect its current or reassessment status. No AI execution or clinical approval.':'This capability remains part of the platform, but is not connected to this H1 API yet.'}</p></div></div>
+    <div className="heading"><div><p className="eyebrow">OPEN INTELLIGENCE · H1</p><h1>{section==='Overview'?'Start with the right patient.':section}</h1><p className="lede">{section==='Overview'?(state.patient?'Choose where to continue. Source information remains separate from clinical review.':'Connect and open an authorized fictional patient to begin.'):section==='Records'?'Inspect authorized fictional case mappings, original source history and unreviewed source statements.':section==='Journey'?'View source-linked chronology, uncertainty and disagreements without implying clinical assessment.':section==='Investigations'?'Prepare exact source context, save a question and inspect its current or reassessment status. No AI execution or clinical approval.':'This capability remains part of the platform, but is not connected to this H1 API yet.'}</p></div></div>
     <div className="boundary" role="note"><strong>Development workspace, not a clinical service.</strong> Use operator-issued synthetic credentials and fictional identities only. These are not patient accounts, verified consent or professional sign-off.</div>
     {section==='Journey'||section==='Investigations'?<WorldModelView session={session} state={state} busy={busy} showQuestions={section==='Investigations'} onOverview={()=>setSection('Overview')} onInvestigations={()=>setSection('Investigations')}/>:section==='Records'?<section className="panel records-workspace" data-testid="records-workspace" aria-labelledby="records-heading">
      <span className="step">CANONICAL SOURCE OWNER / ORIGINALS</span>
@@ -74,22 +91,44 @@ function App(){
          <dl className="source-metadata">
           <div><dt>Type</dt><dd>{item.kind}</dd></div><div><dt>Event date</dt><dd>{item.event_date}</dd></div>
           <div><dt>Issued</dt><dd>{item.issued_at}</dd></div><div><dt>Specimen</dt><dd>{item.specimen_id??'Not recorded'}</dd></div>
-          <div><dt>Original source ID</dt><dd><code>{item.source_id}</code></dd></div>
-          <div><dt>Original SHA-256</dt><dd><code>{item.sha256}</code></dd></div>
-          {item.supersedes_id&&<div><dt>Supersedes</dt><dd><code>{item.supersedes_id}</code></dd></div>}
-         </dl><button data-testid="open-original" disabled={busy||state.recordsPhase.startsWith('loading')} onClick={()=>void session.loadOriginal(item.source_id)}>Inspect original v{item.version}</button></li>)}</ol>}
+          </dl>
+         <details className="source-verify" data-testid="source-verify"><summary>Verify original details for {item.document_id} version {item.version}</summary>
+          <dl className="source-metadata"><div><dt>Original source ID</dt><dd><code>{item.source_id}</code></dd></div>
+           <div><dt>Original SHA-256</dt><dd><code>{item.sha256}</code></dd></div>
+           {item.supersedes_id&&<div><dt>Supersedes</dt><dd><code>{item.supersedes_id}</code></dd></div>}
+          </dl>
+         </details>
+         <button data-testid="open-original" disabled={busy||state.recordsPhase.startsWith('loading')} onClick={()=>void session.loadOriginal(item.source_id)}>Inspect original v{item.version}</button></li>)}</ol>}
        <h3>Source-reported findings from current versions</h3>
        <p>Statements below are unreviewed quotations reported by fictional input files, not independently established clinical facts.</p>
        {state.sourceIndex.source_reported_assertions.length===0?<p>No source-reported assertions were returned.</p>:
         <ul className="finding-list">{state.sourceIndex.source_reported_assertions.map((finding,i)=><li key={finding.source_id+':'+finding.source_line+':'+i} data-testid="source-finding">
-         <p><strong>{finding.finding_key}</strong> · reported state: {finding.reported_state} · line {finding.source_line}</p>
+         <p><strong>{finding.finding_key}</strong> · reported state: {finding.reported_state}</p>
          <blockquote data-testid="source-statement">{finding.source_statement}</blockquote>
-         <small>Review state: not established · <code>{finding.source_id}</code></small>
+         <small>Source-reported · clinical review not established</small>
+         <details className="finding-provenance" data-testid="finding-provenance"><summary>Verify original source and line</summary>
+          <dl className="source-metadata"><div><dt>Source ID</dt><dd><code>{finding.source_id}</code></dd></div><div><dt>Original line</dt><dd>{finding.source_line}</dd></div></dl>
+         </details>
         </li>)}</ul>}
        <p className="muted">Amendments are preserved as separate versions. Research/review invalidation is not yet integrated with this PostgreSQL screen.</p>
       </section>}
      </div>}
     </section>:section!=='Overview'?<section className="panel"><h2>{section} is not connected</h2><p>The existing reference application retains this workflow. No placeholder patient data, generated conclusions or clinical actions are shown here.</p><p>The source, evidence and review owners must be integrated with the same scoped patient API before this becomes available.</p><button onClick={()=>setSection('Overview')}>Return to overview</button></section>:<>
+    {state.patient&&<p className="overview-context" data-testid="overview-context">Authorized fictional patient open · Source activity requires its own access check</p>}
+    {state.patient&&<section className="panel patient" data-testid="patient-card"><span className="step">LATEST SUCCESSFUL REGISTRY RESPONSE</span><h2>Patient identity</h2><dl><div><dt>Patient ID</dt><dd>{state.patient.patient_id}</dd></div><div><dt>Organization</dt><dd>{state.patient.origin_org}</dd></div><div><dt>Registry status</dt><dd>{state.patient.status}</dd></div><div><dt>Revision</dt><dd>{state.patient.revision}</dd></div><div><dt>Created</dt><dd>{state.patient.created_at}</dd></div></dl><p className="muted">Identity metadata only, authorized at the last successful request. Recheck access for current permissions. No clinical record or conclusion has been loaded.</p><button disabled={busy} onClick={()=>void session.read(state.patient!.patient_id)}>Recheck current access</button></section>}
+    {state.patient&&<section className="panel overview-next" aria-labelledby="overview-next-heading" data-testid="overview-next">
+     <span className="step">NEXT / AVAILABLE WORKFLOWS</span>
+     <h2 id="overview-next-heading">Continue with this patient's sources</h2>
+     <p>Choose an existing source workflow. Each request checks its own server-side permissions. No clinical interpretation or review is implied.</p>
+     <div className="overview-actions">
+      <button type="button" data-testid="overview-records" onClick={()=>setSection('Records')}><strong>Original records</strong><span>Inspect case mappings, source versions and reported statements</span></button>
+      <button type="button" data-testid="overview-journey" onClick={()=>setSection('Journey')}><strong>Source chronology</strong><span>Inspect source-derived updates and unresolved information</span></button>
+      <button type="button" data-testid="overview-investigations" onClick={()=>setSection('Investigations')}><strong>Source questions</strong><span>Prepare and revisit questions linked to original sources</span></button>
+     </div>
+     <p className="muted small">Review is not connected to this H1 workspace.</p>
+    </section>}
+    <section className="overview-access" aria-label="Session and patient access" data-testid="overview-access">
+     {state.patient&&<h2 className="overview-access-heading">Manage session and patient</h2>}
     <div className="grid">
      <section className="panel" aria-labelledby="access-heading"><span className="step">01 / ACCESS</span><h2 id="access-heading">Connect your session</h2><p>Permission is checked by the API on every request. Your credential stays in this tab’s memory and is cleared on disconnect or reload.</p>
       {!state.connected?<form onSubmit={e=>{e.preventDefault();session.connect(token);setToken('')}}><label htmlFor="credential">Synthetic access credential</label><input id="credential" name="credential" type="password" autoComplete="off" autoCapitalize="none" spellCheck={false} value={token} onChange={e=>setToken(e.target.value)} required minLength={32} maxLength={256}/><button type="submit" className="primary">Connect credential</button></form>:<div><p className="session-status">Credential present · grants checked by server</p><button onClick={disconnect}>Disconnect and clear</button></div>}
@@ -97,7 +136,7 @@ function App(){
      <section className="panel" aria-labelledby="patient-heading"><span className="step">02 / PATIENT</span><h2 id="patient-heading">Open an authorized identity</h2><p>Enter the exact opaque patient ID. Creating an identity does not automatically grant permission to read it.</p><form onSubmit={e=>{e.preventDefault();void session.read(patientId)}}><label htmlFor="patient-id">Patient ID</label><input id="patient-id" value={patientId} onChange={e=>setPatientId(e.target.value)} autoComplete="off" spellCheck={false} disabled={!state.connected||state.phase==='creating'} required maxLength={128}/><button className="primary" disabled={!state.connected||busy}>Open patient</button></form></section>
     </div>
     <p className={'status '+(state.phase==='error'?'error':'')} role="status" aria-live="polite" data-testid="status">{state.message}</p>
-    {state.patient&&<section className="panel patient" data-testid="patient-card"><span className="step">LATEST SUCCESSFUL REGISTRY RESPONSE</span><h2>Patient identity</h2><dl><div><dt>Patient ID</dt><dd>{state.patient.patient_id}</dd></div><div><dt>Organization</dt><dd>{state.patient.origin_org}</dd></div><div><dt>Registry status</dt><dd>{state.patient.status}</dd></div><div><dt>Revision</dt><dd>{state.patient.revision}</dd></div><div><dt>Created</dt><dd>{state.patient.created_at}</dd></div></dl><p className="muted">Identity metadata only, authorized at the last successful request. Recheck access for current permissions. No clinical record or conclusion has been loaded.</p><button disabled={busy} onClick={()=>void session.read(state.patient!.patient_id)}>Recheck current access</button></section>}
+    </section>
     <details className="panel create-panel"><summary>Create a fictional patient identity</summary><p>This uses the existing canonical registry. No names or clinical details are accepted. Your credential needs a separate create action.</p><form onSubmit={e=>{e.preventDefault();keyForReceipt.current=requestKey;void session.create(requestKey,confirmed)}}><label htmlFor="request-key">Creation request key</label><input id="request-key" value={requestKey} readOnly/><p className="muted small">Keep the same key when retrying an uncertain response. The server prevents duplicate identities.</p><label className="check"><input id="synthetic-confirm" type="checkbox" checked={confirmed} onChange={e=>setConfirmed(e.target.checked)} disabled={!state.connected||busy}/>This is an independently fictional identity, not a real person.</label><div className="actions"><button disabled={!state.connected||!confirmed||busy} className="primary">Create fictional identity</button><button type="button" disabled={busy||!state.created||keyForReceipt.current!==requestKey} onClick={()=>{setRequestKey(crypto.randomUUID());setConfirmed(false)}}>Start a different creation</button></div></form>{state.created&&<p data-testid="created-id">{state.created.duplicate?'Existing identity recovered: ':'Identity created: '}<code>{state.created.patient_id}</code><br/>The operator must separately grant access to this ID before it can be read.</p>}</details>
     </>}
     <footer>FastAPI · PostgreSQL 16 · React · TypeScript <span>No live model or external biomedical data is used by this screen.</span></footer>

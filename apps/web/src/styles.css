@@ -66,3 +66,63 @@
 .question-draft .actions{margin:12px 0}
 .question-draft code{overflow-wrap:anywhere;word-break:break-word}
 @media(max-width:600px){.question-draft{padding:12px}.question-draft .actions button{width:100%}}
+
+/* UX-01: current authorized context and non-destructive provenance disclosure. */
+.workspace-context{display:flex;flex-direction:column;gap:4px;min-width:0}
+.workspace-location{font-weight:600}
+.workspace-identity{display:block;font-size:12px;overflow-wrap:anywhere}
+.workspace-identity code{font-size:12px;font-weight:600;word-break:break-all}
+.workspace-context-label{color:#52675e}
+.source-verify{border-top:1px solid #dce3dc;border-bottom:1px solid #dce3dc;margin:12px 0;padding:12px 0}
+.source-verify summary{font-size:13px;color:#174b48;min-height:44px;display:list-item;align-content:center}
+.source-verify .source-metadata{margin:10px 0}
+@media(max-width:600px){.topbar{flex-wrap:wrap}.workspace-context{flex:1 1 100%}.connection{flex:0 0 auto}}
+
+/* UX-02: task-oriented navigation groups without new routes or permissions. */
+.rail nav{gap:21px}
+.rail .nav-group{display:flex;flex-direction:column;gap:5px;min-width:0}
+.rail .nav-group-title{font-family:inherit;font-size:11px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:#bed6c9;margin:0 0 4px;padding:0 12px;line-height:1.5}
+.rail .nav-group button{width:100%;min-height:44px}
+.rail .nav-group button[aria-current=page]{box-shadow:inset 3px 0 0 #b9dbc5}
+@media(max-width:600px){
+ .rail nav{display:flex;flex-direction:column;gap:12px}
+ .rail .nav-group{display:flex;flex-direction:row;flex-wrap:wrap;align-items:stretch;gap:5px}
+ .rail .nav-group-title{flex:0 0 100%;padding:0;margin:0}
+ .rail .nav-group button{width:auto;max-width:100%;min-height:44px}
+ .rail .nav-group button[aria-current=page]{box-shadow:inset 0 -3px 0 #b9dbc5}
+}
+
+/* UX-03: existing patient-scoped actions, not fabricated clinical status. */
+.overview-next{margin-top:4px}
+.overview-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:18px 0}
+.overview-actions button{display:flex;flex-direction:column;gap:7px;align-items:flex-start;text-align:left;padding:16px;min-width:0;min-height:100px}
+.overview-actions button strong{font-size:15px}
+.overview-actions button span{font-size:12px;font-weight:400;color:#53685f;line-height:1.5}
+@media(max-width:900px){.overview-actions{grid-template-columns:1fr}.overview-actions button{min-height:72px}}
+
+/* UX-04: tasks before account administration for an already opened patient. */
+.overview-context{font-size:12px;color:#365a4b;margin:0 0 12px}
+.overview-access{margin-top:26px;border-top:1px solid #d7e0d8;padding-top:18px}
+.overview-access-heading{font-size:16px;font-family:inherit;letter-spacing:0;margin:0 0 14px;color:#435b50}
+.overview-access .panel{box-shadow:none}
+
+/* UX-05: visible source assertions; provenance stays one disclosure away. */
+.finding-provenance{margin-top:12px;padding-top:8px;border-top:1px solid #dce3dc}
+.finding-provenance summary{min-height:44px;display:list-item;align-content:center;color:#174b48;font-size:13px}
+.finding-provenance .source-metadata{margin:8px 0 0}
+.finding-list li>small{display:block;margin-top:8px}
+
+/* UX-06: source question status and provenance, without a second clinical state model. */
+.question-flow{border-bottom:1px solid #d7e0d8;padding:0 0 14px;margin:0 0 18px}
+.question-flow h3{font-size:16px;margin:0 0 10px}
+.question-flow ol{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;list-style:none;padding:0;margin:0}
+.question-flow li{border:1px solid #d7e0d8;border-radius:7px;padding:10px;min-width:0;display:flex;flex-direction:column;gap:4px;font-size:12px}
+.question-flow li strong{font-weight:600;color:#173a3b}
+.question-flow li span{color:#52635d}
+.question-flow li[data-stage=current],.question-flow li[data-stage=attention]{border-color:#a27b48}
+.question-flow li[data-stage=complete]{background:#f3f7f3}
+.question-flow>p{font-size:12px;margin:10px 0 0;color:#52635d}
+.question-technical{margin:10px 0;border-top:1px solid #dce3dc;padding:5px 0}
+.question-technical summary{min-height:44px;display:list-item;align-content:center;font-size:13px;color:#174b48}
+.question-technical p{overflow-wrap:anywhere}
+@media(max-width:600px){.question-flow ol{grid-template-columns:1fr}.question-flow li{padding:8px 10px}}

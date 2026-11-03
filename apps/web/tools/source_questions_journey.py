@@ -22,6 +22,7 @@ class SourceQuestionChecks:
             self.cd.wait("Boolean(document.querySelector('[data-view=investigations]'))",
                          'one canonical Investigations workspace')
             assert self.cd.evaluate("document.querySelectorAll('[data-testid=source-question-panel]').length===1")
+            assert self.cd.evaluate("document.querySelectorAll('[data-testid=question-flow] li').length===3")
         elif section == 'Records':
             self.cd.wait("Boolean(document.querySelector('[data-testid=records-workspace]'))", 'Records workspace')
 
@@ -31,6 +32,7 @@ class SourceQuestionChecks:
         self.cd.wait("document.querySelector('[data-testid=composer-context]')?.textContent.includes("
                      + json.dumps(source_id) + ")", 'exact current source context prepared')
         preview = self.cd.evaluate("document.querySelector('[data-testid=composer-context]').textContent")
+        assert self.cd.evaluate("document.querySelector('[data-testid=question-flow] li:last-child').dataset.stage==='current'")
         assert f'line {line}' in preview
         assert 'oi.pg-source-world-model/1' in preview
         assert 'This preview alone does not' in preview and 'execute a model' in preview
@@ -40,6 +42,7 @@ class SourceQuestionChecks:
         self.cd.wait("document.querySelector('[data-testid=saved-source-question]')?.textContent.includes('Question saved')",
                      'persistent source-linked question without clinical approval')
         value = self.cd.evaluate("document.querySelector('[data-testid=saved-source-question] code').textContent")
+        assert self.cd.evaluate("document.querySelector('[data-testid=question-flow] li:last-child').dataset.stage==='complete'")
         assert value.startswith('QUESTION-') and len(value) == 41
         return value
 
@@ -56,6 +59,11 @@ class SourceQuestionChecks:
         self.original_question_id = self.save()
         history = self.history('Current source context')
         assert self.original_question_id in history and self.original_source_id in history
+        assert self.cd.evaluate("document.querySelectorAll('[data-testid=saved-question-details]').length>=1")
+        assert self.cd.evaluate("!document.querySelector('[data-testid=saved-question-details]').open")
+        self.cd.evaluate("document.querySelector('[data-testid=saved-question-details] summary').click()")
+        assert self.cd.evaluate("document.querySelector('[data-testid=saved-question-details]').open")
+        self.cd.evaluate("document.querySelector('[data-testid=saved-question-details] summary').click()")
         assert 'Clinical approval: none' in history
 
     def after_amendment(self, replacement_source_id):
