@@ -6,7 +6,11 @@ import {WorldModelView} from './world-model-view';
 import './styles.css';
 import './source-intake.css';
 const session=new RegistrySession();
-const navigation=['Overview','Journey','Records','Investigations','Review'];
+const navigationGroups=[
+ {title:'Patient context',items:['Overview']},
+ {title:'Source workflow',items:['Journey','Records','Investigations','Review']},
+] as const;
+const navigationHints:Record<string,string>={Overview:'Identity and access',Journey:'Source chronology',Records:'Original records',Investigations:'Source questions',Review:'Not connected · unavailable'};
 function WorkspaceContext({section,patientId,readiness}:{section:string;patientId:string|null;readiness:'checking'|'ready'|'unavailable'}){
  return <header className="topbar" aria-label="Current workspace context">
   <div className="workspace-context"><span className="workspace-location">Patient workspace <span className="muted">/ {section}</span></span>
@@ -38,7 +42,12 @@ function App(){
   <aside className="rail" aria-label="Workspace navigation">
    <div className="brand"><span className="mark" aria-hidden="true">oi</span><span>Open<br/>Intelligence</span></div>
    <div className="environment">Development · fictional identities only</div>
-   <nav aria-label="Patient workspace">{navigation.map(name=><button type="button" key={name} aria-current={name===section?'page':undefined} onClick={()=>setSection(name)}><span>{name}</span>{name==='Records'?<span className="nav-hint">Original records</span>:name==='Journey'?<span className="nav-hint">Source view</span>:name==='Investigations'?<span className="nav-hint">Source questions</span>:name==='Review'?<span className="nav-hint">Not connected · unavailable</span>:null}</button>)}</nav>
+   <nav aria-label="Patient workspace">{navigationGroups.map(group=><section className="nav-group" aria-label={group.title} key={group.title}>
+    <h2 className="nav-group-title">{group.title}</h2>
+    {group.items.map(name=><button type="button" key={name} aria-current={name===section?'page':undefined} onClick={()=>setSection(name)} data-testid={'nav-'+name.toLowerCase()}>
+     <span>{name}</span><span className="nav-hint">{navigationHints[name]}</span>
+    </button>)}
+   </section>)}</nav>
    <div className="rail-note">One patient context.<br/>Original sources.<br/>Human clinical authority.</div>
   </aside>
   <div className="body"><WorkspaceContext section={section} patientId={state.connected&&state.patient?state.patient.patient_id:null} readiness={readiness}/>
