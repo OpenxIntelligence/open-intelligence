@@ -24,11 +24,11 @@
   const LAYOUT = {
     careteam: [
       ['board', 'Worklist', ['view-worklist', 'workspace-start', 'view-board-details']],
-      ['overview', 'Overview', ['view-glance']],
+      ['overview', 'Overview', ['view-glance', 'journey']],
       ['records', 'Records & timeline', ['source-intake', 'timeline', 'sources', 'biological-assets', 'import']],
-      ['investigations', 'Investigations', ['investigations']],
-      ['research', 'Evidence & research', ['evidence', 'bibliography']],
-      ['review', 'Review & changes', ['changes-since-review', 'activity', 'view-mission']],
+      ['investigations', 'Investigations', ['investigations', 'synthesis']],
+      ['research', 'Evidence & research', ['evidence', 'bibliography', 'synthetic-metrics']],
+      ['review', 'Review & changes', ['changes-since-review', 're-review-tasks', 'scoped-review', 'activity', 'view-mission']],
       ['options', 'Options & tasks', ['options']],
     ],
     patient: [
@@ -58,6 +58,11 @@
     console.error('Open Intelligence views: owner template changed; missing ' + missing.join(', '));
     return;
   }
+  // Sections added on newer owner branches (guided journey, synthesis, scoped
+  // review, re-review tasks, metrics): placed in their tab when present,
+  // skipped when absent, so the same layer works on either base.
+  for (const id of ['journey', 'synthesis', 'scoped-review', 're-review-tasks', 'synthetic-metrics'])
+    if ($(id) && $(id).closest('#main-content') === main) blocks[id] = $(id);
 
   // Patient Mission repeats every finding as a workflow projection; keep it,
   // collapsed, at the end of Review & changes.
@@ -192,7 +197,7 @@
       panel.dataset.tab = key;
       panel.setAttribute('role', 'region');
       panel.setAttribute('aria-label', label);
-      for (const id of ids) { panel.append(blocks[id]); placed.add(id); }
+      for (const id of ids) if (blocks[id]) { panel.append(blocks[id]); placed.add(id); }
       built.push(panel);
     }
     for (const [id, block] of Object.entries(blocks)) if (!placed.has(id)) parking.append(block);
