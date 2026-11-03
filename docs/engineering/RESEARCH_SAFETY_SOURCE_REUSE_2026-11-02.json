@@ -1,0 +1,107 @@
+{
+  "source_pr": 137,
+  "source_commit": "533afd3ca6dd0c011e2e47397d3d5cae04e62512",
+  "source_repository": "https://github.com/OpenxIntelligence/open-intelligence",
+  "files": [
+    {
+      "path": "tools/research/data_policy.py",
+      "source_blob": "901ecead450e7e575faabe3baae1e2ead12d2ce5",
+      "current_sha256": "9406a98c1965d484f1d32235df31d6ec44392bc36641f244cdd2c69ff98aca93",
+      "byte_identical": true,
+      "deviation": null
+    },
+    {
+      "path": "tools/research/public_case_intake.py",
+      "source_blob": "85ca8f9f65855cd559fcb017935716f626467a5f",
+      "current_sha256": "6a5a61792b85ae6649cfa96c7de0effa987974f77f53323e6141469ca757d37a",
+      "byte_identical": true,
+      "deviation": null
+    },
+    {
+      "path": "tools/research/rna_expression_probe.py",
+      "source_blob": "93c4608f5a1dfd6320fe2e6554975ab1245ef74b",
+      "current_sha256": "0633ed559148e16ca4d0fcf794ebd7b973537af1a5ce3f302f909ef702bccfb7",
+      "byte_identical": true,
+      "deviation": null
+    },
+    {
+      "path": "tools/research/single_cell_probe.py",
+      "source_blob": "3596c891ee3aa9e346367b13e07ba2708dc35bbb",
+      "current_sha256": "5306562b9129596108e5832532d1beffc45fb35c347ecacb6a5fe73de7b8042f",
+      "byte_identical": true,
+      "deviation": null
+    },
+    {
+      "path": "tools/research/test_public_case_intake.py",
+      "source_blob": "f317f8502ed2fdbee13d2da6a7e62a12923310a9",
+      "current_sha256": "72c41185aaeaf1f3cdab0ec925af8d3da847f21f411951976873a04f446690e1",
+      "byte_identical": true,
+      "deviation": null
+    },
+    {
+      "path": "tools/research/test_rna_expression_probe.py",
+      "source_blob": "10ef2ac5ad3e3fb2114227277e1014f4e7f591f2",
+      "current_sha256": "e9c09f835ccb3bb5c1029281c324bad4ced57bd892f21a792fb76a9c4a46ad14",
+      "byte_identical": true,
+      "deviation": null
+    },
+    {
+      "path": "tools/research/test_single_cell_probe.py",
+      "source_blob": "f454bd30a92d90308311dc370469ad54adea3a01",
+      "current_sha256": "18a94bd0cdb1e74420744d4cd5b74b10ffc6b49b128df2315240784ba86ae8f8",
+      "byte_identical": true,
+      "deviation": null
+    },
+    {
+      "path": "tools/research/test_sid_case_data_disabled.py",
+      "source_blob": "cd5a0ceca4792b997b6df9024e54e6e11ae4871d",
+      "current_sha256": "f0419ceff8c10dcd9639a642709b2f23c17556d193502e541e3e1e7fba15ad5e",
+      "byte_identical": true,
+      "deviation": null
+    },
+    {
+      "path": "tools/research/test_restricted_research_entrypoints.py",
+      "source_blob": "c7a7c3de6a70adc235b731bd17ae2c1bfc8ca727",
+      "current_sha256": "c15ff7bb951d9cdfbee23576eb9ec387ab939e7243c99ea7c04c5787e1242fdb",
+      "byte_identical": true,
+      "deviation": null
+    },
+    {
+      "path": "tools/audit_ci_data_boundaries.py",
+      "source_blob": "7407664ed0d2f6352fe95fa12f8430b66814efa4",
+      "current_sha256": "a5afe322410291009a9401da314e6b2585181717dee2d79437d3389c3be64ab8",
+      "byte_identical": true,
+      "deviation": null
+    },
+    {
+      "path": "tests/test_ci_data_boundaries.py",
+      "source_blob": "28db186ab011eec2c107825c653622c2fdd86f77",
+      "current_sha256": "c785e21f6367bba624d395b16f2c923f9e48090dc8504c851a179761c876579a",
+      "byte_identical": true,
+      "deviation": null
+    },
+    {
+      "path": ".github/workflows/public-research.yml",
+      "source_blob": "f08717236d20cb297155037cbeafa01e89d73714",
+      "current_sha256": "c9bc9b92eb23aea1b0c891c92dabb3d482dfd73540504ecee8b176f42fe63214",
+      "byte_identical": false,
+      "deviation": "Exact pull-request head checkout added; inherited safety workflow retained."
+    },
+    {
+      "path": ".github/workflows/rna-analysis.yml",
+      "source_blob": "2698223dbee1d042b45ec51f1d9329f2c37825b5",
+      "current_sha256": "6f0ef126e380ae3d8d99b42ed9410d42dfc1527ac6486a33bacaba572ef9f132",
+      "byte_identical": false,
+      "deviation": "Exact pull-request head checkout added; inherited safety workflow retained."
+    },
+    {
+      "path": ".github/workflows/single-cell-analysis.yml",
+      "source_blob": "14681276f30a2f4b5949cf85648afac0d6acfa95",
+      "current_sha256": "f4ed833b539ab81518ff2711b423d8dc963bb7d148033780ad41c2442bc69bdb",
+      "byte_identical": false,
+      "deviation": "Exact pull-request head checkout added; inherited safety workflow retained."
+    }
+  ],
+  "same_files": 11,
+  "limitation": "Source reuse and declared deviations only; no project-wide history or dataset purge claim."
+}

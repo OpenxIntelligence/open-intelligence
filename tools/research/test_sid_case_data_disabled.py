@@ -14,7 +14,7 @@ class RetiredDataAccess(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             dest = Path(tmp) / 'never-downloaded'
             with self.assertRaises(PermissionError):
-                single_cell_probe.acquire(single_cell_probe.CATALOG_URL, dest, 10)
+                single_cell_probe.acquire('https://example.invalid/catalog.json', dest, 10)
             self.assertFalse(dest.exists())
 
 if __name__ == '__main__':

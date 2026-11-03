@@ -1,0 +1,27 @@
+{
+  "schema": "oi.isolated-imaging-dependency/1",
+  "use": "Existing synthetic fixture generation only; no production adoption",
+  "python": "3.12.14 local; hosted workflow Python 3.13",
+  "new_runtime_dependencies": [],
+  "pydicom": {
+    "version": "3.0.2",
+    "wheel_sha256": "abf971a5440f84dbaf42c4b6758e30e62480902584f8b270b9a5d146e278a07b",
+    "installed_license_sha256": "39b3259cb15151df25167119087df1fef33624765e639af42447ba6fe86dada3",
+    "license_scope": "MIT except generated private dictionaries under included GDCM BSD conditions",
+    "extras_installed": [],
+    "dependency_install": "--only-binary=:all: --no-deps --require-hashes",
+    "clinical_clearance": false
+  },
+  "pacsnode": {
+    "source_commit": "e9b4334477a66967d290add9e0b9afa068f59dc0",
+    "adoption": "HOLD",
+    "source_license_declaration": "MIT in NOTICE and Cargo metadata; exact binary, crates and bundled assets remain unapproved",
+    "source_changed": false
+  },
+  "not_established": [
+    "Complete product SBOM",
+    "Codec/model/dataset rights",
+    "Real-patient authorization",
+    "Clinical validation"
+  ]
+}
