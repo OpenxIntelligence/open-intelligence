@@ -207,3 +207,26 @@ Continuation branch: `fix/crossref-provenance-boundary-20261103`, based on the
 main SHA above. Preserve this receipt and the existing Crossref boundary document;
 resume from the PR's final head rather than repeating broad discovery. No PR was
 merged/closed and no deployment, external outreach or clinical action occurred.
+
+
+## 8. Hosted completion receipt
+
+[Draft PR #325](https://github.com/OpenxIntelligence/open-intelligence/pull/325)
+contains the verified runtime at `dd5a4e5eacacc572b49a761a9c6aabd14d7a1be7`.
+Tree `7a1025cee7e5d02da4848650fc537ecd6ebda32e` matches the locally tested tree
+and GitHub's temporary test merge `fc674146a3cbd836682321c06861eae9f697e056`.
+This final receipt modifies documentation only; no later runtime test claim is
+inferred from its commit date.
+
+- [Crossref contract 41665278384](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41665278384): 13 tests and explicit offline fixture demonstration passed.
+- [UI 41665278161](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41665278161): 244 tests, source-reader lineage/concurrency, integrated browser, source-dialog races, layout/keyboard checks passed.
+- [Application 41665278112 attempt 2](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41665278112/attempts/2): 244 tests in 10.874 s and both original application/Patient Mission browser journeys passed.
+- Attempt 1 passed 244 tests, then timed out waiting for Chrome DevTools before browser assertions. The same browser journey passed in the separate UI job. One unchanged-commit rerun succeeded; the original failed attempt remains evidence. The root cause of Chrome's startup delay is not established. No timeout or assertion was weakened. Existing hosted SQLite ResourceWarnings and action-runtime deprecation warnings remain unrelated baseline limitations.
+- Independent runtime/test review found no material issue and additionally exercised nested/escaped duplicate keys, invalid date/offset cases, valid offset rollover and multilingual JSON. Its fixed-HTTP-example decoder caveat is documented in the boundary contract.
+
+The existing [Notion engineering record](https://app.notion.com/p/40a3866f77ef8197ae65e727c8907eb3)
+was appended with the same scoped results and continuation. No duplicate master
+document or roadmap was created. Hosted source artifacts were produced; this
+pass inspected job logs and the Git tree and did not independently download or
+checksum those artifacts. Browser passes are observed CI behavior, not a new
+manual visual review or patient-usability study.
