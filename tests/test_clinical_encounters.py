@@ -350,5 +350,58 @@ class ClinicalEncounterTests(unittest.TestCase):
             ('req-attest-mid-001',)).fetchone()[0], 0)
 
 
+    def test_idempotent_replay_rechecks_revoked_grant_before_return(self):
+        """An existing receipt must not bypass a grant revoked during a replay."""
+        first = self.schedule()
+        calls = []
+
+        def withdraw_during_read(actor, case, action, purpose):
+            calls.append((actor, case, action, purpose))
+            return len(calls) == 1 and self.authorized(actor, case, action, purpose)
+
+        replay = ClinicalEncounters(self.store, withdraw_during_read)
+        with self.assertRaises(ClinicalAuthorizationError):
+            replay.schedule('CASE-ONE', 'ENCOUNTER-001', 'outpatient',
+                            '2026-11-02', request_key='req-schedule-0001', **self.actor)
+        self.assertGreaterEqual(len(calls), 2, 'repeat receipt needs a final authorization check')
+        self.assertEqual(self.store.db.execute(
+            'SELECT COUNT(*) FROM clinical_encounters').fetchone()[0], 1)
+        self.assertEqual(self.schedule(), first)
+
+    def test_note_history_rechecks_revoked_grant_before_disclosing_body(self):
+        """Withhold sensitive note history when the current grant has changed."""
+        encounter_id = self.begin()['encounter_id']
+        self.ops.write_note('CASE-ONE', encounter_id, 'NOTE-001',
+                            'Private fictional note for late-read revocation',
+                            expected_version=0, request_key='req-private-note-001', **self.actor)
+        calls = []
+
+        def withdraw_during_read(actor, case, action, purpose):
+            calls.append((actor, case, action, purpose))
+            return len(calls) == 1 and self.authorized(actor, case, action, purpose)
+
+        reader = ClinicalEncounters(self.store, withdraw_during_read)
+        with self.assertRaises(ClinicalAuthorizationError):
+            reader.note_history('CASE-ONE', encounter_id, 'NOTE-001', **self.actor)
+        self.assertGreaterEqual(len(calls), 2, 'note content requires a final read permission check')
+        self.assertEqual(self.ops.note_history('CASE-ONE', encounter_id, 'NOTE-001',
+                                               **self.actor)[0]['body'],
+                         'Private fictional note for late-read revocation')
+
+    def test_encounter_list_rechecks_revoked_grant_before_disclosing(self):
+        """Disclose no clinical index following a late source grant withdrawal."""
+        self.schedule()
+        calls = []
+
+        def withdraw_during_read(actor, case, action, purpose):
+            calls.append((actor, case, action, purpose))
+            return len(calls) == 1 and self.authorized(actor, case, action, purpose)
+
+        reader = ClinicalEncounters(self.store, withdraw_during_read)
+        with self.assertRaises(ClinicalAuthorizationError):
+            reader.list_encounters('CASE-ONE', **self.actor)
+        self.assertGreaterEqual(len(calls), 2, 'encounter index requires a final permission check')
+
+
 if __name__ == '__main__':
     unittest.main()
