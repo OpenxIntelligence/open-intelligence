@@ -110,8 +110,9 @@ class ImageCustodyHTTPTests(SourceVersionFixture):
         self.assertEqual(self.rows("SELECT count(*) FROM clinical_source.source_image_links")[0][0], 2)
         events = self.events()
         self.assertEqual(sum(event[0] == "image.original_imported" for event in events), 2)
+        event_json = json.dumps([{"event": row[0], "metadata": row[1]} for row in events])
         for private in (TOKEN_A, "SUBJECT-ALPHA", "SYS-SYNTH", "2.25.103"):
-            self.assertNotIn(private, json.dumps(events))
+            self.assertNotIn(private, event_json)
 
     def test_original_identity_date_and_parent_are_verified_before_custody(self):
         with running_server(create_app(self.settings)) as base:
