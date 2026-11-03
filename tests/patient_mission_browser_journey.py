@@ -17,6 +17,24 @@ from browser_journey import ChromeSession, free_port, wait_for, wait_for_browser
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def assert_patient_timeline(session: ChromeSession, app_url: str, case_id: str) -> None:
+    """Compare rendered dates to the actual local source ledger, not derived dates."""
+    with urlopen(app_url + '/api/cases/' + case_id + '/state', timeout=5) as response:
+        state = json.load(response)
+    rows = session.evaluate("""[...document.querySelectorAll('#patient-timeline > .question')]
+      .map(row => row.textContent)""")
+    assert len(rows) == len({source['document_id'] for source in state['sources']})
+    for source in state['sources']:
+        matches = [text for text in rows if '(' + source['document_id'] + ')' in text]
+        assert len(matches) == 1, 'Each report has one event group across versions'
+        text = matches[0]
+        assert 'Reported event date: ' + source['event_date'] in text
+        assert ('Report version ' + str(source['version']) + ' (' + source['state'] + ')' +
+                ' · Issued: ' + source['issued_at'] +
+                ' · Received by this workspace: ' + source['received_at']) in text
+        assert 'was recorded' not in text, 'Event date must not become recording date'
+
+
 def main() -> None:
     chrome = next((
         path for name in (
@@ -99,6 +117,13 @@ def main() -> None:
                 "document.querySelector('#mission-known').textContent.includes('Marker A was not tested')"
             )
             assert session.evaluate(
+                "!document.querySelector('#patient-uncertainty').textContent.includes('Nothing in this fictional case')"
+            )
+            assert session.evaluate(
+                "document.querySelector('#patient-uncertainty').textContent.includes('not certain yet')"
+            )
+            assert_patient_timeline(session, url.rstrip('/'), 'CASE-ALPHA')
+            assert session.evaluate(
                 "document.querySelector('#patient-mission').textContent.includes('Not a diagnosis or treatment recommendation')"
             )
 
@@ -121,6 +146,7 @@ def main() -> None:
             assert session.evaluate(
                 "document.querySelector('#mission-known').textContent.includes('not assessed for this sample')"
             )
+            assert_patient_timeline(session, url.rstrip('/'), 'CASE-BETA')
 
             session.evaluate("""(() => {
               const picker = document.querySelector('#case-picker');
@@ -178,6 +204,52 @@ def main() -> None:
             assert session.evaluate(
                 "document.querySelector('#mission-actions').textContent.includes('Reconcile source changes')"
             )
+            session.wait(
+                "document.querySelector('#patient-uncertainty').textContent.includes('1 open source-change review(s)')",
+                "patient view preserves unresolved source-change review",
+            )
+            assert_patient_timeline(session, url.rstrip('/'), 'CASE-ALPHA')
+            session.wait(
+                "[...document.querySelectorAll('#incoming-list .question')].some(row => "
+                "row.textContent.includes('CASE-ALPHA') && row.textContent.includes('Open source-change reviews: 1'))",
+                "case list refreshed after amendment",
+            )
+            session.evaluate("""(() => {
+              document.querySelectorAll('#source-choice input').forEach(input => {
+                input.checked = !input.closest('label').textContent.includes('Needs review');
+              });
+              document.querySelectorAll('#evidence-choice input').forEach(input => input.checked = false);
+              document.querySelector('#draft-observations').value =
+                'Current fictional source versions inspected; no clinical conclusion.';
+              document.querySelector('#draft-form').requestSubmit();
+            })()""")
+            session.wait(
+                "document.querySelector('#snapshot-list .snapshot .pill')?.textContent === 'draft'",
+                "replacement draft persisted",
+            )
+            session.evaluate("""[...document.querySelectorAll('#snapshot-list .snapshot button')]
+              .find(button => button.textContent.includes('Demo review acknowledgment')).click()""")
+            session.wait(
+                "document.querySelector('#review-attention')?.dataset.state === 'no-open-review'",
+                "replacement demo acknowledgment clears current review",
+            )
+            session.wait(
+                "document.querySelector('#patient-uncertainty').textContent.includes('0 open source-change review(s)')",
+                "patient view does not confuse retained history with unresolved work",
+            )
+            session.wait(
+                "[...document.querySelectorAll('#incoming-list .question')].some(row => "
+                "row.textContent.includes('CASE-ALPHA') && row.textContent.includes('Open source-change reviews: 0') "
+                "&& row.textContent.includes('Historical stale drafts: 1'))",
+                "case list refreshed after acknowledgment without erasing history",
+            )
+            assert session.evaluate(
+                "document.querySelector('#patient-uncertainty').textContent.includes('not clinical sign-off')"
+            )
+            assert session.evaluate(
+                "[...document.querySelectorAll('#snapshot-list .pill')].some(pill => pill.textContent === 'stale')"
+            )
+            print('PASS: patient/worklist review counts follow amendment and replacement acknowledgment; historical draft retained; event/issue/receipt dates preserved across case switches and amendments')
         finally:
             if session is not None:
                 session.close()
