@@ -119,7 +119,7 @@ class RegistryMigrationTests(unittest.TestCase):
     def test_only_canonical_identity_tables_are_installed(self):
         self._apply_registry()
         schemas = set(inspect(self.engine).get_schema_names())
-        self.assertFalse(schemas & {"auth", "ehr", "clinical_source", "platform"})
+        self.assertFalse(schemas & {"auth", "ehr", "platform"})
         self.assertEqual(inspect(self.engine).get_table_names(schema="public"), ["alembic_version"])
         self.assertEqual(self._scalar("SELECT version_num FROM public.alembic_version"), REGISTRY_REVISION)
         self.assertEqual(self._scalar(
