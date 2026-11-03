@@ -14,12 +14,13 @@ from sqlalchemy.exc import SQLAlchemyError
 from alembic.util.exc import CommandError
 
 from oi_api.config import Settings
+from oi_api.contracts import SCHEMA_REVISION
 from oi_api.database import make_engine
 from oi_api.migrate import migrate
 from open_intelligence.postgres_registry import PostgresPatientRegistry
 
 
-REGISTRY_REVISION = "0010_question_evidence"
+REGISTRY_REVISION = SCHEMA_REVISION
 BASELINE_REVISION = "0001_h1_shell"
 TABLES = {"identity_patients", "identity_create_receipts", "identity_domain_events"}
 
@@ -73,6 +74,9 @@ class RegistryMigrationTests(unittest.TestCase):
             connection.execute(text("DROP TABLE IF EXISTS investigation.source_questions"))
             connection.execute(text("DROP FUNCTION IF EXISTS investigation.guard_question_insert()"))
             connection.execute(text("DROP SCHEMA IF EXISTS investigation"))
+            connection.execute(text("DROP TABLE IF EXISTS clinical_source.source_image_links"))
+            connection.execute(text("DROP TABLE IF EXISTS clinical_source.dicom_objects"))
+            connection.execute(text("DROP FUNCTION IF EXISTS clinical_source.guard_image_source_link()"))
             connection.execute(text("DROP TABLE IF EXISTS clinical_source.assertions"))
             connection.execute(text("DROP TABLE IF EXISTS clinical_source.quarantine"))
             connection.execute(text("DROP TABLE IF EXISTS clinical_source.source_versions"))

@@ -178,11 +178,10 @@ class FollowthroughLogicTests(unittest.TestCase):
 
 
 class FollowthroughMigrationGraphTests(unittest.TestCase):
-    def test_task_migration_extends_the_published_single_head(self):
+    def test_published_task_and_evidence_migrations_preserve_their_owner_history(self):
         config = Config()
         config.set_main_option("script_location", str(Path(__file__).resolve().parents[1] / "migrations"))
         script = ScriptDirectory.from_config(config)
-        self.assertEqual(script.get_heads(), ["0010_question_evidence"])
         self.assertEqual(script.get_revision("0010_question_evidence").down_revision,
                          "0009_question_followthrough")
         self.assertEqual(script.get_revision("0009_question_followthrough").down_revision,

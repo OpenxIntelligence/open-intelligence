@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
-  "inspection_date": "2026-11-02",
+  "inspection_date": "2026-11-03",
   "review_kind": "engineering compatibility determination for exact artifacts and local synthetic development; not legal opinion, distribution approval, clinical approval, or whole-deployment clearance",
   "status": "approved_for_specified_use",
-  "artifact_scope": "24 pinned CPython 3.12 Linux x86_64 Python wheels with no extras; 99 supplier-declared all-target Rust crates plus 13 embedded-runtime source-evidence entries",
+  "artifact_scope": "25 pinned CPython 3.12 Linux x86_64 Python runtime wheels with no extras, including the deterministic code-only pydicom 3.0.2 build 1oi1; 99 supplier-declared all-target Rust crates plus 13 embedded-runtime source-evidence entries",
   "packages": [
     {
       "name": "alembic",
@@ -575,6 +575,85 @@
         "pydantic_core/_pydantic_core.cpython-312-x86_64-linux-gnu.so"
       ],
       "approved_scope": "local-synthetic-h1-development"
+    },
+    {
+      "name": "pydicom",
+      "version": "3.0.2",
+      "filename": "pydicom-3.0.2-1oi1-py3-none-any.whl",
+      "sha256": "cbd2edf9051da7cce3f53184cc16dde1238b065845acfa0ceb241d0e8f06acc4",
+      "license_expression": "MIT AND BSD-3-Clause",
+      "selected_license_expression": "MIT AND BSD-3-Clause",
+      "rights_state": "approved_for_specified_use",
+      "scope": "python-runtime-wheel-cpython312-linux-x86_64",
+      "license_evidence": [
+        {
+          "path_in_wheel": "pydicom-3.0.2.dist-info/licenses/LICENSE",
+          "sha256": "39b3259cb15151df25167119087df1fef33624765e639af42447ba6fe86dada3",
+          "kind": "bundled_license_text"
+        },
+        {
+          "path_in_wheel": "pydicom/_private_dict.py",
+          "sha256": "9c98bf751d7f049467d24d509c82d000464cb2ef1590d632a8d95de9a0d5df91",
+          "kind": "bundled_source_provenance",
+          "statement": "Header identifies the generated GDCM private dictionary; its included BSD terms remain cumulative."
+        },
+        {
+          "path_in_wheel": "pydicom/__init__.py",
+          "sha256": "8c0a529dbca6091707ded6f3e8fbdbe718148a6acf4ca98fea360f804480f469",
+          "kind": "modified_runtime_source",
+          "statement": "Documented one-line removal of eager examples import; exact original and derived module hashes are in the separately hash-pinned derivation manifest."
+        }
+      ],
+      "notes": [
+        "Pure-Python py3-none-any code-only build 1oi1, evaluated on the existing CPython 3.12 Linux x86_64 H1 stack; Requires-Python >=3.10.",
+        "All Requires-Dist entries are extra-conditional. No extras, external codecs, NumPy, pydicom-data, pixel decoding or clinical analysis are selected.",
+        "The upstream wheel is a transient hash-verified preparation input only; it is never installed. Excluded sample entries are selected by ZIP member names without opening their contents.",
+        "The deterministic transform excludes test_files, charset_files, palettes, example helpers, download manifests and all other non-code assets. Exactly one eager examples import is removed from pydicom/__init__.py with pinned before/after hashes. All other retained runtime code, generated dictionaries, complete license and package METADATA are unchanged; WHEEL build tag and RECORD change.",
+        "No authorization to use upstream examples/datasets, real patient records or to deploy clinically/commercially is established. Application code must not call sample-data download helpers."
+      ],
+      "requires_dist": [
+        "numpy ; extra == \"basic\"",
+        "types-pydicom ; extra == \"basic\"",
+        "black==24.8.0 ; extra == \"dev\"",
+        "mypy==1.11.2 ; extra == \"dev\"",
+        "pydicom-data ; extra == \"dev\"",
+        "pytest ; extra == \"dev\"",
+        "pytest-cov ; extra == \"dev\"",
+        "ruff==0.6.3 ; extra == \"dev\"",
+        "types-requests ; extra == \"dev\"",
+        "pre-commit ; extra == \"dev\"",
+        "pyfakefs>=6.1.6 ; extra == \"dev\"",
+        "numpy ; extra == \"docs\"",
+        "numpydoc ; extra == \"docs\"",
+        "matplotlib ; extra == \"docs\"",
+        "pillow ; extra == \"docs\"",
+        "sphinx ; extra == \"docs\"",
+        "sphinx_rtd_theme ; extra == \"docs\"",
+        "sphinx-gallery ; extra == \"docs\"",
+        "sphinxcontrib-napoleon ; extra == \"docs\"",
+        "sphinxcontrib-jquery ; extra == \"docs\"",
+        "sphinx-copybutton ; extra == \"docs\"",
+        "pylibjpeg[libjpeg] ; extra == \"gpl-license\"",
+        "numpy ; extra == \"pixeldata\"",
+        "pillow ; extra == \"pixeldata\"",
+        "pyjpegls ; extra == \"pixeldata\"",
+        "pylibjpeg[openjpeg] ; extra == \"pixeldata\"",
+        "pylibjpeg[rle] ; extra == \"pixeldata\"",
+        "python-gdcm ; extra == \"pixeldata\""
+      ],
+      "upstream_urls": [
+        "Release, https://pypi.org/project/pydicom/3.0.2/",
+        "Exact source license, https://github.com/pydicom/pydicom/blob/20aa4b73aef76bffb6fbc46a8827588dfa9bb89d/LICENSE"
+      ],
+      "native_files": [],
+      "approved_scope": "local-synthetic-h1-development",
+      "derivation": {
+        "manifest": "tools/pydicom-runtime.json",
+        "manifest_sha256": "5e2b5af2db11b106c1c8de4fde545b8899178f797ce75daa9ae1229cb30163bc",
+        "source_filename": "pydicom-3.0.2-py3-none-any.whl",
+        "source_sha256": "abf971a5440f84dbaf42c4b6758e30e62480902584f8b270b9a5d146e278a07b",
+        "transformation": "oi-pydicom-code-only-v1"
+      }
     },
     {
       "name": "python-dateutil",
@@ -17414,6 +17493,7 @@
       "BSD-3-Clause AND PSF-2.0",
       "MIT",
       "MIT AND (Apache-2.0 WITH LLVM-exception)",
+      "MIT AND BSD-3-Clause",
       "MIT AND BSD-3-Clause AND NCSA AND SunPro AND Unicode-3.0 AND Unicode-DFS-2016 AND Zlib AND (Apache-2.0 WITH LLVM-exception)",
       "MIT AND BSD-3-Clause AND SunPro",
       "MIT AND NCSA",
@@ -17504,6 +17584,16 @@
         "evidence": [
           "tzdata 2026.6 tzdata/zoneinfo/tzdata.zi"
         ]
+      },
+      {
+        "license_expression": "MIT AND BSD-3-Clause",
+        "decision": "compatible_for_local_synthetic_h1_development",
+        "rationale": "Exact pydicom 3.0.2 core code permits use under MIT; GDCM-derived private dictionaries have cumulative BSD-3-Clause notice, disclaimer and no-endorsement obligations. Preserve the complete bundled grant. Only the hash-pinned code-only derived wheel is approved for this metadata-parsing scope. Bundled source sample data is excluded before installation; no dataset, codec, clinical, production or distribution clearance is inferred.",
+        "evidence": [
+          "pydicom 3.0.2 exact wheel LICENSE",
+          "pydicom/_private_dict.py provenance header",
+          "tools/pydicom-runtime.json code-only derivation"
+        ]
       }
     ],
     "operator_rules": [
@@ -17515,6 +17605,6 @@
   },
   "notices": {
     "path": "THIRD_PARTY_NOTICES.md",
-    "sha256": "412e01b8484d503c31b24d2b02dbbb9be43b967c52080fa1c5d6cbdbcf482540"
+    "sha256": "50b5799151dccf9f79e440509531d15a6c72813bbfa5399423e9c724f43eb3e9"
   }
 }

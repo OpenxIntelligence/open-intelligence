@@ -9,6 +9,10 @@
 !apps/api/alembic.ini
 !apps/api/tools
 !apps/api/tools/check_dependencies.py
+!apps/api/tools/prepare_dependencies.py
+!apps/api/tools/pydicom_runtime.py
+!apps/api/tools/pydicom-runtime.json
+!apps/api/tools/pydicom-upstream.lock
 !apps/api/migrations
 !apps/api/migrations/**
 !apps/api/src

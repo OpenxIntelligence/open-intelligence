@@ -6,6 +6,7 @@ import unittest
 from sqlalchemy import text
 
 from oi_api.app import create_app
+from oi_api.contracts import SCHEMA_REVISION
 from oi_api.migrate import migrate
 from http_support import running_server
 from test_patients import TOKEN_A, request
@@ -30,9 +31,11 @@ class QuestionFingerprintMigrationTests(SourceVersionFixture):
         migrate(self.admin, "downgrade", "0006_source_questions")
         legacy_id = "QUESTION-" + "A" * 32
         with self.engine.begin() as connection:
-            self.assertEqual(connection.execute(text(
+            # Downgrading the question branch retains the independent image
+            # branch. Neither this split state nor either parent is app-ready.
+            self.assertEqual(set(connection.execute(text(
                 "SELECT version_num FROM public.alembic_version"
-            )).scalar_one(), "0006_source_questions")
+            )).scalars()), {"0006_source_questions", "0006_image_custody"})
             self.assertEqual(connection.execute(text(
                 "SELECT count(*) FROM information_schema.columns "
                 "WHERE table_schema='investigation' AND table_name='source_questions' "
@@ -66,9 +69,9 @@ class QuestionFingerprintMigrationTests(SourceVersionFixture):
 
         migrate(self.admin, "upgrade", "0007_question_snapshot_contract")
         with self.engine.connect() as connection:
-            self.assertEqual(connection.execute(text(
+            self.assertEqual(set(connection.execute(text(
                 "SELECT version_num FROM public.alembic_version"
-            )).scalar_one(), "0007_question_snapshot_contract")
+            )).scalars()), {"0007_question_snapshot_contract", "0006_image_custody"})
             migrated = dict(connection.execute(text(
                 "SELECT * FROM investigation.source_questions WHERE question_id=:id"
             ), {"id": legacy_id}).mappings().one())
@@ -78,9 +81,13 @@ class QuestionFingerprintMigrationTests(SourceVersionFixture):
         # identity, actor/purpose and creation time; the upgrade must not rehash.
         self.assertEqual(migrated, before)
 
-        # Preserve the original0007 proof above, then satisfy the current API's
+        # Preserve the original 0007 proof above, then satisfy the current API's
         # later convergence readiness gate before testing the same behavior.
         migrate(self.admin, "upgrade", "head")
+        with self.engine.connect() as connection:
+            self.assertEqual(connection.execute(text(
+                "SELECT version_num FROM public.alembic_version"
+            )).scalar_one(), SCHEMA_REVISION)
         self.creds[0]["actions"].extend((
             "composer_context_read", "question_create", "question_read",
         ))

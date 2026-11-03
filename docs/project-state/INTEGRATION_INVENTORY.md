@@ -1,5 +1,32 @@
 # Integration inventory — current contracts and unfinished connections
 
+## Image, question, follow-through and citation convergence — 3 November 2026
+
+This branch joins the verified #298 head
+`89f98824610e23a26d2904a845ed1d930207bd76` (tree
+`30e40fd60b4f42d65732bfcebe6233ad602ad955`) with #278 at
+`b72560ac0f5e5005040b0fc660ce1650343611cf`. This section supersedes earlier
+selected-baseline and image-separation statements only for this candidate;
+the individual historical receipts below remain preserved.
+
+The existing patient/source/question/packet/brief/review/task/citation owners now
+coexist with original image custody under `0011_image_evidence_merge`. All 14
+published migrations remain intact; the new revision joins
+`0009_image_review_merge` and `0010_question_evidence` without DDL. No parallel
+patient ledger, evidence store, new dependency or clinical authority is selected.
+The [combined engineering contract](../engineering/H1_IMAGE_QUESTION_EVIDENCE_CONVERGENCE.md)
+defines amendment, independent grants, immutable history and restored-API
+acceptance. The draft PR and canonical engineering records carry the executed
+submitted-head receipt; separate green parent runs do not establish this join.
+
+Keep [#300](https://github.com/OpenxIntelligence/open-intelligence/pull/300)'s
+authored-evidence/comparison/report owner and active #302/#303/#304 continuations,
+[#277](https://github.com/OpenxIntelligence/open-intelligence/pull/277)'s archive
+retrieval owner, and the clinical EHR/LIS ports separate until their contracts
+are explicitly reconciled. Governed citation metadata remains distinct from
+claim support and authored evidence appraisal. The patient-centered full-platform
+direction and existing backlog ownership are unchanged.
+
 **Assessment:** 3 November 2026 (America/New_York).  
 **Baselines:** reference main `24519839aa8ac1ea3aff88a956349ba72798a72a`; initial H1 assessment [#276](https://github.com/OpenxIntelligence/open-intelligence/pull/276) at `c154bfbc5f99f76801d37903959943659c0b6a71`; current verified draft integration [#298](https://github.com/OpenxIntelligence/open-intelligence/pull/298) at `f4750327537a5febf764d25f43873be50ac7265a`, based on #293. Other drafts are named separately.
 
