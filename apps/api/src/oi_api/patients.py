@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Literal
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
+from starlette.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import Field, StrictBool, field_validator
 
@@ -582,12 +583,12 @@ def patient_router(database: Database, authentication: Authentication, *, image_
         try:
             with registry(context) as patients:
                 records_authorized(patients, context, patient_id, "source_read")
-                result = PostgresSourceVersions(patients).list(
+                return PostgresSourceVersions(patients).list(
                     patient_id, case_id, organization=context.organization,
                     actor=context.actor, purpose=context.purpose,
+                    prepare_response=lambda index: OriginalSourceIndex(**index),
                     recheck_authority=lambda: refresh_source_authority(
                         request, context, patients, patient_id, "source_read"))
-                return OriginalSourceIndex(**result)
         except PatientRegistryDenied:
             raise HTTPException(404, "Source unavailable") from None
 
@@ -604,12 +605,12 @@ def patient_router(database: Database, authentication: Authentication, *, image_
         try:
             with registry(context) as patients:
                 records_authorized(patients, context, patient_id, "source_read")
-                index = PostgresSourceVersions(patients).list(
+                return PostgresSourceVersions(patients).list(
                     patient_id, case_id, organization=context.organization,
                     actor=context.actor, purpose=context.purpose,
+                    prepare_response=lambda index: SourceWorldModel(**project_source_world_model(index)),
                     recheck_authority=lambda: refresh_source_authority(
                         request, context, patients, patient_id, "source_read"))
-                return SourceWorldModel(**project_source_world_model(index))
         except PatientRegistryDenied:
             raise HTTPException(404, "Source unavailable") from None
 
@@ -684,12 +685,14 @@ def patient_router(database: Database, authentication: Authentication, *, image_
         try:
             with registry(context) as patients:
                 records_authorized(patients, context, patient_id, "image_read")
-                result = PostgresSourceImages(patients).list(
+                return PostgresSourceImages(patients).list(
                     patient_id, case_id, source_id, organization=context.organization,
                     actor=context.actor, purpose=context.purpose,
+                    prepare_response=lambda index: JSONResponse(
+                        SourceImageIndex(**index).model_dump(mode="json"),
+                        headers={"Cache-Control": "no-store"}),
                     recheck_authority=lambda: refresh_source_authority(
                         request, context, patients, patient_id, "image_read"))
-                return SourceImageIndex(**result)
         except PatientRegistryDenied:
             raise HTTPException(404, "Image unavailable") from None
 
@@ -704,19 +707,21 @@ def patient_router(database: Database, authentication: Authentication, *, image_
         try:
             with registry(context) as patients:
                 records_authorized(patients, context, patient_id, "image_original_read")
-                raw, receipt = PostgresSourceImages(patients, archive=image_archive).original(
+                # Construct the bounded, non-streaming body while source locks
+                # are held. The owner rechecks authority, appends the receipt and
+                # commits before this prepared response can leave the service.
+                return PostgresSourceImages(patients, archive=image_archive).original(
                     patient_id, case_id, source_id, image_id, organization=context.organization,
                     actor=context.actor, purpose=context.purpose,
+                    prepare_response=lambda raw, receipt: Response(
+                        raw, media_type="application/dicom", headers={
+                            "Content-Disposition": 'attachment; filename="original.dcm"',
+                            "X-OI-Access-Receipt": receipt, "X-Content-Type-Options": "nosniff",
+                            "Content-Security-Policy": "default-src 'none'", "Cache-Control": "no-store",
+                        }),
                     recheck_authority=lambda: refresh_source_authority(
                         request, context, patients, patient_id, "image_original_read"))
         except PatientRegistryDenied:
             raise HTTPException(404, "Image unavailable") from None
-        # The transaction committed before this response is constructed. Never
-        # stream bytes ahead of validation, final authorization and audit.
-        return Response(raw, media_type="application/dicom", headers={
-            "Content-Disposition": 'attachment; filename="original.dcm"',
-            "X-OI-Access-Receipt": receipt, "X-Content-Type-Options": "nosniff",
-            "Content-Security-Policy": "default-src 'none'", "Cache-Control": "no-store",
-        })
 
     return router
