@@ -1,3 +1,4 @@
+import {ReviewedDocumentWorkspace} from './reviewed-documents-view';
 import {StrictMode, useEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {createRoot} from 'react-dom/client';
 import {RegistrySession} from './registry-client';
@@ -70,8 +71,9 @@ function App(){
       {state.sourceIndex&&<section className="records-detail" data-testid="source-index" aria-labelledby="sources-heading">
        <h3 id="sources-heading">Source history for <code>{state.sourceIndex.case_id}</code></h3>
        <p>Immutable original source identifiers, hashes and historical versions. These records are independently fictional.</p>
+       <ReviewedDocumentWorkspace key={"documents:"+state.patient.patient_id+":"+state.sourceIndex.case_id} session={session} patientId={state.patient.patient_id} caseId={state.sourceIndex.case_id}/>
        <SourceIntake key={state.patient.patient_id+':'+state.sourceIndex.case_id} session={session} patientId={state.patient.patient_id} caseId={state.sourceIndex.case_id} sending={state.importOutcome==='sending'}/>
-       {state.sourceIndex.sources.length===0?<p>No imported original sources for this case.</p>:
+       {state.sourceIndex.sources.length===0?<p>No structured-report sources for this case. Reviewed text/PDF records are listed above.</p>:
         <ol className="source-list">{state.sourceIndex.sources.map(item=><li key={item.source_id} data-testid="source-version">
          <div className="source-heading"><strong>{item.document_id} · v{item.version}</strong><span className="record-state">{item.state}</span></div>
          <dl className="source-metadata">

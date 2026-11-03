@@ -140,3 +140,25 @@ class ReviewedDocumentTests(SourceVersionFixture):
                             payload|{'findings':[dict(key='bad',state='reported',quote='Invented',line=2)]}):
                 self.assertEqual(request(base,self.basepath(p),token=TOKEN_A,body=altered)[0],422)
             self.assertEqual(self.counts(),before)
+            self.assertEqual(self.ingest(base,p)[0],201)
+            mixed=deepcopy(payload);mixed['metadata']['document_id']='DOC-ONE';mixed['metadata']['amends_version']=1
+            self.assertEqual(request(base,self.basepath(p),token=TOKEN_A,body=mixed)[0],409)
+
+    def test_original_encoding_revocation_withholds_binary_and_does_not_add_receipt(self):
+        from fastapi import Response
+        from urllib.error import HTTPError
+        with running_server(create_app(self.settings)) as base:
+            p=self.setup_case(base);payload=self.prepared(base,p)
+            saved=request(base,self.basepath(p),token=TOKEN_A,body=payload)[1]
+            before=self.counts();render=Response.render
+            def revoke(response,value):
+                encoded=render(response,value)
+                if value==RAW:
+                    self.creds[0]['actions'].remove('source_original_read');self.write()
+                return encoded
+            req=Request(base+self.basepath(p)+'/'+saved['source_id']+'/original',headers={'Authorization':'Bearer '+TOKEN_A})
+            with patch.object(Response,'render',revoke), self.assertRaises(HTTPError) as caught:
+                build_opener(ProxyHandler({})).open(req)
+            self.assertEqual(caught.exception.code,404)
+            self.assertNotIn(b'Marker',caught.exception.read());caught.exception.close()
+            self.assertEqual(self.counts(),before)

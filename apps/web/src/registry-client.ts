@@ -143,6 +143,27 @@ function created(value: unknown): CreatedPatient {
   return Object.freeze(value as CreatedPatient);
 }
 export class RegistrySession {
+  async documentRequest(caseId:string,path:string,body?:string):Promise<import('./reviewed-documents').DocumentReply>{
+    if(!/^CASE-[A-Z0-9-]{1,35}$/.test(caseId)||!/^$|^\/preview$|^\/SRC-[A-F0-9]{32}(?:\/(?:original|annotations))?$/.test(path))throw Error('Invalid document path');
+    const scope=this.#scope,read=this.#read,records=this.#records,patient=this.#state.patient?.patient_id;
+    const current=()=>scope===this.#scope&&read===this.#read&&records===this.#records&&patient===this.#state.patient?.patient_id&&this.#state.sourceIndex?.case_id===caseId;
+    if(!patient||!this.#token||!current())throw Error('Recheck patient and case access');
+    const control=new AbortController();this.#controllers.add(control);
+    try{
+      const response=await this.transport('/v1/patients/'+encodeURIComponent(patient)+'/cases/'+encodeURIComponent(caseId)+'/documents'+path,this.#init(control,body));
+      let value:unknown;
+      if(path.endsWith('/original')&&response.status===200){
+        const bytes=new Uint8Array(await response.arrayBuffer());if(bytes.byteLength>65536)throw Error('Original exceeds bounds');value=bytes;
+      }else{
+        const text=await response.text();if(new TextEncoder().encode(text).length>4_000_000)throw Error('Document response exceeds bounds');value=JSON.parse(text);
+      }
+      if(!current())throw Error('Patient or case changed');
+      if(response.status===401)this.#httpError(401);
+      if(body===undefined&&response.status===200&&path!=='/preview'&&!path.endsWith('/original')&&
+        (!value||typeof value!=='object'||(value as {patient_id?:string}).patient_id!==patient||(value as {case_id?:string}).case_id!==caseId))throw Error('Wrong document scope');
+      return{status:response.status,body:value,headers:response.headers};
+    }finally{this.#controllers.delete(control);}
+  }
   #token=''; #scope=0; #read=0; #records=0; #state:ViewState=fresh();
   #worldRead=0; #composerRead=0; #questionRead=0; #questionWrite=0; #briefRead=0;
   #questionKey=''; #questionFingerprint=''; #savingQuestion=false;

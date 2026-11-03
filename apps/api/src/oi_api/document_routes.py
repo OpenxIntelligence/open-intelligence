@@ -21,6 +21,8 @@ def register_document_routes(router, *, principal, registry, records_authorized,
                 try:
                     return action(ReviewedDocuments(patients),dict(organization=context.organization,
                         actor=context.actor,purpose=context.purpose,recheck_authority=recheck))
+                except PatientRegistryError:
+                    raise
                 except (InvalidInput, ValueError):
                     raise PatientRegistryError("Invalid reviewed document input") from None
         except PatientRegistryDenied:
