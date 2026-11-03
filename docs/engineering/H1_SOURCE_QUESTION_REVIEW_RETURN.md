@@ -52,6 +52,14 @@ The acceptance target is the existing source-verification return workflow.
 The patient-specific scientific investigation and professional review loop
 remain separate implementation gates.
 
+The concurrently published [#260 image/question owner](https://github.com/OpenxIntelligence/open-intelligence/pull/260)
+at `90dfe49fab082f3698fc82b3e8224cf7d30e5c4f` is a separate draft on the same
+#244 base. Its `0008_merge_image_questions` and this branch's
+`0008_review_convergence` require a later explicit merge and populated upgrade
+proof from each head. Neither history should be renamed or replaced. That
+combined runtime, its image permissions and image/return lifecycle are not
+claimed by this contribution.
+
 ## Why this integration is necessary
 
 The existing clinical reference work (#82 → #150/#165/#175/#210) derives its

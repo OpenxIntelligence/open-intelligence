@@ -229,6 +229,19 @@ Typed response preparation, final grant refresh, source-access receipt and the
 return/event write share the existing transaction. A failure rolls them back.
 See [ownership, provenance and verification](../../docs/engineering/H1_SOURCE_QUESTION_REVIEW_RETURN.md).
 
+### Concurrent image-owner boundary
+
+The separate [image/question convergence #260](https://github.com/OpenxIntelligence/open-intelligence/pull/260)
+is draft at `90dfe49fab082f3698fc82b3e8224cf7d30e5c4f`, with
+`0008_merge_image_questions`. Its image functionality and validation are not
+included in this review-return branch. A later combined owner must preserve
+both original 0008 histories, add an explicit merge of `0008_merge_image_questions`
+and `0008_review_convergence`, and require that new single head in readiness.
+Populated upgrades from both sides must retain image bytes/links, questions,
+receipts, source contracts and events. Image activity must leave review content
+fingerprints unchanged; report amendment must invalidate dependent work without
+relinking images silently reviving an old question.
+
 ### Broader product boundary
 
 The first integrated product remains patient information → source-linked World

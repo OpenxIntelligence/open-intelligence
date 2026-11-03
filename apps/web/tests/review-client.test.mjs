@@ -107,6 +107,10 @@ test('current return receipts must match canonical provenance and the exact save
  const current=item({return_count:1,current_return_receipt_id:receiptId,review_state:'returned_for_independent_verification'});
  const good=session(async()=>response(queue([current],[receipt()])));await opened(good);
  assert.equal(good.snapshot().reviewQueue.items[0].current_return_receipt_id,receiptId);
+ await good.loadReviewQueue(caseId);
+ assert.equal(good.snapshot().reviewQueue.receipts.length,1);
+ assert.doesNotMatch(good.snapshot().reviewReturnMessage,/no.+return.+recorded/i,
+  'Refreshing persisted return history must not describe that history as empty');
  for(const invalid of [receipt({source_snapshot_sha256:'0'.repeat(64)}),receipt({queue_fingerprint_contract:legacyFingerprint})]){
   const s=session(async()=>response(queue([current],[invalid])));await opened(s);assert.equal(s.snapshot().reviewQueue,null);
  }

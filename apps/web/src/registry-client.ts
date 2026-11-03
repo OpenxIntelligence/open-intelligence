@@ -57,7 +57,7 @@ const emptyWorld=()=>({worldModel:null,worldPhase:'idle' as const,worldMessage:'
 const emptyReview=()=>({reviewQueue:null,reviewPhase:'idle' as const,
   reviewMessage:'Open the current patient case to inspect saved questions and verification returns.',
   reviewReturn:null,reviewReturnPhase:'idle' as const,reviewReturnIntent:null,
-  reviewReturnMessage:'No verification return has been recorded.'});
+  reviewReturnMessage:'No return action is in progress.'});
 const emptyInvestigation=()=>({composerPreview:null,composerPhase:'idle' as const,
   composerMessage:'Select an exact current source observation to prepare a non-executing context.',
   savedQuestion:null,questionSavePhase:'idle' as const,
