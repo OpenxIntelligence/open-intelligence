@@ -267,6 +267,9 @@ async function renderIncomingBoard(cases) {
     if (selected) picker.value = selected;
     orderIncomingRows(rows);
     if (!rows.length) empty(list, 'No fictional cases in this demo.');
+    // Presentation consumers may finish a saved creation after this accepted
+    // roster read. Selection still goes through the existing picker owner.
+    document.dispatchEvent(new Event('oi:worklist-updated'));
   } catch (_) {
     if (sequence !== incomingBoardSequence) return;
     incomingRosterUnavailable = true;

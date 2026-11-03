@@ -53,18 +53,26 @@
     }
     createForm.addEventListener('submit',async event=>{
       event.preventDefault();if(creating)return;
+      let saved=false;
+      const savedMessage='Workspace created and saved. Retry loading, or use Refresh list in Patients, to continue with its first original source.';
       try {
         if(!options.canSwitch())throw Error('Save or clear the current draft before creating another workspace.');
         const payload=casePayload($('case-create-code').value,$('case-create-alias').value,$('case-create-confirm').checked);
+        const selection=options.getCreationContext?.();
         creating=true;$('case-create-submit').disabled=true;
         tell('case-create-status','Creating the workspace in the existing local case ledger…');
         await options.api('/api/cases',payload);
-        const activated=await options.created(payload.case_id);
+        saved=true;
+        const activated=await options.created(payload.case_id,selection);
         createForm.reset();
-        tell('case-create-status',activated===false
-          ? 'Workspace created and saved. Retry loading it to import its first original source.'
+        tell('case-create-status',activated==='cancelled'
+          ? 'Workspace created and saved. Open it from Patients when you are ready.'
+          : activated===false ? savedMessage
           : 'Workspace created. Import its first original source below.');
-      } catch(error) {tell('case-create-status',error.message,true);}
+      } catch(error) {
+        if(saved) {createForm.reset();tell('case-create-status',savedMessage);}
+        else tell('case-create-status',error.message,true);
+      }
       finally {creating=false;$('case-create-submit').disabled=false;}
     });
     $('source-file').addEventListener('change',async()=>{

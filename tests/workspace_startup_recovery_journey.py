@@ -513,6 +513,8 @@ def creation_cancelled_by_selection(j: Journey, *, during_post: bool = False) ->
     state = observe(j)
     j.check(state['caseId'] == state['active'] == state['selected'] == 'CASE-BETA' and state['route'] == 'overview',
             'A later accepted case selection cancels creation navigation across delayed completion', state)
+    j.check('saved' in state['creation'].lower() and 'retry' not in state['creation'].lower(),
+            'Canceled automatic activation acknowledges the save without obsolete retry guidance', state)
     j.go('incoming-board')
     j.click('#worklist-refresh', 'Refresh after deliberately selecting another case')
     drain_reads(j)
