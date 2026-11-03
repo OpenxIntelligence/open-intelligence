@@ -144,6 +144,57 @@ class PostgresSourceQuestions:
                 prepare_response=save, recheck_authority=recheck_authority,
             )
 
+    def project_locked(self, patient_id: str, case_id: str, *, organization: str,
+                       source_index: dict) -> list[dict]:
+        """Project question freshness from the source owner's validated context.
+
+        Called only inside ``PostgresSourceVersions.list_locked`` preparation.
+        This helper owns question freshness, not source materialization, grants,
+        transactions or receipts. Both question history and review use it.
+        """
+        if not self.registry._transaction_active:
+            raise PatientRegistryError("Question projection requires caller transaction")
+        patient_id = _key(patient_id, "patient_id")
+        case_id = _case_id(case_id)
+        organization = _key(organization, "organization")
+        if (source_index.get("patient_id"), source_index.get("case_id")) != (patient_id, case_id):
+            raise PatientRegistryDenied("Question source context unavailable")
+        world = project_source_world_model(source_index)
+        rows = self.registry._fetchall(
+            "SELECT question_id,patient_id,case_id,question,source_id,"
+            "source_line,source_sha256,source_version,source_snapshot_sha256,"
+            "preflight_sha256,created_at,source_snapshot_contract "
+            "FROM investigation.source_questions "
+            "WHERE patient_id=%s AND case_id=%s AND origin_org=%s "
+            "ORDER BY created_at,question_id LIMIT 251",
+            (patient_id, case_id, organization),
+        )
+        if len(rows) > 250:
+            raise PatientRegistryError("Question list exceeds bounded read limit")
+        anchors = {(item["source_id"], item["source_line"]):
+                   (item["source_sha256"], item["document_version"])
+                   for item in world["observations"]}
+        results = []
+        for (qid, pid, cid, question, sid, line, digest, version,
+             old_fingerprint, preflight_sha, created_at, snapshot_contract) in rows:
+            current = (snapshot_contract == SOURCE_SNAPSHOT_CONTRACT
+                       and anchors.get((sid, line)) == (digest, version)
+                       and hmac.compare_digest(old_fingerprint, world["snapshot_fingerprint"]))
+            results.append({
+                "question_id": qid, "patient_id": pid, "case_id": cid,
+                "question": question, "source_id": sid, "source_line": line,
+                "source_sha256": digest, "source_version": version,
+                "source_snapshot_sha256": old_fingerprint,
+                "source_snapshot_contract": snapshot_contract,
+                "preflight_sha256": preflight_sha,
+                "created_at": created_at.isoformat() if isinstance(created_at, datetime) else str(created_at),
+                "source_context_state": ("current_unreviewed_question" if current
+                                         else "source_reassessment_required"),
+                "human_review_state": "not_submitted",
+                "clinical_approval": False, "model_executed": False,
+            })
+        return results
+
     def list(self, patient_id: str, case_id: str, *, organization: str,
              actor: str, purpose: str, recheck_authority: Callable[[], None],
              prepare_response: Callable[[dict], PreparedResponse] | None = None) -> dict | PreparedResponse:
@@ -152,42 +203,10 @@ class PostgresSourceQuestions:
         organization = _key(organization, "organization")
         if purpose != "operations":
             raise PatientRegistryDenied("Question intake unavailable")
-
         def prepare(index):
-            world = project_source_world_model(index)
-            rows = self.registry._fetchall(
-                "SELECT question_id,patient_id,case_id,question,source_id,"
-                "source_line,source_sha256,source_version,source_snapshot_sha256,"
-                "preflight_sha256,created_at,source_snapshot_contract "
-                "FROM investigation.source_questions "
-                "WHERE patient_id=%s AND case_id=%s AND origin_org=%s "
-                "ORDER BY created_at,question_id LIMIT 251",
-                (patient_id, case_id, organization),
+            results = self.project_locked(
+                patient_id, case_id, organization=organization, source_index=index,
             )
-            if len(rows) > 250:
-                raise PatientRegistryError("Question list exceeds bounded read limit")
-            anchors = {(item["source_id"], item["source_line"]):
-                       (item["source_sha256"], item["document_version"])
-                       for item in world["observations"]}
-            results = []
-            for (qid, pid, cid, question, sid, line, digest, version,
-                 old_fingerprint, preflight_sha, created_at, snapshot_contract) in rows:
-                current = (snapshot_contract == SOURCE_SNAPSHOT_CONTRACT
-                           and anchors.get((sid, line)) == (digest, version)
-                           and hmac.compare_digest(old_fingerprint, world["snapshot_fingerprint"]))
-                results.append({
-                    "question_id": qid, "patient_id": pid, "case_id": cid,
-                    "question": question, "source_id": sid, "source_line": line,
-                    "source_sha256": digest, "source_version": version,
-                    "source_snapshot_sha256": old_fingerprint,
-                    "source_snapshot_contract": snapshot_contract,
-                    "preflight_sha256": preflight_sha,
-                    "created_at": created_at.isoformat() if isinstance(created_at, datetime) else str(created_at),
-                    "source_context_state": ("current_unreviewed_question" if current
-                                             else "source_reassessment_required"),
-                    "human_review_state": "not_submitted",
-                    "clinical_approval": False, "model_executed": False,
-                })
             result = {
                 "contract": QUESTION_LIST_CONTRACT,
                 "patient_id": patient_id, "case_id": case_id,

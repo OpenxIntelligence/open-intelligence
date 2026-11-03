@@ -112,6 +112,8 @@ jobs:
         run: python apps/api/tools/verify_registry_compose.py
       - name: Verify source HTTP, fresh authority, source receipts and restored originals
         run: python apps/api/tools/verify_sources_compose.py
+      - name: Verify canonical review returns, history, retry recovery and backup restore
+        run: python apps/api/tools/verify_reviews_compose.py
       - name: Record resolved container identities and application packages
         run: |
           docker image inspect postgres:16.15-bookworm oi-h1-api:synthetic --format '{{.Id}} {{json .RepoDigests}}'

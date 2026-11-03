@@ -9,6 +9,7 @@ type Props={
   busy:boolean;
   showQuestions?:boolean;
   onInvestigations?:()=>void;
+  onReview?:()=>void;
 };
 
 /** First-party PG read-only Patient World Model view.
@@ -16,7 +17,7 @@ type Props={
  * separate client-owned patient/source ledger. All clinical claims remain
  * attributed to the original fictional source and explicitly unreviewed.
  */
-export function WorldModelView({session,state,onOverview,busy,showQuestions=false,onInvestigations}:Props){
+export function WorldModelView({session,state,onOverview,busy,showQuestions=false,onInvestigations,onReview}:Props){
   const loading=state.worldPhase==='loading'||state.recordsPhase.startsWith('loading');
   const model=state.worldModel;
   return <section className="panel source-world" aria-labelledby="world-heading" data-testid="world-workspace" data-view={showQuestions?'investigations':'journey'}>
@@ -38,7 +39,7 @@ export function WorldModelView({session,state,onOverview,busy,showQuestions=fals
          </li>)}</ul>}
       </section>}
       <p role="status" aria-live="polite" className={'status '+(state.worldPhase==='error'?'error':'')} data-testid="world-status">{state.worldMessage}</p>
-      {showQuestions&&<SourceQuestionPanel session={session} state={state} busy={busy}/>}
+      {showQuestions&&<SourceQuestionPanel session={session} state={state} busy={busy} onReview={onReview}/>}
       {model&&<div data-testid="world-projection">
         <p><strong>Case:</strong> <code>{model.case_id}</code> · Source statements unreviewed · Context checked at last read</p>
         <div className="world-summary" aria-label="Source context summary">
