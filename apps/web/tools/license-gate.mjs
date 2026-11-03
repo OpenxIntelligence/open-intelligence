@@ -22,7 +22,7 @@ for(const [location,record] of Object.entries(lock.packages)){
  const p=JSON.parse(fs.readFileSync(manifest,'utf8'));
  if(p.version!==record.version)errors.push(location+': installed version mismatch');
  if(!allowed.has(p.license))errors.push(location+': unreviewed installed license');
- const notices=fs.readdirSync(base).filter(n=>/^(license|licence|copying|notice)(\.|$)/i.test(n)&&fs.statSync(path.join(base,n)).isFile()).map(name=>{
+ const notices=fs.readdirSync(base).filter(n=>/^(license|licence|copying|notice)(\.|$)|third.?party.*(?:notice|licen)/i.test(n)&&fs.statSync(path.join(base,n)).isFile()).map(name=>{
   const bytes=fs.readFileSync(path.join(base,name));const text=bytes.toString('utf8');
   if(/GNU (?:AFFERO |LESSER )?GENERAL PUBLIC LICENSE|CC-BY-NC|Commons Clause|Elastic License/i.test(text))errors.push(location+': manual restrictive-term review required');
   return {name,sha256:crypto.createHash('sha256').update(bytes).digest('hex'),text};

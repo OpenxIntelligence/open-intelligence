@@ -33,9 +33,9 @@ its migrations explicitly. Serving never creates schema automatically.
 Node >=22.12 is required. From this directory, after reviewing the exact lock:
 
 ```sh
-npm ci --ignore-scripts --no-audit --no-fund
+npm ci --omit=optional --ignore-scripts --no-audit --no-fund
 npm run rights
-npm audit --audit-level=high
+npm audit --omit=optional --audit-level=high
 npm test
 npm run build
 npm run dev
@@ -68,7 +68,7 @@ open. Tests and screenshots use only newly created opaque fictional identities.
 
 ## Dependencies and permissions
 
-Exact candidates: React/react-dom 19.3.1 (MIT), Vite 8.3.5 (MIT), TypeScript 5.9.3
+Exact candidates: React/react-dom 19.3.1 (MIT), Vite 7.3.7 (MIT), TypeScript 5.9.3
 (Apache-2.0), DefinitelyTyped React types (MIT). These versions were checked against
 primary npm/official project records on 2026-11-02. No create-vite template,
 remote fonts, copied UI, images, model weights or patient dataset are used.
@@ -87,14 +87,26 @@ Upstream records:
 - https://registry.npmjs.org/react/19.3.1
 - https://www.npmjs.com/package/react-dom?activeTab=versions
 - https://www.npmjs.com/package/vite?activeTab=versions
-- https://github.com/vitejs/vite/blob/v8.3.5/packages/vite/LICENSE.md
+- https://github.com/vitejs/vite/blob/v7.3.7/packages/vite/LICENSE.md
 - https://github.com/microsoft/TypeScript/blob/v5.9.3/LICENSE.txt
 - https://github.com/DefinitelyTyped/DefinitelyTyped/blob/master/LICENSE
+
+## Qualification changes
+
+The initial Vite 8.3.5 gate failed before any build: Lightning CSS carries MPL-2.0
+and some native bindings omit actual notice files. The gate was not relaxed.
+The supported Vite 7.3.7 line is used with the publishers' `esbuild-wasm@0.28.2`
+and `@rollup/wasm-node@4.67.4` variants, locked through npm overrides. These are
+build tools only, not an additional frontend runtime or clinical service. Optional
+native packages are omitted from installation and remain explicitly uninspected.
+This trades build speed for a smaller inspectable dependency surface; actual
+benchmark/performance qualification is still needed. WASM compiled contents and
+the complete host/toolchain still require deployment-specific rights review.
 
 ## State
 
 Initial client tests have been executed locally. Dependency acquisition/full TSX
 build and actual API browser validation require their own exact-head CI evidence.
-The first candidate CI may produce a proposed dependency lock; it must be inspected
-and committed, then the bootstrap step removed before a reproducible build is
-claimed. Do not equate a draft screenshot or previous-parent CI with this build.
+The candidate lock was acquired through hosted CI, hash-checked and inspected. It
+is now committed; bootstrap resolution is removed. Subsequent runs use only
+`npm ci` against that exact lock, without lifecycle scripts or optional binaries. Do not equate a draft screenshot or previous-parent CI with this build.

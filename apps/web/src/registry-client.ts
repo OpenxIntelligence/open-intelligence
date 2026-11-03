@@ -100,9 +100,11 @@ export class RegistrySession {
     if(this.#creating)return;
     if(!this.#token){this.#publish({message:'Connect an authorized synthetic credential first.'});return;}
     if(confirmed!==true || !boundedKey(requestKey)){this.#publish({phase:'error',message:'Confirm fictional identity creation and use a valid request key.'});return;}
+    // A new creation is a new selection intent; an older read cannot restore it.
+    this.#read++;
     const scope=this.#scope,control=new AbortController();this.#controllers.add(control);this.#creating=true;
     const timeout=setTimeout(()=>control.abort(),10000);
-    this.#publish({phase:'creating',created:null,message:'Creating a fictional identity; reading it will still need an explicit grant…'});
+    this.#publish({phase:'creating',patient:null,created:null,message:'Creating a fictional identity; reading it will still need an explicit grant…'});
     try{
       const res=await this.transport('/v1/patients',this.#init(control,JSON.stringify({synthetic:true,request_key:requestKey})));
       if(scope!==this.#scope)return;
