@@ -24,6 +24,47 @@ caregiver delegation, consent, live model, biomedical retrieval or deployment is
 introduced. The backend remains responsible for authorization. An authorized
 request can complete after a later grant change; this UI is not a consent service.
 
+## Integrated read-only Records view (draft on #193)
+
+This integration **reuses all 17 unchanged source-owned React files from #181**
+and mounts the authorized received-record contract from #193. No second
+patient, request, source or access store is introduced.
+
+- The **Records** navigation works only with a selected, separately readable
+  canonical patient. "Refresh authorized requests" calls the source-owned
+  `GET /v1/patients/{id}/record-requests` under `patient_read` and
+  `record_request_read`. It does not fabricate documents or send requests.
+- Received state, historical amendment reconciliation and revoked-binding
+  warnings come from the exact PostgreSQL receipt projection. A caller without
+  independent `source_read` can see the operational received status but not
+  source identifiers or hashes.
+- Original text is **never loaded automatically**. Each read is an explicit
+  action against `GET .../cases/{case_id}/sources/{source_id}`, additionally
+  requiring `source_original_read`. The response's selected case, version
+  and SHA-256 must match the authorized receipt reference; the UI recomputes
+  the original UTF-8 SHA-256 before showing the text.
+- Patient selection/create, credential replacement, disconnect, refused
+  record refresh, and in-flight response supersession clear old source text
+  and sensitive record references. No credential, patient or original is stored
+  in localStorage/sessionStorage/cookies; the server remains authoritative.
+- An amended source remains explicitly **historical**; "received" is an
+  operational document receipt, not clinical review or validated provider
+  identity. The UI cannot approve, reassign, reconcile or alter evidence.
+
+The hosted web runner tests typed-client denials and real Chromium over the
+existing PostgreSQL 16 API. Its fictional fixture creates a canonical patient,
+qualified case binding, request, original report and immutable receipt; it
+checks authorized viewing, independent source and original grants, revocation,
+no stale text, and 390px containment. Screenshots are retained only as
+synthetic verification artifacts. No added npm packages or Next.js.
+
+This is **not** the original-file upload UI, general case-document browser,
+signed review workflow, Patient World Model or clinical deployment.
+Consent, professional identity, rights, external institution verification,
+production access/auditing/RLS, original-file processing beyond the strict
+fictional text contract and full React↔clinical-Composer integration remain
+independent release gates. Continue to keep every parent PR draft/unmerged.
+
 ## Development setup
 
 The backend instructions and exact Python dependency gate remain in
