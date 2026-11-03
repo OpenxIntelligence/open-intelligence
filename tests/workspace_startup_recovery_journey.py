@@ -31,6 +31,22 @@ def settle(j: Journey) -> None:
     j.cd.evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
 
 
+def drain_reads(j: Journey) -> None:
+    j.cd.evaluate("""new Promise((resolve,reject) => {
+      const start=performance.now();let stable=null, previous=-1;
+      const check=() => {
+        const probe=window.__startupProbe, now=performance.now();
+        if(probe.pending || probe.finished!==previous) stable=null;
+        else if(stable===null) stable=now;
+        previous=probe.finished;
+        if(stable!==null && now-stable>=100) return resolve();
+        if(now-start>10000) return reject(Error('Startup reads did not settle'));
+        setTimeout(check,25);
+      };check();
+    })""")
+    settle(j)
+
+
 def ready(j: Journey, case_id: str = 'CASE-ALPHA') -> None:
     value = json.dumps(case_id)
     j.cd.wait(f'caseId === {value} && active?.case.case_id === {value} && renderedCaseId === {value}',
@@ -66,23 +82,21 @@ def load(j: Journey, *, failures: int = 0, mode: str = 'http', route: str = 'inc
     config = json.dumps({'remaining': failures, 'mode': mode})
     script = r"""(() => {
       const config=CONFIG, original=window.fetch.bind(window);
-      const probe=window.__startupProbe={rosters:0, posts:0, failures:0, completed:0,
+      const probe=window.__startupProbe={rosters:0, posts:0, failures:0, completed:0, pending:0, finished:0,
         states:{}, remaining:config.remaining, mode:config.mode, held:false, released:false};
       window.fetch=async (input,init) => {
         const path=new URL(typeof input==='string' ? input : input.url, location.href).pathname;
         const method=(init?.method || input?.method || 'GET').toUpperCase();
         if(path==='/api/cases' && method==='POST') probe.posts++;
         const state=path.match(/^\/api\/cases\/([^/]+)\/state$/);
-        if(state && method==='GET') {
-          probe.states[state[1]]=(probe.states[state[1]] || 0)+1;
-          if(probe.failCanonical && state[1]==='CASE-ALPHA' && probe.states[state[1]]===2)
-            return new Response(JSON.stringify({error:'controlled initial chart failure'}),
-              {status:503,headers:{'Content-Type':'application/json'}});
-        }
-        if(path!=='/api/cases' || method!=='GET') return original(input,init);
-        const number=++probe.rosters;
+        const roster=path==='/api/cases' && method==='GET';
+        if(!roster && !(state && method==='GET')) return original(input,init);
+        probe.pending++;
+        const number=roster ? ++probe.rosters : (probe.states[state[1]]=(probe.states[state[1]] || 0)+1);
         try {
-          if(number===1 && probe.mode.startsWith('hold')) {
+          const hold=number===1 && (roster ? ['hold-success','hold-failure'].includes(probe.mode)
+            : probe.mode==='hold-board' && state[1]==='CASE-ALPHA');
+          if(hold) {
             const response=await original(input,init);
             await response.clone().text();
             probe.held=true;
@@ -90,7 +104,10 @@ def load(j: Journey, *, failures: int = 0, mode: str = 'http', route: str = 'inc
             if(probe.mode==='hold-failure') throw Error('PRIVATE-STARTUP-DETAIL');
             return response;
           }
-          if(probe.remaining>0) {
+          if(state && probe.failCanonical && state[1]==='CASE-ALPHA' && number===2)
+            return new Response(JSON.stringify({error:'controlled initial chart failure'}),
+              {status:503,headers:{'Content-Type':'application/json'}});
+          if(roster && probe.remaining>0) {
             probe.remaining--;probe.failures++;
             if(probe.mode==='network') throw Error('PRIVATE-STARTUP-DETAIL');
             if(probe.mode==='malformed') return new Response(JSON.stringify({unexpected:'shape'}),
@@ -98,8 +115,10 @@ def load(j: Journey, *, failures: int = 0, mode: str = 'http', route: str = 'inc
             return new Response(JSON.stringify({error:'PRIVATE-STARTUP-DETAIL'}),
               {status:503,headers:{'Content-Type':'application/json'}});
           }
-          return await original(input,init);
-        } finally {probe.completed++;}
+          const response=await original(input,init);
+          await response.clone().text();
+          return response;
+        } finally {if(roster)probe.completed++;probe.pending--;probe.finished++;}
       };
       if(config.mode==='chart-failure') probe.failCanonical=true;
     })();""".replace('CONFIG', config)
@@ -155,6 +174,20 @@ def initial_failure(j: Journey, *, mode: str = 'http', route: str = 'incoming-bo
     load(j, failures=repeats, mode=mode, route=route)
     expect_failed(j)
     before = observe(j)
+    if route == 'incoming-board':
+        j.fill('#case-search', 'Alpha')
+    if route == 'patient-home':
+        j.viewport(320)
+        settle(j)
+        j.no_overflow('Unavailable first roster on a narrow patient deep link')
+        j.cd.evaluate("document.querySelector('#workspace-title').focus()")
+        for _ in range(12):
+            j.key('Tab', 9)
+            if j.cd.evaluate("document.activeElement.id === 'workspace-startup-retry'"):
+                break
+        j.check(j.cd.evaluate("document.activeElement.id === 'workspace-startup-retry'"),
+                'Startup retry is reachable in the native Tab order on a narrow patient view')
+        j.capture('startup-unavailable-mobile')
     for attempt in range(repeats):
         recovery_action(j, keyboard=attempt == 0)
         if attempt + 1 < repeats:
@@ -166,11 +199,28 @@ def initial_failure(j: Journey, *, mode: str = 'http', route: str = 'incoming-bo
     j.check(after['route'] == before['route'] and after['audience'] == before['audience'],
             'Startup recovery preserves the requested destination and presentation', {'before': before, 'after': after})
     j.check(after['probe']['rosters'] == repeats + 1, 'Each completed retry adds one roster read')
+    if route == 'incoming-board':
+        j.check(j.cd.evaluate("document.querySelector('#case-search').value === 'Alpha' && "
+                             "!document.querySelector('#incoming-list [data-case-id=\"CASE-ALPHA\"]').hidden && "
+                             "document.querySelector('#incoming-list [data-case-id=\"CASE-BETA\"]').hidden"),
+                'Startup retry preserves the entered worklist search and its filter')
+    j.viewport(1440)
+    settle(j)
     j.go('overview')
     beta_before = j.cd.evaluate("window.__startupProbe.states['CASE-BETA'] || 0")
-    j.cd.evaluate("document.querySelector('#case-picker').focus()")
+    j.cd.evaluate("""(() => {
+      const picker=document.querySelector('#case-picker');
+      window.__startupSelection=null;
+      picker.addEventListener('change',event=>{
+        window.__startupSelection={trusted:event.isTrusted,value:picker.value};
+      },{once:true});
+      picker.focus();
+    })()""")
     j.key('ArrowDown', 40)
+    j.key('Enter', 13)
     ready(j, 'CASE-BETA')
+    j.check(j.cd.evaluate('window.__startupSelection') == {'trusted': True, 'value': 'CASE-BETA'},
+            'Recovered case switching uses a trusted native picker change')
     j.check(j.cd.evaluate("window.__startupProbe.states['CASE-BETA']") == beta_before + 1,
             'A native case selection after recovery makes exactly one canonical state request')
     j.capture('startup-recovered')
@@ -266,8 +316,8 @@ def empty_external_creation(j: Journey) -> None:
     j.capture('empty-refresh-discovery')
 
 
-def creation_supersedes_initial(j: Journey, *, fail: bool = False) -> None:
-    load(j, mode='hold-failure' if fail else 'hold-success')
+def creation_supersedes_initial(j: Journey, *, fail: bool = False, board: bool = False) -> None:
+    load(j, mode='hold-board' if board else 'hold-failure' if fail else 'hold-success')
     create(j)
     ready(j, 'CASE-GAMMA')
     j.cd.wait("document.body.dataset.view === 'source-intake'", 'created case intake destination')
@@ -276,7 +326,7 @@ def creation_supersedes_initial(j: Journey, *, fail: bool = False) -> None:
             'Creation starts a fresh roster read and activates the newly created case', before)
     j.cd.evaluate('window.__startupProbe.release()')
     j.cd.wait('window.__startupProbe.completed >= 2', 'obsolete startup result completed')
-    settle(j)
+    drain_reads(j)
     after = observe(j)
     j.check(after['caseId'] == after['active'] == after['rendered'] == after['selected'] == 'CASE-GAMMA',
             'Late initial success/error cannot replace the created case', after)
@@ -289,16 +339,18 @@ def creation_supersedes_initial(j: Journey, *, fail: bool = False) -> None:
 
 
 def saved_creation_failed_load(j: Journey) -> None:
-    load(j)
-    j.cd.wait("document.body.dataset.workspaceState === 'empty'", 'initial empty workspace')
+    load(j, failures=1)
+    expect_failed(j)
     j.cd.evaluate('window.__startupProbe.remaining=1')
     create(j)
-    j.cd.wait('window.__startupProbe.failures === 1', 'post-creation roster failure')
+    j.cd.wait('window.__startupProbe.failures === 2', 'post-creation roster failure')
     j.cd.wait("!document.querySelector('#case-create-submit').disabled", 'creation callback settled')
     settle(j)
     expect_failed(j)
     before = observe(j)
-    j.check(j.read('api/cases') == [{'case_id': 'CASE-GAMMA', 'label': 'Fictional case Gamma', 'synthetic': 1}],
+    roster = j.read('api/cases')
+    j.check([case['case_id'] for case in roster] == ['CASE-ALPHA', 'CASE-BETA', 'CASE-GAMMA'] and
+            roster[-1] == {'case_id': 'CASE-GAMMA', 'label': 'Fictional case Gamma', 'synthetic': 1},
             'Creation is durable even though activation failed')
     j.check('created' in before['creation'].lower() and 'retry' in before['creation'].lower(),
             'Creation feedback distinguishes a saved workspace from unavailable activation', before)
@@ -306,7 +358,7 @@ def saved_creation_failed_load(j: Journey) -> None:
     ready(j, 'CASE-GAMMA')
     j.cd.wait("document.body.dataset.view === 'source-intake'", 'deferred creation activation completes intake navigation')
     after = observe(j)
-    j.check(after['probe']['posts'] == 1 and len(j.read('api/cases')) == 1,
+    j.check(after['probe']['posts'] == 1 and len(j.read('api/cases')) == 3,
             'Activation retry does not repeat the successful creation write', after)
     j.check(not after['regionVisible'] and 'retry' not in after['creation'].lower(),
             'Successful activation clears its obsolete retry guidance', after)
@@ -375,7 +427,8 @@ def main() -> None:
         ('empty-external-creation', empty_external_creation, False, False),
         ('late-initial-success', creation_supersedes_initial, False, True),
         ('late-initial-failure', lambda j: creation_supersedes_initial(j, fail=True), False, True),
-        ('saved-creation-failed-load', saved_creation_failed_load, False, False),
+        ('late-initial-board', lambda j: creation_supersedes_initial(j, board=True), False, True),
+        ('saved-creation-failed-load', saved_creation_failed_load, False, True),
         ('notice-and-ready-owner', unrelated_notice_and_ready_guard, False, True),
         ('initial-chart-failure', initial_chart_failure, False, True),
     ]

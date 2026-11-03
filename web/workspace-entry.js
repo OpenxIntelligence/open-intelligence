@@ -7,7 +7,7 @@
   const current = () => {
     try { return readyCase(); } catch (_) { return null; }
   };
-  let refreshQueued=false, lastScopedCase=null, lastPresentedCase=null;
+  let refreshQueued=false, lastScopedCase=null, lastPresentedCase=null, pendingCreatedCase=null;
   const intake=globalThis.OIIntake.mount({
     api,
     getCase:current,
@@ -15,10 +15,12 @@
     created:async id => {
       const picker=$('case-picker');
       if (!caseId) {
-        // The original empty startup exits before binding case change. Run it
-        // once after first creation; repeated creation uses its existing listener.
-        picker.replaceChildren();
-        await initialize();
+        // The POST has succeeded. Retain this activation intent across read
+        // failures and supersede an older startup snapshot with a fresh roster.
+        pendingCreatedCase=id;
+        await initialize(id);
+        schedule();
+        return current()===id;
       } else {
         const list=await api('/api/cases'), selected=caseId;
         picker.replaceChildren();
@@ -65,26 +67,33 @@
     // picker listeners can run before that decision, with microtasks between them.
     if(caseId!==lastScopedCase) {
       lastScopedCase=caseId;
+      if(caseId && pendingCreatedCase && caseId!==pendingCreatedCase) pendingCreatedCase=null;
       intake.resetScope();
     }
-    const selected=current(), unavailable=Boolean(caseId) && !selected;
+    const selected=current(), unavailable=!selected && (Boolean(caseId) || workspaceStartupPhase!=='empty');
     $('journey-steps').hidden=unavailable;
     $('source-intake-case').hidden=unavailable;
     if(selected) {
       document.body.dataset.workspaceState='ready';
       $('case-picker').disabled=false;
       renderIntakePresentation(active);
-    } else if(!caseId && !$('case-picker').options.length &&
-              ['No synthetic cases found','Create your first case workspace'].includes($('case-heading').textContent)) {
+      if(pendingCreatedCase===selected) {
+        pendingCreatedCase=null;
+        $('case-create-status').textContent='Workspace created. Import its first original source below.';
+        $('case-create-status').dataset.error='false';
+        workspacePresentation.navigate('source-intake');
+        $('source-intake').open=true;
+        $('source-intake').scrollIntoView({block:'start'});
+      }
+    } else if(!caseId && workspaceStartupPhase==='empty') {
       document.body.dataset.workspaceState='empty';
       $('case-picker').disabled=true;
       if($('case-heading').textContent!=='Create your first case workspace')
         $('case-heading').textContent='Create your first case workspace';
-      const message=$('notice');
-      if(message.textContent.includes('seed before opening')) {message.hidden=true;message.textContent='';}
       renderIntakePresentation(null);
     } else if(unavailable) {
-      document.body.dataset.workspaceState='loading';
+      document.body.dataset.workspaceState=workspaceStartupPhase==='failed' ? 'unavailable' : 'loading';
+      $('case-picker').disabled=!caseId;
     }
   }
   function schedule() {
@@ -95,6 +104,7 @@
   for(const id of ['case-heading','source-list','question-list','snapshot-list'])
     observer.observe($(id),{childList:true,subtree:true});
   document.addEventListener('oi:case-selection-changed',schedule);
+  document.addEventListener('oi:workspace-startup-changed',schedule);
   $('new-workspace-button').addEventListener('click',()=>{
     workspacePresentation.navigate('workspace-start');
     $('workspace-start').open=true;$('new-case-panel').open=true;

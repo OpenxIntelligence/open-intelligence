@@ -36,7 +36,7 @@
     <aside class="rail" id="workspace-rail" aria-label="Application navigation">
       <p class="rail-eyebrow" id="rail-workspace-label">Clinical workspace</p>
       <label for="case-picker">Case</label>
-      <select id="case-picker" aria-label="Select synthetic case"></select>
+      <select id="case-picker" aria-label="Select synthetic case" disabled></select>
       <p class="muted tiny">Fictional case data stays on this local machine. There is no identity verification or patient login.</p>
       <details class="section-menu" open>
         <summary>Navigate</summary>
@@ -73,6 +73,10 @@
         </div>
         <p class="presentation-note" id="presentation-note">Presentation preview only. This fictional workspace has no authenticated patient or clinician roles.</p>
       </header>
+      <section id="workspace-startup" class="notice" role="status" aria-live="polite" aria-busy="true" aria-label="Workspace loading status">
+        <p id="workspace-startup-message">Loading the case list…</p>
+        <button id="workspace-startup-retry" type="button" class="button secondary minor" disabled>Loading…</button>
+      </section>
       <section id="case-context" class="case-context" aria-label="Selected patient case">
         <div class="case-identity"><p class="view-question" id="case-context-label">PATIENT CHART</p><div id="case-heading-slot"></div><p id="case-reference" class="muted tiny"></p></div>
         <div class="case-switcher" id="case-select-slot"></div>

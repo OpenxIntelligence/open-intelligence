@@ -59,9 +59,11 @@
         creating=true;$('case-create-submit').disabled=true;
         tell('case-create-status','Creating the workspace in the existing local case ledger…');
         await options.api('/api/cases',payload);
-        await options.created(payload.case_id);
+        const activated=await options.created(payload.case_id);
         createForm.reset();
-        tell('case-create-status','Workspace created. Import its first original source below.');
+        tell('case-create-status',activated===false
+          ? 'Workspace created and saved. Retry loading it to import its first original source.'
+          : 'Workspace created. Import its first original source below.');
       } catch(error) {tell('case-create-status',error.message,true);}
       finally {creating=false;$('case-create-submit').disabled=false;}
     });
