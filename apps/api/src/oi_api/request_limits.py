@@ -13,7 +13,7 @@ class PatientRequestLimit:
         route = scope.get("path", "")
         bounded = route == "/v1/patients" or (
             route.startswith("/v1/patients/") and (
-                route.endswith("/record-requests") or route.endswith("/case-bindings") or
+                route.endswith("/record-requests") or route.endswith("/case-bindings") or route.endswith("/sources") or
                 (("/record-requests/" in route or "/case-bindings/" in route) and route.endswith("/cancel"))
             )
         )
@@ -32,7 +32,7 @@ class PatientRequestLimit:
             try:
                 if int(length) < 0:
                     raise ValueError()
-                if int(length) > 16_384:
+                if int(length) > (72_000 if route.endswith('/sources') else 16_384):
                     await reject(413, "Request body too large")
                     return
             except ValueError:
@@ -46,7 +46,7 @@ class PatientRequestLimit:
                     if message["type"] == "http.disconnect":
                         return
                     chunk = message.get("body", b"")
-                    if len(content) + len(chunk) > 16_384:
+                    if len(content) + len(chunk) > (72_000 if route.endswith('/sources') else 16_384):
                         await reject(413, "Request body too large")
                         return
                     content.extend(chunk)
