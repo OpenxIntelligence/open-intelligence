@@ -3,7 +3,7 @@ on:
   push:
     branches: [feat/connected-workspace-intake-20261102]
   pull_request:
-    branches: [integration/patient-evidence-review-20261102, feat/connected-workspace-intake-20261102]
+    branches: [integration/patient-evidence-review-20261102, feat/connected-workspace-intake-20261102, fix/workspace-preserve-unsaved-context-on-veto-20261102]
 permissions:
   contents: read
 jobs:

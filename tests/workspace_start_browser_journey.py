@@ -141,6 +141,31 @@ def main():
    state=json.load(urlopen(url+'api/cases/'+CASE+'/state'))
    assert next(s for s in state['snapshots'] if s['id']==old['id'])['summary']==old['summary']
    assert next(s for s in state['snapshots'] if s['id']!=old['id'])['state']=='draft'
+
+   # One canonical import UI also supports a bounded inspected multi-file
+   # batch; a current exact duplicate and a wrong-subject original must get
+   # DISTINCT receipts, not a fabricated all-or-nothing success.
+   duplicate_file=Path(tmp)/'duplicate-amended.txt';duplicate_file.write_bytes(AMENDED)
+   foreign_file=Path(tmp)/'foreign-report.txt'
+   foreign_file.write_bytes(ORIGINAL.replace(b'CASE-START',b'CASE-OTHER'))
+   cd.evaluate("document.querySelector('#source-intake').open=true")
+   dom=cd.command('DOM.getDocument')
+   picker=cd.command('DOM.querySelector',{'nodeId':dom['root']['nodeId'],'selector':'#source-file'})
+   cd.command('DOM.setFileInputFiles',{'files':[str(duplicate_file),str(foreign_file)],'nodeId':picker['nodeId']})
+   cd.wait("document.querySelector('#source-file').files.length===2 && !document.querySelector('#source-preview-details').hidden",
+           'two exact originals inspected before import')
+   assert cd.evaluate("document.querySelector('#source-upload-preview').textContent.includes('duplicate-amended.txt') && document.querySelector('#source-upload-preview').textContent.includes('foreign-report.txt')")
+   assert cd.evaluate("document.querySelector('#source-import-receipts').children.length===0")
+   cd.evaluate("document.querySelector('#source-upload-confirm').click();document.querySelector('#source-upload-form').requestSubmit()")
+   cd.wait("document.querySelector('#source-import-receipts').children.length===2",
+           'two individual batch import receipts')
+   receipts=cd.evaluate("[...document.querySelector('#source-import-receipts').children].map(n=>n.dataset.status).join(',')")
+   assert receipts=='duplicate,quarantined',receipts
+   unchanged=json.load(urlopen(url+'api/cases/'+CASE+'/state'))
+   assert len(unchanged['sources'])==2
+   assert len(unchanged['quarantines'])==1
+   assert json.load(urlopen(url+'api/cases/CASE-OTHER/state'))['sources']==[]
+
    cd.command('Emulation.setDeviceMetricsOverride',{'width':1440,'height':1000,'deviceScaleFactor':1,'mobile':False})
    artifacts=os.environ.get('OI_INTAKE_ARTIFACT_DIR')
    if artifacts:
