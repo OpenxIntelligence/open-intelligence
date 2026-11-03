@@ -183,6 +183,9 @@ class Handler(BaseHTTPRequestHandler):
             if exported:
                 contents = store.export_markdown(exported[1], int(exported[2])).encode("utf-8")
                 return self._send(200, contents, "text/markdown; charset=utf-8")
+            re_review_list = re.fullmatch(rf"/api/cases/{ID_PART}/re-review-tasks", path)
+            if re_review_list:
+                return self._json(200, store.list_re_review_tasks(re_review_list[1]))
             return self._json(404, {"error": "Route not found"})
         except InvalidInput as error:
             return self._json(422, {"error": str(error)})
@@ -306,6 +309,11 @@ class Handler(BaseHTTPRequestHandler):
                 if review:
                     store.acknowledge_demo_review(review[1], int(review[2]), data.get("reviewer_label"))
                     return self._json(200, {"result": "acknowledged_in_demo"})
+                re_review_close = re.fullmatch(rf"/api/cases/{ID_PART}/re-review-tasks/([0-9]+)/close", path)
+                if re_review_close:
+                    return self._json(200, store.close_re_review_task(
+                        re_review_close[1], int(re_review_close[2]),
+                        data.get("closing_snapshot_id"), data.get("no_change_note")))
                 option_create = re.fullmatch(rf"/api/cases/{ID_PART}/options", path)
                 if option_create:
                     option_id = store.create_option(
