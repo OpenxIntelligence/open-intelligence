@@ -101,6 +101,55 @@ clinical records, human review attestations, verified patient identity, consent,
 external hospital connections or a production security boundary. No clinical
 data, open-model inference or guidelines may enter this synthetic environment.
 
+## Canonical original-source persistence (synthetic H1 development)
+
+Alembic revision `0005_source_versions` ports the **existing**
+`CaseStore.source_versions` / `assertions` and wrong-case quarantine behavior
+to one H1 PostgreSQL 16 source owner: `clinical_source.source_versions`,
+`clinical_source.assertions` and `clinical_source.quarantine`. This is a
+migration of the existing first-party source contract, **not** a separate patient,
+clinical truth, pathology or evidence service. The case foreign key targets the
+one `coordination.patient_case_bindings` mapping, itself linked to canonical
+`identity.identity_patients`.
+
+The source-owner parser remains unchanged: independently authored original
+`OI-SYNTHETIC-REPORT/1` UTF-8 LF-only, at most 64 KiB, with exact case,
+document, type, event/issued dates and finding-key/state/original quotation
+lines. The H1 port preserves the input bytes byte-for-byte, SHA-256, original
+line numbers, exact version/line citations and historical versions. Changed
+document text requires `Amends: DOCUMENT@LATEST`; an amendment cannot silently
+change event date, specimen or document type. The previous original is
+`superseded` but never deleted or rewritten; new version and assertions commit
+atomically with the existing patient-domain event. Invalid/cross-case document
+headers are quarantined instead of creating source-backed assertions.
+
+Typed synthetic-only H1 API:
+- `POST /v1/patients/{patient_id}/cases/{case_id}/sources` with `synthetic:true`
+  and `original_text`: requires patient_read plus independent source_import,
+  case binding, active patient, exact originating organization/actor/purpose.
+- `GET /v1/patients/{patient_id}/cases/{case_id}/sources`: requires patient_read
+  plus source_read. Returns source/version receipts and **as-reported**
+  assertions, not clinical interpretations.
+- `GET /v1/patients/{patient_id}/cases/{case_id}/sources/{source_id}`: separately
+  requires patient_read plus source_original_read to retrieve the exact original
+  fictional text and hash, including superseded historical originals.
+
+No existing source, report or patient ledger has been copied into a second
+application database. The unmerged Python/SQLite reference remains a separate
+acceptance oracle while the PostgreSQL port is reviewed. All H1 routes explicitly
+report **no clinical interpretation** and **no integrated research-review
+invalidation**; original-source amendments do not yet automatically reissue
+Composer or clinician review. Outside records requests are not sent to real
+institutions. A synthetic case-binding review label is **not verified identity,
+patient consent or rights to source content**. No PDF/DICOM ingestion or
+real-patient medical record is supported.
+
+The next source-owned integration must authorize a received-record receipt
+against a current, exact source version, with separate patient/case/organization
+checks, atomic request+receipt+audit history, amendment invalidation and one
+durable human review queue. Until that is tested, H1 records acquisition still
+reports source receipts as unavailable and no clinical interpretation is granted.
+
 ## Product and release boundary
 
 The first integrated product remains patient information → source-linked World
