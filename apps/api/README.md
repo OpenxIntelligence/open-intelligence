@@ -4,6 +4,22 @@ This is the FastAPI/PostgreSQL 16 composition root for [issue #112](https://gith
 It mounts the existing canonical patient registry and a small synthetic record-request operational domain, with migrations and durable event receipts.
 The Python/SQLite prototype remains the source/evidence/investigation oracle.
 
+## Current combined source, question and image candidate
+
+The H1 candidate now reconciles the canonical source/World Model and persistent
+question owner from #244 with the original-image custody owner from #242.
+Both published migration histories are retained under the explicit
+`0008_merge_image_questions` head. Source, question and image grants remain
+independent; an amendment preserves historical question anchors and image bytes
+while requiring reassessment and explicit image relinking. Image response
+preparation now precedes the final authority check and committed event.
+
+See [the combined contract and acceptance scope](../../docs/engineering/H1_IMAGE_QUESTION_CONVERGENCE.md).
+The domain sections below retain their incremental history; statements that
+source persistence, received records or image custody are still unavailable
+describe earlier slices, not this combined candidate. The existing fictional
+authorization and clinical-release limits still apply.
+
 ## PostgreSQL record-acquisition continuation (draft, synthetic only)
 
 The H1 API now includes a **source-independent pending-record request** domain.
@@ -258,8 +274,9 @@ only token hashes and synthetic grants belong there.
 
 The fixture schema is version oi.synthetic-access/1, with credentials containing
 token_sha256, actor, organization, purpose, actions, patient_ids and expires_at.
-Purpose is operations or research; supported actions are patient_create and
-patient_read. Expiry must include a timezone. Unknown fields, duplicate token
+Purpose is operations or research. Actions are explicitly enumerated by
+Principal in access.py; patient, source, acquisition, binding and image actions
+are independently granted. No new image action is implied by older source grants. Expiry must include a timezone. Unknown fields, duplicate token
 hashes, oversized/invalid files and unavailable files fail closed. Bearer tokens
 must be 32–256 ASCII letters, digits, dots, underscores, tildes or hyphens.
 
@@ -287,14 +304,80 @@ Replace access.json atomically to change grants. Changes apply on the next
 request; an already authorized synchronous request may finish. This is not a
 distributed consent/revocation service.
 
+## Source-bound original images (0006_image_custody)
+
+This increment is based on PR #222 at `911b0767c671ae6f40caf20f204aedf1e9df2ab0`.
+The original source, canonical identity and event journal keep their existing
+owners. Images add immutable `clinical_source.dicom_objects` and
+`clinical_source.source_image_links` children. The source report is still the
+existing original text format; binary bytes do not enter that parser.
+
+All routes below use the prefix
+`/v1/patients/{patient_id}/cases/{case_id}/sources/{source_id}/images`.
+
+| Method / suffix | Additional action | Result |
+|---|---|---|
+| POST collection, exact `Content-Type: application/dicom` | image_import | 201 for new original or explicit new source link; 200 for identical retry; server-derived image ID, digest and identifiers. |
+| GET collection | image_read | Source-bound metadata index and committed access receipt. |
+| GET /{image_id} | image_original_read | Exact original bytes, application/dicom, no-store, generic download filename and X-OI-Access-Receipt. |
+
+Each also requires patient_read, the exact patient grant, the persisted
+organization, active case binding and matching purpose. They refresh the same
+credential before committing. Existing source_read/source_original_read grants
+do not disclose image metadata or bytes. Query parameters and content encoding
+are rejected; callers cannot override image UIDs, expected digest or backend URL.
+
+The parent must be a current imaging report whose original bytes, hash, case,
+type, dates and amendment edge pass the existing validator. `PatientID` must
+exactly equal its locked source binding's `source_subject_ref`,
+`IssuerOfPatientID` must equal `source_organization + "/" + source_system`,
+and StudyDate must equal the report event date. Both source keys forbid `/`,
+so equal subject/system strings from different source organizations remain
+distinct. A qualified issuer longer than 64 bytes is outside this profile. This development convention does not verify the authenticity of an
+external institution or a clinical patient; source_identity_verified stays false.
+
+Same case/SOP with changed bytes returns conflict. Report amendment immediately
+makes the old link unavailable to current-image routes. An explicit import of
+the same bytes against the amendment creates a new immutable link to the same
+image ID; original bytes are not duplicated or moved. Historical source text
+remains readable through its original endpoint. Stored original-image reads
+recompute the digest, reparse metadata and compare both to custody and binding.
+
+The bounded profile is one uncompressed Explicit VR Little Endian CT object,
+single frame, 16-bit MONOCHROME2. The parser validates file framing, lengths,
+unique ordered tags, file-meta identity, identifiers, date and pixel geometry
+before using the typed parser; it performs no pixel decoding or clinical
+interpretation. Unsupported syntax, sequences and malformed input fail closed.
+Maximum input is 2 MiB, with 256 originals/64 MiB per case and no archives.
+These are development limits, not a claim of general CT-study ingestion.
+
+Read receipts contain opaque IDs, hashes and counts, not raw image identifiers,
+originals or tokens. The whole buffered response is withheld until final access
+checks and event commit succeed. The case lock serializes local reads and
+amendment/revocation; a receipt records a grant for prepared disclosure, not
+client delivery or distributed revocation atomicity. No separate PACS endpoint
+is deployed or protected by this change.
+
+Run the actual restart/restore acceptance with Docker available:
+
+    python apps/api/tools/verify_images_compose.py
+
+It creates two independently authored originals, checks exact bytes and
+permissions, restarts API/PostgreSQL, amends and explicitly relinks sources,
+revokes the binding, and compares pg_dump/pg_restore bytes and access history.
+The executable API/database cases live in test_image_custody.py and
+test_image_migrations.py; bounded parser and HTTP ingress have separate tests.
+See the [implementation record](../../docs/superpowers/plans/2026-11-03-h1-image-custody.md)
+for scope, alternatives and remaining boundaries.
+
 ## Run without containers
 
 Use Python 3.12 on the reviewed platform. Download is an explicit build step:
 
     python3.12 -m venv /tmp/oi-h1-api-venv
-    /tmp/oi-h1-api-venv/bin/python -m pip download --require-hashes --only-binary=:all: --dest /tmp/oi-h1-wheels -r apps/api/requirements.lock
+    /tmp/oi-h1-api-venv/bin/python apps/api/tools/prepare_dependencies.py --wheel-dir /tmp/oi-h1-wheels
     python3.12 apps/api/tools/check_dependencies.py --wheel-dir /tmp/oi-h1-wheels --sbom /tmp/oi-h1-sbom.json
-    /tmp/oi-h1-api-venv/bin/python -m pip install --no-index --find-links /tmp/oi-h1-wheels --require-hashes -r apps/api/requirements.lock
+    /tmp/oi-h1-api-venv/bin/python -m pip install --force-reinstall --no-deps --no-index --find-links /tmp/oi-h1-wheels --require-hashes -r apps/api/requirements.lock
     /tmp/oi-h1-api-venv/bin/python -m pip check
     PYTHONPATH=apps/api/src:src /tmp/oi-h1-api-venv/bin/python -m oi_api
 
@@ -318,7 +401,7 @@ URLs, SQL, source text and rejected validation inputs.
 | Route | Behavior |
 |---|---|
 | GET /health | Process liveness; 200 even if the database is unavailable. |
-| GET /health/ready | 200 only for PostgreSQL major 16 at revision 0002_patient_registry; bounded 503 otherwise. |
+| GET /health/ready | 200 only for PostgreSQL major 16 at the single revision 0008_merge_image_questions; bounded 503 otherwise. |
 | GET /v1 | Reports synthetic_patient_registry stage, implemented synthetic capabilities and the configured authentication mode. |
 | GET /v1/openapi.json | Local typed contract, including bearer security; no CDN documentation UI. |
 | POST /v1/patients | Authenticated synthetic creation; trusted actor/org/purpose; 201 for new identity or 200 for identical retry. |
@@ -328,8 +411,9 @@ The manifest's patient_data_enabled: false means identifiable/clinical patient
 data is excluded; synthetic_registry_enabled: true reports the bounded identity
 capability. Authentication is deny_all, synthetic_fixture or trusted_provider.
 All responses use Cache-Control: no-store. External or ambiguous Host headers
-are rejected. POST bodies are bounded to 16 KiB, including chunked bodies, with
-a five-second read deadline. Malformed/duplicate credentials are rejected.
+are rejected. Identity command bodies are bounded to 16 KiB; source JSON envelopes to
+72,000 bytes; image originals to 2 MiB. These limits include chunked bodies,
+with a five-second read deadline. Malformed/duplicate credentials are rejected.
 Conflict is 409, invalid input 422, oversized body 413, read timeout 408, and
 unavailable authority/database 503.
 
