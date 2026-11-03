@@ -25,6 +25,18 @@ def exercise(cd, credentials, write_grants):
             cd.command('Input.dispatchKeyEvent', {'type': 'char', 'text': '\r', 'key': name, 'windowsVirtualKeyCode': code})
         cd.command('Input.dispatchKeyEvent', {'type': 'keyUp', 'key': name, 'code': name, 'windowsVirtualKeyCode': code})
 
+    # Current-run source-entry audit using the actual authorized response.
+    entry_observations = []
+    for width in (390, 1280):
+        cd.command('Emulation.setDeviceMetricsOverride', {'width':width,'height':900,'deviceScaleFactor':1,'mobile':False})
+        cd.evaluate("document.querySelector('[data-testid=load-sources]').focus()")
+        key('Enter', 13)
+        cd.wait("document.querySelectorAll('[data-testid=source-version]').length===2", 'source-entry authorized response')
+        cd.evaluate("new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))")
+        entry_observations.append(cd.evaluate("(()=>{const r=document.querySelector('#sources-heading').getBoundingClientRect();return {width:innerWidth,activeTag:document.activeElement.tagName,activeId:document.activeElement.id,activeText:document.activeElement.textContent.slice(0,100),headingTop:r.top,headingBottom:r.bottom,viewport:innerHeight}})()"))
+        (out/f'source-entry-{width}.png').write_bytes(base64.b64decode(cd.command('Page.captureScreenshot', {'format':'png'})['data']))
+    (out/'source-entry-observations.json').write_text(json.dumps(entry_observations, indent=2))
+
     cd.command('Emulation.setDeviceMetricsOverride', {'width':1280,'height':1000,'deviceScaleFactor':1,'mobile':False})
     cd.evaluate("document.querySelector('#sources-heading').scrollIntoView()")
     (out/'reading-before-or-after.png').write_bytes(base64.b64decode(cd.command('Page.captureScreenshot', {'format':'png'})['data']))
