@@ -12,8 +12,11 @@ as current. A correction reopens affected work while keeping older reports'
 captured selections and page anchors intact.
 
 The [annotation revision contract](ANNOTATION_REVISIONS.md) owns this increment's
-API, migration, verification and limitations. Full combined verification is in
-progress. The completed #215 checkpoint below is the inherited baseline.
+API, migration, verification and limitations. [PR #229](https://github.com/OpenxIntelligence/open-intelligence/pull/229)
+implementation `ee102497` passed exact-head CI 41566545004 (467 Python, 146 JS,
+seven integration browser journeys) and UI run 41566545049 attempt 2 (all four
+UI journeys). Artifact and screenshot checks are recorded in that contract.
+The completed #215 checkpoint below is the inherited baseline.
 
 ## Prior PDF and manual-intake convergence — 3 November 2026 UTC
 

@@ -11,9 +11,16 @@ older reports retain the revision and page anchors they captured. A correction
 invalidates dependent work and reopens its question. Unreviewed model attempts
 and manually transcribed numeric measurements retain #189's existing safeguards.
 
-Implementation is present. Local checks passed all 146 JavaScript cases and
-466 of 467 Python tests; an inherited PDF deadline failure passed alone on rerun.
-Hosted full regression and browser verification are pending. See [the maintained revision contract](engineering/ANNOTATION_REVISIONS.md).
+Implemented and hosted-verified in [draft PR #229](https://github.com/OpenxIntelligence/open-intelligence/pull/229).
+Exact implementation `ee102497e173ac80f52a1d94f25c626dc82faf4a` passed
+[CI 41566545004](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41566545004):
+467 Python tests, 146 JavaScript checks, 80 offline checks with 18 optional skips,
+and all seven integration Chrome journeys. [UI run 41566545049 attempt 2](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41566545049/attempts/2)
+passed the overlapping regression and all four UI journeys. Its first attempt
+hit Chrome startup timeout before app interaction; unchanged-code retry passed.
+The local full run's inherited PDF deadline failure and successful isolated
+rerun remain recorded in the contract. Artifact 13199631798 checksum and all
+126 source hashes matched; desktop/mobile/current-patient screenshots inspected. See [the maintained revision contract](engineering/ANNOTATION_REVISIONS.md).
 This is the synthetic behavioral reference, not a completed authenticated H1
 migration, full MVP, clinical approval or deployment. Earlier checkpoints below
 retain their original scope; their statements about absent annotation editing

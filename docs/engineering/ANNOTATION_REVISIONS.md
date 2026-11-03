@@ -5,7 +5,8 @@ with PDF intake and the Patient World Model from [PR #215](https://github.com/Op
 The exact integration base is `3be1106b5cd34523c4746e2df6f123048beb5659`;
 its tree is `b03dc8a5d14f2bf7ca4c99a4c8b72491812015ee`.
 This increment extends OI-006, OI-007, OI-009 and OI-010. Implementation and
-verification are in progress; no merge, deployment or clinical release is implied.
+hosted engineering verification are complete in [draft PR #229](https://github.com/OpenxIntelligence/open-intelligence/pull/229).
+It remains unmerged and undeployed; no clinical release is implied.
 
 ## Patient outcome and scope
 
@@ -115,13 +116,59 @@ The existing durable computation owner reconciles freshness on read/execute.
 
 ## Current convergence verification
 
+Implementation head `ee102497e173ac80f52a1d94f25c626dc82faf4a`, tree
+`f46fcc5a646a24e7a3dc95167439a41eb52ee42c`, passed
+[exact-head integration CI 41566545004](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41566545004):
+**467 Python/domain/HTTP tests** in 75.376 seconds, **146 JavaScript checks**
+across eight suites, **80 offline checks with 18 optional skips**, and **all seven
+actual Chrome journeys**. Runtime: Python 3.12.15, pypdf 6.21.4, Node v24.22.1,
+Chrome 156.0.8078.47. The exact pinned dependency was installed with its required
+wheel hash. No new dependency or parser/resource-limit change was introduced.
+
+[UI CI 41566545049, attempt 2](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41566545049/attempts/2)
+also passed on generated merge `faef775dadff162d0ed6a5fa1064787583be8eed`:
+467 Python tests, 24 source-dialog JavaScript checks, and four browser journeys
+covering the integrated source/evidence workflow, patient record and question
+handoff, source-dialog races, and keyboard/desktop/mobile layout. These counts
+overlap the integration suite. Attempt 1 timed out launching Chrome before app
+interaction; retry passed with unchanged code and assertions.
+
+The new PDF browser journey proves a two-page original upload → exact page-two
+selection → sourced report/demo acknowledgment → correction with both hashes →
+current patient view and usable Composer context → old report export with its
+captured selection/page/revision → byte-identical original download → stale
+narrative rejection with all three fields preserved → process restart → new
+report and explicit demo acknowledgment. It retained one original source,
+two annotation revisions, and distinct historical/current report states. The
+ordinary-text journey additionally verifies original-only intake, later selection,
+explicit reselection and delayed case isolation. Neither invokes a live model.
+
+Downloaded artifact `13199631798` is 2,427,180 bytes. Its SHA-256 matched
+`9f7d56bc8dc0cc57b25d906280f7e1ac234062e9380148ac4d6c1e6037dbf146`.
+All 126 recorded source hashes matched the local implementation. The desktop
+correction, 390 px correction and current patient-record screenshots were inspected.
+UI artifact `13199812063` is recorded separately by the successful UI attempt.
+Existing Python 3.13 UI logs contain inherited unclosed SQLite ResourceWarnings;
+this is not a warning-free or clinically validated result.
+
+### Code and acceptance locations
+
+- `src/open_intelligence/document_intake.py`: saved-rendition consistency and exact selection validation.
+- `src/open_intelligence/store.py`: append-only history, migration, atomic current projections, stale-work invalidation and historical report bindings.
+- `src/open_intelligence/world_model.py`, `web/patient-record.js`: strict revision/source association and patient rendering.
+- `src/open_intelligence/__main__.py`, `web/intake.js`, `web/app.js`: bounded API, saved-record editor and stale-draft guards.
+- `tests/test_pdf_document_annotation_revisions.py`, `tests/test_pdf_document_annotation_revisions_http.py`, `tests/test_pdf_world_model.py`: domain, real HTTP and current-projection acceptance.
+- `tests/pdf_annotation_revisions_browser_journey.py`, `tests/document_annotation_revisions_browser_journey.py`: actual PDF/text correction and history workflows.
+
+### Local execution and independent review
+
 Local validation used Python 3.12.14 and the exact pypdf 6.21.4 runtime.
 The complete run executed 467 Python/domain/HTTP tests in 243.868 seconds:
 466 passed; the inherited image-only-page rejection test failed because the
 worker reached its time limit instead of returning its expected extractable-text
 rejection. The unchanged test passed alone in 0.728 seconds. The rejection
-remained fail-closed, and no parser/resource limit was relaxed. Hosted regression
-results remain pending; the local run is not reported as fully passing.
+remained fail-closed, and no parser/resource limit was relaxed. The complete
+hosted runs above passed; this earlier local run is not reported as fully passing.
 
 All 146 JavaScript checks passed across eight suites. The offline data-boundary
 suite passed 80 checks with 18 optional dependency skips. Compile, JavaScript
@@ -132,8 +179,8 @@ checks overlap the full suite and are not additive.
 The new PDF domain, HTTP and projection tests prove corrections and reads after
 restart without re-extraction, exact dual-hash/quote/anchor validation, append-only
 revision/revert identity, rollback, migration, snapshot-bound historical export,
-question reopening and current patient-view provenance. Hosted Chromium must
-still verify the implemented text/PDF correction journeys. Local Chrome launch
+question reopening and current patient-view provenance. Hosted Chromium verified
+the implemented text/PDF correction journeys as recorded above. Local Chrome launch
 is blocked by `socket() failed: Operation not permitted`; no browser pass is
 claimed from that attempt. The prior results below establish the inherited
 ordinary-text baseline only.
