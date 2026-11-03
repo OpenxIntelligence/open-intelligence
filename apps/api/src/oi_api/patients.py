@@ -21,6 +21,7 @@ from .record_requests import PostgresRecordRequests
 from .case_bindings import CanonicalCaseBindings
 from .sources import PostgresSourceVersions
 from .world_model_read import PostgresWorldModelRead
+from .composer_preflight import PostgresSourceComposerPreflight
 
 TOKEN = re.compile(r"[A-Za-z0-9._~-]{32,256}\Z")
 
@@ -348,6 +349,55 @@ class WorldModelSourceRead(Contract):
     limitations: list[str]
 
 
+class PrepareSourceComposer(Contract):
+    synthetic: StrictBool
+    expected_source_snapshot_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_id: str = Field(pattern=r"^SRC-[0-9A-F]{32}$")
+    source_line: int = Field(ge=1, le=10_000)
+    question: str = Field(min_length=8, max_length=500)
+
+    @field_validator("synthetic")
+    @classmethod
+    def synthetic_only(cls, value):
+        if value is not True:
+            raise ValueError("Only fictional Composer preflights are allowed")
+        return value
+
+
+class SelectedComposerSource(Contract):
+    source_id: str
+    document_id: str
+    version: int = Field(ge=1)
+    sha256: str
+    line: int = Field(ge=1)
+    finding_key: str
+    reported_state: str
+    statement: str
+    kind: str
+    event_date: str
+    issued_at: str
+    specimen_id: str | None
+
+
+class PreparedSourceComposer(Contract):
+    contract: Literal["oi.synthetic-source-composer-preflight/1"]
+    patient_id: str
+    case_id: str
+    question: str
+    source_snapshot_sha256: str
+    selected_source: SelectedComposerSource
+    source_context_only: Literal[True]
+    biomedical_evidence_rights_verified: Literal[False]
+    model_execution_authorized: Literal[False]
+    durable_question_created: Literal[False]
+    durable_review_connected: Literal[False]
+    clinical_approval: Literal[False]
+    clinical_interpretation: Literal["not_performed"]
+    reassessment_policy: Literal["revalidate_source_and_authority_before_any_future_write"]
+    limitations: str
+    preflight_sha256: str
+
+
 def patient_router(database: Database, authentication: Authentication) -> APIRouter:
     router = APIRouter(prefix="/v1/patients", tags=["Synthetic patient registry"])
     bearer = HTTPBearer(auto_error=False, scheme_name="SyntheticFixture",
@@ -382,7 +432,7 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
                         return False
                     if action == "patient_create":
                         return subject == context.organization
-                    if action not in {"patient_read", "record_request_create", "record_request_read", "record_request_cancel", "record_request_receive", "case_binding_create", "case_binding_read", "case_binding_revoke", "source_import", "source_read", "source_original_read"} or subject not in context.patient_ids:
+                    if action not in {"patient_read", "record_request_create", "record_request_read", "record_request_cancel", "record_request_receive", "case_binding_create", "case_binding_read", "case_binding_revoke", "source_import", "source_read", "source_original_read", "composer_context_read"} or subject not in context.patient_ids:
                         return False
                     cursor = connection.cursor()
                     try:
@@ -567,6 +617,37 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
             raise HTTPException(404, "Patient unavailable") from None
         return CaseBindingReceipt(**result)
 
+
+
+    @router.post("/{patient_id}/cases/{case_id}/composer/source-preflight",
+                 response_model=PreparedSourceComposer, responses=errors,
+                 operation_id="prepare_source_composer_v1")
+    def prepare_source_composer(patient_id: str, case_id: str,
+                                payload: PrepareSourceComposer,
+                                context: Principal = Depends(principal)):
+        if context.purpose != "operations":
+            # H1 has operations/research, but the original clinical Composer
+            # only overlaps the operations purpose. Do not relabel research.
+            raise HTTPException(404, "Source context unavailable")
+        try:
+            with registry(context) as patients:
+                records_authorized(patients, context, patient_id, "source_read")
+                records_authorized(patients, context, patient_id, "composer_context_read")
+                result = PostgresSourceComposerPreflight(patients).preview(
+                    patient_id, case_id, organization=context.organization,
+                    actor=context.actor, purpose=context.purpose,
+                    expected_source_snapshot_sha256=payload.expected_source_snapshot_sha256,
+                    source_id=payload.source_id, source_line=payload.source_line,
+                    question=payload.question,
+                )
+                # An additional read-time policy check cannot validate later
+                # distributed actions, but it avoids releasing a prepared
+                # context when this request's authority is already withdrawn.
+                patients._allow(context.actor, patient_id,
+                                "composer_context_read", context.purpose)
+                return PreparedSourceComposer(**result)
+        except PatientRegistryDenied:
+            raise HTTPException(404, "Source context unavailable") from None
 
 
     @router.get("/{patient_id}/cases/{case_id}/world-model",
