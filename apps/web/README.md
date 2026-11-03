@@ -110,3 +110,45 @@ build and actual API browser validation require their own exact-head CI evidence
 The candidate lock was acquired through hosted CI, hash-checked and inspected. It
 is now committed; bootstrap resolution is removed. Subsequent runs use only
 `npm ci` against that exact lock, without lifecycle scripts or optional binaries. Do not equate a draft screenshot or previous-parent CI with this build.
+
+## Read-only case and source integration (new stacked branch)
+
+This branch composes the **original reviewed React patient entry** from #181 (all
+17 files imported verbatim at its verified source head) above the **original
+PostgreSQL canonical patient/case/source/record-request owners** in #193.
+The additional frontend does not create a case store, source ledger, evidence
+authority, clinical assertion or new runtime dependency.
+
+After explicitly opening an authorized fictional patient, choose **Records**:
+- **Check authorized cases** fetches the existing canonical case-binding projection.
+  The operator's fixture must separately grant case_binding_read and patient_read.
+- **Inspect source versions** requests the exact active, scoped case's source index.
+  That requires an independent source_read grant; raw original bytes are not exposed.
+- See every immutable version/hash, provenance, supersession link, and current
+  version's source-reported statements. React renders untrusted statements as text.
+  Every statement is marked as **unreviewed**, not an interpreted clinical finding.
+- Re-reading the patient, starting another identity, disconnecting, changing the
+  synthetic grant, receiving a denied response or invalid contract clears the
+  affected records. Late responses from a prior patient or case cannot repaint
+  the new selection.
+
+The canonical PostgreSQL API remains authoritative for all records. The
+source-index API explicitly reports clinical_interpretation=false and
+research_review_invalidation_integrated=false. This view does **not** connect the
+earlier SQLite PWM/Composer/report-review flow (#179); it provides one real
+PostgreSQL/React integration seam for later reconciliation. Actual real-patient
+identity, consent, source rights, clinical review and deployment remain blocked.
+
+### Verification (exact branch head required)
+The existing reviewed H1 web workflow now targets this integration branch and
+runs the original unit suite with added contract/isolation cases, TypeScript
+compilation, locked dependency/rights checks, and actual Chromium over a
+disposable PostgreSQL 16 server. Its browser journey also imports an independent
+fictional case+pathology report, displays exact source IDs and a literal
+HTML-like statement without execution, amends the original, checks old/new
+version history, removes source_read and checks that the previous content
+disappears.
+
+No result is claimed until the hosted job has passed on this branch's **final
+commit**. Keep parent #193, original frontend #181, patient workspace #179 and
+the separate UX source-owner branches in draft review; do not auto-merge.
