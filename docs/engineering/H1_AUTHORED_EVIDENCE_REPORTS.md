@@ -377,3 +377,24 @@ head are recorded in draft #300. No local database skip or earlier parent gate i
 substituted for the named candidate's acceptance. The draft remains unmerged and
 undeployed; no professional review, publisher clearance, production authorization
 or clinical validity follows from these software results.
+
+### Final-head runner correction
+
+The documentation-only candidate `75067f518341a4b53245b2b515d9bacb43028536`
+preserved the passing runtime and passed its 206-test React/browser workflow.
+Its legacy UI workflow, still using `ubuntu-latest`, failed before opening the
+application in Chrome: the DevTools endpoint did not become available. One
+unchanged-job retry reproduced that startup failure. Both attempts used Ubuntu
+26.04 runner image `20261101.186.1`; the earlier passing legacy run used
+`20261025.179.1`. The [first attempt](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41641347161/attempts/1)
+and [unchanged retry](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41641347161/attempts/2)
+remain recorded.
+
+The exact same legacy browser journey already passes in the H1 API workflow on
+its explicit `ubuntu-24.04` runner. Independent review confirmed that comparison
+and recommended selecting that existing supported environment for the legacy UI
+job. The correction changes only its runner selector; Python 3.13, browser
+sandbox/flags, timeouts, steps and assertions remain unchanged. Logs discarded
+Chrome's startup stderr, so the precise browser-exit or timing cause on the newer
+26.04 image is not established. This does not claim to qualify that image.
+Exact-head results for the pinned runner and both H1 gates are recorded in #300.
