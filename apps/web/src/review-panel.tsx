@@ -12,11 +12,15 @@ function reviewCaseId(state:ViewState):string{
  */
 export function useReviewReasonDrafts(state:ViewState){
  const caseId=reviewCaseId(state),patientId=state.patient?.patient_id;
+ // Review rechecks source authority independently. A fresh matching inbox may
+ // recover editing even while an earlier World Model error remains visible.
+ const freshQueue=state.reviewPhase==='ready'&&state.reviewQueue?.patient_id===patientId&&
+  state.reviewQueue?.case_id===caseId;
  const usable=state.connected&&state.phase==='ready'&&patientId&&caseId&&
   state.cases?.some(item=>item.case_id===caseId&&item.status==='active')&&
   !state.recordsPhase.startsWith('loading')&&state.worldPhase!=='loading'&&
-  state.recordsPhase!=='error'&&state.worldPhase!=='error'&&
-  state.reviewPhase!=='error'&&state.reviewReturnPhase!=='error';
+  (freshQueue||(state.recordsPhase!=='error'&&state.worldPhase!=='error'&&
+   state.reviewPhase!=='error'&&state.reviewReturnPhase!=='error'));
  const scope=usable?JSON.stringify([patientId,caseId]):null;
  const [drafts,setDrafts]=useState<{scope:string|null;values:Record<string,string>}>({scope,values:{}});
  // Guard reads immediately as well as removing retained text after invalidation.
