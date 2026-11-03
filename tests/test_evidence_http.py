@@ -30,7 +30,8 @@ class EvidenceApiTests(unittest.TestCase):
         cls.tmp.cleanup()
 
     def call(self, path, data=None, origin=True):
-        headers = {}
+        # B-01: case routes require a fictional actor; seed() grants this one.
+        headers = {"X-Fictional-Actor": "FICTIONAL-NAVIGATOR-A"}
         if data is not None:
             headers["Content-Type"] = "application/json"
             if origin:
