@@ -218,3 +218,12 @@ Artifact `13193238470` is 878,649 bytes; its downloaded SHA-256 matched
 The exact-head receipt and desktop/mobile screenshots were inspected. All
 inputs are independently authored fictional examples; this local application
 has no production patient access control or clinical validation.
+
+
+## Readable-report frozen PDF anchor consistency — 2 November 2026
+
+A bounded follow-up to #249 (`af72cd6ad5d4e934aa3168334b1592bfdce35e51`) tightens the existing client provenance validator (OI-007/OI-009/OI-010). Different assertion IDs previously bypassed consistency checks for their shared frozen PDF page and extraction-line coordinates. A malformed report could therefore enable print/download with two hashes for one physical page, or incompatible mappings between a global extraction line and its page-local location.
+
+The report client now checks one page digest per source version and a one-to-one mapping between global extraction lines and physical-page/local-line coordinates across all sections before creating a download object URL. Repeated assertions at the same location remain valid; distinct pages and source versions retain independent anchors. Existing source/revision checks, server ownership, clinical-review labels and report text snapshots are unchanged. These are declared-association checks, not independent PDF authentication.
+
+Verification: the inherited 47 client executions passed before the change. Four new negative scenarios reproduced enabled printing on inconsistent anchors (Node reports five failures including their parent test); four positive scenarios remained passing. After the fix, all 57 report-client executions and the complete 203-execution JavaScript suite passed with no skips or failures. `node --check web/report.js` passed. Hosted Python/browser verification must be checked on the published candidate; parent CI is not evidence for this follow-up. No backend, schema, dependency, authority or H1 migration change is included.

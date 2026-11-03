@@ -229,6 +229,59 @@ test('an annotation revision ID cannot be relabeled as another source in the sam
   assert.equal(h.urls.length, 0);
 });
 
+test('conflicting frozen PDF anchors across report sections block print and download', async t => {
+  const changes = [
+    ['same page with a different digest', ref => { ref.source_line = 9; ref.page_line = 4; ref.page_text_sha256 = 'f'.repeat(64); }],
+    ['same extraction line on another page', ref => { ref.source_page = 3; }],
+    ['same extraction line at another page line', ref => { ref.page_line = 4; }],
+    ['same page line at another extraction line', ref => { ref.source_line = 9; }],
+  ];
+  for (const [name, change] of changes) {
+    await t.test(name, async subtest => {
+      const h = harness(subtest);
+      await h.flush();
+      const payload = revisionReport();
+      const second = structuredClone(payload.sections[0]);
+      second.id = 'another-section';
+      second.items[0].source_reference.assertion_id = 5;
+      change(second.items[0].source_reference);
+      payload.sections.push(second);
+      await h.respond(0, payload);
+      assertBlocked(h);
+      assert.equal(h.urls.length, 0, 'inconsistent anchors never create a download artifact');
+      assert.doesNotMatch(h.get('#report-sections').textContent, /Manual fictional passage/);
+    });
+  }
+});
+
+test('consistent PDF anchors remain downloadable across assertions, pages and sources', async t => {
+  const changes = [
+    ['another assertion on the same line', () => {}],
+    ['another line on the same page', ref => { ref.source_line = 9; ref.page_line = 4; }],
+    ['another page with its own digest', ref => {
+      ref.source_line = 9; ref.source_page = 3; ref.page_line = 1; ref.page_text_sha256 = 'f'.repeat(64);
+    }],
+    ['another source with independent anchors', ref => {
+      ref.source_version_id = 2; ref.document_id = 'SECOND-FICTIONAL';
+      ref.annotation_revision_id = 8; ref.page_text_sha256 = 'f'.repeat(64);
+    }],
+  ];
+  for (const [name, change] of changes) {
+    await t.test(name, async subtest => {
+      const h = harness(subtest);
+      await h.flush();
+      const payload = revisionReport();
+      const second = structuredClone(payload.sections[0].items[0]);
+      second.source_reference.assertion_id = 5;
+      change(second.source_reference);
+      payload.sections[0].items.push(second);
+      await h.respond(0, payload);
+      assert.equal(h.get('#report-print').disabled, false);
+      assert.equal(await (await fetch(h.get('#report-text-link').href)).text(), payload.text);
+    });
+  }
+});
+
 test('loading blocks both actions before any report response', async t => {
   const h = harness(t);
   assertBlocked(h);
@@ -578,3 +631,4 @@ test('failed global writes permit manual recovery only after settlement', async 
   assert.match(h.get('#report-sections').textContent, /failed global update/);
   assert.equal(h.get('#report-print').disabled, false);
 });
+

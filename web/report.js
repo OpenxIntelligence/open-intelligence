@@ -116,6 +116,7 @@
     const sourceFields = ['source_version_id', 'document_id', 'document_version', 'sha256',
       ...manualFields, 'text_origin', 'extraction_sha256'];
     const bySource = new Map(), byRevision = new Map(), byAssertion = new Map();
+    const byPage = new Map(), byExtractionLine = new Map(), byPageLine = new Map();
     const positive = value => Number.isSafeInteger(value) && value > 0;
     const digest = value => typeof value === 'string' && /^[0-9a-f]{64}$/.test(value);
     const fail = () => { throw new Error('Report source revision provenance is incomplete or inconsistent.'); };
@@ -142,6 +143,20 @@
         if (pdf && (!positive(reference.source_page) || reference.source_page > 20 ||
             !positive(reference.page_line) || reference.page_line > reference.source_line ||
             !digest(reference.extraction_sha256) || !digest(reference.page_text_sha256))) fail();
+        if (pdf) {
+          // A frozen extraction has one digest per page and a one-to-one
+          // mapping between global lines and page-local coordinates. Different
+          // assertions may cite that same location, including across sections.
+          const page = JSON.stringify([reference.source_version_id, reference.source_page]);
+          const line = JSON.stringify([reference.source_version_id, reference.source_line]);
+          const pageLine = JSON.stringify([reference.source_version_id, reference.source_page, reference.page_line]);
+          if ((byPage.has(page) && byPage.get(page) !== reference.page_text_sha256) ||
+              (byExtractionLine.has(line) && byExtractionLine.get(line) !== pageLine) ||
+              (byPageLine.has(pageLine) && byPageLine.get(pageLine) !== line)) fail();
+          byPage.set(page, reference.page_text_sha256);
+          byExtractionLine.set(line, pageLine);
+          byPageLine.set(pageLine, line);
+        }
         const sourceIdentity = JSON.stringify(sourceFields.map(field => reference[field]));
         const assertionIdentity = JSON.stringify(fields.map(field => reference[field]));
         if ((bySource.has(reference.source_version_id) &&
@@ -264,3 +279,4 @@
   });
   scheduleRefresh();
 })();
+
