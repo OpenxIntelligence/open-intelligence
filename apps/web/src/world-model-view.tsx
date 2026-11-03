@@ -63,12 +63,12 @@ export function WorldModelView({session,state,onOverview,busy,showQuestions=fals
           <blockquote data-testid="world-statement">{item.source_statement}</blockquote>
           <small>Not clinically established · <code>{item.source_id}</code> · line {item.source_line}</small>
           <div className="source-context-action"><button type="button" data-testid="composer-preflight"
-            disabled={loading||busy||state.composerPhase==='loading'}
-            onClick={()=>{void session.prepareSourceContext(item.source_id,item.source_line,DEFAULT_SOURCE_QUESTION);onInvestigations?.();}}>
+            disabled={loading||busy||state.composerPhase==='loading'||state.questionSaveMessage.startsWith('Save outcome unknown.')}
+            onClick={()=>{session.chooseQuestionDraft(item.source_id,item.source_line);void session.prepareDraftQuestion();onInvestigations?.();}}>
             Prepare source-only question context
           </button>{' '}
           <button type="button" data-testid="choose-question-draft"
-            disabled={loading||busy||state.questionSavePhase==='saving'}
+            disabled={loading||busy||state.questionSavePhase==='saving'||state.questionSaveMessage.startsWith('Save outcome unknown.')}
             onClick={()=>{session.chooseQuestionDraft(item.source_id,item.source_line);onInvestigations?.();}}>
             Write a source-linked question
           </button></div>
