@@ -258,7 +258,7 @@ class PostgresRecordRequests:
             if row[1] != "requested" or row[2] != 1:
                 raise PatientRegistryConflict("Record request not eligible for receipt")
             PostgresSourceVersions(self.patients)._binding(
-                patient_id, case_id, organization,
+                patient_id, case_id, organization, purpose,
             )
             source = self.patients._fetchone(
                 "SELECT case_id,kind,version,sha256,state,raw "
