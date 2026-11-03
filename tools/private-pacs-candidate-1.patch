@@ -1,0 +1,476 @@
+diff --git a/.github/workflows/h1-private-pacs.yml b/.github/workflows/h1-private-pacs.yml
+new file mode 100644
+index 0000000..bd7b7b2
+--- /dev/null
++++ b/.github/workflows/h1-private-pacs.yml
+@@ -0,0 +1,111 @@
++name: H1 canonical image custody with private PACS (synthetic only)
++on:
++  pull_request:
++    paths:
++      - 'apps/api/**'
++      - 'tools/imaging/**'
++      - '.github/workflows/h1-private-pacs.yml'
++  workflow_dispatch:
++permissions:
++  contents: read
++concurrency:
++  group: h1-imaging-${{ github.event.pull_request.number || github.ref }}
++  cancel-in-progress: true
++jobs:
++  verify:
++    runs-on: ubuntu-24.04
++    timeout-minutes: 30
++    env:
++      PYTHONPATH: apps/api/src:src:.
++      PYTHONDONTWRITEBYTECODE: '1'
++      PIP_DISABLE_PIP_VERSION_CHECK: '1'
++      OI_API_ENVIRONMENT: synthetic
++      OI_API_RUN_DATABASE_TESTS: '1'
++      OI_API_DATABASE_URL: postgresql+pg8000://oi_api:oi_h1_synthetic_only@127.0.0.1:5432/oi_api_test_shell
++      OI_API_TEST_DATABASE_URL: postgresql+pg8000://oi_api:oi_h1_synthetic_only@127.0.0.1:5432/oi_api_test_shell
++      PACS_SOURCE_COMMIT: e9b4334477a66967d290add9e0b9afa068f59dc0
++      CARGO_INCREMENTAL: '0'
++      CARGO_BUILD_JOBS: '2'
++    services:
++      postgres:
++        image: postgres:16.15-bookworm
++        env:
++          POSTGRES_USER: oi_api
++          POSTGRES_PASSWORD: oi_h1_synthetic_only
++          POSTGRES_DB: oi_api_test_shell
++        ports: ['127.0.0.1:5432:5432']
++        options: >-
++          --health-cmd "pg_isready -U oi_api -d oi_api_test_shell"
++          --health-interval 2s --health-timeout 3s --health-retries 30
++    steps:
++      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
++        with:
++          ref: ${{ github.event.pull_request.head.sha || github.sha }}
++          persist-credentials: false
++      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
++        with:
++          python-version: '3.12.16'
++      - name: Verify the exact proposed head and preserve source identity
++        env:
++          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
++        run: |
++          set -euo pipefail
++          python - <<'PYCODE'
++          import json,os,subprocess
++          from pathlib import Path
++          run=lambda *args:subprocess.check_output(args,text=True).strip()
++          assert run('git','rev-parse','HEAD')==os.environ['EXPECTED_HEAD']
++          spec={'commit_sha':run('git','rev-parse','HEAD'),'tree_sha':run('git','rev-parse','HEAD^{tree}')}
++          Path('verification-artifacts').mkdir(exist_ok=True)
++          Path('verification-artifacts/candidate.json').write_text(json.dumps(spec,indent=2))
++          subprocess.run(['git','archive','--format=zip','--output=verification-artifacts/source.zip',spec['tree_sha']],check=True)
++          print('Verified candidate source tree',spec['tree_sha'])
++          PYCODE
++          git diff --check
++      - name: Verify unchanged runtime wheels before installation
++        run: |
++          python tools/audit_ci_data_boundaries.py
++          python apps/api/tools/prepare_dependencies.py --wheel-dir /tmp/oi-h1-wheels
++          python apps/api/tools/check_dependencies.py --wheel-dir /tmp/oi-h1-wheels --sbom verification-artifacts/h1-runtime-sbom.json
++          python -m pip install --require-hashes --no-index --find-links /tmp/oi-h1-wheels -r apps/api/requirements.lock
++          python -m pip check
++      - name: Actual PostgreSQL contracts including denied image disclosure
++        run: |
++          set -euo pipefail
++          python -m oi_api.migrate upgrade head
++          python - <<'PY' 2>&1 | tee verification-artifacts/h1-api-tests.txt
++          import unittest
++          result=unittest.TextTestRunner(verbosity=2).run(unittest.defaultTestLoader.discover('apps/api/tests'))
++          assert result.wasSuccessful() and result.testsRun and not result.skipped, 'H1 tests failed or skipped'
++          PY
++          PYTHONPATH=src python -m unittest discover -s tests -v > verification-artifacts/reference-tests.txt 2>&1
++      - name: Compile the exact existing PACS candidate with standalone storage
++        run: |
++          set -euo pipefail
++          git init "$RUNNER_TEMP/pacs-source"
++          git -C "$RUNNER_TEMP/pacs-source" remote add origin https://github.com/knopkem/pacsnode.git
++          git -C "$RUNNER_TEMP/pacs-source" fetch --depth=1 origin "$PACS_SOURCE_COMMIT"
++          git -C "$RUNNER_TEMP/pacs-source" checkout --detach FETCH_HEAD
++          test "$(git -C "$RUNNER_TEMP/pacs-source" rev-parse HEAD)" = "$PACS_SOURCE_COMMIT"
++          cd "$RUNNER_TEMP/pacs-source"
++          grep -q 'licensed under the MIT License' NOTICE
++          grep -Eq 'license[[:space:]]*=[[:space:]]*"MIT"' Cargo.toml
++          sha256sum Cargo.lock > "$GITHUB_WORKSPACE/verification-artifacts/pacs-lock-sha256.txt"
++          rustc --version > "$GITHUB_WORKSPACE/verification-artifacts/rustc-version.txt"
++          cargo build --locked -p pacs-server --no-default-features --features standalone --bin pacsnode
++      - name: H1 PG16 and genuine private-PACS bytes, denial, restart and restore
++        env:
++          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
++        run: |
++          set -euo pipefail
++          python -m tools.imaging.verify_h1_private_pacs verify \
++            --binary "$RUNNER_TEMP/pacs-source/target/debug/pacsnode" \
++            --postgres-container "$POSTGRES_CONTAINER" \
++            --output verification-artifacts/h1-private-pacs.json 2>&1 | tee verification-artifacts/private-pacs-tests.txt
++      - name: Preserve bounded evidence and exact source, never keys or image payloads
++        if: always()
++        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
++        with:
++          name: h1-private-imaging-${{ github.run_id }}-${{ github.run_attempt }}
++          path: verification-artifacts/
++          retention-days: 7
+diff --git a/apps/api/src/oi_api/app.py b/apps/api/src/oi_api/app.py
+index ff2f718..bdf821b 100644
+--- a/apps/api/src/oi_api/app.py
++++ b/apps/api/src/oi_api/app.py
+@@ -30,7 +30,7 @@ def _loopback_host(host: str) -> bool:
+         return False
+ 
+ 
+-def create_app(settings: Settings | None = None, *, authentication: Authentication | None = None) -> FastAPI:
++def create_app(settings: Settings | None = None, *, authentication: Authentication | None = None, image_archive=None) -> FastAPI:
+     settings = settings if settings is not None else Settings.from_env()
+     database = Database(settings)
+     authentication_kind = "trusted_provider" if authentication is not None else (
+@@ -89,6 +89,6 @@ def create_app(settings: Settings | None = None, *, authentication: Authenticati
+         return JSONResponse(status_code=422, content={"detail": "Invalid request"},
+                             headers={"Cache-Control": "no-store"})
+ 
+-    app.include_router(patient_router(database, authentication))
++    app.include_router(patient_router(database, authentication, image_archive=image_archive))
+ 
+     return app
+diff --git a/apps/api/src/oi_api/images.py b/apps/api/src/oi_api/images.py
+index 917c9ab..35c8445 100644
+--- a/apps/api/src/oi_api/images.py
++++ b/apps/api/src/oi_api/images.py
+@@ -41,7 +41,8 @@ def _image_id(value: object) -> str:
+ 
+ 
+ class PostgresSourceImages:
+-    def __init__(self, registry):
++    def __init__(self, registry, *, archive=None):
++        self.archive = archive
+         self.sources = PostgresSourceVersions(registry)
+         self.registry = registry
+ 
+@@ -187,8 +188,33 @@ class PostgresSourceImages:
+                  organization: str, actor: str, purpose: str,
+                  recheck_authority: Callable[[], None]) -> tuple[bytes, str]:
+         _image_id(image_id)
++        remote = None
++        if self.archive is not None:
++            with self.registry.transaction():
++                revision, source, binding = self._scope(patient_id, case_id, source_id, organization, purpose)
++                values = self.registry._fetchone(
++                    "SELECT " + ",".join("o." + name for name in _FIELDS)
++                    + " FROM clinical_source.dicom_objects o JOIN clinical_source.source_image_links l "
++                    "ON l.image_id=o.image_id WHERE o.case_id=%s AND l.source_id=%s AND o.image_id=%s",
++                    (case_id, source_id, image_id))
++                if values is None:
++                    raise PatientRegistryDenied("Image unavailable")
++                row = dict(zip(_FIELDS, values))
++                expected = self._validated_object(row, source, binding)
++                preflight = (revision, source["sha256"], tuple(binding))
++                recheck_authority()
++            # Never hold patient/source locks during remote I/O. Only server-
++            # stored, validated object identifiers reach the configured port.
++            try:
++                remote = self.archive.read(row["study_uid"], row["series_uid"], row["sop_uid"])
++                if type(remote) is not bytes or remote != expected:
++                    raise ValueError()
++            except Exception:
++                raise ImageIntegrityError("Remote original unavailable") from None
+         with self.registry.transaction():
+             revision, source, binding = self._scope(patient_id, case_id, source_id, organization, purpose)
++            if self.archive is not None and preflight != (revision, source["sha256"], tuple(binding)):
++                raise PatientRegistryDenied("Image authority changed")
+             values = self.registry._fetchone(
+                 "SELECT " + ",".join("o." + name for name in _FIELDS)
+                 + " FROM clinical_source.dicom_objects o JOIN clinical_source.source_image_links l "
+@@ -198,6 +224,10 @@ class PostgresSourceImages:
+                 raise PatientRegistryDenied("Image unavailable")
+             row = dict(zip(_FIELDS, values))
+             raw = self._validated_object(row, source, binding)
++            if remote is not None:
++                if remote != raw:
++                    raise ImageIntegrityError("Original changed during remote retrieval")
++                raw = remote
+             receipt = self.sources._read_receipt(
+                 patient_id, case_id, actor=actor, purpose=purpose, binding_revision=revision,
+                 event="image.original_read_authorized", recheck_authority=recheck_authority,
+diff --git a/apps/api/src/oi_api/patients.py b/apps/api/src/oi_api/patients.py
+index 59c92c3..38ca314 100644
+--- a/apps/api/src/oi_api/patients.py
++++ b/apps/api/src/oi_api/patients.py
+@@ -362,7 +362,7 @@ class SourceImageIndex(BaseModel):
+     source_identity_verified: Literal[False]
+ 
+ 
+-def patient_router(database: Database, authentication: Authentication) -> APIRouter:
++def patient_router(database: Database, authentication: Authentication, *, image_archive=None) -> APIRouter:
+     router = APIRouter(prefix="/v1/patients", tags=["Synthetic patient registry"])
+     bearer = HTTPBearer(auto_error=False, scheme_name="SyntheticFixture",
+                         description="Local synthetic fixture credential. Not a patient account or clinical consent.")
+@@ -704,7 +704,7 @@ def patient_router(database: Database, authentication: Authentication) -> APIRouter
+         try:
+             with registry(context) as patients:
+                 records_authorized(patients, context, patient_id, "image_original_read")
+-                raw, receipt = PostgresSourceImages(patients).original(
++                raw, receipt = PostgresSourceImages(patients, archive=image_archive).original(
+                     patient_id, case_id, source_id, image_id, organization=context.organization,
+                     actor=context.actor, purpose=context.purpose,
+                     recheck_authority=lambda: refresh_source_authority(
+diff --git a/apps/api/tests/test_private_image_reads.py b/apps/api/tests/test_private_image_reads.py
+new file mode 100644
+index 0000000..977b4da
+--- /dev/null
++++ b/apps/api/tests/test_private_image_reads.py
+@@ -0,0 +1,97 @@
++"""Actual existing PG image custody with an optional remote original replica.
++
++No second image/source store or real data. Transport double only in this suite;
++verify_h1_private_pacs exercises the same routes against the actual private PACS.
++"""
++import unittest
++from unittest.mock import Mock, patch
++
++from oi_api.app import create_app
++from open_intelligence.postgres_registry import PostgresPatientRegistry
++from http_support import running_server
++from test_patients import TOKEN_A, TOKEN_B
++from test_image_custody import ImageCustodyHTTPTests, image_bytes, image_request, AMENDED
++
++
++class PrivateImageReads(ImageCustodyHTTPTests):
++    def test_current_original_uses_canonical_mapping_and_receipt(self):
++        archive = Mock()
++        raw = image_bytes()
++        archive.read.return_value = raw
++        with running_server(create_app(self.settings, image_archive=archive)) as base:
++            patient, source, path = self.prepare(base)
++            image = image_request(base, path, raw=raw)[1]['image_id']
++            archive.read.assert_not_called()
++            self.assertEqual(image_request(base, path+'/'+image, token=TOKEN_B)[0], 404)
++            archive.read.assert_not_called()
++            code, data, headers = image_request(base, path+'/'+image)
++            self.assertEqual((code,data),(200,raw))
++            self.assertTrue(headers['X-OI-Access-Receipt'])
++            archive.read.assert_called_once_with('2.25.101','2.25.102','2.25.103')
++        self.assertEqual(len(self.events("AND event_type='image.original_read_authorized'")),1)
++
++    def test_remote_error_changed_or_nonbytes_result_never_falls_back_to_pg(self):
++        archive=Mock();raw=image_bytes()
++        with running_server(create_app(self.settings,image_archive=archive)) as base:
++            patient,source,path=self.prepare(base)
++            image=image_request(base,path,raw=raw)[1]['image_id']
++            for bad in (raw+b'changed',bytearray(raw),None):
++                archive.read.return_value=bad
++                self.assertEqual(image_request(base,path+'/'+image)[:2],
++                                 (503,{'detail':'Patient registry unavailable'}))
++            archive.read.side_effect=RuntimeError('PRIVATE_UPSTREAM_DETAIL')
++            self.assertEqual(image_request(base,path+'/'+image)[:2],
++                             (503,{'detail':'Patient registry unavailable'}))
++        self.assertEqual(self.events("AND event_type='image.original_read_authorized'"),[])
++
++    def test_source_correction_during_fetch_is_denied_without_locking_out_writer(self):
++        archive=Mock();raw=image_bytes()
++        with running_server(create_app(self.settings,image_archive=archive)) as base:
++            patient,source,path=self.prepare(base)
++            image=image_request(base,path,raw=raw)[1]['image_id']
++            def fetch(*ids):
++                # Separate HTTP transaction must succeed while archive read is
++                # in flight; the read must then detect the source amendment.
++                self.assertEqual(self.ingest(base,patient,AMENDED)[0],201)
++                return raw
++            archive.read.side_effect=fetch
++            self.assertEqual(image_request(base,path+'/'+image)[0],404)
++            archive.read.reset_mock()
++            self.assertEqual(image_request(base,path+'/'+image)[0],404)
++            archive.read.assert_not_called()
++        self.assertEqual(self.events("AND event_type='image.original_read_authorized'"),[])
++
++    def test_late_grant_or_actor_change_withholds_remote_bytes(self):
++        archive=Mock();raw=image_bytes()
++        with running_server(create_app(self.settings,image_archive=archive)) as base:
++            patient,source,path=self.prepare(base)
++            image=image_request(base,path,raw=raw)[1]['image_id']
++            original_actor=self.creds[0]['actor']
++            def revoke(*ids):
++                self.creds[0]['actions'].remove('image_original_read');self.write()
++                return raw
++            archive.read.side_effect=revoke
++            self.assertEqual(image_request(base,path+'/'+image)[0],404)
++            self.creds[0]['actions'].append('image_original_read');self.write()
++            def change_actor(*ids):
++                self.creds[0]['actor']='ACTOR-CHANGED';self.write();return raw
++            archive.read.side_effect=change_actor
++            self.assertEqual(image_request(base,path+'/'+image)[0],404)
++            self.creds[0]['actor']=original_actor;self.write()
++        self.assertEqual(self.events("AND event_type='image.original_read_authorized'"),[])
++
++    def test_receipt_commit_failure_withholds_successful_remote_original(self):
++        archive=Mock();raw=image_bytes();archive.read.return_value=raw
++        with running_server(create_app(self.settings,image_archive=archive)) as base:
++            patient,source,path=self.prepare(base)
++            image=image_request(base,path,raw=raw)[1]['image_id']
++            with patch.object(PostgresPatientRegistry,'append_event',side_effect=RuntimeError('no journal')):
++                self.assertEqual(image_request(base,path+'/'+image)[0],503)
++            archive.read.assert_called_once()
++        self.assertEqual(self.events("AND event_type='image.original_read_authorized'"),[])
++
++
++def load_tests(loader, tests, pattern):
++    # Only the five new cases; the inherited owner suite runs in its own module.
++    return unittest.TestSuite(PrivateImageReads(name) for name in PrivateImageReads.__dict__
++                              if name.startswith('test_'))
+diff --git a/docs/engineering/H1_PRIVATE_PACS_READS.md b/docs/engineering/H1_PRIVATE_PACS_READS.md
+new file mode 100644
+index 0000000..449ef96
+--- /dev/null
++++ b/docs/engineering/H1_PRIVATE_PACS_READS.md
+@@ -0,0 +1,54 @@
++# Canonical H1 image custody with optional private PACS reads
++
++Status: synthetic engineering candidate, not production or clinical clearance.
++Base: PR #242 at `0c57f9fe86ef3ef12d24e1fd2a883dd80ddd7a3d` (image custody),
++on #222. No new schema, migration, image ID, route, action or dependency.
++
++## Ownership
++
++`PostgresSourceImages` remains the authority for original objects and their
++explicit source-version links. The optional operator-injected `image_archive`
++port retrieves only server-stored Study/Series/SOP identifiers. End users do
++not select URLs, archive credentials or hashes. An enabled remote archive
++must return the exact immutable canonical original; failures never silently
++fall back to PostgreSQL. The normal local-custody mode remains unchanged.
++
++Preflight locks the existing patient/case/source owner, validates original
++custody and refreshes authorization. Network I/O occurs outside the transaction.
++A fresh transaction then revalidates the same patient/source/binding revision,
++compares remote and canonical bytes, and commits the existing authorized-read
++receipt before returning an attachment. A source amendment, lost grant, changed
++actor, corrupted bytes or failed audit write withholds the result. Receipts
++prove prepared disclosure, not delivery or atomic external revocation.
++
++## Isolated actual backend test
++
++`tools/imaging/verify_h1_private_pacs.py` uses the unmodified pinned research
++PACSNode commit `e9b4334477a66967d290add9e0b9afa068f59dc0`. It runs in a disposable
++Linux network namespace with only loopback, drops root before starting PACS,
++and exposes no host TCP HTTP or DIMSE listener. A private 0700 directory/0600
++Unix socket carries only fixed original-instance requests with a service-only
++OIDC token. Patient credentials never reach PACS. The test checks actual kernel
++PACS namespace identity and inability to connect to both raw ports from the
++API/client host. This is not whole-host isolation against root or same-UID
++compromise, nor a production gateway installation.
++
++The same independently authored synthetic objects are uploaded to PACS and
++imported through #242's existing HTTP custody endpoint. Real H1/PG16 retrieval
++then verifies original bytes, cross-patient/case/purpose and missing-grant denial,
++late revocation/amendment, API/database restart and PostgreSQL dump/restore.
++Existing source/image tests remain; no alternate image database is introduced.
++
++## Reconciliation and limits
++
++A parallel custody candidate was stopped after discovering the completed #242
++owner. Its new migration and image routes are not included here. #234's newer
++source-projection integrity and #238's separate migration branch still need
++owner-reviewed convergence; this change does not silently claim that merge.
++
++PACSNode remains HOLD: source/asset/crate rights, DICOMweb conformance, broad
++image profiles, compressed decoding, production accounts/consent, clinical
++validation and general viewer/rendered/bulk-data workflows are not approved.
++The code-only pydicom runtime and its existing 25-wheel gate are unchanged.
++Only the existing bounded uncompressed CT profile is supported. No real patient
++data, model inference, diagnostic decisions, merge or deployment is authorized.
+diff --git a/tools/imaging/h1_private_archive.py b/tools/imaging/h1_private_archive.py
+new file mode 100644
+index 0000000..99cc73d
+--- /dev/null
++++ b/tools/imaging/h1_private_archive.py
+@@ -0,0 +1,88 @@
++"""Isolated pydicom/PACS adapter for the H1 synthetic imaging experiment.
++
++Optional operator-injected adapter; the existing custody owner parses originals. The application sees a private Unix socket, never a PACS URL or
++end-user PACS token. This is not a general-purpose HTTP forwarding client.
++"""
++from contextlib import closing
++from email import policy
++from email.parser import BytesParser
++import http.client
++from io import BytesIO
++import os
++from pathlib import Path
++import re
++import socket
++import stat
++
++from oi_api.dicom_integrity import MAX_DICOM_BYTES as MAX_IMAGE_BYTES
++
++def dicom_uid(value):
++    if type(value) is not str or len(value)>64 or re.fullmatch(r"(?:0|[1-9][0-9]*)(?:\.(?:0|[1-9][0-9]*))+", value) is None:
++        raise ValueError("Invalid DICOM UID")
++
++WADO_ACCEPT = 'multipart/related; type="application/dicom"; transfer-syntax=1.2.840.10008.1.2.1'
++MAX_WIRE_BYTES = MAX_IMAGE_BYTES + 4096
++
++
++def dicom_part(media: str, wire: bytes) -> bytes:
++    if (type(media) is not str or len(media)>512 or '\r' in media or '\n' in media
++            or type(wire) is not bytes or len(wire)>MAX_WIRE_BYTES):
++        raise ValueError('Unsupported archive framing')
++    try:
++        header = ('Content-Type: '+media+'\r\nMIME-Version: 1.0\r\n\r\n').encode('ascii')
++    except UnicodeError:
++        raise ValueError('Unsupported archive media') from None
++    message=BytesParser(policy=policy.default).parsebytes(header+wire)
++    if (message.get_content_type()!='multipart/related' or not message.is_multipart()
++            or message.get_param('type')!='application/dicom' or message.defects
++            or message.preamble not in (None,'') or (message.epilogue or '').strip()):
++        raise ValueError('Invalid archive multipart')
++    parts=list(message.iter_parts())
++    if len(parts)!=1:
++        raise ValueError('Expected one exact DICOM instance')
++    part=parts[0]
++    if (part.is_multipart() or part.defects or len(part.get_all('Content-Type',[]))!=1
++            or part.get_content_type()!='application/dicom'
++            or part.get('Content-Transfer-Encoding','binary').lower()!='binary'):
++        raise ValueError('Invalid archive part')
++    data=part.get_payload(decode=True)
++    if (type(data) is not bytes or not 132<=len(data)<=MAX_IMAGE_BYTES or data[128:132]!=b'DICM'):
++        raise ValueError('Invalid bounded Part 10')
++    return data
++
++
++class _UnixHTTP(http.client.HTTPConnection):
++    def __init__(self,path:Path):
++        super().__init__('localhost',timeout=3)
++        self.path=path
++    def connect(self):
++        self.sock=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)
++        self.sock.settimeout(self.timeout)
++        self.sock.connect(str(self.path))
++
++
++class PrivateUnixArchive:
++    def __init__(self,socket_path:str, *, archive_id:str='H1-SYNTHETIC-PACS'):
++        self.path=Path(socket_path)
++        self.archive_id=archive_id
++        if not self.path.is_absolute():
++            raise ValueError('Operator configured absolute socket required')
++
++    def read(self,study_uid:str,series_uid:str,sop_uid:str)->bytes:
++        for value in (study_uid,series_uid,sop_uid):
++            dicom_uid(value)
++        parent=self.path.parent.lstat();target=self.path.lstat()
++        if (not stat.S_ISDIR(parent.st_mode) or parent.st_uid!=os.geteuid()
++                or parent.st_mode & 0o077 or not stat.S_ISSOCK(target.st_mode)
++                or target.st_uid!=os.geteuid() or target.st_mode & 0o077):
++            raise RuntimeError('Private archive endpoint unavailable')
++        path=f'/wado/studies/{study_uid}/series/{series_uid}/instances/{sop_uid}'
++        with closing(_UnixHTTP(self.path)) as client:
++            client.request('GET',path,headers={'Accept':WADO_ACCEPT,'Connection':'close'})
++            with client.getresponse() as response:
++                if (response.status!=200 or response.getheader('Content-Encoding') not in (None,'identity')
++                        or len(response.headers.get_all('Content-Type',[]))!=1):
++                    raise RuntimeError('Archive retrieval unavailable')
++                wire=response.read(MAX_WIRE_BYTES+1)
++                data=dicom_part(response.getheader('Content-Type'),wire)
++        return data
