@@ -347,6 +347,10 @@ class FollowthroughChecks:
     def after_amendment(self, replacement_source_id):
         navigate(self.cd, 'Investigations')
         select_case(self.cd, self.case_id)
+        click(self.cd, '[data-testid=load-source-questions]')
+        original_question = '.question-items li[data-question-id="' + self.question_id + '"]'
+        self.cd.wait('Boolean(document.querySelector(' + json.dumps(original_question) + '))',
+                     'historical question rendered after source amendment')
         self.assert_amendment(replacement_source_id)
         navigate(self.cd, 'Records')
 
