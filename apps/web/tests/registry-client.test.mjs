@@ -422,3 +422,165 @@ test('source refresh, patient switch and disconnect invalidate pending Composer 
  assert.equal(t.snapshot().composerPreview,null);
  t.disconnect();assert.equal(t.snapshot().composerPreview,null);
 });
+
+
+const savedQuestionId='QUESTION-'+'A'.repeat(32);
+const sourceQuestion=(
+ state='current_unreviewed_question',overrides={}
+)=>({
+ question_id:savedQuestionId,patient_id:receiptPatient,case_id:receiptCase,
+ question:composerQuestion,source_id:receiptSource,source_line:8,
+ source_sha256:sha256,source_version:1,
+ source_snapshot_sha256:'a'.repeat(64),preflight_sha256:'b'.repeat(64),
+ created_at:'2026-11-02T12:00:00Z',source_context_state:state,
+ human_review_state:'not_submitted',clinical_approval:false,
+ model_executed:false,...overrides,
+});
+const sourceQuestions=(questions=[sourceQuestion()])=>({
+ patient_id:receiptPatient,case_id:receiptCase,questions,
+ synthetic:true,clinical_review_connected:false,clinical_approval:false,
+});
+const questionsPath='/v1/patients/'+receiptPatient+'/cases/'+receiptCase+'/questions';
+test('source questions persist only after explicit source preflight and idempotent POST',async()=>{
+ const calls=[];
+ let n=0;
+ const s=new RegistrySession(async(url,init)=>{
+  calls.push([url,init]);
+  if(url===sourcePreflightPath)return response(composerFixture());
+  if(url===questionsPath)return response({question_id:savedQuestionId,duplicate:++n>1},n>1?200:201);
+  if(url.endsWith('/world-model'))return response(worldFixture());
+  return response(patient());
+ });
+ s.connect(token);
+ await s.savePreparedQuestion();
+ assert.equal(s.snapshot().savedQuestion,null);
+ assert.equal(calls.length,0);
+ await s.read(receiptPatient);await s.loadWorldModel(receiptCase);
+ await s.prepareSourceContext(receiptSource,8,composerQuestion);
+ assert.equal(s.snapshot().savedQuestion,null);
+ await s.savePreparedQuestion();
+ assert.equal(s.snapshot().savedQuestion.question_id,savedQuestionId);
+ assert.equal(s.snapshot().questionSavePhase,'saved');
+ assert.equal(s.snapshot().composerPreview.clinical_approval,false);
+ assert.equal(s.snapshot().composerPreview.durable_review_connected,false);
+ assert.equal(calls[3][0],questionsPath);
+ assert.equal(calls[3][1].method,'POST');
+ assert.equal(calls[3][1].credentials,'omit');
+ assert.equal(calls[3][1].redirect,'error');
+ assert.equal(calls[3][1].cache,'no-store');
+ const body=JSON.parse(calls[3][1].body);
+ assert.equal(body.synthetic,true);
+ assert.equal(body.source_id,receiptSource);
+ assert.equal(body.source_line,8);
+ assert.equal(body.expected_source_snapshot_sha256,'a'.repeat(64));
+ assert.equal(body.expected_preflight_sha256,'b'.repeat(64));
+ assert.ok(typeof body.request_key==='string'&&body.request_key.length>=3);
+ await s.savePreparedQuestion();
+ assert.deepEqual(JSON.parse(calls[4][1].body),body);
+ assert.equal(s.snapshot().savedQuestion.duplicate,true);
+});
+test('network uncertainty retries with one stable question-intent key',async()=>{
+ const posts=[];
+ const s=new RegistrySession(async(url,init)=>{
+  if(url===questionsPath){
+   posts.push(init.body);
+   if(posts.length===1)throw Error('network may have saved the request');
+   return response({question_id:savedQuestionId,duplicate:true},200);
+  }
+  return response(url===sourcePreflightPath?composerFixture():url.endsWith('/world-model')?worldFixture():patient());
+ });
+ s.connect(token);await s.read(receiptPatient);await s.loadWorldModel(receiptCase);
+ await s.prepareSourceContext(receiptSource,8,composerQuestion);
+ await s.savePreparedQuestion();
+ assert.equal(s.snapshot().savedQuestion,null);
+ assert.ok(s.snapshot().questionSaveMessage.includes('outcome unknown'));
+ await s.savePreparedQuestion();
+ assert.equal(posts.length,2);
+ assert.equal(posts[0],posts[1]);
+ assert.equal(s.snapshot().savedQuestion.duplicate,true);
+});
+test('saved questions read current versus reassessment states, never clinician approval',async()=>{
+ let changed=false;
+ const s=new RegistrySession(async url=>{
+  if(url===questionsPath)return response(sourceQuestions([
+    sourceQuestion(changed?'source_reassessment_required':'current_unreviewed_question')
+  ]));
+  return response(patient());
+ });
+ s.connect(token);await s.read(receiptPatient);
+ await s.loadSavedQuestions(receiptCase);
+ assert.equal(s.snapshot().questions[0].source_context_state,'current_unreviewed_question');
+ assert.equal(s.snapshot().questions[0].human_review_state,'not_submitted');
+ assert.equal(s.snapshot().questions[0].clinical_approval,false);
+ changed=true;await s.loadSavedQuestions(receiptCase);
+ assert.equal(s.snapshot().questions[0].source_context_state,'source_reassessment_required');
+ assert.equal(s.snapshot().questions[0].source_id,receiptSource);
+});
+test('cross-patient question list, forged review status and bad source references fail closed',async()=>{
+ const forged=[
+  {...sourceQuestions(),patient_id:'PAT-OTHER-001'},
+  {...sourceQuestions(),case_id:'CASE-BETA'},
+  {...sourceQuestions(),clinical_review_connected:true},
+  sourceQuestions([sourceQuestion('current_unreviewed_question',{clinical_approval:true})]),
+  sourceQuestions([sourceQuestion('current_unreviewed_question',{human_review_state:'approved'})]),
+  sourceQuestions([sourceQuestion('current_unreviewed_question',{source_id:'SRC-'+'F'.repeat(31)})]),
+ ];
+ for(const responseBody of forged){
+  const s=new RegistrySession(async url=>response(url===questionsPath?responseBody:patient()));
+  s.connect(token);await s.read(receiptPatient);await s.loadSavedQuestions(receiptCase);
+  assert.equal(s.snapshot().questions,null);
+  assert.equal(s.snapshot().questionListPhase,'error');
+ }
+});
+test('question read revocation removes an earlier visible history',async()=>{
+ let revoked=false;
+ const s=new RegistrySession(async url=>response(url===questionsPath?
+  revoked?{detail:'private review data'}:sourceQuestions():patient(),revoked&&url===questionsPath?404:200));
+ s.connect(token);await s.read(receiptPatient);await s.loadSavedQuestions(receiptCase);
+ assert.equal(s.snapshot().questions.length,1);
+ revoked=true;await s.loadSavedQuestions(receiptCase);
+ assert.equal(s.snapshot().questions,null);
+ assert.equal(s.snapshot().questionListPhase,'error');
+ assert.ok(!JSON.stringify(s.snapshot()).includes('private review data'));
+});
+test('changed source before question save rejects and clears obsolete preflight',async()=>{
+ let stale=false;
+ const s=new RegistrySession(async url=>{
+  if(url===questionsPath)return stale?response({detail:'source changed'},409):
+    response({question_id:savedQuestionId,duplicate:false},201);
+  return response(url===sourcePreflightPath?composerFixture():
+    url.endsWith('/world-model')?worldFixture():patient());
+ });
+ s.connect(token);await s.read(receiptPatient);await s.loadWorldModel(receiptCase);
+ await s.prepareSourceContext(receiptSource,8,composerQuestion);
+ stale=true;await s.savePreparedQuestion();
+ assert.equal(s.snapshot().worldModel,null);
+ assert.equal(s.snapshot().composerPreview,null);
+ assert.equal(s.snapshot().savedQuestion,null);
+ assert.equal(s.snapshot().questionSavePhase,'error');
+});
+test('patient switching, navigation reset and disconnect invalidate durable question UI responses',async()=>{
+ const late=deferred();
+ const s=new RegistrySession(async url=>{
+  if(url===questionsPath)return late.promise;
+  return response(patient(url.endsWith('PAT-EXAMPLE-002')?'PAT-EXAMPLE-002':receiptPatient));
+ });
+ s.connect(token);await s.read(receiptPatient);
+ const pending=s.loadSavedQuestions(receiptCase);
+ await s.read('PAT-EXAMPLE-002');
+ late.resolve(response(sourceQuestions()));await pending;
+ assert.equal(s.snapshot().questions,null);
+ const t=new RegistrySession(async url=>response(
+  url===questionsPath?sourceQuestions():
+  url===sourcePreflightPath?composerFixture():
+  url.endsWith('/world-model')?worldFixture():patient()
+ ));
+ t.connect(token);await t.read(receiptPatient);await t.loadSavedQuestions(receiptCase);
+ assert.equal(t.snapshot().questions.length,1);
+ t.clearWorldModel();
+ assert.equal(t.snapshot().questions,null);
+ await t.loadWorldModel(receiptCase);await t.prepareSourceContext(receiptSource,8,composerQuestion);
+ await t.savePreparedQuestion();
+ t.disconnect();assert.equal(t.snapshot().questions,null);
+ assert.equal(t.snapshot().savedQuestion,null);
+});
