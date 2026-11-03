@@ -290,7 +290,10 @@ test('receipt source access is discarded on a new source/case check and on expir
  await s.loadCases();assert.equal(s.snapshot().recordRequests,null);
  await s.loadRecordRequests();await s.loadSources('CASE-ALPHA');
  assert.equal(s.snapshot().recordRequests,null);
- const expired=new RegistrySession(async url=>response(url.endsWith('/record-requests')?{},401));
- expired.connect(token);await expired.loadRecordRequests();
+ const expired=new RegistrySession(async url=>url.endsWith('/record-requests')
+   ?response({},401):response(patient()));
+ expired.connect(token);await expired.read('PAT-EXAMPLE-001');
+ await expired.loadRecordRequests();
+ assert.equal(expired.snapshot().connected,false);
  assert.equal(expired.snapshot().recordRequests,null);
 });
