@@ -4,16 +4,19 @@ import importlib
 import json
 import unittest
 from unittest.mock import patch
+from threading import Barrier
 
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
+from alembic.util.exc import CommandError
 
 from http_support import running_server
 from oi_api.app import create_app
 from oi_api.database import Database
+from oi_api.migrate import migrate
 from open_intelligence.postgres_registry import PostgresPatientRegistry
 from test_patients import TOKEN_A, TOKEN_B, request
-from test_source_versions import SourceVersionFixture, AMENDED
+from test_source_versions import SourceVersionFixture, ORIGINAL, AMENDED
 import test_source_questions as questions
 
 
@@ -173,6 +176,48 @@ class QuestionEvidencePostgresTests(SourceVersionFixture):
             self.assertEqual(sorted(reply[0] for reply in replies), [200, 201])
             self.assertEqual(len({reply[1]["link_id"] for reply in replies}), 1)
             self.assertEqual(len(self.links(base, patient, question)[1]["links"]), 1)
+            with self.engine.connect() as connection:
+                self.assertEqual(connection.execute(text(
+                    "SELECT count(*) FROM identity.identity_domain_events "
+                    "WHERE event_type='evidence.citation.linked'"
+                )).scalar_one(), 1)
+
+    def test_concurrent_changed_intents_in_two_cases_return_conflict_without_duplicate_effect(self):
+        with running_server(create_app(self.settings)) as base:
+            patient, first, q1 = self.question(base)
+            record = self.search(base, patient, q1)[1]["records"][0]
+            self.assertEqual(request(base, f"/v1/patients/{patient}/case-bindings", token=TOKEN_A, body={
+                "synthetic": True, "case_id": "CASE-BETA", "source_organization": "ORG-INSTITUTION",
+                "source_system": "SYS-SYNTH", "source_subject_ref": "SUBJECT-BETA", "review_ref": "REVIEW-BETA",
+            })[0], 201)
+            source = self.ingest(base, patient, ORIGINAL.replace("CASE-ALPHA", "CASE-BETA"), case="CASE-BETA")[1]["source_id"]
+            world = request(base, self.model_path(patient, "CASE-BETA"), token=TOKEN_A)[1]
+            second = self.preflight(base, patient, source, world["snapshot_fingerprint"], case="CASE-BETA")[1]
+            q2 = self.save(base, patient, second, case="CASE-BETA", request_key="QUESTION-BETA")[1]["question_id"]
+            gate = Barrier(2)
+            fetchone = PostgresPatientRegistry._fetchone
+            def both_absent(registry, sql, values=()):
+                result = fetchone(registry, sql, values)
+                if ("SELECT link_id,intent_sha256" in sql and "request_key" in sql
+                        and values[-1] == "RACING-INTENT" and result is None):
+                    gate.wait(timeout=5)
+                return result
+            def submit(args):
+                qid, case, prepared = args
+                return request(base, self.evidence_path(patient, qid, case) + "/evidence-links", token=TOKEN_A, body={
+                    "synthetic": True, "request_key": "RACING-INTENT", "citation": record["citation"],
+                    "expected_metadata_sha256": record["metadata_sha256"],
+                    "source_snapshot_contract": "oi.pg-source-world-model/1",
+                    "expected_source_snapshot_sha256": prepared["source_snapshot_sha256"],
+                    "expected_preflight_sha256": prepared["preflight_sha256"],
+                })
+            with patch.object(PostgresPatientRegistry, "_fetchone", both_absent), ThreadPoolExecutor(max_workers=2) as pool:
+                replies = list(pool.map(submit, ((q1, "CASE-ALPHA", first), (q2, "CASE-BETA", second))))
+            self.assertEqual(sorted(value[0] for value in replies), [201, 409])
+            with self.engine.connect() as connection:
+                self.assertEqual(connection.execute(text(
+                    "SELECT count(*) FROM investigation.question_evidence_links"
+                )).scalar_one(), 1)
 
     def test_prepared_json_and_mid_response_authority_failure_roll_back_link(self):
         from oi_api import evidence_routes
@@ -210,3 +255,40 @@ class QuestionEvidencePostgresTests(SourceVersionFixture):
             with self.subTest(statement=statement), self.assertRaises(DBAPIError):
                 with self.engine.begin() as connection:
                     connection.execute(text(statement))
+
+    def test_reseeding_never_restores_revoked_rights_and_populated_downgrade_is_blocked(self):
+        self.revise_rights(revoked=True)
+        self.seed()
+        with self.engine.connect() as connection:
+            self.assertEqual(connection.execute(text(
+                "SELECT revoked FROM investigation.evidence_rights_decisions "
+                "WHERE record_id='FICT-RECORD-CONTINUITY' ORDER BY revision DESC LIMIT 1"
+            )).scalar_one(), True)
+            before = connection.execute(text("SELECT count(*) FROM investigation.evidence_rights_decisions")).scalar_one()
+        with self.assertRaises(CommandError):
+            migrate(self.admin, "downgrade", "0009_question_followthrough")
+        with self.engine.connect() as connection:
+            self.assertEqual(connection.execute(text("SELECT version_num FROM public.alembic_version")).scalar_one(),
+                             "0010_question_evidence")
+            self.assertEqual(connection.execute(text("SELECT count(*) FROM investigation.evidence_rights_decisions")).scalar_one(), before)
+
+    def test_audit_failure_withholds_disclosure_and_rolls_back_citation(self):
+        with running_server(create_app(self.settings)) as base:
+            patient, prepared, question = self.question(base)
+            record = self.search(base, patient, question)[1]["records"][0]
+            append_event = PostgresPatientRegistry.append_event
+            def reject_source_receipt(registry, subject, event_type, **metadata):
+                if event_type == "source.read_authorized":
+                    raise RuntimeError("Private synthetic receipt failure")
+                return append_event(registry, subject, event_type, **metadata)
+            with patch.object(PostgresPatientRegistry, "append_event", reject_source_receipt):
+                for operation in (
+                    lambda: self.search(base, patient, question),
+                    lambda: self.links(base, patient, question),
+                    lambda: self.link(base, patient, prepared, question, record),
+                ):
+                    code, result, _ = operation()
+                    self.assertEqual(code, 503)
+                    self.assertNotIn(record["title"], json.dumps(result))
+                    self.assertNotIn("Private", json.dumps(result))
+            self.assertEqual(self.links(base, patient, question)[1]["links"], [])

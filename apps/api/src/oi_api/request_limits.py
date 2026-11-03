@@ -18,6 +18,7 @@ class PatientRequestLimit:
                 ("/questions/" in route and route.endswith("/return-for-verification")) or
                 ("/questions/" in route and route.endswith("/brief")) or
                 ("/questions/" in route and route.endswith("/followthrough")) or
+                ("/questions/" in route and route.endswith(("/evidence-search", "/evidence-links"))) or
                 ("/followthrough/" in route and route.endswith("/transitions")) or
                 ("/record-requests/" in route and route.endswith("/cancel")) or
                 ("/case-bindings/" in route and route.endswith("/revoke"))
