@@ -75,6 +75,7 @@ def main():
             pid=cd.evaluate("document.querySelector('[data-testid=created-id] code').textContent")
             assert pid.startswith('PAT-') and len(pid)==36
             assert cd.evaluate("!document.querySelector('[data-testid=patient-card]')")
+            assert cd.evaluate("!document.querySelector('[data-testid=overview-next]')")
             cd.evaluate("document.querySelector('#synthetic-confirm').form.requestSubmit()")
             cd.wait("document.querySelector('[data-testid=created-id]').textContent.includes('Existing identity recovered')",'same-key idempotent create')
             read();cd.wait("document.querySelector('[data-testid=status]').textContent.includes('Patient unavailable')",'creation confers no read grant')
@@ -83,6 +84,13 @@ def main():
             assert cd.evaluate("!document.querySelector('[data-testid=workspace-identity]').textContent.includes('Authorized fictional patient')")
             cd.wait("Boolean(document.querySelector('[data-testid=patient-card]'))",'separate grant permits canonical patient read')
             assert cd.evaluate("document.querySelector('[data-testid=patient-card]').textContent").count(pid)==1
+            assert cd.evaluate("document.querySelectorAll('[data-testid=overview-next] .overview-actions button').length===3")
+            for target,screen in [('overview-records','records-workspace'),('overview-journey','world-workspace'),('overview-investigations','world-workspace')]:
+                cd.evaluate("document.querySelector('[data-testid="+target+"]').click()")
+                cd.wait("Boolean(document.querySelector('[data-testid="+screen+"]'))",'overview enters '+target)
+                cd.evaluate("document.querySelector('[data-testid=nav-overview]').click()")
+                cd.wait("Boolean(document.querySelector('[data-testid=overview-next]'))",'authorized overview restored')
+
             assert cd.evaluate("document.querySelector('[data-testid=workspace-identity]').textContent.includes('Authorized fictional patient')")
             assert pid in cd.evaluate("document.querySelector('[data-testid=workspace-identity]').textContent")
             assert cd.evaluate('localStorage.length===0 && sessionStorage.length===0')
@@ -214,6 +222,7 @@ def main():
             exercise(cd,pid,directory,tokens[0],credentials,write_grants,out)
             credentials[0]['patient_ids']=[];write_grants();read()
             cd.wait("!document.querySelector('[data-testid=patient-card]') && document.querySelector('[data-testid=status]').textContent.includes('Patient unavailable')",'revoked read removes prior view')
+            assert cd.evaluate("!document.querySelector('[data-testid=overview-next]')")
             assert cd.evaluate("document.querySelector('[data-testid=workspace-identity]').textContent.includes('No authorized patient open')")
             assert cd.evaluate("!document.querySelector('[data-testid=workspace-identity]').textContent.includes("+json.dumps(pid)+")")
             credentials[0]['expires_at']=(datetime.now(timezone.utc)-timedelta(seconds=1)).isoformat();write_grants();read()
