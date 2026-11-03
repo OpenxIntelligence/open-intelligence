@@ -71,3 +71,7 @@ Independent source reviews: backend migration/test composition and frontend dono
 ### Additional bounded regression before repair
 
 Add four actual PostgreSQL/HTTP tests with eleven grant-withdrawal subcases for the shared source/document access-event boundary. The real audit SQL executes before fixture authority changes; the oracle requires 404, no receipt/content, unchanged durable rows and a successful freshly authorized retry. PostgreSQL sequence allocation is not asserted to roll back. This regression is deliberately published before changing `_read_receipt`; observed failures and the subsequent central repair must be recorded before claiming completion.
+
+## Whole-branch review: cross-owner image validation
+
+Important finding: a reviewed-document original containing a syntactically valid structured imaging report could pass the image owner's shared original validator. The document route keeps its separate ownership, but the image validator had no corresponding owner check. Two actual PostgreSQL/HTTP regression methods cover five denied operations, including an adverse existing link allowed by the historical schema. Positive controls retain structured image access and exact manually attributed document access. Publish these tests before repairing the shared validator; no migration is rewritten. The earlier implementation-head API run may be superseded while still running and cannot be reported as complete acceptance.
