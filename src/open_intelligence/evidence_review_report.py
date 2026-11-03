@@ -161,6 +161,8 @@ class EvidenceReviewReport:
                     f"  Source-reported state: {_quoted(p['reported_state'])}",
                     f"  Original statement: {_quoted(p['original_statement'])}",
                     f"  Evidence ID: {_quoted(e['knowledge_id'])}",
+                    f"  Evidence content item: {_quoted(e['content_item'])}",
+                    f"  Content item basis: {_quoted(e['content_item_basis'])}",
                     f"  Public reference: {_quoted(e['public_identifier'])}",
                     f"  Evidence version: {_quoted(e['version'])}; date: {_quoted(e['source_date'])}",
                     f"  Evidence text SHA-256: {e['evidence_text_sha256']}",

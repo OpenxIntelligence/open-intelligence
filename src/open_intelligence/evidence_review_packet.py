@@ -99,6 +99,8 @@ class EvidenceReviewPacket:
                 "external_reference": {
                     "knowledge_id": kid,
                     "family": source["family"],
+                    "content_item": source["content_item"],
+                    "content_item_basis": source["content_item_basis"],
                     "public_identifier": source["public_identifier"],
                     "version": source["version"],
                     "source_date": source["source_date"],
