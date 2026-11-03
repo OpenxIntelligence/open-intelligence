@@ -17,7 +17,12 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from open_intelligence import CaseStore, InvalidInput
-from open_intelligence.__main__ import Handler, seed
+from open_intelligence.__main__ import (
+    FICTIONAL_ACTOR_HEADER,
+    FICTIONAL_ACTOR_PURPOSE,
+    Handler,
+    seed,
+)
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
@@ -453,6 +458,13 @@ class SynthesisHttpTests(unittest.TestCase):
         cls.tmp = tempfile.TemporaryDirectory()
         cls.path = str(Path(cls.tmp.name) / "server.sqlite")
         seed(cls.path)
+        store = CaseStore(cls.path)
+        try:
+            for case_id in ("CASE-ALPHA", "CASE-BETA"):
+                store.create_grant("FICTIONAL-NAVIGATOR-A", case_id,
+                                   FICTIONAL_ACTOR_PURPOSE, "2020-01-01", "2999-12-31")
+        finally:
+            store.close()
         bound_handler = type("BoundHandlerForSynthesisTest", (Handler,), {"db_path": cls.path})
         cls.server = ThreadingHTTPServer(("127.0.0.1", 0), bound_handler)
         cls.port = cls.server.server_address[1]
@@ -470,22 +482,27 @@ class SynthesisHttpTests(unittest.TestCase):
         return f"http://127.0.0.1:{self.port}{path}"
 
     def _get_json(self, path):
+        request = Request(self._url(path),
+                          headers={FICTIONAL_ACTOR_HEADER: "FICTIONAL-NAVIGATOR-A"})
         try:
-            with urlopen(self._url(path), timeout=5) as response:
+            with urlopen(request, timeout=5) as response:
                 return response.status, json.loads(response.read())
         except HTTPError as err:
             return err.code, json.loads(err.read())
 
     def _get_text(self, path):
+        request = Request(self._url(path),
+                          headers={FICTIONAL_ACTOR_HEADER: "FICTIONAL-NAVIGATOR-A"})
         try:
-            with urlopen(self._url(path), timeout=5) as response:
+            with urlopen(request, timeout=5) as response:
                 return response.status, response.read().decode("utf-8")
         except HTTPError as err:
             return err.code, err.read().decode("utf-8")
 
     def _post_json(self, path, payload):
         request = Request(self._url(path), data=json.dumps(payload).encode("utf-8"),
-                          headers={"Content-Type": "application/json"})
+                          headers={"Content-Type": "application/json",
+                                   FICTIONAL_ACTOR_HEADER: "FICTIONAL-NAVIGATOR-A"})
         try:
             with urlopen(request, timeout=5) as response:
                 return response.status, json.loads(response.read())

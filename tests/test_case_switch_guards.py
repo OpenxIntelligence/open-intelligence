@@ -16,9 +16,10 @@ GUARDED_OWNED = ("owner-label-input", "note-text")
 class CaseSwitchGuardTests(unittest.TestCase):
     def test_synthesis_note_inputs_guarded_and_cleared(self):
         text = APP_JS.read_text()
-        guard_at = text.index(".some(id => el(id).value.trim())")
+        handler_at = text.index("picker.addEventListener('change'")
+        guard_at = text.index(".some(id => el(id).value.trim())", handler_at)
         guard_block = text[max(0, guard_at - 700):guard_at]
-        clear_at = text.index("for (const id of [")
+        clear_at = text.index("for (const id of [", guard_at)
         clear_block = text[clear_at:clear_at + 600]
         for field in GUARDED_SYNTHESIS:
             self.assertIn("'%s'" % field, guard_block,
@@ -28,9 +29,10 @@ class CaseSwitchGuardTests(unittest.TestCase):
 
     def test_owned_question_inputs_guarded_and_cleared(self):
         text = APP_JS.read_text()
-        guard_at = text.index(".some(id => el(id).value.trim())")
+        handler_at = text.index("picker.addEventListener('change'")
+        guard_at = text.index(".some(id => el(id).value.trim())", handler_at)
         guard_block = text[max(0, guard_at - 600):guard_at]
-        clear_at = text.index("for (const id of [")
+        clear_at = text.index("for (const id of [", guard_at)
         clear_block = text[clear_at:clear_at + 500]
         for field in GUARDED_OWNED:
             self.assertIn("'%s'" % field, guard_block,

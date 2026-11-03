@@ -21,9 +21,23 @@ import sys
 import tempfile
 import time
 from urllib.parse import urlsplit
-from urllib.request import urlopen
+from urllib.request import Request, urlopen as _plain_urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
+
+# B-01: case routes require a fictional actor, and seed() grants this demo
+# actor on the demo cases. This module-local wrapper presents the actor on
+# case-API calls and passes everything else (root wait, DevTools endpoint)
+# through untouched, so the journey below reads unchanged.
+DEMO_ACTOR_HEADERS = {"X-Fictional-Actor": "FICTIONAL-NAVIGATOR-A"}
+
+
+def urlopen(url, *args, **kwargs):
+    target = url.full_url if isinstance(url, Request) else url
+    if isinstance(target, str) and "/api/cases/" in target:
+        return _plain_urlopen(
+            Request(target, headers=DEMO_ACTOR_HEADERS), *args, **kwargs)
+    return _plain_urlopen(url, *args, **kwargs)
 
 
 def free_port() -> int:
@@ -677,7 +691,8 @@ def main() -> None:
             original_id = next(x["id"] for x in state_before["sources"]
                                if x["document_id"] == "PATH-ALPHA" and x["version"] == 1)
             cd.evaluate("""(async (sourceId) => {
-              const text = (await (await fetch('/api/cases/CASE-ALPHA/sources/' + sourceId)).json()).text;
+              const text = (await (await fetch('/api/cases/CASE-ALPHA/sources/' + sourceId,
+                {headers: {'X-Fictional-Actor': 'FICTIONAL-NAVIGATOR-A'}})).json()).text;
               document.querySelector('#report-text').value = text;
               document.querySelector('#import-form').requestSubmit();
             })(""" + str(original_id) + ")")

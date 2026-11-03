@@ -66,6 +66,9 @@ class TestOptionsSnapshotIdRouteValidation(unittest.TestCase):
             store = CaseStore(db_path)
             try:
                 _seed_case(store)
+                store.create_grant("FICTIONAL-NAVIGATOR-A", "CASE-QA1",
+                                   oi_main.FICTIONAL_ACTOR_PURPOSE,
+                                   "2020-01-01", "2999-12-31")
             finally:
                 store.close()
             handler = type("QABoundHandler", (oi_main.Handler,), {"db_path": db_path})
@@ -79,7 +82,8 @@ class TestOptionsSnapshotIdRouteValidation(unittest.TestCase):
                 def get(path: str) -> int:
                     conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
                     try:
-                        conn.request("GET", path)
+                        conn.request("GET", path, headers={
+                            oi_main.FICTIONAL_ACTOR_HEADER: "FICTIONAL-NAVIGATOR-A"})
                         response = conn.getresponse()
                         response.read()
                         return response.status

@@ -27,6 +27,12 @@
       <label for="case-picker">Case</label>
       <select id="case-picker" aria-label="Select synthetic case"></select>
       <p class="muted tiny">Fictional case data stays on this local machine. There is no identity verification or patient login.</p>
+      <div class="actor-block">
+        <label for="actor-input">Fictional actor</label>
+        <input id="actor-input" type="text" value="FICTIONAL-NAVIGATOR-A" maxlength="40" spellcheck="false" autocomplete="off">
+        <button id="actor-apply" type="button" class="button secondary minor">Apply actor</button>
+        <p id="actor-status" class="muted tiny">Acting as FICTIONAL-NAVIGATOR-A (fictional grant only — not identity verification).</p>
+      </div>
       <details class="section-menu" open>
         <summary>Navigate</summary>
         <nav id="workspace-nav" aria-label="Workspace sections">

@@ -5,7 +5,7 @@ import unittest
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from urllib.error import HTTPError
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 from open_intelligence.__main__ import Handler, seed
 
@@ -30,8 +30,11 @@ class TimelineHttpTests(unittest.TestCase):
         cls.tmp.cleanup()
 
     def request(self, path):
+        # B-01: case routes require a fictional actor; seed() grants this one.
+        request = Request(f"http://127.0.0.1:{self.port}{path}",
+                          headers={"X-Fictional-Actor": "FICTIONAL-NAVIGATOR-A"})
         try:
-            with urlopen(f"http://127.0.0.1:{self.port}{path}", timeout=5) as response:
+            with urlopen(request, timeout=5) as response:
                 return response.status, json.loads(response.read())
         except HTTPError as err:
             return err.code, json.loads(err.read())
