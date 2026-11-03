@@ -306,6 +306,21 @@ class Handler(BaseHTTPRequestHandler):
                 if review:
                     store.acknowledge_demo_review(review[1], int(review[2]), data.get("reviewer_label"))
                     return self._json(200, {"result": "acknowledged_in_demo"})
+                scoped_decision = re.fullmatch(rf"/api/cases/{ID_PART}/snapshots/([0-9]+)/scoped-decisions", path)
+                if scoped_decision:
+                    return self._json(201, store.record_scoped_decision(
+                        scoped_decision[1], int(scoped_decision[2]), data.get("reviewer_label"),
+                        data.get("scope"), data.get("note")))
+                scoped_dissent = re.fullmatch(rf"/api/cases/{ID_PART}/snapshots/([0-9]+)/scoped-dissents", path)
+                if scoped_dissent:
+                    return self._json(201, store.record_scoped_dissent(
+                        scoped_dissent[1], int(scoped_dissent[2]), data.get("reviewer_label"),
+                        data.get("claim_ref"), data.get("rationale")))
+                scoped_handoff = re.fullmatch(rf"/api/cases/{ID_PART}/snapshots/([0-9]+)/scoped-handoffs", path)
+                if scoped_handoff:
+                    return self._json(201, store.record_scoped_handoff(
+                        scoped_handoff[1], int(scoped_handoff[2]), data.get("from_reviewer"),
+                        data.get("to_reviewer")))
                 option_create = re.fullmatch(rf"/api/cases/{ID_PART}/options", path)
                 if option_create:
                     option_id = store.create_option(

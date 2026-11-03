@@ -15,6 +15,14 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from .rights import RightsError, check_link_content, normalize_permissions
+from .scoped_review import (
+    check_claim_ref,
+    check_note,
+    check_reviewer_label,
+    check_scope,
+    derive_status,
+    render_scoped_review_lines,
+)
 
 ID = re.compile(r"[A-Z][A-Z0-9-]{1,39}\Z")
 KEY = re.compile(r"[a-z][a-z0-9_-]{0,59}\Z")
@@ -461,6 +469,39 @@ CREATE TABLE IF NOT EXISTS biological_inventory_assertions (
 CREATE INDEX IF NOT EXISTS idx_biological_assets_case ON biological_assets(case_id, asset_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_assertions_asset ON biological_inventory_assertions(asset_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_assertions_source ON biological_inventory_assertions(source_version_id);
+-- B-04 scoped human review: per-snapshot scope notes (extraction vs
+-- interpretation decided independently), per-claim dissent, and handoff.
+-- All three tables are append-only: rows are inserted, never updated or
+-- deleted, and no write path copies them across snapshots or cases. Each
+-- row pins the snapshot basis (source/evidence/broker ids) it was recorded
+-- against, so pins stay readable as history after an amendment while the
+-- replacement draft starts unreviewed. Record-state notes only: never a
+-- credential check, a clinical sign-off, or a treatment decision.
+CREATE TABLE IF NOT EXISTS scoped_review_decisions (
+  id INTEGER PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(case_id),
+  snapshot_id INTEGER NOT NULL REFERENCES snapshots(id),
+  reviewer_label TEXT NOT NULL,
+  scope TEXT NOT NULL CHECK(scope IN ('extraction_accepted','interpretation_endorsed','left_open')),
+  source_version_ids TEXT NOT NULL, evidence_assessment_ids TEXT NOT NULL,
+  broker_link_ids TEXT NOT NULL,
+  note TEXT NOT NULL, decided_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS scoped_review_dissents (
+  id INTEGER PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(case_id),
+  snapshot_id INTEGER NOT NULL REFERENCES snapshots(id),
+  reviewer_label TEXT NOT NULL, claim_ref TEXT NOT NULL,
+  source_version_ids TEXT NOT NULL, rationale TEXT NOT NULL, dissented_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS scoped_review_handoffs (
+  id INTEGER PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(case_id),
+  snapshot_id INTEGER NOT NULL REFERENCES snapshots(id),
+  from_reviewer TEXT NOT NULL, to_reviewer TEXT NOT NULL,
+  source_version_ids TEXT NOT NULL, prior_decision_ids TEXT NOT NULL,
+  handed_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_scoped_decisions_snapshot ON scoped_review_decisions(snapshot_id);
+CREATE INDEX IF NOT EXISTS idx_scoped_dissents_snapshot ON scoped_review_dissents(snapshot_id);
+CREATE INDEX IF NOT EXISTS idx_scoped_handoffs_snapshot ON scoped_review_handoffs(snapshot_id);
 """
 
 
@@ -2153,6 +2194,172 @@ class CaseStore:
                             (case_id, row["question_id"]))
             self._event(case_id, "demo_review_acknowledged", snapshot_id=snapshot_id)
 
+    # ---- B-04 scoped human review: sign-off, dissent, handoff ----
+    # Record-state notes only (acknowledgment/scope recording): never a
+    # credential check, a clinical sign-off, or a treatment decision.
+    # Decisions are per-snapshot with independent extraction and
+    # interpretation dimensions; dissent names one finding key inside the
+    # snapshot basis; handoff carries the pinned basis to another fictional
+    # reviewer. All writes are INSERT-only; nothing here updates or deletes
+    # a prior row, and nothing copies rows across snapshots or cases.
+
+    @staticmethod
+    def _scoped_checked(func, *args):
+        try:
+            return func(*args)
+        except ValueError as error:
+            raise InvalidInput(str(error)) from None
+
+    def _snapshot_in_case(self, case_id: str, snapshot_id: int) -> None:
+        if type(snapshot_id) is not int or snapshot_id < 1:
+            raise InvalidInput("Invalid investigation snapshot")
+        if not self.db.execute("SELECT 1 FROM snapshots WHERE id=? AND case_id=?",
+                               (snapshot_id, case_id)).fetchone():
+            raise InvalidInput("Investigation snapshot not in this case")
+
+    def _snapshot_basis(self, snapshot_id: int) -> tuple[list[int], list[int], list[int]]:
+        sources = [r[0] for r in self.db.execute(
+            "SELECT source_version_id FROM snapshot_sources WHERE snapshot_id=? ORDER BY source_version_id",
+            (snapshot_id,)).fetchall()]
+        assessments = [r[0] for r in self.db.execute(
+            "SELECT assessment_id FROM snapshot_evidence WHERE snapshot_id=? ORDER BY assessment_id",
+            (snapshot_id,)).fetchall()]
+        brokers = [r[0] for r in self.db.execute(
+            "SELECT broker_link_id FROM snapshot_broker_links WHERE snapshot_id=? ORDER BY broker_link_id",
+            (snapshot_id,)).fetchall()]
+        return [int(x) for x in sources], [int(x) for x in assessments], [int(x) for x in brokers]
+
+    def scoped_review_for_snapshot(self, case_id: str, snapshot_id: int) -> dict:
+        """Read-only projection of one snapshot's scoped review state."""
+        self._case(case_id)
+        self._snapshot_in_case(case_id, snapshot_id)
+        decisions = self._dicts(self.db.execute(
+            "SELECT * FROM scoped_review_decisions WHERE snapshot_id=? AND case_id=? ORDER BY id",
+            (snapshot_id, case_id)).fetchall())
+        for row in decisions:
+            row["source_version_ids"] = json.loads(row["source_version_ids"])
+            row["evidence_assessment_ids"] = json.loads(row["evidence_assessment_ids"])
+            row["broker_link_ids"] = json.loads(row["broker_link_ids"])
+        dissents = self._dicts(self.db.execute(
+            "SELECT * FROM scoped_review_dissents WHERE snapshot_id=? AND case_id=? ORDER BY id",
+            (snapshot_id, case_id)).fetchall())
+        for row in dissents:
+            row["source_version_ids"] = json.loads(row["source_version_ids"])
+        handoffs = self._dicts(self.db.execute(
+            "SELECT * FROM scoped_review_handoffs WHERE snapshot_id=? AND case_id=? ORDER BY id",
+            (snapshot_id, case_id)).fetchall())
+        for row in handoffs:
+            row["source_version_ids"] = json.loads(row["source_version_ids"])
+            row["prior_decision_ids"] = json.loads(row["prior_decision_ids"])
+        status = derive_status(decisions)
+        return {
+            **status,
+            "decisions": decisions,
+            "dissents": dissents,
+            "handoffs": handoffs,
+            "assignee": handoffs[-1]["to_reviewer"] if handoffs else None,
+        }
+
+    def record_scoped_decision(self, case_id: str, snapshot_id: int, reviewer_label: str,
+                               scope: str, note: str) -> dict:
+        """Record one reviewer's scope note on a snapshot, pinning its basis.
+
+        The snapshot's current source/evidence/broker ids are copied into the
+        row, so the pins stay readable as history after an amendment. Any
+        snapshot state is accepted: a note recorded against a superseded
+        basis is history, not a current endorsement, and replacement drafts
+        always start unreviewed.
+        """
+        self._case(case_id)
+        reviewer = self._scoped_checked(check_reviewer_label, reviewer_label)
+        scope_value = self._scoped_checked(check_scope, scope)
+        note_text = self._scoped_checked(check_note, note, "Decision note")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            self._snapshot_in_case(case_id, snapshot_id)
+            sources, assessments, brokers = self._snapshot_basis(snapshot_id)
+            stamped = now_utc()
+            cur = self.db.execute("""INSERT INTO scoped_review_decisions
+                (case_id,snapshot_id,reviewer_label,scope,source_version_ids,
+                 evidence_assessment_ids,broker_link_ids,note,decided_at)
+                VALUES (?,?,?,?,?,?,?,?,?)""",
+                (case_id, snapshot_id, reviewer, scope_value, json.dumps(sources),
+                 json.dumps(assessments), json.dumps(brokers), note_text, stamped))
+            self._event(case_id, "scoped_review_decided", snapshot_id=snapshot_id,
+                        decision_id=cur.lastrowid, scope=scope_value)
+            return {"decision_id": int(cur.lastrowid), "scope": scope_value,
+                    "pinned_source_ids": sources,
+                    "pinned_evidence_assessment_ids": assessments,
+                    "pinned_broker_link_ids": brokers, "decided_at": stamped}
+
+    def record_scoped_dissent(self, case_id: str, snapshot_id: int, reviewer_label: str,
+                              claim_ref: str, rationale: str) -> dict:
+        """Record disagreement on one finding key without touching prior rows.
+
+        The claim reference must be a finding key present in the snapshot's
+        pinned basis. The dissent row lives in its own table: no write here
+        updates or deletes a decision, so both views stay visible.
+        """
+        self._case(case_id)
+        reviewer = self._scoped_checked(check_reviewer_label, reviewer_label)
+        claim = self._scoped_checked(check_claim_ref, claim_ref)
+        rationale_text = self._scoped_checked(check_note, rationale, "Dissent rationale")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            self._snapshot_in_case(case_id, snapshot_id)
+            sources, _, _ = self._snapshot_basis(snapshot_id)
+            marks = ",".join("?" for _ in sources)
+            found = self.db.execute(
+                f"SELECT 1 FROM assertions WHERE finding_key=? AND source_version_id IN ({marks}) LIMIT 1",
+                [claim, *sources]).fetchone() if sources else None
+            if not found:
+                raise InvalidInput("Claim reference is not a finding in this snapshot's basis")
+            stamped = now_utc()
+            cur = self.db.execute("""INSERT INTO scoped_review_dissents
+                (case_id,snapshot_id,reviewer_label,claim_ref,source_version_ids,rationale,dissented_at)
+                VALUES (?,?,?,?,?,?,?)""",
+                (case_id, snapshot_id, reviewer, claim, json.dumps(sources), rationale_text, stamped))
+            self._event(case_id, "scoped_review_dissent", snapshot_id=snapshot_id,
+                        dissent_id=cur.lastrowid, claim_ref=claim)
+            return {"dissent_id": int(cur.lastrowid), "claim_ref": claim,
+                    "pinned_source_ids": sources, "dissented_at": stamped}
+
+    def record_scoped_handoff(self, case_id: str, snapshot_id: int,
+                              from_reviewer: str, to_reviewer: str) -> dict:
+        """Hand open review items to another fictional reviewer, losslessly.
+
+        The handoff row pins the snapshot id, its current source versions,
+        and every prior decision id, and the full history stays in place:
+        nothing is rewritten. Handoff requires at least one open dimension.
+        """
+        self._case(case_id)
+        sender = self._scoped_checked(check_reviewer_label, from_reviewer)
+        recipient = self._scoped_checked(check_reviewer_label, to_reviewer)
+        if sender == recipient:
+            raise InvalidInput("Handoff requires a different receiving reviewer")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            self._snapshot_in_case(case_id, snapshot_id)
+            sources, _, _ = self._snapshot_basis(snapshot_id)
+            prior = [int(r[0]) for r in self.db.execute(
+                "SELECT id FROM scoped_review_decisions WHERE snapshot_id=? AND case_id=? ORDER BY id",
+                (snapshot_id, case_id)).fetchall()]
+            existing = self._dicts(self.db.execute(
+                "SELECT scope FROM scoped_review_decisions WHERE snapshot_id=? AND case_id=?",
+                (snapshot_id, case_id)).fetchall())
+            if not derive_status(existing)["open_items"]:
+                raise InvalidInput("No open review items to hand off; both dimensions already have a settled note")
+            stamped = now_utc()
+            cur = self.db.execute("""INSERT INTO scoped_review_handoffs
+                (case_id,snapshot_id,from_reviewer,to_reviewer,source_version_ids,prior_decision_ids,handed_at)
+                VALUES (?,?,?,?,?,?,?)""",
+                (case_id, snapshot_id, sender, recipient, json.dumps(sources), json.dumps(prior), stamped))
+            self._event(case_id, "scoped_review_handoff", snapshot_id=snapshot_id,
+                        handoff_id=cur.lastrowid, to_reviewer=recipient)
+            return {"handoff_id": int(cur.lastrowid), "snapshot_id": snapshot_id,
+                    "pinned_source_ids": sources, "prior_decision_ids": prior,
+                    "handed_at": stamped}
+
     def investigation_facts(self, case_id: str, question_id: int) -> dict:
         """Facts the investigation prompt may use: question, current assertions, assessments."""
         self._case(case_id)
@@ -2254,6 +2461,9 @@ class CaseStore:
                 snapshot["broker_link_ids"] = [r[0] for r in self.db.execute(
                     "SELECT broker_link_id FROM snapshot_broker_links WHERE snapshot_id=? ORDER BY broker_link_id",
                     (snapshot["id"],)).fetchall()]
+            for snapshot in snapshot_rows:
+                # B-04 read-only projection; adds no rows and changes no state.
+                snapshot["scoped_review"] = self.scoped_review_for_snapshot(case_id, snapshot["id"])
             broker_rows = self._dicts(self.db.execute("""SELECT bl.*, rs.source_key, rs.version_label,
                 rs.owner, rs.state AS rights_state FROM broker_links bl
                 JOIN rights_sources rs ON rs.id=bl.rights_source_id
@@ -2333,7 +2543,12 @@ class CaseStore:
                      f"Case: `{case_id}` | Investigation: {snapshot_id} | State: **{snapshot['state']}**",
                      f"Created: {snapshot['created_at']} | Demo acknowledgment: {snapshot['reviewed_at'] or 'None'}", "",
                      "## Question", "", snapshot["question"], "", "## Draft (human-authored)", "",
-                     snapshot["summary"], "", "## Source versions and original text", ""]
+                     snapshot["summary"], ""]
+            # B-04: per-dimension scope status beside the existing state label
+            # above (kept verbatim, including State: **stale** after amendment).
+            lines.extend(render_scoped_review_lines(
+                self.scoped_review_for_snapshot(case_id, snapshot_id)))
+            lines.extend(["## Source versions and original text", ""])
             for source in sources:
                 raw_text = bytes(source["raw"]).decode("utf-8")
                 # Prevent raw input from escaping Markdown source fences.

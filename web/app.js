@@ -61,7 +61,8 @@ async function initialize() {
     picker.addEventListener('change', () => {
       // An unfinished narrative must never silently become attached to another case.
       if ((['draft-observations', 'draft-summary', 'draft-assumptions', 'evidence-rationale',
-            'evidence-withdraw-reason', 'option-description'].some(id => el(id).value.trim()))) {
+            'evidence-withdraw-reason', 'option-description',
+            'scoped-decision-note', 'scoped-dissent-rationale'].some(id => el(id).value.trim()))) {
         picker.value = caseId;
         notice('Save or explicitly clear the unfinished investigation draft before switching cases.', true);
         return;
@@ -543,6 +544,13 @@ function render() {
       }); actions.append(button);
     }
     box.append(top, description, meta, actions);
+    const scoped = snapshot.scoped_review || {};
+    const scopedOpen = scoped.open_items || [];
+    box.append(node('p', 'Scoped review: extraction ' + (scoped.extraction || 'unreviewed') +
+      ' · interpretation ' + (scoped.interpretation || 'unreviewed') +
+      (scopedOpen.length ? ' · Open: ' + scopedOpen.join(', ') : ' · No open scope items') +
+      ((scoped.dissents || []).length ? ' · ' + scoped.dissents.length + ' disagreement(s) recorded' : '') +
+      (scoped.assignee ? ' · With reviewer: ' + scoped.assignee : ''), 'snapshot-meta'));
     if (snapshot.state === 'stale') box.append(node('p', 'A source was amended. This version remains historical and cannot be acknowledged as current.', 'muted'));
     el('snapshot-list').append(box);
   }
@@ -564,6 +572,7 @@ function render() {
   }
   renderPatientView();
   renderOptions();
+  renderScopedReview();
   renderedCaseId = caseId;
 }
 function renderOriginalSource(text, lineNumber) {
@@ -931,6 +940,46 @@ el('option-review-form').addEventListener('submit', async event => {
     notice('Reviewer action recorded: ' + outcome.result + '.'); await refresh();
   } catch (err) { notice(err.message, true); }
 });
+el('scoped-decision-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const outcome = await api('/api/cases/' + requestedCase + '/snapshots/' +
+      Number(el('scoped-decision-snapshot').value) + '/scoped-decisions', {
+      reviewer_label: el('scoped-decision-reviewer').value, scope: el('scoped-decision-scope').value,
+      note: el('scoped-decision-note').value,
+    });
+    if (requestedCase !== caseId) return;
+    el('scoped-decision-note').value = '';
+    notice('Scope note recorded: ' + outcome.scope + '.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('scoped-dissent-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const outcome = await api('/api/cases/' + requestedCase + '/snapshots/' +
+      Number(el('scoped-dissent-snapshot').value) + '/scoped-dissents', {
+      reviewer_label: el('scoped-dissent-reviewer').value, claim_ref: el('scoped-dissent-claim').value,
+      rationale: el('scoped-dissent-rationale').value,
+    });
+    if (requestedCase !== caseId) return;
+    el('scoped-dissent-claim').value = ''; el('scoped-dissent-rationale').value = '';
+    notice('Disagreement recorded on finding ' + outcome.claim_ref + '.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('scoped-handoff-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const outcome = await api('/api/cases/' + requestedCase + '/snapshots/' +
+      Number(el('scoped-handoff-snapshot').value) + '/scoped-handoffs', {
+      from_reviewer: el('scoped-handoff-from').value, to_reviewer: el('scoped-handoff-to').value,
+    });
+    if (requestedCase !== caseId) return;
+    notice('Open items handed to ' + el('scoped-handoff-to').value + ' (handoff #' + outcome.handoff_id + ').'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
 
 
 function renderOptions() {
@@ -997,6 +1046,56 @@ function renderOptions() {
         e.action + ' by ' + e.reviewer_label + ' · scope: ' + e.scope).join(' ; '), 'snapshot-meta'));
     }
     el('option-list').append(box);
+  }
+}
+function renderScopedReview() {
+  const fill = (id, items, labelFn) => {
+    const select = el(id);
+    const prior = select.value;
+    clear(id);
+    for (const item of items) {
+      const opt = node('option', labelFn(item));
+      opt.value = item.id; select.append(opt);
+    }
+    if (prior && [...select.options].some(x => x.value === prior)) select.value = prior;
+  };
+  const label = s => 'Investigation #' + s.id + ' · ' + s.state;
+  fill('scoped-decision-snapshot', active.snapshots, label);
+  fill('scoped-dissent-snapshot', active.snapshots, label);
+  fill('scoped-handoff-snapshot', active.snapshots, label);
+  clear('scoped-review-list');
+  if (!active.snapshots.length) empty(el('scoped-review-list'), 'No investigation drafts yet.');
+  for (const snapshot of active.snapshots) {
+    const scoped = snapshot.scoped_review || {
+      extraction: 'unreviewed', interpretation: 'unreviewed',
+      open_items: [], decisions: [], dissents: [], handoffs: [],
+    };
+    const box = node('div', null, 'snapshot');
+    const top = node('div', null, 'topline');
+    top.append(node('strong', 'Investigation #' + snapshot.id),
+      pill('extraction: ' + scoped.extraction, scoped.extraction === 'extraction_accepted' ? '' : 'pill-warn'),
+      pill('interpretation: ' + scoped.interpretation, scoped.interpretation === 'interpretation_endorsed' ? '' : 'pill-warn'));
+    box.append(top);
+    if ((scoped.open_items || []).length)
+      box.append(node('p', 'Open scope items: ' + scoped.open_items.join(', ') + ' — no settled note recorded.', 'snapshot-meta'));
+    else box.append(node('p', 'No open scope items: both dimensions have a settled note.', 'snapshot-meta'));
+    for (const item of (scoped.decisions || [])) {
+      box.append(node('p', 'Note #' + item.id + ' by ' + item.reviewer_label + ': ' + item.scope +
+        ' · sources ' + (item.source_version_ids.map(x => '#' + x).join(', ') || 'none') +
+        ' · ' + item.decided_at, 'snapshot-meta'), node('p', item.note, 'muted'));
+    }
+    for (const item of (scoped.dissents || [])) {
+      box.append(node('p', 'Disagreement #' + item.id + ' by ' + item.reviewer_label + ' on finding `' +
+        item.claim_ref + '` · ' + item.dissented_at + ' (noted views above are unchanged).', 'snapshot-meta'),
+        node('p', item.rationale, 'muted'));
+    }
+    for (const item of (scoped.handoffs || [])) {
+      box.append(node('p', 'Handoff #' + item.id + ': ' + item.from_reviewer + ' handed open items to ' +
+        item.to_reviewer + ' · snapshot #' + item.snapshot_id + ' · sources ' +
+        (item.source_version_ids.map(x => '#' + x).join(', ') || 'none') + ' · prior decisions ' +
+        (item.prior_decision_ids.map(x => '#' + x).join(', ') || 'none') + ' · ' + item.handed_at, 'snapshot-meta'));
+    }
+    el('scoped-review-list').append(box);
   }
 }
 function renderBibliography(record) {
