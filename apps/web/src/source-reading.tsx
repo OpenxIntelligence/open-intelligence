@@ -6,13 +6,14 @@ export type SourceFilters = {query: string; versionState: string};
 export const emptySourceFilters: SourceFilters = {query: '', versionState: 'all'};
 
 /** Presentation of the existing response only; no retrieval or clinical state. */
-export function SourceReading({index, view, filters, onFiltersChange, busy, onOpenOriginal}: {
+export function SourceReading({index, view, filters, onFiltersChange, busy, onOpenOriginal, onInvestigate}: {
   index: SourceIndex;
   view: ReadingView;
   filters: SourceFilters;
   onFiltersChange: (filters: SourceFilters) => void;
   busy: boolean;
   onOpenOriginal: (sourceId: string) => void;
+  onInvestigate: (sourceId: string, sourceLine: number) => void;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const search = filters.query.trim().toLowerCase();
@@ -54,6 +55,11 @@ export function SourceReading({index, view, filters, onFiltersChange, busy, onOp
               <p><strong>{finding.finding_key}</strong> · reported state: {finding.reported_state} · line {finding.source_line}</p>
               <blockquote data-testid="source-statement">{finding.source_statement}</blockquote>
               <small>Clinical review: not established · <code>{finding.source_id}</code></small>
+              {item.state==='current'&&<button type="button" data-testid="source-to-question"
+                disabled={busy} onClick={()=>onInvestigate(finding.source_id,finding.source_line)}
+                aria-label={'Ask about '+item.document_id+' version '+item.version+' line '+finding.source_line}>
+                Ask about this statement
+              </button>}
             </li>)}</ul>
           </div>}
           {item.state === 'superseded' && <p className="history-note">Earlier version. This response does not supply its historical quotations; inspect the original to read that version.</p>}
