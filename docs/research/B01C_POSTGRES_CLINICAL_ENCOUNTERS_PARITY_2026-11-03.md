@@ -23,7 +23,7 @@ The temporary SQL adapter is deliberately narrow: known, constant-source SELECT/
 
 ### Real-server matrix and acceptance cases
 
-CI runs PostgreSQL 17.11 and 18.6 and research-only `pg8000==1.31.6` / `asyncpg==0.32.0`, alongside unchanged B-01/B-01b tests and all B-01c tests. The B-01c tests use actual DB transactions and SQL triggers, compare outcomes with the unchanged SQLite service, and reject:
+UNVERIFIED — intended real-server matrix (workflow pending): PostgreSQL 17.11 and 18.6 with research-only `pg8000==1.31.6` / `asyncpg==0.32.0`, alongside unchanged B-01/B-01b tests and all B-01c tests. This draft withholds the workflow file (workflow edits go via the web editor, not this account), so the matrix versions are unconfirmed until that hunk lands, and the PG17/18 run itself remains a reviewer item. The B-01c tests are designed to use actual DB transactions and SQL triggers, compare outcomes with the unchanged SQLite service, and reject:
 
 1. Cross-patient access to encounter and notes.
 2. Unknown, absent or throwing authorizer; inactive patient.
