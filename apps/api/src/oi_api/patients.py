@@ -17,6 +17,7 @@ from open_intelligence.postgres_registry import PostgresPatientRegistry
 from .access import Authentication, Principal
 from .contracts import Contract
 from .database import Database
+from .record_requests import PostgresRecordRequests
 
 TOKEN = re.compile(r"[A-Za-z0-9._~-]{32,256}\Z")
 
@@ -55,6 +56,60 @@ class Error(Contract):
     detail: str
 
 
+class CreateRecordRequest(Contract):
+    synthetic: StrictBool
+    request_key: str = Field(min_length=3, max_length=128)
+    kind: Literal["clinical", "pathology", "laboratory", "imaging", "molecular", "other"]
+    record_label: str = Field(min_length=1, max_length=140)
+    source_organization: str = Field(min_length=1, max_length=100)
+
+    @field_validator("synthetic")
+    @classmethod
+    def synthetic_only(cls, value):
+        if value is not True:
+            raise ValueError("Only fictional record requests are allowed")
+        return value
+
+
+class CancelRecordRequest(Contract):
+    synthetic: StrictBool
+    reason: str = Field(min_length=1, max_length=200)
+
+    @field_validator("synthetic")
+    @classmethod
+    def synthetic_only(cls, value):
+        if value is not True:
+            raise ValueError("Only fictional record requests are allowed")
+        return value
+
+
+class RecordRequestReceipt(Contract):
+    request_id: str
+    duplicate: bool
+
+
+class RecordRequest(Contract):
+    request_id: str
+    patient_id: str
+    kind: str
+    record_label: str
+    source_organization: str
+    status: Literal["requested", "cancelled"]
+    revision: int = Field(ge=1)
+    created_at: datetime
+    updated_at: datetime
+    receipt_status: Literal["unavailable_until_canonical_source_contract"]
+    external_request_sent: Literal[False]
+
+
+class RecordRequests(Contract):
+    patient_id: str
+    requests: list[RecordRequest]
+    synthetic: Literal[True] = True
+    external_request_sent: Literal[False] = False
+    source_receipts_enabled: Literal[False] = False
+
+
 def patient_router(database: Database, authentication: Authentication) -> APIRouter:
     router = APIRouter(prefix="/v1/patients", tags=["Synthetic patient registry"])
     bearer = HTTPBearer(auto_error=False, scheme_name="SyntheticFixture",
@@ -89,7 +144,7 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
                         return False
                     if action == "patient_create":
                         return subject == context.organization
-                    if action != "patient_read" or subject not in context.patient_ids:
+                    if action not in {"patient_read", "record_request_create", "record_request_read", "record_request_cancel"} or subject not in context.patient_ids:
                         return False
                     cursor = connection.cursor()
                     try:
@@ -139,5 +194,62 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
         except PatientRegistryDenied:
             raise HTTPException(404, "Patient unavailable") from None
         return Patient(**value)
+
+    def records_authorized(patients: PostgresPatientRegistry, context: Principal,
+                           patient_id: str, action: str) -> None:
+        # An acquisition grant never grants patient access implicitly.
+        if ("patient_read" not in context.actions or action not in context.actions
+                or patient_id not in context.patient_ids):
+            raise HTTPException(404, "Patient unavailable")
+        try:
+            patients._allow(context.actor, patient_id, "patient_read", context.purpose)
+            patients._allow(context.actor, patient_id, action, context.purpose)
+        except PatientRegistryDenied:
+            raise HTTPException(404, "Patient unavailable") from None
+
+    @router.get("/{patient_id}/record-requests", response_model=RecordRequests,
+                responses=errors, operation_id="list_record_requests_v1")
+    def list_records(patient_id: str, context: Principal = Depends(principal)):
+        try:
+            with registry(context) as patients:
+                records_authorized(patients, context, patient_id, "record_request_read")
+                records = PostgresRecordRequests(patients).list(
+                    patient_id, organization=context.organization)
+                return RecordRequests(patient_id=patient_id, requests=records)
+        except PatientRegistryDenied:
+            raise HTTPException(404, "Patient unavailable") from None
+
+    @router.post("/{patient_id}/record-requests", response_model=RecordRequestReceipt,
+                 status_code=201, responses={200: {"model": RecordRequestReceipt}, **errors},
+                 operation_id="create_record_request_v1")
+    def create_record(patient_id: str, payload: CreateRecordRequest, response: Response,
+                      context: Principal = Depends(principal)):
+        try:
+            with registry(context) as patients:
+                records_authorized(patients, context, patient_id, "record_request_create")
+                result = PostgresRecordRequests(patients).create(
+                    patient_id, organization=context.organization, actor=context.actor,
+                    purpose=context.purpose, request_key=payload.request_key, kind=payload.kind,
+                    record_label=payload.record_label,
+                    source_organization=payload.source_organization)
+        except PatientRegistryDenied:
+            raise HTTPException(404, "Patient unavailable") from None
+        response.status_code = 200 if result["duplicate"] else 201
+        return RecordRequestReceipt(**result)
+
+    @router.post("/{patient_id}/record-requests/{request_id}/cancel",
+                 response_model=RecordRequestReceipt, responses=errors,
+                 operation_id="cancel_record_request_v1")
+    def cancel_record(patient_id: str, request_id: str, payload: CancelRecordRequest,
+                      context: Principal = Depends(principal)):
+        try:
+            with registry(context) as patients:
+                records_authorized(patients, context, patient_id, "record_request_cancel")
+                result = PostgresRecordRequests(patients).cancel(
+                    patient_id, request_id, organization=context.organization,
+                    actor=context.actor, reason=payload.reason)
+        except PatientRegistryDenied:
+            raise HTTPException(404, "Patient unavailable") from None
+        return RecordRequestReceipt(**result)
 
     return router
