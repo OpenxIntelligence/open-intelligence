@@ -1,5 +1,7 @@
 /** Transient UI state over the canonical patient API; never an authority or ledger. */
 import {parseCaseBindingList, parseSourceIndex} from './source-contracts.js';
+import {decodeQuestionSourcePacket} from './source-quote-review-packet.js';
+import type {QuestionSourceReviewPacket} from './source-quote-review-packet.js';
 import type {CaseBinding, SourceIndex} from './source-contracts.js';
 import {prepareSource,parseImportReceipt,verifyOriginal} from './source-intake.js';
 import type {ImportReceipt,OriginalSource} from './source-intake.js';
@@ -30,6 +32,8 @@ export type ViewState = Readonly<{
   savedQuestion:SavedQuestion|null;questionSavePhase:'idle'|'saving'|'saved'|'error';questionSaveMessage:string;
   questions:readonly SourceQuestion[]|null;questionListPhase:'idle'|'loading'|'ready'|'error';questionListMessage:string;
   questionsAccessReceiptId:string|null;questionsCaseId:string|null;
+  sourceQuotePacket:QuestionSourceReviewPacket|null;
+  sourceQuotePhase:'idle'|'loading'|'ready'|'error';sourceQuoteMessage:string;
 }>;
 export type Transport = (input: string, init: RequestInit) => Promise<Response>;
 const KEY = /^[A-Za-z0-9][A-Za-z0-9_.:-]{2,127}$/;
@@ -51,7 +55,9 @@ const emptyInvestigation=()=>({composerPreview:null,composerPhase:'idle' as cons
   savedQuestion:null,questionSavePhase:'idle' as const,
   questionSaveMessage:'Save a verified preflight to create one unreviewed source-linked question.',
   questions:null,questionsAccessReceiptId:null,questionsCaseId:null,questionListPhase:'idle' as const,
-  questionListMessage:'Open an authorized case to inspect saved source questions.'});
+  questionListMessage:'Open an authorized case to inspect saved source questions.',
+  sourceQuotePacket:null,sourceQuotePhase:'idle' as const,
+  sourceQuoteMessage:'Select a saved question to inspect its source quotation and evidence gaps.'});
 const fresh = (): ViewState => Object.freeze({connected:false,phase:'disconnected',patient:null,created:null,message:'Connect a local synthetic credential to use the patient registry.',cases:null,sourceIndex:null,recordsPhase:'idle',recordMessage:'Open an authorized fictional patient in Overview first.',...emptyIntake(),...emptyWorld(),...emptyInvestigation()});
 const emptyRecords=()=>({...emptyIntake(),...emptyWorld(),cases:null,sourceIndex:null,recordsPhase:'idle' as const,recordMessage:'Load the current authorized case mappings to inspect original source metadata.'});
 function exact(value: unknown, fields: string[]): value is Record<string,unknown> {
@@ -89,17 +95,23 @@ export class RegistrySession {
   #token=''; #scope=0; #read=0; #records=0; #state:ViewState=fresh();
   #worldRead=0; #composerRead=0; #questionRead=0; #questionWrite=0;
   #questionKey=''; #questionFingerprint=''; #savingQuestion=false;
+  #quoteRead=0;
   #listeners=new Set<()=>void>(); #controllers=new Set<AbortController>(); #creating=false; #uploading=false;
   constructor(private readonly transport:Transport=(url,init)=>fetch(url,init)) {}
   snapshot=():ViewState=>this.#state;
   subscribe=(listener:()=>void):(()=>void)=>{this.#listeners.add(listener);return()=>this.#listeners.delete(listener);};
   #publish(patch:Partial<ViewState>){this.#state=Object.freeze({...this.#state,...patch});for(const listener of this.#listeners)listener();}
   #resetInvestigation(){
-    this.#worldRead++;this.#composerRead++;this.#questionRead++;this.#questionWrite++;
+    this.#worldRead++;this.#composerRead++;this.#questionRead++;this.#questionWrite++;this.#quoteRead++;
     this.#questionKey='';this.#questionFingerprint='';this.#savingQuestion=false;
     return emptyInvestigation();
   }
   #resetWorld(){this.#publish({...emptyWorld(),...this.#resetInvestigation()});}
+  dismissSourceQuotePacket=()=>{
+    this.#quoteRead++;
+    this.#publish({sourceQuotePacket:null,sourceQuotePhase:'idle',
+      sourceQuoteMessage:'Select a saved question to inspect its source quotation and evidence gaps.'});
+  };
   disconnect=()=>{
     this.#scope++;this.#read++;this.#records++;this.#token='';this.#creating=false;this.#uploading=false;
     this.#resetInvestigation();
@@ -396,7 +408,58 @@ export class RegistrySession {
       if(query===this.#questionWrite)this.#savingQuestion=false;}
   }
 
+  async loadQuestionSourcePacket(questionId:string):Promise<void>{
+    const pid=this.#state.patient?.patient_id;
+    const caseId=this.#state.questionsCaseId;
+    const question=this.#state.questions?.find(q=>q.question_id===questionId);
+    const scope=this.#scope,read=this.#read,questionRead=this.#questionRead,
+      worldRead=this.#worldRead,query=++this.#quoteRead;
+    this.#publish({sourceQuotePacket:null,sourceQuotePhase:'idle',
+      sourceQuoteMessage:'This inspection requires a fresh independent source-packet grant.'});
+    if(!pid||!caseId||!question||!this.#token||this.#state.questionListPhase!=='ready'||
+       !this.#state.cases?.some(x=>x.case_id===caseId&&x.status==='active')){
+      this.#publish({sourceQuotePhase:'error',
+        sourceQuoteMessage:'Open an authorized current case and saved question first.'});
+      return;
+    }
+    const current=()=>scope===this.#scope&&read===this.#read&&
+      questionRead===this.#questionRead&&worldRead===this.#worldRead&&
+      query===this.#quoteRead&&this.#state.patient?.patient_id===pid&&
+      this.#state.questionsCaseId===caseId&&
+      this.#state.questions?.some(q=>q.question_id===questionId);
+    const controller=new AbortController();this.#controllers.add(controller);
+    const timeout=setTimeout(()=>controller.abort(),10000);
+    this.#publish({sourceQuotePhase:'loading',
+      sourceQuoteMessage:'Rechecking exact canonical original, question and source-quote rights…'});
+    try{
+      const path='/v1/patients/'+encodeURIComponent(pid)+'/cases/'+
+        encodeURIComponent(caseId)+'/questions/'+encodeURIComponent(questionId)+
+        '/source-review-packet';
+      const res=await this.transport(path,this.#init(controller));
+      if(!current())return;
+      if(res.status===401){this.#httpError(res.status);return;}
+      if(res.status!==200){
+        this.#publish({sourceQuotePacket:null,sourceQuotePhase:'error',
+          sourceQuoteMessage:'Source quote packet unavailable or not authorized. Previous quote cleared.'});
+        return;
+      }
+      const fingerprint=this.#state.worldModel?.case_id===caseId
+        ?this.#state.worldModel.snapshot_fingerprint:undefined;
+      const packet=await decodeQuestionSourcePacket(
+        await json(res,1048576),question,caseId,pid,fingerprint);
+      if(!current())return;
+      this.#publish({sourceQuotePacket:packet,sourceQuotePhase:'ready',
+        sourceQuoteMessage:packet.selected_statement?
+         'Current authored source statement inspected. Independent evidence appraisal remains missing.':
+         'Historical source changed. The old question must be reassessed; no current quote is promoted.'});
+    }catch(_){
+      if(current())this.#publish({sourceQuotePacket:null,sourceQuotePhase:'error',
+        sourceQuoteMessage:'Source quote or packet integrity could not be verified. Nothing is displayed.'});
+    }finally{clearTimeout(timeout);this.#controllers.delete(controller);}
+  }
+
   async loadSavedQuestions(caseId:string):Promise<void>{
+    this.dismissSourceQuotePacket();
     const patientId=this.#state.patient?.patient_id;
     const query=++this.#questionRead,scope=this.#scope,patientRead=this.#read,worldRead=this.#worldRead;
     this.#publish({questions:null,questionsAccessReceiptId:null,questionsCaseId:null,questionListPhase:'idle',
