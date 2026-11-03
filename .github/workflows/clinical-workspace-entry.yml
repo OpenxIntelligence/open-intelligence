@@ -1,0 +1,58 @@
+name: Fictional patient intake over governed clinical review
+on:
+  push:
+    branches: [integration/clinical-workspace-entry-20261102]
+  pull_request:
+    branches: [integration/pwm-v2-report-review-20261102]
+permissions:
+  contents: read
+jobs:
+  workspace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.13'
+      - name: Compile source and tests
+        run: PYTHONPATH=src python -m compileall -q src tests
+      - name: Workspace HTTP entry and original file intake checks
+        run: PYTHONPATH=src:tests:. python -m unittest discover -s tests -p 'test_workspace_start_http.py' -v
+      - name: Original intake JavaScript contract
+        run: node --test tests/test_intake.js
+      - name: Unified clinical evidence and report receipt contracts
+        run: |
+          PYTHONPATH=src:tests:. python -m unittest discover -s tests -p 'test_pwm_v2_report_receipt_integration.py' -v
+          PYTHONPATH=src:tests:. python -m unittest discover -s tests -p 'test_report_review_handoff.py' -v
+      - name: Full existing Python and HTTP suite
+        run: PYTHONPATH=src:tests:. python -m unittest discover -s tests -v
+  browser:
+    # Browser runs on a fresh runner after the CPU- and socket-heavy 605-test
+    # suite, avoiding the original shared-runner Chrome startup race.
+    needs: workspace
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.13'
+      - name: Record browser runner capability
+        run: |
+          command -v google-chrome || command -v chromium || exit 1
+          google-chrome --version || chromium --version
+      - name: Real empty-workspace v2 source, review, amendment and case-switch journey
+        run: PYTHONPATH=src:tests:. python tests/clinical_workspace_browser_journey.py
+      - name: Inherited source and Patient Mission journeys
+        run: |
+          PYTHONPATH=src:tests:. python tests/browser_journey.py
+          PYTHONPATH=src:tests:. python tests/patient_mission_browser_journey.py

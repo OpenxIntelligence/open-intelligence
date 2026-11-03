@@ -59,11 +59,17 @@ async function initialize() {
     }
     await renderIncomingBoard(cases);
     picker.addEventListener('change', () => {
-      // An unfinished narrative must never silently become attached to another case.
-      if ((['draft-observations', 'draft-summary', 'draft-assumptions', 'evidence-rationale',
-            'evidence-withdraw-reason', 'option-description'].some(id => el(id).value.trim()))) {
+      // An unsubmitted question, pasted original, selected disk file, or
+      // authored investigation draft belongs to the current case. Do not
+      // switch scopes or discard it until the user explicitly clears it.
+      const unfinishedText = ['question-text', 'report-text', 'draft-observations',
+        'draft-summary', 'draft-assumptions', 'evidence-rationale',
+        'evidence-withdraw-reason', 'option-description']
+        .some(id => el(id)?.value.trim());
+      const pendingOriginal = Boolean(el('source-file')?.files?.length);
+      if (unfinishedText || pendingOriginal) {
         picker.value = caseId;
-        notice('Save or explicitly clear the unfinished investigation draft before switching cases.', true);
+        notice('Save or explicitly clear the unfinished question, original source, or draft before switching cases.', true);
         return;
       }
       cancelSourceRead();
