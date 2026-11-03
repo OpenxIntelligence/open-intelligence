@@ -2,22 +2,43 @@ import {useEffect,useState} from 'react';
 import type {RegistrySession,ViewState} from './registry-client';
 import {FICTIONAL_RETURN_REASON,validReturnReason} from './review-queue-view';
 
-/** Reuses the source-question review owner from PR245 in the current patient workspace. */
-export function ReviewPanel({state,session,busy,onOverview,onInvestigations}:{
- state:ViewState;session:RegistrySession;busy:boolean;onOverview:()=>void;onInvestigations:()=>void;
-}){
- const [reasons,setReasons]=useState<Record<string,string>>({});
- const changing=state.worldPhase==='loading'||state.recordsPhase.startsWith('loading');
- const caseId=state.worldModel?.case_id??state.questionsCaseId??state.sourceIndex?.case_id??
+function reviewCaseId(state:ViewState):string{
+ return state.worldModel?.case_id??state.questionsCaseId??state.sourceIndex?.case_id??
   state.reviewQueue?.case_id??state.reviewReturnIntent?.case_id??'';
+}
+
+/** Unsaved presentation text follows the mounted app, not the visible screen.
+ * Captured/uncertain writes remain owned by RegistrySession and take precedence.
+ */
+export function useReviewReasonDrafts(state:ViewState){
+ const caseId=reviewCaseId(state),patientId=state.patient?.patient_id;
+ const usable=state.connected&&state.phase==='ready'&&patientId&&caseId&&
+  state.cases?.some(item=>item.case_id===caseId&&item.status==='active')&&
+  !state.recordsPhase.startsWith('loading')&&state.worldPhase!=='loading'&&
+  state.recordsPhase!=='error'&&state.worldPhase!=='error'&&
+  state.reviewPhase!=='error'&&state.reviewReturnPhase!=='error';
+ const scope=usable?JSON.stringify([patientId,caseId]):null;
+ const [drafts,setDrafts]=useState<{scope:string|null;values:Record<string,string>}>({scope,values:{}});
+ // Guard reads immediately as well as removing retained text after invalidation.
+ const values=scope!==null&&drafts.scope===scope?drafts.values:{};
+ useEffect(()=>{setDrafts(previous=>previous.scope===scope?previous:{scope,values:{}})},[scope]);
+ function change(questionId:string,value:string){
+  if(scope===null||!state.reviewQueue?.items.some(item=>item.question_id===questionId&&item.case_id===caseId))return;
+  setDrafts(previous=>({scope,values:{...(previous.scope===scope?previous.values:{}),[questionId]:value}}));
+ }
+ return {values,change};
+}
+
+/** Reuses the source-question review owner from PR245 in the current patient workspace. */
+export function ReviewPanel({state,session,busy,onOverview,onInvestigations,drafts}:{
+ state:ViewState;session:RegistrySession;busy:boolean;onOverview:()=>void;onInvestigations:()=>void;
+ drafts:ReturnType<typeof useReviewReasonDrafts>;
+}){
+ const changing=state.worldPhase==='loading'||state.recordsPhase.startsWith('loading');
+ const caseId=reviewCaseId(state);
  const queue=state.reviewQueue?.case_id===caseId&&!changing?state.reviewQueue:null;
  const intent=state.reviewReturnIntent;
  const returning=state.reviewReturnPhase==='saving',uncertain=state.reviewReturnPhase==='unknown';
- useEffect(()=>{setReasons({});},[state.patient?.patient_id,caseId]);
- useEffect(()=>{
-  if(!state.reviewQueue&&!intent&&
-    (state.reviewPhase==='error'||state.reviewReturnPhase==='error'))setReasons({});
- },[state.reviewQueue,state.reviewPhase,state.reviewReturnPhase,intent]);
  return <section className="panel review-panel" aria-labelledby="review-heading" data-testid="review-workspace">
   <span className="step">SAVED QUESTIONS / VERIFICATION RETURN HISTORY</span>
   <h2 id="review-heading">Questions for independent verification</h2>
@@ -73,7 +94,7 @@ export function ReviewPanel({state,session,busy,onOverview,onInvestigations}:{
      <ul className="review-items">{queue.items.map(item=>{
       const captured=intent?.question_id===item.question_id&&intent.case_id===item.case_id?intent:null;
       const draft=captured&&(returning||uncertain)?captured.reason:
-       reasons[item.question_id]??captured?.reason??FICTIONAL_RETURN_REASON;
+       drafts.values[item.question_id]??captured?.reason??FICTIONAL_RETURN_REASON;
       const historical=item.source_context_state==='source_reassessment_required';
       return <li key={item.question_id} data-testid="review-queue-item" data-question-id={item.question_id}
        data-source-id={item.source_id} data-state={item.review_state} className="review-item">
@@ -103,7 +124,7 @@ export function ReviewPanel({state,session,busy,onOverview,onInvestigations}:{
         <label htmlFor={'reason-'+item.question_id}>Reason for independent verification</label>
         <textarea id={'reason-'+item.question_id} data-testid="review-reason" value={draft}
          disabled={returning||uncertain} maxLength={600} rows={3} spellCheck={false}
-         onChange={event=>setReasons(previous=>({...previous,[item.question_id]:event.target.value}))}/>
+         onChange={event=>drafts.change(item.question_id,event.target.value)}/>
         <button type="button" data-testid="return-for-verification"
          disabled={busy||returning||uncertain||!validReturnReason(draft)}
          onClick={()=>void session.returnReviewQuestion(item.question_id,item.queue_fingerprint!,draft)}>

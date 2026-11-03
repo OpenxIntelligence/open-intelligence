@@ -194,3 +194,74 @@ def exercise(cd, patient_id, case_id, source_id, source_text,
     finally:
         credentials[0]['actions'] = previous_actions
         write_grants()
+
+
+def exercise_draft_boundaries(cd, patient_id, case_id, second_case_id, question_id,
+                              credentials, write_grants, reconnect, artifacts):
+    """Use existing cases/account to prove unsaved text is only session-local."""
+    previous = list(credentials[0]['actions'])
+    try:
+        credentials[0]['actions'] = sorted(set(previous) | {
+            'patient_read', 'case_binding_read', 'source_read', 'question_read', 'review_queue_read'})
+        write_grants()
+        review = QuestionReviewChecks(cd, patient_id, case_id, question_id, '')
+
+        def select_case(target):
+            cd.evaluate("[...document.querySelectorAll('nav button')].find(e=>e.textContent.startsWith('Journey')).click()")
+            button = ("[...document.querySelectorAll('.world-cases li')]"
+                      '.find(e=>e.textContent.includes(' + json.dumps(target) + '))')
+            cd.evaluate(button + ".querySelector('[data-testid=world-load]').click()")
+            cd.wait("document.querySelector('[data-testid=world-projection]')?.textContent.includes("
+                    + json.dumps(target) + ')', 'actual selected case ' + target)
+
+        def open_review():
+            review.navigate('Review')
+            review.refresh()
+            cd.wait('Boolean(document.querySelector(' + json.dumps(review.item()) + '))',
+                    'original question in current authorized inbox')
+
+        def reason():
+            return cd.evaluate('document.querySelector(' + json.dumps(review.item())
+                               + ").querySelector('[data-testid=review-reason]').value")
+
+        select_case(case_id)
+        open_review()
+        case_draft = 'Unsubmitted fictional reason belonging only to the first case.'
+        review.reason_value(question_id, case_draft)
+        select_case(second_case_id)
+        review.navigate('Review')
+        review.refresh()
+        assert cd.evaluate('!document.querySelector(' + json.dumps(review.item()) + ')')
+        assert case_draft not in cd.evaluate("document.querySelector('[data-testid=review-workspace]').textContent")
+        select_case(case_id)
+        open_review()
+        assert reason() != case_draft, 'A to B to A must not revive a discarded first-case draft'
+
+        session_draft = 'Unsubmitted fictional reason that must be forgotten on disconnect.'
+        review.reason_value(question_id, session_draft)
+        cd.evaluate("[...document.querySelectorAll('nav button')].find(e=>e.textContent.startsWith('Overview')).click()")
+        cd.evaluate("[...document.querySelectorAll('button')].find(e=>e.textContent==='Disconnect and clear').click()")
+        cd.wait("Boolean(document.querySelector('#credential'))", 'disconnect clears current scope')
+        reconnect()
+        cd.evaluate("(()=>{const e=document.querySelector('#patient-id');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,"
+                    + json.dumps(patient_id) + ");e.dispatchEvent(new Event('input',{bubbles:true}));})()")
+        cd.evaluate("document.querySelector('#patient-id').form.requestSubmit()")
+        cd.wait("Boolean(document.querySelector('[data-testid=patient-card]'))", 'same patient under a new session')
+        cd.evaluate("[...document.querySelectorAll('nav button')].find(e=>e.textContent.startsWith('Journey')).click()")
+        cd.evaluate("document.querySelector('[data-testid=world-load-cases]').click()")
+        cd.wait("document.querySelectorAll('.world-cases li').length===2", 'same two authorized cases')
+        select_case(case_id)
+        open_review()
+        assert reason() != session_draft, 'Reconnecting must not restore a previous session draft'
+        assert cd.evaluate('localStorage.length===0 && sessionStorage.length===0')
+        (artifacts/'review-reason-boundaries.json').write_text(json.dumps({
+            'patient_id': patient_id, 'case_id': case_id, 'second_case_id': second_case_id,
+            'question_id': question_id, 'case_roundtrip_clears_unsent_reason': True,
+            'disconnect_clears_unsent_reason': True, 'browser_storage_empty': True,
+            'clinical_approval': False,
+        }, indent=2)+'\n', encoding='utf-8')
+        cd.evaluate("[...document.querySelectorAll('nav button')].find(e=>e.textContent.startsWith('Overview')).click()")
+        print('PASS REVIEW REASON BOUNDARIES: A/B/A case selection and reconnect do not revive unsent text; browser storage remains empty.')
+    finally:
+        credentials[0]['actions'] = previous
+        write_grants()

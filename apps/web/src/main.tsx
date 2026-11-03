@@ -5,7 +5,7 @@ import {SourceIntake} from './source-intake-view';
 import {RecordImportDisclosure} from './record-import-disclosure';
 import {WorldModelView} from './world-model-view';
 import {PatientContinuity} from './patient-continuity-view';
-import {ReviewPanel} from './review-panel';
+import {ReviewPanel,useReviewReasonDrafts} from './review-panel';
 import {SourceReading, emptySourceFilters} from './source-reading';
 import type {ReadingView} from './source-reading';
 import './styles.css';
@@ -31,6 +31,7 @@ function WorkspaceContext({section,patientId,readiness,view,onViewChange}:{secti
 }
 function App(){
  const state=useSyncExternalStore(session.subscribe,session.snapshot);
+ const reviewReasonDrafts=useReviewReasonDrafts(state);
  const [token,setToken]=useState(''),[patientId,setPatientId]=useState(''),[confirmed,setConfirmed]=useState(false);
  const [requestKey,setRequestKey]=useState(()=>crypto.randomUUID());
  const [readiness,setReadiness]=useState<'checking'|'ready'|'unavailable'>('checking');
@@ -66,7 +67,7 @@ function App(){
    <main id="main" tabIndex={-1}>
     <div className="heading"><div><p className="eyebrow">OPEN INTELLIGENCE · H1</p><h1 ref={heading} tabIndex={-1}>{section==='Overview'?'Start with the right patient.':section}</h1><p className="lede">{section==='Overview'?'A connected foundation for the patient’s story, evidence and care.':section==='Records'?'Inspect authorized fictional case mappings, original source history and unreviewed source statements.':section==='Journey'?'View source-linked chronology, uncertainty and disagreements without implying clinical assessment.':section==='Investigations'?'Prepare exact source context, save a question and inspect its current or reassessment status. No AI execution or clinical approval.':'Inspect saved questions, record a source verification return and preserve its history as sources change. Clinical approval remains unavailable.'}</p></div></div>
     <div className="boundary" role="note"><strong>Development workspace, not a clinical service.</strong> Use operator-issued synthetic credentials and fictional identities only. These are not patient accounts, verified consent or professional sign-off.</div>
-    {section==='Journey'||section==='Investigations'?<WorldModelView session={session} state={state} busy={busy} showQuestions={section==='Investigations'} onOverview={()=>navigate('Overview')} onInvestigations={()=>navigate('Investigations')} onReview={()=>navigate('Review')}/>:section==='Review'?<ReviewPanel key={state.patient?.patient_id??'no-patient'} session={session} state={state} busy={busy} onOverview={()=>navigate('Overview')} onInvestigations={()=>navigate('Investigations')}/>:section==='Records'?<section className="panel records-workspace" data-testid="records-workspace" aria-labelledby="records-heading">
+    {section==='Journey'||section==='Investigations'?<WorldModelView session={session} state={state} busy={busy} showQuestions={section==='Investigations'} onOverview={()=>navigate('Overview')} onInvestigations={()=>navigate('Investigations')} onReview={()=>navigate('Review')}/>:section==='Review'?<ReviewPanel key={state.patient?.patient_id??'no-patient'} session={session} state={state} busy={busy} drafts={reviewReasonDrafts} onOverview={()=>navigate('Overview')} onInvestigations={()=>navigate('Investigations')}/>:section==='Records'?<section className="panel records-workspace" data-testid="records-workspace" aria-labelledby="records-heading">
      <span className="step">CANONICAL SOURCE OWNER / ORIGINALS</span>
      <h2 id="records-heading">{view==='patient'?'Records available to you':'Original source records'}</h2>
      <p>Shows source-reported information from the existing scoped PostgreSQL API. Original-text inspection and deliberate import require separate server permissions. AI interpretation, clinical decisions, verified identity and consent are not supplied by this screen. Information is current only at its last successful check.</p>
