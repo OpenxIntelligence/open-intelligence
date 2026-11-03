@@ -22,7 +22,7 @@ const source=()=>({
   state:'current',supersedes_id:null,
 });
 const world=()=>({
-  contract:'oi.pg-source-world-model/1',patient_id:patientId,case_id:caseId,synthetic:true,
+  contract:'oi.pg-source-world-model/1',patient_id:patientId,case_id:caseId,access_receipt_id:'ACCESS-'+'A'.repeat(32),synthetic:true,
   authority:'source_report_only_unreviewed',clinical_interpretation:false,
   research_review_invalidation_integrated:false,composer_execution_authorized:false,
   snapshot_fingerprint:'c'.repeat(64),as_of_received_at:'2026-11-02T10:00:00Z',

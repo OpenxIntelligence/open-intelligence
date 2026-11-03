@@ -41,7 +41,7 @@ DIFFERENT = (
 
 @unittest.skipUnless(os.environ.get("OI_API_RUN_DATABASE_TESTS") == "1",
                      "Requires a disposable actual PostgreSQL 16 test database")
-class SourceVersionHTTPTests(unittest.TestCase):
+class SourceVersionFixture(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         url = os.environ.get("OI_API_TEST_DATABASE_URL", "")
@@ -122,6 +122,8 @@ class SourceVersionHTTPTests(unittest.TestCase):
         return request(base, self.url(pid, case), token=token,
                        body={"synthetic": True, "original_text": raw, **extra})
 
+
+class SourceVersionHTTPTests(SourceVersionFixture):
     def test_exact_bytes_amendment_assertions_and_restart(self):
         with running_server(create_app(self.settings)) as base:
             patient = self.setup_case(base)
@@ -159,7 +161,10 @@ class SourceVersionHTTPTests(unittest.TestCase):
                                    "WHERE patient_id=:p ORDER BY id"),
                               {"p": patient}).scalars().all()
             self.assertEqual(kinds, ["identity.patient.created", "identity.case_binding_created",
-                                     "source.original.imported", "source.original.imported"])
+                                     "source.original.imported", "source.read_authorized",
+                                     "source.original_read_authorized", "source.original.imported",
+                                     "source.read_authorized", "source.original_read_authorized",
+                                     "source.read_authorized"])
             self.assertEqual(c.execute(text("SELECT count(*) FROM clinical_source.assertions")).scalar_one(), 2)
 
     def test_mismatched_case_quarantines_original_without_placing_assertions(self):

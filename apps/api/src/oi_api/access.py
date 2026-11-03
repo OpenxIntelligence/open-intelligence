@@ -7,9 +7,11 @@ consent. Missing, expired, ambiguous or unreadable configuration fails closed.
 from datetime import datetime, timezone
 import hashlib
 import hmac
+import re
 from pathlib import Path
 from typing import Literal, Protocol
 
+from fastapi import HTTPException, Request
 from pydantic import Field, ValidationError, field_validator, model_validator
 
 from open_intelligence.patient_registry import _key
@@ -71,6 +73,31 @@ class Authentication(Protocol):
 class DenyAuthentication:
     def authenticate(self, token: str) -> Principal | None:
         return None
+
+
+def authenticate_request(request: Request, authentication: Authentication) -> Principal:
+    """Recheck the same bearer under the current grant without storing its token."""
+    values = request.headers.getlist("authorization")
+    if len(values) != 1:
+        raise HTTPException(401, "Authentication required",
+                            headers={"WWW-Authenticate": "Bearer"})
+    scheme, _, token = values[0].partition(" ")
+    if scheme.lower() != "bearer" or re.fullmatch(r"[A-Za-z0-9._~-]{32,256}", token) is None:
+        raise HTTPException(401, "Authentication required",
+                            headers={"WWW-Authenticate": "Bearer"})
+    try:
+        context = authentication.authenticate(token)
+    except Exception:
+        raise HTTPException(503, "Access service unavailable") from None
+    if context is None:
+        raise HTTPException(401, "Authentication required",
+                            headers={"WWW-Authenticate": "Bearer"})
+    if not isinstance(context, Principal):
+        raise HTTPException(503, "Access service unavailable")
+    if context.expires_at <= datetime.now(timezone.utc):
+        raise HTTPException(401, "Authentication required",
+                            headers={"WWW-Authenticate": "Bearer"})
+    return context
 
 
 class SyntheticFileAuthentication:

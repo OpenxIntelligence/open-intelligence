@@ -8,7 +8,12 @@ clinical interpretation or automatic research/medical authorization is added.
 from __future__ import annotations
 
 import hashlib
+import json
 import uuid
+from collections.abc import Callable
+from datetime import datetime
+
+from pydantic import TypeAdapter
 
 from open_intelligence.patient_registry import (
     PatientRegistryConflict, PatientRegistryDenied, PatientRegistryError, _key,
@@ -18,6 +23,9 @@ from open_intelligence.store import InvalidInput, parse_report
 
 from .case_bindings import _case_id
 from .record_requests import PostgresRecordRequests
+from .source_integrity import validate_original
+
+_TIMESTAMP_JSON = TypeAdapter(datetime)
 
 
 def _source_id(value: object) -> str:
@@ -35,16 +43,37 @@ class PostgresSourceVersions:
             raise TypeError("Canonical patient registry required")
         self.registry = registry
 
-    def _binding(self, patient_id: str, case_id: str, organization: str) -> None:
+    def _binding(self, patient_id: str, case_id: str, organization: str, purpose: str) -> int:
         PostgresRecordRequests(self.registry)._active_patient(patient_id, organization)
         # Row lock serializes same-case imports and revocation, including
         # the first document version before any source row can be locked.
         row = self.registry._fetchone(
-            "SELECT patient_id,origin_org,status FROM coordination.patient_case_bindings "
+            "SELECT patient_id,origin_org,status,purpose,revision FROM coordination.patient_case_bindings "
             "WHERE case_id=%s FOR UPDATE", (case_id,)
         )
-        if row is None or row[0] != patient_id or row[1] != organization or row[2] != "active":
+        if (row is None or row[0] != patient_id or row[1] != organization
+                or row[2] != "active" or row[3] != purpose):
             raise PatientRegistryDenied("Case/source mapping unavailable")
+        return row[4]
+
+    def _read_receipt(self, patient_id: str, case_id: str, *, actor: str, purpose: str,
+                      binding_revision: int, event: str, recheck_authority: Callable[[], None],
+                      **references) -> str:
+        """Authorize prepared disclosure, not guaranteed network delivery.
+
+        The owner still holds the active-patient and case-binding locks. A
+        callback or immutable-event failure aborts this transaction and withholds
+        the result. External authority can change after this last check; it is
+        not transactionally locked with PostgreSQL or HTTP delivery.
+        """
+        recheck_authority()
+        receipt_id = "ACCESS-" + uuid.uuid4().hex.upper()
+        self.registry.append_event(
+            patient_id, event, receipt_id=receipt_id, case_id=case_id,
+            actor=_key(actor, "actor"), purpose=purpose,
+            binding_revision=binding_revision, **references,
+        )
+        return receipt_id
 
     def _sources(self, case_id: str) -> list[dict]:
         rows = self.registry._fetchall(
@@ -56,17 +85,21 @@ class PostgresSourceVersions:
         return [
             {"source_id": r[0], "document_id": r[1], "version": r[2],
              "sha256": r[3], "kind": r[4], "event_date": r[5].isoformat(),
-             "issued_at": r[6].isoformat(), "received_at": r[7].isoformat(),
+             "issued_at": r[6].isoformat(),
+             # Use the same datetime serialization as the HTTP response model:
+             # UTC becomes Z rather than +00:00 before the audit digest is made.
+             "received_at": _TIMESTAMP_JSON.dump_python(r[7], mode="json"),
              "specimen_id": r[8], "state": r[9], "supersedes_id": r[10]}
             for r in rows
         ]
 
-    def list(self, patient_id: str, case_id: str, *, organization: str) -> dict:
+    def list(self, patient_id: str, case_id: str, *, organization: str,
+             actor: str, purpose: str, recheck_authority: Callable[[], None]) -> dict:
         patient_id = _key(patient_id, "patient_id")
         case_id = _case_id(case_id)
         organization = _key(organization, "organization")
         with self.registry.transaction():
-            self._binding(patient_id, case_id, organization)
+            binding_revision = self._binding(patient_id, case_id, organization, purpose)
             sources = self._sources(case_id)
             rows = self.registry._fetchall(
                 "SELECT a.source_id,a.finding_key,a.certainty,a.quote,a.source_line "
@@ -75,7 +108,7 @@ class PostgresSourceVersions:
                 "WHERE s.case_id=%s AND s.state='current' "
                 "ORDER BY s.document_id,s.version,a.source_line", (case_id,),
             )
-            return {
+            result = {
                 "contract": "oi.synthetic-original-sources/1",
                 "patient_id": patient_id, "case_id": case_id,
                 "sources": sources,
@@ -88,30 +121,60 @@ class PostgresSourceVersions:
                 "synthetic": True, "clinical_interpretation": False,
                 "research_review_invalidation_integrated": False,
             }
+            # Hash the exact materialized response before adding its receipt.
+            # Only this digest and bounded references enter the event ledger.
+            digest = hashlib.sha256(json.dumps(result, sort_keys=True, ensure_ascii=False,
+                                                separators=(",", ":")).encode("utf-8")).hexdigest()
+            result["access_receipt_id"] = self._read_receipt(
+                patient_id, case_id, actor=actor, purpose=purpose,
+                binding_revision=binding_revision, event="source.read_authorized",
+                recheck_authority=recheck_authority, snapshot_sha256=digest,
+                source_count=len(sources), assertion_count=len(rows),
+            )
+            return result
 
     def original(self, patient_id: str, case_id: str, source_id: str, *,
-                 organization: str) -> dict:
+                 organization: str, actor: str, purpose: str,
+                 recheck_authority: Callable[[], None]) -> dict:
         patient_id = _key(patient_id, "patient_id")
         case_id = _case_id(case_id)
         source_id = _source_id(source_id)
         organization = _key(organization, "organization")
         with self.registry.transaction():
-            self._binding(patient_id, case_id, organization)
+            binding_revision = self._binding(patient_id, case_id, organization, purpose)
             row = self.registry._fetchone(
-                "SELECT raw,sha256,document_id,version,state "
+                "SELECT raw,sha256,document_id,version,state,source_id,case_id,"
+                "kind,event_date,issued_at,specimen_id,supersedes_id "
                 "FROM clinical_source.source_versions "
                 "WHERE case_id=%s AND source_id=%s", (case_id, source_id),
             )
             if row is None:
                 raise PatientRegistryDenied("Source unavailable")
-            raw = bytes(row[0])
-            if hashlib.sha256(raw).hexdigest() != row[1]:
-                raise PatientRegistryError("Original source integrity check failed")
-            return {"source_id": source_id, "case_id": case_id,
+            stored = dict(zip(("raw", "sha256", "document_id", "version", "state", "source_id",
+                               "case_id", "kind", "event_date", "issued_at", "specimen_id", "supersedes_id"), row))
+            predecessor = None
+            if stored["supersedes_id"] is not None:
+                previous = self.registry._fetchone(
+                    "SELECT source_id,case_id,document_id,version,kind,event_date,specimen_id,state "
+                    "FROM clinical_source.source_versions WHERE source_id=%s AND case_id=%s",
+                    (stored["supersedes_id"], case_id),
+                )
+                if previous is not None:
+                    predecessor = dict(zip(("source_id", "case_id", "document_id", "version", "kind",
+                                            "event_date", "specimen_id", "state"), previous))
+            raw = validate_original(stored, requested_case_id=case_id, predecessor=predecessor)
+            result = {"source_id": source_id, "case_id": case_id,
                     "document_id": row[2], "version": row[3],
                     "state": row[4], "sha256": row[1],
                     "original_text": raw.decode("utf-8"),
                     "synthetic": True, "clinical_review_state": "not_established"}
+            result["access_receipt_id"] = self._read_receipt(
+                patient_id, case_id, actor=actor, purpose=purpose,
+                binding_revision=binding_revision, event="source.original_read_authorized",
+                recheck_authority=recheck_authority, source_id=source_id,
+                sha256=row[1], source_version=row[3], source_state=row[4],
+            )
+            return result
 
     def import_original(self, patient_id: str, case_id: str, original: bytes, *,
                         organization: str, actor: str, purpose: str) -> dict:
@@ -129,7 +192,7 @@ class PostgresSourceVersions:
             raise PatientRegistryError("Unsupported fictional report format") from None
         digest = hashlib.sha256(original).hexdigest()
         with self.registry.transaction():
-            self._binding(patient_id, case_id, organization)
+            self._binding(patient_id, case_id, organization, purpose)
             if parsed.patient_id != case_id:
                 # Preserve the wrong-case original only in the quarantine
                 # owner, without publishing clinical observations or receipts.

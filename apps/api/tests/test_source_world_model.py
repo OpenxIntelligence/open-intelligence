@@ -55,7 +55,10 @@ class SourceWorldModelHTTPTests(SourceFixture):
             self.assertIsNone(observation["clinical_meaning"])
             self.assertEqual(world["unresolved_refs"],
                              [{"source_id": original_id, "source_line": 8}])
-            self.assertEqual(request(base, route, token=TOKEN_A)[1], world)
+            repeated = request(base, route, token=TOKEN_A)[1]
+            self.assertEqual(repeated['snapshot_fingerprint'], world['snapshot_fingerprint'])
+            self.assertEqual(repeated['summary'], world['summary'])
+            self.assertNotEqual(repeated['access_receipt_id'], world['access_receipt_id'])
 
             second = self.ingest(base, patient, AMENDED)
             self.assertEqual((second[0], second[1]["version"]), (201, 2))
@@ -78,7 +81,10 @@ class SourceWorldModelHTTPTests(SourceFixture):
             self.assertEqual(request(base, self.url(patient)+"/"+original_id,
                                      token=TOKEN_A)[1]["original_text"], ORIGINAL)
         with running_server(create_app(self.settings)) as restarted:
-            self.assertEqual(request(restarted, route, token=TOKEN_A)[1], amended)
+            after_restart = request(restarted, route, token=TOKEN_A)[1]
+            self.assertEqual(after_restart['snapshot_fingerprint'], amended['snapshot_fingerprint'])
+            self.assertEqual(after_restart['history'], amended['history'])
+            self.assertNotEqual(after_restart['access_receipt_id'], amended['access_receipt_id'])
 
     def test_same_specimen_and_event_date_disagreement_never_claims_clinical_truth(self):
         report = lambda doc, date, state: (
@@ -145,7 +151,8 @@ class SourceWorldModelHTTPTests(SourceFixture):
     def test_inconsistent_source_refs_and_fake_review_status_are_not_projected(self):
         sample = {
             "contract":"oi.synthetic-original-sources/1",
-            "patient_id":"PAT-SYNTH", "case_id":"CASE-ALPHA", "synthetic":True,
+            "patient_id":"PAT-SYNTH", "case_id":"CASE-ALPHA",
+            "access_receipt_id":"ACCESS-"+"A"*32, "synthetic":True,
             "clinical_interpretation":False, "research_review_invalidation_integrated":False,
             "sources":[{
                 "source_id":"SRC-"+"A"*32, "document_id":"DOC-ONE", "version":1,

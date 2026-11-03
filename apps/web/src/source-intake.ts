@@ -5,7 +5,7 @@ export type ImportReceipt = Readonly<{
   result:'imported'|'duplicate'|'quarantined';duplicate:boolean;source_id:string|null;version:number|null;
 }>;
 export type OriginalSource = Readonly<{
-  source_id:string;case_id:string;document_id:string;version:number;state:'current'|'superseded';
+  source_id:string;case_id:string;access_receipt_id:string;document_id:string;version:number;state:'current'|'superseded';
   sha256:string;original_text:string;synthetic:true;clinical_review_state:'not_established';
 }>;
 function exact(v:unknown,keys:string[]):v is Record<string,unknown>{
@@ -36,9 +36,10 @@ export function parseImportReceipt(v:unknown):ImportReceipt{
   return Object.freeze(v as ImportReceipt);
 }
 export async function verifyOriginal(v:unknown,caseId:string,source:SourceVersion):Promise<OriginalSource>{
-  if(!exact(v,['source_id','case_id','document_id','version','state','sha256','original_text','synthetic','clinical_review_state'])||
+  if(!exact(v,['source_id','case_id','access_receipt_id','document_id','version','state','sha256','original_text','synthetic','clinical_review_state'])||
      v.source_id!==source.source_id||v.case_id!==caseId||v.document_id!==source.document_id||
      v.version!==source.version||v.state!==source.state||v.sha256!==source.sha256||
+     typeof v.access_receipt_id!=='string'||!/^ACCESS-[0-9A-F]{32}$/.test(v.access_receipt_id)||
      v.synthetic!==true||v.clinical_review_state!=='not_established'||typeof v.original_text!=='string')throw Error('contract');
   const bytes=new TextEncoder().encode(v.original_text);
   const prepared=prepareSource(bytes,'original.txt');
