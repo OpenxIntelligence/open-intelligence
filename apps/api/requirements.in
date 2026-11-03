@@ -5,3 +5,6 @@ SQLAlchemy==2.0.55
 alembic==1.20.1
 uvicorn==0.54.0
 pg8000==1.31.6
+
+# Runtime installation requires tools/prepare_dependencies.py and the code-only build pin.
+pydicom==3.0.2

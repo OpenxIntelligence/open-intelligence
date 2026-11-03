@@ -6,6 +6,7 @@ import unittest
 from sqlalchemy import text
 
 from oi_api.app import create_app
+from oi_api.contracts import SCHEMA_REVISION
 from oi_api.migrate import migrate
 from http_support import running_server
 from test_patients import TOKEN_A, request
@@ -30,9 +31,11 @@ class QuestionFingerprintMigrationTests(SourceVersionFixture):
         migrate(self.admin, "downgrade", "0006_source_questions")
         legacy_id = "QUESTION-" + "A" * 32
         with self.engine.begin() as connection:
-            self.assertEqual(connection.execute(text(
+            # Downgrading the question branch retains the independent image
+            # branch. Neither this split state nor either parent is app-ready.
+            self.assertEqual(set(connection.execute(text(
                 "SELECT version_num FROM public.alembic_version"
-            )).scalar_one(), "0006_source_questions")
+            )).scalars()), {"0006_source_questions", "0006_image_custody"})
             self.assertEqual(connection.execute(text(
                 "SELECT count(*) FROM information_schema.columns "
                 "WHERE table_schema='investigation' AND table_name='source_questions' "
@@ -64,11 +67,11 @@ class QuestionFingerprintMigrationTests(SourceVersionFixture):
                 "SELECT * FROM investigation.source_questions WHERE question_id=:id"
             ), {"id": legacy_id}).mappings().one())
 
-        migrate(self.admin, "upgrade", "0007_question_snapshot_contract")
+        migrate(self.admin, "upgrade", "head")
         with self.engine.connect() as connection:
             self.assertEqual(connection.execute(text(
                 "SELECT version_num FROM public.alembic_version"
-            )).scalar_one(), "0007_question_snapshot_contract")
+            )).scalar_one(), SCHEMA_REVISION)
             migrated = dict(connection.execute(text(
                 "SELECT * FROM investigation.source_questions WHERE question_id=:id"
             ), {"id": legacy_id}).mappings().one())
