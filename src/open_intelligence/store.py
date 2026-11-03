@@ -605,6 +605,36 @@ CREATE TABLE IF NOT EXISTS biological_inventory_assertions (
 CREATE INDEX IF NOT EXISTS idx_biological_assets_case ON biological_assets(case_id, asset_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_assertions_asset ON biological_inventory_assertions(asset_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_assertions_source ON biological_inventory_assertions(source_version_id);
+-- Consent & identity slice: display and history only. No identity
+-- resolution, matching, or cross-case logic. Consent versions are
+-- append-only; withdrawal adds a withdrawn version and updates only the
+-- current-status pointer. Qualifiers are notes attached to source anchors
+-- the case already has; they never alter identity fields.
+CREATE TABLE IF NOT EXISTS consent_records (
+  id INTEGER PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(case_id),
+  scope_text TEXT NOT NULL, date_recorded TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('active','withdrawn')),
+  anchor_source_version_id INTEGER REFERENCES source_versions(id),
+  review_state TEXT NOT NULL CHECK(review_state IN ('display_only')) DEFAULT 'display_only',
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS consent_versions (
+  id INTEGER PRIMARY KEY, consent_id INTEGER NOT NULL REFERENCES consent_records(id),
+  version INTEGER NOT NULL, status TEXT NOT NULL CHECK(status IN ('active','withdrawn')),
+  reason TEXT, date_recorded TEXT NOT NULL, recorded_at TEXT NOT NULL,
+  UNIQUE(consent_id, version)
+);
+CREATE TABLE IF NOT EXISTS identity_qualifiers (
+  id INTEGER PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(case_id),
+  qualifier_text TEXT NOT NULL, anchor_source_version_id INTEGER NOT NULL REFERENCES source_versions(id),
+  anchor_line INTEGER, date_recorded TEXT NOT NULL,
+  review_state TEXT NOT NULL CHECK(review_state IN ('display_only')) DEFAULT 'display_only',
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_consents_case ON consent_records(case_id);
+CREATE INDEX IF NOT EXISTS idx_consent_versions_consent ON consent_versions(consent_id);
+CREATE INDEX IF NOT EXISTS idx_identity_qualifiers_case ON identity_qualifiers(case_id);
+CREATE INDEX IF NOT EXISTS idx_identity_qualifiers_anchor ON identity_qualifiers(anchor_source_version_id);
 -- Evidence quality and limitations (append-only, descriptive only): one row
 -- per human-authored note about one exact source version. No rating, score,
 -- or inference is stored here; absence of a row means "not assessed", never
@@ -3735,6 +3765,198 @@ class CaseStore:
                         source_version_id=source_version_id)
             return int(cur.lastrowid)
 
+    # ---- Consent & identity records: display/history only ----
+    # No identity resolution, matching, or cross-case logic. Consents are
+    # append-only version chains (active -> withdrawn); qualifiers are notes
+    # attached to source anchors the case already has. Neither alters any
+    # existing identity field, and withdrawal touches only its own chain.
+    CONSENT_STATUSES = frozenset({"active", "withdrawn"})
+
+    @staticmethod
+    def _check_consent_scope(value: object) -> str:
+        if not isinstance(value, str) or not 5 <= len(value.strip()) <= 500:
+            raise InvalidInput("Consent scope must have 5–500 characters")
+        return value.strip()
+
+    @staticmethod
+    def _check_qualifier_text(value: object) -> str:
+        if not isinstance(value, str) or not 5 <= len(value.strip()) <= 500:
+            raise InvalidInput("Identity note must have 5–500 characters")
+        return value.strip()
+
+    @staticmethod
+    def _check_withdraw_reason(value: object) -> str:
+        if not isinstance(value, str) or not 10 <= len(value.strip()) <= 600:
+            raise InvalidInput("Withdrawal requires a 10–600 character reason")
+        return value.strip()
+
+    def _consent_anchor_label(self, anchor_id: int | None) -> str | None:
+        if anchor_id is None:
+            return None
+        row = self.db.execute(
+            "SELECT document_id,version FROM source_versions WHERE id=?",
+            (anchor_id,)).fetchone()
+        if not row:
+            return None
+        return f"{row['document_id']}@{row['version']} (# {anchor_id})"
+
+    def record_consent(self, case_id: str, scope_text: object, date_recorded: object,
+                       anchor_source_version_id: object = None) -> int:
+        """Record one fictional consent as active (version 1). Display only."""
+        case_id = self._case(case_id)
+        scope = self._check_consent_scope(scope_text)
+        recorded = valid_date(date_recorded) if isinstance(date_recorded, str) else None
+        if recorded is None:
+            raise InvalidInput("Dates must use YYYY-MM-DD")
+        if anchor_source_version_id is not None:
+            if type(anchor_source_version_id) is not int or anchor_source_version_id < 1:
+                raise InvalidInput("Anchor source version ID must be a positive integer")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            if anchor_source_version_id is not None:
+                anchor = self.db.execute(
+                    "SELECT 1 FROM source_versions WHERE id=? AND case_id=?",
+                    (anchor_source_version_id, case_id)).fetchone()
+                if not anchor:
+                    raise InvalidInput("Anchor source not in this case")
+            stamped = now_utc()
+            cur = self.db.execute("""INSERT INTO consent_records
+                (case_id,scope_text,date_recorded,status,anchor_source_version_id,review_state,created_at)
+                VALUES (?,?,?,'active',?,'display_only',?)""",
+                (case_id, scope, recorded, anchor_source_version_id, stamped))
+            consent_id = int(cur.lastrowid)
+            self.db.execute("""INSERT INTO consent_versions
+                (consent_id,version,status,reason,date_recorded,recorded_at)
+                VALUES (?,1,'active',NULL,?,?)""",
+                (consent_id, recorded, stamped))
+            self._event(case_id, "consent_recorded", consent_id=consent_id, version=1)
+            return consent_id
+
+    def withdraw_consent(self, case_id: str, consent_id: int, reason: object,
+                         date_recorded: object = None) -> int:
+        """Append a withdrawn version; prior active version stays in history.
+
+        Only this consent's status pointer and its own version chain change.
+        No other consent, qualifier, source, question, or snapshot is touched.
+        """
+        case_id = self._case(case_id)
+        if type(consent_id) is not int or consent_id < 1:
+            raise InvalidInput("Invalid consent ID")
+        why = self._check_withdraw_reason(reason)
+        if date_recorded is None:
+            recorded = datetime.now(timezone.utc).date().isoformat()
+        elif isinstance(date_recorded, str):
+            recorded = valid_date(date_recorded)
+        else:
+            raise InvalidInput("Dates must use YYYY-MM-DD")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            row = self.db.execute(
+                "SELECT status FROM consent_records WHERE id=? AND case_id=?",
+                (consent_id, case_id)).fetchone()
+            if not row:
+                raise InvalidInput("Consent not in this case")
+            if row["status"] == "withdrawn":
+                raise InvalidInput("Consent is already withdrawn")
+            latest = self.db.execute(
+                "SELECT MAX(version) AS v FROM consent_versions WHERE consent_id=?",
+                (consent_id,)).fetchone()
+            new_version = int(latest["v"] or 0) + 1
+            self.db.execute("""INSERT INTO consent_versions
+                (consent_id,version,status,reason,date_recorded,recorded_at)
+                VALUES (?,?,'withdrawn',?,?,?)""",
+                (consent_id, new_version, why, recorded, now_utc()))
+            self.db.execute("UPDATE consent_records SET status='withdrawn' WHERE id=?",
+                            (consent_id,))
+            self._event(case_id, "consent_withdrawn",
+                        consent_id=consent_id, version=new_version)
+            return new_version
+
+    def list_consents(self, case_id: str) -> list[dict]:
+        """Current consents with full ordered history, this case only."""
+        case_id = self._case(case_id)
+        rows = self.db.execute(
+            "SELECT * FROM consent_records WHERE case_id=? ORDER BY id",
+            (case_id,)).fetchall()
+        out: list[dict] = []
+        for row in rows:
+            item = dict(row)
+            versions = self._dicts(self.db.execute(
+                "SELECT version,status,reason,date_recorded,recorded_at"
+                " FROM consent_versions WHERE consent_id=? ORDER BY version",
+                (item["id"],)).fetchall())
+            item["versions"] = versions
+            item["anchor_label"] = self._consent_anchor_label(item["anchor_source_version_id"])
+            item["fictional"] = True
+            item["synthetic"] = True
+            out.append(item)
+        return out
+
+    def add_identity_qualifier(self, case_id: str, qualifier_text: object,
+                               anchor_source_version_id: object, date_recorded: object,
+                               anchor_line: object = None) -> int:
+        """Record one fictional note attached to an anchor this case already has.
+
+        No identity field is created, matched, merged, or altered. The anchor
+        must be a source version in this same case; cross-case anchors fail.
+        """
+        case_id = self._case(case_id)
+        text = self._check_qualifier_text(qualifier_text)
+        recorded = valid_date(date_recorded) if isinstance(date_recorded, str) else None
+        if recorded is None:
+            raise InvalidInput("Dates must use YYYY-MM-DD")
+        if type(anchor_source_version_id) is not int or anchor_source_version_id < 1:
+            raise InvalidInput("Anchor source version ID must be a positive integer")
+        if anchor_line is not None:
+            if type(anchor_line) is not int or anchor_line < 1:
+                raise InvalidInput("Anchor line must be a positive integer")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            source = self.db.execute(
+                "SELECT raw FROM source_versions WHERE id=? AND case_id=?",
+                (anchor_source_version_id, case_id)).fetchone()
+            if not source:
+                raise InvalidInput("Anchor source not in this case")
+            if anchor_line is not None:
+                line_count = len(bytes(source["raw"]).decode("utf-8").splitlines())
+                if anchor_line > line_count:
+                    raise InvalidInput("Anchor line not in source version")
+            cur = self.db.execute("""INSERT INTO identity_qualifiers
+                (case_id,qualifier_text,anchor_source_version_id,anchor_line,
+                 date_recorded,review_state,created_at)
+                VALUES (?,?,?,?,?,'display_only',?)""",
+                (case_id, text, anchor_source_version_id, anchor_line,
+                 recorded, now_utc()))
+            qualifier_id = int(cur.lastrowid)
+            self._event(case_id, "identity_qualifier_added",
+                        qualifier_id=qualifier_id,
+                        anchor_source_version_id=anchor_source_version_id)
+            return qualifier_id
+
+    def list_identity_qualifiers(self, case_id: str) -> list[dict]:
+        """Qualifier notes with anchors, this case only. No resolution."""
+        case_id = self._case(case_id)
+        rows = self.db.execute(
+            """SELECT q.*, s.document_id, s.version AS source_version
+            FROM identity_qualifiers q
+            LEFT JOIN source_versions s ON s.id=q.anchor_source_version_id
+            WHERE q.case_id=? ORDER BY q.id""",
+            (case_id,)).fetchall()
+        out: list[dict] = []
+        for row in rows:
+            item = dict(row)
+            if item["document_id"] is None:
+                label = f"source #{item['anchor_source_version_id']} (unavailable)"
+            else:
+                label = f"{item['document_id']}@{item['source_version']} (# {item['anchor_source_version_id']})"
+            if item["anchor_line"] is not None:
+                label += f", line {item['anchor_line']}"
+            item["anchor_label"] = label
+            item["fictional"] = True
+            item["synthetic"] = True
+            out.append(item)
+        return out
+
     # ---- Patient goals + lived experience (fictional patient words) ----
     # Patient words stay patient words. These methods never create
     # assertions, snapshots, options, or mission entries, and they accept
@@ -5144,12 +5366,16 @@ class CaseStore:
                 FROM evidence_assessments a JOIN evidence_versions v ON v.id=a.evidence_version_id
                 WHERE a.case_id=? ORDER BY a.id DESC""", (case_id,)).fetchall())
             option_projection = self.option_view(case_id)
+            consent_rows = self.list_consents(case_id)
+            qualifier_rows = self.list_identity_qualifiers(case_id)
             from .followthrough import followthrough_view_in_transaction
             followthrough_projection = followthrough_view_in_transaction(self, case_id)
             return {
                 "followthrough": followthrough_projection,
                 "broker_links": broker_rows,
                 "rights_sources": rights_rows,
+                "consents": consent_rows,
+                "identity_qualifiers": qualifier_rows,
                 "biological_assets": self._dicts(self.db.execute(
                     "SELECT * FROM biological_assets WHERE case_id=? ORDER BY id", (case_id,)).fetchall()),
                 "biological_inventory_assertions": self._dicts(self.db.execute(

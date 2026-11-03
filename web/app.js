@@ -180,16 +180,18 @@ async function initialize() {
     picker.addEventListener('change', () => {
       // An unfinished narrative must never silently become attached to another case.
       if ((['draft-observations', 'draft-summary', 'draft-assumptions', 'evidence-rationale',
-            'evidence-withdraw-reason', 'option-description', 'synthesis-note-text',
-            'synthesis-note-author', 'owner-label-input', 'note-text',
+            'evidence-withdraw-reason', 'option-description',
             'scoped-decision-note', 'scoped-dissent-rationale',
-            'counterevidence-reason', 'safety-detail',
             'bio-mechanism', 'bio-result-note',
-            'flag-reason', 'dimension-note',
             'goal-statement', 'amend-goal-statement', 'goal-status-reason',
             'amend-note-text', 'ft-title', 'ft-detail', 'ft-reason',
             'ft-update-reason', 'so-question-text', 'so-responder',
-            'so-response-text', 'surv-plan-title', 'surv-description'].some(id => el(id).value.trim())) ||
+            'so-response-text', 'surv-plan-title', 'surv-description',
+            'consent-scope', 'consent-withdraw-reason', 'qualifier-text',
+            'counterevidence-reason', 'safety-detail',
+            'flag-reason', 'dimension-note',
+            'synthesis-note-text', 'synthesis-note-author',
+            'owner-label-input', 'note-text'].some(id => el(id).value.trim())) ||
           [...el('review-awaiting').querySelectorAll('input, textarea')].some(x => x.value.trim())) {
         picker.value = caseId;
         notice('Save or explicitly clear the unfinished investigation draft before switching cases.', true);
@@ -209,7 +211,9 @@ async function initialize() {
         'goal-statement', 'goal-review-trigger',
         'amend-goal-statement', 'amend-goal-review-trigger', 'goal-status-reason',
         'amend-note-text', 'so-question-text', 'so-responder', 'so-response-text',
-        'surv-plan-title', 'surv-description', 'surv-date']) el(id).value = '';
+        'surv-plan-title', 'surv-description', 'surv-date',
+        'consent-scope', 'consent-date', 'consent-withdraw-reason',
+        'consent-withdraw-date', 'qualifier-text', 'qualifier-date']) el(id).value = '';
       if (el('source-dialog').open) el('source-dialog').close();
       if (el('compare-dialog').open) el('compare-dialog').close();
       refresh();

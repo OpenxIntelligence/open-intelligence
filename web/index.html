@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
   <script src="/mission.js" defer></script>
+  <script src="/consent.js" defer></script>
   <script src="/clinician-overview.js" defer></script>
   <script src="/report.js" defer></script>
 </head>
@@ -44,6 +45,7 @@
           <a href="#review-queue">Review queue</a>
           <a href="#patient-view">Patient view</a>
           <a href="#patient-mission">Patient Mission</a>
+          <a href="#consent-identity">Consent &amp; identity</a>
           <a href="#clinician-overview">Clinician overview</a>
           <a href="#patient-goals">Patient goals</a>
           <a href="#patient-report">Plain-language report</a>
@@ -219,6 +221,45 @@
         <ul id="mission-guardrails" class="muted tiny"></ul>
       </section>
 
+      <section class="panel" id="consent-identity" aria-labelledby="consent-identity-title">
+        <div class="panel-head">
+          <div><div class="eyebrow">CONSENT &amp; IDENTITY · DISPLAY AND HISTORY ONLY</div><h2 id="consent-identity-title">Consent &amp; identity</h2></div>
+          <span class="pill pill-warn">FICTIONAL DEMO DATA — not a real patient</span>
+        </div>
+        <p class="muted">Plain-word display of fictional permission records and identity notes. Nothing here finds, matches, or merges people. Notes attach only to sources this case already has. Withdrawing a consent keeps its history and changes no other record. Physician authority preserved; hypotheses stay separate from facts. For real care, talk to your care team.</p>
+        <div class="subhead">Record a fictional consent</div>
+        <form id="consent-form">
+          <label for="consent-scope">Permission in plain words (fictional)</label>
+          <textarea id="consent-scope" rows="2" minlength="5" maxlength="500" required placeholder="Fictional permission to use de-identified case notes for teaching."></textarea>
+          <label for="consent-date">Date recorded</label>
+          <input id="consent-date" type="date" required>
+          <button class="button" type="submit">Record fictional consent</button>
+        </form>
+        <div class="subhead">Current consents with full history (fictional)</div>
+        <div id="consent-list" class="cards" aria-live="polite"></div>
+        <div class="subhead">Withdraw a fictional consent (history is kept)</div>
+        <form id="consent-withdraw-form" class="withdraw-form">
+          <label for="consent-withdraw-choice">Choose an active fictional consent</label>
+          <select id="consent-withdraw-choice" required></select>
+          <label for="consent-withdraw-reason">Reason in plain words (fictional)</label>
+          <textarea id="consent-withdraw-reason" rows="2" minlength="10" maxlength="600" required placeholder="Fictional reason: the person changed their mind in this demo story."></textarea>
+          <label for="consent-withdraw-date">Date recorded (optional, defaults to today)</label>
+          <input id="consent-withdraw-date" type="date">
+          <button class="button secondary" type="submit">Withdraw with reason</button>
+        </form>
+        <div class="subhead">Add an identity note (fictional, attached to an existing source)</div>
+        <form id="qualifier-form">
+          <label for="qualifier-text">Note in plain words (fictional)</label>
+          <textarea id="qualifier-text" rows="2" minlength="5" maxlength="500" required placeholder="Fictional note: spelling differs between two reports; both kept."></textarea>
+          <label for="qualifier-anchor-choice">Existing source this note refers to</label>
+          <select id="qualifier-anchor-choice" required></select>
+          <label for="qualifier-date">Date recorded</label>
+          <input id="qualifier-date" type="date" required>
+          <button class="button" type="submit">Add fictional identity note</button>
+        </form>
+        <div class="subhead">Identity notes with sources (fictional)</div>
+        <div id="qualifier-list" class="findings" aria-live="polite"></div>
+      </section>
       <section class="panel" id="clinician-overview" aria-labelledby="clinician-overview-title">
         <div class="panel-head">
           <div><div class="eyebrow">CLINICIAN OVERVIEW · READ-ONLY PROJECTION</div><h2 id="clinician-overview-title">Clinician overview</h2></div>
