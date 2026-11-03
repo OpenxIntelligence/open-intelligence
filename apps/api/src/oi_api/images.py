@@ -12,6 +12,7 @@ import hashlib
 import json
 import re
 import uuid
+from typing import TypeVar
 
 from open_intelligence.patient_registry import (
     PatientRegistryConflict, PatientRegistryDenied, PatientRegistryError, _key,
@@ -21,6 +22,8 @@ from .case_bindings import _case_id
 from .dicom_integrity import DicomIntegrityError, parse_dicom
 from .sources import PostgresSourceVersions, _source_id
 
+
+PreparedResponse = TypeVar("PreparedResponse")
 
 MAX_CASE_IMAGES = 256
 MAX_CASE_IMAGE_BYTES = 67_108_864
@@ -154,7 +157,13 @@ class PostgresSourceImages:
                     "source_identity_verified": False, "clinical_interpretation": False}
 
     def list(self, patient_id: str, case_id: str, source_id: str, *, organization: str,
-             actor: str, purpose: str, recheck_authority: Callable[[], None]) -> dict:
+             actor: str, purpose: str, recheck_authority: Callable[[], None],
+             prepare_response: Callable[[dict], PreparedResponse] | None = None) -> dict | PreparedResponse:
+        """Prepare the application-owned response under the original source locks.
+
+        The access ID is reserved, not published, until final authority and the
+        immutable event commit succeed. No network or model callback belongs here.
+        """
         with self.registry.transaction():
             revision, source, binding = self._scope(patient_id, case_id, source_id, organization, purpose)
             fields = tuple(name for name in _FIELDS if name != "raw")
@@ -176,16 +185,26 @@ class PostgresSourceImages:
                       "images": images, "synthetic": True, "source_identity_verified": False}
             snapshot = hashlib.sha256(json.dumps(result, sort_keys=True, ensure_ascii=False,
                                                  separators=(",", ":")).encode()).hexdigest()
-            result["access_receipt_id"] = self.sources._read_receipt(
+            receipt_id = "ACCESS-" + uuid.uuid4().hex.upper()
+            result["access_receipt_id"] = receipt_id
+            prepared = prepare_response(result) if prepare_response is not None else result
+            self.sources._read_receipt(
                 patient_id, case_id, actor=actor, purpose=purpose, binding_revision=revision,
-                event="image.read_authorized", recheck_authority=recheck_authority,
+                event="image.read_authorized", receipt_id=receipt_id, recheck_authority=recheck_authority,
                 source_id=source_id, source_version=source["version"], source_sha256=source["sha256"],
                 snapshot_sha256=snapshot, image_count=len(images))
-            return result
+            return prepared
 
     def original(self, patient_id: str, case_id: str, source_id: str, image_id: str, *,
                  organization: str, actor: str, purpose: str,
-                 recheck_authority: Callable[[], None]) -> tuple[bytes, str]:
+                 recheck_authority: Callable[[], None],
+                 prepare_response: Callable[[bytes, str], PreparedResponse] | None = None
+                 ) -> tuple[bytes, str] | PreparedResponse:
+        """Validate and prepare bounded original bytes before final authority.
+
+        Preparation never streams. Exceptions in preparation, final authority,
+        event insertion or commit prevent any result leaving this transaction.
+        """
         _image_id(image_id)
         with self.registry.transaction():
             revision, source, binding = self._scope(patient_id, case_id, source_id, organization, purpose)
@@ -198,9 +217,13 @@ class PostgresSourceImages:
                 raise PatientRegistryDenied("Image unavailable")
             row = dict(zip(_FIELDS, values))
             raw = self._validated_object(row, source, binding)
-            receipt = self.sources._read_receipt(
+            receipt_id = "ACCESS-" + uuid.uuid4().hex.upper()
+            prepared = (prepare_response(raw, receipt_id) if prepare_response is not None
+                        else (raw, receipt_id))
+            self.sources._read_receipt(
                 patient_id, case_id, actor=actor, purpose=purpose, binding_revision=revision,
-                event="image.original_read_authorized", recheck_authority=recheck_authority,
+                event="image.original_read_authorized", receipt_id=receipt_id,
+                recheck_authority=recheck_authority,
                 source_id=source_id, source_version=source["version"], source_sha256=source["sha256"],
                 image_id=image_id, sha256=row["sha256"], byte_count=len(raw))
-            return raw, receipt
+            return prepared

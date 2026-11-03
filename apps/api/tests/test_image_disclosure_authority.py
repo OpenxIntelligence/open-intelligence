@@ -154,7 +154,7 @@ class ImageDisclosureAuthorityTests(SourceVersionFixture):
                     receipt = body["access_receipt_id"] if kind == "index" else headers["X-OI-Access-Receipt"]
                     after = self.read_events()
                     self.assertEqual(len(after), len(before) + 1)
-                    self.assertEqual(json.loads(after[-1][1])["receipt_id"], receipt)
+                    self.assertEqual(after[-1][1]["receipt_id"], receipt)
                     if kind == "binary":
                         self.assertEqual(body, raw)
 
@@ -169,3 +169,49 @@ class ImageDisclosureAuthorityTests(SourceVersionFixture):
                         result = read_image_route(base, url)
                     self.assert_withheld(result, 503, before)
             self.write()
+
+    def test_json_encoding_finishes_before_authority_recheck(self):
+        with running_server(create_app(self.settings)) as base:
+            patient, path, _, _ = self.prepare(base)
+            before = self.read_events()
+            original_render = routes.JSONResponse.render
+            rendered = []
+            def revoke_after_encoding(response, content):
+                encoded = original_render(response, content)
+                if isinstance(content, dict) and "images" in content:
+                    rendered.append(encoded)
+                    self.creds[0]["actions"].remove("image_read")
+                    self.write()
+                return encoded
+            with patch.object(routes.JSONResponse, "render", revoke_after_encoding):
+                result = read_image_route(base, path)
+            self.assertEqual(len(rendered), 1)
+            self.assertTrue(json.loads(rendered[0])["images"])
+            self.assert_withheld(result, 404, before)
+
+    def test_deferred_database_commit_failure_withholds_already_prepared_response(self):
+        with running_server(create_app(self.settings)) as base:
+            patient, path, image_id, _ = self.prepare(base)
+            with self.engine.begin() as connection:
+                connection.exec_driver_sql("""
+                    CREATE FUNCTION identity.fail_image_disclosure_commit() RETURNS trigger
+                    LANGUAGE plpgsql AS $$ BEGIN
+                    IF NEW.event_type IN ('image.read_authorized','image.original_read_authorized') THEN
+                        RAISE EXCEPTION 'PRIVATE-IMAGE-PREPARE';
+                    END IF;
+                    RETURN NEW; END; $$;
+                """)
+                connection.exec_driver_sql("""
+                    CREATE CONSTRAINT TRIGGER reject_image_disclosure_commit
+                    AFTER INSERT ON identity.identity_domain_events
+                    DEFERRABLE INITIALLY DEFERRED
+                    FOR EACH ROW EXECUTE FUNCTION identity.fail_image_disclosure_commit()
+                """)
+            for kind, url in (("index", path), ("binary", path + "/" + image_id)):
+                with self.subTest(kind=kind):
+                    before = self.read_events()
+                    prepared = []
+                    with self.observe_preparation(kind, lambda: prepared.append(True)):
+                        result = read_image_route(base, url)
+                    self.assertEqual(prepared, [True])
+                    self.assert_withheld(result, 503, before)
