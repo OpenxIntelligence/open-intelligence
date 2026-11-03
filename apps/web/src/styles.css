@@ -77,3 +77,17 @@
 .source-verify summary{font-size:13px;color:#174b48;min-height:44px;display:list-item;align-content:center}
 .source-verify .source-metadata{margin:10px 0}
 @media(max-width:600px){.topbar{flex-wrap:wrap}.workspace-context{flex:1 1 100%}.connection{flex:0 0 auto}}
+
+/* UX-02: task-oriented navigation groups without new routes or permissions. */
+.rail nav{gap:21px}
+.rail .nav-group{display:flex;flex-direction:column;gap:5px;min-width:0}
+.rail .nav-group-title{font-family:inherit;font-size:11px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:#bed6c9;margin:0 0 4px;padding:0 12px;line-height:1.5}
+.rail .nav-group button{width:100%;min-height:44px}
+.rail .nav-group button[aria-current=page]{box-shadow:inset 3px 0 0 #b9dbc5}
+@media(max-width:600px){
+ .rail nav{display:flex;flex-direction:column;gap:12px}
+ .rail .nav-group{display:flex;flex-direction:row;flex-wrap:wrap;align-items:stretch;gap:5px}
+ .rail .nav-group-title{flex:0 0 100%;padding:0;margin:0}
+ .rail .nav-group button{width:auto;max-width:100%;min-height:44px}
+ .rail .nav-group button[aria-current=page]{box-shadow:inset 0 -3px 0 #b9dbc5}
+}

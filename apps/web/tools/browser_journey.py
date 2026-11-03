@@ -50,6 +50,16 @@ def main():
             cd.command('Page.enable');cd.command('Runtime.enable');cd.command('Page.navigate',{'url':'http://127.0.0.1:4173'})
             cd.wait("document.querySelector('[data-testid=readiness]')?.textContent==='PostgreSQL API ready'",'real proxied API readiness')
             assert cd.evaluate("document.querySelector('[data-testid=workspace-identity]').textContent.includes('No authorized patient open')")
+            assert cd.evaluate("Array.from(document.querySelectorAll('nav[aria-label=\\\"Patient workspace\\\"] .nav-group-title')).map(e=>e.textContent).join('|')==='Patient context|Source workflow'")
+            assert cd.evaluate("Array.from(document.querySelectorAll('nav[aria-label=\\\"Patient workspace\\\"] button')).map(e=>e.firstElementChild.textContent).join('|')==='Overview|Journey|Records|Investigations|Review'")
+            assert cd.evaluate("document.querySelector('[data-testid=nav-overview]').getAttribute('aria-current')==='page'")
+            assert cd.evaluate("document.querySelector('[data-testid=nav-review]').textContent.includes('Not connected')")
+            cd.evaluate("document.querySelector('[data-testid=nav-review]').click()")
+            cd.wait("document.querySelector('[data-testid=nav-review]').getAttribute('aria-current')==='page'",'unconnected Review is clearly selected')
+            assert cd.evaluate("document.body.textContent.includes('Review is not connected')")
+            cd.evaluate("document.querySelector('[data-testid=nav-overview]').click()")
+            cd.wait("document.querySelector('[data-testid=nav-overview]').getAttribute('aria-current')==='page'",'Overview retained after Review')
+
             def value(selector,text):
                 # React tracks controlled input setters. Use the native setter plus a real input event.
                 cd.evaluate(f"(()=>{{const e=document.querySelector({json.dumps(selector)});Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,{json.dumps(text)});e.dispatchEvent(new Event('input',{{bubbles:true}}));}})()")
@@ -199,6 +209,8 @@ def main():
             cd.command('Emulation.setDeviceMetricsOverride',{'width':390,'height':844,'deviceScaleFactor':1,'mobile':False})
             cd.wait('window.innerWidth===390','mobile width')
             assert cd.evaluate('document.documentElement.scrollWidth<=window.innerWidth+1')
+            assert cd.evaluate("document.querySelectorAll('nav[aria-label=\\\"Patient workspace\\\"] .nav-group').length===2")
+            assert cd.evaluate("Array.from(document.querySelectorAll('.nav-group button')).every(e=>e.getBoundingClientRect().height>=44)")
             image=cd.command('Page.captureScreenshot',{'format':'png'});(out/'h1-mobile.png').write_bytes(base64.b64decode(image['data']))
             from record_intake_journey import exercise
             exercise(cd,pid,directory,tokens[0],credentials,write_grants,out)
