@@ -310,7 +310,8 @@ class PostgresRecordRequests:
             return complete({"request_id": request_id, "source_id": source_id,
                              "version": source[2], "duplicate": False})
 
-    def _source_chain(self, source_id: str, case_id: str, kind: str) -> dict:
+    def _source_chain(self, source_id: str, case_id: str, kind: str, *,
+                      verify_originals: bool = True) -> dict:
         """Validate original bytes and every amendment edge with the source owner."""
         from .source_integrity import SourceIntegrityError, validate_original
         row = self.patients._fetchone(
@@ -319,11 +320,14 @@ class PostgresRecordRequests:
         )
         if row is None:
             raise PatientRegistryDenied("Source unavailable")
+        # Request-only readers may see operational status, but must not load
+        # original bytes without the independent source_read grant.
+        raw_column = ",raw" if verify_originals else ""
         rows = self.patients._fetchall(
             "SELECT source_id,case_id,document_id,version,sha256,kind,event_date,"
-            "issued_at,specimen_id,state,supersedes_id,raw "
+            "issued_at,specimen_id,state,supersedes_id" + raw_column + " "
             "FROM clinical_source.source_versions WHERE case_id=%s AND document_id=%s "
-            "ORDER BY version LIMIT 257", (case_id, row[0]),
+            "ORDER BY version LIMIT 257 FOR SHARE", (case_id, row[0]),
         )
         if not rows or len(rows) > 256:
             raise SourceIntegrityError("Source history unavailable")
@@ -333,8 +337,15 @@ class PostgresRecordRequests:
         previous = None
         for version, values in enumerate(rows, start=1):
             source = dict(zip(fields, values))
-            validate_original(source, requested_case_id=case_id, predecessor=previous)
-            if (source["version"] != version or source["kind"] != kind
+            if verify_originals:
+                validate_original(source, requested_case_id=case_id, predecessor=previous)
+            elif (source["case_id"] != case_id or source["document_id"] != row[0]
+                  or source["supersedes_id"] != (previous["source_id"] if previous else None)
+                  or (previous is not None and
+                      (source["kind"], source["event_date"], source["specimen_id"]) !=
+                      (previous["kind"], previous["event_date"], previous["specimen_id"]))):
+                raise SourceIntegrityError("Source metadata history unavailable")
+            if (type(source["version"]) is not int or source["version"] != version or source["kind"] != kind
                     or source["state"] != ("current" if version == len(rows) else "superseded")):
                 raise SourceIntegrityError("Source history unavailable")
             chain[source["source_id"]] = source
@@ -344,7 +355,7 @@ class PostgresRecordRequests:
         return chain
 
     def _history(self, patient_id: str, request_id: str, kind: str,
-                 organization: str) -> list[dict]:
+                 organization: str, *, verify_originals: bool = True) -> list[dict]:
         """Project the immutable journal; malformed or forked history fails closed."""
         from .source_integrity import SourceIntegrityError
         events = self.patients._fetchall(
@@ -365,7 +376,8 @@ class PostgresRecordRequests:
         )
         if binding is None or tuple(binding[:2]) != (patient_id, organization):
             raise SourceIntegrityError("Record receipt binding mismatch")
-        chain = self._source_chain(events[0][1].get("source_id"), case_id, kind)
+        chain = self._source_chain(events[0][1].get("source_id"), case_id, kind,
+                                   verify_originals=verify_originals)
         history = []
         keys, identifiers = set(), set()
         for index, (event_type, metadata, occurred_at) in enumerate(events):
@@ -417,7 +429,8 @@ class PostgresRecordRequests:
 
     def _latest_receipt(self, patient_id: str, request_id: str, kind: str,
                         organization: str, *, disclose_source: bool = False) -> dict | None:
-        history = self._history(patient_id, request_id, kind, organization)
+        history = self._history(patient_id, request_id, kind, organization,
+                                verify_originals=disclose_source)
         if not history:
             return None
         latest = history[-1]

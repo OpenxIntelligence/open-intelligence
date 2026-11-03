@@ -117,9 +117,11 @@ at 6c6f28c9cfe9a886ac8f3f774a441e7e8cbdbb63 executed 252 PostgreSQL/API tests:
 246 passed and all six new reconciliation tests failed because the routes were
 absent. This negative evidence is retained.
 
-Those six tests remain intact. Six additional PostgreSQL/HTTP tests cover late
+Those six tests remain intact. Eight additional PostgreSQL/HTTP tests cover late
 read/retry authorization, audit-tail revocation, competing keys/changed actor,
-unreceived/cancelled/cross-patient requests, body bounds and a forked stored journal.
+unreceived/cancelled/cross-patient requests, body bounds, a forked stored journal,
+source/request/patient/binding locks through actual encoding, and request-only
+metadata projection without loading original bytes.
 Hosted API, regression, recovery and React/browser verification of the
 implementation is pending at this checkpoint. No local runtime was available;
 no local execution or independent review is claimed.

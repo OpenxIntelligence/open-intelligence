@@ -308,5 +308,51 @@ class RecordReconciliationTests(SourceVersionFixture):
             self.assertEqual(self.reconcile(base, pid, rid, sid, aid)[0], 503)
 
 
+    def test_request_only_projection_does_not_read_original_bytes(self):
+        with running_server(create_app(self.settings)) as base:
+            pid, rid, sid, aid = self.prepared(base)
+            self.assertEqual(self.reconcile(base, pid, rid, sid, aid)[0], 201)
+            self.creds[0]['actions'].remove('source_read'); self.write()
+            fetch = PostgresPatientRegistry._fetchall
+            queries = []
+            def metadata_only(registry, sql, params=()):
+                if 'FROM clinical_source.source_versions' in sql:
+                    queries.append(sql)
+                    self.assertNotIn('raw', sql)
+                return fetch(registry, sql, params)
+            with patch.object(PostgresPatientRegistry, '_fetchall', metadata_only):
+                status, body, _ = request(base, self.root(pid), token=TOKEN_A)
+            self.assertEqual(status, 200)
+            self.assertTrue(queries)
+            self.assertEqual(body['requests'][0]['revision'], 3)
+            self.assertEqual(body['requests'][0]['receipt_status'], 'source_current_unreviewed')
+            self.assertIsNone(body['requests'][0]['source_reference'])
+
+    def test_patient_request_binding_and_source_locks_cover_actual_response_encoding(self):
+        from sqlalchemy.exc import DBAPIError
+        with running_server(create_app(self.settings)) as base:
+            pid, rid, sid, aid = self.prepared(base)
+            render = JSONResponse.render
+            checked = []
+            def assert_locks(response, content):
+                if isinstance(content, dict) and ('reconciliation_id' in content or 'receipts' in content):
+                    for sql, params in (
+                        ("SELECT patient_id FROM identity.identity_patients WHERE patient_id=:id FOR UPDATE NOWAIT", {'id': pid}),
+                        ("SELECT request_id FROM coordination.record_requests WHERE request_id=:id FOR UPDATE NOWAIT", {'id': rid}),
+                        ("SELECT case_id FROM coordination.patient_case_bindings WHERE case_id=:id FOR UPDATE NOWAIT", {'id': 'CASE-ALPHA'}),
+                        ("SELECT source_id FROM clinical_source.source_versions WHERE source_id=:id FOR UPDATE NOWAIT", {'id': sid}),
+                        ("SELECT source_id FROM clinical_source.source_versions WHERE source_id=:id FOR UPDATE NOWAIT", {'id': aid}),
+                    ):
+                        with self.assertRaises(DBAPIError):
+                            with self.engine.begin() as connection:
+                                connection.execute(text(sql), params)
+                    checked.append(True)
+                return render(response, content)
+            with patch.object(JSONResponse, 'render', assert_locks):
+                self.assertEqual(self.reconcile(base, pid, rid, sid, aid)[0], 201)
+                self.assertEqual(request(base, self.root(pid) + f'/{rid}/receipt-history', token=TOKEN_A)[0], 200)
+            self.assertEqual(checked, [True, True])
+
+
 if __name__ == '__main__':
     unittest.main()
