@@ -12,7 +12,7 @@ import unittest
 
 from dicom_integrity_fixture import dicom_bytes
 from oi_api.dicom_integrity import parse_dicom
-from oi_api.images import PostgresSourceImages, _FIELDS
+from oi_api.images import ImageIntegrityError, PostgresSourceImages, _FIELDS
 from oi_api.sources import PostgresSourceVersions
 from open_intelligence.patient_registry import PatientRegistryDenied
 
@@ -80,6 +80,7 @@ class ImagePreparationTests(unittest.TestCase):
         source_owner = object.__new__(PostgresSourceVersions)
         source_owner.registry = self.registry
         self.images = object.__new__(PostgresSourceImages)
+        self.images.archive = None
         self.images.registry = self.registry
         self.images.sources = source_owner
         self.images._scope = lambda *args: (
@@ -172,6 +173,45 @@ class ImagePreparationTests(unittest.TestCase):
                     self.call(operation, prepare)
                 self.assertEqual(self.registry.committed, [])
                 self.assertEqual(self.order, ["begin", "prepare", "authority", "event", "rollback"])
+
+    def test_configured_archive_failure_never_releases_intact_local_original(self):
+        test = self
+
+        class ChangedArchive:
+            def read(self, study, series, sop):
+                test.order.append("fetch")
+                test.assertEqual((study, series, sop), ("2.25.501", "2.25.502", "2.25.503"))
+                return test.raw + b"changed"
+
+        self.images.archive = ChangedArchive()
+        with self.assertRaises(ImageIntegrityError):
+            self.call("original")
+        self.assertEqual(self.registry.committed, [])
+        self.assertEqual(self.order, ["begin", "authority", "commit", "fetch"])
+
+    def test_archive_read_uses_canonical_identifiers_between_transactions(self):
+        test = self
+
+        class ExactArchive:
+            def read(self, study, series, sop):
+                test.order.append("fetch")
+                test.assertEqual((study, series, sop), ("2.25.501", "2.25.502", "2.25.503"))
+                test.assertEqual(test.registry.committed, [])
+                return test.raw
+
+        self.images.archive = ExactArchive()
+
+        def prepare(raw, receipt):
+            self.order.append("prepare")
+            self.assertEqual(raw, self.raw)
+            self.assertEqual(self.registry.committed, [])
+            return raw, receipt
+
+        raw, receipt = self.call("original", prepare)
+        self.assertEqual(raw, self.raw)
+        self.assertEqual(self.registry.committed[0][1]["receipt_id"], receipt)
+        self.assertEqual(self.order, ["begin", "authority", "commit", "fetch",
+                                     "begin", "prepare", "authority", "event", "commit"])
 
 
 if __name__ == "__main__":
