@@ -373,6 +373,16 @@ class FollowthroughChecks:
             assert self.projection()['tasks'] == original_tasks
             restored = self.refresh()
             assert restored['tasks'] == original_tasks
+            for task in original_tasks:
+                self.wait_task(task['task_id'], task['status'], task['revision'])
+                selector = self.row(task['task_id'])
+                displayed = self.cd.evaluate("[...document.querySelector(" + json.dumps(selector)
+                    + ").querySelectorAll('[data-testid=followthrough-history] time')].map(e=>"
+                      "({dateTime:e.getAttribute('datetime'),text:e.textContent}))")
+                assert displayed == [{'dateTime': event['recorded_at'], 'text': event['recorded_at']}
+                                     for event in task['history']]
+                text = self.cd.evaluate('document.querySelector(' + json.dumps(selector) + ').textContent')
+                assert all(task[field] in text for field in ('source_id', 'source_sha256', 'question_id'))
             assert self.cd.evaluate('window.__oiFollowthroughChecks.writes.length') == writes
         print('PASS FOLLOWTHROUGH TIMESTAMPS: three explicitly corrupted copies of real authorized reads '
               'withhold task history, counts and transition controls; fresh valid reads restore exact '
