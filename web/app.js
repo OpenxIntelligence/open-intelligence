@@ -182,7 +182,8 @@ async function initialize() {
       if ((['draft-observations', 'draft-summary', 'draft-assumptions', 'evidence-rationale',
             'evidence-withdraw-reason', 'option-description', 'synthesis-note-text',
             'synthesis-note-author', 'owner-label-input', 'note-text',
-            'scoped-decision-note', 'scoped-dissent-rationale'].some(id => el(id).value.trim()))) {
+            'scoped-decision-note', 'scoped-dissent-rationale',
+            'counterevidence-reason', 'safety-detail'].some(id => el(id).value.trim()))) {
         picker.value = caseId;
         notice('Save or explicitly clear the unfinished investigation draft before switching cases.', true);
         return;
@@ -194,7 +195,8 @@ async function initialize() {
       draftFilterCaseId = null;
       for (const id of ['question-text', 'question-owner', 'owner-label-input', 'note-text',
         'report-text', 'evidence-rationale', 'draft-observations',
-        'draft-summary', 'draft-assumptions', 'synthesis-note-text', 'synthesis-note-author']) el(id).value = '';
+        'draft-summary', 'draft-assumptions', 'synthesis-note-text', 'synthesis-note-author',
+        'counterevidence-reason', 'safety-detail']) el(id).value = '';
       if (el('source-dialog').open) el('source-dialog').close();
       if (el('compare-dialog').open) el('compare-dialog').close();
       refresh();
@@ -1243,6 +1245,40 @@ el('option-threat-form').addEventListener('submit', async event => {
     notice('Threat #' + created.threat_id + ' added.'); await refresh();
   } catch (err) { notice(err.message, true); }
 });
+el('option-counterevidence-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const kind = el('counterevidence-trigger-kind').value;
+    const pick = id => { const v = el(id).value; return v === '' ? null : Number(v); };
+    const created = await api('/api/cases/' + requestedCase + '/options/' +
+      Number(el('counterevidence-option-choice').value) + '/counterevidence', {
+      effect: el('counterevidence-effect').value, reason: el('counterevidence-reason').value,
+      source_version_id: kind === 'source' ? pick('counterevidence-source-choice') : null,
+      evidence_assessment_id: kind === 'evidence_assessment' ? pick('counterevidence-assessment-choice') : null,
+    });
+    if (requestedCase !== caseId) return;
+    el('counterevidence-reason').value = '';
+    notice('Counterevidence #' + created.counterevidence_id + ' recorded.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('option-safety-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const kind = el('safety-trigger-kind').value;
+    const pick = id => { const v = el(id).value; return v === '' ? null : Number(v); };
+    const created = await api('/api/cases/' + requestedCase + '/options/' +
+      Number(el('safety-option-choice').value) + '/safety-flags', {
+      category: el('safety-category').value, detail: el('safety-detail').value,
+      source_version_id: kind === 'source' ? pick('safety-source-choice') : null,
+      evidence_assessment_id: kind === 'evidence_assessment' ? pick('safety-assessment-choice') : null,
+    });
+    if (requestedCase !== caseId) return;
+    el('safety-detail').value = '';
+    notice('Safety uncertainty #' + created.safety_flag_id + ' recorded.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
 el('option-review-form').addEventListener('submit', async event => {
   event.preventDefault();
   try {
@@ -1370,10 +1406,18 @@ function renderOptions() {
   fill('dependency-option-choice', options, optionLabel);
   fill('task-option-choice', options, optionLabel);
   fill('threat-option-choice', options, optionLabel);
+  fill('counterevidence-option-choice', options, optionLabel);
+  fill('safety-option-choice', options, optionLabel);
   fill('review-option-choice', options, optionLabel);
   fill('dependency-option-target-choice', options, optionLabel, true);
   fill('dependency-source-choice', active.sources, s => s.document_id + '@' + s.version + ' · ' + s.state, true);
   fill('dependency-assessment-choice', active.evidence_assessments || [],
+    a => a.evidence_key + '@' + a.version + ' · ' + a.relation, true);
+  fill('counterevidence-source-choice', active.sources, s => s.document_id + '@' + s.version + ' · ' + s.state, true);
+  fill('counterevidence-assessment-choice', active.evidence_assessments || [],
+    a => a.evidence_key + '@' + a.version + ' · ' + a.relation, true);
+  fill('safety-source-choice', active.sources, s => s.document_id + '@' + s.version + ' · ' + s.state, true);
+  fill('safety-assessment-choice', active.evidence_assessments || [],
     a => a.evidence_key + '@' + a.version + ' · ' + a.relation, true);
   const tasks = options.flatMap(o => o.preparation_tasks.map(t => ({ ...t, optionLabel: o.label })));
   fill('dependency-task-choice', tasks, t => 'Task #' + t.id + ' · ' + t.label + ' (' + t.status + ')', true);
@@ -1422,6 +1466,29 @@ function renderOptions() {
       box.append(node('p', 'Optionality threats: ' + option.threats.map(t =>
         t.kind + ': ' + t.description +
         (t.threat_date ? ' · ' + t.threat_date + ' (' + t.threat_basis + ')' : ' · date unknown')).join(' ; '), 'snapshot-meta'));
+    }
+    if ((option.counterevidence || []).length) {
+      const list = node('ul');
+      for (const item of option.counterevidence) {
+        list.append(node('li', 'Fictional counterevidence #' + item.id + ' · ' + item.effect +
+          ' · triggered by ' + item.trigger + ' (' + item.trigger_state + ') · reason: ' + item.reason));
+      }
+      box.append(node('p', 'Counterevidence (holds and invalidations stay visible):', 'snapshot-meta'), list);
+    }
+    if ((option.safety_flags || []).length) {
+      const list = node('ul');
+      for (const flag of option.safety_flags) {
+        // The server label is rendered verbatim and never stripped: it is
+        // what keeps a single-modality note from reading as established
+        // benefit/toxicity and a preclinical note from reading as a
+        // patient response or permission.
+        list.append(node('li', 'Fictional safety note #' + flag.id + ' · ' + flag.display_label +
+          ' Detail: ' + flag.detail + ' · triggered by ' + flag.trigger + ' (' + flag.trigger_state + ')'));
+      }
+      box.append(node('p', 'Safety uncertainties (visible before any promotion):', 'snapshot-meta'), list);
+    }
+    if (option.safety_block) {
+      box.append(node('p', 'Promotion blocked: ' + option.safety_block + '.', 'snapshot-meta'));
     }
     if (option.review_events.length) {
       box.append(node('p', 'Review history: ' + option.review_events.map(e =>

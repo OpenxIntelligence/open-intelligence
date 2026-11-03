@@ -521,6 +521,22 @@ class Handler(BaseHTTPRequestHandler):
                         data.get("description"), data.get("threat_date"),
                         data.get("threat_basis", "unknown"), data.get("anchor", ""))
                     return self._json(201, {"threat_id": threat_id})
+                option_counter = re.fullmatch(rf"/api/cases/{ID_PART}/options/([0-9]+)/counterevidence", path)
+                if option_counter:
+                    counterevidence_id = store.add_option_counterevidence(
+                        option_counter[1], int(option_counter[2]), data.get("effect"),
+                        data.get("reason"),
+                        source_version_id=data.get("source_version_id"),
+                        evidence_assessment_id=data.get("evidence_assessment_id"))
+                    return self._json(201, {"counterevidence_id": counterevidence_id})
+                option_safety = re.fullmatch(rf"/api/cases/{ID_PART}/options/([0-9]+)/safety-flags", path)
+                if option_safety:
+                    safety_flag_id = store.add_option_safety_flag(
+                        option_safety[1], int(option_safety[2]), data.get("category"),
+                        data.get("detail"),
+                        source_version_id=data.get("source_version_id"),
+                        evidence_assessment_id=data.get("evidence_assessment_id"))
+                    return self._json(201, {"safety_flag_id": safety_flag_id})
                 option_review = re.fullmatch(rf"/api/cases/{ID_PART}/options/([0-9]+)/review", path)
                 if option_review:
                     return self._json(200, store.review_option(
