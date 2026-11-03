@@ -1,14 +1,15 @@
-import {StrictMode, useEffect, useRef, useState, useSyncExternalStore} from 'react';
+import {StrictMode, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {createRoot} from 'react-dom/client';
 import {RegistrySession} from './registry-client';
 import {RecordsPanel} from './records-panel';
-import type {ReadingView} from './records-panel';
+import type {ReadingView, SourceFilters} from './records-panel';
 import './styles.css';
 
 const session = new RegistrySession();
 const sections = ['Overview', 'Records', 'Journey', 'Investigations', 'Review'] as const;
 type Section = typeof sections[number];
 const planned: readonly Section[] = ['Journey', 'Investigations', 'Review'];
+const emptySourceFilters: SourceFilters = {query: '', versionState: 'all'};
 
 function App() {
   const state = useSyncExternalStore(session.subscribe, session.snapshot);
@@ -19,11 +20,43 @@ function App() {
   const [readiness, setReadiness] = useState<'checking' | 'ready' | 'unavailable'>('checking');
   const [section, setSection] = useState<Section>('Overview');
   const [view, setView] = useState<ReadingView>('patient');
+  const [sourceFilters, setSourceFilters] = useState({scope: state.sourceIndex, ...emptySourceFilters});
+  // The reference identifies the existing response, not another record store.
+  // A changed/cleared response renders blank filters immediately, before effects.
+  const filters = sourceFilters.scope === state.sourceIndex
+    ? {query: sourceFilters.query, versionState: sourceFilters.versionState} : emptySourceFilters;
   const title = useRef<HTMLHeadingElement>(null);
+  const context = useRef<HTMLDivElement>(null);
   const moveFocus = useRef(false);
   const keyForReceipt = useRef(requestKey);
   const busy = state.phase === 'creating' || state.phase === 'reading';
   const clinical = view === 'clinical';
+
+  useEffect(() => { setSourceFilters({scope: state.sourceIndex, ...emptySourceFilters}); }, [state.sourceIndex]);
+  useLayoutEffect(() => {
+    const element = context.current;
+    const container = element?.parentElement;
+    if (!element || !container) return;
+    const measure = () => {
+      if (!element.isConnected) return;
+      const height = Math.ceil(element.getBoundingClientRect().height);
+      // At high magnification or short heights, let identity scroll naturally
+      // rather than cover the task. Never shorten the only complete identifier.
+      const sticky = height <= window.innerHeight / 2;
+      element.dataset.sticky = String(sticky);
+      container.style.setProperty('--chart-scroll-offset', `${sticky ? height + 24 : 24}px`);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    window.addEventListener('resize', measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', measure);
+      container.style.removeProperty('--chart-scroll-offset');
+      delete element.dataset.sticky;
+    };
+  }, [Boolean(state.patient)]);
 
   useEffect(() => {
     let active = true;
@@ -114,9 +147,9 @@ function App() {
     <div className="body">
       <header className="topbar">
         <span>{clinical ? 'Clinical reading view' : 'Patient reading view'} <span className="muted">/ {label(section)}</span></span>
-        <span className={'connection ' + readiness} data-testid="readiness">{readiness === 'checking' ? 'Checking API' : readiness === 'ready' ? 'PostgreSQL API ready' : 'API unavailable'}</span>
+        <span className={'connection ' + readiness} data-testid="readiness" role="status" aria-live="polite" aria-atomic="true">{readiness === 'checking' ? 'Checking connection' : readiness === 'ready' ? 'Connection ready' : 'Connection unavailable'}</span>
       </header>
-      {state.patient && <div className="context-surface">
+      {state.patient && <div className="context-surface" ref={context}>
         <section className="patient-context" data-testid="patient-context" aria-label="Selected patient">
           <div className="patient-context-identity"><span className="eyebrow">SELECTED PATIENT</span><strong className="patient-key">{state.patient.patient_id}</strong></div>
           <div className="patient-context-meta"><span><span className="muted">Organization</span> <strong>{state.patient.origin_org}</strong></span><span className="badge">Registry: {state.patient.status}</span></div>
@@ -143,7 +176,8 @@ function App() {
         <p className={'status global-status ' + (state.phase === 'error' ? 'error' : '')} role="status" aria-live="polite" data-testid="status" hidden={state.phase === 'ready' && (section !== 'Overview' || state.sourceIndex !== null)}>{state.message}</p>
         {section !== 'Overview' && !state.connected && access}
 
-        {section === 'Records' ? <RecordsPanel key={state.patient?.patient_id ?? 'no-patient'} state={state} view={view}
+        {section === 'Records' ? <RecordsPanel key={state.patient?.patient_id ?? 'no-patient'} state={state} view={view} filters={filters}
+          onFiltersChange={next => setSourceFilters({...next, scope: state.sourceIndex})}
           onOverview={() => navigate('Overview')} onLoadCases={() => void session.loadCases()} onLoadSources={caseId => void session.loadSources(caseId)}/>
           : section !== 'Overview' ? <section className="panel empty-state" data-testid="unconnected-workflow">
             <span className="badge">Not connected</span><h2>{section} is not connected</h2>

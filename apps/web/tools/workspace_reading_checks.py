@@ -66,15 +66,20 @@ def check_reading_workspace(cd):
                   const s=document.createElement('style');s.id='oi-reading-spacing';
                   s.textContent='*{line-height:1.5!important;letter-spacing:.12em!important;word-spacing:.16em!important}p{margin-bottom:2em!important}';
                   document.head.append(s);})()""")
+            # Let layout/ResizeObserver settle after emulated display changes.
+            cd.evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))')
             # Shift+Tab uses native keyboard focus scrolling, not scrollIntoView.
             cd.evaluate("document.querySelector('#source-state').focus({preventScroll:true})")
             for event in ('keyDown', 'keyUp'):
                 cd.command('Input.dispatchKeyEvent', {'type': event, 'key': 'Tab', 'code': 'Tab', 'windowsVirtualKeyCode': 9, 'modifiers': 8})
+            cd.evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))')
             geometry = cd.evaluate("""(()=>{const r=document.querySelector('#source-filter').getBoundingClientRect();
               const h=document.querySelector('.context-surface'),b=h.getBoundingClientRect();
               const sticky=['sticky','fixed'].includes(getComputedStyle(h).position)&&b.bottom>0&&b.top<innerHeight;
               return {focused:document.activeElement?.id,top:r.top,bottom:r.bottom,height:r.height,
-                headerBottom:b.bottom,sticky,viewport:innerHeight,overflow:document.documentElement.scrollWidth>innerWidth+1};})()""")
+                headerBottom:b.bottom,sticky,viewport:innerHeight,overflow:document.documentElement.scrollWidth>innerWidth+1,
+                overflowing:[...document.querySelectorAll('body *')].filter(e=>e.getBoundingClientRect().right>innerWidth+1)
+                  .slice(0,8).map(e=>({tag:e.tagName,class:e.className,right:e.getBoundingClientRect().right}))};})()""")
             visible = geometry['focused'] == 'source-filter' and geometry['height'] > 0 and geometry['top'] >= -1
             visible = visible and geometry['bottom'] <= height + 1 and not geometry['overflow']
             visible = visible and (not geometry['sticky'] or geometry['top'] >= geometry['headerBottom'] - 1)

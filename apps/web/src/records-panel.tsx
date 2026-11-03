@@ -1,11 +1,14 @@
-import {useEffect, useRef, useState} from 'react';
+import {useEffect, useRef} from 'react';
 import type {ViewState} from './registry-client';
 import type {SourceFinding, SourceVersion} from './source-contracts';
 
 export type ReadingView = 'patient' | 'clinical';
+export type SourceFilters = {query: string; versionState: string};
 type Props = {
   state: ViewState;
   view: ReadingView;
+  filters: SourceFilters;
+  onFiltersChange: (filters: SourceFilters) => void;
   onOverview: () => void;
   onLoadCases: () => void;
   onLoadSources: (caseId: string) => void;
@@ -41,15 +44,14 @@ function SourceRow({source, findings, view}: {source: SourceVersion; findings: r
   </li>;
 }
 
-export function RecordsPanel({state, view, onOverview, onLoadCases, onLoadSources}: Props) {
-  const [query, setQuery] = useState('');
-  const [versionState, setVersionState] = useState('all');
+export function RecordsPanel({state, view, filters, onFiltersChange, onOverview, onLoadCases, onLoadSources}: Props) {
+  const {query, versionState} = filters;
   const sourceHeading = useRef<HTMLHeadingElement>(null);
   const sourceFilter = useRef<HTMLInputElement>(null);
   const focusSources = useRef(false);
-  // This is a transient filter of the loaded response, never a second record store.
+  // Navigation retains the parent's response-scoped filters. Only explicit
+  // source inspection moves focus; a reading preference never requests records.
   useEffect(() => {
-    setQuery(''); setVersionState('all');
     if (state.sourceIndex && focusSources.current) {
       sourceHeading.current?.focus();
       focusSources.current = false;
@@ -64,7 +66,7 @@ export function RecordsPanel({state, view, onOverview, onLoadCases, onLoadSource
     (!search || [source.document_id, source.kind, source.event_date, source.issued_at, source.source_id, source.specimen_id ?? ''].join(' ').toLowerCase().includes(search)))
     .sort((left, right) => Number(left.state === 'superseded') - Number(right.state === 'superseded')) ?? [];
   const hasFilter = Boolean(query) || versionState !== 'all';
-  function clearFilters() { setQuery(''); setVersionState('all'); sourceFilter.current?.focus(); }
+  function clearFilters() { onFiltersChange({query: '', versionState: 'all'}); sourceFilter.current?.focus(); }
   function inspectSources(caseId: string) { focusSources.current = true; onLoadSources(caseId); }
 
   return <section className="records-workspace" data-testid="records-workspace" aria-labelledby="records-heading" aria-busy={loading}>
@@ -90,8 +92,8 @@ export function RecordsPanel({state, view, onOverview, onLoadCases, onLoadSource
           <div className="section-heading"><div><p className="eyebrow">{index.case_id}</p><h3 id="sources-heading" tabIndex={-1} ref={sourceHeading}>Source history</h3><span className="count-label">{index.sources.length} {index.sources.length === 1 ? 'version' : 'versions'}</span></div><button type="button" className="quiet source-refresh" data-testid="refresh-sources" disabled={loading} onClick={() => inspectSources(index.case_id)}>Refresh sources</button></div>
           {index.sources.length === 0 ? <div className="panel empty-state"><p>No imported original sources were returned for this case.</p></div> : <>
             <div className="source-filters" role="search" aria-label="Filter loaded source versions">
-              <div className="source-query"><label htmlFor="source-filter">Filter loaded sources</label><input id="source-filter" ref={sourceFilter} type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Document, type, date or source ID" aria-describedby="source-filter-help"/></div>
-              <div><label htmlFor="source-state">Version status</label><select id="source-state" value={versionState} onChange={event => setVersionState(event.target.value)}><option value="all">All versions</option><option value="current">Current</option><option value="superseded">Superseded</option></select></div>
+              <div className="source-query"><label htmlFor="source-filter">Filter loaded sources</label><input id="source-filter" ref={sourceFilter} type="search" value={query} onChange={event => onFiltersChange({...filters, query: event.target.value})} placeholder="Document, type, date or source ID" aria-describedby="source-filter-help"/></div>
+              <div><label htmlFor="source-state">Version status</label><select id="source-state" value={versionState} onChange={event => onFiltersChange({...filters, versionState: event.target.value})}><option value="all">All versions</option><option value="current">Current</option><option value="superseded">Superseded</option></select></div>
             </div>
             <div className="filter-summary"><p id="source-filter-help" className="small">Filters only the sources loaded for this case.</p><p role="status" aria-live="polite">{filtered.length} of {index.sources.length} versions shown</p>{hasFilter && <button type="button" className="quiet" data-testid="clear-source-filters" onClick={clearFilters}>Clear filters</button>}</div>
             {filtered.length === 0 ? <div className="panel empty-state" data-testid="source-no-match"><h4>No sources match these filters</h4><p>The loaded records have not changed. Clear the filters to see all versions.</p></div> :
