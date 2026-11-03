@@ -1,6 +1,8 @@
 # Correcting selected passages after record intake
 
-Status: implemented locally; hosted browser verification pending. Extends OI-006, OI-007, OI-009 and OI-010
+Status: implemented and hosted engineering acceptance verified in
+[draft PR #190](https://github.com/OpenxIntelligence/open-intelligence/pull/190);
+unmerged and undeployed. Extends OI-006, OI-007, OI-009 and OI-010
 on verified ordinary-text intake PR #173, head
 `243bfec0fb36121868714dd36c6dd591243114da`. No clinical release is implied.
 
@@ -95,6 +97,25 @@ review found no blocking defect and independently reran the domain and session
 tests. The full local suite passed 378 Python/domain/HTTP tests in 94.462 seconds;
 all 54 JavaScript cases passed across six existing and extended suites.
 Compile/syntax, the no-patient-data CI guard and whitespace checks passed.
-Hosted Chromium results are pending. All inputs are independently authored
-fictional examples; this local application has no production patient access
-control or clinical validation.
+The implementation at `3ae915c037fc4389ad3b3a188675208834ba8a8d` passed
+[exact-head CI 41553818718](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41553818718):
+378 Python/domain/HTTP tests (33.841 seconds), 54 JavaScript cases, 80 offline
+checks plus 18 optional dependency skips, and all six Chromium journeys. The
+new journey proves original-only intake → later selections → report/demo review
+→ correction → historical revision export, unchanged original download,
+stale narrative rejection, explicit source reselection, 390 px layout and
+delayed-response case isolation. It retains one original source version, three
+annotation revisions and two report snapshots. No live model was invoked.
+
+[Existing UI CI 41553818723](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41553818723)
+also passed 378 tests and the existing integrated/source-dialog/keyboard/layout
+journeys on generated merge `e789cbadf24151915c45862451966b092c6323c5`.
+These overlapping regression counts are not additive. Runtime: Python 3.13.17,
+Node v24.22.1 and Chrome 156.0.8078.47. The hosted logs retain inherited unclosed
+SQLite resource warnings; they are not presented as a warning-free run.
+
+Artifact `13193238470` is 878,649 bytes; its downloaded SHA-256 matched
+`daf0b34fade4c715e82da19c95c91d5432860f01e608273450fc9f7ba945d728`.
+The exact-head receipt and desktop/mobile screenshots were inspected. All
+inputs are independently authored fictional examples; this local application
+has no production patient access control or clinical validation.

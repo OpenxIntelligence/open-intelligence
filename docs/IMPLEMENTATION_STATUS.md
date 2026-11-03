@@ -18,8 +18,17 @@ clinical authority is introduced.
 
 Local feature checks: 12 domain, 16 HTTP, one projection and seven JavaScript
 tests pass. The full local regression passed 378 Python/domain/HTTP tests and
-54 JavaScript cases. Independent review found no blocking defect. Hosted browser
-results are pending; this is unmerged synthetic-only development.
+54 JavaScript cases. Independent review found no blocking defect.
+[Draft PR #190](https://github.com/OpenxIntelligence/open-intelligence/pull/190)
+implementation head `3ae915c037fc4389ad3b3a188675208834ba8a8d` passed
+[exact-head CI 41553818718](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41553818718):
+378 Python tests, 54 JavaScript cases, 80 offline checks plus 18 optional skips,
+and six actual Chromium journeys. [UI CI 41553818723](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41553818723)
+also passed its existing regression and browser checks. The correction journey
+preserves exact original bytes and historical selections, rejects an old
+draft's revision, and verifies 390 px layout and delayed case isolation.
+Screenshots and the digest-verified receipt were inspected. This remains
+unmerged synthetic-only development.
 See [the revision contract](engineering/ANNOTATION_REVISIONS.md) for the exact
 API, migration, source ownership and acceptance boundaries.
 
