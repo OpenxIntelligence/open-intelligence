@@ -176,7 +176,8 @@ class SelectionRecoveryAssertions(unittest.TestCase):
         for field, value in (("selection_state", "current_unreviewed_selection"),
                              ("latest_annotation_revision_id", "ANN-" + "E" * 32),
                              ("source_state", "superseded"), ("clinical_approval", True),
-                             ("model_execution", True), ("synthetic", False), ("extra", "unexpected")):
+                             ("model_execution", True), ("synthetic", False), ("extra", "unexpected"),
+                             ("synthetic", 1), ("clinical_approval", 0), ("model_execution", 0)):
             with self.subTest(field=field), self.assertRaises(AssertionError):
                 probe.assert_selection_recovery(self.actual | {field: value}, self.expected)
 

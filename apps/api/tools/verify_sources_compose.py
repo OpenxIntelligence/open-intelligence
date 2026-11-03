@@ -45,7 +45,10 @@ def assert_selection_recovery(actual, expected):
     receipt = actual.get("access_receipt_id")
     assert type(receipt) is str and re.fullmatch(r"ACCESS-[A-F0-9]{32}", receipt), \
         "Selection response lacks a canonical access receipt"
-    assert {k: v for k, v in actual.items() if k != "access_receipt_id"} == expected, \
+    # JSON distinguishes booleans from integers; Python mapping equality does not.
+    received = {k: v for k, v in actual.items() if k != "access_receipt_id"}
+    assert json.dumps(received, sort_keys=True, ensure_ascii=False, allow_nan=False) == \
+        json.dumps(expected, sort_keys=True, ensure_ascii=False, allow_nan=False), \
         "Restored selection changed exact provenance or freshness"
     canonical = json.dumps(actual["anchor"], sort_keys=True, ensure_ascii=False, separators=(",", ":"))
     assert hashlib.sha256(canonical.encode()).hexdigest() == actual["anchor_sha256"], \
