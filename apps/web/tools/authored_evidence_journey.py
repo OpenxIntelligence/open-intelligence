@@ -160,11 +160,26 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
                 + " && document.querySelector('[data-testid=evidence-rationale]')?.value==="
                 + json.dumps(rationale), 'unchanged access recheck preserves comparison draft')
         assert cd.evaluate("document.querySelector('[data-testid=evidence-quote]').value") == quote
+        if lose_response:
+            cd.evaluate("document.querySelector('[data-testid=evidence-draft-status]').scrollIntoView()")
+            shot = cd.command('Page.captureScreenshot', {'format': 'png'})
+            (artifacts / 'h1-comparison-draft-desktop.png').write_bytes(base64.b64decode(shot['data']))
         navigate('Overview')
         assert cd.evaluate("!document.querySelector('[data-testid=evidence-rationale]')")
         navigate('Investigations')
         cd.wait("Boolean(document.querySelector('[data-testid=evidence-draft-resume]'))",
                 'unfinished draft offers explicit reauthorization after navigation')
+        if lose_response:
+            viewport = cd.evaluate('({width:window.innerWidth,height:window.innerHeight})')
+            cd.command('Emulation.setDeviceMetricsOverride', {'width': 390, 'height': 844,
+                       'deviceScaleFactor': 1, 'mobile': False})
+            cd.wait('window.innerWidth===390', 'comparison draft narrow viewport')
+            assert cd.evaluate('document.documentElement.scrollWidth<=window.innerWidth+1'), 'Draft resume overflows 390px'
+            assert not cd.evaluate("Boolean(document.querySelector('[data-testid=evidence-rationale]'))")
+            cd.evaluate("document.querySelector('[data-testid=evidence-draft-status]').scrollIntoView()")
+            shot = cd.command('Page.captureScreenshot', {'format': 'png'})
+            (artifacts / 'h1-comparison-resume-mobile.png').write_bytes(base64.b64decode(shot['data']))
+            cd.command('Emulation.setDeviceMetricsOverride', {**viewport, 'deviceScaleFactor': 1, 'mobile': False})
         click('[data-testid=evidence-draft-resume]')
         cd.wait("document.querySelector('[data-testid=evidence-rationale]')?.value==="
                 + json.dumps(rationale), 'matching question restores comparison inputs')
@@ -373,6 +388,8 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
                                                 (second_report, second_path, second_bytes, second_access))],
             'actual_api_restart_preserved_report': True,
             'lost_response_exact_retry_recovered_once': True,
+            'comparison_draft_refresh_navigation_preserved': True,
+            'comparison_draft_editing_no_implicit_posts': True,
             'fresh_export_revocation_no_blob': True,
             'evidence_amendment_requires_reassessment': True,
             'historical_download_carries_fresh_status_and_receipt': True,
