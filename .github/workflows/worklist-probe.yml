@@ -1,4 +1,4 @@
-name: Synthetic worklist regression probe
+name: Synthetic navigation focus probe
 on:
   push:
     branches: [verification/worklist-currentness-20261102]
@@ -10,7 +10,8 @@ jobs:
     timeout-minutes: 10
     env:
       PYTHONPATH: src
-      OI_WORKLIST_ARTIFACT_DIR: ui-artifacts/worklist
+      OI_UI_ARTIFACT_DIR: ui-artifacts/navigation
+      OI_UI_STANDARD_SMOKE: '1'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -18,21 +19,21 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
-      - name: Actual worklist workflow regression
-        run: python tests/workspace_worklist_journey.py
+      - name: Native keyboard to pointer navigation focus proof
+        run: python tests/workspace_navigation_focus_probe.py
       - name: Record source under test
         if: always()
         run: |
           mkdir -p ui-artifacts
           git rev-parse HEAD | tee ui-artifacts/commit.txt
           git rev-parse 'HEAD^{tree}' | tee ui-artifacts/tree.txt
-          sha256sum web/app.js web/index.html web/workspace-entry.js | tee ui-artifacts/runtime-sha256.txt
+          sha256sum web/app.js web/index.html web/workspace-entry.js tests/workspace_navigation_journey.py | tee ui-artifacts/runtime-sha256.txt
           git archive --format=zip --output=ui-artifacts/source-under-test.zip HEAD
       - name: Preserve synthetic regression evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: worklist-probe-${{ github.run_id }}-${{ github.run_attempt }}
+          name: navigation-focus-probe-${{ github.run_id }}-${{ github.run_attempt }}
           path: ui-artifacts/
           if-no-files-found: error
           retention-days: 7
