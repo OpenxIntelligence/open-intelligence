@@ -172,6 +172,72 @@ class CaseBindingList(Contract):
     clinical_sources_linked: Literal[False] = False
 
 
+
+class ImportOriginalSource(Contract):
+    synthetic: StrictBool
+    original_text: str = Field(min_length=1, max_length=65_536)
+
+    @field_validator("synthetic")
+    @classmethod
+    def fictional_only(cls, value):
+        if value is not True:
+            raise ValueError("Only independently authored fictional reports are allowed")
+        return value
+
+
+class OriginalSourceReceipt(Contract):
+    result: Literal["imported", "duplicate", "quarantined"]
+    duplicate: bool
+    source_id: str | None
+    version: int | None
+
+
+class SourceVersion(Contract):
+    source_id: str
+    document_id: str
+    version: int
+    sha256: str
+    kind: Literal["clinical", "pathology", "laboratory", "imaging", "molecular", "other"]
+    event_date: str
+    issued_at: str
+    received_at: datetime
+    specimen_id: str | None
+    state: Literal["current", "superseded"]
+    supersedes_id: str | None
+
+
+class SourceFinding(Contract):
+    source_id: str
+    finding_key: str
+    reported_state: str
+    source_statement: str
+    source_line: int
+    clinical_review_state: Literal["not_established"] = "not_established"
+
+
+class OriginalSourceIndex(Contract):
+    contract: Literal["oi.synthetic-original-sources/1"]
+    patient_id: str
+    case_id: str
+    sources: list[SourceVersion]
+    source_reported_assertions: list[SourceFinding]
+    synthetic: Literal[True]
+    clinical_interpretation: Literal[False]
+    research_review_invalidation_integrated: Literal[False]
+
+
+class OriginalSource(Contract):
+    source_id: str
+    case_id: str
+    document_id: str
+    version: int
+    state: Literal["current", "superseded"]
+    sha256: str
+    original_text: str
+    synthetic: Literal[True]
+    clinical_review_state: Literal["not_established"]
+
+
 def patient_router(database: Database, authentication: Authentication) -> APIRouter:
     router = APIRouter(prefix="/v1/patients", tags=["Synthetic patient registry"])
     bearer = HTTPBearer(auto_error=False, scheme_name="SyntheticFixture",
@@ -361,5 +427,52 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
         except PatientRegistryDenied:
             raise HTTPException(404, "Patient unavailable") from None
         return CaseBindingReceipt(**result)
+
+
+    @router.get("/{patient_id}/cases/{case_id}/sources", response_model=OriginalSourceIndex,
+                responses=errors, operation_id="list_original_sources_v1")
+    def list_original_sources(patient_id: str, case_id: str,
+                              context: Principal = Depends(principal)):
+        try:
+            with registry(context) as patients:
+                records_authorized(patients, context, patient_id, "source_read")
+                result = PostgresSourceVersions(patients).list(
+                    patient_id, case_id, organization=context.organization)
+                return OriginalSourceIndex(**result)
+        except PatientRegistryDenied:
+            raise HTTPException(404, "Source unavailable") from None
+
+    @router.post("/{patient_id}/cases/{case_id}/sources",
+                 response_model=OriginalSourceReceipt, status_code=201,
+                 responses={200: {"model": OriginalSourceReceipt}, **errors},
+                 operation_id="import_original_source_v1")
+    def import_original_source(patient_id: str, case_id: str,
+                               payload: ImportOriginalSource, response: Response,
+                               context: Principal = Depends(principal)):
+        try:
+            with registry(context) as patients:
+                records_authorized(patients, context, patient_id, "source_import")
+                result = PostgresSourceVersions(patients).import_original(
+                    patient_id, case_id, payload.original_text.encode("utf-8"),
+                    organization=context.organization, actor=context.actor,
+                    purpose=context.purpose)
+        except PatientRegistryDenied:
+            raise HTTPException(404, "Source unavailable") from None
+        response.status_code = 201 if result["result"] == "imported" else 200
+        return OriginalSourceReceipt(**result)
+
+    @router.get("/{patient_id}/cases/{case_id}/sources/{source_id}",
+                response_model=OriginalSource, responses=errors,
+                operation_id="read_exact_original_source_v1")
+    def original_source(patient_id: str, case_id: str, source_id: str,
+                        context: Principal = Depends(principal)):
+        try:
+            with registry(context) as patients:
+                records_authorized(patients, context, patient_id, "source_original_read")
+                result = PostgresSourceVersions(patients).original(
+                    patient_id, case_id, source_id, organization=context.organization)
+                return OriginalSource(**result)
+        except PatientRegistryDenied:
+            raise HTTPException(404, "Source unavailable") from None
 
     return router
