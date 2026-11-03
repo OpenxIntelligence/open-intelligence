@@ -434,6 +434,11 @@ function render() {
   for (const question of active.questions) {
     const row = node('div', null, 'question');
     row.append(node('p', question.question), pill(question.state, question.state === 'open' ? 'pill-warn' : ''));
+    const draftsLink = document.createElement('a');
+    draftsLink.href = '#investigation-history-heading';
+    draftsLink.className = 'button secondary minor';
+    draftsLink.textContent = 'Open saved drafts';
+    row.append(draftsLink);
     el('question-list').append(row);
     const opt = node('option', 'Q' + question.id + ', ' + question.question.slice(0, 62));
     opt.value = question.id; el('question-choice').append(opt);
@@ -542,6 +547,18 @@ function render() {
         } catch (err) { notice(err.message, true); }
       }); actions.append(button);
     }
+    const questionLink = document.createElement('a');
+    questionLink.href = '#question-pane-heading';
+    questionLink.className = 'button secondary minor';
+    questionLink.textContent = 'Back to question Q' + snapshot.question_id;
+    actions.append(questionLink);
+    if (snapshot.state === 'reviewed_in_demo') {
+      const followLink = document.createElement('a');
+      followLink.href = '#options';
+      followLink.className = 'button secondary minor';
+      followLink.textContent = 'Continue to discussion items';
+      actions.append(followLink);
+    }
     box.append(top, description, meta, actions);
     if (snapshot.state === 'stale') box.append(node('p', 'A source was amended. This version remains historical and cannot be acknowledged as current.', 'muted'));
     el('snapshot-list').append(box);
@@ -564,6 +581,7 @@ function render() {
   }
   renderPatientView();
   renderOptions();
+  renderJourney();
   renderedCaseId = caseId;
 }
 function renderOriginalSource(text, lineNumber) {
@@ -933,6 +951,54 @@ el('option-review-form').addEventListener('submit', async event => {
 });
 
 
+function journeyStep(prefix, pillText, statusText) {
+  // textContent assignment atomically replaces the previous case's text,
+  // so no stale list content survives a case switch. render() is already
+  // case-guarded, and this runs only inside render().
+  el(prefix + '-pill').textContent = pillText;
+  el(prefix + '-status').textContent = statusText;
+}
+function renderJourney() {
+  if (!active) return;
+  const sources = active.sources || [];
+  const current = sources.filter(s => s.state === 'current').length;
+  const documents = new Set(sources.map(s => s.document_id)).size;
+  const quarantined = (active.quarantines || []).length;
+  const questions = active.questions || [];
+  const openQuestions = questions.filter(q => q.state === 'open').length;
+  const snapshots = active.snapshots || [];
+  const stale = snapshots.filter(s => s.state === 'stale').length;
+  const drafts = snapshots.filter(s => s.state === 'draft').length;
+  const reviewed = snapshots.filter(s => s.state === 'reviewed_in_demo').length;
+  const options = active.options || [];
+  const openTasks = options.flatMap(o => o.preparation_tasks || [])
+    .filter(t => t.status === 'not_started' || t.status === 'in_progress' || t.status === 'blocked').length;
+  const pillFor = (count) => count ? 'Has entries' : 'Nothing yet';
+  journeyStep('journey-intake', pillFor(sources.length), sources.length
+    ? documents + ' fictional report(s) received across ' + sources.length + ' version(s). ' +
+      quarantined + ' mismatched item(s) kept out of the case.'
+    : 'No reports have been added to this fictional case yet. Adding the first report starts step 2.');
+  journeyStep('journey-sources', pillFor(sources.length), sources.length
+    ? current + ' current source document(s) · ' + (active.assertions || []).length + ' reported statement(s).'
+    : 'No records are available to read yet. This step fills in once intake holds a report.');
+  journeyStep('journey-questions', pillFor(questions.length), questions.length
+    ? openQuestions + ' open question(s) of ' + questions.length + ' recorded.'
+    : 'No questions have been written down yet. Later steps work from the questions listed here.');
+  journeyStep('journey-review',
+    snapshots.length ? (stale + drafts ? 'Needs a look' : 'Nothing flagged') : 'Nothing yet',
+    snapshots.length
+      ? stale + ' draft(s) needing another look · ' + drafts + ' draft(s) awaiting review · ' +
+        reviewed + ' acknowledged in demo.' + (stale + drafts ? '' : ' No draft currently needs another look.')
+      : 'No drafts exist yet, so there is nothing to re-check.');
+  journeyStep('journey-report', pillFor(snapshots.length), snapshots.length
+    ? snapshots.length + ' saved draft(s): ' + drafts + ' awaiting review · ' + stale +
+      ' needing another look · ' + reviewed + ' acknowledged in demo. ' +
+      'Each draft stays pinned to the exact source versions it used.'
+    : 'No drafts have been saved yet. A draft appears here once a question has a written narrative.');
+  journeyStep('journey-followthrough', pillFor(options.length), options.length
+    ? options.length + ' discussion item(s) · ' + openTasks + ' open preparation task(s).'
+    : 'No discussion items have been proposed yet. An item appears here once a draft exists to discuss.');
+}
 function renderOptions() {
   el('option-disclaimer').textContent = active.option_disclaimer || '';
   const options = active.options || [];
@@ -996,6 +1062,11 @@ function renderOptions() {
       box.append(node('p', 'Review history: ' + option.review_events.map(e =>
         e.action + ' by ' + e.reviewer_label + ' · scope: ' + e.scope).join(' ; '), 'snapshot-meta'));
     }
+    const investigationLink = document.createElement('a');
+    investigationLink.href = '#investigation-history-heading';
+    investigationLink.className = 'button secondary minor';
+    investigationLink.textContent = 'View investigation #' + option.snapshot_id;
+    box.append(investigationLink);
     el('option-list').append(box);
   }
 }
@@ -1215,6 +1286,11 @@ function renderChangesSinceReview(data) {
             ' at ' + cause.occurred_at + ').';
       box.append(node('p', causeText, 'muted'));
     }
+    const staleDraftsLink = document.createElement('a');
+    staleDraftsLink.href = '#investigation-history-heading';
+    staleDraftsLink.className = 'button secondary minor';
+    staleDraftsLink.textContent = 'Open saved drafts';
+    box.append(staleDraftsLink);
     el('changes-stale').append(box);
   }
   clear('changes-questions');
