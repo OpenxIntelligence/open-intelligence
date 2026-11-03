@@ -1,0 +1,48 @@
+name: Materialize pinned H1 brief source candidate
+on:
+  push:
+    branches: [automation/materialize-h1-source-brief-20261102]
+permissions:
+  contents: write
+jobs:
+  source-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: true
+      - name: Verify pinned patch and create only the isolated source branch
+        shell: bash
+        run: |
+          python - <<'PY'
+          import base64, gzip, hashlib, pathlib, subprocess
+          base = '6ea7b3cdde680c971414f5b9ace8d513ec5dd7d8'
+          target = 'refs/heads/feat/h1-source-brief-20261102'
+          expected = 'bc8fd14765fd012760608c29f959371339471f5e'
+          def git(*args):
+              return subprocess.check_output(['git', *args], text=True).strip()
+          assert git('rev-parse', 'HEAD^') == base
+          text = ''.join(pathlib.Path(f'.github/brief-patch/{n}.b64').read_text().strip() for n in range(5))
+          assert len(text) == 25292
+          raw = base64.b64decode(text, validate=True)
+          assert hashlib.sha256(raw).hexdigest() == 'fc3da4d0c1d5f913f136f524b44cd8604624aa0088846d03d6619d6090b31d62'
+          patch = gzip.decompress(raw)
+          assert len(patch) == 68422
+          assert hashlib.sha256(patch).hexdigest() == 'd4b9ab118449e294d99568280f3c3062a6a0afeed545221ca93240a5bbdfb5ea'
+          pathlib.Path('/tmp/oi-source-brief.patch').write_bytes(patch)
+          git('config', 'core.hooksPath', '/dev/null')
+          git('checkout', '--detach', base)
+          subprocess.run(['git','apply','--index','--whitespace=error','/tmp/oi-source-brief.patch'],check=True)
+          assert git('write-tree') == expected
+          assert len(git('diff','--cached','--name-only').splitlines()) == 17
+          # Never run application code with this publication credential. Never
+          # merge, deploy, replace an existing branch or modify another owner.
+          commit = git('-c','user.name=Open Intelligence','-c','user.email=open-intelligence@outlook.com',
+                       'commit-tree',expected,'-p',base,'-m','feat(h1): authorized source-linked brief with fresh export checks')
+          subprocess.run(['git','push',f'--force-with-lease={target}:','origin',f'{commit}:{target}'],check=True)
+          print('Published source-only candidate:',commit,'tree:',expected)
+          print('No merge or deployment. Actual PostgreSQL and browser CI required on draft PR.')
+          PY
