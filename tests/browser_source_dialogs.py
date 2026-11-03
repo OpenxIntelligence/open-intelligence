@@ -57,6 +57,7 @@ def main():
             wait_for(lambda: urlopen(url, timeout=1).status == 200, 'local app')
             browser = subprocess.Popen([
                 chrome, '--headless=new', '--disable-gpu', '--disable-dev-shm-usage',
+                *(['--no-sandbox'] if hasattr(os, 'geteuid') and os.geteuid() == 0 else []),
                 '--disable-background-networking', '--no-first-run', '--disable-extensions',
                 '--remote-allow-origins=*', f'--remote-debugging-port={debug_port}',
                 f'--user-data-dir={tmp}/chrome', 'about:blank'],
@@ -70,6 +71,7 @@ def main():
             session.command('Page.navigate', {'url': url})
             session.wait("typeof active !== 'undefined' && active?.case.case_id === 'CASE-ALPHA' && renderedCaseId === caseId",
                          'Alpha ready')
+            session.navigate('sources')
             session.evaluate(r"""(() => {
               const original = window.fetch.bind(window);
               window.__held = []; window.__holdSources = false;

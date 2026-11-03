@@ -146,6 +146,32 @@ class ChromeSession:
     def wait(self, expression: str, label: str):
         return wait_for(lambda: self.evaluate(expression), label)
 
+    def show(self, selector: str) -> None:
+        """Expose native disclosures, then require the real control to be visible."""
+        self.evaluate("""(selector => {
+          const target = document.querySelector(selector);
+          if (!target) throw new Error('Missing journey control: ' + selector);
+          const ancestors = [];
+          for (let parent = target.parentElement; parent; parent = parent.parentElement) {
+            if (parent.tagName === 'DETAILS' && !parent.open &&
+                !(target.tagName === 'SUMMARY' && target.parentElement === parent))
+              ancestors.unshift(parent);
+          }
+          for (const disclosure of ancestors) disclosure.querySelector(':scope > summary').click();
+        })(""" + json.dumps(selector) + ")")
+        self.wait("""(selector => {
+          const target = document.querySelector(selector);
+          return !!target && target.getClientRects().length > 0 && !target.closest('[hidden]');
+        })(""" + json.dumps(selector) + ")", "visible journey control " + selector)
+
+    def navigate(self, target: str, *, reveal: str | None = None,
+                 audience: str = "clinician") -> None:
+        """Use the presentation router before interacting with an existing view."""
+        self.wait("typeof workspacePresentation !== 'undefined'", "presentation router")
+        self.evaluate("workspacePresentation.navigate(" + json.dumps(target) +
+                      ", {audience:" + json.dumps(audience) + "})")
+        self.show(reveal or '#' + target + ', [data-workspace-view="' + target + '"]')
+
 
 def main() -> None:
     chrome = next((p for name in ("google-chrome", "google-chrome-stable",
@@ -170,6 +196,7 @@ def main() -> None:
             wait_for(lambda: urlopen(url, timeout=1).status == 200, "local synthetic server")
             browser = subprocess.Popen([
                 chrome, "--headless=new", "--disable-gpu", "--disable-dev-shm-usage",
+                *(["--no-sandbox"] if hasattr(os, "geteuid") and os.geteuid() == 0 else []),
                 "--disable-background-networking", "--no-first-run",
                 "--disable-extensions", "--no-default-browser-check",
                 "--remote-allow-origins=*", f"--remote-debugging-port={debug_port}",
@@ -197,8 +224,8 @@ def main() -> None:
             assert cd.evaluate("document.querySelector('#investigations .panel-head').textContent.includes('Human-authored, no AI call')"), (
                 "the investigation draft must disclose that it is human-authored"
             )
-            cd.wait("document.querySelector('#workspace-nav a[aria-current=location]')?.getAttribute('href') === '#overview'",
-                    "current workspace section is announced")
+            cd.wait("document.querySelector('#workspace-nav a[aria-current=page]')?.getAttribute('href') === '#incoming-board'",
+                    "default worklist destination is announced")
             assert cd.evaluate("document.querySelector('.section-menu')?.open === true"), (
                 "desktop section navigation should be expanded"
             )
@@ -206,6 +233,7 @@ def main() -> None:
                 "desktop viewport has unexpected horizontal overflow"
             )
 
+            cd.navigate('timeline')
             # Chronology is derived entirely from existing source event dates
             # rather than invented diagnosis/progression assertions.
             cd.wait("document.querySelectorAll('#timeline-events .timeline-entry').length === 2",
@@ -239,6 +267,7 @@ def main() -> None:
                 "document.querySelector('#source-change-list').textContent"), (
                 "unamended sources were presented as revisions"
             )
+            cd.navigate('assertions')
             cd.evaluate("document.querySelector('#assertion-list .source-jump').click()")
             cd.wait("document.querySelector('#source-dialog').open && !!document.querySelector('#dialog-text mark.source-highlight')",
                     "exact line highlighted in original source")
@@ -254,6 +283,7 @@ def main() -> None:
             cd.evaluate("document.querySelector('#dialog-close').click()")
             cd.wait("!document.querySelector('#source-dialog').open", "anchored source modal closes")
 
+            cd.navigate('sources')
             cd.evaluate("document.querySelector('#source-list .source-card button').click()")
             cd.wait("document.querySelector('#source-dialog').open", "original source modal")
             assert "OI-SYNTHETIC-REPORT/1" in cd.evaluate("document.querySelector('#dialog-text').textContent")
@@ -280,8 +310,8 @@ def main() -> None:
                 "type": "keyUp", "key": "Tab", "code": "Tab",
                 "windowsVirtualKeyCode": 9,
             })
-            cd.wait("document.activeElement?.getAttribute('href') === '#overview'",
-                    "keyboard Tab reaches first workspace navigation link")
+            cd.wait("!!document.activeElement?.closest('#chart-nav, #section-nav') && document.activeElement.getClientRects().length > 0",
+                    "keyboard Tab reaches a visible chart navigation link")
             cd.command("Accessibility.enable")
             nodes = cd.command("Accessibility.getFullAXTree").get("nodes", [])
             names = [(n.get("role", {}).get("value"), n.get("name", {}).get("value", ""))
@@ -290,9 +320,12 @@ def main() -> None:
                        for role, name in names), "Case selector lacks accessible combobox name"
             assert any(role == "navigation" for role, _ in names), "Navigation landmark not exposed"
             assert any(role == "main" for role, _ in names), "Main landmark not exposed"
-            assert cd.evaluate("document.querySelector('#workspace-nav a[aria-current=location]')?.getAttribute('href')") == "#overview", (
+            assert cd.evaluate("document.querySelector('#workspace-nav a[aria-current=page]')?.getAttribute('href')") == "#overview", (
                 "Current section is not exposed in workspace navigation"
             )
+            cd.navigate('investigations')
+            nodes = cd.command('Accessibility.getFullAXTree').get('nodes', [])
+            names = [(n.get('role', {}).get('value'), n.get('name', {}).get('value', '')) for n in nodes]
             for group_name in (
                 "Source versions",
                 "Evidence assessments",
@@ -317,12 +350,14 @@ def main() -> None:
             cd.wait("document.querySelector('#case-heading')?.textContent === 'Fictional case Alpha'",
                     "return to Alpha")
 
+            cd.navigate('questions')
             cd.evaluate("""(() => {
               document.querySelector('#question-text').value = 'Which pathology results need new review?';
               document.querySelector('#question-form').requestSubmit();
             })()""")
             cd.wait("document.querySelectorAll('#question-list .question').length === 1",
                     "persistent question submitted")
+            cd.navigate('investigations')
             cd.evaluate("""(() => {
               document.querySelector('#draft-observations').value = '          ';
               document.querySelector('#draft-form').requestSubmit();
@@ -332,6 +367,7 @@ def main() -> None:
             assert cd.evaluate("document.querySelectorAll('#snapshot-list .snapshot').length") == 0, (
                 "whitespace-only observations created a draft"
             )
+            cd.navigate('investigations')
             cd.evaluate("""(() => {
               document.querySelector('#draft-observations').value =
                 'PATH-ALPHA reports classification pending external review; IMG-ALPHA reports a 31 mm measurement.';
@@ -346,6 +382,7 @@ def main() -> None:
 
             # A same-case refresh must preserve an unfinished narrative's
             # question and source bindings rather than silently rebinding.
+            cd.navigate('questions')
             cd.evaluate("""(() => {
               document.querySelector('#question-text').value =
                 'Second synthetic investigation question for binding verification?';
@@ -355,6 +392,7 @@ def main() -> None:
                     "second question stored")
             first_question = json.load(urlopen(
                 f"http://127.0.0.1:{app_port}/api/cases/CASE-ALPHA/state"))["questions"][-1]["id"]
+            cd.navigate('investigations')
             cd.evaluate("""(question => {
               document.querySelector('#question-choice').value = String(question);
               document.querySelector('#draft-observations').value =
@@ -364,6 +402,7 @@ def main() -> None:
               document.querySelector('#draft-assumptions').value =
                 'This draft must remain bound to CASE-ALPHA.';
             })(""" + str(first_question) + ")")
+            cd.navigate('reports')
             cd.evaluate("""[...document.querySelectorAll('#snapshot-list button')]
               .find(x => x.textContent.includes('Demo review acknowledgment')).click()""")
             cd.wait("document.querySelector('#snapshot-list .pill')?.textContent === 'reviewed_in_demo'",
@@ -392,8 +431,10 @@ def main() -> None:
             assert "remain bound" in cd.evaluate(
                 "document.querySelector('#draft-assumptions').value"
             ), "blocked case switch lost the draft's stated assumptions"
+            cd.navigate('investigations')
             cd.evaluate("""['draft-observations', 'draft-summary', 'draft-assumptions']
               .forEach(id => document.querySelector('#' + id).value = '')""")
+            cd.navigate('import')
             cd.evaluate("document.querySelector('#example-button').click()")
             cd.wait("document.querySelector('#report-text').value.includes('Amends: PATH-ALPHA@1')",
                     "amendment loaded")
@@ -410,6 +451,7 @@ def main() -> None:
                 "document.querySelector('#source-change-list').textContent")
             assert "saved investigation(s)" in cd.evaluate(
                 "document.querySelector('#source-change-list').textContent")
+            cd.navigate('timeline')
             cd.evaluate("document.querySelector('#source-change-list .change-card button').click()")
             cd.wait("document.querySelector('#compare-dialog').open", "read-only source comparison opens")
             previous_text = cd.evaluate("document.querySelector('#compare-before').textContent")
@@ -448,6 +490,7 @@ def main() -> None:
                 "source amendment silently rebound the unfinished draft to the replacement version"
             )
             # Explicit operator reconciliation before creating the evidence-linked draft.
+            cd.navigate('investigations')
             cd.evaluate("""[...document.querySelectorAll('#source-choice input')]
               .forEach(x => { x.checked = !x.closest('label').textContent.includes('Needs review'); })""")
 
@@ -463,8 +506,9 @@ def main() -> None:
                 "width": 390, "height": 844, "deviceScaleFactor": 1, "mobile": False,
             })
             cd.wait("window.innerWidth === 390", "mobile viewport")
-            cd.wait("document.querySelector('.section-menu')?.open === false",
-                    "responsive workspace navigation collapsed")
+            cd.wait("document.querySelector('#workspace-rail').hidden && document.querySelector('#menu-toggle').getAttribute('aria-expanded') === 'false'",
+                    "responsive workspace menu is closed")
+            cd.show('#chart-section-picker')
             overflow = cd.evaluate("""(() => {
               const screenWidth = document.documentElement.clientWidth;
               const outliers = [...document.querySelectorAll('body *')].map(e => ({
@@ -483,6 +527,7 @@ def main() -> None:
             # The research layer is synthetic only: register a fictional
             # source, review its exact content, assess it against this case's
             # question, and attach that assessment to a new dated draft.
+            cd.navigate('evidence', reveal='#example-evidence-button')
             cd.evaluate("document.querySelector('#example-evidence-button').click()")
             cd.wait("document.querySelector('#evidence-text').value.includes('OI-SYNTHETIC-EVIDENCE/1')",
                     "fictional evidence example loaded")
@@ -497,6 +542,7 @@ def main() -> None:
             # Two distinct current evidence sources make selection integrity
             # observable: a refresh must not silently change a written
             # withdrawal reason's target to the first option.
+            cd.navigate('evidence', reveal='#example-evidence-button')
             cd.evaluate("document.querySelector('#example-evidence-button').click()")
             cd.wait("document.querySelector('#evidence-text').value.includes('EVID-ASSAY')",
                     "second synthetic evidence template")
@@ -512,14 +558,18 @@ def main() -> None:
                 f"http://127.0.0.1:{app_port}/api/cases/CASE-ALPHA/state"))
             second_id = next(x["id"] for x in evidence_state["evidence"]
                              if x["evidence_key"] == "EVID-SECOND")
+            cd.navigate('evidence', reveal='#evidence-withdraw-id')
             cd.evaluate("""(target => {
               document.querySelector('#evidence-withdraw-id').value = String(target);
               document.querySelector('#evidence-withdraw-reason').value =
                 'This second fictional item is only a target-selection regression fixture.';
+            })(""" + str(second_id) + ")")
+            cd.navigate('questions')
+            cd.evaluate("""(() => {
               document.querySelector('#question-text').value =
                 'Third synthetic question to trigger an evidence-selector refresh?';
               document.querySelector('#question-form').requestSubmit();
-            })(""" + str(second_id) + ")")
+            })()""")
             cd.wait("document.querySelectorAll('#question-list .question').length === 3",
                     "state refresh after selecting second evidence withdrawal")
             assert cd.evaluate("document.querySelector('#evidence-withdraw-id').value") == str(second_id), (
@@ -528,8 +578,10 @@ def main() -> None:
             assert "second fictional item" in cd.evaluate(
                 "document.querySelector('#evidence-withdraw-reason').value"
             ), "withdrawal refresh lost the authored reason"
+            cd.navigate('evidence', reveal='#evidence-withdraw-reason')
             cd.evaluate("document.querySelector('#evidence-withdraw-reason').value = ''")
 
+            cd.show('#evidence-rationale')
             cd.evaluate("""(() => {
               document.querySelector('#evidence-rationale').value =
                 'This is independently authored fictional context, not an appraisal of an actual study.';
@@ -537,6 +589,7 @@ def main() -> None:
             })()""")
             cd.wait("document.querySelectorAll('#evidence-assessment-list .finding').length === 1",
                     "question-specific fictional assessment persisted")
+            cd.navigate('investigations')
             cd.evaluate("""(() => {
               document.querySelector('#evidence-choice input').checked = true;
               document.querySelector('#draft-observations').value =
@@ -558,6 +611,7 @@ def main() -> None:
             evidence_version_id = state["evidence"][0]["id"]
 
             # Withdrawal must not silently keep that draft current.
+            cd.navigate('evidence', reveal='#evidence-withdraw-id')
             cd.evaluate("""(evidenceId => {
               document.querySelector('#evidence-withdraw-id').value = evidenceId;
               document.querySelector('#evidence-withdraw-reason').value =
@@ -581,6 +635,7 @@ def main() -> None:
             # abstract canaries or enable live egress by default.
             cd.wait("document.querySelector('#bibliography-live-button').disabled",
                     "live DOI lookup disabled in default server mode")
+            cd.navigate('bibliography')
             cd.evaluate("document.querySelector('#bibliography-example-button').click()")
             cd.wait("document.querySelector('#bibliography-result .source-card strong')?.textContent.includes('fictional bibliographic')",
                     "offline Crossref-format metadata example")
@@ -600,6 +655,7 @@ def main() -> None:
                                        for q in state["questions"])})
             assert stale_ids and reopened_ids, "missing synthetic stale review fixture"
             for qid in reopened_ids:
+                cd.navigate('investigations')
                 cd.evaluate("""(qid => {
                   const selectedQuestion = document.querySelector('#question-choice');
                   selectedQuestion.value = String(qid);
@@ -617,6 +673,7 @@ def main() -> None:
                 })(""" + str(qid) + ")")
                 cd.wait("document.querySelector('#snapshot-list .snapshot .pill')?.textContent === 'draft'",
                         "new source-scoped draft saved")
+                cd.navigate('reports')
                 cd.evaluate("""[...document.querySelector('#snapshot-list .snapshot').querySelectorAll('button')]
                   .find(button => button.textContent.includes('Demo review acknowledgment')).click()""")
                 cd.wait("document.querySelector('#snapshot-list .snapshot .pill')?.textContent === 'reviewed_in_demo'",
@@ -639,6 +696,7 @@ def main() -> None:
                 "review resolution erased document-version history"
             )
 
+            cd.navigate('import')
             # Issue #3 rejection paths, exercised through the browser rather
             # than only at the store layer: a byte-identical re-import and a
             # wrong-patient import must both be refused without new facts.
@@ -646,8 +704,12 @@ def main() -> None:
               const picker = document.querySelector('#case-picker');
               picker.value = 'CASE-ALPHA'; picker.dispatchEvent(new Event('change'));
             })()""")
-            cd.wait("document.querySelector('#case-heading')?.textContent === 'Fictional case Alpha'",
-                    "return to Alpha for rejection checks")
+            # A same-case refresh leaves the old heading in place while active
+            # is null. Wait for the existing readiness guard and visible form.
+            cd.wait("document.querySelector('#case-heading')?.textContent === 'Fictional case Alpha' && "
+                    "active?.case?.case_id === 'CASE-ALPHA' && renderedCaseId === caseId",
+                    "return to ready Alpha for rejection checks")
+            cd.show('#report-text')
             cards_before = cd.evaluate("document.querySelectorAll('#source-list .source-card').length")
             state_before = json.load(urlopen(
                 f"http://127.0.0.1:{app_port}/api/cases/CASE-ALPHA/state"))

@@ -14,19 +14,27 @@
   <script src="/literature.js" defer></script>
 </head>
 <body>
-  <a class="skip-link" href="#main-content">Skip to case workspace</a>
+  <a class="skip-link" href="#main-content">Skip to main content</a>
   <header class="top">
+    <button id="menu-toggle" class="button secondary mobile-menu-toggle" type="button" aria-controls="workspace-rail" aria-expanded="false">Menu</button>
     <a class="brand" href="#overview" aria-label="Open Intelligence overview">
       <span class="brand-mark" aria-hidden="true">◈</span>
       <strong>Open Intelligence</strong>
     </a>
     <div class="top-right">
+      <div class="presentation-picker">
+        <label for="presentation-view">Preview</label>
+        <select id="presentation-view" aria-describedby="presentation-note">
+          <option value="clinician">Clinical workspace</option>
+          <option value="patient">Patient experience</option>
+        </select>
+      </div>
       <span class="pill pill-warn">FICTIONAL DEMO DATA — not a real patient</span>
-      <span class="top-note">Local demo, not clinical software</span>
     </div>
   </header>
   <div class="layout">
-    <aside class="rail">
+    <aside class="rail" id="workspace-rail" aria-label="Application navigation">
+      <p class="rail-eyebrow" id="rail-workspace-label">Clinical workspace</p>
       <label for="case-picker">Case</label>
       <select id="case-picker" aria-label="Select synthetic case"></select>
       <p class="muted tiny">Fictional case data stays on this local machine. There is no identity verification or patient login.</p>
@@ -57,10 +65,40 @@
     </aside>
 
     <main class="main" id="main-content" tabindex="-1">
+      <header class="workspace-header" id="workspace-header">
+        <nav id="workspace-breadcrumb" class="workspace-breadcrumb" aria-label="Breadcrumb"></nav>
+        <div class="workspace-heading-row">
+          <div><p class="view-question" id="workspace-eyebrow">YOUR WORKSPACE</p><h1 id="workspace-title" tabindex="-1">Patients</h1><p id="workspace-description" class="muted"></p></div>
+          <a class="button secondary" id="workspace-primary-action" href="#workspace-start">Create workspace</a>
+        </div>
+        <p class="presentation-note" id="presentation-note">Presentation preview only. This fictional workspace has no authenticated patient or clinician roles.</p>
+      </header>
+      <section id="case-context" class="case-context" aria-label="Selected patient case">
+        <div class="case-identity"><p class="view-question" id="case-context-label">PATIENT CHART</p><div id="case-heading-slot"></div><p id="case-reference" class="muted tiny"></p></div>
+        <div class="case-switcher" id="case-select-slot"></div>
+      </section>
+      <nav id="chart-nav" class="chart-nav" aria-label="Patient chart"></nav>
+      <div class="chart-section-select" id="chart-section-select"><label for="chart-section-picker">Chart section</label><select id="chart-section-picker"></select></div>
+      <nav id="section-nav" class="section-nav" aria-label="Current section"></nav>
+      <p id="workspace-loading" class="workspace-loading" role="status" hidden>Loading the selected record…</p>
+      <div id="view-host" class="view-host"></div>
+      <section id="patient-home" class="patient-home">
+        <div class="home-actions" aria-label="Common actions">
+          <a href="#patient-view"><strong>Understand your record</strong><span>Read what your sources say</span></a>
+          <a href="#sources"><strong>Find a document</strong><span>Original reports and earlier versions</span></a>
+          <a href="#questions"><strong>Keep track of questions</strong><span>Prepare for your next conversation</span></a>
+        </div>
+        <div id="patient-metrics-slot"></div>
+        <div class="patient-home-grid">
+          <section class="panel home-questions"><div class="panel-head"><h2>Your open questions</h2><a href="#questions">View all</a></div><div id="home-questions-slot"></div></section>
+          <section class="panel home-updates"><div class="panel-head"><h2>Understanding your updates</h2><a href="#changes-since-review">View updates</a></div><div id="home-updates-slot"></div></section>
+        </div>
+        <div class="record-context-note"><strong>Your original records stay available.</strong><p>Source statements, uncertainty and earlier versions are kept together. These are fictional records for exploring the workspace.</p><a href="#patient-mission">See record and review status</a></div>
+      </section>
       <section id="overview" class="hero">
         <div class="hero-copy">
           <p class="view-question">CASE OVERVIEW · WHERE ARE WE NOW?</p>
-          <h1 id="case-heading">Loading case…</h1>
+          <h2 id="case-heading">Loading case…</h2>
           <p class="hero-desc">Clinician-review evidence workspace — not medical advice. Inspect the reported facts before preparing an interpretation.</p>
         </div>
         <div class="hero-actions">
@@ -85,7 +123,7 @@
               <h2 id="review-attention-heading">Checking investigation freshness…</h2>
               <p id="review-attention-summary" role="status" aria-live="polite">Loading source-linked review state.</p>
             </div>
-            <a href="#investigations" class="button secondary">Inspect investigations</a>
+            <a href="#reports" class="button secondary">Review saved reports</a>
           </section>
           <section class="glance-guide" aria-labelledby="glance-guide-heading">
             <p class="view-question">INSPECT → VERIFY</p>
@@ -100,12 +138,14 @@
       <div id="notice" role="status" aria-live="polite" class="notice" hidden></div>
       <section class="panel" id="incoming-board">
         <div class="panel-head"><div><div class="eyebrow">00 / WORKLIST</div><h2>Incoming board</h2></div><span class="pill pill-warn">FICTIONAL DEMO CASES ONLY</span></div>
-        <p class="muted">One shared worklist for the fictional cases in this local demo, most recent source event first. It is not a triage list: the demo data contains no urgency, priority, or next clinical step, so none is shown or inferred. Selecting a case opens the same record the clinician workspace shows — there is no second copy.</p>
+        <p class="muted">Select a case to review its original records, questions and documentation. The list follows source-event recency; it does not indicate clinical urgency or priority.</p>
+        <div class="list-toolbar"><label for="case-search">Find a case</label><input id="case-search" type="search" placeholder="Search name or case reference" autocomplete="off"><p id="case-search-count" class="muted tiny" role="status"></p></div>
+        <p id="case-search-empty" class="empty" hidden>No cases match your search. Try a different name or reference.</p>
         <div id="incoming-list" class="questions" aria-live="polite"></div>
       </section>
       <section class="panel" id="patient-view">
         <div class="panel-head"><div><div class="eyebrow">PATIENT VIEW · SAME RECORD</div><h2>Your case, in plain words</h2></div><span class="pill">Same facts, plainer language</span></div>
-        <p class="muted">This is the same fictional record as the workspace above, written more plainly. Nothing here is a medical recommendation, and nothing is hidden by making it plain: where a report is uncertain, disagreed with, or has changed, that is stated. This fictional demo is not a real medical record. For a real result, talk to your care team.</p>
+        <p class="muted">Read what the fictional source records say, including anything uncertain, changed or disagreed with. Open an original source to check its exact wording. For a real result, talk to your care team.</p>
         <div class="subhead">What has happened so far</div><div id="patient-timeline" class="questions"></div>
         <div class="subhead">What the records say</div><div id="patient-findings" class="findings"></div>
         <div class="subhead">Questions still open</div><div id="patient-questions" class="questions"></div>
@@ -238,6 +278,8 @@
         <div class="content-left">
           <section class="panel" id="sources">
             <div class="panel-head"><h2>Source history</h2></div>
+            <div class="list-toolbar"><label for="document-search">Find a document</label><input id="document-search" type="search" placeholder="Search document name, type or date" autocomplete="off"><p id="document-search-count" class="muted tiny" role="status"></p></div>
+            <p id="document-search-empty" class="empty" hidden>No documents match your search. Clear the search to see all versions.</p>
             <div id="source-list" class="cards"></div>
           </section>
           <section class="panel" id="biological-assets">

@@ -30,16 +30,16 @@
 
 ## Task 1: Preserve contracts and establish regression coverage
 
-**Files:** create `tests/test_workspace_redesign.py`, `tests/test_workspace_routing.js`; later add `tests/workspace_redesign_browser.py`.
+**Files:** create `tests/test_workspace_redesign.py`, `tests/test_workspace_routing.js`; later add `tests/workspace_navigation_journey.py`.
 
 **Consumes:** the baseline `web/index.html`, connected `workspace_html()` and existing Node/CDP harness patterns.
 
 **Produces:** tests for exact form/control contract preservation, all route destinations and aliases, layout/view visibility, actual empty/start/import/question/report workflows.
 
-- [ ] Record existing test results and limitations before product changes.
-- [ ] Write tests for missing presentation router and route mapping; execute to establish the expected failure.
-- [ ] Capture baseline screenshots using the existing browser journey when a permitted browser runtime is available.
-- [ ] Use a fixed baseline control manifest for meaningful preservation checks; do not test color strings or mirror router implementation.
+- [x] Record existing test results and limitations before product changes.
+- [x] Write tests for missing presentation router and route mapping; execute to establish the expected failure.
+- [x] Capture baseline screenshots using the existing browser journey when a permitted browser runtime is available.
+- [x] Use a fixed baseline control manifest for meaningful preservation checks; do not test color strings or mirror router implementation.
 
 ## Task 2: Implement the two presentation shells and chart navigation
 
@@ -49,12 +49,12 @@
 
 **Produces:** a `workspacePresentation` controller with `navigate(target, options)` and route resolution; standard hash history, clear active states, persistent identity, case-list filtering, and separate patient/clinician entry views.
 
-- [ ] Keep original static anchors and IDs; add shell landmarks, case banner, page title and navigation containers.
-- [ ] Move existing live sections once. Split questions, manual drafting, model runs and report history into deliberate destinations without duplicate forms.
-- [ ] Resolve all legacy IDs and `snapshot-*` aliases, open enclosing disclosures for deep links and maintain keyboard focus deliberately.
-- [ ] Make worklist row opening enter the chart only after the existing case-change decision. Keep navigation/read state independent from authorization.
-- [ ] Preserve input and selection state through same-case navigation and presentation switches.
-- [ ] Run new routing/contract tests and existing JavaScript tests; verify the connected server still composes successfully.
+- [x] Keep original static anchors and IDs; add shell landmarks, case banner, page title and navigation containers.
+- [x] Move existing live sections once. Split questions, manual drafting, model runs and report history into deliberate destinations without duplicate forms.
+- [x] Resolve all legacy IDs and `snapshot-*` aliases, open enclosing disclosures for deep links and maintain keyboard focus deliberately.
+- [x] Make worklist row opening enter the chart only after the existing case-change decision. Keep navigation/read state independent from authorization.
+- [x] Preserve input and selection state through same-case navigation and presentation switches.
+- [x] Run new routing/contract tests and existing JavaScript tests; verify the connected server still composes successfully.
 
 ## Task 3: Refine the design system and responsive layouts
 
@@ -64,26 +64,26 @@
 
 **Produces:** restrained navy/teal palette; readable patient pages; efficient clinician list/chart; consistent controls/states; responsive navigation and contained source viewers.
 
-- [ ] Reuse the system font and tokens, add no production dependencies.
-- [ ] Use contextual disclosures for long option/research forms and retain their state.
-- [ ] Provide desktop rail/mobile menu, chart subsections and a narrow-screen section control.
-- [ ] Correct the connected empty-state selectors for the new shell without changing intake behavior.
-- [ ] Verify no page overflow at 320/390/768/1024/1440px and usable keyboard/focus/notice behavior.
+- [x] Reuse the system font and tokens, add no production dependencies.
+- [x] Use contextual disclosures for long option/research forms and retain their state.
+- [x] Provide desktop rail/mobile menu, chart subsections and a narrow-screen section control.
+- [x] Correct the connected empty-state selectors for the new shell without changing intake behavior.
+- [x] Verify no page overflow at 320/390/768/1024/1440px and usable keyboard/focus/notice behavior.
 
 ## Task 4: Integration verification and handoff
 
-**Files:** update affected UI tests only for intentional navigation changes; add browser journey and `docs/ux/2026-11-02-verification.md`.
+**Files:** update affected UI tests only for intentional navigation changes; add browser journey and `docs/ux/2026-11-03-verification.md`.
 
 **Consumes:** fully implemented frontend on the pinned base.
 
 **Produces:** actual test results, before/after visual evidence, full changed-file list, source/API/form preservation evidence and a reviewable branch/draft PR.
 
-- [ ] Run all existing Python and Node regression tests. Investigate failures without changing protected backend/logic.
-- [ ] Exercise original-source viewing/comparison, question and manual draft creation, replay-to-report/review/amendment, exact file intake, duplicate/quarantine, old hashes, view changes, drafts and narrow layouts.
-- [ ] Inspect actual screenshots and console/runtime errors. Clearly report any browser tests that cannot run.
-- [ ] Compare protected files and request/validation contracts to the baseline.
-- [ ] Request an independent branch review, resolve material frontend findings and rerun the affected checks.
-- [ ] Record changed files, test counts/commands, limitations, branch/base and screenshots. Preserve the result as an isolated candidate; no merge or deployment implied.
+- [x] Run all existing Python and Node regression tests. Investigate failures without changing protected backend/logic.
+- [x] Exercise original-source viewing/comparison, question and manual draft creation, replay-to-report/review/amendment, exact file intake, duplicate/quarantine, old hashes, view changes, drafts and narrow layouts.
+- [x] Inspect actual screenshots and console/runtime errors. Clearly report any browser tests that cannot run.
+- [x] Compare protected files and request/validation contracts to the baseline.
+- [x] Request an independent branch review, resolve material frontend findings and rerun the affected checks.
+- [x] Record changed files, test counts/commands, limitations, branch/base and screenshots. Preserve the result as an isolated candidate; no merge or deployment implied.
 
 ## Execution ledger
 
@@ -92,3 +92,9 @@
 - Baseline: exact source tree verified and branch fetched; source audit identifies absence of authenticated roles and several proposed portal features.
 - Decision: use the connected candidate, preserve its owner contracts, and implement presentation separation only. A real permission boundary cannot be introduced in this frontend-only task.
 - Initial browser limitation: cloud loopback unavailable and local Chromium not initially installed; do not count attempted commands as passed tests.
+
+- Final implementation: 21 presentation destinations across distinct patient and clinical shells; six patient-chart groups. All 16 baseline form contracts preserved.
+- Final verification: 347 Python tests, 80 individual JavaScript checks, seven original browser journeys and new responsive/navigation checks passed; full command logs and versioned evidence are summarized in `docs/ux/2026-11-03-verification.md`.
+- Independent review corrections: skip-link route preservation, exact-report focus, original setup shortcut destinations, manual-draft width; visual QA also resolved a stale case-switch warning.
+- Scope confirmed: all 103 protected non-frontend product files unchanged. No new production dependencies, real roles, backend contracts or clinical operations.
+- Remaining bounds: Chromium and fictional fixtures only; no formal WCAG/user study/live-service certification. The pre-existing worklist refresh behavior and baseline intermittent test failures are documented.

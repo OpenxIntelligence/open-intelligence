@@ -33,6 +33,7 @@
         await renderIncomingBoard(list);
       }
       if(!dirty() && id!==caseId) { picker.value=id;picker.dispatchEvent(new Event('change')); }
+      workspacePresentation.navigate('source-intake');
       $('source-intake').open=true;
       $('source-intake').scrollIntoView({block:'start'});
       schedule();
@@ -44,12 +45,20 @@
       schedule();
     },
   });
+  function renderIntakePresentation(state) {
+    intake.render(state);
+    // The original progress calculation is unchanged. Its formerly shared
+    // investigation section now has separate question and report destinations.
+    const destinations={'3. Questions':'#questions','5. Review & updates':'#reports'};
+    for(const link of $('journey-steps').querySelectorAll('a'))
+      if(Object.hasOwn(destinations,link.textContent)) link.href=destinations[link.textContent];
+  }
   function sync() {
     refreshQueued=false;
     if(current()) {
       document.body.dataset.workspaceState='ready';
       $('case-picker').disabled=false;
-      intake.render(active);
+      renderIntakePresentation(active);
     } else if(!caseId && !$('case-picker').options.length &&
               ['No synthetic cases found','Create your first case workspace'].includes($('case-heading').textContent)) {
       document.body.dataset.workspaceState='empty';
@@ -58,7 +67,7 @@
         $('case-heading').textContent='Create your first case workspace';
       const message=$('notice');
       if(message.textContent.includes('seed before opening')) {message.hidden=true;message.textContent='';}
-      intake.render(null);
+      renderIntakePresentation(null);
     }
   }
   function schedule() {
@@ -72,6 +81,7 @@
     intake.resetScope();document.body.dataset.workspaceState='loading';schedule();
   });
   $('new-workspace-button').addEventListener('click',()=>{
+    workspacePresentation.navigate('workspace-start');
     $('workspace-start').open=true;$('new-case-panel').open=true;
     $('case-create-alias').focus();
   });

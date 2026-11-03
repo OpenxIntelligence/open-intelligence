@@ -1,6 +1,6 @@
 # Healthcare workspace UX: research and design
 
-Date: 2 November 2026 (America/New_York). Status: implementation specification for the founder's frontend-only redesign request. This document records design decisions, not released functionality or permission to change backend contracts.
+Date: 2 November 2026 (UTC), refined during implementation on 3 November. Status: implementation specification for the founder's frontend-only redesign request. This document records design decisions, not released functionality or permission to change backend contracts.
 
 ## Scope and baseline
 
@@ -42,7 +42,7 @@ The source audit shows 14 original sidebar links (15 after intake composition) a
 
 The application already has valuable foundations: exact source inspection, native dialogs, a source comparison view, differentiated uncertainty, immutable history, several loading/error states and stable form IDs. The redesign preserves those components and their event handlers.
 
-Source review is complete. Before/after screenshot and interaction evidence belongs in the verification report; no visual or browser success is asserted here. Initial cloud-browser preview access failed, and the local test harness initially found no Chromium executable. Those are environment limits, not claims about product correctness.
+Source review is complete. The existing real-browser glance journey subsequently passed with official Chrome unpacked to a temporary test directory, capturing desktop overview/source and 390px mobile overview. On the baseline desktop, manual investigation content begins roughly 5,912px down the document. The mobile screenshot shows navigation/help consuming much of the initial viewport. Initial cloud-browser preview and missing-browser failures are retained as environment evidence; the later successful run does not erase them.
 
 ## Approaches considered
 
@@ -60,10 +60,10 @@ Source review is complete. Before/after screenshot and interaction evidence belo
 |---|---|
 | Home | New `#patient-home` presentation target: current case context, compact existing record counts, quick links, existing open questions and uncertainty/change explanations. Summary lists have a clear route to the full list. |
 | My record | `#patient-view`: existing plain-language source findings and chronology. Secondary access to exact findings (`#assertions`), full timeline (`#timeline`), workflow status (`#patient-mission`) and biological assets (`#biological-assets`). |
-| Documents | `#sources`, with secondary routes for `#source-intake` and the existing structured text/amendment import `#import`. All versions and original-reader actions retained. |
+| Documents | `#sources`, with all versions and original-reader actions retained. File intake (`#source-intake`) and structured text/amendment import (`#import`) remain available in the clearly labeled clinical preview. |
 | Questions & reports | New `#questions` and `#reports` targets host the existing question form/list and saved report history. Patient reading does not expose professional authoring or demo acknowledgment as ordinary patient tasks. |
 | Updates | `#changes-since-review`, with `#activity` as the event-history destination. Source-change comparisons remain available in Timeline. |
-| Secondary tools | Shared `#bibliography` research discovery and `#workspace-start` setup/help. These are not medical messaging or authenticated account settings. |
+| Secondary tools | Shared `#bibliography` research discovery and an explicitly labeled link to clinical `#workspace-start` setup/help. These are not medical messaging or authenticated account settings. |
 
 The patient Home does not manufacture next appointments, diagnoses, medicines, allergies or results. It presents the existing source record and workflow states. No mock dashboard data is introduced.
 
@@ -85,7 +85,7 @@ Persistent case header: existing alias/name and case reference, selected-case co
 | Record | Reported findings, Timeline, plain-language record, Patient Mission / source-linked World Model, Biological assets. |
 | Documents | Source/version history, original-file intake, structured text import/quarantines. |
 | Investigations | Questions, prepare a manual draft, bounded model investigation, saved reports/history. |
-| Evidence | Existing source registration, assessment and withdrawal; Options & dependencies retains all six proposal/preparation/review forms behind meaningful disclosures. |
+| Evidence | Existing source registration, assessment and withdrawal; Options & dependencies retains all five proposal/preparation/review forms behind meaningful disclosures. |
 | Review & history | What changed since review and recent ledger activity. |
 
 Use normal navigation links for pages and native disclosures for advanced forms. Do not apply ARIA tab semantics to ordinary page navigation. The active application destination, chart group and subsection are separately identifiable. Existing deep links, including generated `#snapshot-{id}` and `#model-investigation-heading`, resolve to the containing visible workspace.
@@ -119,7 +119,7 @@ At narrow widths, use a real menu button with `aria-expanded`, hide closed navig
 
 ## Acceptance and remaining limits
 
-The implementation must show distinct patient and clinician entry points, a separate case chart, complete feature coverage, working old/new deep links and history, visible errors, preserved same-case draft state and original-source actions. All original form/API contracts and all non-frontend source files must compare unchanged against the base. New responsive and interaction checks should exercise real application behavior, not only source-text matching. Run existing regression tests and report exactly what passed, failed or could not run.
+The implementation must show distinct patient and clinician entry points, a separate case chart, complete feature coverage, working old/new deep links and history, visible errors, preserved same-case draft state and original-source actions. All original form/API contracts and all protected non-frontend product source files must compare unchanged against the base. New responsive and interaction checks should exercise real application behavior, not only source-text matching. Run existing regression tests and report exactly what passed, failed or could not run.
 
 This work cannot establish authenticated patient/clinician permission separation, real-patient readiness, missing clinical operations or independent healthcare usability validation. Those are documented limitations, not reasons to insert simulated workflows.
 
@@ -138,3 +138,7 @@ This work cannot establish authenticated patient/clinician permission separation
 - R11: [NHS App accessibility statement](https://www.nhs.uk/nhs-app/about/privacy-legal-information/nhs-app-accessibility-statement/).
 - R12: [athenaOne AI-native announcement](https://www.athenahealth.com/about/press-releases/ai-native-ehr-capabilities-athenaone), 13 August 2026; selected features described as alpha or approaching alpha.
 - R13: [Elation Unified Worklist](https://help.elationhealth.com/articles/unified-worklist-guide), documented beta availability.
+
+## Independent design review adjustments
+
+Preserve natural keyboard order instead of the old forced Tab jump to a potentially hidden sidebar link. Make the brand destination audience-aware. Mark dynamically generated demo acknowledgment controls as clinician-presentation actions while retaining shared report text, citations and exports. Add exact-source inspection to the existing plain-language finding cards through the guarded original inspector. Verify both standard and connected launchers; hide connected-only links when their nodes do not exist. Provide a direct saved-report destination after manual drafting. These are presentation changes only.

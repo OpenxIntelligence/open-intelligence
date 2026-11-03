@@ -32,16 +32,18 @@ def main():
   try:
    url=f'http://127.0.0.1:{app_port}/'
    wait_for(lambda:urlopen(url,timeout=1).status==200,'workspace server')
-   browser=subprocess.Popen([chrome,'--headless=new','--disable-gpu','--disable-dev-shm-usage','--disable-background-networking','--no-first-run','--disable-extensions','--no-default-browser-check','--remote-allow-origins=*',f'--remote-debugging-port={debug}',f'--user-data-dir={profile}','about:blank'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
+   browser=subprocess.Popen([chrome,*(['--no-sandbox'] if hasattr(os, 'geteuid') and os.geteuid() == 0 else []),'--headless=new','--disable-gpu','--disable-dev-shm-usage','--disable-background-networking','--no-first-run','--disable-extensions','--no-default-browser-check','--remote-allow-origins=*',f'--remote-debugging-port={debug}',f'--user-data-dir={profile}','about:blank'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
    targets=wait_for(lambda:json.load(urlopen(f'http://127.0.0.1:{debug}/json/list',timeout=1)),'browser debugger')
    cd=ChromeSession(next(t['webSocketDebuggerUrl'] for t in targets if t['type']=='page'))
    cd.command('Page.enable');cd.command('Runtime.enable');cd.command('DOM.enable')
    cd.command('Page.navigate',{'url':url})
    cd.wait("document.body.dataset.workspaceState==='empty'",'empty application without seed command')
    assert json.load(urlopen(url+'api/cases'))==[]
+   cd.navigate('workspace-start', reveal='#case-create-code')
    cd.evaluate("document.querySelector('#case-create-code').value='CASE-START';document.querySelector('#case-create-alias').value='Start';document.querySelector('#case-create-confirm').click();document.querySelector('#case-create-form').requestSubmit()")
    cd.wait("document.querySelector('#case-heading').textContent==='Fictional case Start' && document.body.dataset.workspaceState==='ready'",'new persistent case')
    def upload(raw,name):
+    cd.navigate('source-intake', reveal='#source-file')
     cd.evaluate("if(!document.querySelector('#source-intake').open) document.querySelector('#source-intake > summary').click()")
     file=Path(tmp)/name;file.write_bytes(raw)
     dom=cd.command('DOM.getDocument')
@@ -57,14 +59,17 @@ def main():
    assert state['sources'][0]['sha256']==hashlib.sha256(ORIGINAL).hexdigest()
    assert state['assertions'][0]['certainty']=='not-reported'
    assert cd.evaluate("document.querySelector('#timeline-events').textContent.includes('START-PATH')")
+   cd.navigate('questions')
    cd.evaluate("document.querySelector('#question-text').value='Which original finding requires clarification?';document.querySelector('#question-form').requestSubmit()")
    cd.wait("document.querySelector('#composer-context-fingerprint').value.length===64 && !document.querySelector('#model-investigation-run').disabled",'canonical source preview')
+   cd.navigate('model-investigation-heading')
    cd.evaluate("document.querySelector('#model-investigation-form').requestSubmit()")
    cd.wait("document.querySelectorAll('#model-investigation-list .snapshot').length===1",'recorded replay saved; no model request')
    cd.evaluate("[...document.querySelectorAll('#model-investigation-list button')].find(b=>b.textContent==='Prepare review draft').click()")
    cd.wait("document.querySelectorAll('#snapshot-list .snapshot').length===1",'source-linked report')
    before=json.load(urlopen(url+'api/cases/'+CASE+'/state'))
    old=before['snapshots'][0];assert old['state']=='draft';assert before['questions'][0]['state']=='open'
+   cd.navigate('reports')
    cd.evaluate("[...document.querySelectorAll('#snapshot-list button')].find(b=>b.textContent.includes('Demo review acknowledgment')).click()")
    cd.wait("document.querySelector('#journey-steps').textContent.includes('Demo review recorded')",'explicit review acknowledged')
    upload(AMENDED,'amended.txt')
@@ -75,6 +80,7 @@ def main():
    exported=urlopen(url+f"api/cases/{CASE}/snapshots/{old['id']}/export").read().decode()
    assert 'START-PATH@1' in exported and 'stale' in exported
    cd.wait("document.querySelector('#composer-context-fingerprint').value.length===64 && !document.querySelector('#model-investigation-run').disabled",'revised source preview')
+   cd.navigate('model-investigation-heading')
    cd.evaluate("document.querySelector('#model-investigation-form').requestSubmit()")
    cd.wait("document.querySelectorAll('#model-investigation-list .snapshot').length===2",'new explicit reassessment')
    cd.evaluate("[...document.querySelectorAll('#model-investigation-list button')].find(b=>b.textContent==='Prepare review draft').click()")
@@ -85,6 +91,7 @@ def main():
    state=json.load(urlopen(url+'api/cases/'+CASE+'/state'))
    assert next(s for s in state['snapshots'] if s['id']==old['id'])['summary']==old['summary']
    assert next(s for s in state['snapshots'] if s['id']!=old['id'])['state']=='draft'
+   cd.navigate('reports')
    cd.command('Emulation.setDeviceMetricsOverride',{'width':1440,'height':1000,'deviceScaleFactor':1,'mobile':False})
    artifacts=os.environ.get('OI_INTAKE_ARTIFACT_DIR')
    if artifacts:

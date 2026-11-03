@@ -61,6 +61,7 @@ def main() -> None:
             browser = subprocess.Popen(
                 [
                     chrome,
+                    *(['--no-sandbox'] if hasattr(os, 'geteuid') and os.geteuid() == 0 else []),
                     "--headless=new",
                     "--disable-gpu",
                     "--disable-dev-shm-usage",
@@ -90,6 +91,7 @@ def main() -> None:
             session.command("Page.enable")
             session.command("Runtime.enable")
             session.command("Page.navigate", {"url": url})
+            session.navigate('patient-mission')
 
             session.wait(
                 "document.querySelector('#mission-status')?.textContent === 'Ready to define question'",
@@ -135,6 +137,7 @@ def main() -> None:
                 "document.querySelector('#mission-status')?.textContent === 'Ready to define question'",
                 "return to Alpha mission",
             )
+            session.navigate('questions')
             session.evaluate("""(() => {
               document.querySelector('#question-text').value =
                 'Which pathology result requires review after a source amendment?';
@@ -144,6 +147,7 @@ def main() -> None:
                 "document.querySelectorAll('#question-list .question').length === 1",
                 "mission question persisted",
             )
+            session.navigate('investigations')
             session.evaluate("""(() => {
               document.querySelector('#draft-observations').value =
                 'Synthetic observation recorded for the mission draft journey.';
@@ -155,12 +159,14 @@ def main() -> None:
                 "document.querySelectorAll('#snapshot-list .snapshot').length === 1",
                 "mission draft persisted",
             )
+            session.navigate('reports')
             session.evaluate("""[...document.querySelectorAll('#snapshot-list button')]
               .find(button => button.textContent.includes('Demo review acknowledgment')).click()""")
             session.wait(
                 "document.querySelector('#snapshot-list .pill')?.textContent === 'reviewed_in_demo'",
                 "mission draft acknowledged in demo",
             )
+            session.navigate('import')
             session.evaluate("document.querySelector('#example-button').click()")
             session.wait(
                 "document.querySelector('#report-text').value.includes('Amends: PATH-ALPHA@1')",
@@ -179,9 +185,11 @@ def main() -> None:
                 "document.querySelector('#mission-changes').textContent.includes('PATH-ALPHA@2')",
                 "mission panel reflects material amendment",
             )
+            session.navigate('patient-mission')
             assert session.evaluate(
                 "document.querySelector('#mission-actions').textContent.includes('Reconcile source changes')"
             )
+            print('PASS: Patient Mission source statements, case isolation, question, manual draft, demo review and amendment-driven review state')
         finally:
             if session is not None:
                 session.close()

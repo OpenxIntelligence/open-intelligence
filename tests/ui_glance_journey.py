@@ -70,6 +70,7 @@ def main() -> None:
             cd.wait("document.querySelector('#case-heading')?.textContent === 'Fictional case Alpha'",
                     'Alpha loaded')
             cd.wait("document.querySelectorAll('#assertion-list .finding').length > 0", 'source findings')
+            cd.navigate('overview')
             cd.evaluate('window.scrollTo(0,0)')
 
             def capture(name: str) -> None:
@@ -82,18 +83,21 @@ def main() -> None:
               const authoring = document.querySelector('#investigations');
               const first = document.querySelector('#assertion-list .source-jump');
               return {
-                factsFirst: !!(facts.compareDocumentPosition(authoring) & Node.DOCUMENT_POSITION_FOLLOWING),
+                activeWorkspaces: [...document.querySelectorAll('[data-workspace-view]')].filter(view => !view.hidden && view.getClientRects().length).map(view => view.dataset.workspaceView),
+                factsVisible: facts.getClientRects().length > 0,
+                authoringHidden: authoring.getClientRects().length === 0,
                 firstSourceBottom: first?.getBoundingClientRect().bottom,
                 factsTop: facts.getBoundingClientRect().top,
-                authoringTop: authoring.getBoundingClientRect().top,
+                overviewContainsFacts: document.querySelector('[data-workspace-view=overview]').contains(facts),
                 width: innerWidth, scrollWidth: document.documentElement.scrollWidth,
                 sourceCount: document.querySelectorAll('#assertion-list .source-jump').length,
                 findingCount: document.querySelectorAll('#assertion-list .finding').length
               };
             })()""")
             report['desktop'] = layout
-            check(layout['factsFirst'], 'Source facts precede authoring in reading order')
-            check(layout['factsTop'] < layout['authoringTop'], 'Source facts precede authoring visually')
+            check(layout['activeWorkspaces'] == ['overview'], 'Overview is the only active workspace')
+            check(layout['factsVisible'] and layout['overviewContainsFacts'], 'Overview puts source facts in the visible reading workspace')
+            check(layout['authoringHidden'], 'Investigation authoring is in its own deliberate destination')
             check(0 < (layout['firstSourceBottom'] or 10000) <= 900, 'First exact-source action is above the fold at 1440x900')
             check(layout['sourceCount'] == layout['findingCount'], 'Every finding retains an exact-source action')
             check(layout['scrollWidth'] <= layout['width'], 'Desktop has no page-level horizontal overflow')
@@ -110,6 +114,7 @@ def main() -> None:
             cd.command('Input.dispatchKeyEvent', {'type': 'keyUp', 'key': 'Escape', 'code': 'Escape', 'windowsVirtualKeyCode': 27})
             cd.wait("!document.querySelector('#source-dialog').open", 'Escape closes source')
 
+            cd.navigate('evidence')
             disclosure = cd.evaluate("!!document.querySelector('#evidence-tools > summary')")
             check(disclosure, 'Evidence registration uses an explicit native disclosure')
             if disclosure:
@@ -140,6 +145,7 @@ def main() -> None:
             cd.wait("document.querySelector('#case-heading')?.textContent === 'Fictional case Alpha'", 'return Alpha')
             cd.command('Emulation.setDeviceMetricsOverride', {
                 'width': 390, 'height': 844, 'deviceScaleFactor': 1, 'mobile': False})
+            cd.navigate('overview')
             cd.evaluate('window.scrollTo(0,0)')
             capture('mobile-overview.png')
             check(cd.evaluate('document.documentElement.scrollWidth <= innerWidth'), '390px viewport has no page overflow')
