@@ -597,6 +597,7 @@ function render() {
   }
   loadModelInvestigations();
   loadChangesSinceReview();
+  loadReReviewTasks();
   clear('quarantine-list');
   for (const entry of active.quarantines) {
     el('quarantine-list').append(node('div', 'Quarantined #' + entry.id + ': declared ' + entry.declared_patient_id + ', not ' + caseId + ', no assertions imported', 'quarantine'));
@@ -1328,6 +1329,105 @@ function renderChangesSinceReview(data) {
     row.append(node('p', 'Q' + item.question_id + ': ' + item.question),
       node('p', 'Event #' + item.event_id + ' · State: ' + item.state + ' · Created ' + item.created_at, 'muted'));
     el('changes-questions').append(row);
+  }
+}
+async function loadReReviewTasks() {
+  const requested = caseId;
+  clear('re-review-list');
+  try {
+    const data = await api('/api/cases/' + requested + '/re-review-tasks');
+    if (requested !== caseId || !active || active.case.case_id !== requested) return;
+    renderReReviewTasks(data);
+  } catch (err) {
+    if (requested !== caseId) return;
+    empty(el('re-review-list'), 'Re-review task listing unavailable: ' + err.message);
+  }
+}
+function renderReReviewTasks(tasks) {
+  // Ledger facts only: owner labels are fictional attribution, due dates are
+  // descriptive, and rows stay in creation order. Never infer importance.
+  clear('re-review-list');
+  const list = el('re-review-list');
+  if (!tasks.length) {
+    empty(list, 'No re-review tasks recorded for this fictional case.');
+    return;
+  }
+  const causeText = {
+    source_amendment: 'a bound source was amended',
+    evidence_change: 'fictional evidence changed',
+    revocation: 'a rights source was revoked',
+    correction: 'a rights source was corrected',
+    review: 'a broker link was re-reviewed',
+  };
+  for (const task of tasks) {
+    const box = node('div', null, 'snapshot');
+    const top = node('div', null, 'topline');
+    top.append(node('strong', 'Re-review task #' + task.id),
+      pill(task.status, task.status === 'open' ? 'pill-warn' : 'pill-neutral'));
+    if (task.overdue) top.append(pill('past due', 'pill-alert'));
+    box.append(top);
+    box.append(node('p', 'Earlier draft #' + task.snapshot_id + ' for question Q' + task.question_id +
+      ' was marked stale because ' + (causeText[task.cause] || task.cause) +
+      ' (recorded under event #' + task.invalidating_event_id + ').', 'snapshot-meta'));
+    const diff = task.finding_key_diff || {};
+    const added = diff.added_finding_keys || [];
+    const removed = diff.removed_finding_keys || [];
+    const stateChanges = diff.reported_state_changes || [];
+    if (task.cause === 'source_amendment') {
+      box.append(node('p', 'Superseding source version #' + task.superseding_source_version_id +
+        ' replaces #' + task.superseded_source_version_id +
+        '. Mechanical finding-key diff — added: ' + (added.length ? added.join(', ') : 'none') +
+        ' · removed: ' + (removed.length ? removed.join(', ') : 'none') + '.', 'muted'));
+      for (const change of stateChanges)
+        box.append(node('p', change.finding_key + ': reported state ' +
+          change.previous_reported_state + ' → ' + change.reported_state, 'muted'));
+    } else if (task.evidence_version_id) {
+      box.append(node('p', 'Changed fictional evidence version #' + task.evidence_version_id + '.', 'muted'));
+    } else if (task.rights_source_id) {
+      box.append(node('p', 'Rights source row #' + task.rights_source_id +
+        (task.superseding_rights_source_id ? ' superseded by row #' + task.superseding_rights_source_id : '') +
+        (task.broker_link_id ? ', broker link #' + task.broker_link_id : '') + '.', 'muted'));
+    }
+    box.append(node('p', 'Recorded owner (fictional label): ' + task.assignee_label +
+      ' · ' + (task.due_date ? 'Due ' + task.due_date : 'No due date recorded') +
+      ' · Created ' + task.created_at + '.', 'muted'));
+    if (task.status !== 'open') {
+      box.append(node('p', task.closing_snapshot_id
+        ? 'Closed with replacement draft #' + task.closing_snapshot_id + ' at ' + task.closed_at + '. The earlier draft stays in history.'
+        : 'Closed with a recorded no-change note at ' + task.closed_at + ': ' + (task.close_note || ''), 'muted'));
+    } else {
+      const form = node('div', null, 'actions');
+      const noteInput = node('input', null, '');
+      noteInput.type = 'text';
+      noteInput.placeholder = 'No-change note (10–600 characters)';
+      noteInput.setAttribute('aria-label', 'No-change note for task ' + task.id);
+      const draftInput = node('input', null, '');
+      draftInput.type = 'text';
+      draftInput.placeholder = 'Replacement draft #';
+      draftInput.setAttribute('aria-label', 'Replacement draft id for task ' + task.id);
+      const closeButton = node('button', 'Close task', 'button secondary minor');
+      closeButton.type = 'button';
+      closeButton.addEventListener('click', async () => {
+        try {
+          const current = readyCase();
+          const note = noteInput.value.trim();
+          const draftRaw = draftInput.value.trim();
+          if (draftRaw && !/^[0-9]+$/.test(draftRaw)) {
+            notice('Replacement draft must be a snapshot number.', true);
+            return;
+          }
+          const payload = {};
+          if (note) payload.no_change_note = note;
+          if (draftRaw) payload.closing_snapshot_id = Number(draftRaw);
+          await api('/api/cases/' + current + '/re-review-tasks/' + task.id + '/close', payload);
+          notice('Re-review task #' + task.id + ' recorded as done. The earlier draft stays in history.');
+          await refresh();
+        } catch (err) { notice(err.message, true); }
+      });
+      form.append(noteInput, draftInput, closeButton);
+      box.append(form);
+    }
+    list.append(box);
   }
 }
 el('model-investigation-form').addEventListener('submit', async event => {
