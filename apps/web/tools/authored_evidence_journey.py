@@ -250,8 +250,13 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
 
     def attach_manual():
         assert manual_document is not None
-        cd.wait("Boolean(document.querySelector('[data-testid=manual-context-documents]'))",
-                'fresh manual context before selecting reviewed records')
+        cd.wait("window.__oiAuthoredEvidenceChecks.responses.some(r=>r.path.endsWith('/manual-passages')&&r.method==='GET')",
+                'manual context HTTP read')
+        manual_reads=[r for r in responses() if r['path']==scope+'/manual-passages' and r['method']=='GET']
+        assert manual_reads[-1]['status']==200, 'Manual context HTTP read failed: '+json.dumps(manual_reads[-1],ensure_ascii=False)
+        if not cd.evaluate("Boolean(document.querySelector('[data-testid=manual-context-documents]'))"):
+            status=cd.evaluate("document.querySelector('[data-testid=manual-context-status]')?.textContent||'manual panel absent'")
+            raise AssertionError('React did not accept the manual context packet: '+status)
         before=len(responses())
         click('[data-testid=manual-context-documents]')
         cd.wait("Array.from(document.querySelectorAll('[data-testid=manual-context-document]')).some("
