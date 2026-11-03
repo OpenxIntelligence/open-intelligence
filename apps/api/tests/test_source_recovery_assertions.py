@@ -4,7 +4,9 @@ These execute the probe's assertion, not a substitute database/application.
 The full HTTP/PG behavior remains the Compose gate's responsibility.
 """
 from copy import deepcopy
+import hashlib
 import importlib.util
+import json
 from pathlib import Path
 import unittest
 
@@ -113,6 +115,89 @@ class SourceRecoveryAssertions(unittest.TestCase):
         changed = deepcopy(self.after)
         changed["tables"]["clinical_source.unexpected"] = []
         with self.assertRaises(AssertionError): self.check(after=changed)
+
+
+class RestoredSelectionJSONAssertions(unittest.TestCase):
+    """Adversarial wire-level controls; no external service or database."""
+
+    def setUp(self):
+        anchor = {
+            "patient_id": "PAT-FICTIONAL", "case_id": "CASE-FICTIONAL",
+            "source_id": "SRC-" + "A" * 32, "document_id": "DOC-FICTIONAL",
+            "source_version": 1, "original_sha256": "a" * 64,
+            "extraction_method": "frozen-pdf-fixture", "extraction_sha256": "b" * 64,
+            "annotation_revision_id": "ANN-" + "C" * 32,
+            "annotation_revision": 2, "review_sha256": "d" * 64,
+            "selected_by": "ACTOR-FICTIONAL", "selected_at": "2026-11-03T10:00:00+00:00",
+            "selection_key": "marker", "selected_state": "reported",
+            "quote": "Corrected fictional passage.", "line": 3, "page": 2,
+            "classification_origin": "user_selected", "clinical_review": "not_performed",
+        }
+        self.expected = {
+            "contract": "oi.reviewed-document-selection/1",
+            "anchor": anchor, "anchor_sha256": self.digest(anchor),
+            "source_state": "current",
+            "latest_annotation_revision_id": "ANN-" + "C" * 32,
+            "selection_state": "current_unreviewed_selection",
+            "synthetic": True, "clinical_approval": False, "model_execution": False,
+        }
+        self.actual = deepcopy(self.expected)
+        self.actual["access_receipt_id"] = "ACCESS-" + "A" * 32
+
+    @staticmethod
+    def digest(anchor):
+        return hashlib.sha256(json.dumps(anchor, sort_keys=True, ensure_ascii=False,
+                                        separators=(",", ":")).encode("utf-8")).hexdigest()
+
+    def check(self, actual=None, expected=None):
+        probe.assert_restored_selection_response(
+            self.actual if actual is None else actual,
+            self.expected if expected is None else expected)
+
+    def test_accepts_exact_selection_and_fresh_receipt(self):
+        self.check()
+        changed = deepcopy(self.actual)
+        changed["access_receipt_id"] = "ACCESS-" + "B" * 32
+        self.check(actual=changed)
+
+    def test_rejects_boolean_integer_substitution_and_stale_status(self):
+        for key, value in (("synthetic", 1), ("clinical_approval", 0),
+                           ("model_execution", 0), ("source_state", "superseded"),
+                           ("selection_state", "selection_reassessment_required")):
+            with self.subTest(field=key), self.assertRaises(AssertionError):
+                changed = deepcopy(self.actual)
+                changed[key] = value
+                self.check(actual=changed)
+
+    def test_rejects_recomputed_digest_on_changed_provenance(self):
+        for key, value in (("source_id", "SRC-" + "B" * 32),
+                           ("annotation_revision_id", "ANN-" + "D" * 32),
+                           ("selected_state", "pending"), ("quote", "Unrelated passage."),
+                           ("page", 1)):
+            with self.subTest(field=key), self.assertRaises(AssertionError):
+                changed = deepcopy(self.actual)
+                changed["anchor"][key] = value
+                changed["anchor_sha256"] = self.digest(changed["anchor"])
+                self.check(actual=changed)
+
+    def test_rejects_malformed_receipt_digest_and_shape(self):
+        for receipt in (None, "ACCESS-" + "a" * 32, "ACCESS-" + "A" * 32 + "X"):
+            with self.subTest(receipt=receipt), self.assertRaises(AssertionError):
+                changed = deepcopy(self.actual)
+                changed["access_receipt_id"] = receipt
+                self.check(actual=changed)
+        for key in ("source_state", "synthetic", "anchor"):
+            with self.subTest(missing=key), self.assertRaises(AssertionError):
+                changed = deepcopy(self.actual)
+                del changed[key]
+                self.check(actual=changed)
+        with self.assertRaises(AssertionError):
+            self.check(actual={**self.actual, "unexpected": True})
+        with self.assertRaises(AssertionError):
+            self.check(actual={**self.actual, "anchor_sha256": "0" * 64})
+        with self.assertRaises(AssertionError):
+            self.check(expected={**self.expected, "anchor_sha256": "0" * 64})
+
 
 
 if __name__ == "__main__":

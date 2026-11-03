@@ -40,6 +40,26 @@ AMENDED = (
 ACCESS_EVENTS = "'source.read_authorized','source.original_read_authorized'"
 
 
+def assert_restored_selection_response(actual, expected):
+    """Require type-exact JSON provenance; only the access receipt may change.
+
+    Expected values are recorded and field-checked on the first authorized HTTP
+    read. The anchor digest is recomputed independently at the restored read.
+    """
+    receipt = actual.get("access_receipt_id")
+    assert type(receipt) is str and re.fullmatch(r"ACCESS-[A-F0-9]{32}", receipt), \
+        "Restored selection lacks a canonical access receipt"
+    received = {key: value for key, value in actual.items() if key != "access_receipt_id"}
+    assert json.dumps(received, sort_keys=True, ensure_ascii=False, allow_nan=False) == \
+        json.dumps(expected, sort_keys=True, ensure_ascii=False, allow_nan=False), \
+        "Restored selection changed exact JSON provenance or freshness"
+    anchor = actual["anchor"]
+    canonical = json.dumps(anchor, sort_keys=True, ensure_ascii=False,
+                           separators=(",", ":"), allow_nan=False)
+    assert hashlib.sha256(canonical.encode("utf-8")).hexdigest() == actual["anchor_sha256"], \
+        "Restored selection anchor digest differs"
+
+
 def assert_read_only_recovery(before, after, expected_events):
     """Check complete recovery snapshots against the actual returned receipts."""
     events_table = "identity.identity_domain_events"
@@ -485,10 +505,8 @@ def main():
             def restored_selection(item, selected):
                 status, value = request(selected["path"])
                 assert status == 200
-                assert {key: field for key, field in value.items() if key != "access_receipt_id"} == \
-                       selected["reference"], "Restored exact selection changed"
+                assert_restored_selection_response(value, selected["reference"])
                 receipt_id = value["access_receipt_id"]
-                assert re.fullmatch(r"ACCESS-[A-F0-9]{32}", receipt_id)
                 anchor = value["anchor"]
                 restored_events.append({"patient_id": patient,
                     "event_type": "source.document_selection_read_authorized",
