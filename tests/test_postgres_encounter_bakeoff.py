@@ -16,7 +16,7 @@ from unittest.mock import patch
 from urllib.parse import urlsplit, unquote
 import uuid
 
-from open_intelligence.patient_registry import PatientRegistry
+from open_intelligence.patient_registry import PatientRegistry, PatientRegistryDenied
 from open_intelligence.clinical_encounters import (
     ClinicalEncounters, ClinicalConflict, ClinicalAuthorizationError,
 )
@@ -97,6 +97,7 @@ class PostgresEncounterParityTests(unittest.TestCase):
         )["patient_id"]
         self.service = PostgresClinicalEncounters(self.pg, self.policy)
         self.sqlite_connection = sqlite3.connect(":memory:")
+        self.sqlite_connection.row_factory = sqlite3.Row
         self.addCleanup(self.sqlite_connection.close)
         self.sqlite = PatientRegistry(self.sqlite_connection, self.policy)
         self.local_pid = self.sqlite.create_patient(
