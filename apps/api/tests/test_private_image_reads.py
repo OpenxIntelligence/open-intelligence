@@ -1,7 +1,7 @@
 """Actual existing PG image custody with an optional remote original replica.
 
-No second image/source store or real data. Transport double only in this suite;
-verify_h1_private_pacs exercises the same routes against the actual private PACS.
+No second image/source store or real data. The archive is a controlled test
+double; this suite does not establish live PACS or network-isolation behavior.
 """
 import unittest
 from unittest.mock import Mock, patch
