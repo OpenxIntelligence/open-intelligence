@@ -90,6 +90,7 @@ class PatientHTTPTests(unittest.TestCase):
 
     def setUp(self):
         with self.engine.begin() as conn:
+            conn.execute(text("DROP SCHEMA IF EXISTS clinical_source CASCADE"))
             conn.execute(text("DROP SCHEMA IF EXISTS coordination CASCADE"))
             conn.execute(text("DROP SCHEMA IF EXISTS identity CASCADE"))
             conn.execute(text("DROP TABLE IF EXISTS public.alembic_version"))
@@ -104,6 +105,7 @@ class PatientHTTPTests(unittest.TestCase):
 
     def tearDown(self):
         with self.engine.begin() as conn:
+            conn.execute(text("DROP SCHEMA IF EXISTS clinical_source CASCADE"))
             conn.execute(text("DROP SCHEMA IF EXISTS coordination CASCADE"))
             conn.execute(text("DROP SCHEMA IF EXISTS identity CASCADE"))
             conn.execute(text("DROP TABLE IF EXISTS public.alembic_version"))
