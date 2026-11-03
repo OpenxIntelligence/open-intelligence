@@ -2,7 +2,7 @@
 
 ## PDF and manual-intake convergence — 3 November 2026 UTC
 
-**Current stage: implementation and verification in progress; no hosted pass is claimed here yet.**
+**Current stage: implemented and verified in [draft PR #215](https://github.com/OpenxIntelligence/open-intelligence/pull/215); unmerged, undeployed and synthetic-only.**
 This increment starts from #189 at `ed20a68664289c8e539db34d645aa1d2f0f7a0e5`
 and reuses the existing projection and patient-record component from #161 at
 `3df25cc417f308f7ea1247962656ffa2afc62d5d`. The historical receipts below retain
@@ -17,7 +17,7 @@ as source-authored. This integration carries those distinctions into the existin
 Patient view and connects its source and question actions to the current Composer,
 human report and demo-review owners.
 
-The intended verified sequence is: add an independently fictional PDF; select a
+The executed browser sequence is: add an independently fictional PDF; select a
 passage on physical page 2; inspect that passage in the patient record; open the
 same frozen extraction; hand off the existing question; compare independently
 fictional supporting and contradictory evidence; inspect a labeled recorded
@@ -69,7 +69,7 @@ older source/global-line fields. A browser label or permissive callback cannot
 supply that authority. Report preparation, delivery, review return, professional
 approval and actual clinical action remain distinct states.
 
-### Verification to execute
+### Executed verification
 
 - Existing source-derived projection tests, new PDF/text provenance and real HTTP
   integration tests, including malformed receipt association, case mismatch,
@@ -86,6 +86,84 @@ approval and actual clinical action remain distinct states.
   existing Composer/source/keyboard/layout regression gates.
 - Full Python/HTTP suite, JavaScript suites, offline data-boundary checks and exact
   CI checkout/source artifact verification before a completion claim.
+
+
+### Exact implementation and CI receipt
+
+**Verified runtime head:** `284b9ac1be1e27ccc4863eaf60dfa7432e8d9d46`.
+
+| Gate | Actual result |
+| --- | --- |
+| [Exact-head integration run 41562716040](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41562716040) | SUCCESS; checkout log and artifact receipt both match the authored runtime head |
+| Complete Python/domain/HTTP suite | 420 passed in 63.373s on Python 3.12.15; includes 8 retained projection, 7 new direct projection, 3 new HTTP and 4 provider-boundary workflow tests |
+| JavaScript contracts | 123 passed across 7 suites, including 49 Patient Record/host, 24 source-reader, 8 freshness and existing intake/comparison/refresh regressions |
+| Offline research/data-boundary suite | 80 passed, 18 optional HDF5 checks skipped; current CI acquisition guard passed |
+| Integration Chromium journeys | All 5 passed: reviewed text/PDF intake, Composer, numeric lab, durable work and rights-qualified broker |
+| [Generated-merge UI run 41562716468](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41562716468) | SUCCESS at merge ref `d56574b1a49f55b751db32681275e781e668475b`; 420 Python/HTTP passed in 59.014s on Python 3.13.17, 24 source-reader JS checks and all 4 UI journeys passed |
+| UI journeys | Existing source/evidence loop; retained patient-record/question/amendment/restart; source-dialog race; keyboard/390px layout |
+| Build checks | Python compilation, JavaScript syntax and all seven workflow YAML files parsed; no new dependency/schema |
+
+The four new provider-boundary tests use actual local HTTP, source/PDF storage,
+World Model, Composer, prompt construction, citation validation, receipts, human
+report/review, amendments and permission withdrawal. Only the external
+`call_meta_api` boundary is a controlled double. The `mode=live` handler branch
+is exercised without contacting a live model. Supporting and contradictory
+fictional evidence reaches the bounded prompt, while metadata-only and
+display-only content is excluded from model input. Permission withdrawal after
+a run withholds derived output; a withdrawal during the provider call refuses
+persistence. No unreviewed candidate addresses its question.
+
+The real PDF browser journey uploads two original invented PDF versions. The
+selected finding is on physical page 2, global extraction line 3, page line 1.
+Its manually selected `not-assessed` status stays separate from the quotation
+and clinical review. The browser verifies a forged projection page is rejected,
+then retries successfully; compares two independently fictional evidence sources;
+runs explicitly labeled recorded replay; creates a separate human-authored
+report and demo acknowledgment; amends the PDF; inspects the old original;
+restarts the actual server; and creates a replacement report against the current
+source. Report 2 remains stale history when report 3 is acknowledged. The
+receipt records `restart_verified=true`, `world_model_provenance_checked=true`,
+`projection_page_mismatch_rejected=true`,
+`prior_report_preserved_after_reassessment=true`, `model_invoked=false`, and
+`clinical_validation=false`.
+
+### Artifact and independent review evidence
+
+Both artifacts were downloaded and their supplied SHA-256 digests verified:
+
+- Integration artifact `13198056309`: `c835e25b609adeed4b33ca72e31377bc8d42805db929328c0cb6d5c30f4b3cf9`.
+- UI artifact `13198460799`: `aca9502eb35ad3b3707f535d3f369a0346f594d44a299a781ee9d5c89342c51c`.
+- All **223 files** in the UI source-under-test archive matched the inspected
+  local runtime tree byte for byte before this documentation receipt update.
+- Desktop and narrow PDF patient-record screenshots were inspected. The actual
+  browser assertions check source anchors, labels and no horizontal overflow;
+  this is not a formal accessibility or clinical usability validation.
+- Runtime receipt: Python 3.12.15, pypdf 6.21.4, Node 24.22.1 and Chrome
+  156.0.8078.47. The narrower dependency qualification remains #189's existing
+  license/lock/SBOM record, not a new platform-wide clearance claim.
+
+Review and retained regressions found and corrected: provenance dropped by the
+older projection; question selection that did not notify Composer; wrong-case
+state accepted before render; an omitted/duplicated disagreement group that
+could display a false all-clear view; and a Unicode source-line mismatch in the
+older #189 text reader. Manual conflict wording explicitly distinguishes
+operator-selected classifications from source statements.
+
+The first full local run executed 420 tests in 126.242s with one erroneous
+new static-asset test expectation. The test was corrected to compare actual
+served bytes, and the 3 HTTP tests reran successfully. No runtime change was
+needed for that test correction. The first hosted exact-head run
+[41562260633](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41562260633)
+then passed all 420 Python/HTTP, 121 then-current JS and all 5 integration
+browser journeys. Its UI companion
+[41562260648](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41562260648)
+correctly failed the unchanged retained Unicode anchor assertion: a U+2028
+separator made the viewer highlight the next finding. The exact earlier #161
+parser-compatible renderer/tokenizer was restored selectively, two new JS tests
+failed before that fix and passed after it, and both final runtime runs above
+passed. No browser assertion was weakened. The Python 3.13 UI log still reports
+five inherited unclosed-SQLite `ResourceWarning` messages; the run passed but is
+not claimed warning-free.
 
 No new dependency or schema migration is introduced. Existing pypdf 6.21.4
 qualification and limits remain in [DOCUMENT_INTAKE.md](DOCUMENT_INTAKE.md).
