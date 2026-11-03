@@ -27,6 +27,7 @@ from .composer_preflight import PostgresSourceComposerPreflight, SHA256
 from .source_questions import PostgresSourceQuestions
 from .question_review_returns import PostgresQuestionReviewReturns
 from .source_brief import MAX_ENVELOPE_BYTES, check_brief_size
+from .question_source_review_packet import PostgresQuestionSourcePacket
 
 
 class CreatePatient(Contract):
@@ -590,6 +591,63 @@ class SourceQuestionBrief(Contract):
         return self
 
 
+class QuestionReviewSourceAnchor(Contract):
+    source_id: str
+    source_line: int = Field(ge=1,le=10000)
+    source_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_version: int = Field(ge=1)
+    source_snapshot_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_snapshot_contract: Literal[
+        "oi.pg-source-world-model/1", "oi.synthetic-postgres-world-model-sources/1"]
+    preflight_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class QuestionSourceQuote(Contract):
+    source_id: str
+    document_id: str
+    document_version: int = Field(ge=1)
+    source_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_line: int = Field(ge=1,le=10000)
+    finding_key: str
+    reported_state: Literal["reported","negative","pending","indeterminate",
+                            "not-reported","not-assessed","conflicting"]
+    source_statement: str
+    source_kind: Literal["clinical","pathology","laboratory","imaging","molecular","other"]
+    specimen_id: str | None
+    event_date: str
+    issued_at: str
+    review_state: Literal["not_established"]
+    clinical_meaning: None
+
+
+class QuestionSourceReviewPacket(Contract):
+    contract: Literal["oi.synthetic-question-source-review-packet/1"]
+    patient_id: str
+    case_id: str
+    question_id: str
+    question: str
+    original_anchor: QuestionReviewSourceAnchor
+    source_context_state: Literal["current_unreviewed_source","source_reassessment_required"]
+    current_source_snapshot_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    selected_statement: QuestionSourceQuote | None
+    related_statements: list[QuestionSourceQuote]
+    related_statement_count_total: int = Field(ge=0)
+    related_statements_truncated: bool
+    current_source_count: int = Field(ge=0)
+    current_observation_count: int = Field(ge=0)
+    external_biomedical_evidence_qualified: Literal[False]
+    published_evidence_rights_verified: Literal[False]
+    medical_interpretation_performed: Literal[False]
+    clinical_review_connected: Literal[False]
+    clinical_approval: Literal[False]
+    reviewer_identity_verified: Literal[False]
+    synthetic: Literal[True]
+    review_next_step: Literal["independent_source_verification_required",
+                              "refresh_source_and_create_new_question"]
+    packet_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_access_receipt_id: str = Field(pattern=r"^ACCESS-[0-9A-F]{32}$")
+
+
 def patient_router(database: Database, authentication: Authentication) -> APIRouter:
     router = APIRouter(prefix="/v1/patients", tags=["Synthetic patient registry"])
     bearer = HTTPBearer(auto_error=False, scheme_name="SyntheticFixture",
@@ -607,7 +665,7 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
                         return False
                     if action == "patient_create":
                         return subject == context.organization
-                    if action not in {"patient_read", "record_request_create", "record_request_read", "record_request_cancel", "record_request_receive", "case_binding_create", "case_binding_read", "case_binding_revoke", "source_import", "source_read", "source_original_read", "composer_context_read", "question_create", "question_read", "review_queue_read", "review_return", "source_brief_export"} or subject not in context.patient_ids:
+                    if action not in {"patient_read", "record_request_create", "record_request_read", "record_request_cancel", "record_request_receive", "case_binding_create", "case_binding_read", "case_binding_revoke", "source_import", "source_read", "source_original_read", "composer_context_read", "question_create", "question_read", "review_queue_read", "review_return", "source_brief_export", "review_packet_read"} or subject not in context.patient_ids:
                         return False
                     cursor = connection.cursor()
                     try:
@@ -912,6 +970,29 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
             raise HTTPException(404, "Review return unavailable") from None
         response.status_code = 200 if receipt.duplicate else 201
         return receipt
+
+    @router.get("/{patient_id}/cases/{case_id}/questions/{question_id}/source-review-packet",
+                response_model=QuestionSourceReviewPacket, responses=errors,
+                operation_id="read_question_source_review_packet_v1")
+    def read_question_source_review_packet(
+            request: Request, patient_id: str, case_id: str, question_id: str,
+            context: Principal = Depends(principal)):
+        if context.purpose != "operations":
+            raise HTTPException(404, "Source review packet unavailable")
+        try:
+            with registry(context) as patients:
+                actions=("question_read","source_read","review_packet_read")
+                for action in actions:
+                    records_authorized(patients,context,patient_id,action)
+                return PostgresQuestionSourcePacket(patients).read(
+                    patient_id,case_id,question_id,organization=context.organization,
+                    actor=context.actor,purpose=context.purpose,
+                    prepare_response=lambda packet: QuestionSourceReviewPacket(**packet),
+                    recheck_authority=lambda: final_question_authority(
+                        request,context,patients,patient_id,actions),
+                )
+        except PatientRegistryDenied:
+            raise HTTPException(404,"Source review packet unavailable") from None
 
     @router.get("/{patient_id}/cases/{case_id}/questions",
                 response_model=SourceQuestionsList, responses=errors,
