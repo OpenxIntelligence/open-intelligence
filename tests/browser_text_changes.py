@@ -12,7 +12,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 from browser_journey import ChromeSession, ROOT, free_port, wait_for
 from browser_source_dialogs import stop
@@ -62,7 +62,10 @@ def main():
             session.wait("active.sources.length === 3 && document.querySelector('#source-change-list .change-card') !== null",
                          'source change available')
             versions = session.evaluate("active.sources.filter(s=>s.document_id==='PATH-ALPHA').sort((a,b)=>a.version-b.version).map(s=>s.id)")
-            originals = [json.load(urlopen(f'{url}api/cases/CASE-ALPHA/sources/{sid}'))['text'] for sid in versions]
+            # B-01: case routes require a fictional actor; seed() grants this one.
+            headers = {'X-Fictional-Actor': 'FICTIONAL-NAVIGATOR-A'}
+            originals = [json.load(urlopen(Request(
+                f'{url}api/cases/CASE-ALPHA/sources/{sid}', headers=headers)))['text'] for sid in versions]
             session.evaluate("document.querySelector('#source-change-list .change-card .actions button').click()")
             session.wait("document.getElementById('compare-dialog').open && document.querySelector('#compare-before mark') !== null",
                          'line highlights in actual comparison')
