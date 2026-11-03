@@ -5,20 +5,20 @@ import unittest
 from public_case_intake import build_manifest, verify_manifest, plan_inputs, aggregate, validate_fetch_url
 
 NOW = '2026-11-02T00:00:00+00:00'
-URL = 'https://osteosarc.com/data/catalog/datasets.json'
+URL = 'https://synthetic.example.invalid/catalog.json'
 
 def row(**kw):
     r = dict(section='bulk-rna', table='rna-processed', assay='WTS', data_type='counts',
         sample_id=['SYN-T0'], specimen_id=['SYN-BLOCK-A'], collection_date=['2024-01-03'],
         timepoint='T0', reference='GRCh38', status='ok', caveat='', other_donors='',
         path='synthetic/2024.01.03/counts.tsv', path_kind='file', include_pattern='',
-        s3_uri='s3://sid-sijbrandij-osteosarc-dataset/synthetic/2024.01.03/counts.tsv',
+        s3_uri='s3://synthetic-oncology-fixtures/synthetic/2024.01.03/counts.tsv',
         https_url='', files=1, bytes=123, newest_modified='2026-10-29')
     r.update(kw)
     return r
 
 def payload(rows=None, **kw):
-    c = dict(bucket='sid-sijbrandij-osteosarc-dataset',region='us-west-2',license='CC0-1.0',
+    c = dict(bucket='synthetic-oncology-fixtures',region='us-west-2',license='CC0-1.0',
         listing_generated_at='2026-10-30T20:06:00Z', datasets=rows if rows is not None else [row()])
     c.update(kw)
     return json.dumps(c).encode()
@@ -147,12 +147,12 @@ class IntakeTests(unittest.TestCase):
         e=manifest([row(s3_uri='s3://other-private-bucket/data')])['entries'][0]
         self.assertIn('asset_location_unverified',e['review_reasons'])
 
-    def test_fetch_allowlist_rejects_other_urls(self):
-        for u in ('http://osteosarc.com/data/catalog/datasets.json',URL+'?secret=abc',
-                  'https://127.0.0.1/private','https://osteosarc.com@evil.example/data',
-                  'https://osteosarc.com/data/catalog/../record.json'):
-            with self.subTest(u=u),self.assertRaises(ValueError): validate_fetch_url(u)
-        self.assertEqual(validate_fetch_url(URL),URL)
+    def test_all_catalog_download_urls_are_rejected(self):
+        for u in ('http://synthetic.example.invalid/catalog.json',URL+'?secret=abc',
+                  'https://127.0.0.1/private','https://synthetic.example.invalid@evil.example/data',
+                  'https://synthetic.example.invalid/data/catalog/../record.json'):
+            with self.subTest(u=u),self.assertRaises(PermissionError): validate_fetch_url(u)
+        with self.assertRaises(PermissionError): validate_fetch_url(URL)
 
     def test_no_total_bytes_claim_due_to_overlapping_catalog_rows(self):
         a=aggregate(manifest([row(),row()]))
@@ -167,12 +167,12 @@ class IntakeTests(unittest.TestCase):
 
     def test_catalog_prefix_selector_is_not_wrong_bucket(self):
         e=manifest([row(path='synthetic/pool_',path_kind='prefix',include_pattern='pool_*',
-            s3_uri='s3://sid-sijbrandij-osteosarc-dataset/synthetic/')])['entries'][0]
+            s3_uri='s3://synthetic-oncology-fixtures/synthetic/')])['entries'][0]
         self.assertIn('asset_selector_requires_review',e['review_reasons'])
         self.assertNotIn('asset_location_unverified',e['review_reasons'])
 
     def test_same_bucket_different_https_asset_is_not_bound(self):
-        e=manifest([row(https_url='https://sid-sijbrandij-osteosarc-dataset.s3.us-west-2.amazonaws.com/other.tsv')])['entries'][0]
+        e=manifest([row(https_url='https://synthetic-oncology-fixtures.s3.us-west-2.amazonaws.com/other.tsv')])['entries'][0]
         self.assertIn('asset_location_unverified',e['review_reasons'])
 
     def test_explicit_no_other_donors_is_not_treated_as_yes(self):
@@ -186,10 +186,6 @@ class IntakeTests(unittest.TestCase):
     def test_duplicate_json_keys_rejected(self):
         raw=payload().replace(b'"license": "CC0-1.0"',b'"license":"unknown","license":"CC0-1.0"')
         with self.assertRaises(ValueError): build_manifest(raw,NOW)
-
-    def test_redirect_handler_refuses_even_same_host_redirect(self):
-        from public_case_intake import NoRedirect
-        with self.assertRaises(ValueError): NoRedirect().redirect_request(None,None,302,None,{},URL)
 
     def test_partial_collection_date_retains_precision(self):
         for value in ('2024', '2024-01'):
