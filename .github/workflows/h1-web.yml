@@ -3,7 +3,8 @@ on:
   push:
     branches: [feat/h1-react-patient-entry-20261102, integration/h1-react-source-records-20261102, feat/h1-react-record-import-20261102]
   pull_request:
-    paths: ['apps/web/**', '.github/workflows/h1-web.yml']
+    # Backend contract changes must exercise their existing React consumer.
+    paths: ['apps/web/**', 'apps/api/**', 'src/**', '.github/workflows/h1-web.yml']
 permissions:
   contents: read
 jobs:
