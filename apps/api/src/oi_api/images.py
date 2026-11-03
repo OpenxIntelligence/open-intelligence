@@ -41,7 +41,8 @@ def _image_id(value: object) -> str:
 
 
 class PostgresSourceImages:
-    def __init__(self, registry):
+    def __init__(self, registry, *, archive=None):
+        self.archive = archive
         self.sources = PostgresSourceVersions(registry)
         self.registry = registry
 
@@ -187,8 +188,33 @@ class PostgresSourceImages:
                  organization: str, actor: str, purpose: str,
                  recheck_authority: Callable[[], None]) -> tuple[bytes, str]:
         _image_id(image_id)
+        remote = None
+        if self.archive is not None:
+            with self.registry.transaction():
+                revision, source, binding = self._scope(patient_id, case_id, source_id, organization, purpose)
+                values = self.registry._fetchone(
+                    "SELECT " + ",".join("o." + name for name in _FIELDS)
+                    + " FROM clinical_source.dicom_objects o JOIN clinical_source.source_image_links l "
+                    "ON l.image_id=o.image_id WHERE o.case_id=%s AND l.source_id=%s AND o.image_id=%s",
+                    (case_id, source_id, image_id))
+                if values is None:
+                    raise PatientRegistryDenied("Image unavailable")
+                row = dict(zip(_FIELDS, values))
+                expected = self._validated_object(row, source, binding)
+                preflight = (revision, source["sha256"], tuple(binding))
+                recheck_authority()
+            # Never hold patient/source locks during remote I/O. Only server-
+            # stored, validated object identifiers reach the configured port.
+            try:
+                remote = self.archive.read(row["study_uid"], row["series_uid"], row["sop_uid"])
+                if type(remote) is not bytes or remote != expected:
+                    raise ValueError()
+            except Exception:
+                raise ImageIntegrityError("Remote original unavailable") from None
         with self.registry.transaction():
             revision, source, binding = self._scope(patient_id, case_id, source_id, organization, purpose)
+            if self.archive is not None and preflight != (revision, source["sha256"], tuple(binding)):
+                raise PatientRegistryDenied("Image authority changed")
             values = self.registry._fetchone(
                 "SELECT " + ",".join("o." + name for name in _FIELDS)
                 + " FROM clinical_source.dicom_objects o JOIN clinical_source.source_image_links l "
@@ -198,6 +224,10 @@ class PostgresSourceImages:
                 raise PatientRegistryDenied("Image unavailable")
             row = dict(zip(_FIELDS, values))
             raw = self._validated_object(row, source, binding)
+            if remote is not None:
+                if remote != raw:
+                    raise ImageIntegrityError("Original changed during remote retrieval")
+                raw = remote
             receipt = self.sources._read_receipt(
                 patient_id, case_id, actor=actor, purpose=purpose, binding_revision=revision,
                 event="image.original_read_authorized", recheck_authority=recheck_authority,
