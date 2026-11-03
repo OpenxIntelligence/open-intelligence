@@ -111,6 +111,8 @@ jobs:
       - name: Verify actual patient HTTP, restart, backup restore and access revocation
         run: python apps/api/tools/verify_registry_compose.py
       - name: Verify source HTTP, fresh authority, source receipts and restored originals
+        env:
+          OI_SOURCE_ACCEPTANCE_FILE: verification-api/source-document-recovery.json
         run: python apps/api/tools/verify_sources_compose.py
       - name: Verify canonical review returns, history, retry recovery and backup restore
         run: python apps/api/tools/verify_reviews_compose.py

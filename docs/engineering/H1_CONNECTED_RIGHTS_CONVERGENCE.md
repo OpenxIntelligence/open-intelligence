@@ -1,6 +1,65 @@
 # Connected reviewed intake: existing dependency-rights safeguards
 
-## Scope and ownership
+## Current candidate — reviewed-document convergence in #354
+
+**Checkpoint: 3 November 2026. Local composition verified; exact combined
+hosted acceptance pending.** Continue the existing [draft #354](https://github.com/OpenxIntelligence/open-intelligence/pull/354)
+from `d9b81f08a97998e8f95d2a1cc7c43b4165e99862`. Main was separately observed at
+[`c4798ae85004713593f83458abd2102be6729095`](https://github.com/OpenxIntelligence/open-intelligence/commit/c4798ae85004713593f83458abd2102be6729095)
+and remains the Python/SQLite reference; this H1 composition is unmerged and
+undeployed. Earlier receipts below retain their original heads and scope.
+
+| Included owner | Frozen input | Contribution to the existing candidate |
+| --- | --- | --- |
+| #354 | `d9b81f08a97998e8f95d2a1cc7c43b4165e99862` | Reviewed text/PDF originals, immutable selections, comparison drafts, exact receipt recovery, document-denial reset and dependency identity checks |
+| #368 | `2d62b05357ad64524d561c2e05c903674cd4e54c` | Evidence chronology, truthful recovery status and memory-only verification-return drafts; includes the #324 repair through its connected lineage |
+| #369 | `3c028ddfb4b408571b36140a5e5b52115c7bd790` | Strict task/history timestamps and withholding actionable controls after a malformed response |
+| #362 | `c7fd1bd865f4a8f42da1e515a2599431d14f0a8d` | Existing source-recovery probe extended to reviewed-document HTTP, exact retries, independent grants and revoked binding on restored PostgreSQL copies |
+| #367 | `bbf56762e73f50fbe6432768deb605ed03edf09b` | Shared H1 acceptance-input triggers, the existing data-boundary audit and reconciled documentation |
+
+The [bounded execution plan](../superpowers/plans/2026-11-03-reviewed-document-convergence.md)
+defines the source reconciliation, tests and publication sequence. Preserve
+#354's document-aware RegistrySession, published `0012_reviewed_documents`
+migration, exact dependency set, PDF controls and existing authority owners.
+No new backend contract, state owner, dependency, model or clinical function is
+introduced. The accepted H1 stack, source/current-rights checks and synthetic-only
+development boundary remain controlling.
+
+Combined acceptance must exercise the complete document/evidence/review/task
+journey on one exact head. In particular, a current document denial must clear
+an unsent Review reason and prevent its resurrection after fresh access, while
+temporary or stale failures preserve independently authorized newer work.
+The two-case Review journey precedes the document journey that creates a third
+case. Actual restored-document HTTP must run in the full combined API/recovery
+gate; the donor's successful run does not qualify this new composition.
+
+### Observed local verification at this integration checkpoint
+
+| Check | Result |
+| --- | --- |
+| Donor chronology/task regressions against the old runtime | 24 failed and 27 passed before composition |
+| Complete client suite after composition | 415 passed; zero skips |
+| TypeScript and Vite production build | Passed |
+| Existing rights controls and installed-artifact gate | 13 controls passed; 18 installed entries inspected, two absent optional entries explicitly uninspected, zero gate errors |
+| Restored-document recovery assertion tests | Nine passed |
+| Existing synthetic data-boundary audit | Passed; a bounded source-pattern audit, not runtime egress proof |
+| New Review-draft/document-denial browser interaction | Added and syntax-checked; not executed locally |
+
+These are local source and fixture checks. Exact combined hosted
+API/PostgreSQL/recovery and React/Chromium acceptance is **pending at this source
+checkpoint**. Final independent-review disposition, published identity and hosted
+results are recorded in the existing [PR #354 verification receipt](https://github.com/OpenxIntelligence/open-intelligence/pull/354)
+as they complete. That receipt must identify this composition; historical donor
+successes are not substituted.
+
+Manual document selections remain explicitly manual and excluded from structured
+World Model/question/report snapshots. Connecting that provenance is subsequent
+work. Separate DOI, imaging/archive and clinical-domain candidates are not
+included by reference. Independent user/clinical validation, production
+identity/delegation/consent, permitted biomedical/model activation, release-wide
+rights, merge and deployment remain separate gates.
+
+## Historical rights-only scope and ownership
 
 Bounded implementation of OI-004 and OI-010, linked to #59 and #121.
 This carries the existing #339 frontend rights fix into the reviewed-document
@@ -77,11 +136,12 @@ approval or whole-product supply-chain clearance. Optional native artifacts,
 models, datasets, content and deployment services need separate exact-artifact
 review. The initial rights-only import excluded comparison and verification
 drafts. The continuation below explicitly includes #348/#359 comparison drafts;
-#324/#345 verification-draft continuity remains separate. No merge or deployment.
+#324/#345 verification-draft continuity was separate at that checkpoint. The
+current composition above carries #324 through #368. No merge or deployment.
 
-## Continuation: reviewed documents and recoverable comparisons
+## Historical #354 checkpoint: reviewed documents and recoverable comparisons
 
-PR #354 now composes the existing document/rights workspace at
+That #354 continuation composed the existing document/rights workspace at
 `306c6d90cb77b87debe5858baeb244fd038d5748` with the comparison/receipt owner
 #359 at `e2c888cf5b9065c8b6a60284666e6f35fe2c1e63`. That donor includes #348
 at `d15aa208adcb13b3c0621cc44a384a8fa37affb3`. Both ancestries are preserved.
@@ -131,8 +191,10 @@ completed successfully at `03ccca85026c5d437a288f62c5b48f4a74054bfa`: 427 API
 tests, 304 reference tests and all five patient/source/review/follow-up/evidence
 recovery steps. This remains parent-head evidence for the unchanged backend.
 
-This continuation is self-reviewed engineering composition. Combined owner
-review, manual-document provenance in questions/reports, document HTTP against a
-restored database copy, and professional/clinical validation remain open. The
-other sibling DOI, chronology, imaging/archive and verification-draft work is not
-included by this continuation. Synthetic inputs only; draft and undeployed.
+At that checkpoint, combined owner review, manual-document provenance in
+questions/reports, document HTTP against a restored database copy, and
+professional/clinical validation remained open. Sibling DOI, chronology,
+imaging/archive and verification-draft work was not included. The current
+section above records the later local composition of chronology, review drafts
+and restored-document acceptance, whose combined hosted execution is still
+pending. Synthetic inputs only; draft and undeployed.
