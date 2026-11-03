@@ -26,9 +26,9 @@ not reinterpret the backend's evaluated-on flags.
 - [x] Write failing attention/filter unit tests in apps/web/tests/followthrough-attention.test.mjs.
 - [x] Add scoped projection/filter helpers to apps/web/src/followthrough-view.ts; run all client tests.
 - [x] Extend apps/web/src/followthrough-panel.tsx with accessible filters and mounted hidden cards.
-- [x] Write browser assertions before UI implementation; actual hosted execution remains required.
-- [ ] Verify local client/compile/diff; publish isolated draft child and run exact-head hosted checks.
-- [ ] Inspect actual artifacts/screenshots and record evidence/limits; no independent-review claim without a reviewer.
+- [x] Write browser assertions before UI implementation; complete actual hosted execution.
+- [x] Verify local client/compile/diff; publish isolated draft child and run exact-head hosted checks.
+- [x] Inspect actual artifacts/screenshots and record evidence/limits; no independent-review claim without a reviewer.
 
 ## Evidence and rulings
 Parent: PR #293 at 635f357048eb27e52e6ec5c3d7b6714215070127, tree
@@ -73,3 +73,44 @@ input sequence only, retains all assertions, and adds no application workaround.
 The new exact-head complete hosted journey is still required.
 Failure artifact 13231725547 SHA-256:
 5766192b32fd2cbb539237b1f6fa66071a0499dffd8f9d4a359f797020b97234.
+
+## Verified runtime receipt — 3 November 2026
+
+[Draft PR #299](https://github.com/OpenxIntelligence/open-intelligence/pull/299)
+is a six-file child of #293; it remains unmerged and undeployed.
+
+**Runtime head:** `6a2def885002f521107a672d6c000ea234450a51`
+**Tree:** `84884e77491c863371416e069277022bd318b51b`
+**Successful hosted run:** [41637669069](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41637669069), job `125922858637`.
+
+Observed complete successful job and inspected retained evidence:
+- `client-tests.txt`: 216 passed, zero failures, cancellations or skipped tests.
+  The 21 new tests were observed failing before implementation; inherited baseline is 195.
+- `build.txt`: pinned TypeScript check and Vite 7.3.7 production React build succeeded.
+- `browser.txt`: actual PostgreSQL 16/FastAPI/built-React Chromium journey passed,
+  including overlapping filter counts, exact visible historical/source-amended rows,
+  zero extra filter HTTP requests, retained owner/reason drafts, fresh-receipt reset,
+  native Enter activation, independent task-read denial clearing and case switching.
+  Existing intake, question, literal quotation, brief/download, review-return,
+  lost-response recovery and source-amendment assertions also passed.
+- Desktop 1440px and mobile 390px attention/task captures inspected; labels and controls
+  wrap without horizontal overflow. This is not comprehensive accessibility certification.
+- Existing dependency/notice gates passed; the retained npm audit reported zero known
+  vulnerabilities for this run. No dependency or backend change was introduced.
+
+Artifact `13230734072`, expiry 10 November 2026, was downloaded and its SHA-256
+recomputed: `4219267c339244bb25cd877d3ac7f984a27198f40cb38493e4624654414a8d35`.
+Its `commit.txt` identifies the exact runtime head. All 337 archived source files were
+compared byte-for-byte with the inspected local tree. The local Git tree equals the
+published tree above; do not infer Git file modes from zero ZIP external attributes.
+
+The first failed hosted run and its harness-only repair remain recorded above.
+This receipt is a documentation-only follow-up to the verified runtime. A later
+head's checks must be attributed to that head; parent or runtime evidence must not
+be relabeled as an independent full API/unit rerun.
+
+**Remaining gates:** independent code/security/product review and integration with
+the parent stack. No clinical validation, real-patient identity/consent, continuously
+pushed revocation, notification delivery, appointment booking or autonomous clinical
+execution is established. Date/source flags describe the last authorized read, not
+clinical urgency or all of a patient's care needs.
