@@ -115,3 +115,14 @@ test('source highlighting preserves the original text and invalid anchors are ho
   assert.equal(h.ctx.renderOriginalSource(text,999),false);
   assert.equal(h.el('dialog-text').textContent,text);
 });
+
+test('source anchors use the parser splitlines contract without changing original separators',()=>{
+  for (const separator of ['\u000b', '\u000c', '\u001c', '\u001d', '\u001e', '\u0085', '\u2028', '\u2029']) {
+    const h=harness();
+    const text='Header'+separator+'Finding: marker-a|reported|Fictional statement A.\nFinding: marker-b|negative|Fictional statement B.\n';
+    assert.equal(h.ctx.renderOriginalSource(text,2),true);
+    assert.equal(h.el('dialog-text').querySelector('mark').textContent,
+      'Finding: marker-a|reported|Fictional statement A.');
+    assert.equal(h.el('dialog-text').textContent,text);
+  }
+});

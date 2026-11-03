@@ -4,6 +4,7 @@ let caseId = null;
 let active = null;
 let refreshSequence = 0;
 let renderedCaseId = null;
+const pendingCaseWrites = new Map();
 const el = (id) => document.getElementById(id);
 function node(tag, text, className = '') {
   const item = document.createElement(tag);
@@ -19,13 +20,38 @@ function notice(message, error = false) {
   item.hidden = false;
 }
 async function api(path, payload) {
-  const response = await fetch(path, payload === undefined ? undefined : {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
-  });
-  const type = response.headers.get('content-type') || '';
-  const data = type.includes('json') ? await response.json() : await response.text();
-  if (!response.ok) throw Error(data.error || 'Request failed');
-  return data;
+  const target = payload === undefined ? null : path.match(/^\/api\/cases\/([^/]+)\//);
+  const mutationCase = target ? decodeURIComponent(target[1]) : null;
+  // Shared evidence/rights updates can affect several cases. The DOI lookup
+  // is the server's only read-only POST and does not change a case record.
+  const writeScope = payload !== undefined && path !== '/api/bibliography/lookup' ?
+    (mutationCase || '*') : null;
+  const scope = mutationCase ? 'case' : 'all-cases';
+  if (writeScope) {
+    const pendingWrites = (pendingCaseWrites.get(writeScope) || 0) + 1;
+    pendingCaseWrites.set(writeScope, pendingWrites);
+    document.dispatchEvent(new CustomEvent('oi:case-state-invalidated', {
+      detail: { caseId: mutationCase, scope, pendingWrites },
+    }));
+  }
+  try {
+    const response = await fetch(path, payload === undefined ? undefined : {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+    });
+    const type = response.headers.get('content-type') || '';
+    const data = type.includes('json') ? await response.json() : await response.text();
+    if (!response.ok) throw Error(data.error || 'Request failed');
+    return data;
+  } finally {
+    if (writeScope) {
+      const pendingWrites = pendingCaseWrites.get(writeScope) - 1;
+      if (pendingWrites) pendingCaseWrites.set(writeScope, pendingWrites);
+      else pendingCaseWrites.delete(writeScope);
+      document.dispatchEvent(new CustomEvent('oi:case-state-write-settled', {
+        detail: { caseId: mutationCase, scope, pendingWrites },
+      }));
+    }
+  }
 }
 function pill(value, style = '') { return node('span', value, 'pill ' + style); }
 function empty(container, text) { container.append(node('p', text, 'empty')); }
@@ -61,7 +87,8 @@ async function initialize() {
     picker.addEventListener('change', () => {
       // An unfinished narrative must never silently become attached to another case.
       if ((['draft-observations', 'draft-summary', 'draft-assumptions', 'evidence-rationale',
-            'evidence-withdraw-reason', 'option-description'].some(id => el(id).value.trim()))) {
+            'evidence-withdraw-reason', 'option-description',
+            'ft-title', 'ft-detail', 'ft-reason', 'ft-update-reason'].some(id => el(id).value.trim()))) {
         picker.value = caseId;
         notice('Save or explicitly clear the unfinished investigation draft before switching cases.', true);
         return;
@@ -123,54 +150,54 @@ async function renderIncomingBoard(cases) {
   }
 }
 
-const CERTAINTY_PLAIN = {
-  reported: 'reported', pending: 'still pending', indeterminate: 'not certain yet',
-  conflicting: 'different reports disagree', 'not-reported': 'not reported',
-  'not-assessed': 'not assessed',
-};
-function renderPatientView() {
-  clear('patient-timeline'); clear('patient-findings'); clear('patient-questions'); clear('patient-uncertainty');
-  if (!active) return;
-  const groups = groupedTimeline(active.sources).slice().reverse();
-  if (!groups.length) empty(el('patient-timeline'), 'No records yet in this fictional case.');
-  for (const group of groups) {
-    const item = node('div', null, 'question');
-    const amended = group.versions.length > 1;
-    item.append(node('p', 'On ' + group.eventDate + ', a ' + group.kind + ' report (' + group.documentId + ') was recorded.' +
-      (amended ? ' This report was later corrected; the latest version is the one shown in the workspace, and older versions are kept.' : '')));
-    el('patient-timeline').append(item);
-  }
-  if (!active.assertions.length) empty(el('patient-findings'), 'No reported findings yet in this fictional case.');
-  for (const assertion of active.assertions) {
-    const card = node('div', null, 'finding');
-    card.append(node('strong', 'Source says'), node('p', assertion.quote, 'quoted'),
-      node('span', 'How certain the source is: ' + (CERTAINTY_PLAIN[assertion.certainty] || assertion.certainty) +
-        ' · Exact source version #' + assertion.source_version_id + ', line ' + assertion.source_line, 'ref'));
-    el('patient-findings').append(card);
-  }
-  const open = active.questions.filter(q => q.state === 'open');
-  if (!open.length) empty(el('patient-questions'), 'No open questions in this fictional case.');
-  for (const question of open) {
-    const row = node('div', null, 'question');
-    row.append(node('p', question.question));
-    el('patient-questions').append(row);
-  }
-  const stale = active.snapshots.filter(s => s.state === 'stale').length;
-  const superseded = active.sources.filter(s => s.state !== 'current').length;
-  const notes = [];
-  if (stale) notes.push(stale + ' earlier draft(s) need another look because a report changed since they were written.');
-  if (superseded) notes.push(superseded + ' older report version(s) have been replaced by a newer version; the older versions are still kept and can be inspected.');
-  if (!notes.length) notes.push('Nothing in this fictional case is currently flagged as changed or needing another look.');
-  for (const text of notes) {
-    const row = node('div', null, 'question');
-    row.append(node('p', text));
-    el('patient-uncertainty').append(row);
-  }
+const patientRecord = OpenIntelligencePatientRecord.create({
+  elements: {
+    root: el('patient-view'), status: el('patient-record-status'),
+    timeline: el('patient-timeline'), findings: el('patient-findings'),
+    questions: el('patient-questions'), uncertainty: el('patient-uncertainty'),
+  },
+  fetchModel: requested => api('/api/cases/' + requested + '/world-model'),
+  onOpenSource: (id, line) => openSource({id}, line),
+  onOpenQuestion: focusPatientQuestion,
+  onRefresh: refresh,
+});
+function focusPatientQuestion(questionId) {
+  try {
+    readyCase();
+    if (!Number.isInteger(questionId) || !active.questions.some(q =>
+      q.id === questionId && q.state === 'open'))
+      throw Error('This question is no longer open in the selected case. Refresh the record.');
+    const target = String(questionId);
+    const narrativePending = ['draft-observations', 'draft-summary', 'draft-assumptions']
+      .some(id => el(id).value.trim());
+    if ((narrativePending && el('question-choice').value !== target) ||
+        (el('evidence-rationale').value.trim() && el('evidence-question-choice').value !== target))
+      throw Error('Save or clear the unfinished draft for the other question before switching investigations.');
+    for (const id of ['question-choice', 'evidence-question-choice', 'model-investigation-question']) {
+      if (![...el(id).options].some(option => option.value === target))
+        throw Error('The investigation workspace is still loading this question. Try again after it finishes.');
+    }
+    if (el('question-choice').value !== target) {
+      el('question-choice').value = target;
+      el('question-choice').dispatchEvent(new Event('change'));
+    }
+    el('evidence-question-choice').value = target;
+    el('model-investigation-question').value = target;
+    window.location.hash = 'investigations';
+    el('model-investigation-question').focus();
+    notice('Question Q' + questionId + ' selected for evidence investigation. No investigation has run yet.');
+  } catch (err) { notice(err.message, true); }
 }
 
 async function refresh() {
   const requestedCase = caseId;
   const sequence = ++refreshSequence;
+  document.dispatchEvent(new CustomEvent('oi:case-state-invalidated', {
+    detail: { caseId: requestedCase },
+  }));
+  patientRecord.clear('Loading the selected case…', true);
+  clear('model-investigation-list');
+  empty(el('model-investigation-list'), 'Loading investigations for the selected case…');
   try {
     const response = await api('/api/cases/' + requestedCase + '/state');
     // The user can switch cases while a response is in flight. Never render
@@ -179,8 +206,15 @@ async function refresh() {
     active = response;
     el('case-heading').textContent = active.case.label;
     render();
+    document.dispatchEvent(new CustomEvent('oi:case-state-updated', {
+      detail: { caseId: requestedCase },
+    }));
+    await patientRecord.load(response);
   } catch (err) {
-    if (sequence === refreshSequence && requestedCase === caseId) notice(err.message, true);
+    if (sequence === refreshSequence && requestedCase === caseId) {
+      patientRecord.clear('The selected record could not be loaded. Refresh to try again.');
+      notice(err.message, true);
+    }
   }
 }
 function readyCase() {
@@ -358,6 +392,7 @@ function renderBiologicalAssets() {
 function render() {
   const sameCase = renderedCaseId === caseId;
   const priorQuestion = sameCase ? el('question-choice').value : null;
+  const priorModelQuestion = sameCase ? el('model-investigation-question').value : null;
   const priorInputs = sameCase ? [...el('source-choice').querySelectorAll('input')] : [];
   const priorSourceIds = new Set(priorInputs.filter(x => x.checked).map(x => Number(x.value)));
   const preserveSources = priorInputs.length > 0;
@@ -374,9 +409,11 @@ function render() {
       Number(q.id) === Number(snapshot.question_id) && q.state === 'open'))
     .map(snapshot => Number(snapshot.question_id)));
   const reviewRequired = reopenedQuestionIds.size;
+  const overdueTasks = (active.followthrough && active.followthrough.counts && active.followthrough.counts.overdue) || 0;
   el('metrics').append(
     metric(latest.length, 'Current source documents'), metric(active.assertions.length, 'Reported statements'),
-    metric(active.questions.filter(q => q.state === 'open').length, 'Open questions'), metric(reviewRequired, 'Review required'));
+    metric(active.questions.filter(q => q.state === 'open').length, 'Open questions'), metric(reviewRequired, 'Review required'),
+    metric(overdueTasks, 'Overdue tasks'));
   const reviewNotice = el('review-attention');
   reviewNotice.dataset.state = reviewRequired ? 'needs-review' : 'no-open-review';
   el('review-attention-heading').textContent = reviewRequired
@@ -551,6 +588,8 @@ function render() {
     const opt = node('option', question.question);
     opt.value = question.id; el('model-investigation-question').append(opt);
   }
+  if (priorModelQuestion && [...el('model-investigation-question').options].some(x => x.value === priorModelQuestion))
+    el('model-investigation-question').value = priorModelQuestion;
   loadModelInvestigations();
   loadChangesSinceReview();
   clear('quarantine-list');
@@ -562,8 +601,8 @@ function render() {
     const card = node('div', event.kind.replaceAll('_', ' '), 'event');
     card.append(node('small', event.occurred_at)); el('event-list').append(card);
   }
-  renderPatientView();
   renderOptions();
+  renderFollowthrough();
   renderedCaseId = caseId;
 }
 function renderOriginalSource(text, lineNumber) {
@@ -571,20 +610,23 @@ function renderOriginalSource(text, lineNumber) {
   // recorded source line; preserve all other characters and line breaks.
   const viewer = el('dialog-text');
   viewer.replaceChildren();
-  const lines = String(text).split('\n');
+  const lines = reportLineTokens(String(text));
   const anchored = Number.isInteger(lineNumber) && lineNumber > 0 && lineNumber <= lines.length;
   for (let index = 0; index < lines.length; index++) {
-    if (index) viewer.append(document.createTextNode('\n'));
+    const ending = lines[index].match(/\r\n$|[\r\n\v\f\x1c-\x1e\x85\u2028\u2029]$/)?.[0] || '';
+    const content = ending ? lines[index].slice(0, -ending.length) : lines[index];
     if (anchored && index + 1 === lineNumber)
-      viewer.append(node('mark', lines[index], 'source-highlight'));
-    else viewer.append(document.createTextNode(lines[index]));
+      viewer.append(node('mark', content, 'source-highlight'));
+    else viewer.append(document.createTextNode(content));
+    if (ending) viewer.append(document.createTextNode(ending));
   }
   return anchored;
 }
 // Begin source text comparison.
 function reportLineTokens(text) {
-  // Keep every character, including CRLF, blank lines and the final newline.
-  return text.match(/[^\n]*\n|[^\n]+$/g) || [];
+  // Match the parser's Python str.splitlines() boundaries while preserving
+  // every character. Unicode separators must not move an anchor to another finding.
+  return text.match(/[^\r\n\v\f\x1c-\x1e\x85\u2028\u2029]*(?:\r\n|[\r\n\v\f\x1c-\x1e\x85\u2028\u2029])|[^\r\n\v\f\x1c-\x1e\x85\u2028\u2029]+$/g) || [];
 }
 function compareReportLines(before, after) {
   if (typeof before !== 'string' || typeof after !== 'string')
@@ -931,6 +973,41 @@ el('option-review-form').addEventListener('submit', async event => {
     notice('Reviewer action recorded: ' + outcome.result + '.'); await refresh();
   } catch (err) { notice(err.message, true); }
 });
+el('followthrough-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const pick = id => { const v = el(id).value; return v === '' ? null : Number(v); };
+    const created = await api('/api/cases/' + requestedCase + '/followthrough-tasks', {
+      title: el('ft-title').value, detail: el('ft-detail').value || null,
+      due_date: el('ft-due').value || null, review_trigger: el('ft-trigger').value || null,
+      question_id: pick('ft-question'), source_version_id: pick('ft-source'),
+      actor_label: el('ft-actor').value, reason: el('ft-reason').value || null,
+    });
+    if (requestedCase !== caseId) return;
+    for (const id of ['ft-title', 'ft-detail', 'ft-due', 'ft-trigger', 'ft-actor', 'ft-reason']) el(id).value = '';
+    notice('Follow-through task #' + created.task_id + ' recorded. Nothing was acted on.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('followthrough-update-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const payload = {
+      status: el('ft-status').value, actor_label: el('ft-update-actor').value,
+      reason: el('ft-update-reason').value, owner_label: el('ft-owner').value || null,
+    };
+    if (el('ft-clear-due').checked) payload.due_date = null;
+    else if (el('ft-update-due').value) payload.due_date = el('ft-update-due').value;
+    const outcome = await api('/api/cases/' + requestedCase + '/followthrough-tasks/' +
+      Number(el('ft-task-choice').value) + '/status', payload);
+    if (requestedCase !== caseId) return;
+    el('ft-owner').value = ''; el('ft-update-due').value = '';
+    el('ft-clear-due').checked = false;
+    el('ft-update-actor').value = ''; el('ft-update-reason').value = '';
+    notice('Task #' + outcome.task_id + ' is now ' + outcome.result + '. History preserved.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
 
 
 function renderOptions() {
@@ -998,6 +1075,86 @@ function renderOptions() {
     }
     el('option-list').append(box);
   }
+}
+function renderTaskList(id, tasks, emptyText) {
+  clear(id);
+  if (!tasks.length) { empty(el(id), emptyText); return; }
+  for (const task of tasks) {
+    const box = node('div', null, 'snapshot');
+    const top = node('div', null, 'topline');
+    top.append(node('strong', 'Task #' + task.id + ' · ' + task.title),
+      pill(task.status, task.is_overdue ? 'pill-alert' : task.status === 'completed' ? '' : 'pill-warn'));
+    if (task.is_overdue) top.append(pill('overdue', 'pill-alert'));
+    if (task.is_due_soon) top.append(pill('due soon', 'pill-warn'));
+    if (task.needs_recheck) top.append(pill('linked source amended — re-check', 'pill-warn'));
+    box.append(top);
+    if (task.detail) box.append(node('p', task.detail));
+    box.append(node('p', 'Owner: ' + (task.owner_label || 'not assigned yet') +
+      ' · Due: ' + (task.due_date || 'no due date') +
+      (task.review_trigger ? ' · Revisit: ' + task.review_trigger : '') +
+      (task.question_id ? ' · Question Q' + task.question_id + ' (' + (task.question_state || 'unknown') + ')' : '') +
+      (task.source_version_id ? ' · Source #' + task.source_version_id + ' (' + (task.source_state || 'unknown') + ')' : ''),
+      'snapshot-meta'));
+    if (task.status === 'completed') {
+      box.append(node('p', task.human_action_recorded
+        ? 'Recorded as done by a human after acknowledgment. Full history is kept below.'
+        : 'Completion is recorded without an acknowledgment path; treat this record as unreliable.', 'muted'));
+    } else {
+      box.append(node('p', 'No action taken by the platform. This record waits for a human to act.', 'muted tiny'));
+    }
+    if (task.history && task.history.length) {
+      box.append(node('p', 'History: ' + task.history.map(entry =>
+        (entry.previous_status ? entry.previous_status + ' → ' : '') + entry.new_status +
+        ' by ' + entry.actor_label + ' at ' + entry.noted_at +
+        (entry.reason ? ' — ' + entry.reason : '')).join(' ; '), 'snapshot-meta'));
+    }
+    el(id).append(box);
+  }
+}
+function renderFollowthrough() {
+  const data = active.followthrough || { tasks: [], counts: {}, disclaimer: '' };
+  el('followthrough-disclaimer').textContent = data.disclaimer || '';
+  const tasks = data.tasks || [];
+  const overdueIds = new Set(data.overdue_task_ids || []);
+  const dueSoonIds = new Set(data.due_soon_task_ids || []);
+  const counts = data.counts || {};
+  const attention = el('followthrough-attention');
+  attention.dataset.state = overdueIds.size ? 'needs-review' : 'no-open-review';
+  el('followthrough-attention-heading').textContent = overdueIds.size
+    ? overdueIds.size + ' overdue task(s) need a human to act'
+    : 'Follow-through reminders';
+  el('followthrough-attention-summary').textContent = overdueIds.size || dueSoonIds.size
+    ? overdueIds.size + ' overdue · ' + dueSoonIds.size + ' due within 7 days · ' +
+      (counts.open || 0) + ' open in total. These are records for humans; nothing here acts on its own.'
+    : tasks.length
+      ? 'No overdue or due-soon tasks. ' + (counts.open || 0) +
+        ' open task(s) remain. Completed tasks stay in history below.'
+      : 'No follow-through tasks recorded for this fictional case yet.';
+  const fill = (id, items, labelFn, allowEmpty = false) => {
+    const select = el(id);
+    const prior = select.value;
+    clear(id);
+    if (allowEmpty) { const blank = node('option', '—'); blank.value = ''; select.append(blank); }
+    for (const item of items) {
+      const opt = node('option', labelFn(item));
+      opt.value = item.id; select.append(opt);
+    }
+    if (prior && [...select.options].some(x => x.value === prior)) select.value = prior;
+  };
+  fill('ft-question', active.questions || [], q => 'Q' + q.id + ', ' + q.question.slice(0, 62), true);
+  fill('ft-source', (active.sources || []).filter(s => s.state === 'current'),
+    s => s.document_id + '@' + s.version + ', ' + s.event_date, true);
+  fill('ft-task-choice', tasks, t => 'Task #' + t.id + ' · ' + t.title + ' (' + t.status + ')');
+  renderTaskList('ft-overdue', tasks.filter(t => overdueIds.has(t.id)),
+    'No overdue tasks. An overdue task would appear here until a human records its progress.');
+  renderTaskList('ft-duesoon', tasks.filter(t => dueSoonIds.has(t.id)),
+    'No tasks due within the next 7 days.');
+  renderTaskList('ft-open', tasks.filter(t => ['created', 'assigned', 'acknowledged'].includes(t.status)),
+    'No open tasks in this fictional case.');
+  renderTaskList('ft-deferred', tasks.filter(t => t.status === 'deferred'),
+    'No deferred tasks. A deferral keeps its reason in history.');
+  renderTaskList('ft-completed', tasks.filter(t => t.status === 'completed'),
+    'No completed tasks yet. Completed tasks stay here as history.');
 }
 function renderBibliography(record) {
   clear('bibliography-result');
@@ -1071,15 +1228,18 @@ async function loadModelTemplates() {
 }
 async function loadModelInvestigations() {
   const requested = caseId;
+  const sequence = refreshSequence;
+  const current = () => sequence === refreshSequence && requested === caseId &&
+    active?.case.case_id === requested && renderedCaseId === requested;
   try {
-    const data = await api('/api/cases/' + caseId + '/investigations');
-    if (requested !== caseId) return;
+    const data = await api('/api/cases/' + requested + '/investigations');
+    if (!current()) return;
     clear('model-investigation-list');
     const items = data.investigations || [];
     if (!items.length) { empty(el('model-investigation-list'), 'No model investigations yet.'); return; }
     for (const item of items) {
-      const detail = await api('/api/cases/' + caseId + '/investigations/' + item.id);
-      if (requested !== caseId) return;
+      const detail = await api('/api/cases/' + requested + '/investigations/' + item.id);
+      if (!current()) return;
       const box = node('div', null, 'snapshot');
       const top = node('div', null, 'topline');
       top.append(node('strong', 'Model investigation #' + detail.id),
@@ -1105,7 +1265,7 @@ async function loadModelInvestigations() {
       el('model-investigation-list').append(box);
     }
   } catch (err) {
-    if (requested === caseId) notice(err.message, true);
+    if (current()) notice(err.message, true);
   }
 }
 async function loadChangesSinceReview() {

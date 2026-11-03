@@ -14,6 +14,7 @@ from urllib.parse import parse_qs, urlsplit
 from tools.crossref_metadata import MetadataInputError, fetch_public_doi, project_work
 
 from .changes import changes_since_review
+from .followthrough import followthrough_view
 from .investigation import (
     TEMPLATES,
     InvestigationError,
@@ -24,8 +25,10 @@ from .investigation import (
     validate_output,
 )
 from .mission import build_patient_mission
+from .patient_report import build_patient_report, render_text
 from .store import CaseStore, InvalidInput, MAX_SOURCE_BYTES
 from .timeline import case_timeline
+from .world_model import synthetic_world_model
 
 ROOT = Path(__file__).resolve().parents[2]
 WEB = ROOT / "web"
@@ -104,8 +107,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._static("index.html", "text/html; charset=utf-8")
             if path == "/app.js":
                 return self._static("app.js", "text/javascript; charset=utf-8")
+            if path == "/patient-record.js":
+                return self._static("patient-record.js", "text/javascript; charset=utf-8")
             if path == "/mission.js":
                 return self._static("mission.js", "text/javascript; charset=utf-8")
+            if path == "/report.js":
+                return self._static("report.js", "text/javascript; charset=utf-8")
             if path == "/style.css":
                 return self._static("style.css", "text/css; charset=utf-8")
             if path == "/tokens.css":
@@ -154,6 +161,17 @@ class Handler(BaseHTTPRequestHandler):
             case_mission = re.fullmatch(rf"/api/cases/{ID_PART}/mission", path)
             if case_mission:
                 return self._json(200, build_patient_mission(store.state(case_mission[1])))
+            case_report = re.fullmatch(rf"/api/cases/{ID_PART}/patient-report", path)
+            if case_report:
+                payload = build_patient_report(store.state(case_report[1]))
+                # Screen and download share one read snapshot and one projection.
+                # A later export request may legitimately observe a later event.
+                text = render_text(payload)
+                if parse_qs(urlsplit(self.path).query).get("format", [None])[0] == "text":
+                    return self._send(200, text.encode("utf-8"),
+                                      "text/plain; charset=utf-8")
+                payload["text"] = text
+                return self._json(200, payload)
             changes = re.fullmatch(rf"/api/cases/{ID_PART}/changes-since-review", path)
             if changes:
                 raw_since = parse_qs(urlsplit(self.path).query).get("since_event_id", [None])[0]
@@ -166,6 +184,15 @@ class Handler(BaseHTTPRequestHandler):
             timeline = re.fullmatch(rf"/api/cases/{ID_PART}/timeline", path)
             if timeline:
                 return self._json(200, case_timeline(store, timeline[1]))
+            followthrough = re.fullmatch(rf"/api/cases/{ID_PART}/followthrough", path)
+            if followthrough:
+                return self._json(200, followthrough_view(store, followthrough[1]))
+            # Only fictional source-backed state; NOT a verified clinical PWM.
+            world = re.fullmatch(rf"/api/cases/{ID_PART}/world-model", path)
+            if world:
+                return self._json(200, synthetic_world_model(
+                    store.state(world[1]), world[1]
+                ))
             inv_list = re.fullmatch(rf"/api/cases/{ID_PART}/investigations", path)
             if inv_list:
                 return self._json(200, {"investigations": store.list_investigations(inv_list[1])})
@@ -237,6 +264,27 @@ class Handler(BaseHTTPRequestHandler):
                 questions = re.fullmatch(rf"/api/cases/{ID_PART}/questions", path)
                 if questions:
                     return self._json(201, {"question_id": store.add_question(questions[1], data.get("question"))})
+                followthrough_create = re.fullmatch(rf"/api/cases/{ID_PART}/followthrough-tasks", path)
+                if followthrough_create:
+                    task_id = store.create_followthrough_task(
+                        followthrough_create[1], data.get("title"),
+                        detail=data.get("detail"), due_date=data.get("due_date"),
+                        review_trigger=data.get("review_trigger"),
+                        question_id=data.get("question_id"),
+                        source_version_id=data.get("source_version_id"),
+                        actor_label=data.get("actor_label"), reason=data.get("reason"))
+                    return self._json(201, {"task_id": task_id})
+                followthrough_status = re.fullmatch(
+                    rf"/api/cases/{ID_PART}/followthrough-tasks/([0-9]+)/status", path)
+                if followthrough_status:
+                    kwargs: dict = {}
+                    if "due_date" in data:
+                        kwargs["due_date"] = data.get("due_date")
+                    return self._json(200, store.update_followthrough_task(
+                        followthrough_status[1], int(followthrough_status[2]),
+                        data.get("status"), actor_label=data.get("actor_label"),
+                        reason=data.get("reason"), owner_label=data.get("owner_label"),
+                        **kwargs))
                 evidence_assessment = re.fullmatch(rf"/api/cases/{ID_PART}/evidence-assessments", path)
                 if evidence_assessment:
                     return self._json(201, {"assessment_id": store.assess_synthetic_evidence(
