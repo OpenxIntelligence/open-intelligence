@@ -226,6 +226,26 @@ def exercise_draft_boundaries(cd, patient_id, case_id, second_case_id, question_
 
         select_case(case_id)
         open_review()
+        # A failed World Model read must clear old draft context, but a later
+        # independently authorized Review read must still allow new typing.
+        cd.evaluate("[...document.querySelectorAll('nav button')].find(e=>e.textContent.startsWith('Records')).click()")
+        cd.evaluate("[...document.querySelectorAll('[data-testid=case-row]')].find(e=>e.textContent.includes("
+                    + json.dumps(case_id) + ")).querySelector('[data-testid=load-sources]').click()")
+        cd.wait("document.querySelector('[data-testid=source-index]')?.textContent.includes("
+                + json.dumps(case_id) + ')', 'original source context before failed World Model check')
+        credentials[0]['actions'].remove('source_read')
+        write_grants()
+        cd.evaluate("[...document.querySelectorAll('nav button')].find(e=>e.textContent.startsWith('Journey')).click()")
+        cd.evaluate("[...document.querySelectorAll('.world-cases li')].find(e=>e.textContent.includes("
+                    + json.dumps(case_id) + ")).querySelector('[data-testid=world-load]').click()")
+        cd.wait("document.querySelector('[data-testid=world-status]').textContent.includes('unavailable or revoked')",
+                'terminal World Model denial before independent Review recovery')
+        credentials[0]['actions'].append('source_read')
+        write_grants()
+        open_review()
+        review.reason_value(question_id, 'New fictional reason after independently authorized Review recovery.')
+        assert reason() == 'New fictional reason after independently authorized Review recovery.', \
+            'A fresh authorized review inbox must allow editing after World Model failure'
         case_draft = 'Unsubmitted fictional reason belonging only to the first case.'
         review.reason_value(question_id, case_draft)
         select_case(second_case_id)
