@@ -76,3 +76,5 @@ Existing authoritative engineering traceability remains [EXECUTION_BACKLOG.csv](
 ## Subsequent implementation
 
 The [connected-workflow evidence record](IMPLEMENTATION_EVIDENCE.md) records the subsequent #287 integration, source-reuse manifest and observed failure/repair history. Its linked exact-head verification receipt distinguishes the implemented draft from this initial assessment and from `main`.
+
+The complete runtime at `f7b0f683ab64ba2de7363744b65b8e26528f3138` subsequently passed both hosted workflows: 301 API/PostgreSQL executions, 245 historical reference executions, 170 client tests, production build, real browser journeys and patient/source/review recovery probes. Independent review's three Important client findings and one Minor decoder gap were repaired and re-reviewed. The authored-question/source-inspection/nonterminal-return/fresh-brief path is **fully implemented and tested within its bounded fictional-data contract**. The full patient-centered clinical platform remains partial; this draft has not been merged or deployed. See the separate evidence record for exact runs, preservation checks and remaining recovery/disclosure limits.
