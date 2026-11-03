@@ -6,7 +6,8 @@ No external PACS, patient record, new schema or alternate registry is used.
 
 Preserves the final-preparation regressions from PR #253 against the combined
 canonical source/question/image owner. The source fixture has no inherited test
-methods; this file contributes four actual PostgreSQL/HTTP acceptance methods.
+methods. Encoding and deferred-commit regressions also preserve the completed
+#253 response boundary across the combined owner's image import paths.
 """
 import copy
 from datetime import datetime, timedelta, timezone
@@ -15,6 +16,7 @@ from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import ProxyHandler, Request, build_opener
 
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
@@ -23,13 +25,16 @@ from oi_api.app import create_app
 from http_support import running_server
 from test_patients import TOKEN_A
 from test_source_versions import SourceVersionFixture
-from test_image_custody import REPORT, image_bytes, image_request
+from test_image_custody import AMENDED, REPORT, image_bytes, image_request
 
 
-def read_image_route(base, path):
+def read_image_route(base, path, *, raw=None):
     opener = build_opener(ProxyHandler({}))
+    headers = {"Authorization": "Bearer " + TOKEN_A}
+    if raw is not None:
+        headers["Content-Type"] = "application/dicom"
     try:
-        reply = opener.open(Request(base + path, headers={"Authorization": "Bearer " + TOKEN_A}), timeout=8)
+        reply = opener.open(Request(base + path, headers=headers, data=raw), timeout=8)
     except HTTPError as error:
         reply = error
     with reply:
@@ -69,6 +74,55 @@ class ImageDisclosureAuthorityTests(SourceVersionFixture):
         # The canonical PostgreSQL journal uses JSONB. SQLAlchemy returns its
         # decoded mapping, not JSON text or a serializable SQLAlchemy Row.
         return [(row[0], dict(row[1])) for row in rows]
+
+    def custody_state(self):
+        """Observe durable object/link/event identity, without copying raw bytes."""
+        with self.engine.connect() as connection:
+            objects = connection.execute(text(
+                "SELECT image_id,case_id,sha256,byte_count FROM clinical_source.dicom_objects "
+                "ORDER BY image_id"
+            )).all()
+            links = connection.execute(text(
+                "SELECT source_id,image_id FROM clinical_source.source_image_links "
+                "ORDER BY source_id,image_id"
+            )).all()
+            events = connection.execute(text(
+                "SELECT id,event_type,metadata_json FROM identity.identity_domain_events "
+                "WHERE event_type LIKE 'image.%' ORDER BY id"
+            )).all()
+        return {"objects": [tuple(row) for row in objects],
+                "links": [tuple(row) for row in links],
+                "events": [(row[0], row[1], dict(row[2])) for row in events]}
+
+    def prepare_encoding_operations(self, base, suffix):
+        # Each failure mode has an independently qualified fictional case. A
+        # failing baseline import must not turn another mode's new import into
+        # a duplicate and obscure which response boundary is being exercised.
+        case = "CASE-JSON-" + suffix
+        subject = "SUBJECT-JSON-" + suffix
+        patient = self.setup_case(base, case=case, key="CREATE-JSON-" + suffix,
+                                  source_subject=subject)
+        status, first_source, _ = self.ingest(
+            base, patient, REPORT.replace("CASE-ALPHA", case), case=case)
+        self.assertEqual(status, 201)
+        old_path = self.url(patient, case) + "/" + first_source["source_id"] + "/images"
+        first = image_bytes(patient_id=subject)
+        second = image_bytes(patient_id=subject, sop_uid="2.25.104")
+        for raw in (first, second):
+            self.assertEqual(image_request(base, old_path, raw=raw)[0], 201)
+        status, amended, _ = self.ingest(
+            base, patient, AMENDED.replace("CASE-ALPHA", case), case=case)
+        self.assertEqual(status, 201)
+        path = self.url(patient, case) + "/" + amended["source_id"] + "/images"
+        status, linked, _ = image_request(base, path, raw=first)
+        self.assertEqual((status, linked["result"]), (201, "linked"))
+        return (
+            ("new_object", path, image_bytes(patient_id=subject, sop_uid="2.25.105"),
+             "image_import", "imported"),
+            ("identical_retry", path, first, "image_import", "duplicate"),
+            ("explicit_relink", path, second, "image_import", "linked"),
+            ("index", path, None, "image_read", None),
+        )
 
     def assert_withheld(self, result, status, before):
         self.assertEqual(result[0], status)
@@ -180,3 +234,105 @@ class ImageDisclosureAuthorityTests(SourceVersionFixture):
                     prepared.assert_called_once()
                     self.assert_withheld(result, 503, before)
             self.write()
+
+    def test_json_encoding_finishes_before_authority_recheck(self):
+        # Patch the actual response class, not a route-module alias that the
+        # unfixed owner does not yet have. This observes real JSON encoding on
+        # both implementations, so red evidence is disclosure/rollback failure.
+        original_render = JSONResponse.render
+        with running_server(create_app(self.settings)) as base:
+            for mode, status in (("WITHDRAW", 404), ("FAIL", 503)):
+                operations = self.prepare_encoding_operations(base, mode)
+                initial = copy.deepcopy(self.creds)
+                for name, path, raw, action, expected_result in operations:
+                    with self.subTest(mode=mode, operation=name):
+                        before = self.custody_state()
+                        reads_before = self.read_events()
+                        rendered = []
+
+                        def after_encoding(response, content):
+                            encoded = original_render(response, content)
+                            if isinstance(content, dict) and (
+                                    "images" in content or
+                                    {"image_id", "result"} <= content.keys()):
+                                rendered.append(encoded)
+                                if mode == "FAIL":
+                                    raise RuntimeError("PRIVATE-IMAGE-PREPARE")
+                                self.creds[0]["actions"].remove(action)
+                                self.write()
+                            return encoded
+
+                        try:
+                            with patch.object(JSONResponse, "render", after_encoding):
+                                result = read_image_route(base, path, raw=raw)
+                        finally:
+                            self.creds = copy.deepcopy(initial)
+                            self.write()
+                        self.assertEqual(len(rendered), 1)
+                        envelope = json.loads(rendered[0])
+                        if name == "index":
+                            self.assertTrue(envelope["images"])
+                        else:
+                            self.assertEqual(envelope["result"], expected_result)
+                        self.assert_withheld(result, status, reads_before)
+                        if mode == "FAIL":
+                            self.assertEqual(result[1], {"detail": "Patient registry unavailable"})
+                        self.assertEqual(self.custody_state(), before)
+
+    def test_deferred_database_commit_failure_withholds_already_prepared_response(self):
+        with running_server(create_app(self.settings)) as base:
+            _, path, image_id, raw = self.prepare(base)
+            with self.engine.begin() as connection:
+                connection.exec_driver_sql("""
+                    CREATE FUNCTION identity.fail_image_disclosure_commit() RETURNS trigger
+                    LANGUAGE plpgsql AS $$ BEGIN
+                    IF NEW.event_type IN ('image.read_authorized','image.original_read_authorized') THEN
+                        RAISE EXCEPTION 'PRIVATE-IMAGE-PREPARE';
+                    END IF;
+                    RETURN NEW; END; $$;
+                """)
+                connection.exec_driver_sql("""
+                    CREATE CONSTRAINT TRIGGER reject_image_disclosure_commit
+                    AFTER INSERT ON identity.identity_domain_events
+                    DEFERRABLE INITIALLY DEFERRED
+                    FOR EACH ROW EXECUTE FUNCTION identity.fail_image_disclosure_commit()
+                """)
+            try:
+                for kind, url in (("index", path), ("binary", path + "/" + image_id)):
+                    with self.subTest(kind=kind):
+                        before = self.custody_state()
+                        reads_before = self.read_events()
+                        prepared = []
+                        original_render = JSONResponse.render
+
+                        def observe_encoding(response, content):
+                            encoded = original_render(response, content)
+                            if isinstance(content, dict) and "images" in content:
+                                prepared.append(encoded)
+                            return encoded
+
+                        observer = (
+                            patch.object(JSONResponse, "render", observe_encoding)
+                            if kind == "index" else
+                            self.observe_preparation(kind, lambda: prepared.append(True))
+                        )
+                        with observer:
+                            result = read_image_route(base, url)
+                        self.assertEqual(len(prepared), 1)
+                        if kind == "index":
+                            self.assertTrue(json.loads(prepared[0])["images"])
+                        self.assert_withheld(result, 503, reads_before)
+                        self.assertEqual(result[1], {"detail": "Patient registry unavailable"})
+                        self.assertEqual(self.custody_state(), before)
+            finally:
+                # Runs before SourceVersionFixture.tearDown drops the identity
+                # schema. An addCleanup callback would run after tearDown.
+                with self.engine.begin() as connection:
+                    connection.exec_driver_sql(
+                        "DROP TRIGGER IF EXISTS reject_image_disclosure_commit "
+                        "ON identity.identity_domain_events")
+                    connection.exec_driver_sql(
+                        "DROP FUNCTION IF EXISTS identity.fail_image_disclosure_commit()")
+            # A failed commit must not poison a subsequent legitimate request.
+            self.assertEqual(read_image_route(base, path)[0], 200)
+            self.assertEqual(read_image_route(base, path + "/" + image_id)[:2], (200, raw))
