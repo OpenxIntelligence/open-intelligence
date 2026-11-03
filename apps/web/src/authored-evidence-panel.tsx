@@ -69,9 +69,9 @@ export function AuthoredEvidencePanel({session,state,busy}:{session:RegistrySess
   {retainedDraft&&(retainedDraft.dirty||!currentDraft)&&state.connected&&retainedDraft.patient_id===state.patient?.patient_id&&
    <section className="evidence-write-status" data-testid="evidence-draft-status" aria-label="Unfinished evidence comparison">
     <p role="status" aria-live="polite">{uncertain
-     ?'Submission outcome is unknown. This comparison may already have been saved. Recover its exact receipt before editing or discarding it.'
+     ?'An evidence submission has an unknown outcome. Recover its exact receipt before editing or discarding this comparison.'
      :state.evidenceWritePhase==='saving'
-      ?'Submission is in progress. Keep this comparison unchanged until its result is confirmed.'
+      ?'An evidence submission is in progress. Keep this comparison unchanged until its result is confirmed.'
       :state.evidenceDraftMessage}</p>
     <p>This working copy is kept only in the current browser session. A submission is not confirmed until its receipt is verified. Its quotation and rationale appear only after a fresh matching access check.</p>
     {!currentDraft&&<button type="button" data-testid="evidence-draft-resume"

@@ -20,12 +20,16 @@ The independent review found no Critical or Important defect and one Minor copy 
 
 - [x] Reconcile the complete #363 tree and confirm production equivalence to the reviewed integration.
 - [x] Reproduce the inaccurate draft message using the real session, an unrelated lost import response, and the rendered composed panel.
-- [ ] Correct the pending/unknown message without changing save, disclosure or retry behavior.
-- [ ] Retain the two combined regressions for contradictory 201/200 receipts, invalid assessment chronology, exact retry and report access after a valid refresh.
-- [ ] Preserve `docs/research/PATIENT_JOURNEY_CAPABILITY_CROSSWALK_2026-11-03.md` byte-for-byte from #360 `f200dd107871d89703267ee0d1a14b2d1ca64d36`.
-- [ ] Run the complete compiled client suite, dependency gate, production build and protected-file comparison.
+- [x] Correct the pending/unknown message without changing save, disclosure or retry behavior.
+- [x] Retain the two combined regressions for contradictory 201/200 receipts, invalid assessment chronology, exact retry and report access after a valid refresh.
+- [x] Preserve `docs/research/PATIENT_JOURNEY_CAPABILITY_CROSSWALK_2026-11-03.md` byte-for-byte from #360 `f200dd107871d89703267ee0d1a14b2d1ca64d36`.
+- [x] Run the complete compiled client suite, dependency gate, production build and protected-file comparison.
 - [ ] Publish an isolated draft targeting #363; inspect the exact-head hosted PostgreSQL/FastAPI/built-React/Chromium journey and record its receipt in the PR body.
 
 ## Boundaries
 
 Preserve existing branches and all #363 backend, migration, package/lock, chronology, dependency-gate and browser-journey code. Independently authored fictional inputs only. No merge, deployment, external messages or clinical approval. The hosted web journey is separate from standalone full API or backup/restore acceptance. Ancestor run results do not substitute for the new head's acceptance.
+
+## Local checkpoint
+
+The rendered import regression fails on exact #363 code with the inaccurate comparison-save claim; the other four rendered controls pass. With the two-line wording correction, all 375 compiled client tests and 13 filesystem dependency-gate tests pass, zero failures/skips/cancellations. The installed gate inspects 18 artifacts, explicitly leaves two optional artifacts uninspected, and reports no errors. TypeScript/Vite production build passes. The full base-to-candidate change is limited to the six paths above, including this plan. Exact-head hosted acceptance remains pending publication; record the actual result in the draft PR without a follow-up documentation-only source commit.

@@ -73,7 +73,7 @@ for(const phase of ['saving','unknown']){
    const draft=html.match(/<section[^>]*data-testid="evidence-draft-status"[\s\S]*?<\/section>/)?.[0];
    assert.ok(draft,'the original comparison remains available for exact recovery');
    assert.doesNotMatch(draft,/not saved as an assessment|restored after a fresh matching/);
-   assert.match(draft,phase==='unknown'?/may already have been saved/:/Submission is in progress/);
+   assert.match(draft,phase==='unknown'?/An evidence submission has an unknown outcome/:/An evidence submission is in progress/);
    assert.match(draft,/data-testid="evidence-draft-discard"[^>]*disabled/);
   }finally{
    release(response({assessment_id:assessmentId,question_id:questionId,duplicate:false},201));await saving;
