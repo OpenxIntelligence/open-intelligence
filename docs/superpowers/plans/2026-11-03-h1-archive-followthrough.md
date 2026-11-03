@@ -41,7 +41,7 @@ image retrieval; `reader.read(study_uid, series_uid, sop_uid)` returns exact byt
 
 - [x] Run bounded archive behavioral tests against the base and record the missing seam.
 - [x] Port the runtime seam without replacing richer route registrations.
-- [ ] Prove archived reads, no fallback, amendment/relink, immutable task/citation
+- [x] Prove archived reads, no fallback, amendment/relink, immutable task/citation
   history, independent grants and revoked metadata with the populated HTTP case.
 - [x] Run meaningful local regressions; distinguish unavailable PG tests.
 
@@ -59,9 +59,9 @@ Owner: recovery agent, only `apps/api/tools/verify_images_compose.py` and
 
 Owner: primary agent, with an independent reviewer.
 
-- [ ] Review diff against both exact owners; verify migration and dependency files
+- [x] Review diff against both exact owners; verify migration and dependency files
   remain unchanged and preserve all five recovery gates.
-- [ ] Publish an isolated draft PR against #313 after local verification and review.
+- [x] Publish an isolated draft PR against #313 after local verification and review.
 - [ ] Inspect exact-head API, PostgreSQL, browser and recovery job logs; resolve
   failures and rerun required gates before claiming success.
 - [ ] Update existing roadmap, contracts and engineering progress with exact

@@ -1368,10 +1368,30 @@ finally:
             for owner in archive_state.keys() - {"events"}:
                 assert after_archive[owner] == archive_state[owner], "Archive recovery changed durable " + owner
             assert after_archive["events"][:len(archive_state["events"])] == archive_state["events"]
-            assert all(row["event_type"] in {
+            added = after_archive["events"][len(archive_state["events"]):]
+            unexpected = {row["event_type"] for row in added} - {
                 "source.read_authorized", "image.read_authorized", "image.original_read_authorized",
-            } for row in after_archive["events"][len(archive_state["events"]):]), \
-                "Archive recovery added non-read business history"
+                "evidence.links.read_authorized", "evidence.metadata.searched",
+            }
+            assert not unexpected, "Archive recovery added non-read business history: " + repr(sorted(unexpected))
+            # Five citation-list passes and four restricted searches above
+            # append their existing read/search audits, never citation writes.
+            link_reads = [row for row in added if row["event_type"] == "evidence.links.read_authorized"]
+            assert len(link_reads) == 5 * len(evidence_intents), "Archive recovery changed citation read accounting"
+            for question_id in evidence_intents:
+                question_reads = [row for row in link_reads if row["metadata_json"]["question_id"] == question_id]
+                assert len(question_reads) == 5
+                assert all(row["patient_id"] == patient and row["metadata_json"] == {
+                    "question_id": question_id, "case_id": CASE,
+                    "actor": credential["actor"], "link_count": 1,
+                } for row in question_reads), "Archive recovery changed citation read provenance"
+            searches = [row for row in added if row["event_type"] == "evidence.metadata.searched"]
+            assert len(searches) == 4, "Archive recovery changed restricted metadata search accounting"
+            assert all(row["patient_id"] == patient and row["metadata_json"] == {
+                "question_id": question_two, "case_id": CASE, "actor": credential["actor"],
+                "query_sha256": hashlib.sha256(b"continuity").hexdigest(),
+                "result_count": 0, "result_manifest_sha256": hashlib.sha256(b"[]").hexdigest(),
+            } for row in searches), "Archive recovery disclosed restricted metadata or changed search provenance"
             assert snapshot(source_database) == source_database_snapshot, "Archive checks mutated the source database"
             print("Restored archive HTTP preserved exact originals and immutable question/return/task/citation history; "
                   "changed/missing objects refused without fallback; grants, restricted metadata and API/DB restarts passed")

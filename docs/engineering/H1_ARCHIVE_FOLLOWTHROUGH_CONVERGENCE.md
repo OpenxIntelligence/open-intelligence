@@ -65,11 +65,32 @@ Local verification on the implementation tree:
 | Known patient-case acquisition entrypoint scan | Passed within the scanner's bounded coverage |
 | Recovery helper syntax and whitespace checks | Passed; not Docker acceptance |
 
-PostgreSQL and Docker are unavailable in the local runtime. Hosted verification
-must run the exact proposed commit with zero skipped API tests, actual browser
-acceptance and all five existing recovery probes. Local skips are not acceptance.
-The draft PR and canonical Roadmap hold the resulting commit/run receipts; no
-hosted result is claimed in this pre-publication ledger.
+PostgreSQL and Docker are unavailable in the local runtime. Local skips are not
+acceptance. The first published head, `ae550ed9272dcd0414b9c44042deb26ff659f669`,
+ran 485 API/PostgreSQL tests and 282 reference tests with zero skips in
+[API run 41668206903](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41668206903).
+All 17 archive HTTP methods passed. Patient and source Compose recovery passed.
+The combined image/archive gate reached restored originals, history, refusal and
+restart checks, then failed the newly added audit-event allowlist. Final revoked
+restore, review recovery and follow-through recovery were not completed in that
+attempt. This partial result does not establish complete recovery acceptance.
+
+The helper had omitted the existing `evidence.links.read_authorized` and
+`evidence.metadata.searched` events produced by its citation-list and restricted
+search requests. The correction retains all owner-table equality and append-only
+event-prefix checks, admits only those two additional read/search event kinds,
+and verifies exact counts and provenance: five reads per historical/current
+question and four empty restricted searches. No application behavior changes.
+
+[Web run 41668206671](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41668206671)
+passed 219 client tests, the production build and PostgreSQL-backed Chromium
+journeys at that first head. Its source artifact was checked against all 399 Git
+blobs and the lockfile. These results belong to that head, not the correction.
+
+The corrected commit requires all API, browser and five Compose gates again.
+Current commit/run receipts, including this failed attempt, are maintained in
+[draft PR #332](https://github.com/OpenxIntelligence/open-intelligence/pull/332)
+and the canonical Roadmap and Engineering Progress records.
 
 ## Boundaries and next owners
 
