@@ -65,6 +65,14 @@ jobs:
           python apps/api/tools/check_dependencies.py --wheel-dir /tmp/oi-h1-wheels --sbom /tmp/oi-h1-sbom.json
           python -m pip install --no-index --find-links /tmp/oi-h1-wheels --require-hashes -r apps/api/requirements.lock
           python -m pip check
+      - name: Verify source-question quote packet with actual PostgreSQL 16
+        shell: bash
+        env:
+          OI_API_RUN_DATABASE_TESTS: '1'
+          OI_API_TEST_DATABASE_URL: postgresql+pg8000://oi_api:oi_h1_synthetic_only@127.0.0.1:5432/oi_api_test_web
+        run: |
+          set -o pipefail
+          python -m unittest discover -s apps/api/tests -p test_question_source_review_packet.py -v 2>&1 | tee verification-web/source-review-packet-postgres.txt
       - name: Actual PostgreSQL API and built React browser journey
         shell: bash
         run: |
