@@ -10,10 +10,10 @@ export function SourceQuestionPanel({state,session,busy}:{state:ViewState;sessio
        aria-labelledby="composer-context-heading">
      <span className="step">SOURCE CONTEXT · NO MODEL EXECUTION</span>
      <h3 id="composer-context-heading">Prepared source context</h3>
-     <p><strong>Source-linked question:</strong>
+     <p><strong>Source-linked question:</strong>{' '}
        {state.composerPreview.question}</p>
      <blockquote>{state.composerPreview.selected_source.statement}</blockquote>
-     <p><strong>Exact original:</strong>
+     <p><strong>Exact original:</strong>{' '}
        <code>{state.composerPreview.selected_source.source_id}</code>,
        line {state.composerPreview.selected_source.line},
        version {state.composerPreview.selected_source.version}.</p>
@@ -38,7 +38,7 @@ export function SourceQuestionPanel({state,session,busy}:{state:ViewState;sessio
        data-testid="question-save-status" role="status" aria-live="polite">
        {state.questionSaveMessage}</p>
      {state.savedQuestion&&<p className="question-receipt" data-testid="saved-source-question">
-       <strong>{state.savedQuestion.duplicate?'Existing question recovered':'Question saved'}:</strong>
+       <strong>{state.savedQuestion.duplicate?'Existing question recovered':'Question saved'}:</strong>{' '}
        <code>{state.savedQuestion.question_id}</code>. This does not submit
        or approve a clinician review.</p>}
    </section>}
