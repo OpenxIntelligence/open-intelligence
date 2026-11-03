@@ -34,7 +34,37 @@ REPORT_PROBE = r"""
   const originalFetch = window.fetch.bind(window);
   window.__oiReportProbe = {latest: {}, responses: [], holdCase: null, held: null,
                             failCase: null, released: false, printCalls: 0,
-                            holdEvidenceWrite: false, heldEvidenceWrite: null};
+                            holdEvidenceWrite: false, heldEvidenceWrite: null,
+                            objectURLs: new Map(), diagnostics: []};
+  // Inspect the exact Blob without fetching its URL. A test fetch would add
+  // a connect-src requirement that the application's download link does not
+  // need. Native creation/revocation still run, and revocation stays observable.
+  const createObjectURL = URL.createObjectURL.bind(URL);
+  const revokeObjectURL = URL.revokeObjectURL.bind(URL);
+  URL.createObjectURL = blob => {
+    const url = createObjectURL(blob);
+    window.__oiReportProbe.objectURLs.set(url, {blob, revoked: false});
+    return url;
+  };
+  URL.revokeObjectURL = url => {
+    const entry = window.__oiReportProbe.objectURLs.get(String(url));
+    if (entry) entry.revoked = true;
+    return revokeObjectURL(url);
+  };
+  const diagnostic = entry => {
+    const entries = window.__oiReportProbe.diagnostics;
+    if (entries.length < 100) entries.push(entry);
+  };
+  window.addEventListener('error', event => diagnostic({
+    kind: 'error', message: event.message, filename: event.filename, line: event.lineno,
+  }));
+  window.addEventListener('unhandledrejection', event => diagnostic({
+    kind: 'unhandledrejection', message: String(event.reason),
+  }));
+  document.addEventListener('securitypolicyviolation', event => diagnostic({
+    kind: 'securitypolicyviolation', directive: event.effectiveDirective,
+    blockedURI: event.blockedURI, disposition: event.disposition,
+  }));
   window.fetch = async (...args) => {
     const target = String(args[0]);
     const probe = window.__oiReportProbe;
@@ -125,9 +155,13 @@ def task_transition(session: ChromeSession, status: str, reason: str, owner: str
 
 def download_report(session: ChromeSession, directory: Path, case_id: str) -> str:
     report_ready(session, case_id)
-    expected = session.evaluate(
-        "fetch(document.querySelector('#report-text-link').href).then(r => r.text())"
-    )
+    expected = session.evaluate("""(() => {
+      const url = document.querySelector('#report-text-link').href;
+      const entry = window.__oiReportProbe.objectURLs.get(url);
+      if (!entry) throw new Error('Current report download has no captured Blob');
+      if (entry.revoked) throw new Error('Current report download points to a revoked Blob URL');
+      return entry.blob.text();
+    })()""")
     assert isinstance(expected, str) and expected, "accepted response omitted report text"
     # Identify the exact received payload behind the bound Blob. A stale
     # response may arrive last; arrival order is not an acceptance signal.
@@ -154,6 +188,43 @@ def download_report(session: ChromeSession, directory: Path, case_id: str) -> st
     downloaded = target.read_text()
     assert downloaded == expected, "download did not match the accepted displayed report snapshot"
     return downloaded
+
+
+def capture_failure(session: ChromeSession, error: Exception) -> None:
+    """Keep bounded synthetic-browser evidence without hiding the real failure."""
+    diagnostics = {"error": str(error)}
+    try:
+        diagnostics["browser"] = session.evaluate("""(() => {
+          const probe = window.__oiReportProbe;
+          const field = id => document.getElementById(id);
+          const href = field('report-text-link')?.getAttribute('href');
+          const entry = probe?.objectURLs.get(href);
+          return {
+            selectedCase: field('case-picker')?.value,
+            reportCase: field('patient-report')?.dataset.caseId,
+            reportStatus: field('report-meta')?.textContent,
+            notice: field('notice')?.textContent,
+            printDisabled: field('report-print')?.disabled,
+            refreshDisabled: field('report-refresh')?.disabled,
+            downloadPresent: Boolean(href),
+            downloadBlobTracked: Boolean(entry),
+            downloadBlobRevoked: entry?.revoked,
+            reportResponses: probe?.responses.map(item => ({
+              caseId: item.caseId, eventId: item.payload.as_of?.event_id,
+            })),
+            diagnostics: probe?.diagnostics,
+          };
+        })()""")
+    except Exception as diagnostic_error:
+        diagnostics["diagnostic_error"] = str(diagnostic_error)
+    try:
+        png = session.command("Page.captureScreenshot", {"format": "png"})["data"]
+        (ARTIFACTS / "patient-report-followthrough-failure.png").write_bytes(base64.b64decode(png))
+    except Exception as screenshot_error:
+        diagnostics["screenshot_error"] = str(screenshot_error)
+    (ARTIFACTS / "patient-report-followthrough-failure.json").write_text(
+        json.dumps(diagnostics, indent=2) + "\n"
+    )
 
 
 def main() -> None:
@@ -402,6 +473,10 @@ def main() -> None:
             report_ready(session, "CASE-ALPHA", TASK_TITLE)
             assert download_report(session, downloads, "CASE-ALPHA") == completed
             print(f"PASS: report/follow-through browser journey ({version}); actual downloads, scoped print, source amendment, history, stale/failed reads, and global-write blocking verified")
+        except Exception as error:
+            if session is not None:
+                capture_failure(session, error)
+            raise
         finally:
             if session is not None:
                 session.close()
