@@ -151,6 +151,27 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
         value('[data-testid=evidence-relation]', relation)
         value('[data-testid=evidence-applicability]', 'limited')
         value('[data-testid=evidence-rationale]', rationale)
+        # Editing is local. An unchanged fresh read must retain the exact draft,
+        # and leaving the component must not silently discard it.
+        post_count = len([r for r in responses() if r['method'] == 'POST'])
+        prior = len(responses())
+        click('[data-testid=evidence-refresh]')
+        cd.wait('window.__oiEvidenceChecks.responses.length>' + str(prior)
+                + " && document.querySelector('[data-testid=evidence-rationale]')?.value==="
+                + json.dumps(rationale), 'unchanged access recheck preserves comparison draft')
+        assert cd.evaluate("document.querySelector('[data-testid=evidence-quote]').value") == quote
+        navigate('Overview')
+        assert cd.evaluate("!document.querySelector('[data-testid=evidence-rationale]')")
+        navigate('Investigations')
+        cd.wait("Boolean(document.querySelector('[data-testid=evidence-draft-resume]'))",
+                'unfinished draft offers explicit reauthorization after navigation')
+        click('[data-testid=evidence-draft-resume]')
+        cd.wait("document.querySelector('[data-testid=evidence-rationale]')?.value==="
+                + json.dumps(rationale), 'matching question restores comparison inputs')
+        assert cd.evaluate("document.querySelector('[data-testid=evidence-quote]').value") == quote
+        assert cd.evaluate("document.querySelector('[data-testid=evidence-relation]').value") == relation
+        assert cd.evaluate("document.querySelector('[data-testid=evidence-applicability]').value") == 'limited'
+        assert len([r for r in responses() if r['method'] == 'POST']) == post_count
         before = len(responses())
         if lose_response:
             cd.evaluate('window.__oiEvidenceChecks.loseAssessment=true')
