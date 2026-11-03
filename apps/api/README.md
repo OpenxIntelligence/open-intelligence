@@ -533,7 +533,7 @@ single frame, 16-bit MONOCHROME2. The parser validates file framing, lengths,
 unique ordered tags, file-meta identity, identifiers, date and pixel geometry
 before using the typed parser; it performs no pixel decoding or clinical
 interpretation. Unsupported syntax, sequences and malformed input fail closed.
-Maximum input is 2 MiB, with 256 originals/64 MiB per case and no archives.
+Maximum input is 2 MiB, with 256 originals/64 MiB per case and no bundled-file imports.
 These are development limits, not a claim of general CT-study ingestion.
 
 Read receipts contain opaque IDs, hashes and counts, not raw image identifiers,
@@ -564,6 +564,39 @@ imports at 200 and new objects/links at 201. The existing image
 custody, migration, bounded parser and HTTP ingress tests remain separate.
 See the [implementation record](../../docs/superpowers/plans/2026-11-03-h1-image-custody.md)
 for scope, alternatives and remaining boundaries.
+
+### Archive reads with the existing evidence-report workspace
+
+The archive continuation extends the verified #327 image/report owner with #331's
+optional trusted `image_archive` argument to `create_app`. Only original-image
+retrieval uses that reader. Metadata lists remain local, and the archive receives
+only the stored Study/Series/SOP identifiers after source/authority preflight.
+Owner locks are released during I/O; a new transaction revalidates current
+binding, source and exact bytes, prepares the complete response, refreshes
+authority and commits its receipt. Archive failure withholds the original without
+falling back to intact local bytes. No URL override, environment activation,
+dependency, schema, permission or public API field is introduced.
+
+The same patient, source and question keep their citation, verification return,
+task, authored comparison and immutable report. Image access does not grant
+authored-content or report access, and content withdrawal does not itself revoke
+independently permitted image or metadata reads. Amendment and explicit image
+relinking do not rewrite old report bodies, hashes, preparation times or source
+snapshots. Fresh report status and current content rights continue to govern
+disclosure through the existing report owner.
+
+All six recovery probes remain required. The combined image probe additionally
+recreates the API serving an actually restored database with a bounded file
+archive. Its original files and fixture module are read-only mounts; only a
+synthetic identifier trace is writable. The default API image has no fixture or
+archive activation setting. Report-aware recovery must preserve complete business
+rows and sequences, prior events and exact retries, and account for only the
+expected read receipts in the restored copy. Missing/changed archive objects,
+independent grants, content withholding and revoked bindings remain separate
+acceptance conditions. Exact combined verification belongs to this continuation's
+PR and the [existing evidence continuity record](../../docs/engineering/H1_EVIDENCE_CONTINUITY.md).
+This controlled file fixture does not qualify live PACS or an external archive's
+backup, and it adds no model execution or clinical interpretation.
 
 ## Run without containers
 

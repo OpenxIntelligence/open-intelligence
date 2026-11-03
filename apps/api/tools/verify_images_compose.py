@@ -8,6 +8,9 @@ All populated domains are reopened through the API after real pg_restore.
 Metadata uses the existing independently fictional catalog and rights owner.
 Authored comparisons and frozen reports use their separate content/rights owner.
 Tasks and verification returns are operational records, without clinical approval.
+The restored API uses the explicitly injected, bounded file archive from #331.
+Archive calls, no fallback and shared history are verified; no live PACS or
+external-archive backup qualification is claimed.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -76,6 +79,7 @@ AUTHORED_ORIGINAL = (
     "Statement: A fictional custody preserves original image bytes; this engineering "
     "example provides no clinical or scientific validation.\n"
 )
+AUTHORED_WITHDRAWAL_REASON = "Withdraw this independently fictional comparison family for recovery verification."
 AUTHORED_TABLES = (
     "case_evidence_versions", "case_evidence_withdrawals", "question_evidence_assessments",
     "question_evidence_reports", "evidence_commands", "evidence_command_origins",
@@ -88,11 +92,11 @@ def verify_authored_command_origins(commands, origins, intents, *, patient_id, c
                                    organization, actor, purpose):
     """Bind each frozen comparison/report to its exact recorded command.
 
-    Imports have durable commands but no question-object origin. The published
-    origin owner covers assessments and reports only; require that exact set.
+    Imports and withdrawals have durable commands but no question-object origin.
+    The published origin owner covers assessments and reports only; require that exact set.
     """
     operations = {"authored_evidence_import": "import", "authored_evidence_assess": "assess",
-                  "evidence_report_export": "report"}
+                  "evidence_report_export": "report", "authored_evidence_withdraw": "withdraw"}
     expected, expected_origins = {}, {}
     for _, payload, receipt, action in intents:
         operation = operations[action]
@@ -163,7 +167,8 @@ def main():
         task_actions = ["followthrough_create", "followthrough_read", "followthrough_update"]
         evidence_actions = ["evidence_read", "evidence_link"]
         authored_actions = ["authored_evidence_read", "authored_evidence_import",
-                            "authored_evidence_assess", "evidence_report_export"]
+                            "authored_evidence_assess", "authored_evidence_original_read",
+                            "authored_evidence_withdraw", "evidence_report_export"]
         actions = image_actions + question_actions + review_actions + task_actions + evidence_actions + authored_actions
         credential = {
             "token_sha256": hashlib.sha256(token.encode()).hexdigest(),
@@ -185,11 +190,66 @@ def main():
         evidence_metadata = None
         metadata_rights_revoked = False
         authored_evidence = None
+        authored_withdrawal = None
         authored_intents = []
         expected_reports = {}
+        authored_report_receipts = {}
         complete_snapshot_sql = None
         source_access_receipts = set()
         active_database = "oi_api_synthetic"
+        archive_enabled = False
+        archive_directory = access / "archive-originals"
+        archive_calls = access / "archive-calls.jsonl"
+
+        def archive_history():
+            if not archive_calls.exists():
+                return []
+            raw = archive_calls.read_bytes()
+            assert len(raw) <= 100_000, "Acceptance archive trace exceeded its bound"
+            rows = [json.loads(line) for line in raw.decode("utf-8").splitlines()]
+            for row in rows:
+                assert set(row) == {"study_uid", "series_uid", "sop_uid"}
+                assert (row["study_uid"], row["series_uid"]) == (STUDY, SERIES)
+                assert row["sop_uid"] in SOPS, "Archive received noncanonical identifiers"
+            return rows
+
+        def use_archive_fixture():
+            nonlocal archive_enabled
+            archive_directory.mkdir()
+            archive_directory.chmod(0o755)
+            entries = []
+            for index, (sop, raw) in enumerate(zip(SOPS, originals)):
+                filename = f"{index:02}.dcm"
+                path = archive_directory / filename
+                path.write_bytes(raw)
+                path.chmod(0o644)
+                entries.append({"study_uid": STUDY, "series_uid": SERIES,
+                                "sop_uid": sop, "filename": filename})
+            manifest = archive_directory / "manifest.json"
+            manifest.write_text(json.dumps({"contract": "oi.synthetic-archive-acceptance/1",
+                                            "independently_authored": True, "objects": entries}))
+            manifest.chmod(0o644)
+            archive_calls.write_text("")
+            # The container's unprivileged UID may append this synthetic trace
+            # only. The fixture module and original objects are separate RO binds.
+            archive_calls.chmod(0o666)
+            override = access / "archive-api.compose.json"
+            override.write_text(json.dumps({"services": {"api": {
+                "command": ["python", "-m", "uvicorn",
+                            "archive_acceptance_app:create_acceptance_app", "--factory",
+                            "--host", "0.0.0.0", "--port", "8000", "--no-access-log",
+                            "--no-proxy-headers"],
+                "volumes": [
+                    {"type": "bind", "source": str(ROOT / "apps/api/tools/archive_acceptance_app.py"),
+                     "target": "/app/archive_acceptance_app.py", "read_only": True},
+                    {"type": "bind", "source": str(archive_directory),
+                     "target": "/run/oi-acceptance-archive", "read_only": True},
+                    {"type": "bind", "source": str(archive_calls),
+                     "target": "/run/oi-acceptance-archive-calls.jsonl", "read_only": False},
+                ],
+            }}}))
+            compose.extend(("--file", str(override)))
+            archive_enabled = True
 
         def save_access():
             pending = access / "access.new"
@@ -653,18 +713,41 @@ def main():
                 assert value["model_executed"] is value["clinical_approval"] is False
                 assert value["human_review_state"] == "not_performed"
                 remember_source_access(value)
-                current = expected_questions[question_id]["source_context_state"] == "current_unreviewed_question"
-                assert value["state"] == ("current_unreviewed" if current else "historical_reassessment_required")
                 frozen = {key: value[key] for key in ("report_id", "question_id", "body", "body_sha256",
                                                       "snapshot", "snapshot_sha256", "prepared_at")}
-                assert hashlib.sha256(value["body"].encode("utf-8")).hexdigest() == value["body_sha256"]
-                assert AUTHORED_QUOTE in value["body"]
-                assert value["snapshot"]["question"]["question_id"] == question_id
-                if "frozen" not in saved:
-                    saved["frozen"] = frozen
-                assert frozen == saved["frozen"], "Image activity, restart or restore changed the frozen report"
+                if authored_withdrawal is not None:
+                    assert value["state"] == "content_withheld"
+                    assert value["body"] is value["snapshot"] is None
+                    assert frozen == {**saved["frozen"], "body": None, "snapshot": None}, \
+                        "Withholding changed report identity, preparation time or frozen content digests"
+                    assert AUTHORED_QUOTE not in json.dumps(value), "Withdrawn report disclosed its quotation"
+                else:
+                    current = expected_questions[question_id]["source_context_state"] == "current_unreviewed_question"
+                    assert value["state"] == ("current_unreviewed" if current else "historical_reassessment_required")
+                    assert hashlib.sha256(value["body"].encode("utf-8")).hexdigest() == value["body_sha256"]
+                    assert AUTHORED_QUOTE in value["body"]
+                    assert value["snapshot"]["question"]["question_id"] == question_id
+                    if "frozen" not in saved:
+                        saved["frozen"] = frozen
+                    assert frozen == saved["frozen"], "Image activity, restart or restore changed the frozen report"
+                authored_report_receipts[value["access_receipt_id"]] = question_id
                 responses[question_id] = value
             return responses
+
+        def read_authored_original(question_id):
+            path = authored_path(question_id, "/evidence/" + authored_evidence["evidence_id"] + "/original")
+            before = snapshot()
+            calls_before = archive_history()
+            status, value, _ = request(path)
+            if authored_withdrawal is not None:
+                assert status == 404 and set(value) == {"detail"}
+                assert snapshot() == before, "Withdrawn authored original changed durable history"
+            else:
+                assert status == 200 and value["contract"] == "oi.h1-evidence-original/1"
+                assert value["original_text"] == AUTHORED_ORIGINAL
+                assert value["sha256"] == hashlib.sha256(AUTHORED_ORIGINAL.encode()).hexdigest()
+                remember_source_access(value)
+            assert archive_history() == calls_before, "Authored evidence read invoked the image archive"
 
         def retry_authored_reports():
             before = snapshot()
@@ -693,6 +776,8 @@ def main():
             for question_id, saved in expected_reports.items():
                 operations.extend((
                     ({"authored_evidence_read"}, authored_path(question_id, "/evidence"), None),
+                    ({"authored_evidence_read", "authored_evidence_original_read"},
+                     authored_path(question_id, "/evidence/" + authored_evidence["evidence_id"] + "/original"), None),
                     ({"authored_evidence_read", "evidence_report_export"},
                      authored_path(question_id, "/evidence-reports/" + saved["report_id"]), None),
                 ))
@@ -817,6 +902,7 @@ finally:
                 image_ids.append(value["image_id"])
 
         def read_images(source_id):
+            calls_before = archive_history()
             status, value, _ = request(collection(source_id))
             assert status == 200, "Image index unavailable"
             assert set(value) == {"patient_id", "case_id", "source_id", "images",
@@ -829,16 +915,25 @@ finally:
             assert set(by_id) == set(image_ids)
             for index, image_id in enumerate(image_ids):
                 metadata(by_id[image_id], source_id, index)
+            assert archive_history() == calls_before, "Image index invoked the original archive"
 
         def read_originals(source_id):
+            before = archive_history()
+            receipts = []
             for index, image_id in enumerate(image_ids):
                 status, raw, headers = request(collection(source_id) + "/" + image_id)
                 assert status == 200 and headers.get_content_type() == "application/dicom"
                 assert type(raw) is bytes and raw == originals[index], "Original DICOM bytes changed"
                 remember(headers.get("X-OI-Access-Receipt"), "image.original_read_authorized")
+                receipts.append(headers.get("X-OI-Access-Receipt"))
+            expected = [{"study_uid": STUDY, "series_uid": SERIES, "sop_uid": sop}
+                        for sop in SOPS] if archive_enabled else []
+            assert archive_history() == before + expected, "Original HTTP bypassed the selected archive path"
+            return receipts
 
         def denied(source_id, *, index=True, original=True, ingest=False, authenticated=True):
             before = check_history()
+            calls_before = archive_history()
             requests = []
             if index:
                 requests.append((collection(source_id), None))
@@ -853,6 +948,27 @@ finally:
                 assert type(value) is dict and set(value) == {"detail"}
                 assert headers.get("X-OI-Access-Receipt") is None
             assert history() == before, "Denied image request minted an access receipt"
+            assert archive_history() == calls_before, "Denied image request invoked the archive"
+
+        def archive_failure(source_id, *, missing):
+            path = archive_directory / "00.dcm"
+            before = snapshot()
+            calls_before = archive_history()
+            try:
+                if missing:
+                    path.unlink()
+                else:
+                    path.write_bytes(originals[0][:-1] + bytes([originals[0][-1] ^ 1]))
+                status, value, headers = request(collection(source_id) + "/" + image_ids[0])
+                assert (status, value) == (503, {"detail": "Patient registry unavailable"})
+                assert headers.get("X-OI-Access-Receipt") is None
+                assert snapshot() == before, "Archive failure committed a receipt or changed durable custody"
+                assert archive_history() == calls_before + [
+                    {"study_uid": STUDY, "series_uid": SERIES, "sop_uid": SOPS[0]}]
+            finally:
+                path.write_bytes(originals[0])
+                path.chmod(0o644)
+            verify_stored_originals()
 
         def snapshot(database=None):
             nonlocal complete_snapshot_sql
@@ -1047,12 +1163,21 @@ finally:
             verify_authored_command_origins(state["authored_commands"], state["authored_origins"], authored_intents,
                 patient_id=patient, case_id=CASE, organization=credential["organization"],
                 actor=credential["actor"], purpose=credential["purpose"])
-            assert state["rows:investigation.case_evidence_withdrawals"] == []
+            assert len(state["rows:investigation.case_evidence_withdrawals"]) == int(authored_withdrawal is not None)
+            withdrawals = [row for row in state["events"] if row["event_type"] == "investigation.evidence.withdrawn"]
+            assert len(withdrawals) == int(authored_withdrawal is not None)
+            if authored_withdrawal is not None:
+                assert withdrawals[0]["patient_id"] == patient
+                assert withdrawals[0]["metadata_json"] == {
+                    "case_id": CASE, "evidence_id": authored_evidence["evidence_id"],
+                    "withdrawal_id": authored_withdrawal["withdrawal_id"], "actor": credential["actor"],
+                }, "Withdrawal history differs from its exact creating receipt"
             reports = [row for row in state["events"] if row["event_type"] == "investigation.evidence.report_prepared"]
             assert {(row["metadata_json"]["question_id"], row["metadata_json"]["report_id"]) for row in reports} == {
                 (qid, saved["report_id"]) for qid, saved in expected_reports.items()}
             assert len(reports) == len(expected_reports), "Report retry duplicated business history"
             assert AUTHORED_ORIGINAL not in audit and AUTHORED_QUOTE not in audit
+            assert AUTHORED_WITHDRAWAL_REASON not in audit
             return state
 
         def restore_database(database):
@@ -1384,6 +1509,9 @@ finally:
             assert len(before["review_receipts"]) == 2
             assert len(before["tasks"]) == len(before["evidence_links"]) == 2
             assert len(before["task_events"]) == 6 and len(before["evidence_rights"]) == 3
+            # Default custody has already passed populated restart checks.
+            # The restored API now explicitly selects the existing archive port.
+            use_archive_fixture()
             use_restored_database(restored_database)
             assert snapshot() == before, "Recreated API changed restored data before reads"
             restored_receipt = read_questions()
@@ -1421,7 +1549,15 @@ finally:
             retry_returns()
             retry_followthrough_and_evidence()
             read_images(source_two)
-            read_originals(source_two)
+            restored_image_receipts = read_originals(source_two)
+            for image_receipt in restored_image_receipts:
+                image_receipt_query = (
+                    "SELECT to_json(count(*)) FROM identity.identity_domain_events "
+                    "WHERE event_type='image.original_read_authorized' AND metadata_json->>'receipt_id'='"
+                    + image_receipt + "'"
+                )
+                assert query(image_receipt_query) == 1, "Archive HTTP lacks a restored image receipt"
+                assert query(image_receipt_query, source_database) == 0, "Archive HTTP wrote to the source DB"
             denied(source_one, ingest=True)
             _, prepared = prepare_question(source_two, 2, AMENDED,
                                            expected_fingerprint=second_fingerprint)
@@ -1447,6 +1583,11 @@ finally:
                 read_originals(source_two)
                 if missing not in {"authored_evidence_read", "evidence_report_export"}:
                     read_authored_reports()
+                else:
+                    # Authored content/export grants do not grant metadata
+                    # rights or disable separately authorized archive images.
+                    read_citations()
+                    check_restricted_metadata(question_two)
             credential["actions"] = list(actions)
             save_access()
             read_questions()
@@ -1469,8 +1610,161 @@ finally:
                 "evidence.metadata.searched", "evidence.links.read_authorized",
             }, "Restored reads/retries appended a business event"
             assert snapshot(source_database) == before, "Restored HTTP mutated the pre-restore database"
-            print("Active restored API reopened exact v1/v2 questions/returns/tasks/citations, frozen authored reports, original images and same-key retries; revoked title/URL stayed redacted")
+            print("Active restored API reopened exact v1/v2 questions/returns/tasks/citations, frozen authored reports, archive originals and same-key retries; revoked title/URL stayed redacted")
 
+            # Withdraw actual authored content, independently of action grants
+            # and metadata rights. The immutable report originals stay stored.
+            read_authored_original(question_two)
+            before_withdrawal = snapshot()
+            calls_before_withdrawal = archive_history()
+            authored_withdrawal = authored_write(question_two,
+                "/evidence/" + authored_evidence["evidence_id"] + "/withdraw", {
+                    "synthetic": True, "request_key": "COMPOSE-IMAGE-AUTHORED-WITHDRAWAL",
+                    "reason": AUTHORED_WITHDRAWAL_REASON,
+                }, "authored_evidence_withdraw")
+            after_withdrawal = snapshot()
+            withdrawal_keys = ACCESS_SNAPSHOT_KEYS | {
+                "rows:investigation.case_evidence_withdrawals",
+                "rows:investigation.evidence_commands", "authored_commands",
+            }
+            for owner in before_withdrawal.keys() - withdrawal_keys:
+                assert after_withdrawal[owner] == before_withdrawal[owner], "Withdrawal changed another owner: " + owner
+            assert after_withdrawal["events"][:len(before_withdrawal["events"])] == before_withdrawal["events"]
+            withdrawal_events = after_withdrawal["events"][len(before_withdrawal["events"]):]
+            assert len(withdrawal_events) == 2 and {row["event_type"] for row in withdrawal_events} == {
+                "investigation.evidence.withdrawn", "source.read_authorized",
+            }, "Withdrawal did not append exactly its business event and prepared source receipt"
+            assert archive_history() == calls_before_withdrawal, "Authored withdrawal invoked the image archive"
+            # Restore this withheld ACTIVE checkpoint, then leave both earlier
+            # databases unchanged throughout archive reads, retries and revocation.
+            intermediate_database = active_database
+            restored_database = "oi_api_test_images_reports_withheld"
+            intermediate_database_snapshot = restore_database(restored_database)
+            assert intermediate_database_snapshot == after_withdrawal
+            use_restored_database(restored_database)
+            assert snapshot() == after_withdrawal, "Recreated API changed the withheld restored checkpoint"
+            status, source_context, _ = request(source_path)
+            assert status == 200 and source_context["contract"] == "oi.synthetic-original-sources/1"
+            assert (source_context["patient_id"], source_context["case_id"]) == (patient, CASE)
+            remember_source_access(source_context)
+            source_snapshot_sha256 = hashlib.sha256(json.dumps(
+                {key: value for key, value in source_context.items() if key != "access_receipt_id"},
+                sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest()
+            assert len(source_context["sources"]) == 2 and len(source_context["source_reported_assertions"]) == 1
+
+            # A valid local original remains available throughout each failure.
+            # Failure must not mint a receipt, alter any sibling owner or fallback.
+            # This baseline follows the intentional withdrawal; only reads may
+            # append history during the entire recovery cycle below.
+            archive_state = snapshot()
+            report_receipts_before = set(authored_report_receipts)
+            withheld_reports = read_authored_reports()
+            read_authored_original(question_two)
+            withheld_image_receipts = read_originals(source_two)
+            withheld_receipts = [("source.read_authorized", value["access_receipt_id"])
+                                for value in withheld_reports.values()]
+            withheld_receipts.extend(("image.original_read_authorized", receipt)
+                                     for receipt in withheld_image_receipts)
+            for event_type, receipt in withheld_receipts:
+                query_receipt = (
+                    "SELECT to_json(count(*)) FROM identity.identity_domain_events WHERE event_type='"
+                    + event_type + "' AND metadata_json->>'receipt_id'='" + receipt + "'"
+                )
+                assert query(query_receipt) == 1, "Withheld restored HTTP lacks its prepared receipt"
+                for earlier_database in (source_database, intermediate_database):
+                    assert query(query_receipt, earlier_database) == 0, "Withheld HTTP still used an earlier database"
+            for missing in (False, True):
+                archive_failure(source_two, missing=missing)
+                read_originals(source_two)
+                read_followthrough()
+                read_citations()
+                read_authored_reports()
+                check_restricted_metadata(question_two)
+                retry_followthrough_and_evidence()
+            credential["actions"] = [action for action in actions if action != "image_original_read"]
+            save_access()
+            denied(source_two, index=False)
+            read_questions()
+            read_review_queue()
+            read_followthrough()
+            read_citations()
+            read_authored_reports()
+            credential["actions"] = list(actions)
+            save_access()
+            for service in ("api", "db"):
+                state = snapshot()
+                command(["restart", service])
+                ready()
+                assert snapshot() == state, "Restart changed archive-enabled restored history"
+                read_originals(source_two)
+                read_questions()
+                read_review_queue()
+                read_followthrough()
+                read_citations()
+                read_authored_reports()
+                retry_questions()
+                retry_returns()
+                retry_followthrough_and_evidence()
+                check_restricted_metadata(question_two)
+                denied(source_one)
+                check_history()
+                check_question_history()
+            after_archive = snapshot()
+            for owner in archive_state.keys() - ACCESS_SNAPSHOT_KEYS:
+                assert after_archive[owner] == archive_state[owner], "Archive recovery changed durable " + owner
+            assert after_archive["events"][:len(archive_state["events"])] == archive_state["events"]
+            added = after_archive["events"][len(archive_state["events"]):]
+            assert added and all(row["patient_id"] == patient for row in added), "Archive read audit changed patient authority"
+            # Authored report reads and exact command retries use the existing
+            # source-read receipt. They must never append report/business writes.
+            unexpected = {row["event_type"] for row in added} - {
+                "source.read_authorized", "image.read_authorized", "image.original_read_authorized",
+                "evidence.links.read_authorized", "evidence.metadata.searched",
+            }
+            assert not unexpected, "Archive recovery added non-read business history: " + repr(sorted(unexpected))
+            source_reads = [row for row in added if row["event_type"] == "source.read_authorized"]
+            source_receipts = {row["metadata_json"]["receipt_id"] for row in source_reads}
+            assert len(source_receipts) == len(source_reads), "Archive cycle reused a prepared source receipt"
+            assert all(row["metadata_json"] == {
+                "receipt_id": row["metadata_json"]["receipt_id"], "case_id": CASE,
+                "actor": credential["actor"], "purpose": credential["purpose"],
+                "binding_revision": archive_state["bindings"][0]["revision"],
+                "snapshot_sha256": source_snapshot_sha256,
+                "source_count": len(source_context["sources"]),
+                "assertion_count": len(source_context["source_reported_assertions"]),
+            } for row in source_reads), "Archive source reads/retries changed prepared source authority or context"
+            # The source receipt has no question/action field. Bind report
+            # responses using their returned receipt IDs and checked question IDs.
+            report_receipts = set(authored_report_receipts) - report_receipts_before
+            assert report_receipts <= source_receipts
+            assert len(report_receipts) == 6 * len(expected_reports)
+            for question_id in expected_reports:
+                assert sum(authored_report_receipts[receipt] == question_id for receipt in report_receipts) == 6
+            # Two failure/recovery passes, one image-grant denial pass and two
+            # restarts each read both citation lists; only failures/restarts
+            # search. Added report reads/retries emit source receipts only.
+            link_reads = [row for row in added if row["event_type"] == "evidence.links.read_authorized"]
+            assert len(link_reads) == 5 * len(evidence_intents), "Archive recovery changed citation read accounting"
+            for question_id in evidence_intents:
+                question_reads = [row for row in link_reads if row["metadata_json"]["question_id"] == question_id]
+                assert len(question_reads) == 5
+                assert all(row["patient_id"] == patient and row["metadata_json"] == {
+                    "question_id": question_id, "case_id": CASE,
+                    "actor": credential["actor"], "link_count": 1,
+                } for row in question_reads), "Archive recovery changed citation read provenance"
+            searches = [row for row in added if row["event_type"] == "evidence.metadata.searched"]
+            assert len(searches) == 4, "Archive recovery changed restricted metadata search accounting"
+            assert all(row["patient_id"] == patient and row["metadata_json"] == {
+                "question_id": question_two, "case_id": CASE, "actor": credential["actor"],
+                "query_sha256": hashlib.sha256(b"continuity").hexdigest(),
+                "result_count": 0, "result_manifest_sha256": hashlib.sha256(b"[]").hexdigest(),
+            } for row in searches), "Archive recovery disclosed restricted metadata or changed search provenance"
+            assert snapshot(source_database) == source_database_snapshot, "Archive checks mutated the source database"
+            assert snapshot(intermediate_database) == intermediate_database_snapshot, "Archive checks mutated the intermediate database"
+            print("Restored archive HTTP preserved exact images, question/return/task/citation history, frozen withheld reports and restricted metadata; "
+                  "missing/changed originals refused without fallback; grants, retries and API/DB restarts preserved")
+
+            calls_before_revocation = archive_history()
             status, revoked, _ = request(patient_path + "/case-bindings/" + CASE + "/revoke", {
                 "synthetic": True, "reason": "Withdraw the independently fictional image Compose binding"})
             assert status == 200 and revoked["duplicate"] is False
@@ -1512,10 +1806,14 @@ finally:
             assert snapshot() == before, "Restored revoked access changed durable history"
             assert snapshot(restored_database) == before, "Revoked-copy HTTP mutated its source database"
             assert snapshot(source_database) == source_database_snapshot, "Restored revocation/retries mutated the original database"
+            assert snapshot(intermediate_database) == intermediate_database_snapshot, "Restored revocation/retries mutated the intermediate database"
+            assert archive_history() == calls_before_revocation, "Revoked restored requests invoked the archive"
+            assert archive_history(), "Archive-enabled recovery never invoked the archive"
             print("PASS: canonical v1/v2 questions, immutable verification returns, task events, citations, frozen authored reports and exact DICOM originals; "
                   "independent grants, immutable anchors, distinct receipts, API/DB restart, "
                   "amendment reassessment, explicit same-object relinking, active restored HTTP/retries, "
-                  "metadata rights redaction, original DB unchanged, and revoked restored denial "
+                  "archive-enabled restored HTTP without fallback, independent metadata/content withdrawal, earlier DBs unchanged, "
+                  "and revoked restored denial before archive invocation "
                   "through actual PostgreSQL dump/restore with complete row digests and sequence state; "
                   "authored comparisons only, no clinical approval, model execution or live biomedical evidence")
         except Exception:
