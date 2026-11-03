@@ -78,3 +78,27 @@ Existing authoritative engineering traceability remains [EXECUTION_BACKLOG.csv](
 The [connected-workflow evidence record](IMPLEMENTATION_EVIDENCE.md) records the subsequent #287 integration, source-reuse manifest and observed failure/repair history. Its linked exact-head verification receipt distinguishes the implemented draft from this initial assessment and from `main`.
 
 The complete runtime at `f7b0f683ab64ba2de7363744b65b8e26528f3138` subsequently passed both hosted workflows: 301 API/PostgreSQL executions, 245 historical reference executions, 170 client tests, production build, real browser journeys and patient/source/review recovery probes. Independent review's three Important client findings and one Minor decoder gap were repaired and re-reviewed. The authored-question/source-inspection/nonterminal-return/fresh-brief path is **fully implemented and tested within its bounded fictional-data contract**. The full patient-centered clinical platform remains partial; this draft has not been merged or deployed. See the separate evidence record for exact runs, preservation checks and remaining recovery/disclosure limits.
+
+## Subsequent authored-evidence continuation
+
+The next increment extends verified #288's canonical patient/question workflow
+with case-owned fictional evidence originals, human-authored supporting and
+contradictory comparisons, and immutable comparison reports. It reuses #249's
+exact pure content-rights module and the already identical evidence parser, while
+porting storage to the existing PostgreSQL case transaction. The distinct new
+`authored_evidence_*` actions do not expand metadata-citation read permissions.
+
+The [bounded implementation and verification record](../engineering/H1_AUTHORED_EVIDENCE_REPORTS.md)
+and [source manifest](../engineering/H1_AUTHORED_EVIDENCE_SOURCE_REUSE.json)
+identify exact owners, acceptance, historical disclosure and migration boundaries.
+Implementation is present; hosted PostgreSQL/browser/recovery acceptance and
+independent final review are pending at this checkpoint. Existing reference
+regression: 250 tests passed, including five unchanged donor content-rights tests.
+Local API skips are not evidence of PostgreSQL acceptance.
+
+Newly published #298 owns complementary metadata search/citation linkage;
+#293 owns follow-through and its distinct migration head. Those changes are not
+silently copied, replaced or claimed integrated here. Clinical/PDF/annotation
+parity, authenticated production identity, publisher clearance and professional
+review remain separate integration and validation work. No merge or deployment
+is authorized by these software checks.

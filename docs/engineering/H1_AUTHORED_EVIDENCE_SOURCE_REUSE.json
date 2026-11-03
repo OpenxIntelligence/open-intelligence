@@ -1,0 +1,35 @@
+{
+  "schema": "oi.h1-authored-evidence-source-reuse/1",
+  "canonical_h1_owner": {
+    "pr": 288,
+    "published_commit": "f09c21f919d546c6bbcfabdde64df3d00b5a8f07",
+    "local_equivalent_commit": "ca95507ff67be6df36a1bb0a74c09c4ed3a0ce69",
+    "tree": "b2dbd83e4acffd469635638be1f20ee3dbaa5591"
+  },
+  "reference_owner": {
+    "pr": 249,
+    "published_commit": "af72cd6ad5d4e934aa3168334b1592bfdce35e51",
+    "local_equivalent_commit": "f69f9a254d6328fa26c425d9306477ccb4c58eb3",
+    "tree": "97145fdd491624840719acb682c369ea63741f67",
+    "exact_reused_blobs": {
+      "src/open_intelligence/rights.py": "c242afdb00675bf944fdc00744566f1d66497942",
+      "tests/test_rights_content_types.py": "96c8ca2e737c87cf5e919649c4a741ed4298ac61"
+    },
+    "unchanged_existing_parser": "src/open_intelligence/store.py::parse_synthetic_evidence",
+    "behavioral_adaptation": "Case-owned immutable evidence versions, literal human-authored comparisons, reference report grouping/quotation policy, per-content-item and per-use rights. Concrete SQLite clinical wrappers are not instantiated."
+  },
+  "ownership": {
+    "patient_case_source_question": "Existing canonical PostgreSQL identity, case-binding, source and question owners",
+    "case_authored_originals": "New investigation.case_evidence_versions, immutable family withdrawal receipts",
+    "human_proposals_and_report_preparations": "New investigation.question_evidence_assessments and question_evidence_reports",
+    "migration": "0009_question_evidence following 0008_review_convergence",
+    "separate_metadata_catalog": "PR298 metadata search and citation links are not copied or replaced",
+    "separate_followthrough": "PR293 0009_question_followthrough remains a separate migration head; explicit future convergence required",
+    "pure_proposed_bridge": "PR296 has no canonical persistence/API/UI and uses a different source-version/rights contract"
+  },
+  "new_dependencies": false,
+  "network_acquisition": false,
+  "model_executed": false,
+  "clinical_approval": false,
+  "production_identity_qualified": false
+}

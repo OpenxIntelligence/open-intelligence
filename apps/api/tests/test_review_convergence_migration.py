@@ -181,6 +181,7 @@ class ReviewConvergenceMigrationTests(SourceVersionFixture):
         self.assertEqual(self.events(patient), events_before)
         self.assertEqual(len(self.rows("question_review_receipts", patient)), len(receipts_before))
 
+        migrate(self.admin, "upgrade", "head")
         self.creds[0]["actions"].extend(("composer_context_read", "question_create",
                                          "question_read", "review_queue_read", "review_return"))
         self.write()

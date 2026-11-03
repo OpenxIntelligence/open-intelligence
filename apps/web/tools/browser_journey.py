@@ -181,8 +181,19 @@ def main():
                     replacement_question_id=replacement_question_id,
                     authored_question_id=authored_question_id)
                 # Add the fourth question only after both three-question checks.
-                exercise_connected_question_review(cd,pid,case,new_receipt['source_id'],amended,
+                connected = exercise_connected_question_review(cd,pid,case,new_receipt['source_id'],amended,
                     credentials,write_grants,questions)
+                def restart_api():
+                    nonlocal api
+                    os.killpg(api.pid, signal.SIGTERM)
+                    api.wait(timeout=10)
+                    api=subprocess.Popen([sys.executable,'-m','oi_api'],env=env,cwd=ROOT,
+                        stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
+                    wait_for(lambda:json.load(urlopen('http://127.0.0.1:8000/health/ready',timeout=2))['status']=='ready',
+                             'restarted PostgreSQL-backed evidence API',30)
+                from question_evidence_journey import exercise as exercise_evidence
+                exercise_evidence(cd,pid,case,connected['question_id'],new_receipt['source_id'],
+                    credentials,write_grants,directory,questions.artifacts,restart_api)
             # Current source metadata access is independent from the historical original bytes.
             # World Model recheck must clear the old view after source-read grant withdrawal.
             credentials[0]['actions'].remove('source_read');write_grants()

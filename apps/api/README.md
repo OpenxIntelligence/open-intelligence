@@ -259,13 +259,64 @@ receipts, source contracts and events. Image activity must leave review content
 fingerprints unchanged; report amendment must invalidate dependent work without
 relinking images silently reviving an old question.
 
+### Authored evidence and comparison reports
+
+The bounded `0009_question_evidence` continuation adds case-owned original
+fictional evidence, human-authored comparisons and immutable report preparations
+inside the existing source-owner transaction. It reuses the original synthetic
+evidence parser and content-specific rights functions; it does not mount the
+reference SQLite clinical stores or create a shared cross-patient catalog.
+
+All seven routes under `.../questions/{question_id}` require `patient_read`,
+`source_read`, `question_read`, `authored_evidence_read` and operations purpose:
+
+| Route | Additional independent action |
+|---|---|
+| GET `/evidence` | None |
+| POST `/evidence` | `authored_evidence_import` |
+| POST `/evidence/{evidence_id}/withdraw` | `authored_evidence_withdraw` |
+| GET `/evidence/{evidence_id}/original` | `authored_evidence_original_read` |
+| POST `/evidence-assessments` | `authored_evidence_assess` |
+| POST `/evidence-reports` | `evidence_report_export` |
+| GET `/evidence-reports/{report_id}` | `evidence_report_export` |
+
+Original bytes, declared content item and normalized permissions are immutable.
+Display and export intersect the referenced version's permissions with the current
+family declaration using the original item class. Metadata, full text, abstract and
+API output rights remain separate. Unknown and denied permissions fail closed;
+this human-only reader never implies model-use permission. Amendments require the
+existing explicit grammar, make old comparisons historical and require authored
+reassessment. Withdrawal withholds that family's original/report content while
+preserving its records and report digests.
+
+Every write has an exact idempotency key/intent, including duplicate-byte imports.
+Receipt recovery checks the actual stored object, and returns no report body.
+Stored reports are checked against actual canonical question/source and immutable
+comparison/evidence records, not merely self-consistent supplied hashes. Every
+fresh download rechecks current grants and rights; historical and withheld states
+are explicit. The complete bounded JSON body is prepared before final bearer
+refresh, source-access audit and the same transaction commit.
+
+The five append-only tables are `case_evidence_versions`,
+`case_evidence_withdrawals`, `question_evidence_assessments`,
+`question_evidence_reports`, and the exact-command receipt ledger
+`evidence_commands`, all in `investigation`. A nonempty evidence history prevents
+routine downgrade. The distinct parallel `0009_question_followthrough` owner must
+be reconciled through an explicit merge preserving both histories.
+
+The separate metadata search/citation-link owner remains independent: this slice
+adds no acquisition connector, publisher verification, clinical appraisal, model,
+professional review or delivery. Source-only briefs retain their original meaning.
+See the [contract and verification receipt](../../docs/engineering/H1_AUTHORED_EVIDENCE_REPORTS.md).
+
 ### Broader product boundary
 
 The first integrated product remains patient information → source-linked World
 Model → permitted evidence → investigation → human review → follow-up →
 reassessment. This branch connects identity, original sources, canonical source
-context, questions and nonterminal verification returns. It does not complete
-permitted evidence retrieval, model investigation, professional review or MRT-01.
+context, questions, nonterminal verification returns and authored fictional evidence
+comparisons/reports. It does not complete live permitted evidence retrieval, model
+investigation, professional review or MRT-01.
 
 **Local, independently synthetic development only.** The API accepts opaque
 fictional identities and independently authored synthetic source text. Real
@@ -386,7 +437,7 @@ URLs, SQL, source text and rejected validation inputs.
 | Route | Behavior |
 |---|---|
 | GET /health | Process liveness; 200 even if the database is unavailable. |
-| GET /health/ready | 200 only for PostgreSQL major 16 at revision 0008_review_convergence; bounded 503 otherwise. |
+| GET /health/ready | 200 only for PostgreSQL major 16 at revision 0009_question_evidence; bounded 503 otherwise. |
 | GET /v1 | Reports synthetic_patient_registry stage, implemented synthetic capabilities and the configured authentication mode. |
 | GET /v1/openapi.json | Local typed contract, including bearer security; no CDN documentation UI. |
 | POST /v1/patients | Authenticated synthetic creation; trusted actor/org/purpose; 201 for new identity or 200 for identical retry. |
@@ -396,8 +447,9 @@ The manifest's patient_data_enabled: false means identifiable/clinical patient
 data is excluded; synthetic_registry_enabled: true reports the bounded identity
 capability. Authentication is deny_all, synthetic_fixture or trusted_provider.
 All responses use Cache-Control: no-store. External or ambiguous Host headers
-are rejected. POST bodies are bounded to 16 KiB, including chunked bodies, with
-a five-second read deadline. Malformed/duplicate credentials are rejected.
+are rejected. Ordinary POST bodies are bounded to 16 KiB; original source imports to 72,000
+bytes and authored evidence imports to 210,000 JSON bytes (decoded originals stay
+limited to 32 KiB). Chunked bodies have the same bounds and a five-second deadline. Malformed/duplicate credentials are rejected.
 Conflict is 409, invalid input 422, oversized body 413, read timeout 408, and
 unavailable authority/database 503.
 
