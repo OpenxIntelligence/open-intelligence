@@ -31,9 +31,28 @@ jobs:
           PYTHONPATH=src:tests:. python -m unittest discover -s tests -p 'test_report_review_handoff.py' -v
       - name: Full existing Python and HTTP suite
         run: PYTHONPATH=src:tests:. python -m unittest discover -s tests -v
-      - name: Actual empty-workspace v2 preview and human-authored review journey
+  browser:
+    # Browser runs on a fresh runner after the CPU- and socket-heavy 605-test
+    # suite, avoiding the original shared-runner Chrome startup race.
+    needs: workspace
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.13'
+      - name: Record browser runner capability
+        run: |
+          command -v google-chrome || command -v chromium || exit 1
+          google-chrome --version || chromium --version
+      - name: Real empty-workspace v2 source, review, amendment and case-switch journey
         run: PYTHONPATH=src:tests:. python tests/clinical_workspace_browser_journey.py
-      - name: Existing source and Patient Mission browser journeys
+      - name: Inherited source and Patient Mission journeys
         run: |
           PYTHONPATH=src:tests:. python tests/browser_journey.py
           PYTHONPATH=src:tests:. python tests/patient_mission_browser_journey.py
