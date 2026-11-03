@@ -44,6 +44,19 @@ suites are not claimed as rerun for this UI-only change.
 The historical checkpoint below belongs to its original commit and is not
 evidence for the new combined head.
 
+### First hosted attempt and harness repair
+
+[Run 41713597645](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41713597645)
+on `c21fa9cfab583c91c2f690af2bdaf61afe720e92` passed all 408 client tests,
+build and dependency gates. The browser passed the new initial unchecked/empty
+read and unknown-write Overview recovery steps, then failed when the new
+second-question scenario assumed that previously authorized question history
+was still present. The actual failure capture showed that earlier independent
+permission-denial checks had correctly cleared that history while canonical
+tasks remained readable. The harness now performs a fresh authorized question
+read before opening that question's task form. No runtime permission check was
+relaxed. This failed run does not establish completed browser acceptance.
+
 ## Verified implementation checkpoint — 3 November 2026
 
 The implementation in [draft PR #293](https://github.com/OpenxIntelligence/open-intelligence/pull/293)

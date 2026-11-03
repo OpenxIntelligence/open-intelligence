@@ -437,6 +437,12 @@ class FollowthroughChecks:
     def assert_overview_work(self, current_question_id, screenshots):
         """Two real questions share one case summary without changing task ownership."""
         assert current_question_id != self.question_id
+        # Earlier independent question/review denial checks deliberately clear
+        # question history. Restore it with an actual authorized read before
+        # opening the second question's task form; task reads do not grant it.
+        click(self.cd, '[data-testid=load-source-questions]')
+        self.cd.wait("document.querySelector('[data-testid=source-question-history]')?.textContent.includes("
+                     + json.dumps(current_question_id) + ")", 'fresh second-question history after prior denial')
         second = self.create(TITLE_SECOND_QUESTION, question_id=current_question_id,
                              owner='Fictional second question coordinator')
         before = self.cd.evaluate('({reads:window.__oiFollowthroughChecks.reads.length,writes:window.__oiFollowthroughChecks.writes.length})')
