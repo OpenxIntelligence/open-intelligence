@@ -183,6 +183,8 @@ class QuestionReviewChecks:
 
             # Both independent read gates must clear the displayed projection on denial.
             for action in ('review_queue_read', 'question_read'):
+                unsent_reason = 'Unsubmitted fictional reason before loss of ' + action
+                self.reason_value(authored_question_id, unsent_reason)
                 credentials[0]['actions'].remove(action)
                 write_grants()
                 self.cd.evaluate("document.querySelector('[data-testid=load-review-queue]').click()")
@@ -192,6 +194,9 @@ class QuestionReviewChecks:
                 credentials[0]['actions'].append(action)
                 write_grants()
                 self.refresh(new_receipt)
+                assert self.cd.evaluate('document.querySelector(' + json.dumps(self.item(authored_question_id))
+                                        + ").querySelector('[data-testid=review-reason]').value") != unsent_reason, \
+                    'Restoring authority must not resurrect an unsent reason cleared on denial'
 
             assert sorted(self.cd.evaluate("[...document.querySelectorAll('[data-testid=review-queue-item]')].map(e=>e.dataset.questionId)")) == sorted(expected_ids)
             assert self.cd.evaluate('document.querySelector(' + json.dumps(self.item(authored_question_id)) + ').dataset.state') == 'awaiting_independent_verification'
