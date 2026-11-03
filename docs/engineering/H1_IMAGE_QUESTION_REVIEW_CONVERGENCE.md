@@ -80,6 +80,54 @@ new return intents recover the same IDs; the original database remains unchanged
 Restoring revoked bindings cannot authorize image, question or review disclosure.
 The separate original review recovery gate is also retained.
 
+## Optional archive continuation
+
+The continuation on #278 at `b72560ac0f5e5005040b0fc660ce1650343611cf`
+selectively reuses the reviewed archive-disclosure owner from
+[#277](https://github.com/OpenxIntelligence/open-intelligence/pull/277) at
+`2ad1271535accd73352a04672a03820a8cf05a6b`. Its constructor, original-read path
+and composition-root injection are connected to the existing image owner. Its
+five private-image tests and six archive-disclosure methods are retained
+byte-for-byte. Other donor modules are not substituted for this branch's source,
+question, image-import, metadata or review implementations.
+
+The default remains canonical local custody. An explicitly injected archive
+receives only the stored Study/Series/SOP identifiers after preflight authority.
+The owner releases its locks during the read, requires exact bytes and then opens
+a fresh transaction to validate the current source, binding and custody again.
+Complete response preparation, refreshed same-bearer authority and successful
+receipt commit precede returning the original. Missing, changed or non-byte
+results refuse disclosure without silently using local bytes. No new route,
+permission, schema, migration, dependency or production configuration is added.
+In particular, #263's stronger import/retry/relink JSON boundary is preserved;
+the older donor import implementation is not adopted.
+
+Three connected PostgreSQL/HTTP tests exercise archive reads alongside canonical
+questions and immutable returns, amendment and explicit relinking, exact retry
+identity, no fallback on upstream failure, and denial without archive invocation.
+The existing archive tests continue to cover unlocked I/O, held preparation locks,
+late authority changes, suspension and deferred commit failure.
+
+The combined Compose gate first exercises the default local path with populated
+v1/v2 histories. On actual restore it mounts an explicit acceptance-only factory
+and two independently authored file-archive originals outside PostgreSQL. Original
+HTTP reads must produce exactly the expected canonical archive calls and new
+image access receipts only in the restored database. Changed and missing fixture
+objects must yield sanitized 503 responses with no custody or receipt changes
+despite the valid local original. Restored API/database restarts retain the archive
+selection and question/return history. A revoked restored binding refuses before
+another archive call. The module and originals are read-only mounts; only the
+bounded synthetic call trace is writable. Existing default application commands
+and the four published migration/recovery gates remain intact.
+
+This fixture proves the selected application path and its recovery behavior. It
+does not implement network transport, private-PACS reachability, raw-PACS bypass
+denial, or backup/restore of a vendor archive. PACSNode remains on HOLD, including
+after the separate #248 immutable-SOP repair. Its authorization, conformance,
+rights and clinical gates remain separate. Final combined hosted evidence is
+recorded on the continuation PR after execution; local checks alone are not that
+evidence.
+
 ## Verification record and scope
 
 The first hosted checkpoint, `05c6ef38dc8beddee064f97959035498751dad3e`,
@@ -107,8 +155,10 @@ Only independently authored fictional records/images are used. The image profile
 and pinned code-only pydicom from #242/#263 are unchanged. A verification return
 records an operator's request; professional identity, clinical review/approval,
 external notification, biomedical appraisal, model execution and deployment remain
-separate. Other source/question serialization and #265 intake authority, archive,
+separate. Other source/question serialization and #265 intake authority,
 source-packet, brief and clinical evidence/report/PDF owners are not included.
+The optional archive continuation above does not qualify a concrete network
+transport or close external-PACS deployment gates.
 
 Backlog OI-006, OI-007, OI-009 and OI-013 remain partially covered. The full
 patient-centered healthcare and biomedical platform remains the product scope.

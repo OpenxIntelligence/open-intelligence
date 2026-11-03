@@ -82,6 +82,7 @@ class ImagePreparationTests(unittest.TestCase):
         self.images = object.__new__(PostgresSourceImages)
         self.images.registry = self.registry
         self.images.sources = source_owner
+        self.images.archive = None  # This ordering double exercises local custody.
         self.images._scope = lambda *args: (
             1, {"case_id": "CASE-ALPHA", "version": 1, "sha256": "a" * 64,
                 "event_date": date(2026, 2, 1)},

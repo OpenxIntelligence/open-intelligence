@@ -20,6 +20,23 @@ receipts, precedes final authority and commit. Review queue and return callbacks
 also validate their existing models and prepare the complete JSONResponse before
 that boundary; new returns remain 201 and exact retries remain 200.
 
+The archive continuation selectively reuses #277 at
+`2ad1271535accd73352a04672a03820a8cf05a6b` on the verified #278 owner at
+`b72560ac0f5e5005040b0fc660ce1650343611cf`. An optional operator-injected
+archive can supply an original image after canonical preflight; its I/O runs
+outside database locks, followed by a fresh owner transaction and final response
+authorization. The #263 image-import and metadata JSON callbacks and #278 review
+callbacks remain unchanged. The schema stays at `0009_image_review_merge`.
+
+The existing combined recovery gate retains default-local restart checks and
+explicitly injects a bounded file fixture into the API attached to the restored
+database. It checks actual archive calls using only stored identifiers, exact
+original bytes, restored-only image receipts, no fallback on missing/changed
+archive bytes, and denial before archive access after revocation. The fixture
+module is mounted only by that gate and is not part of the runtime image or its
+settings. This is archive-enabled API recovery, not a live-PACS transport or an
+external-archive backup. Exact hosted results belong to the follow-up PR.
+
 See [the combined design and acceptance scope](../../docs/superpowers/specs/2026-11-02-h1-image-question-review-design.md)
 and [the combined engineering contract](../../docs/engineering/H1_IMAGE_QUESTION_REVIEW_CONVERGENCE.md).
 The domain sections below retain their incremental history; statements that
