@@ -43,6 +43,28 @@ function App(){
       <p className="record-scope" data-testid="records-patient"><strong>Selected patient:</strong> <code>{state.patient.patient_id}</code></p>
       <button className="primary" data-testid="load-cases" disabled={state.recordsPhase.startsWith('loading')||busy} onClick={()=>void session.loadCases()}>Check authorized cases</button>
       <p role="status" aria-live="polite" data-testid="records-status" className={'status '+(state.recordsPhase==='error'?'error':'')}>{state.recordMessage}</p>
+      <section className="request-work" data-testid="record-requests-workspace" aria-labelledby="requests-heading">
+       <h3 id="requests-heading">Records to obtain</h3>
+       <p>Operational tracking only: these fictional requests do not contact an institution, order a test, verify a document or establish medical need. Access requires a separate request-read grant.</p>
+       <button data-testid="load-record-requests" disabled={state.requestPhase==='loading'||busy} onClick={()=>void session.loadRecordRequests()}>Check request and receipt status</button>
+       <p role="status" aria-live="polite" data-testid="request-status" className={'status '+(state.requestPhase==='error'?'error':'')}>{state.requestMessage}</p>
+       {state.recordRequests&&<div data-testid="record-request-list">
+        {state.recordRequests.requests.length===0?<p>No fictional records are currently tracked as requested.</p>:
+         <ul className="case-list">{state.recordRequests.requests.map(item=><li key={item.request_id} className="case-row" data-testid="record-request-item">
+          <strong>{item.record_label}</strong> <span className="record-state">{item.receipt_status.replaceAll('_',' ')}</span>
+          <p>Category: {item.kind} · Listed institution: {item.source_organization}</p>
+          <p>Local tracking state: {item.status} · Last recorded: {item.updated_at}</p>
+          {item.receipt_status==='source_superseded_reconciliation_required'&&<p data-testid="request-reconcile">Original source superseded; explicit reconciliation required. Earlier receipt remains historical.</p>}
+          {item.receipt_status==='binding_revoked_not_usable'&&<p>Patient/case binding revoked; the source receipt is not usable.</p>}
+          {item.source_reference?<dl className="source-metadata" data-testid="request-source-reference">
+           <div><dt>Bound case</dt><dd><code>{item.source_reference.case_id}</code></dd></div>
+           <div><dt>Original ID</dt><dd><code>{item.source_reference.source_id}</code></dd></div>
+           <div><dt>Source version</dt><dd>{item.source_reference.version}</dd></div>
+           <div><dt>Original SHA-256</dt><dd><code>{item.source_reference.sha256}</code></dd></div>
+          </dl>:<p data-testid="request-source-withheld">No original-source identifier disclosed by this request-read result. Source access requires a separate grant.</p>}
+         </li>)}</ul>}
+       </div>}
+      </section>
       {state.cases!==null&&<section aria-labelledby="case-list-heading" data-testid="records-cases">
        <h3 id="case-list-heading">Case mappings</h3>
        {state.cases.length===0?<p>No current authorized case mappings were returned.</p>:
