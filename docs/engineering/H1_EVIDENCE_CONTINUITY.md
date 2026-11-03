@@ -256,3 +256,48 @@ changes. Source owners and main remain unchanged; only a draft child is prepared
 Next: converge owner-reviewed candidates and exercise the same connected workflow
 with reviewed document intake and the separately governed DOI connector. These
 are separate pending branches, not capabilities delivered by this increment.
+
+## Client chronology continuation — 3 November 2026
+
+The report/follow-through work in the interrupted handoff had already shipped as
+draft #174. This continuation uses the later connected source-reading/report
+candidate #322 at `19b75317701ae01fc93844077ac94c351fd982bd`, preserving its source,
+question, evidence, report and task owners. It addresses OI-008/009/010: dates in
+evidence history and preserved reports must represent actual calendar instants.
+
+The client accepted February 30, hour 24 and year zero in evidence/report history
+because JavaScript date parsing normalizes some impossible values. Citation
+history also accepted precision forms excluded by its existing API. One shared
+calendar/clock validator now enforces each existing evidence contract without
+normalizing the input: authored timestamps retain minute precision and longer
+fractions; citation timestamps require seconds and at most six fractional digits.
+Nested question timestamps and date-only source/evidence fields receive the same
+calendar checks at the authored-evidence boundary. Other source consumers are not
+changed or claimed to be comprehensively audited.
+
+Preserved report bodies, original offsets, fractional strings, hashes, status
+covers, independent permissions and fresh download authorization remain intact.
+Invalid refreshed history clears a previously opened report and prevents export;
+an explicit valid refresh restores access to the unchanged body. No backend,
+database, migration, dependency, workflow or clinical state changes.
+
+Verification sequence:
+
+- Original #322 client baseline: 278 tests passed, no skips.
+- Tests-only baseline reproduction: 12 targeted tests, 7 expected failures and
+  5 passing controls. All failures were assertion failures in the actual client,
+  not setup errors. These include the blocked-download regression.
+- Automated read-only review found two further nested-date gaps. Both added
+  regressions failed on the first correction before being fixed. Review is
+  engineering feedback, not independent clinical validation.
+- Final local implementation `74088fef9c7efb7d9a83cfe4be38634da70fc6ca`:
+  all 288 client tests passed with no skips, TypeScript/Vite production build
+  passed, and the existing dependency gate reported no errors (18 installed,
+  two optional artifacts uninspected). The lock and dependency selection did
+  not change. The following documentation-only commit does not alter runtime.
+- Hosted browser results belong to the continuation PR's exact published head.
+  Earlier passing runs are not substituted for final combined acceptance.
+
+The candidate remains draft, unmerged and undeployed. It uses only independently
+authored fictional test records; real-patient operation and clinical qualification
+remain outside this correction.
