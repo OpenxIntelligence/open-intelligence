@@ -1,5 +1,37 @@
 # Implementation slice 01 — source and investigation ledger
 
+## Annotation revision checkpoint
+
+The follow-on to #173 adds post-save manual passage corrections, including
+adding selections to an original-only record. The original bytes, document
+version and initial intake confirmation remain intact. Append-only revisions
+retain the previous selections and reason; historical reports bind the exact
+revision used. Changes atomically reopen dependent work and invalidate Composer
+context, including an A → B → A selection change.
+
+The existing record view opens the revision editor. Its source/version guards,
+manual classification labels, source download, questions, report export and
+change-review paths remain connected. A draft retains its selected annotation
+revision across refreshes and rejects saving against changed selections until
+the author explicitly reviews/reselects its source. No new dependency or
+clinical authority is introduced.
+
+Local feature checks: 12 domain, 16 HTTP, one projection and seven JavaScript
+tests pass. The full local regression passed 378 Python/domain/HTTP tests and
+54 JavaScript cases. Independent review found no blocking defect.
+[Draft PR #190](https://github.com/OpenxIntelligence/open-intelligence/pull/190)
+implementation head `3ae915c037fc4389ad3b3a188675208834ba8a8d` passed
+[exact-head CI 41553818718](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41553818718):
+378 Python tests, 54 JavaScript cases, 80 offline checks plus 18 optional skips,
+and six actual Chromium journeys. [UI CI 41553818723](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41553818723)
+also passed its existing regression and browser checks. The correction journey
+preserves exact original bytes and historical selections, rejects an old
+draft's revision, and verifies 390 px layout and delayed case isolation.
+Screenshots and the digest-verified receipt were inspected. This remains
+unmerged synthetic-only development.
+See [the revision contract](engineering/ANNOTATION_REVISIONS.md) for the exact
+API, migration, source ownership and acceptance boundaries.
+
 ## Document intake checkpoint — 2 November 2026
 
 **Hosted verification update — 3 November 2026:** [PR #173](https://github.com/OpenxIntelligence/open-intelligence/pull/173)

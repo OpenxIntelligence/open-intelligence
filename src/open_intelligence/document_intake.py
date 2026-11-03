@@ -30,12 +30,28 @@ _OPTIONAL_METADATA = frozenset({"specimen_id", "amends_version"})
 
 def classification_provenance(receipt: dict) -> dict:
     """Keep manual classification distinct from the literal source quotation."""
-    return {
+    result = {
         "classification_origin": "user_selected",
         "annotation_method": receipt["annotation_method"],
         "clinical_review": receipt["clinical_review"],
         "transcription_review_sha256": receipt["review_sha256"],
     }
+    for key in ("annotation_revision_id", "annotation_revision"):
+        if receipt.get(key) is not None:
+            result[key] = receipt[key]
+    if "initial_review_sha256" in receipt:
+        result["initial_transcription_review_sha256"] = receipt["initial_review_sha256"]
+    return result
+
+
+def validate_revision_reason(reason: object) -> str:
+    """Keep an operator's bounded correction reason separate from findings."""
+    if not isinstance(reason, str) or not 3 <= len(reason.strip()) <= 500:
+        raise InvalidInput("Annotation revision reason must have 3–500 characters")
+    if any(unicodedata.category(character) in {"Cc", "Cf", "Cs", "Zl", "Zp"}
+           and character not in {"\n", "\t"} for character in reason):
+        raise InvalidInput("Annotation revision reason contains unsupported controls")
+    return reason.strip()
 
 
 def safe_filename(filename: object) -> str:

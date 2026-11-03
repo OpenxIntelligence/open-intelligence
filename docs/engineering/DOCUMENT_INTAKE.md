@@ -74,11 +74,13 @@ interpretation or automated extraction.
 Metadata and passages are manually confirmed; subject matching cannot be
 inferred from arbitrary text. No new third-party component is introduced.
 
-Post-save annotation editing is not implemented. Saving without passages is an
-original-only organizational workflow; uploading the same bytes with different
-annotations is rejected. A future append-only annotation-review/correction
-contract must preserve the original and historical confirmations. Never alter
-original bytes merely to bypass this limit.
+The follow-on [annotation revision contract](ANNOTATION_REVISIONS.md) adds
+post-save passage editing through a distinct append-only operation. It retains
+the original, initial confirmation and earlier selections, including the
+annotations captured with each report. Uploading identical bytes with different
+annotations remains rejected; use the revision operation. Never alter original
+bytes merely to bypass this boundary. The verification receipt below describes
+the original #173 intake feature; the revision contract records its own checks.
 
 The current local application remains synthetic-only and loopback-only. It has
 no real user authentication, production consent service or clinical validation.

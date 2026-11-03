@@ -3,13 +3,13 @@
 (function (root) {
   function createSession({api, getCase, onChange = () => {}}) {
     let sequence = 0, payload = null;
-    let current = {phase: 'idle', caseId: null, preview: null, result: null, error: ''};
+    let current = {phase: 'idle', mode: 'upload', caseId: null, preview: null, result: null, error: ''};
     const state = () => ({...current});
     function publish(changes) { current = {...current, ...changes}; onChange(state()); }
     function sameCase(id) { try { return getCase() === id; } catch (_) { return false; } }
     function discard() {
       sequence++; payload = null;
-      publish({phase: 'idle', caseId: null, preview: null, result: null, error: ''});
+      publish({phase: 'idle', mode: 'upload', caseId: null, preview: null, result: null, error: ''});
     }
     async function previewFile(file) {
       const ticket = ++sequence;
@@ -17,7 +17,7 @@
       let requestedCase;
       try {
         requestedCase = getCase();
-        publish({phase: 'loading', caseId: requestedCase, preview: null, result: null, error: ''});
+        publish({phase: 'loading', mode: 'upload', caseId: requestedCase, preview: null, result: null, error: ''});
         if (!file || !file.size || file.size > 65536)
           throw Error('Choose a nonempty UTF-8 text file up to 64 KiB.');
         if (!/\.txt$/i.test(file.name)) throw Error('Choose a .txt file. PDF and image files are not supported yet.');
@@ -38,29 +38,61 @@
           publish({phase: 'idle', preview: null, error: error.message});
       }
     }
-    async function save({metadata, findings, confirmed}) {
+    async function editSource(sourceId) {
+      const ticket = ++sequence;
+      payload = null;
+      let requestedCase;
+      try {
+        requestedCase = getCase();
+        publish({phase: 'loading', mode: 'annotations', caseId: requestedCase, preview: null, result: null, error: ''});
+        if (!Number.isSafeInteger(sourceId) || sourceId <= 0) throw Error('Invalid source identifier.');
+        const preview = await api('/api/cases/' + requestedCase + '/sources/' + sourceId + '/annotations');
+        if (ticket !== sequence || !sameCase(requestedCase)) return;
+        if (preview?.case_id !== requestedCase || preview.source_id !== sourceId ||
+            !Number.isSafeInteger(preview.current_revision?.revision) || preview.current_revision.revision < 1 ||
+            !Array.isArray(preview.current_revision.findings) || !Array.isArray(preview.lines))
+          throw Error('The selected source or its annotation revision is unavailable.');
+        publish({phase: 'ready', preview, error: ''});
+      } catch (error) {
+        if (ticket === sequence && (requestedCase === undefined || sameCase(requestedCase)))
+          publish({phase: 'idle', preview: null, error: error.message});
+      }
+    }
+    async function save({metadata, findings, confirmed, reason}) {
       if (current.phase === 'saving') return;
       const ticket = sequence, requestedCase = current.caseId;
       try {
-        if (!payload || !current.preview) throw Error('Preview a record before saving it.');
+        const editing = current.mode === 'annotations';
+        if (!current.preview || (!editing && !payload)) throw Error('Preview a record before saving it.');
         if (!sameCase(requestedCase)) throw Error('The selected case changed. Preview the record again.');
         if (!confirmed) throw Error('Confirm the case, dates and selected passages before saving.');
-        const body = {
+        if (editing && current.preview.state !== 'current')
+          throw Error('This original is superseded. Its selection history is read-only.');
+        if (editing && (typeof reason !== 'string' || reason.trim().length < 3 || reason.trim().length > 500))
+          throw Error('Give a reason for this change, from 3 to 500 characters.');
+        const body = editing ? {
+          findings, reason: reason.trim(), expected_revision: current.preview.current_revision.revision,
+          expected_sha256: current.preview.sha256, confirmed_case_id: requestedCase,
+          manual_transcription_confirmed: true,
+        } : {
           ...payload, metadata: {...metadata, manual_transcription_confirmed: true}, findings,
           expected_sha256: current.preview.sha256, confirmed_case_id: requestedCase,
         };
         if (new TextEncoder().encode(JSON.stringify(body)).length > 131072)
           throw Error('The record and selected passages exceed the 128 KiB upload envelope. Keep the original intact and select fewer or shorter exact passages.');
         publish({phase: 'saving', error: ''});
-        const result = await api('/api/cases/' + requestedCase + '/documents', body);
+        const route = editing ? '/api/cases/' + requestedCase + '/sources/' + current.preview.source_id + '/annotations'
+          : '/api/cases/' + requestedCase + '/documents';
+        const result = await api(route, body);
         if (ticket !== sequence || !sameCase(requestedCase)) return;
         payload = null;
         publish({phase: 'saved', result, error: ''});
       } catch (error) {
-        if (ticket === sequence) publish({phase: payload ? 'ready' : 'idle', error: error.message});
+        if (ticket === sequence)
+          publish({phase: current.preview && (payload || current.mode === 'annotations') ? 'ready' : 'idle', error: error.message});
       }
     }
-    return {state, previewFile, save, discard,
+    return {state, previewFile, editSource, save, discard,
       hasDraft: () => ['loading', 'ready', 'saving'].includes(current.phase)};
   }
 
@@ -80,17 +112,20 @@
       el('intake-metadata-form').reset(); el('intake-passage-form').reset();
       el('intake-passages').replaceChildren(); el('intake-original-lines').replaceChildren();
       el('intake-success-actions').replaceChildren();
+      el('intake-annotation-history-list').replaceChildren();
     }
+    const readOnly = () => session.state().mode === 'annotations' && shownPreview?.state !== 'current';
     function renderFindings() {
       const container = el('intake-passages'); container.replaceChildren();
-      if (!findings.length) container.append(make('p', 'No passages selected. You can save the original without findings. Passage editing after saving is not available yet.', 'muted'));
+      if (!findings.length) container.append(make('p', 'No passages selected. The original remains available. You can add exact passages later.', 'muted'));
       findings.forEach((finding, index) => {
         const card = make('article', undefined, 'intake-passage');
         card.append(make('strong', finding.key + ' · ' + finding.state + ' · line ' + finding.line));
         card.append(make('p', finding.quote, 'quoted'));
         const remove = make('button', 'Remove passage', 'button secondary minor'); remove.type = 'button';
+        remove.disabled = busy() || readOnly();
         remove.addEventListener('click', () => {
-          if (busy()) return;
+          if (busy() || readOnly()) return;
           findings.splice(index, 1); el('intake-confirm').checked = false; renderFindings();
         });
         card.append(remove); container.append(card);
@@ -99,17 +134,36 @@
     }
     function showPreview(preview) {
       resetReview(); shownPreview = preview;
+      if (preview.current_revision) findings = preview.current_revision.findings.map(item => ({...item}));
       el('intake-document-id').value = 'DOC-' + preview.sha256.slice(0, 12).toUpperCase();
       el('intake-file-summary').textContent = preview.filename + ' · ' + preview.byte_count + ' bytes · ' + preview.lines.length + ' lines';
       el('intake-source-hash').textContent = 'SHA-256: ' + preview.sha256;
       el('intake-case-label').textContent = preview.case_id;
+      if (preview.current_revision) {
+        const current = preview.current_revision;
+        el('intake-revision-summary').textContent = preview.document_id + '@' + preview.version +
+          ' · Selection revision ' + current.revision + '. ' + (preview.state === 'current'
+            ? 'Changing passages keeps the original file and earlier selections.'
+            : 'This original has been superseded. Its selection history is read-only.');
+        for (const revision of [...(preview.history || [])].reverse()) {
+          const card = make('article', undefined, 'intake-passage');
+          card.append(make('strong', 'Selection revision ' + revision.revision),
+            make('p', revision.reason || 'Initial transcription confirmation', 'muted'),
+            make('p', revision.confirmed_at || '', 'muted tiny'));
+          if (!revision.findings.length) card.append(make('p', 'Original saved without selected passages.', 'muted'));
+          for (const finding of revision.findings)
+            card.append(make('p', finding.key + ' · User-selected: ' + finding.state + ' · line ' + finding.line, 'muted tiny'),
+              make('p', finding.quote, 'quoted'));
+          el('intake-annotation-history-list').append(card);
+        }
+      }
       for (const line of preview.lines) {
         const row = make('div', undefined, 'intake-source-line');
         const select = make('button', String(line.line), 'intake-line-select'); select.type = 'button';
         select.setAttribute('aria-label', 'Select passage from line ' + line.line);
-        select.disabled = !line.text.trim();
+        select.disabled = !line.text.trim() || readOnly();
         select.addEventListener('click', () => {
-          if (busy()) return;
+          if (busy() || readOnly()) return;
           el('intake-line').value = line.line;
           // Long lines require the user to choose a shorter exact excerpt.
           el('intake-quote').value = line.text;
@@ -125,24 +179,40 @@
     }
     function render(state) {
       const saving = state.phase === 'saving', loading = state.phase === 'loading';
-      el('intake-upload-fields').disabled = saving || loading;
-      el('intake-metadata-fields').disabled = saving;
-      el('intake-passage-fields').disabled = saving;
+      const editing = state.mode === 'annotations';
+      if (state.preview && state.preview !== shownPreview) showPreview(state.preview);
+      el('intake-upload-fields').disabled = saving || loading || (editing && state.phase === 'ready');
+      el('intake-metadata-fields').disabled = saving || readOnly();
+      el('intake-passage-fields').disabled = saving || readOnly();
       el('intake-discard').disabled = saving;
+      el('intake-discard').textContent = editing ? 'Close selection review without saving' : 'Discard this intake';
       el('intake-review').hidden = !state.preview || state.phase === 'saved';
+      el('intake-record-details').hidden = editing;
+      for (const input of el('intake-record-details').querySelectorAll('input, select')) input.disabled = editing;
+      el('intake-revision-fields').hidden = !editing;
+      el('intake-revision-reason').disabled = !editing;
+      el('intake-revision-reason').required = editing;
+      el('intake-revision-summary').hidden = !editing;
+      el('intake-annotation-history').hidden = !editing;
       el('intake-preview-button').textContent = loading ? 'Reading record…' : 'Preview record';
-      el('intake-save').textContent = saving ? 'Adding record…' : 'Add record to this case';
+      el('intake-save').textContent = editing ? (saving ? 'Saving revision…' : 'Save passage revision') :
+        saving ? 'Adding record…' : 'Add record to this case';
       const message = el('intake-message');
       message.className = state.error ? 'notice error' : 'muted';
-      message.textContent = state.error || (loading ? 'Reading the original file. Nothing has been added to the case.' :
+      message.textContent = state.error || (loading ? 'Reading the original file and its saved selections…' :
         saving ? 'Saving the original and the passages you confirmed…' :
           state.phase === 'ready' ? 'Check the record details and select any passages you want to track.' : '');
-      if (state.preview && state.preview !== shownPreview) showPreview(state.preview);
+      if (saving && editing) message.textContent = 'Saving your selection revision and checking affected investigations…';
+      if (state.phase === 'ready') renderFindings();
       if (state.phase === 'saved' && state.result !== savedReceipt) {
         savedReceipt = state.result;
         const duplicate = state.result.result === 'duplicate';
-        message.textContent = duplicate ? 'This record is already saved. The original confirmation has been kept.' :
+        message.textContent = editing ? (state.result.result === 'unchanged' ? 'The selections are unchanged. No revision was added.' :
+          'Selection revision ' + state.result.annotation_revision + ' saved. Earlier selections and original bytes are preserved.') :
+          duplicate ? 'This record is already saved. The original confirmation has been kept.' :
           'Record added. The original and your confirmed passages are now in this case.';
+        if (editing && state.result.invalidated_snapshots?.length)
+          message.textContent += ' ' + state.result.invalidated_snapshots.length + ' saved investigation(s) now need another review.';
         const actions = el('intake-success-actions'); actions.replaceChildren();
         const stillCurrent = () => {
           try { return savedReceipt === state.result && shownCase === state.caseId && getCase() === state.caseId; }
@@ -157,11 +227,13 @@
         const timeline = make('a', 'View timeline', 'button secondary'); timeline.href = '#timeline';
         const question = make('button', 'Ask a question about this record', 'button'); question.type = 'button';
         question.addEventListener('click', () => { if (stillCurrent()) onQuestion(state.result.source_id); });
-        actions.append(view, timeline, question);
+        const revise = make('button', 'Review saved passages', 'button secondary'); revise.type = 'button';
+        revise.addEventListener('click', () => { if (stillCurrent()) session.editSource(state.result.source_id); });
+        actions.append(view, timeline, question, revise);
         el('intake-file').value = '';
         // Refresh the existing source, question and Composer projections.
         Promise.resolve(onImported(state.result)).catch(error => {
-          if (savedReceipt === state.result && shownCase === state.caseId)
+          if (stillCurrent())
             message.textContent += ' Refresh the case to load its updated timeline: ' + error.message;
         });
       }
@@ -176,7 +248,7 @@
       session.discard(); resetReview(); el('intake-file').value = '';
     });
     el('intake-passage-form').addEventListener('submit', event => {
-      event.preventDefault(); if (busy() || !shownPreview) return;
+      event.preventDefault(); if (busy() || readOnly() || !shownPreview) return;
       const finding = {key: el('intake-key').value.trim(), state: el('intake-status').value,
         quote: el('intake-quote').value, line: Number(el('intake-line').value)};
       const line = shownPreview.lines.find(item => item.line === finding.line);
@@ -188,7 +260,7 @@
       if (error) { el('intake-passage-message').textContent = error; return; }
       findings.push(finding); el('intake-confirm').checked = false; renderFindings();
       el('intake-passage-form').reset();
-      el('intake-passage-message').textContent = 'Passage added to this review. It will be saved with the record.';
+      el('intake-passage-message').textContent = 'Passage added to this review. Confirm and save to keep the selection.';
     });
     el('intake-metadata-form').addEventListener('input', event => {
       if (event.target !== el('intake-confirm')) el('intake-confirm').checked = false;
@@ -200,11 +272,18 @@
       const specimen = el('intake-specimen').value.trim(), amendment = el('intake-amends').value;
       if (specimen) metadata.specimen_id = specimen;
       if (amendment) metadata.amends_version = Number(amendment);
-      session.save({metadata, findings: findings.map(item => ({...item})), confirmed: el('intake-confirm').checked});
+      session.save({metadata, findings: findings.map(item => ({...item})), confirmed: el('intake-confirm').checked,
+        reason: el('intake-revision-reason').value});
     });
     render(session.state());
     return {
       hasDraft: () => session.hasDraft() || Boolean(el('intake-file').files.length),
+      async editSource(sourceId) {
+        if (session.hasDraft() || el('intake-file').files.length)
+          throw Error('Save or discard the current record review before opening another one.');
+        await session.editSource(sourceId);
+        if (session.state().phase === 'ready') el('intake-review').scrollIntoView({block: 'start'});
+      },
       syncCase(id) {
         if (shownCase !== id) { shownCase = id; session.discard(); resetReview(); el('intake-file').value = ''; }
       },

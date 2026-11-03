@@ -113,6 +113,17 @@ class Handler(BaseHTTPRequestHandler):
         return data
 
     @staticmethod
+    def _source_identifier(value: str) -> int:
+        # Bound decimal conversion and the SQLite integer lookup before
+        # touching the source owner, including unusually long URL segments.
+        if len(value) > 19:
+            raise InvalidInput("Invalid source identifier")
+        identifier = int(value)
+        if not 1 <= identifier <= 9223372036854775807:
+            raise InvalidInput("Invalid source identifier")
+        return identifier
+
+    @staticmethod
     def _document_bytes(data: dict, *, preview: bool) -> bytes:
         required = {"filename", "content_base64"}
         if not preview:
@@ -257,17 +268,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, {"templates": [
                     {"id": template_id, "description": text[:160]}
                     for template_id, text in TEMPLATES.items()]})
+            annotations = re.fullmatch(rf"/api/cases/{ID_PART}/sources/([0-9]+)/annotations", path)
+            if annotations:
+                return self._json(200, store.document_annotations(
+                    annotations[1], self._source_identifier(annotations[2])))
             source_download = re.fullmatch(rf"/api/cases/{ID_PART}/sources/([0-9]+)/download", path)
             if source_download:
-                # Bound URL input before Python's decimal conversion and the
-                # source owner's SQLite integer lookup. Other source routes
-                # keep their existing behavior.
-                source_id_text = source_download[2]
-                if len(source_id_text) > 19:
-                    raise InvalidInput("Invalid source identifier")
-                source_id = int(source_id_text)
-                if not 1 <= source_id <= 9223372036854775807:
-                    raise InvalidInput("Invalid source identifier")
+                source_id = self._source_identifier(source_download[2])
                 document = store.source_document(source_download[1], source_id)
                 return self._send(200, document["raw"], "text/plain; charset=utf-8",
                                   filename=document["filename"])
@@ -292,10 +299,13 @@ class Handler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         try:
             document_upload = re.fullmatch(rf"/api/cases/{ID_PART}/documents(/preview)?", path)
-            # Base64 plus bounded annotations needs a larger envelope. All
-            # other routes keep their existing request-body limit unchanged.
+            annotations = re.fullmatch(rf"/api/cases/{ID_PART}/sources/([0-9]+)/annotations", path)
+            draft_request = re.fullmatch(rf"/api/cases/{ID_PART}/snapshots", path)
+            # Original bytes and bounded manual selections use a larger,
+            # strict envelope. Snapshot revision maps also reject duplicate
+            # keys, without widening the preexisting snapshot body limit.
             data = (self._body(DOCUMENT_BODY_BYTES, strict=True)
-                    if document_upload else self._body())
+                    if document_upload or annotations else self._body(strict=bool(draft_request)))
             if path == "/api/bibliography/lookup":
                 if not self.allow_crossref_live:
                     return self._json(403, {"error": "Live Crossref lookup disabled by default; use explicit local server option"})
@@ -315,6 +325,13 @@ class Handler(BaseHTTPRequestHandler):
                     self.metadata_request_lock.release()
             store = CaseStore(self.db_path)
             try:
+                if annotations:
+                    required = {"findings", "expected_revision", "expected_sha256",
+                                "confirmed_case_id", "manual_transcription_confirmed", "reason"}
+                    if set(data) != required:
+                        raise InvalidInput("Annotation revision requires exactly the documented fields")
+                    return self._json(200, store.revise_document_annotations(
+                        annotations[1], self._source_identifier(annotations[2]), **data))
                 if document_upload:
                     preview = document_upload[2] is not None
                     raw = self._document_bytes(data, preview=preview)
@@ -411,7 +428,8 @@ class Handler(BaseHTTPRequestHandler):
                 if drafts:
                     return self._json(201, {"snapshot_id": store.create_snapshot(
                         drafts[1], data.get("question_id"), data.get("summary"), data.get("source_ids"),
-                        data.get("evidence_assessment_ids"), data.get("broker_link_ids"))})
+                        data.get("evidence_assessment_ids"), data.get("broker_link_ids"),
+                        expected_annotation_revisions=data.get("expected_annotation_revisions"))})
                 review = re.fullmatch(rf"/api/cases/{ID_PART}/snapshots/([0-9]+)/review", path)
                 if review:
                     store.acknowledge_demo_review(review[1], int(review[2]), data.get("reviewer_label"))

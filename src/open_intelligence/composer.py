@@ -25,7 +25,9 @@ ASSERTION_KEYS = ("id", "source_version_id", "finding_key", "certainty",
 ASSESSMENT_KEYS = ("id", "evidence_version_id", "relation", "applicability",
                    "rationale", "sha256")
 INTAKE_PROVENANCE_KEYS = ("classification_origin", "annotation_method",
-                          "clinical_review", "transcription_review_sha256")
+                          "clinical_review", "transcription_review_sha256",
+                          "annotation_revision_id", "annotation_revision",
+                          "initial_transcription_review_sha256")
 
 
 def _fields(row: dict, keys: tuple[str, ...], *, include_intake: bool = False) -> dict:
