@@ -49,6 +49,19 @@ The panel automatically follows the selected synthetic case and refreshes after 
 
 This slice does **not** add identity, consent, patient goals, PHI support, medication intelligence, acute-safety escalation, diagnostic inference, literature appraisal, trial matching, treatment selection, therapeutic development, care coordination, outcome interpretation, or platform learning. It is a source-grounded workflow orientation surface for the synthetic engineering reference only.
 
+## Plain-language patient/caregiver report
+
+The portal includes a read-only **Plain-language report** view, reachable from the workspace navigation and from the patient view. It renders six sections — overview, timeline highlights, open questions, option portfolio status, follow-through, and goals — deterministically from the current recorded case state. No model is called and no new inference is performed; templates and recorded data only.
+
+```text
+GET /api/cases/{CASE-ID}/patient-report          # JSON
+GET /api/cases/{CASE-ID}/patient-report?format=text  # printable plain text
+```
+
+Behavior contract: every section names its source for each entry or states plainly that it has none; pending, unknown, stale, and quarantined states stay visibly unsettled and are never smoothed over; the report's own voice carries no clinical interpretation, recommendation, or directive language (fixed templates checked by a language guard at build time, with recorded entries shown verbatim as attributed quotations); the ledger has no goals entity, so the goals section reports that absence instead of inferring goals. The report and its UI are labeled fictional/demo throughout, and the view offers Print plus a plain-text download.
+
+This slice does **not** add patient goals tracking, clinical interpretation, recommendations, or any new ledger state. It is a presentation projection over the existing case record for the synthetic engineering reference only.
+
 ## Fictional evidence and case applicability slice
 
 The evidence form supports only the explicit `OI-SYNTHETIC-EVIDENCE/1` format with `Rights: original-synthetic`. Use the bundled `examples/synthetic/demo-evidence.txt` text. That declaration is not legal clearance for arbitrary user-supplied text. No third-party paper, article body, guideline, or real oncology data is retrieved or reused.
@@ -106,3 +119,64 @@ PYTHONPATH=src python -m open_intelligence serve
 Remaining proof step: a live-server run against the real API with
 the operator key set, before the demo. The API completion itself
 was verified separately on 2026-10-31.
+
+## Follow-through tasks (case records for humans)
+
+Each case can carry follow-through tasks: what was agreed, who owns it,
+and when to revisit it (a due date, a review trigger, or both). Tasks are
+records only — creating or changing one performs no action and touches no
+other ledger (sources, assertions, questions, snapshots, evidence, options).
+
+- Lifecycle: `created → assigned → acknowledged → completed`, with
+  `deferred` as a labeled side state that reopens only through a fresh
+  assignment. Completion requires a prior recorded acknowledgment and stays
+  an attributed record; it does not verify an external action or clinical approval.
+- Every status change appends a history row (actor, timestamp, reason);
+  history rows are never updated or deleted, and completed tasks stay
+  readable as history. Assignment names a human owner; deferral requires
+  a reason.
+- Overdue (past due, still open) and due-soon (due within 7 days) flags
+  are derived read-only in the case view; completed and deferred tasks
+  are never overdue. An open task anchored to a superseded source version is
+  flagged for re-check without changing its history.
+- Task text passes a narrow guard rejecting recommendation, order,
+  eligibility, diagnosis, and dosing language; every view carries a
+  disclaimer that these are fictional records for humans to act on.
+
+```text
+GET  /api/cases/{CASE-ID}/followthrough
+POST /api/cases/{CASE-ID}/followthrough-tasks
+POST /api/cases/{CASE-ID}/followthrough-tasks/{N}/status
+```
+
+The case view (`GET /api/cases/{CASE-ID}/state`) embeds the same
+projection under `followthrough`, and the workspace renders a
+Follow-through panel with a visible overdue/due-soon attention box plus
+separate open, deferred, and completed-history lists. See
+`tests/test_followthrough.py` for the lifecycle, history-preservation,
+overdue-derivation, amendment-flag, and no-auto-execution checks.
+
+### Connected patient report and follow-through
+
+The plain-language case report now includes the same persisted follow-through
+tasks: recorded owner, due date, trigger, status, complete transition history,
+and exact linked source version/hash. It preserves open amendment rechecks
+and deferred/completed history. The report distinguishes its ledger event
+cutoff from the date used to evaluate due dates.
+
+`GET /api/cases/{CASE-ID}/patient-report` returns structured sections and a
+`text` field made from the same read snapshot. The browser downloads that
+accepted text. Its Print action selects only that report. Refresh, pending
+case/shared evidence writes, case switching, and errors clear stale report
+actions; Refresh provides explicit recovery after a failed write or read.
+
+See [the integration record](docs/PATIENT_REPORT_FOLLOWTHROUGH_2026-11-02.md)
+for exact upstream ownership, scope, acceptance and verification. Run the
+connected synthetic browser journey with:
+
+```bash
+PYTHONPATH=src python tests/patient_report_followthrough_browser_journey.py
+```
+
+The journey requires Chrome/Chromium (or `OI_BROWSER_BINARY`) and writes a
+synthetic screenshot and report PDF under `verification-artifacts/`.

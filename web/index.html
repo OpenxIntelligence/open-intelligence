@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
   <script src="/mission.js" defer></script>
+  <script src="/report.js" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main-content">Skip to case workspace</a>
@@ -34,6 +35,7 @@
           <a href="#incoming-board">Incoming board</a>
           <a href="#patient-view">Patient view</a>
           <a href="#patient-mission">Patient Mission</a>
+          <a href="#patient-report">Plain-language report</a>
           <a href="#assertions">Reported findings</a>
           <a href="#timeline">Timeline</a>
           <a href="#investigations">Investigation</a>
@@ -44,6 +46,7 @@
           <a href="#activity">Activity</a>
           <a href="#changes-since-review">What changed</a>
           <a href="#options">Options &amp; dependencies</a>
+          <a href="#followthrough">Follow-through</a>
         </nav>
       </details>
       <div class="side-bottom">
@@ -107,6 +110,7 @@
         <div class="subhead">What the records say</div><div id="patient-findings" class="findings"></div>
         <div class="subhead">Questions still open</div><div id="patient-questions" class="questions"></div>
         <div class="subhead">What is not certain yet</div><div id="patient-uncertainty" class="questions"></div>
+        <p><a class="button secondary" href="#patient-report">Open the printable plain-language report</a></p>
       </section>
 
       <section class="panel" id="patient-mission" aria-labelledby="patient-mission-title">
@@ -128,6 +132,19 @@
         </div>
         <div class="subhead">Guardrails</div>
         <ul id="mission-guardrails" class="muted tiny"></ul>
+      </section>
+
+      <section class="panel" id="patient-report" aria-labelledby="patient-report-title">
+        <div class="panel-head"><div><div class="eyebrow">PATIENT REPORT · READ-ONLY · PRINTABLE</div><h2 id="patient-report-title">Plain-language case report</h2></div><span class="pill pill-warn">FICTIONAL DEMO — not a real patient</span></div>
+        <p class="muted"><strong>Fictional demo report. This is not a real patient file, not clinical advice, and not reviewed by a clinician.</strong> <span id="report-reading-note"></span></p>
+        <p id="report-meta" class="muted tiny" role="status" aria-live="polite">Loading the plain-language report…</p>
+        <div class="report-actions">
+          <button id="report-refresh" class="button secondary" type="button">Refresh report</button>
+          <button id="report-print" class="button secondary" type="button" disabled>Print this report</button>
+          <a id="report-text-link" class="button secondary" role="link" aria-disabled="true" tabindex="-1">Download plain text</a>
+        </div>
+        <div id="report-sections" class="report-sections" aria-live="polite"></div>
+        <p class="muted tiny">Fictional demo report. This is not a real patient file, not clinical advice, and not reviewed by a clinician.</p>
       </section>
 
       <section class="panel panel-timeline" id="timeline">
@@ -374,6 +391,65 @@
         <div class="subhead">Amendments since the anchor</div><div id="changes-amendments" class="cards" aria-live="polite"></div>
         <div class="subhead">Stale investigations with cause</div><div id="changes-stale" class="snapshots" aria-live="polite"></div>
         <div class="subhead">New questions since the anchor</div><div id="changes-questions" class="questions" aria-live="polite"></div>
+      </section>
+
+      <section class="panel" id="followthrough" aria-labelledby="followthrough-heading">
+        <div class="panel-head"><div><div class="eyebrow">FOLLOW-THROUGH · RECORDS FOR HUMANS</div><h2 id="followthrough-heading">Follow-through tasks</h2></div><span class="pill pill-warn">FICTIONAL DEMO DATA — not a real patient</span></div>
+        <p class="muted">Agreed work for a human to do: what was agreed, who owns it, and when to revisit it. Recording a task here does nothing by itself — it does not send a message, change a record, or perform any clinical step. A task counts as done only after the owner has acknowledged it and a human records the completion, with who, when, and why kept in history.</p>
+        <p id="followthrough-disclaimer" class="muted tiny"></p>
+        <div id="followthrough-attention" class="review-attention" data-state="checking" role="status" aria-live="polite">
+          <div>
+            <p class="tiny muted review-eyebrow">OVERDUE AND DUE SOON · FICTIONAL DEMO</p>
+            <h3 id="followthrough-attention-heading">Checking follow-through tasks…</h3>
+            <p id="followthrough-attention-summary">Loading task reminders.</p>
+          </div>
+        </div>
+        <div class="subhead">Record a new task</div>
+        <form id="followthrough-form">
+          <label for="ft-title">What was agreed (short title)</label>
+          <input id="ft-title" type="text" maxlength="120" required placeholder="Fictional follow-up to prepare">
+          <label for="ft-detail">Details (optional)</label>
+          <textarea id="ft-detail" rows="2" maxlength="1000" placeholder="What the human owner agreed to look into. No treatment or dosing instructions."></textarea>
+          <label for="ft-due">Due date (optional)</label>
+          <input id="ft-due" type="date">
+          <label for="ft-trigger">Review trigger (optional)</label>
+          <input id="ft-trigger" type="text" maxlength="300" placeholder="e.g. Revisit when the next fictional report arrives">
+          <label for="ft-question">Linked question (optional)</label>
+          <select id="ft-question"></select>
+          <label for="ft-source">Linked source version (optional)</label>
+          <select id="ft-source"></select>
+          <label for="ft-actor">Your label (who records this)</label>
+          <input id="ft-actor" type="text" maxlength="80" required placeholder="Fictional recorder (unverified)">
+          <label for="ft-reason">Note on why this was agreed (optional)</label>
+          <textarea id="ft-reason" rows="2" maxlength="600"></textarea>
+          <button class="button" type="submit">Record task</button>
+        </form>
+        <div class="subhead">Overdue — needs a human to act</div><div id="ft-overdue" class="snapshots" aria-live="polite"></div>
+        <div class="subhead">Due soon (within 7 days)</div><div id="ft-duesoon" class="snapshots" aria-live="polite"></div>
+        <div class="subhead">Open tasks</div><div id="ft-open" class="snapshots" aria-live="polite"></div>
+        <div class="subhead">Change a task status</div>
+        <form id="followthrough-update-form">
+          <label for="ft-task-choice">Task</label><select id="ft-task-choice" required></select>
+          <label for="ft-status">New status</label>
+          <select id="ft-status" required>
+            <option value="assigned">Assigned (name the human owner)</option>
+            <option value="acknowledged">Acknowledged (owner confirms they saw it)</option>
+            <option value="completed">Completed (only after acknowledgment)</option>
+            <option value="deferred">Deferred (needs a reason)</option>
+          </select>
+          <label for="ft-owner">Human owner (required when assigning)</label>
+          <input id="ft-owner" type="text" maxlength="80" placeholder="Fictional owner (unverified)">
+          <label for="ft-update-due">Due date (leave blank to keep the current one)</label>
+          <input id="ft-update-due" type="date">
+          <label for="ft-clear-due"><input id="ft-clear-due" type="checkbox"> Clear the due date</label>
+          <label for="ft-update-actor">Your label (who records this change)</label>
+          <input id="ft-update-actor" type="text" maxlength="80" required placeholder="Fictional recorder (unverified)">
+          <label for="ft-update-reason">Why this change (required, kept in history)</label>
+          <textarea id="ft-update-reason" rows="2" minlength="10" maxlength="600" required></textarea>
+          <button class="button" type="submit">Record status change</button>
+        </form>
+        <div class="subhead">Deferred tasks</div><div id="ft-deferred" class="snapshots" aria-live="polite"></div>
+        <div class="subhead">Completed tasks (history)</div><div id="ft-completed" class="snapshots" aria-live="polite"></div>
       </section>
 
       <footer>Open Intelligence is an original, dependency-free reference implementation. No real patient information, patient login, credentialed clinical review, automated clinical inference, treatment recommendations, or regulatory clearance.</footer>
