@@ -105,7 +105,7 @@ class PostgresQuestionEvidence:
                        "organization": organization, "actor": actor, "purpose": purpose,
                        "index": index, "world": world, "question": question,
                        "require_original": require_original}
-            context['manual_context'] = QuestionPassages(self.registry).context_locked(context)
+            context['manual_meta'] = QuestionPassages(self.registry).metadata_locked(context)
             context.update(self._read_evidence(context))
             prepared_context = context
             result = operation(context)
@@ -304,16 +304,16 @@ class PostgresQuestionEvidence:
                 allowed, current = True, c["question"]["source_context_state"] == "current_unreviewed_question"
                 frozen = snapshot.get('manual_passages')
                 if frozen is not None:
-                    QuestionPassages(self.registry).verify_frozen_locked(c, frozen)
+                    frozen_current = QuestionPassages(self.registry).verify_frozen_metadata_locked(c, frozen)
                     expected_payload = dict(synthetic=True, request_key=origin['request_key'],
                         expected_packet_sha256=origin['expected_packet_sha256'],
                         expected_manual_context_sha256=frozen['context_sha256'],
                         assessment_ids=sorted(row['assessment']['assessment_id'] for row in snapshot['comparisons']))
                     if self._intent(dict(c, actor=actor), 'report', expected_payload) != origin['intent_sha256']:
                         raise ValueError()
-                    current = current and frozen['context_sha256'] == c['manual_context']['context_sha256']
+                    current = current and frozen_current
                 else:
-                    current = current and c['manual_context']['revision_id'] is None
+                    current = current and c['manual_meta']['revision_id'] is None
                 for comparison in snapshot["comparisons"]:
                     a = stored[comparison["assessment"]["assessment_id"]]
                     e = c["versions"][a["evidence_id"]]
@@ -614,13 +614,15 @@ class PostgresQuestionEvidence:
                 packet = self._packet(c)
                 if not hmac.compare_digest(packet["packet_sha256"], normalized["expected_packet_sha256"]):
                     raise PatientRegistryConflict("Inspected evidence context changed")
-                manual = c['manual_context']
+                manual_meta = c['manual_meta']
                 expected_manual = normalized.get('expected_manual_context_sha256')
-                if ((manual['revision_id'] is not None or expected_manual is not None)
-                        and expected_manual != manual['context_sha256']):
-                    raise PatientRegistryConflict('Inspected manual passage context changed')
-                if manual['state'] != 'current_unreviewed':
-                    raise PatientRegistryConflict('Manual passages require reassessment before a new report')
+                manual = None
+                if manual_meta['revision_id'] is not None or expected_manual is not None:
+                    manual = QuestionPassages(self.registry).context_locked(c)
+                    if expected_manual != manual['context_sha256']:
+                        raise PatientRegistryConflict('Inspected manual passage context changed')
+                    if manual['state'] != 'current_unreviewed':
+                        raise PatientRegistryConflict('Manual passages require reassessment before a new report')
                 selected = self._current_source(c, c["question"]["source_snapshot_sha256"], c["question"]["preflight_sha256"])
                 assessments = {a["assessment_id"]: a for a in packet["assessments"]}
                 versions = {e["evidence_id"]: e for e in packet["evidence"]}
@@ -637,7 +639,7 @@ class PostgresQuestionEvidence:
                     raise PatientRegistryError("Question report exceeds bounded history limit")
                 snapshot = {"question": c["question"], "selected_source": selected, "comparisons": comparisons,
                             "prepared_at": datetime.now(timezone.utc).isoformat(), "actor_label": c["actor"]}
-                if manual['revision_id'] is not None:
+                if manual is not None and manual['revision_id'] is not None:
                     snapshot['manual_passages'] = manual
                     c['report_renderer'] = 'oi.h1-evidence-text/3'
                 body = render_evidence_report(snapshot, renderer=c.get('report_renderer', 'oi.h1-evidence-text/2'))
@@ -667,6 +669,11 @@ class PostgresQuestionEvidence:
             result = dict(matches[0])
             if result["state"] == "content_withheld":
                 result["body"] = result["snapshot"] = None
+            elif result["snapshot"].get("manual_passages") is not None:
+                # Only the report actually disclosing frozen manual text needs
+                # current original-read authority and exact source re-resolution.
+                QuestionPassages(self.registry).verify_frozen_locked(
+                    c, result["snapshot"]["manual_passages"])
             return {"contract": "oi.h1-evidence-report/1", "patient_id": c["patient_id"],
                     "case_id": c["case_id"], "access_receipt_id": c["index"]["access_receipt_id"], **result, **FLAGS}
         return self._run(patient_id, case_id, question_id, action="evidence_report_export", operation=operation, **kwargs)
