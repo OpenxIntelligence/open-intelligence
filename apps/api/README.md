@@ -1,10 +1,18 @@
 # Open Intelligence H1 patient registry API
 
 This is the FastAPI/PostgreSQL 16 composition root for [issue #112](https://github.com/OpenxIntelligence/open-intelligence/issues/112).
-It mounts the existing canonical patient registry and a small synthetic record-request operational domain, with migrations and durable event receipts.
-The Python/SQLite prototype remains the source/evidence/investigation oracle.
+It mounts the existing canonical patient registry, record requests, case bindings,
+original-source versions, source-derived World Model and durable source-linked
+questions, with migrations and durable event receipts. The saved-question brief
+extension is documented below. The Python/SQLite implementation remains the
+behavioral reference for evidence and governed human review.
 
-## PostgreSQL record-acquisition continuation (draft, synthetic only)
+## Historical pending-record milestone
+
+The following record-request milestone predates canonical source persistence.
+Its former no-receipt limitation is superseded in this candidate by the
+[canonical received-source contract](../../docs/engineering/H1_CANONICAL_RECORD_SOURCE_RECEIPT.md).
+The original milestone is retained to explain schema and owner provenance.
 
 The H1 API now includes a **source-independent pending-record request** domain.
 It uses the same patient identifier in `identity.identity_patients`, the same
@@ -57,7 +65,10 @@ foreign-key-backed receipt or reference contract, source-version/amendment
 checks and approved access policy, with a cross-domain transaction or safe
 compensating mechanism. Until that stage passes, receipt is disabled.
 
-## H1 canonical patient-to-case reference binding (draft extension)
+## Historical patient-to-case binding milestone
+
+This initial mapping milestone predates the original-source port described in
+the next section. Its no-import limitation is historical, not the current API.
 
 The PostgreSQL patient registry now has a **qualified synthetic case-reference mapping**
 port following the original `CanonicalLabBridge` and `ClinicalSourceProvenance`
@@ -161,11 +172,12 @@ institutions. A synthetic case-binding review label is **not verified identity,
 patient consent or rights to source content**. No PDF/DICOM ingestion or
 real-patient medical record is supported.
 
-The next source-owned integration must authorize a received-record receipt
-against a current, exact source version, with separate patient/case/organization
-checks, atomic request+receipt+audit history, amendment invalidation and one
-durable human review queue. Until that is tested, H1 records acquisition still
-reports source receipts as unavailable and no clinical interpretation is granted.
+The existing received-record route now links an imported exact source to a
+requested record using a separate grant and the existing append-only event
+journal. The source is not duplicated. A later amendment retains the historical
+receipt and marks it for reconciliation; this does not create a human-review
+queue or clinical approval. See the
+[canonical received-source contract](../../docs/engineering/H1_CANONICAL_RECORD_SOURCE_RECEIPT.md).
 
 ## Product and release boundary
 
@@ -190,24 +202,34 @@ patient, source and event owners; question intake is not a clinical review queue
   and `patient_read`. The `/2` list preserves original anchors and identifies
   context requiring reassessment. Its access receipt describes the authorized
   source context, not delivery or professional approval.
+- `POST .../cases/{case_id}/questions/{question_id}/brief` additionally requires
+  `source_brief_export`. It reconstructs the current saved question, exact
+  original anchor and preflight under the existing source locks, prepares a
+  bounded typed response, refreshes all authority, and commits a source-read
+  receipt. Its literal text declares no clinical approval, model execution or
+  biomedical evidence. A stale or legacy question requires reassessment.
 
-All three consumer operations require the existing operations purpose. A
+All four consumer operations require the existing operations purpose. A
 follow-up migration preserves `0006_source_questions` and explicitly marks
 pre-existing fingerprint rows as legacy. Such rows require reassessment even
 when a hash happens to match a canonical hash; their immutable values are not
 rehashed or relabeled. New rows record the canonical fingerprint contract.
 See [question ownership and acceptance](../../docs/engineering/H1_CANONICAL_SOURCE_QUESTION_INTAKE.md)
 and [preflight boundaries](../../docs/engineering/H1_SOURCE_COMPOSER_PREFLIGHT.md).
+The [saved-question brief contract](../../docs/engineering/H1_SOURCE_LINKED_BRIEF.md)
+specifies the independent export grant, complete response bound and fresh
+authorization for every download. It adds no table, dependency or review state.
 
 ### Broader product boundary
 
 The first integrated product remains patient information → source-linked World
 Model → permitted evidence → investigation → human review → follow-up →
-reassessment. This contribution connects its identity foundation; it does not
-complete that workflow or MRT-01.
+reassessment. The connected identity/source/question/brief subset does not
+complete biomedical evidence, human review or the full MRT-01 workflow.
 
 **Local, independently synthetic development only.** The API accepts opaque
-fictional identities, not names, demographics, records or clinical information.
+fictional identities and independently authored synthetic source records.
+Real names, demographics and patient medical records are outside this environment.
 The included credential adapter is an operator-authored test fixture. Account
 creation, identity proofing, caregiver delegation, clinical consent, production
 authorization, clinical sign-off and treatment actions remain unimplemented.

@@ -56,3 +56,8 @@
 .question-status.reassessment{background:#f2e7d9;color:#764b21}
 .question-receipt{padding:12px;background:#edf5ee;border-left:3px solid #638673}
 @media(max-width:600px){.question-history{padding:12px}.question-history-heading button{width:100%}.question-status-title{flex-direction:column;gap:8px}}
+
+.source-brief-preview{border-top:1px solid #d6e1d9;margin-top:18px;padding-top:16px;min-width:0}
+.source-brief-preview blockquote{margin:12px 0;border-left:3px solid #879d91;padding:10px 12px;white-space:pre-wrap;overflow-wrap:anywhere}
+.source-brief-preview pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:36rem;overflow:auto;padding:14px;border:1px solid #d7e0d8;border-radius:6px;background:#fcfdfb;font:inherit;font-size:13px}
+.source-brief-preview button,.question-items button{max-width:100%;white-space:normal;overflow-wrap:anywhere}
