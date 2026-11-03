@@ -643,9 +643,37 @@ controls and hidden draft text, downloads the historical report with a fresh
 receipt, explicitly refreshes to the corrected evidence and discards the old
 draft before authoring a new comparison. No automatic comparison/report write is
 allowed. The existing denial, restart, recovery, withdrawal and retained-file
-checks remain in the journey. Independent runtime review found no blocker and reran all 404 tests. Hosted
-acceptance and browser-helper review are pending;
-local compilation is not a browser/PostgreSQL execution claim.
+checks remain in the journey. Independent runtime review found no blocker and
+reran all 404 tests; browser-helper and download review also found no actionable
+issue. These are automated engineering reviews, not human clinical approval.
+
+**Completed hosted acceptance — draft #378:** [run 41711007124](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41711007124),
+[job 126178719241](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41711007124/job/126178719241),
+passed on exact implementation head `807e3d9fd828be1bc1c3a75486e413c06d21d551`,
+tree `867d3f5b5a65963ff7d0a61b7a556eefffd0fd9d`. Hosted results: 404 client tests
+and 13 rights tests, zero failures or skips; TypeScript/Vite build, synthetic-data
+audit, frontend/backend dependency gates and actual PostgreSQL 16/FastAPI/built
+React/Chromium journey passed. The new external-amendment path and inherited
+review, source-reading, evidence, follow-through, denial and restart paths all
+completed. This frontend continuation does not claim a new full standalone
+backend/backup-restore run.
+
+Retained [artifact 13268033686](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41711007124/artifacts/13268033686):
+5,400,216 bytes; downloaded SHA-256
+`c791f530760193d4e67dfa7037e8b7041173addc71ae52a899b7254a7b4cc326`, matching
+the hosted receipt. Its recorded head and all 424 tracked source blobs/executable
+modes match the published implementation tree. All three retained report files
+match full-file/body hashes and fresh access receipts. The original and historical
+versions of the first report have identical 3,859-byte bodies; its later download
+adds historical status and a fresh receipt. The replacement report has its own
+3,860-byte body. The exact original-evidence file hash also matches. The retained
+workflow JSON confirms external amendment version 2, stale control invalidation,
+hidden draft retention and fresh historical-only download; the checked browser
+code asserts these behaviors and no implicit comparison writes. Artifact
+retention expires 10 November 2026.
+
+The subsequent documentation-only delivery records these results without
+changing the tested runtime, tests, browser probes, dependencies or workflows.
 
 Synthetic engineering only; unmerged and undeployed. This change does not prove
 scientific applicability, clinical usefulness, production identity or complete
