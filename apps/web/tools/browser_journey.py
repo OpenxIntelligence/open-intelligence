@@ -277,6 +277,8 @@ def main():
             cd.wait("document.querySelector('[data-testid=status]').textContent.includes('Patient unavailable')",'cross-organization read denied')
             cd.command('Page.reload');cd.wait("Boolean(document.querySelector('#credential'))",'reload forgets credential')
             assert cd.evaluate("document.querySelector('#credential').value==='' && document.querySelector('#patient-id').value==='' && localStorage.length===0 && sessionStorage.length===0")
+            from reading_convergence_journey import exercise_session_reset
+            exercise_session_reset(cd,pid,case,tokens[0],credentials,write_grants)
             print('PASS: React/Vite -> actual FastAPI/PostgreSQL 16; identity/create/retry; exact case/source read, immutable amendment history, unreviewed quoted text and rights revocation; cross-organization isolation, credential expiry/reload, keyboard landmarks and mobile layout. Independently fictional records only; no clinical workflow or production identity claim.')
         finally:
             if cd:cd.close()
