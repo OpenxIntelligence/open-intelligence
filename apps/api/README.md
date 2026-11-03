@@ -4,6 +4,26 @@ This is the FastAPI/PostgreSQL 16 composition root for [issue #112](https://gith
 It mounts the existing canonical patient registry and a small synthetic record-request operational domain, with migrations and durable event receipts.
 The Python/SQLite prototype remains the source/evidence/investigation oracle.
 
+## Current integration head — draft, synthetic only
+
+This combined candidate preserves the canonical source/World Model/Composer
+and **durable source-question** stack from #244 and introduces the bounded,
+source-linked original DICOM/CT custody owner from #242. It is not a clinical
+PACS, review/approval service, or real-patient deployment.
+
+The **current required Alembic revision is `0008_questions_images_merge`**:
+its two parents are the original question lineage
+`0006_source_questions → 0007_question_snapshot_contract` and independent
+`0006_image_custody`. All original migration identities remain intact, and
+an installed single-parent branch does **not** satisfy readiness. The full
+combined acceptance and restrictions are documented in
+`docs/engineering/H1_CANONICAL_QUESTIONS_IMAGE_CUSTODY_MERGE.md`.
+
+Some sections below describe earlier incremental H1 stages, including before
+source or received-request integration; those historical limitations should
+not be mistaken for the capabilities of this **draft merged source tree**.
+No main merge or production permission has occurred.
+
 ## PostgreSQL record-acquisition continuation (draft, synthetic only)
 
 The H1 API now includes a **source-independent pending-record request** domain.
@@ -292,9 +312,9 @@ distributed consent/revocation service.
 Use Python 3.12 on the reviewed platform. Download is an explicit build step:
 
     python3.12 -m venv /tmp/oi-h1-api-venv
-    /tmp/oi-h1-api-venv/bin/python -m pip download --require-hashes --only-binary=:all: --dest /tmp/oi-h1-wheels -r apps/api/requirements.lock
+    /tmp/oi-h1-api-venv/bin/python apps/api/tools/prepare_dependencies.py --wheel-dir /tmp/oi-h1-wheels
     python3.12 apps/api/tools/check_dependencies.py --wheel-dir /tmp/oi-h1-wheels --sbom /tmp/oi-h1-sbom.json
-    /tmp/oi-h1-api-venv/bin/python -m pip install --no-index --find-links /tmp/oi-h1-wheels --require-hashes -r apps/api/requirements.lock
+    /tmp/oi-h1-api-venv/bin/python -m pip install --force-reinstall --no-deps --no-index --find-links /tmp/oi-h1-wheels --require-hashes -r apps/api/requirements.lock
     /tmp/oi-h1-api-venv/bin/python -m pip check
     PYTHONPATH=apps/api/src:src /tmp/oi-h1-api-venv/bin/python -m oi_api
 

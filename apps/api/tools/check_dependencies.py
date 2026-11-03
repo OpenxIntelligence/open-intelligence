@@ -8,6 +8,7 @@ import argparse
 from datetime import datetime, timezone
 from email.parser import BytesParser
 import hashlib
+import importlib.util
 import json
 from pathlib import Path
 import re
@@ -82,6 +83,17 @@ def verify(root: Path, wheel_dir: Path):
         path = wheel_dir / package["filename"]
         if path.name != package["filename"] or digest(path) != package["sha256"]:
             raise GateError(f"Wheel integrity failure: {package['name']}")
+        if canonical(package["name"]) == "pydicom":
+            if not package.get("derivation"):
+                raise GateError("pydicom requires the reviewed code-only derivation")
+            spec = importlib.util.spec_from_file_location(
+                "oi_pydicom_runtime", Path(__file__).with_name("pydicom_runtime.py"))
+            runtime = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(runtime)
+            manifest = runtime.reviewed_manifest(root, package)
+            runtime.verify_code_only(path, expected_init_sha256=manifest["patch"]["derived_sha256"])
+        elif package.get("derivation"):
+            raise GateError("Unreviewed package transformation")
         with ZipFile(path) as archive:
             metadata_files = [n for n in archive.namelist() if n.endswith(".dist-info/METADATA")]
             if len(metadata_files) != 1:
@@ -120,6 +132,11 @@ def cyclonedx(report):
             }
             if artifact.get("sha256"):
                 component["hashes"] = [{"alg": "SHA-256", "content": artifact["sha256"]}]
+            if artifact.get("derivation"):
+                component["properties"].extend([
+                    {"name": "oi:transformation", "value": artifact["derivation"]["transformation"]},
+                    {"name": "oi:upstream-wheel-sha256", "value": artifact["derivation"]["source_sha256"]},
+                ])
             components.append(component)
     return {
         "bomFormat": "CycloneDX", "specVersion": "1.6", "version": 1,
