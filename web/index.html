@@ -20,6 +20,14 @@
       <span class="brand-mark" aria-hidden="true">◈</span>
       <strong>Open Intelligence</strong>
     </a>
+    <div class="experience-control">
+      <label for="experience-picker">Preview experience</label>
+      <select id="experience-picker" aria-describedby="experience-help">
+        <option value="clinician">Clinician</option>
+        <option value="patient">Patient</option>
+      </select>
+      <span id="experience-help" class="tiny muted">Development preview · same fictional data, no change to access</span>
+    </div>
     <div class="top-right">
       <span class="pill pill-warn">FICTIONAL DEMO DATA — not a real patient</span>
       <span class="top-note">Local demo, not clinical software</span>
@@ -50,17 +58,22 @@
         </nav>
       </details>
       <div class="side-bottom">
-        <strong>What this prototype proves</strong>
-        <p>Versioned original documents, traceable statements, durable questions, and amendment-driven review status.</p>
-        <p class="muted tiny">No automated clinical extraction, AI reasoning, trial matching, or treatment recommendations.</p>
+        <strong>About this workspace</strong>
+        <p>Original documents, source-linked questions, investigations, and review history stay together.</p>
+        <p class="muted tiny">Fictional development records only. Previewing a clinician layout does not verify an identity or grant clinical authority.</p>
       </div>
     </aside>
 
     <main class="main" id="main-content" tabindex="-1">
+      <header id="page-header" class="page-header">
+        <p id="page-eyebrow" class="view-question">CLINICIAN WORKSPACE</p>
+        <h1 id="page-title" tabindex="-1">Workspace</h1>
+        <p id="page-description" class="muted">Find a patient workspace or continue reviewing a record.</p>
+      </header>
       <section id="overview" class="hero">
         <div class="hero-copy">
           <p class="view-question">CASE OVERVIEW · WHERE ARE WE NOW?</p>
-          <h1 id="case-heading">Loading case…</h1>
+          <h2 id="case-heading">Loading case…</h2>
           <p class="hero-desc">Clinician-review evidence workspace — not medical advice. Inspect the reported facts before preparing an interpretation.</p>
         </div>
         <div class="hero-actions">
@@ -68,6 +81,8 @@
           <a class="button secondary" href="#investigations">Prepare an investigation</a>
         </div>
       </section>
+      <nav id="chart-navigation" class="chart-navigation" aria-label="Patient chart sections" hidden></nav>
+      <p id="workspace-loading" class="notice" role="status" hidden>Loading the selected record…</p>
       <div class="metrics" id="metrics" aria-live="polite"></div>
       <div class="glance-layout">
         <section class="panel glance-findings" id="assertions" aria-labelledby="findings-heading">

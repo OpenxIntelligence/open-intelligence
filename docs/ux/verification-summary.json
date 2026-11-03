@@ -1,0 +1,30 @@
+{
+  "date_utc": "2026-11-03",
+  "baseline_commit": "334d863b2206b290c02cd2606dcb93c93afe3a68",
+  "browser": "Chrome 156.0.8078.79",
+  "data": "Independently authored fictional fixtures only",
+  "python_tests": 345,
+  "javascript_tests": 80,
+  "navigation_assertions": 774,
+  "responsive_page_checks": 51,
+  "navigation_captures": 26,
+  "retained_forms": 16,
+  "runtime_or_console_errors": [],
+  "resource_errors": [
+    {
+      "source": "network",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "url": "http://127.0.0.1:45579/favicon.ico"
+    }
+  ],
+  "selected_captures": [
+    "clinician-workspace.png",
+    "patient-chart.png",
+    "patient-home.png",
+    "patient-home-mobile.png"
+  ],
+  "review_findings_resolved": 4,
+  "domain_code_changed": false,
+  "new_runtime_dependencies": false,
+  "raw_report_reproduction": "OI_UI_ARTIFACT_DIR=ui-artifacts/navigation python3 tests/workspace_navigation_browser_journey.py"
+}

@@ -16,7 +16,7 @@ import sys
 import tempfile
 from urllib.request import urlopen
 
-from browser_journey import ChromeSession, free_port, wait_for
+from browser_journey import ChromeSession, free_port, navigate_workspace, wait_for
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -66,10 +66,12 @@ def main() -> None:
             cd.command('Runtime.enable')
             cd.command('Emulation.setDeviceMetricsOverride', {
                 'width': 1440, 'height': 900, 'deviceScaleFactor': 1, 'mobile': False})
-            cd.command('Page.navigate', {'url': url})
+            cd.command('Page.navigate', {'url': url + '#overview'})
             cd.wait("document.querySelector('#case-heading')?.textContent === 'Fictional case Alpha'",
                     'Alpha loaded')
             cd.wait("document.querySelectorAll('#assertion-list .finding').length > 0", 'source findings')
+            cd.wait("document.body.dataset.page === 'overview' && !document.querySelector('#page-overview').hidden",
+                    'chart overview visible')
             cd.evaluate('window.scrollTo(0,0)')
 
             def capture(name: str) -> None:
@@ -80,20 +82,26 @@ def main() -> None:
             layout = cd.evaluate("""(() => {
               const facts = document.querySelector('#assertions');
               const authoring = document.querySelector('#investigations');
+              const authoringPage = authoring.closest('.workspace-page');
               const first = document.querySelector('#assertion-list .source-jump');
               return {
-                factsFirst: !!(facts.compareDocumentPosition(authoring) & Node.DOCUMENT_POSITION_FOLLOWING),
+                factsVisible: facts.checkVisibility() && !facts.closest('[hidden], [inert]'),
+                authoringMounted: authoring.isConnected,
+                authoringHidden: authoringPage.hidden && !authoring.checkVisibility(),
+                authoringInert: authoringPage.inert,
+                authoringPage: authoringPage.dataset.page,
                 firstSourceBottom: first?.getBoundingClientRect().bottom,
                 factsTop: facts.getBoundingClientRect().top,
-                authoringTop: authoring.getBoundingClientRect().top,
                 width: innerWidth, scrollWidth: document.documentElement.scrollWidth,
                 sourceCount: document.querySelectorAll('#assertion-list .source-jump').length,
                 findingCount: document.querySelectorAll('#assertion-list .finding').length
               };
             })()""")
             report['desktop'] = layout
-            check(layout['factsFirst'], 'Source facts precede authoring in reading order')
-            check(layout['factsTop'] < layout['authoringTop'], 'Source facts precede authoring visually')
+            check(layout['factsVisible'], 'Chart overview exposes source facts')
+            check(layout['authoringMounted'] and layout['authoringHidden'] and layout['authoringInert']
+                  and layout['authoringPage'] == 'investigations',
+                  'Authoring stays mounted but hidden and inert outside chart overview')
             check(0 < (layout['firstSourceBottom'] or 10000) <= 900, 'First exact-source action is above the fold at 1440x900')
             check(layout['sourceCount'] == layout['findingCount'], 'Every finding retains an exact-source action')
             check(layout['scrollWidth'] <= layout['width'], 'Desktop has no page-level horizontal overflow')
@@ -110,6 +118,7 @@ def main() -> None:
             cd.command('Input.dispatchKeyEvent', {'type': 'keyUp', 'key': 'Escape', 'code': 'Escape', 'windowsVirtualKeyCode': 27})
             cd.wait("!document.querySelector('#source-dialog').open", 'Escape closes source')
 
+            navigate_workspace(cd, '#evidence')
             disclosure = cd.evaluate("!!document.querySelector('#evidence-tools > summary')")
             check(disclosure, 'Evidence registration uses an explicit native disclosure')
             if disclosure:
@@ -138,6 +147,7 @@ def main() -> None:
               picker.value='CASE-ALPHA'; picker.dispatchEvent(new Event('change'));
             })()""")
             cd.wait("document.querySelector('#case-heading')?.textContent === 'Fictional case Alpha'", 'return Alpha')
+            navigate_workspace(cd, '#overview')
             cd.command('Emulation.setDeviceMetricsOverride', {
                 'width': 390, 'height': 844, 'deviceScaleFactor': 1, 'mobile': False})
             cd.evaluate('window.scrollTo(0,0)')

@@ -147,6 +147,59 @@ class ChromeSession:
         return wait_for(lambda: self.evaluate(expression), label)
 
 
+def navigate_workspace(cd: ChromeSession, fragment: str) -> None:
+    """Use visible global/chart links, including the native mobile menu."""
+    chart_pages = {"overview", "timeline", "documents", "investigations", "evidence", "options", "updates"}
+    page = fragment.removeprefix("#")
+
+    def click_nav(selector: str, target: str) -> None:
+        cd.evaluate("""(([selector, target]) => {
+          const menu = document.querySelector('.section-menu');
+          if (selector === '#workspace-nav' && menu && !menu.open)
+            menu.querySelector(':scope > summary').click();
+          const link = [...document.querySelectorAll(selector + ' a')]
+            .find(item => item.getAttribute('href') === target);
+          if (!link || !link.checkVisibility() || link.closest('[inert], [hidden]'))
+            throw Error('Navigation link is not visible: ' + target);
+          link.scrollIntoView({block: 'nearest', inline: 'nearest'});
+          link.click();
+        })(""" + json.dumps([selector, target]) + ")")
+
+    if page in chart_pages:
+        if not cd.evaluate("document.querySelector('#chart-navigation')?.checkVisibility()"):
+            click_nav("#workspace-nav", "#overview")
+            cd.wait("document.body.dataset.page === 'overview' && !document.querySelector('#page-overview').hidden",
+                    "patient chart navigation available")
+        click_nav("#chart-navigation", fragment)
+    else:
+        click_nav("#workspace-nav", fragment)
+    cd.wait("""(page => document.body.dataset.page === page &&
+      !document.querySelector('#page-' + page).hidden &&
+      !document.querySelector('#page-' + page).inert)(""" + json.dumps(page) + ")",
+            page + " page is visible and interactive")
+
+
+def open_ancestor_disclosures(cd: ChromeSession, selector: str) -> None:
+    """Open native summaries before interacting with controls inside them."""
+    cd.evaluate("""(selector => {
+      const target = document.querySelector(selector);
+      if (!target) throw Error('Missing control: ' + selector);
+      const disclosures = [];
+      for (let parent = target.parentElement; parent; parent = parent.parentElement)
+        if (parent.tagName === 'DETAILS') disclosures.unshift(parent);
+      for (const detail of disclosures) {
+        if (detail.open) continue;
+        const summary = detail.querySelector(':scope > summary');
+        if (!summary.checkVisibility() || summary.closest('[inert], [hidden]'))
+          throw Error('Disclosure is not visible for: ' + selector);
+        summary.scrollIntoView({block: 'nearest'});
+        summary.click();
+      }
+      if (!target.checkVisibility() || target.closest('[inert], [hidden]'))
+        throw Error('Control is not visible: ' + selector);
+    })(""" + json.dumps(selector) + ")")
+
+
 def main() -> None:
     chrome = next((p for name in ("google-chrome", "google-chrome-stable",
                                  "chromium", "chromium-browser") if (p := shutil.which(name))), None)
@@ -194,11 +247,8 @@ def main() -> None:
                     "Alpha case loaded")
             cd.wait("document.querySelectorAll('#source-list .source-card').length === 2",
                     "two Alpha sources rendered")
-            assert cd.evaluate("document.querySelector('#investigations .panel-head').textContent.includes('Human-authored, no AI call')"), (
-                "the investigation draft must disclose that it is human-authored"
-            )
-            cd.wait("document.querySelector('#workspace-nav a[aria-current=location]')?.getAttribute('href') === '#overview'",
-                    "current workspace section is announced")
+            cd.wait("document.querySelector('#workspace-nav a[aria-current=location]')?.getAttribute('href') === '#workspace'",
+                    "current global workspace page is announced")
             assert cd.evaluate("document.querySelector('.section-menu')?.open === true"), (
                 "desktop section navigation should be expanded"
             )
@@ -208,6 +258,7 @@ def main() -> None:
 
             # Chronology is derived entirely from existing source event dates
             # rather than invented diagnosis/progression assertions.
+            navigate_workspace(cd, "#timeline")
             cd.wait("document.querySelectorAll('#timeline-events .timeline-entry').length === 2",
                     "two chronological Alpha source events")
             assert cd.evaluate("document.querySelector('#timeline-events .timeline-entry .timeline-doc').textContent") == "IMG-ALPHA"
@@ -239,6 +290,7 @@ def main() -> None:
                 "document.querySelector('#source-change-list').textContent"), (
                 "unamended sources were presented as revisions"
             )
+            navigate_workspace(cd, "#overview")
             cd.evaluate("document.querySelector('#assertion-list .source-jump').click()")
             cd.wait("document.querySelector('#source-dialog').open && !!document.querySelector('#dialog-text mark.source-highlight')",
                     "exact line highlighted in original source")
@@ -254,6 +306,7 @@ def main() -> None:
             cd.evaluate("document.querySelector('#dialog-close').click()")
             cd.wait("!document.querySelector('#source-dialog').open", "anchored source modal closes")
 
+            navigate_workspace(cd, "#documents")
             cd.evaluate("document.querySelector('#source-list .source-card button').click()")
             cd.wait("document.querySelector('#source-dialog').open", "original source modal")
             assert "OI-SYNTHETIC-REPORT/1" in cd.evaluate("document.querySelector('#dialog-text').textContent")
@@ -271,6 +324,7 @@ def main() -> None:
 
             # Browser-enforced Tab focus should proceed from case selection into
             # the navigation without disappearing into a dead control.
+            navigate_workspace(cd, "#workspace")
             cd.evaluate("document.querySelector('#case-picker').focus()")
             cd.command("Input.dispatchKeyEvent", {
                 "type": "keyDown", "key": "Tab", "code": "Tab",
@@ -280,7 +334,7 @@ def main() -> None:
                 "type": "keyUp", "key": "Tab", "code": "Tab",
                 "windowsVirtualKeyCode": 9,
             })
-            cd.wait("document.activeElement?.getAttribute('href') === '#overview'",
+            cd.wait("document.activeElement?.getAttribute('href') === '#workspace'",
                     "keyboard Tab reaches first workspace navigation link")
             cd.command("Accessibility.enable")
             nodes = cd.command("Accessibility.getFullAXTree").get("nodes", [])
@@ -290,9 +344,19 @@ def main() -> None:
                        for role, name in names), "Case selector lacks accessible combobox name"
             assert any(role == "navigation" for role, _ in names), "Navigation landmark not exposed"
             assert any(role == "main" for role, _ in names), "Main landmark not exposed"
-            assert cd.evaluate("document.querySelector('#workspace-nav a[aria-current=location]')?.getAttribute('href')") == "#overview", (
+            assert cd.evaluate("document.querySelector('#workspace-nav a[aria-current=location]')?.getAttribute('href')") == "#workspace", (
                 "Current section is not exposed in workspace navigation"
             )
+            navigate_workspace(cd, "#investigations")
+            assert cd.evaluate("document.querySelector('#investigations .panel-head').textContent.includes('Human-authored, no AI call')"), (
+                "the investigation draft must disclose that it is human-authored"
+            )
+            assert cd.evaluate("document.querySelector('#chart-navigation a[aria-current=page]')?.getAttribute('href')") == "#investigations", (
+                "Current chart page is not exposed in local navigation"
+            )
+            nodes = cd.command("Accessibility.getFullAXTree").get("nodes", [])
+            names = [(n.get("role", {}).get("value"), n.get("name", {}).get("value", ""))
+                     for n in nodes]
             for group_name in (
                 "Source versions",
                 "Evidence assessments",
@@ -344,6 +408,130 @@ def main() -> None:
             cd.wait("document.querySelectorAll('#snapshot-list .snapshot').length === 1",
                     "source-linked draft persisted")
 
+            # Each discussion-option form remains usable through its native
+            # disclosure. Bind the proposal/dependency to IDs returned by the
+            # existing fictional case; keep unknown dates explicitly unknown.
+            option_state_url = f"http://127.0.0.1:{app_port}/api/cases/CASE-ALPHA/state"
+            option_basis = json.load(urlopen(option_state_url))
+            option_snapshot = option_basis["snapshots"][0]
+            option_source = next(source for source in option_basis["sources"]
+                                 if source["id"] in option_snapshot["source_ids"]
+                                 and source["document_id"] == "PATH-ALPHA"
+                                 and source["state"] == "current")
+            assert option_snapshot["state"] == "draft" and not option_basis["options"]
+            navigate_workspace(cd, "#options")
+
+            def submit_option_form(form_id: str, values: dict) -> None:
+                open_ancestor_disclosures(cd, "#" + form_id)
+                cd.evaluate("""(([formId, values]) => {
+                  const form = document.getElementById(formId);
+                  for (const [id, value] of Object.entries(values)) {
+                    const control = document.getElementById(id);
+                    if (!form.contains(control)) throw Error('Control is outside its form: ' + id);
+                    control.value = String(value);
+                  }
+                  if (!form.checkValidity()) throw Error('Invalid fictional option-form fixture: ' + formId);
+                  const submit = form.querySelector('button[type="submit"]');
+                  if (!submit.checkVisibility() || submit.disabled || submit.closest('[inert], [hidden]'))
+                    throw Error('Option submit control is not available: ' + formId);
+                  submit.scrollIntoView({block: 'nearest'});
+                  submit.click();
+                })(""" + json.dumps([form_id, values]) + ")")
+
+            option_label = "Fictional source review discussion"
+            option_description = "A fictional document comparison item for a later discussion."
+            submit_option_form("option-form", {
+                "option-snapshot-choice": option_snapshot["id"],
+                "option-label": option_label,
+                "option-description": option_description,
+                "option-epistemic": "unknown",
+            })
+            cd.wait("document.querySelectorAll('#option-list .snapshot').length === 1 && "
+                    "document.querySelector('#option-list').textContent.includes(" + json.dumps(option_label) + ")",
+                    "discussion proposal persists and renders")
+            created_option = json.load(urlopen(option_state_url))["options"][0]
+            option_id = created_option["id"]
+            assert created_option["snapshot_id"] == option_snapshot["id"]
+            assert created_option["label"] == option_label and created_option["description"] == option_description
+            assert created_option["epistemic_status"] == "unknown"
+            assert created_option["operational_status"] == "proposed" and created_option["review_state"] == "current"
+
+            submit_option_form("option-dependency-form", {
+                "dependency-option-choice": option_id,
+                "dependency-kind": "source",
+                "dependency-source-choice": option_source["id"],
+                "dependency-lead": "2",
+                "dependency-deadline": "",
+                "dependency-basis": "unknown",
+                "dependency-anchor": "",
+            })
+            source_target = option_source["document_id"] + "@" + str(option_source["version"])
+            cd.wait("document.querySelector('#option-list').textContent.includes(" +
+                    json.dumps("source: " + source_target + " (current) · deadline unknown · lead 2d") + ")",
+                    "exact source dependency renders with an unknown deadline")
+            dependencies = json.load(urlopen(option_state_url))["options"][0]["dependencies"]
+            assert len(dependencies) == 1 and dependencies[0]["kind"] == "source"
+            assert dependencies[0]["source_version_id"] == option_source["id"]
+            assert dependencies[0]["lead_time_days"] == 2
+            assert dependencies[0]["deadline_date"] is None and dependencies[0]["deadline_basis"] == "unknown"
+
+            task_label, task_owner = "Inspect fictional source references", "Synthetic coordinator"
+            submit_option_form("option-task-form", {
+                "task-option-choice": option_id,
+                "task-label": task_label,
+                "task-owner": task_owner,
+                "task-lead": "3",
+            })
+            cd.wait("document.querySelector('#option-list').textContent.includes(" +
+                    json.dumps(task_label + " · owner " + task_owner + " · not_started · lead 3d") + ")",
+                    "human-owned preparation task persists and renders")
+            tasks = json.load(urlopen(option_state_url))["options"][0]["preparation_tasks"]
+            assert len(tasks) == 1 and tasks[0]["label"] == task_label
+            assert tasks[0]["owner_label"] == task_owner and tasks[0]["lead_time_days"] == 3
+            assert tasks[0]["status"] == "not_started"
+
+            threat_description = "The fictional source may require another provenance check."
+            submit_option_form("option-threat-form", {
+                "threat-option-choice": option_id,
+                "threat-kind": "dependency_loss",
+                "threat-description": threat_description,
+                "threat-date": "",
+                "threat-basis": "unknown",
+                "threat-anchor": "",
+            })
+            cd.wait("document.querySelector('#option-list').textContent.includes(" +
+                    json.dumps("dependency_loss: " + threat_description + " · date unknown") + ")",
+                    "fictional threat persists and renders without an invented date")
+            threats = json.load(urlopen(option_state_url))["options"][0]["threats"]
+            assert len(threats) == 1 and threats[0]["kind"] == "dependency_loss"
+            assert threats[0]["description"] == threat_description
+            assert threats[0]["threat_date"] is None and threats[0]["threat_basis"] == "unknown"
+
+            option_reviewer = "Synthetic reviewer (unverified)"
+            option_scope = "Abstaining on this fictional discussion item pending another source inspection."
+            submit_option_form("option-review-form", {
+                "review-option-choice": option_id,
+                "reviewer-label": option_reviewer,
+                "review-action": "abstain",
+                "review-scope": option_scope,
+                "review-snapshot-choice": "",
+            })
+            cd.wait("document.querySelector('#option-list').textContent.includes(" +
+                    json.dumps("abstain by " + option_reviewer + " · scope: " + option_scope) + ")",
+                    "explicit option review action renders with actor and scope")
+            option_result = json.load(urlopen(option_state_url))
+            review_events = option_result["options"][0]["review_events"]
+            assert len(review_events) == 1 and review_events[0]["action"] == "abstain"
+            assert review_events[0]["reviewer_label"] == option_reviewer and review_events[0]["scope"] == option_scope
+            assert review_events[0]["snapshot_id"] == option_snapshot["id"]
+            assert option_result["options"][0]["operational_status"] == "proposed", (
+                "an explicit abstention was incorrectly promoted into approval"
+            )
+            assert len(option_result["snapshots"]) == 1 and len(option_result["questions"]) == 1, (
+                "discussion forms created a parallel question or investigation"
+            )
+            navigate_workspace(cd, "#investigations")
+
             # A same-case refresh must preserve an unfinished narrative's
             # question and source bindings rather than silently rebinding.
             cd.evaluate("""(() => {
@@ -394,16 +582,21 @@ def main() -> None:
             ), "blocked case switch lost the draft's stated assumptions"
             cd.evaluate("""['draft-observations', 'draft-summary', 'draft-assumptions']
               .forEach(id => document.querySelector('#' + id).value = '')""")
+            navigate_workspace(cd, "#documents")
+            open_ancestor_disclosures(cd, "#import-form")
             cd.evaluate("document.querySelector('#example-button').click()")
             cd.wait("document.querySelector('#report-text').value.includes('Amends: PATH-ALPHA@1')",
                     "amendment loaded")
             cd.evaluate("document.querySelector('#import-form').requestSubmit()")
+            navigate_workspace(cd, "#investigations")
             cd.wait("document.querySelector('#snapshot-list .pill-alert')?.textContent === 'stale'",
                     "source amendment invalidates review snapshot")
+            navigate_workspace(cd, "#overview")
             cd.wait("document.querySelector('#review-attention')?.dataset.state === 'needs-review'",
                     "amendment surfaces unresolved review attention")
             assert "reopened question(s)" in cd.evaluate(
                 "document.querySelector('#review-attention-summary').textContent")
+            navigate_workspace(cd, "#timeline")
             cd.wait("document.querySelectorAll('#source-change-list .change-card').length === 1",
                     "source amendment appears in change explorer")
             assert "version 1 → 2" in cd.evaluate(
@@ -422,12 +615,14 @@ def main() -> None:
             cd.evaluate("document.querySelector('#compare-close').click()")
             cd.wait("!document.querySelector('#compare-dialog').open",
                     "source comparison closes without losing the current case")
+            navigate_workspace(cd, "#documents")
             cd.wait("document.querySelectorAll('#source-list .source-card').length === 3",
                     "original and amended source versions retained")
 
 
             # Two versions of the same pathology document refer to one
             # original specimen event, with separate original/amended sources.
+            navigate_workspace(cd, "#timeline")
             cd.wait("document.querySelectorAll('#timeline-events .timeline-entry').length === 2",
                     "amendment retains same source event grouping")
             assert cd.evaluate("""[...document.querySelectorAll('#timeline-events .timeline-entry')]
@@ -443,6 +638,7 @@ def main() -> None:
             assert cd.evaluate("document.querySelector('#dialog-title').textContent.includes('PATH-ALPHA@1')")
             cd.evaluate("document.querySelector('#dialog-close').click()")
 
+            navigate_workspace(cd, "#investigations")
             assert cd.evaluate("""[...document.querySelectorAll('#source-choice input:checked')]
               .some(x => x.closest('label').textContent.includes('Needs review'))"""), (
                 "source amendment silently rebound the unfinished draft to the replacement version"
@@ -483,6 +679,8 @@ def main() -> None:
             # The research layer is synthetic only: register a fictional
             # source, review its exact content, assess it against this case's
             # question, and attach that assessment to a new dated draft.
+            navigate_workspace(cd, "#evidence")
+            open_ancestor_disclosures(cd, "#evidence-import-form")
             cd.evaluate("document.querySelector('#example-evidence-button').click()")
             cd.wait("document.querySelector('#evidence-text').value.includes('OI-SYNTHETIC-EVIDENCE/1')",
                     "fictional evidence example loaded")
@@ -512,16 +710,21 @@ def main() -> None:
                 f"http://127.0.0.1:{app_port}/api/cases/CASE-ALPHA/state"))
             second_id = next(x["id"] for x in evidence_state["evidence"]
                              if x["evidence_key"] == "EVID-SECOND")
+            open_ancestor_disclosures(cd, "#evidence-withdraw-form")
             cd.evaluate("""(target => {
               document.querySelector('#evidence-withdraw-id').value = String(target);
               document.querySelector('#evidence-withdraw-reason').value =
                 'This second fictional item is only a target-selection regression fixture.';
+            })(""" + str(second_id) + ")")
+            navigate_workspace(cd, "#investigations")
+            cd.evaluate("""(() => {
               document.querySelector('#question-text').value =
                 'Third synthetic question to trigger an evidence-selector refresh?';
               document.querySelector('#question-form').requestSubmit();
-            })(""" + str(second_id) + ")")
+            })()""")
             cd.wait("document.querySelectorAll('#question-list .question').length === 3",
                     "state refresh after selecting second evidence withdrawal")
+            navigate_workspace(cd, "#evidence")
             assert cd.evaluate("document.querySelector('#evidence-withdraw-id').value") == str(second_id), (
                 "withdrawal refresh changed the target under an unfinished reason"
             )
@@ -530,6 +733,7 @@ def main() -> None:
             ), "withdrawal refresh lost the authored reason"
             cd.evaluate("document.querySelector('#evidence-withdraw-reason').value = ''")
 
+            open_ancestor_disclosures(cd, "#evidence-assessment-form")
             cd.evaluate("""(() => {
               document.querySelector('#evidence-rationale').value =
                 'This is independently authored fictional context, not an appraisal of an actual study.';
@@ -537,6 +741,7 @@ def main() -> None:
             })()""")
             cd.wait("document.querySelectorAll('#evidence-assessment-list .finding').length === 1",
                     "question-specific fictional assessment persisted")
+            navigate_workspace(cd, "#investigations")
             cd.evaluate("""(() => {
               document.querySelector('#evidence-choice input').checked = true;
               document.querySelector('#draft-observations').value =
@@ -558,6 +763,8 @@ def main() -> None:
             evidence_version_id = state["evidence"][0]["id"]
 
             # Withdrawal must not silently keep that draft current.
+            navigate_workspace(cd, "#evidence")
+            open_ancestor_disclosures(cd, "#evidence-withdraw-form")
             cd.evaluate("""(evidenceId => {
               document.querySelector('#evidence-withdraw-id').value = evidenceId;
               document.querySelector('#evidence-withdraw-reason').value =
@@ -579,6 +786,7 @@ def main() -> None:
             # Bibliography view is publicly sourced, not case-linked: its
             # offline synthetic metadata must never surface copyrighted
             # abstract canaries or enable live egress by default.
+            navigate_workspace(cd, "#research")
             cd.wait("document.querySelector('#bibliography-live-button').disabled",
                     "live DOI lookup disabled in default server mode")
             cd.evaluate("document.querySelector('#bibliography-example-button').click()")
@@ -591,6 +799,7 @@ def main() -> None:
             # A historical stale snapshot must remain inspectable after the
             # corresponding reopened question receives a NEW demo acknowledgment.
             # The current-attention counter then clears, without deleting history.
+            navigate_workspace(cd, "#investigations")
             state = json.load(urlopen(f"http://127.0.0.1:{app_port}/api/cases/CASE-ALPHA/state"))
             stale_ids = {snapshot["id"] for snapshot in state["snapshots"]
                          if snapshot["state"] == "stale"}
@@ -621,6 +830,7 @@ def main() -> None:
                   .find(button => button.textContent.includes('Demo review acknowledgment')).click()""")
                 cd.wait("document.querySelector('#snapshot-list .snapshot .pill')?.textContent === 'reviewed_in_demo'",
                         "replacement demo acknowledgment persisted")
+            navigate_workspace(cd, "#overview")
             cd.wait("document.querySelector('#review-attention')?.dataset.state === 'no-open-review'",
                     "review attention must clear after replacement acknowledgment")
             assert "No unresolved source-change review" in cd.evaluate(
@@ -635,6 +845,7 @@ def main() -> None:
                                       if snapshot["state"] == "stale"}), (
                 "review resolution erased historical source-dependent snapshots"
             )
+            navigate_workspace(cd, "#timeline")
             assert cd.evaluate("document.querySelectorAll('#source-change-list .change-card').length") == 1, (
                 "review resolution erased document-version history"
             )
@@ -648,6 +859,8 @@ def main() -> None:
             })()""")
             cd.wait("document.querySelector('#case-heading')?.textContent === 'Fictional case Alpha'",
                     "return to Alpha for rejection checks")
+            navigate_workspace(cd, "#documents")
+            open_ancestor_disclosures(cd, "#import-form")
             cards_before = cd.evaluate("document.querySelectorAll('#source-list .source-card').length")
             state_before = json.load(urlopen(
                 f"http://127.0.0.1:{app_port}/api/cases/CASE-ALPHA/state"))
@@ -707,7 +920,8 @@ def main() -> None:
             print("PASS: browser source drilldown, source comparison, review-attention resolution, "
                   "keyboard Escape/Tab and AX landmarks, "
                   "case switching, question/draft, review, amendment invalidation, "
-                  "original export, source-derived timeline, fictional evidence lifecycle, offline bibliography, 390px responsive layout, "
+                  "original export, source-derived timeline, all five discussion-option form submissions, "
+                  "fictional evidence lifecycle, offline bibliography, 390px responsive layout, "
                   "browser duplicate and wrong-patient rejection")
         finally:
             if cd is not None:
