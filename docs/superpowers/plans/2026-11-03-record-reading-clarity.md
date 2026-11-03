@@ -36,10 +36,10 @@ Files: `apps/web/src/main.tsx`, `apps/web/src/source-reading.tsx`,
 - [x] Inspect the current source, authoritative instructions and OI-010 context.
 - [x] Extend the existing two-case browser journey to choose by computed name,
   focus that exact DOM node, activate with Enter and require its own source index.
-- [ ] Run the tests-only hosted checkpoint; observe the missing case action name.
-- [ ] Add the case-specific accessible name and remove only the duplicate ID
+- [x] Run the tests-only hosted checkpoint; observe the missing case action name.
+- [x] Add the case-specific accessible name and remove only the duplicate ID
   from the quotation footer.
-- [ ] Run `npm test`, `npm run rights`, `npm run build`, Python syntax and diff scope checks.
+- [x] Run `npm test`, `npm run rights`, `npm run build`, Python syntax and diff scope checks.
 - [ ] Run the existing hosted browser journey on the exact published head.
 - [ ] Review the full bounded diff; record actual results and unresolved limits.
 
@@ -53,3 +53,19 @@ Pre-flight: no new shared interfaces. The action-name acceptance exercises the
 existing two-case fixture after intake creates the second mapping; it introduces
 no new patient or case setup. The production mutation it catches is a missing,
 duplicated or mismatched case name/callback.
+
+Observed RED: tests-only commit `5b7209960f86a990f10523a78260a2f223ecad42`,
+[run 41715008563](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41715008563),
+job `126192599950`, failed at the expected missing independently identifiable
+`CASE-ALPHA` action. The preceding 415 client tests, production build, rights
+controls and inherited source/question/evidence browser stages passed. Product
+code was unchanged. This is a reproduced acceptance gap, not a full browser pass.
+
+Final local checks on the two-expression correction: 415/415 client tests passed
+with zero skips/failures; 13/13 rights controls passed, installed inventory had
+zero errors; TypeScript/Vite build and Python helper syntax passed. Diff scope is
+exactly the five paths listed above; all backend/session/dependency/workflow files
+retain the parent bytes. The separate reviewer and hosted journey remain pending
+at this source checkpoint. Their final receipt belongs to
+[draft #387](https://github.com/OpenxIntelligence/open-intelligence/pull/387), so
+recording acceptance does not mutate the tested source.

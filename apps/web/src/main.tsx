@@ -108,7 +108,7 @@ function App(){
          <div><strong><code>{item.case_id}</code></strong><span className="record-state"> {item.status}</span></div>
          <p>Origin: {item.source_organization} · System: {item.source_system} · Version {item.revision}</p>
          <p>Fictional identity verification: not established. Clinical sources automatically linked: no.</p>
-         <button data-testid="load-sources" disabled={item.status!=='active'||state.recordsPhase.startsWith('loading')||busy} onClick={()=>void session.loadSources(item.case_id)}>Inspect source versions</button>
+         <button data-testid="load-sources" aria-label={`Inspect source versions for ${item.case_id}`} disabled={item.status!=='active'||state.recordsPhase.startsWith('loading')||busy} onClick={()=>void session.loadSources(item.case_id)}>Inspect source versions</button>
         </li>)}</ul>}
       </section>}
       {state.sourceIndex&&<section className="records-detail" data-testid="source-index" aria-labelledby="sources-heading">
