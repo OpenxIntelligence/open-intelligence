@@ -155,9 +155,20 @@ The current source-derived World Model also supplies the existing **Investigatio
 workspace. A user can prepare a source-only context for an exact current finding,
 save its question through the independent question grant, and refresh persistent
 question history. A source amendment flags the earlier question for reassessment
-while retaining its original source/version/line. The current UI uses a standard,
-visible provenance question; free-text browser drafting and clinical review are
-separate future work.
+while retaining its original source/version/line. The UI offers both a standard
+visible provenance question and an **explicit editable question** linked to one
+current original source ID, source line, case and snapshot fingerprint. The
+editable draft stays only in the in-memory RegistrySession and survives switching
+between Journey/Records/Investigations for the same authorized patient; it is
+cleared on patient/source refresh, case switch, disconnect or reload. Edits
+invalidate the earlier prepared context and save key; no question is saved
+until a new independently authorized preflight and explicit save.
+
+The form accepts one bounded 8–500-character source question, not a medical
+decision, model execution or clinician review. If a save's network outcome is
+unknown, source selection, editing and discarding are locked until the same
+request key is retried, so a potentially committed question is not silently
+replaced with a new intent. Professional clinical review remains separate.
 
 Preflight and question-list `/2` decoders require explicit snapshot provenance
 and source-access receipts. Only the stable canonical content fingerprint enters
