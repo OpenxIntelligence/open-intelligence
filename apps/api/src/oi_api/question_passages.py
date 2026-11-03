@@ -52,6 +52,55 @@ class QuestionPassages:
         return fingerprint({k:c[k] for k in ('patient_id','case_id','organization','question_id','purpose')} |
                            {'actor':c['actor'] if actor is None else actor,'command':command})
 
+    def metadata_locked(self,c,*,revision_id=None):
+        """Read passage-set identity/freshness without disclosing original text."""
+        rows=self.rows_locked(c)
+        row=next((r for r in rows if r[0]==revision_id),None) if revision_id else (rows[-1] if rows else None)
+        if revision_id and row is None:
+            raise RuntimeError('Stored question passage revision unavailable')
+        references=row[2] if row else []
+        current=True
+        for ref in references:
+            source=self.registry._fetchone(
+                'SELECT s.state FROM clinical_source.source_versions s '
+                'JOIN clinical_source.document_intakes d ON d.source_id=s.source_id '
+                'WHERE s.case_id=%s AND s.source_id=%s',
+                (c['case_id'],ref['source_id']))
+            selected=self.registry._fetchone(
+                'SELECT revision FROM clinical_source.annotation_revisions '
+                'WHERE source_id=%s AND revision_id=%s',
+                (ref['source_id'],ref['annotation_revision_id']))
+            latest=self.registry._fetchone(
+                'SELECT revision_id FROM clinical_source.annotation_revisions '
+                'WHERE source_id=%s ORDER BY revision DESC LIMIT 1',
+                (ref['source_id'],))
+            if source is None or selected is None or latest is None:
+                raise RuntimeError('Stored question passage provenance unavailable')
+            current=current and source[0]=='current' and latest[0]==ref['annotation_revision_id']
+        return dict(revision_id=row[0] if row else None,revision=row[1] if row else 0,
+                    attached_by=row[3] if row else None,
+                    attached_at=row[4].isoformat() if row else None,
+                    references=references,
+                    state='current_unreviewed' if current else 'reassessment_required')
+
+    def verify_frozen_metadata_locked(self,c,frozen):
+        """Verify frozen report provenance/freshness without reading quotations."""
+        historical=self.metadata_locked(c,revision_id=frozen['revision_id'])
+        expected=sorted((dict(source_id=p['anchor']['source_id'],
+                              annotation_revision_id=p['anchor']['annotation_revision_id'],
+                              selection_key=p['anchor']['selection_key'],
+                              anchor_sha256=p['anchor_sha256'])
+                         for p in frozen['passages']),
+                        key=lambda r:(r['source_id'],r['annotation_revision_id'],r['selection_key']))
+        if (historical['revision']!=frozen['revision']
+                or historical['attached_by']!=frozen['attached_by']
+                or historical['attached_at']!=frozen['attached_at']
+                or historical['references']!=expected):
+            raise RuntimeError('Stored report manual provenance differs from its question revision')
+        latest=self.metadata_locked(c)
+        return (latest['revision_id']==frozen['revision_id']
+                and historical['state']=='current_unreviewed')
+
     def context_locked(self,c,*,revision_id=None):
         rows=self.rows_locked(c)
         row=next((r for r in rows if r[0]==revision_id),None) if revision_id else (rows[-1] if rows else None)
