@@ -2,6 +2,7 @@ import json
 import subprocess
 import sys
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.error import HTTPError
 
@@ -108,6 +109,75 @@ class CrossrefMetadataTests(unittest.TestCase):
         output = json.loads(process.stdout)
         self.assertEqual(output["doi"], DOI)
         self.assertNotIn("COPYRIGHTED ABSTRACT", process.stdout)
+
+    def test_retrieval_time_rejects_invalid_or_ambiguous_provenance(self):
+        invalid = [
+            "", False, 0, [], "not-a-date", "2026-11-03", "2026-11-03T10:00:00",
+            "2026-02-30T10:00:00Z", "2025-02-29T10:00:00Z",
+            "2026-11-03T10:00:00+01:99", "2026-11-03T10:00:00+24:00",
+            "2026-11-03T10:00:00-00:00", "2026-11-03T10:00:00Z\n",
+            "2026-11-03\n10:00:00+00:00", "2026-11-03T10:00:00\x00+00:00",
+            "2026-11-03T10:00:00.1234567Z", "2026-11-03T10:00Z",
+        ]
+        for timestamp in invalid:
+            with self.subTest(timestamp=timestamp):
+                with self.assertRaisesRegex(MetadataInputError, "retrieval timestamp"):
+                    project_work(fixture(), DOI, retrieved_at=timestamp)
+
+    def test_retrieval_time_preserves_valid_explicit_time_and_offset(self):
+        for timestamp in ("2024-02-29T23:59:59Z", "2026-11-03T10:00:00+05:45",
+                          "2026-11-03T10:00:00.123456-04:00", "2026-11-03T10:00:00+00:00"):
+            with self.subTest(timestamp=timestamp):
+                record = project_work(fixture(), DOI, retrieved_at=timestamp)
+                self.assertEqual(record["source"]["retrieved_at"], timestamp)
+
+    def test_omitted_retrieval_time_is_aware_current_utc(self):
+        before = datetime.now(timezone.utc).replace(microsecond=0)
+        record = project_work(fixture(), DOI)
+        actual = datetime.fromisoformat(record["source"]["retrieved_at"])
+        self.assertEqual(actual.utcoffset().total_seconds(), 0)
+        self.assertLessEqual(before, actual)
+        self.assertLessEqual(actual, datetime.now(timezone.utc))
+
+    def test_live_duplicate_keys_do_not_silently_choose_one_identity(self):
+        raw = json.dumps(fixture()).replace(
+            '"DOI":', '"DOI": "10.5555/CONFLICTING-IDENTITY", "DOI":', 1)
+        with self.assertRaisesRegex(MetadataInputError, "Malformed Crossref JSON") as error:
+            fetch_public_doi(DOI, opener=_CaptureTransport(raw.encode()))
+        self.assertNotIn("CONFLICTING-IDENTITY", str(error.exception))
+
+    def test_live_nonstandard_json_constants_fail_closed(self):
+        for constant in ("NaN", "Infinity", "-Infinity"):
+            with self.subTest(constant=constant):
+                raw = json.dumps(fixture())[:-1] + ', "untrusted": ' + constant + '}'
+                with self.assertRaisesRegex(MetadataInputError, "Malformed Crossref JSON"):
+                    fetch_public_doi(DOI, opener=_CaptureTransport(raw.encode()))
+
+    def test_media_type_is_exact_not_a_substring(self):
+        class Transport:
+            def __init__(self, content_type):
+                self.content_type = content_type
+            def open(self, *args, **kwargs):
+                return _FakeResponse(json.dumps(fixture()).encode(), self.content_type)
+        for content_type in ("text/html; hint=application/json", "application/jsonp", "x-application/json"):
+            with self.subTest(content_type=content_type):
+                with self.assertRaisesRegex(MetadataInputError, "did not return JSON"):
+                    fetch_public_doi(DOI, opener=Transport(content_type))
+        result = fetch_public_doi(DOI, opener=Transport("Application/JSON; charset=utf-8"))
+        self.assertEqual(result["doi"], DOI)
+
+    def test_cli_fixture_rejects_ambiguous_json_without_printing_payload(self):
+        import tempfile
+        raw = json.dumps(fixture()).replace('"title":', '"title": ["UNTRUSTED-PAYLOAD"], "title":', 1)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "ambiguous.json"
+            path.write_text(raw)
+            process = subprocess.run([sys.executable, "-m", "tools.crossref_metadata", DOI,
+                                      "--fixture", str(path)], capture_output=True, text=True)
+        self.assertNotEqual(process.returncode, 0)
+        self.assertEqual(process.stdout, "")
+        self.assertIn("Malformed Crossref JSON", process.stderr)
+        self.assertNotIn("UNTRUSTED-PAYLOAD", process.stderr)
 
 
 if __name__ == "__main__":
