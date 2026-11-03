@@ -82,6 +82,7 @@ class PostgresSourceVersions:
             "SELECT source_id,document_id,version,sha256,kind,event_date,issued_at,"
             "received_at,specimen_id,state,supersedes_id "
             "FROM clinical_source.source_versions WHERE case_id=%s "
+            "AND source_id NOT IN (SELECT source_id FROM clinical_source.document_intakes) "
             "ORDER BY document_id,version", (case_id,),
         )
         return self._source_metadata(rows)
@@ -106,6 +107,7 @@ class PostgresSourceVersions:
             "SELECT source_id,document_id,version,sha256,kind,event_date,issued_at,"
             "received_at,specimen_id,state,supersedes_id,raw "
             "FROM clinical_source.source_versions WHERE case_id=%s "
+            "AND source_id NOT IN (SELECT source_id FROM clinical_source.document_intakes) "
             "ORDER BY document_id,version", (case_id,),
         )
         if self._source_metadata(rows) != sources:
@@ -200,6 +202,8 @@ class PostgresSourceVersions:
         organization = _key(organization, "organization")
         with self.registry.transaction():
             binding_revision = self._binding(patient_id, case_id, organization, purpose)
+            if self.registry._fetchone("SELECT source_id FROM clinical_source.document_intakes WHERE source_id=%s", (source_id,)):
+                raise PatientRegistryDenied("Use the reviewed-document original endpoint")
             row = self.registry._fetchone(
                 "SELECT raw,sha256,document_id,version,state,source_id,case_id,"
                 "kind,event_date,issued_at,specimen_id,supersedes_id "
@@ -298,6 +302,8 @@ class PostgresSourceVersions:
                 "WHERE case_id=%s AND document_id=%s "
                 "ORDER BY version DESC LIMIT 1", (case_id, parsed.document_id),
             )
+            if old and self.registry._fetchone("SELECT source_id FROM clinical_source.document_intakes WHERE source_id=%s", (old[0],)):
+                raise PatientRegistryConflict("Document format cannot change across intake owners")
             previously_seen = self.registry._fetchone(
                 "SELECT source_id,version FROM clinical_source.source_versions "
                 "WHERE case_id=%s AND document_id=%s AND sha256=%s",
