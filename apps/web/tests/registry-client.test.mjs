@@ -1,3 +1,4 @@
+import {createHash} from 'node:crypto';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {RegistrySession} from '../.test-dist/registry-client.js';
@@ -23,3 +24,142 @@ test('oversized or non-JSON data is rejected without retaining content',async()=
 test('invalid replacement credential clears any earlier session',async()=>{const s=new RegistrySession(async()=>response(patient()));s.connect(token);await s.read('PAT-EXAMPLE-001');s.connect('not valid');assert.equal(s.snapshot().connected,false);assert.equal(s.snapshot().patient,null)});
 test('terminal newline cannot pass opaque identifier or credential validation',async()=>{let calls=0;const s=new RegistrySession(async()=>{calls++;return response(patient())});s.connect(token+'\n');assert.equal(s.snapshot().connected,false);s.connect(token);await s.read('PAT-EXAMPLE-001\n');assert.equal(calls,0)});
 test('creating a different identity clears prior selection and invalidates an older pending read',async()=>{const d=deferred();const s=new RegistrySession((url)=>url==='/v1/patients'?Promise.resolve(response({patient_id:'PAT-NEW-001',duplicate:false},201)):d.promise);s.connect(token);const old=s.read('PAT-EXAMPLE-001');await s.create('REQUEST-NEW',true);d.resolve(response(patient()));await old;assert.equal(s.snapshot().patient,null);assert.equal(s.snapshot().created.patient_id,'PAT-NEW-001')});
+
+
+const receiptPatient='PAT-EXAMPLE-001';
+const receiptCase='CASE-ALPHA';
+const receiptSource='SRC-'+ 'A'.repeat(32);
+const originalText='OI-SYNTHETIC-REPORT/1\nPatient: CASE-ALPHA\nDocument: DOC-ONE\nType: pathology\nEvent-Date: 2026-01-10\nIssued-At: 2026-01-11\nSpecimen: SPECIMEN-ONE\nFinding: marker|not-reported|Independently fictional example.\n';
+const sha256=createHash('sha256').update(originalText,'utf8').digest('hex');
+const receiptRef={case_id:receiptCase,source_id:receiptSource,version:1,sha256};
+const fixtureRequest=(ref=receiptRef,status='received',receipt='source_current_unreviewed')=>({
+ request_id:'RECORD-EXAMPLE-001',patient_id:receiptPatient,kind:'pathology',
+ record_label:'Fictional pathology report',source_organization:'Example institution',
+ status,revision:status==='received'?2:1,created_at:'2026-11-02T10:00:00Z',
+ updated_at:'2026-11-02T10:05:00Z',receipt_status:receipt,
+ source_reference:ref,external_request_sent:false
+});
+const fixtureRecords=(requests=[fixtureRequest()])=>({
+ patient_id:receiptPatient,requests,synthetic:true,external_request_sent:false,source_receipts_enabled:true
+});
+const fixtureOriginal=()=>({
+ source_id:receiptSource,case_id:receiptCase,document_id:'DOC-ONE',version:1,
+ state:'current',sha256,original_text:originalText,synthetic:true,clinical_review_state:'not_established'
+});
+test('record requests require an already authorized selected patient',async()=>{
+ let called=0;const s=new RegistrySession(async()=>{called++;return response(fixtureRecords())});
+ s.connect(token);await s.loadRecords();
+ assert.equal(called,0);assert.equal(s.snapshot().records,null);
+ assert.equal(s.snapshot().recordsPhase,'error');
+});
+test('received source requires an explicit second original-text read and SHA match',async()=>{
+ const paths=[],methods=[];const s=new RegistrySession(async(url,init)=>{
+   paths.push(url);methods.push(init);
+   if(url==='/v1/patients/'+receiptPatient)return response(patient());
+   if(url.endsWith('/record-requests'))return response(fixtureRecords());
+   if(url.endsWith('/sources/'+receiptSource))return response(fixtureOriginal());
+   throw Error('unexpected URL');
+ });
+ s.connect(token);await s.read(receiptPatient);await s.loadRecords();
+ assert.equal(s.snapshot().records[0].status,'received');
+ assert.equal(s.snapshot().original,null);
+ await s.openOriginal(receiptCase,receiptSource);
+ assert.equal(s.snapshot().original?.original_text,originalText);
+ assert.equal(s.snapshot().originalPhase,'ready');
+ assert.equal(paths[2],'/v1/patients/'+receiptPatient+'/cases/'+receiptCase+'/sources/'+receiptSource);
+ assert.equal(methods[2].headers.Authorization,'Bearer '+token);
+ assert.equal(methods[2].credentials,'omit');
+ assert.equal(methods[2].redirect,'error');
+ assert.equal(methods[2].cache,'no-store');
+ assert.ok(!JSON.stringify(s.snapshot()).includes(token));
+});
+test('a receipt status without source-read disclosure cannot open original text',async()=>{
+ let calls=0;const s=new RegistrySession(async(url)=>{
+   calls++;
+   if(url.endsWith('/record-requests'))return response(fixtureRecords([fixtureRequest(null)]));
+   return response(patient());
+ });
+ s.connect(token);await s.read(receiptPatient);await s.loadRecords();
+ assert.equal(s.snapshot().records[0].status,'received');
+ assert.equal(s.snapshot().records[0].source_reference,null);
+ await s.openOriginal(receiptCase,receiptSource);
+ assert.equal(calls,2);assert.equal(s.snapshot().original,null);
+});
+test('record grant denial clears previously displayed source and record metadata',async()=>{
+ let denied=false;const s=new RegistrySession(async(url)=>{
+   if(url.endsWith('/record-requests'))return denied?response({detail:'forbidden details'},404):response(fixtureRecords());
+   if(url.endsWith('/sources/'+receiptSource))return response(fixtureOriginal());
+   return response(patient());
+ });
+ s.connect(token);await s.read(receiptPatient);await s.loadRecords();
+ await s.openOriginal(receiptCase,receiptSource);
+ assert.ok(s.snapshot().original);
+ denied=true;await s.loadRecords();
+ assert.equal(s.snapshot().records,null);assert.equal(s.snapshot().original,null);
+ assert.equal(s.snapshot().recordsPhase,'error');
+ assert.ok(!JSON.stringify(s.snapshot()).includes('forbidden details'));
+});
+test('original-text refusal never leaks prior content or changes receipt state',async()=>{
+ let denied=false;const s=new RegistrySession(async(url)=>{
+   if(url.endsWith('/record-requests'))return response(fixtureRecords());
+   if(url.endsWith('/sources/'+receiptSource))return denied?response({detail:'private'},404):response(fixtureOriginal());
+   return response(patient());
+ });
+ s.connect(token);await s.read(receiptPatient);await s.loadRecords();
+ await s.openOriginal(receiptCase,receiptSource);assert.ok(s.snapshot().original);
+ denied=true;await s.openOriginal(receiptCase,receiptSource);
+ assert.equal(s.snapshot().original,null);assert.equal(s.snapshot().originalPhase,'error');
+ assert.equal(s.snapshot().records[0].status,'received');
+});
+test('cross-patient and changed-original fingerprints fail closed without disclosed text',async()=>{
+ for(const bad of [
+   {...fixtureRecords(),patient_id:'PAT-OTHER-001'},
+   {...fixtureRecords(),requests:[{...fixtureRequest(),patient_id:'PAT-OTHER-001'}]},
+   {...fixtureRecords(),requests:[{...fixtureRequest(),source_reference:{...receiptRef,sha256:'0'.repeat(64)}}]},
+ ]){
+   const s=new RegistrySession(async(url)=>url.endsWith('/record-requests')?response(bad):response(patient()));
+   s.connect(token);await s.read(receiptPatient);await s.loadRecords();
+   // The third case is a valid reference shape; its incorrect hash must
+   // still block original text if the returned bytes do not match.
+   if(bad.requests?.[0]?.source_reference?.sha256==='0'.repeat(64)){
+     assert.equal(s.snapshot().recordsPhase,'ready');
+   }else{assert.equal(s.snapshot().records,null);assert.equal(s.snapshot().recordsPhase,'error');}
+ }
+ const s=new RegistrySession(async(url)=>
+   url.endsWith('/record-requests')?response({...fixtureRecords(),requests:[
+     {...fixtureRequest(),source_reference:{...receiptRef,sha256:'0'.repeat(64)}}]}):
+   url.endsWith('/sources/'+receiptSource)?response(fixtureOriginal()):response(patient()));
+ s.connect(token);await s.read(receiptPatient);await s.loadRecords();
+ await s.openOriginal(receiptCase,receiptSource);
+ assert.equal(s.snapshot().original,null);assert.equal(s.snapshot().originalPhase,'error');
+});
+test('patient switching or disconnect invalidates pending record and source responses',async()=>{
+ const delayed=deferred();let calls=0;
+ const s=new RegistrySession(async(url)=>{
+   calls++;
+   if(url.endsWith('/record-requests'))return delayed.promise;
+   return response(patient(url.endsWith('/PAT-EXAMPLE-002')?'PAT-EXAMPLE-002':receiptPatient));
+ });
+ s.connect(token);await s.read(receiptPatient);
+ const request=s.loadRecords();
+ await s.read('PAT-EXAMPLE-002');
+ delayed.resolve(response(fixtureRecords()));await request;
+ assert.equal(s.snapshot().records,null);
+ assert.equal(s.snapshot().patient?.patient_id,'PAT-EXAMPLE-002');
+ const late=deferred();
+ const t=new RegistrySession(async(url)=>
+   url.endsWith('/record-requests')?response(fixtureRecords()):
+   url.includes('/sources/')?late.promise:response(patient()));
+ t.connect(token);await t.read(receiptPatient);await t.loadRecords();
+ const original=t.openOriginal(receiptCase,receiptSource);t.disconnect();
+ late.resolve(response(fixtureOriginal()));await original;
+ assert.equal(t.snapshot().original,null);assert.equal(t.snapshot().records,null);
+});
+test('historical receipts remain explicit and cannot be silently promoted',async()=>{
+ const s=new RegistrySession(async(url)=>
+   url.endsWith('/record-requests')?response(fixtureRecords([fixtureRequest(
+     receiptRef,'received','source_superseded_reconciliation_required')])):response(patient()));
+ s.connect(token);await s.read(receiptPatient);await s.loadRecords();
+ assert.equal(s.snapshot().records[0].receipt_status,'source_superseded_reconciliation_required');
+ assert.equal(s.snapshot().original,null);
+});
