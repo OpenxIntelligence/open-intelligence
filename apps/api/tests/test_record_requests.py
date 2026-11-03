@@ -105,11 +105,11 @@ class RecordRequestHTTPTests(unittest.TestCase):
             status, rows, _ = self.list(base, patient)
             self.assertEqual(status, 200)
             self.assertEqual(rows["patient_id"], patient)
-            self.assertFalse(rows["source_receipts_enabled"])
+            self.assertTrue(rows["source_receipts_enabled"])
             self.assertFalse(rows["external_request_sent"])
             self.assertEqual((rows["requests"][0]["status"], rows["requests"][0]["revision"]), ("requested", 1))
             self.assertEqual(rows["requests"][0]["receipt_status"],
-                             "unavailable_until_canonical_source_contract")
+                             "not_received")
             path = f"/v1/patients/{patient}/record-requests/{request_id}/cancel"
             self.assertEqual(request(base, path, token=TOKEN_A, body={
                 "synthetic": True, "reason": "No longer needed in fictional exercise"
@@ -166,7 +166,7 @@ class RecordRequestHTTPTests(unittest.TestCase):
             self.assertEqual(self.list(base, patient)[1]["requests"], [])
             self.assertEqual(request(
                 base, f"/v1/patients/{patient}/record-requests/RECORD-UNKNOWN/receive",
-                token=TOKEN_A, body={"source_version_id": 1})[0], 404)
+                token=TOKEN_A, body={"source_version_id": 1})[0], 422)
 
     def test_revoked_credential_and_suspended_patient_never_expose_queue(self):
         with running_server(create_app(self.settings)) as base:
