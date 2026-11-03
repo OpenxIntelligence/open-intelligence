@@ -19,7 +19,11 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
     assert {'evidence_read', 'evidence_link', 'authored_evidence_read', 'evidence_report_export'} <= set(previous_actions)
     assert report['question_id'] == question_id
     assert report['snapshot']['selected_source']['source_id'] == source_id
-    assert downloaded_path.read_bytes() == downloaded == report['body'].encode('utf-8')
+    assert downloaded_path.read_bytes() == downloaded
+    cover, separator, preserved_body = downloaded.partition(b'--- BEGIN PRESERVED REPORT BODY ---\n')
+    assert separator and 'CURRENT — UNREVIEWED'.encode('utf-8') in cover
+    assert preserved_body == report['body'].encode('utf-8')
+    assert hashlib.sha256(preserved_body).hexdigest() == report['body_sha256']
 
     def metadata(kind):
         return cd.evaluate('window.__oiMetadataEvidenceChecks.' + kind)

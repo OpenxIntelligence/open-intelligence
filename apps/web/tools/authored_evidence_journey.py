@@ -237,7 +237,7 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
         assert f'Original body UTF-8 bytes: {len(body)}'.encode('utf-8') in cover
         assert fresh['access_receipt_id'] != report_value['access_receipt_id']
         assert report_value['access_receipt_id'].encode('utf-8') not in cover
-        return path, actual
+        return path, actual, fresh['access_receipt_id']
 
     try:
         initial = inspect()
@@ -259,7 +259,7 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
         counter_assessment = assess(counter, 'contradicts', 'the entry was absent in this authored example',
             'This independently invented counterexample is retained as a contradictory human proposal.')
         first_report = report([support_assessment['assessment_id'], counter_assessment['assessment_id']])
-        downloaded_path, downloaded = download(first_report)
+        downloaded_path, downloaded, download_access = download(first_report)
         assert support['evidence_id'] in first_report['body'] and counter['evidence_id'] in first_report['body']
         assert cd.evaluate("document.querySelectorAll('[data-testid=evidence-report-body] script').length===0")
         if on_report is not None:
@@ -299,13 +299,13 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
         historical = last('/evidence-reports/' + first_report['report_id'])
         assert historical['state'] == 'historical_reassessment_required'
         assert historical['body'] == first_report['body'] and downloaded_path.read_bytes() == downloaded
-        historical_path, historical_bytes = download(historical)
+        historical_path, historical_bytes, historical_access = download(historical)
         assert historical_path != downloaded_path and historical_bytes != downloaded
         assert downloaded_path.read_bytes() == downloaded
         corrected_assessment = assess(corrected, 'unknown', 'café 🧪 labels as uncertain',
             'The correction requires a new explicit human proposal; no conclusion is carried forward.')
         second_report = report([corrected_assessment['assessment_id'], counter_assessment['assessment_id']])
-        second_path, second_bytes = download(second_report)
+        second_path, second_bytes, second_access = download(second_report)
 
         cd.command('Emulation.setDeviceMetricsOverride', {'width': 390, 'height': 844,
                    'deviceScaleFactor': 1, 'mobile': False})
@@ -345,10 +345,11 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
             'assessments': [support_assessment, counter_assessment, corrected_assessment],
             'reports': [{**{k: v for k, v in r.items() if k not in {'body', 'snapshot'}},
                          'download_relative_path': str(p.relative_to(artifacts)), 'download_bytes': len(b),
-                         'download_sha256': hashlib.sha256(b).hexdigest()}
-                        for r, p, b in ((first_report, downloaded_path, downloaded),
-                                        (historical, historical_path, historical_bytes),
-                                        (second_report, second_path, second_bytes))],
+                         'download_sha256': hashlib.sha256(b).hexdigest(),
+                         'download_access_receipt_id': access}
+                        for r, p, b, access in ((first_report, downloaded_path, downloaded, download_access),
+                                                (historical, historical_path, historical_bytes, historical_access),
+                                                (second_report, second_path, second_bytes, second_access))],
             'actual_api_restart_preserved_report': True,
             'lost_response_exact_retry_recovered_once': True,
             'fresh_export_revocation_no_blob': True,
