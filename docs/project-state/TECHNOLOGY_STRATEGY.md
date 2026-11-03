@@ -1,5 +1,7 @@
 # Technology strategy — retained H1 and evaluated alternatives
 
+> **Current reconciliation checkpoint:** #354 remains the document candidate at `7b16a9a900737f07adb03e35362922c886424e9b`. The [existing convergence gate](../engineering/H1_EVIDENCE_CONVERGENCE_MERGE_GATE.md) records this dependent composition with accepted main `c4798ae` and #374 ancestry. Earlier checkpoints below retain their original scope and do not establish this combination's hosted acceptance.
+
 **Assessment:** 3 November 2026. This is a supplementary decision rationale, not an adoption record, dependency change, replacement roadmap, or production qualification. Work remains tracked in [EXECUTION_BACKLOG.csv](../EXECUTION_BACKLOG.csv), principally OI-004, OI-005, OI-010, OI-013 and GH-112.
 
 The current continuation composes frozen #368/#369/#362/#367 work into existing

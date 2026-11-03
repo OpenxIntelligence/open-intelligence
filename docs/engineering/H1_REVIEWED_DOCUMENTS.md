@@ -67,10 +67,14 @@ original and intermediate copies must remain unchanged. No runtime, schema,
 migration, permission or dependency changes are part of this increment.
 
 Local negative controls exercise the actual recovery assertion against changed
-originals/history, wrong or missing receipts and sequence drift. Hosted execution
-is pending until a commit-specific successful run and its retained
-`source-document-recovery.json` are recorded in the dependent draft PR. The existing
-five recovery gates and seven-day artifact retention remain in place.
+originals/history, wrong or missing receipts and sequence drift. The recovery
+owner [#362](https://github.com/OpenxIntelligence/open-intelligence/pull/362)
+completed [API run 41695634359, attempt 2](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41695634359/attempts/2)
+at `c7fd1bd865f4a8f42da1e515a2599431d14f0a8d`; its earlier Chrome-startup failure
+remains historical evidence. The current [document convergence candidate](H1_EVIDENCE_CONVERGENCE_MERGE_GATE.md)
+includes that existing recovery implementation and still requires its own
+commit-specific run and retained `source-document-recovery.json`. The five
+recovery gates and seven-day artifact retention remain in place.
 
 Manual document selections are deliberately excluded from the existing structured
 source World Model and question snapshots. Propagating their explicitly manual

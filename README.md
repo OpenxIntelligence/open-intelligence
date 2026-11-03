@@ -1,5 +1,7 @@
 # Open Intelligence
 
+> **Pinned-main reconciliation:** #354 remains the document owner at `7b16a9a900737f07adb03e35362922c886424e9b`. This dependent source checkpoint preserves that concurrent update, includes accepted main `c4798ae` and records #374 ancestry. See the [convergence gate](docs/engineering/H1_EVIDENCE_CONVERGENCE_MERGE_GATE.md) for the exact composition and its separate verification requirements. The earlier checkpoint below retains its original scope.
+
 **A patient-centered, clinically governed healthcare intelligence and operations platform, initially focused on oncology.**
 
 Open Intelligence aims to help patients and care teams maintain an evolving understanding of a person's cancer, investigate important questions, and connect new findings to inspectable evidence.

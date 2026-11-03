@@ -272,6 +272,8 @@ def main():
             exercise(cd,pid,directory,tokens[0],credentials,write_grants,out)
             exercise_case_switch(cd,pid,case,'CASE-WEB-INTAKE',credentials,write_grants,out,
                 current_question_id=connected_question['question_id'])
+            # Review boundaries exercise the two existing cases before the
+            # document journey deliberately creates its third fictional case.
             from connected_question_review_journey import exercise_draft_boundaries
             exercise_draft_boundaries(cd,pid,case,'CASE-WEB-INTAKE',connected_question['question_id'],
                 credentials,write_grants,connect,out)

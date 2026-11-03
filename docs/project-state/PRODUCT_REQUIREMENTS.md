@@ -1,5 +1,7 @@
 # Product requirements — patient-centered execution crosswalk
 
+> **Current reconciliation checkpoint:** #354 remains the document candidate at `7b16a9a900737f07adb03e35362922c886424e9b`. The [existing convergence gate](../engineering/H1_EVIDENCE_CONVERGENCE_MERGE_GATE.md) records this dependent composition with accepted main `c4798ae` and #374 ancestry. Earlier checkpoints below retain their original scope and do not establish this combination's hosted acceptance.
+
 **Assessment date:** 3 November 2026 (America/New_York).  
 **Purpose:** interpret current requirements against the existing [execution backlog](../EXECUTION_BACKLOG.csv), without creating a competing backlog or replacing the architecture.  
 **Current candidate:** existing #354, based on `d9b81f08a97998e8f95d2a1cc7c43b4165e99862`, composes frozen #368/#369/#362/#367 corrections. **Local composition verified; exact combined hosted acceptance pending.** The [candidate record](../engineering/H1_CONNECTED_RIGHTS_CONVERGENCE.md#current-candidate--reviewed-document-convergence-in-354) identifies actual local checks and remaining review/API/browser/recovery gates. Main `c4798ae85004713593f83458abd2102be6729095` remains the reference; the H1 candidate is unmerged and undeployed.
