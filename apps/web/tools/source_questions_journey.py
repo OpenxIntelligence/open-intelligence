@@ -49,6 +49,34 @@ class SourceQuestionChecks:
                      + json.dumps(expected) + ")", 'authorized question history and current source state')
         return self.cd.evaluate("document.querySelector('[data-testid=source-question-history]').textContent")
 
+    def inspect_quote(self, question_id, *, current, expected_text=''):
+        # These are actual built React responses from the current canonical PG
+        # source owner; no fabricated quote, status, or HTTP response.
+        self.cd.evaluate(
+          "Array.from(document.querySelectorAll('.question-items li')).find(e=>e.textContent.includes("
+          +json.dumps(question_id)
+          +")).querySelector('[data-testid=source-quote-packet-open]').click()")
+        if current:
+            self.cd.wait(
+                "document.querySelector('[data-testid=source-quote-literal]')?.textContent.includes("
+                +json.dumps(expected_text)+")",
+                'authorized literal original quotation for selected current question')
+            panel=self.cd.evaluate(
+                "document.querySelector('[data-testid=source-quote-packet]').textContent")
+            assert question_id in panel
+            assert 'not a clinical assessment' in panel
+            assert 'Biomedical literature appraisal' in panel
+            assert 'signed decisions are not established' in panel
+            assert self.cd.evaluate("document.querySelectorAll('[data-testid=source-quote-literal] script').length===0")
+        else:
+            self.cd.wait(
+                "Boolean(document.querySelector('[data-testid=source-quote-stale]'))",
+                'historical question remains inspectable without stale quote')
+            assert self.cd.evaluate(
+                "!document.querySelector('[data-testid=source-quote-literal]')")
+            assert self.original_source_id in self.cd.evaluate(
+                "document.querySelector('[data-testid=source-quote-packet]').textContent")
+
     def start(self):
         self.navigate('Investigations')
         assert self.cd.evaluate("!document.querySelector('[data-testid=composer-context]')")
@@ -57,12 +85,15 @@ class SourceQuestionChecks:
         history = self.history('Current source context')
         assert self.original_question_id in history and self.original_source_id in history
         assert 'Clinical approval: none' in history
+        self.inspect_quote(self.original_question_id,current=True,
+            expected_text='Fictional café <script>literal</script>.')
 
     def after_amendment(self, replacement_source_id):
         self.navigate('Investigations')
         history = self.history('Source changed')
         assert self.original_question_id in history and self.original_source_id in history
         assert replacement_source_id not in history
+        self.inspect_quote(self.original_question_id,current=False)
         # The unchanged displayed v1 observation must be rejected by the server's fresh fingerprint.
         self.cd.evaluate("document.querySelector('[data-testid=composer-preflight]').click()")
         self.cd.wait("document.querySelector('[data-testid=composer-status]').textContent.includes('original source changed')",
@@ -81,6 +112,26 @@ class SourceQuestionChecks:
         assert self.original_source_id in history and replacement_source_id in history
         assert 'Source changed' in history and 'Current source context' in history
         assert 'Clinical approval: none' in history
+        self.inspect_quote(self.original_question_id,current=False)
+        self.inspect_quote(replacement_question,current=True,
+            expected_text='Amended fictional marker is reported negative.')
+        # The independently granted quote-packet action can be revoked while
+        # ordinary question history remains separately readable.
+        credentials[0]['actions'].remove('review_packet_read')
+        write_grants()
+        self.cd.evaluate(
+          "Array.from(document.querySelectorAll('.question-items li')).find(e=>e.textContent.includes("
+          +json.dumps(replacement_question)
+          +")).querySelector('[data-testid=source-quote-packet-open]').click()")
+        self.cd.wait(
+          "document.querySelector('[data-testid=source-quote-packet-status]').textContent.includes('unavailable')",
+          'source-quote privilege revoked, no residual quote')
+        assert self.cd.evaluate("!document.querySelector('[data-testid=source-quote-packet]')")
+        assert replacement_question in self.history('Current source context')
+        credentials[0]['actions'].append('review_packet_read')
+        write_grants()
+        self.inspect_quote(replacement_question,current=True,
+            expected_text='Amended fictional marker is reported negative.')
 
         screenshots.mkdir(parents=True, exist_ok=True)
         self.cd.command('Emulation.setDeviceMetricsOverride', {'width':1440,'height':1100,'deviceScaleFactor':1,'mobile':False})
@@ -118,7 +169,7 @@ class SourceQuestionChecks:
         self.cd.evaluate("document.querySelector('[data-testid=world-load]').click()")
         self.cd.wait("Boolean(document.querySelector('[data-testid=world-projection]'))", 'fresh canonical source view restored')
         self.navigate('Journey')
-        print('PASS SOURCE QUESTIONS: canonical source-line preflight; durable question and history; amendment requires reassessment without moving original anchor; explicit v2 context/question; independent question-read and Composer denial; actual desktop panel capture and narrow containment; no model execution or clinical approval.')
+        print('PASS SOURCE QUESTIONS: canonical source-line preflight; durable question and history; current/immutable original source-review packet with literal quote; amended v1 quote withheld; v2 quote restored; distinct quote grant revocation, question-read and Composer denial; desktop/narrow containment; no clinical approval.')
 
 
 @contextmanager
@@ -126,7 +177,7 @@ def exercise(cd, source_id, credentials, write_grants):
     previous_actions = list(credentials[0]['actions'])
     try:
         credentials[0]['actions'] = sorted(set(previous_actions) |
-            {'composer_context_read','question_create','question_read'})
+            {'composer_context_read','question_create','question_read','review_packet_read'})
         write_grants()
         checks = SourceQuestionChecks(cd, source_id)
         checks.start()
