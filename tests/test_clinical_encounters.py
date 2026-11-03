@@ -297,5 +297,58 @@ class ClinicalEncounterTests(unittest.TestCase):
         self.assertEqual(len(self.ops.note_history('CASE-ONE', id_, 'NOTE-001', **self.actor)), 1)
 
 
+    def test_revoked_authority_during_encounter_command_rolls_back_all_effects(self):
+        """A grant lost after the event append cannot authorize commit."""
+        grant = {'active': True}
+        guarded = ClinicalEncounters(self.store, lambda actor, case, action, purpose:
+                                     grant['active'] and self.authorized(actor, case, action, purpose))
+        original = self.store._event
+
+        def revoke_after_event(case_id, kind, **details):
+            original(case_id, kind, **details)
+            if kind == 'clinical_encounter_scheduled':
+                grant['active'] = False
+
+        with patch.object(self.store, '_event', side_effect=revoke_after_event):
+            with self.assertRaises(ClinicalAuthorizationError):
+                guarded.schedule('CASE-ONE', 'ENCOUNTER-001', 'outpatient',
+                                 '2026-11-02', request_key='req-revoke-mid-001', **self.actor)
+        self.assertEqual(self.store.db.execute('SELECT COUNT(*) FROM clinical_encounters').fetchone()[0], 0)
+        self.assertEqual(self.store.db.execute('SELECT COUNT(*) FROM clinical_encounter_commands').fetchone()[0], 0)
+        self.assertEqual(self.store.db.execute(
+            "SELECT COUNT(*) FROM events WHERE kind='clinical_encounter_scheduled'").fetchone()[0], 0)
+        grant['active'] = True
+        self.assertEqual(guarded.schedule('CASE-ONE', 'ENCOUNTER-001', 'outpatient',
+                                          '2026-11-02', request_key='req-revoke-mid-001',
+                                          **self.actor)['status'], 'scheduled')
+
+    def test_revoked_authority_during_note_attestation_keeps_prior_version(self):
+        """A late grant revocation cannot persist an attestation or receipt."""
+        encounter_id = self.begin()['encounter_id']
+        self.ops.write_note('CASE-ONE', encounter_id, 'NOTE-001', 'Reviewable fictional draft',
+                            expected_version=0, request_key='req-note-before-001', **self.actor)
+        grant = {'active': True}
+        guarded = ClinicalEncounters(self.store, lambda actor, case, action, purpose:
+                                     grant['active'] and self.authorized(actor, case, action, purpose))
+        original = self.store._event
+
+        def revoke_after_event(case_id, kind, **details):
+            original(case_id, kind, **details)
+            if kind == 'clinical_note_attestation_recorded':
+                grant['active'] = False
+
+        with patch.object(self.store, '_event', side_effect=revoke_after_event):
+            with self.assertRaises(ClinicalAuthorizationError):
+                guarded.attest_note('CASE-ONE', encounter_id, 'NOTE-001',
+                                    expected_version=1, request_key='req-attest-mid-001', **self.actor)
+        versions = self.ops.note_history('CASE-ONE', encounter_id, 'NOTE-001', **self.actor)
+        self.assertEqual([(row['version'], row['status']) for row in versions], [(1, 'draft')])
+        self.assertEqual(self.store.db.execute(
+            "SELECT COUNT(*) FROM events WHERE kind='clinical_note_attestation_recorded'").fetchone()[0], 0)
+        self.assertEqual(self.store.db.execute(
+            "SELECT COUNT(*) FROM clinical_encounter_commands WHERE request_key=?",
+            ('req-attest-mid-001',)).fetchone()[0], 0)
+
+
 if __name__ == '__main__':
     unittest.main()
