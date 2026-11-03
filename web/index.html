@@ -42,6 +42,7 @@
           <a href="#incoming-board">Incoming board</a>
           <a href="#patient-view">Patient view</a>
           <a href="#patient-mission">Patient Mission</a>
+          <a href="#patient-goals">Patient goals</a>
           <a href="#patient-report">Plain-language report</a>
           <a href="#assertions">Reported findings</a>
           <a href="#timeline">Timeline</a>
@@ -203,6 +204,68 @@
         <ul id="mission-guardrails" class="muted tiny"></ul>
       </section>
 
+      <section class="panel" id="patient-goals" aria-labelledby="patient-goals-title">
+        <div class="panel-head">
+          <div><div class="eyebrow">PATIENT WORDS · SAME CASE</div><h2 id="patient-goals-title">Goals and lived experience, in the patient's own words</h2></div>
+          <span class="pill pill-warn">FICTIONAL DEMO DATA — not a real patient</span>
+        </div>
+        <p class="muted"><strong>Patient's own words, for discussion only.</strong> Goals, lived-experience notes, and symptom notes are kept exactly as stated, with dates and earlier versions preserved. They are never a diagnosis, staging, response claim, or recommendation. This fictional demo is not a real medical record.</p>
+        <p class="muted tiny" id="patient-words-disclaimer"></p>
+        <div class="subhead">Goals the patient stated</div>
+        <div id="goal-list" class="snapshots" aria-live="polite"></div>
+        <form id="goal-form">
+          <label for="goal-statement">New goal, in the patient's own words</label>
+          <textarea id="goal-statement" rows="2" minlength="4" maxlength="1000" required placeholder="Fictional example: I want to keep walking my dog each morning."></textarea>
+          <label for="goal-stated-date">Date the patient stated it</label>
+          <input id="goal-stated-date" type="date" required>
+          <label for="goal-review-trigger">When to look at this goal again (plain words)</label>
+          <input id="goal-review-trigger" type="text" minlength="4" maxlength="300" required placeholder="Fictional example: revisit at the next planned visit">
+          <label for="goal-review-date">Review date (optional)</label>
+          <input id="goal-review-date" type="date">
+          <button class="button" type="submit">Record fictional goal</button>
+        </form>
+        <div class="subhead">Change a goal's wording, dates, or review trigger</div>
+        <form id="goal-amend-form">
+          <label for="amend-goal-choice">Goal to change</label><select id="amend-goal-choice" required></select>
+          <label for="amend-goal-statement">Updated wording, in the patient's own words</label>
+          <textarea id="amend-goal-statement" rows="2" minlength="4" maxlength="1000" required></textarea>
+          <label for="amend-goal-stated-date">Date stated</label>
+          <input id="amend-goal-stated-date" type="date" required>
+          <label for="amend-goal-review-trigger">When to look at this goal again</label>
+          <input id="amend-goal-review-trigger" type="text" minlength="4" maxlength="300" required>
+          <label for="amend-goal-review-date">Review date (optional)</label>
+          <input id="amend-goal-review-date" type="date">
+          <button class="button secondary" type="submit">Save changed version (keeps the earlier wording)</button>
+        </form>
+        <div class="subhead">Mark a goal achieved, changed, or set aside</div>
+        <form id="goal-status-form">
+          <label for="status-goal-choice">Goal</label><select id="status-goal-choice" required></select>
+          <label for="goal-status">New standing</label>
+          <select id="goal-status"><option value="achieved">Achieved</option><option value="changed">Changed</option><option value="abandoned">Set aside (abandoned)</option><option value="active">Active again</option></select>
+          <label for="goal-status-reason">Reason, in plain words</label>
+          <textarea id="goal-status-reason" rows="2" minlength="4" maxlength="300" required placeholder="Fictional example: the patient said mornings feel manageable again."></textarea>
+          <button class="button secondary" type="submit">Record standing with reason</button>
+        </form>
+        <div class="subhead">Lived-experience and symptom notes</div>
+        <div id="note-list" class="snapshots" aria-live="polite"></div>
+        <form id="note-form">
+          <label for="note-kind">Kind of note</label>
+          <select id="note-kind"><option value="lived_experience">Lived experience (daily life, in own words)</option><option value="symptom">Symptom note (what the patient noticed, in own words)</option></select>
+          <label for="note-text">Note, in the patient's own words</label>
+          <textarea id="note-text" rows="2" minlength="4" maxlength="1000" required placeholder="Fictional example: I felt tired after my morning walk."></textarea>
+          <label for="note-noted-date">Date noted</label>
+          <input id="note-noted-date" type="date" required>
+          <button class="button" type="submit">Record fictional note</button>
+        </form>
+        <div class="subhead">Change a note's wording or date</div>
+        <form id="note-amend-form">
+          <label for="amend-note-choice">Note to change</label><select id="amend-note-choice" required></select>
+          <label for="amend-note-text">Updated wording, in the patient's own words</label>
+          <textarea id="amend-note-text" rows="2" minlength="4" maxlength="1000" required></textarea>
+          <label for="amend-note-noted-date">Date noted</label>
+          <input id="amend-note-noted-date" type="date" required>
+          <button class="button secondary" type="submit">Save changed version (keeps the earlier wording)</button>
+        </form>
       <section class="panel" id="patient-report" aria-labelledby="patient-report-title">
         <div class="panel-head"><div><div class="eyebrow">PATIENT REPORT · READ-ONLY · PRINTABLE</div><h2 id="patient-report-title">Plain-language case report</h2></div><span class="pill pill-warn">FICTIONAL DEMO — not a real patient</span></div>
         <p class="muted"><strong>Fictional demo report. This is not a real patient file, not clinical advice, and not reviewed by a clinician.</strong> <span id="report-reading-note"></span></p>

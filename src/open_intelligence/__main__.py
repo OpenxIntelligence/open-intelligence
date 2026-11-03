@@ -577,6 +577,32 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(200, store.review_option(
                         option_review[1], int(option_review[2]), data.get("reviewer_label"),
                         data.get("action"), data.get("scope"), data.get("snapshot_id")))
+                goal_create = re.fullmatch(rf"/api/cases/{ID_PART}/patient-goals", path)
+                if goal_create:
+                    return self._json(201, store.add_patient_goal(
+                        goal_create[1], data.get("statement"), data.get("stated_date"),
+                        data.get("review_trigger"), data.get("review_date")))
+                goal_amend = re.fullmatch(rf"/api/cases/{ID_PART}/patient-goals/([0-9]+)/amendments", path)
+                if goal_amend:
+                    return self._json(201, store.amend_patient_goal(
+                        goal_amend[1], int(goal_amend[2]), data.get("statement"),
+                        data.get("stated_date"), data.get("review_trigger"),
+                        data.get("review_date")))
+                goal_status = re.fullmatch(rf"/api/cases/{ID_PART}/patient-goals/([0-9]+)/status", path)
+                if goal_status:
+                    return self._json(201, store.set_patient_goal_status(
+                        goal_status[1], int(goal_status[2]), data.get("status"),
+                        data.get("reason")))
+                note_create = re.fullmatch(rf"/api/cases/{ID_PART}/patient-notes", path)
+                if note_create:
+                    return self._json(201, store.add_patient_note(
+                        note_create[1], data.get("kind"), data.get("text"),
+                        data.get("noted_date")))
+                note_amend = re.fullmatch(rf"/api/cases/{ID_PART}/patient-notes/([0-9]+)/amendments", path)
+                if note_amend:
+                    return self._json(201, store.amend_patient_note(
+                        note_amend[1], int(note_amend[2]), data.get("text"),
+                        data.get("noted_date")))
                 option_flag = re.fullmatch(rf"/api/cases/{ID_PART}/options/([0-9]+)/flags", path)
                 if option_flag:
                     flag_id = store.add_option_flag(
