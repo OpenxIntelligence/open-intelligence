@@ -16,12 +16,13 @@ acceptance criteria.
 - Read only an explicitly granted identity under its persisted organization.
 - Clear the displayed patient on a new request, refusal, credential change,
   logout or expiry; discard late responses from older selections/sessions.
-- Overview connected; Journey, Records, Investigations and Review clearly marked
-  not connected. The old reference application remains available unchanged.
+- Overview, Records, Journey, Investigations and Review connect to the same
+  canonical fictional patient/source context. Review records only nonterminal
+  source-verification returns. The old reference application remains unchanged.
 
-No real account management, identity proofing, clinical records, source imports,
+No real account management, identity proofing, identifiable clinical records,
 caregiver delegation, consent, live model, biomedical retrieval or deployment is
-introduced. The backend remains responsible for authorization. An authorized
+introduced. Source inputs are independently authored fictional reports. The backend remains responsible for authorization. An authorized
 request can complete after a later grant change; this UI is not a consent service.
 
 ## Development setup
@@ -167,6 +168,36 @@ retry. Case, source or permission changes invalidate pending consumer views.
 Legacy fingerprint rows remain visibly in need of reassessment. Nothing in this
 workspace executes a model, grants clinical approval or creates another patient
 or source store.
+
+### Connected verification-return inbox
+
+Review derives its inbox from the same persisted source questions. Each item
+shows its question, source context and verification state; a bounded reason
+belongs to its selected question. Protocol versions, hashes and source-access
+receipts remain available in disclosure details. A return records an operational
+request for independent verification; it does not notify a person, approve a
+finding or establish reviewer credentials.
+
+Current and historical receipts retain their source/queue provenance. A source
+amendment moves an old return into history and requires a new current question.
+Legacy contracts cannot masquerade as current canonical work. Queue reads and
+return writes use separate server-side grants.
+
+After an uncertain write response, **Retry this exact return** preserves the
+captured question, reason, fingerprint and request key. Navigation and a
+successful same-case source refresh retain that minimal in-memory intent, so an
+already committed historical return can be recovered after amendment. Editing
+that uncertain intent is disabled; a stale/conflicting 409 response stops the operation
+without creating a replacement key. Patient, case or credential changes and
+authoritative permission denial clear it. Late requests cannot restore another
+case's queue or unlock a newer in-flight return. No browser storage is used.
+
+The new browser journey exercises the actual PostgreSQL/API/React source question
+→ return → source amendment → preserved history → new question/return workflow,
+independent grant denial and recovery, and captures a populated desktop view.
+Its fake-response-free workflow is separate from client-module tests that inject
+network errors to verify retry mechanics. See
+[the review integration record](../../docs/engineering/H1_SOURCE_QUESTION_REVIEW_RETURN.md).
 
 ### Verification (exact branch head required)
 

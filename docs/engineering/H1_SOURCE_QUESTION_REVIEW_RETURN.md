@@ -12,8 +12,12 @@ This work preserves the existing review-return owner in #245 at
 World Model reader from #216. Current implementation and test results must be
 verified on this convergence branch; upstream green CI is not that evidence.
 
-**Convergence verification:** tests-first acceptance is being established;
-implementation and hosted results are pending at the initial test commit.
+**Tests-first evidence:** [run 41572461490](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41572461490)
+checked out `6a0322781ae048067b359fb259bf4321c4f242ce` and ran 193 API/PG tests.
+Exactly one failed: the new review-queue assertion received 404 Not Found after
+successfully creating its canonical source question. The 192 inherited executions
+passed. Implementation validation must be attached to the final PR head; the
+initial RED run is not evidence that the new workflow is complete.
 
 The original `0007_question_review_returns` and
 `0007_question_snapshot_contract` histories remain unchanged. An explicit
@@ -120,10 +124,25 @@ with an explicit fictional example; there is **no** clinician approval,
 signature, model run, evidence export, external transmission or treatment
 recommendation button. Patient/source changes, disconnected sessions and denied authority clear the
 cached queue. Same-patient workspace navigation preserves the in-flight intent
-and local draft; it does not manufacture a new request key. A previously committed
-return can be recovered after an uncertain network response with the same key.
+and captured reason; it does not manufacture a new request key. Unsubmitted
+reason drafts are component-local and reset when leaving the Review workspace. A successful refresh
+of the same case also preserves minimal uncertain intent while invalidating the
+old queue. **Retry this exact return** uses the captured key, reason and fingerprint
+to recover an already committed return even after amendment. A 409 response terminates a
+stale/conflicting attempt without creating another key. Patient/case/credential
+changes and authoritative permission denial discard it. All such state is in memory;
+no retry survives reload or credential replacement.
 
 ## Proof and blockers
+
+`apps/api/tests/test_canonical_review_flow.py` is the tests-first end-to-end
+acceptance. `test_review_convergence_migration.py` exercises both original 0007
+histories, exact old-field/event preservation, coincident legacy/canonical hashes
+and new provenance through real API writes. `verify_reviews_compose.py` uses an
+owned disposable project for actual HTTP, amendment/retry, independent grant
+withdrawal, API/DB restart and pg_dump/restore SQL snapshot equality across questions,
+receipts, source bytes/anchors and events. The restored database is inspected
+directly; the probe does not restart the HTTP service against that restored copy. It is a recovery probe, not a clinical pilot.
 
 `apps/api/tests/test_question_review_returns.py` verifies real PostgreSQL
 16/FastAPI, exact source and patient binding, idempotency including concurrent
