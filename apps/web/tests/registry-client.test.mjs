@@ -1,5 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import {RegistrySession} from '../.test-dist/registry-client.js';
 const token='fictional_test_credential_000000000001';
 const token2='fictional_test_credential_000000000002';
@@ -184,4 +185,103 @@ test('new identity creation cannot retain old patient source versions',async()=>
   await s.create('REQUEST-NEW',true);
   assert.equal(s.snapshot().patient,null);assert.equal(s.snapshot().sourceIndex,null);
   assert.equal(s.snapshot().cases,null);
+});
+
+
+// Separate original-content grant and exact-byte checks over the existing source owner.
+const exactText='OI-SYNTHETIC-REPORT/1\nPatient: CASE-ALPHA\nDocument: DOC-ONE\nFinding: marker|not-reported|Fictional café <script>literal</script>.\n';
+const exactHash=createHash('sha256').update(Buffer.from(exactText,'utf8')).digest('hex');
+const indexedOriginal=()=>{
+  const idx=sourceIndex();idx.sources[0].sha256=exactHash;return idx;
+};
+const originalPayload=()=>({source_id:sourceId,case_id:'CASE-ALPHA',document_id:'DOC-ONE',
+  version:1,state:'current',sha256:exactHash,original_text:exactText,
+  synthetic:true,clinical_review_state:'not_established'});
+const originalSession=(originalResponse=()=>response(originalPayload()))=>{
+  const seen=[];
+  const s=new RegistrySession(async (url,init)=>{
+    seen.push([url,init]);
+    if(url.endsWith('/case-bindings'))return response(caseList());
+    if(url.endsWith('/sources'))return response(indexedOriginal());
+    if(url.endsWith('/'+sourceId))return originalResponse();
+    if(url.endsWith('/PAT-OTHER'))return response(patient('PAT-OTHER'));
+    return response(patient());
+  });
+  return {s,seen};
+};
+const openIndex=async s=>{
+  s.connect(token);await s.read('PAT-EXAMPLE-001');
+  await s.loadCases();await s.loadSources('CASE-ALPHA');
+  assert.ok(s.snapshot().sourceIndex);
+};
+test('original bytes require independent GET and matching indexed SHA-256, not merely source_read',async()=>{
+  const {s,seen}=originalSession();await openIndex(s);
+  await s.loadOriginal(sourceId);
+  assert.equal(s.snapshot().original.original_text,exactText);
+  assert.equal(s.snapshot().original.sha256,exactHash);
+  assert.equal(s.snapshot().originalPhase,'ready');
+  assert.equal(seen.at(-1)[0],'/v1/patients/PAT-EXAMPLE-001/cases/CASE-ALPHA/sources/'+sourceId);
+  assert.equal(seen.at(-1)[1].method,'GET');
+  assert.equal(seen.at(-1)[1].credentials,'omit');
+  assert.equal(seen.at(-1)[1].redirect,'error');
+  assert.equal(JSON.stringify(s.snapshot()).includes(token),false);
+});
+test('denied original-read permission hides content without removing independently allowed metadata',async()=>{
+  let n=0;const {s}=originalSession(()=>++n===1?response(originalPayload()):response({detail:'private'},404));
+  await openIndex(s);await s.loadOriginal(sourceId);
+  assert.ok(s.snapshot().original);
+  await s.loadOriginal(sourceId);
+  assert.equal(s.snapshot().original,null);
+  assert.ok(s.snapshot().sourceIndex);
+  assert.equal(s.snapshot().originalPhase,'error');
+  assert.equal(JSON.stringify(s.snapshot()).includes('private'),false);
+});
+test('modified raw bytes, forged source/version and stale amendment state fail closed',async()=>{
+  const variants=[
+    {...originalPayload(),original_text:exactText+'FORGED'},
+    {...originalPayload(),source_id:'SRC-'+'F'.repeat(32)},
+    {...originalPayload(),version:2},
+    {...originalPayload(),state:'superseded'},
+    {...originalPayload(),clinical_review_state:'approved'},
+    {...originalPayload(),sha256:'0'.repeat(64)},
+    {...originalPayload(),synthetic:false},
+  ];
+  for(const wrong of variants){
+    const {s}=originalSession(()=>response(wrong));
+    await openIndex(s);await s.loadOriginal(sourceId);
+    assert.equal(s.snapshot().original,null);
+    assert.equal(s.snapshot().originalPhase,'error');
+  }
+});
+test('late old original response cannot restore content after patient selection changes',async()=>{
+  const d=deferred();const {s}=originalSession(()=>d.promise);
+  await openIndex(s);const pending=s.loadOriginal(sourceId);
+  await s.read('PAT-OTHER');
+  assert.equal(s.snapshot().original,null);
+  d.resolve(response(originalPayload()));await pending;
+  assert.equal(s.snapshot().patient.patient_id,'PAT-OTHER');
+  assert.equal(s.snapshot().original,null);
+});
+test('case refresh invalidates in-flight original and previously verified raw content',async()=>{
+  const d=deferred();let count=0;
+  const {s}=originalSession(()=>++count===1?response(originalPayload()):d.promise);
+  await openIndex(s);await s.loadOriginal(sourceId);assert.ok(s.snapshot().original);
+  const waiting=s.loadOriginal(sourceId);
+  assert.equal(s.snapshot().original,null);
+  await s.loadSources('CASE-ALPHA');
+  d.resolve(response(originalPayload()));await waiting;
+  assert.equal(s.snapshot().original,null);
+  assert.ok(s.snapshot().sourceIndex);
+});
+test('original is erased on expired credential, source-index refresh and disconnect',async()=>{
+  const {s}=originalSession();await openIndex(s);await s.loadOriginal(sourceId);
+  assert.ok(s.snapshot().original);
+  await s.loadCases();assert.equal(s.snapshot().original,null);
+  await s.loadSources('CASE-ALPHA'); // Cases refresh has deliberately reset case selection.
+  assert.equal(s.snapshot().original,null);
+  s.disconnect();assert.equal(s.snapshot().original,null);
+  const {s:expired}=originalSession(()=>response({},401));
+  await openIndex(expired);await expired.loadOriginal(sourceId);
+  assert.equal(expired.snapshot().connected,false);
+  assert.equal(expired.snapshot().original,null);
 });

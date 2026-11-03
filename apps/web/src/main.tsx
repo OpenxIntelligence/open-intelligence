@@ -37,7 +37,7 @@ function App(){
     {section==='Records'?<section className="panel records-workspace" data-testid="records-workspace" aria-labelledby="records-heading">
      <span className="step">READ ONLY / CANONICAL SOURCE OWNER</span>
      <h2 id="records-heading">Original source records</h2>
-     <p>Shows source-reported information from the existing scoped PostgreSQL API. No original document bytes, AI interpretation, clinical decision, identity verification or consent is available from this screen. Information is current only at its last successful check.</p>
+     <p>Shows source-reported information from the existing scoped PostgreSQL API. Reading exact original bytes requires a separate permission check. No AI interpretation, clinical decision, identity verification or consent is available from this screen. Information is current only at its last successful check.</p>
      {!state.patient?<div data-testid="records-no-patient"><p>Open an authorized fictional patient in Overview before loading records.</p><button onClick={()=>setSection('Overview')}>Go to patient overview</button></div>:
      <div>
       <p className="record-scope" data-testid="records-patient"><strong>Selected patient:</strong> <code>{state.patient.patient_id}</code></p>
@@ -65,7 +65,14 @@ function App(){
           <div><dt>Original source ID</dt><dd><code>{item.source_id}</code></dd></div>
           <div><dt>Original SHA-256</dt><dd><code>{item.sha256}</code></dd></div>
           {item.supersedes_id&&<div><dt>Supersedes</dt><dd><code>{item.supersedes_id}</code></dd></div>}
-         </dl></li>)}</ol>}
+         </dl><button type="button" data-testid="read-original" disabled={state.originalPhase==='loading'||state.recordsPhase.startsWith('loading')} onClick={()=>void session.loadOriginal(item.source_id)}>Read exact original</button></li>)}</ol>}
+       <p className={'status '+(state.originalPhase==='error'?'error':'')} role="status" data-testid="original-status" aria-live="polite">{state.originalMessage}</p>
+       {state.original&&<section aria-labelledby="exact-original-heading" data-testid="exact-original" className="exact-original">
+        <h3 id="exact-original-heading">Verified original · {state.original.document_id} v{state.original.version}</h3>
+        <p>Version state: <strong>{state.original.state}</strong>. SHA-256: <code>{state.original.sha256}</code></p>
+        <p>Original UTF-8 bytes match the last source index. This literal fictional text is not clinical interpretation or an authorized decision.</p>
+        <pre data-testid="original-text" className="original-text">{state.original.original_text}</pre>
+       </section>}
        <h3>Source-reported findings from current versions</h3>
        <p>Statements below are unreviewed quotations reported by fictional input files, not independently established clinical facts.</p>
        {state.sourceIndex.source_reported_assertions.length===0?<p>No source-reported assertions were returned.</p>:
