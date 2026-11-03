@@ -1,0 +1,258 @@
+{
+  "contract": "oi.synthetic-reading-overview-verification/1",
+  "date": "2026-11-03",
+  "pull_request": 308,
+  "runtime_commit": "f18876efe3609bd701857ef341ba0a5dfe005342",
+  "runtime_tree": "e8cc3c86cb3624114fc71da9dbc727a3033b0326",
+  "runtime_gate": {
+    "run_id": 41657360248,
+    "job_id": 125991124497,
+    "conclusion": "success",
+    "client_tests": 228,
+    "client_failures": 0,
+    "client_skipped": 0,
+    "production_build": "passed",
+    "actual_postgresql_fastapi_built_react_browser": "passed"
+  },
+  "failing_reproduction": {
+    "commit": "b5e406071697529e170f4ba5f51adf82d09f6ca6",
+    "run_id": 41655414937,
+    "assertion": "Contextual navigation must invalidate the prepared source packet"
+  },
+  "artifact": {
+    "id": 13240901200,
+    "name": "h1-web-verification-41657360248-1",
+    "sha256": "a7add36f1f0f9f040d6a0e26e23ffdb08866d2fa0bc1e36764bae3f1d9966a72",
+    "download_digest_verified": true,
+    "all_346_source_blobs_and_executable_modes_verified": true
+  },
+  "runtime_scope": {
+    "parent_head": "aea88341e260a4829d5b1647d5395b78ca17bfa6",
+    "parent_tree": "7ef9eb08115f12c027b18513808ceb6255369f67",
+    "runtime_tree": "e8cc3c86cb3624114fc71da9dbc727a3033b0326",
+    "parent_files": 340,
+    "source_files": 346,
+    "protected_unchanged": 333,
+    "changed_existing": [
+      "apps/web/src/main.tsx",
+      "apps/web/src/styles.css",
+      "apps/web/tests/review-client.test.mjs",
+      "apps/web/tools/browser_journey.py",
+      "apps/web/tools/connected_question_review_journey.py",
+      "apps/web/tools/question_review_journey.py",
+      "apps/web/tsconfig.client.json"
+    ],
+    "added": [
+      "apps/web/src/patient-continuity-view.tsx",
+      "apps/web/src/patient-continuity.ts",
+      "apps/web/tests/patient-continuity.test.mjs",
+      "apps/web/tools/overview_verification_journey.py",
+      "docs/superpowers/plans/2026-11-03-reading-overview-convergence.md",
+      "docs/superpowers/specs/2026-11-03-reading-overview-convergence.md"
+    ],
+    "unchanged_owners": {
+      "apps/web/src/registry-client.ts": {
+        "mode": "100644",
+        "type": "blob",
+        "sha": "5c24c5c338492128e16a001614e6c8581f37b7c0"
+      },
+      "apps/web/src/review-panel.tsx": {
+        "mode": "100644",
+        "type": "blob",
+        "sha": "4abf94730a56120e113008edbe744391b50f5d48"
+      },
+      "apps/web/src/source-reading.tsx": {
+        "mode": "100644",
+        "type": "blob",
+        "sha": "75d45181b9ea5969f96216b4d3b0c2dc57c14c68"
+      },
+      "apps/web/src/followthrough-panel.tsx": {
+        "mode": "100644",
+        "type": "blob",
+        "sha": "2ed61b36476d0158726acac5cd3f16923722626b"
+      },
+      "apps/web/tools/reading_convergence_journey.py": {
+        "mode": "100644",
+        "type": "blob",
+        "sha": "cc2d30e24b83a0dc1a8178cb3558e0ee54a89731"
+      },
+      "apps/web/tools/followthrough_journey.py": {
+        "mode": "100644",
+        "type": "blob",
+        "sha": "57f9fcfcfd091fdef738069cca842184fb924346"
+      },
+      "apps/web/package-lock.json": {
+        "mode": "100644",
+        "type": "blob",
+        "sha": "5fde6b11a97f71461e1c1b22248c2930641da134"
+      },
+      ".github/workflows/h1-web.yml": {
+        "mode": "100644",
+        "type": "blob",
+        "sha": "f6a7b7587fdd3d922c628383f0b25b9ec97734c5"
+      }
+    }
+  },
+  "acceptance": {
+    "patient-continuity-workflow.json": {
+      "contract": "oi.synthetic-patient-continuity-acceptance/1",
+      "patient_id": "PAT-7EA5A2E3600E43458C03124A0B5B1164",
+      "case_id": "CASE-ALPHA",
+      "question_id": "QUESTION-E925F831A4AF4283863EE7DE332694EA",
+      "question": "Which exact original line supports the current fictional marker entry, and what wording still needs verification?",
+      "question_ids": [
+        "QUESTION-58AC0DD3517C4DAAA988F7A2E1D7D64C",
+        "QUESTION-5A23CEF8E4D84450A3E90159174BA8D5",
+        "QUESTION-E31C583F838249ED8574F20F4088D6DB",
+        "QUESTION-E925F831A4AF4283863EE7DE332694EA"
+      ],
+      "return_receipt_id": "REVIEW-D454A7F3E113493CBE37FDC3E1B882D0",
+      "return_reason": "Please independently verify this fictional source wording against the original report; this is not clinical approval.",
+      "selected_source": {
+        "source_id": "SRC-36F21CAC193E4391A0C6203145340A88",
+        "document_id": "DOC-ONE",
+        "version": 2,
+        "sha256": "df51199cfec4919c7052a7d2e04a3c4e5090731029848ad5938fc956f43b6c37",
+        "line": 9,
+        "finding_key": "marker",
+        "reported_state": "negative",
+        "statement": "Amended fictional marker is reported negative.",
+        "kind": "pathology",
+        "event_date": "2026-01-10",
+        "issued_at": "2026-01-12",
+        "specimen_id": "SPECIMEN-ONE"
+      },
+      "source_snapshot_sha256": "4199346dde85f140469d54d5953a320d2fb2b18acfda05aa5c46fe371effa982",
+      "brief_access_before_return": "ACCESS-8BCC4688B7E4421C9868FC13E8201AB4",
+      "brief_access_after_return": "ACCESS-51630F60B6504EA69678DAD9B5239AC9",
+      "download_receipt": "source-brief-QUESTION-E925F831A4AF4283863EE7DE332694EA.json",
+      "download_relative_path": "source-brief-downloads/QUESTION-E925F831A4AF4283863EE7DE332694EA/open-intelligence-source-question-brief.txt",
+      "download_sha256": "94c9b95f22191f1dd2d1634bd8c506ea6b21cea587f7a2f53c6ea8cc5674df57",
+      "download_bytes": 3278,
+      "overview_current_unreviewed": 3,
+      "overview_reassessment_required": 1,
+      "draft_resumed_through_overview": true,
+      "clinical_approval": false,
+      "model_executed": false,
+      "biomedical_evidence_included": false
+    },
+    "source-navigation-races.json": {
+      "contract": "oi.synthetic-source-navigation-race-acceptance/1",
+      "patient_id": "PAT-7EA5A2E3600E43458C03124A0B5B1164",
+      "case_id": "CASE-ALPHA",
+      "question_id": "QUESTION-E925F831A4AF4283863EE7DE332694EA",
+      "world_fingerprint": "4199346dde85f140469d54d5953a320d2fb2b18acfda05aa5c46fe371effa982",
+      "scenarios": [
+        {
+          "transition": "contextual_round_trip",
+          "actual_responses": {
+            "packet": {
+              "status": 200,
+              "contract": "oi.synthetic-question-source-review-packet/1",
+              "patient": "PAT-7EA5A2E3600E43458C03124A0B5B1164",
+              "case": "CASE-ALPHA",
+              "question": "QUESTION-E925F831A4AF4283863EE7DE332694EA",
+              "source": "SRC-36F21CAC193E4391A0C6203145340A88",
+              "receipt": "ACCESS-633806F863C24DFDB415C5A43777D148"
+            },
+            "brief": {
+              "status": 200,
+              "contract": "oi.synthetic-source-brief/2",
+              "patient": "PAT-7EA5A2E3600E43458C03124A0B5B1164",
+              "case": "CASE-ALPHA",
+              "question": "QUESTION-E925F831A4AF4283863EE7DE332694EA",
+              "source": "SRC-36F21CAC193E4391A0C6203145340A88",
+              "receipt": "ACCESS-4B90FEB986234804AEBED402D57006AE"
+            }
+          },
+          "questions_mounted_after_delivery": true,
+          "prepared_readers_restored": false
+        },
+        {
+          "transition": "same_section",
+          "actual_responses": {
+            "packet": {
+              "status": 200,
+              "contract": "oi.synthetic-question-source-review-packet/1",
+              "patient": "PAT-7EA5A2E3600E43458C03124A0B5B1164",
+              "case": "CASE-ALPHA",
+              "question": "QUESTION-E925F831A4AF4283863EE7DE332694EA",
+              "source": "SRC-36F21CAC193E4391A0C6203145340A88",
+              "receipt": "ACCESS-238093FA838446F498B31AE5037F4D8C"
+            },
+            "brief": {
+              "status": 200,
+              "contract": "oi.synthetic-source-brief/2",
+              "patient": "PAT-7EA5A2E3600E43458C03124A0B5B1164",
+              "case": "CASE-ALPHA",
+              "question": "QUESTION-E925F831A4AF4283863EE7DE332694EA",
+              "source": "SRC-36F21CAC193E4391A0C6203145340A88",
+              "receipt": "ACCESS-F2B8094425C0448EBE9231CECC86CBD7"
+            }
+          },
+          "questions_mounted_after_delivery": true,
+          "prepared_readers_restored": false
+        }
+      ]
+    },
+    "overview-verification-recovery.json": {
+      "contract": "oi.synthetic-overview-return-recovery-acceptance/1",
+      "patient_id": "PAT-7EA5A2E3600E43458C03124A0B5B1164",
+      "case_id": "CASE-ALPHA",
+      "question_id": "QUESTION-58AC0DD3517C4DAAA988F7A2E1D7D64C",
+      "original_return": {
+        "path": "/v1/patients/PAT-7EA5A2E3600E43458C03124A0B5B1164/cases/CASE-ALPHA/questions/QUESTION-58AC0DD3517C4DAAA988F7A2E1D7D64C/return-for-verification",
+        "body": {
+          "synthetic": true,
+          "request_key": "6c1d5db0-04bb-4083-8195-69f49679f0fe",
+          "expected_queue_fingerprint": "09d694ec7f10e0d58562e8492470c85a608172e46ea84344ccfa21406cf168fd",
+          "reason": "Recover this exact fictional source verification return without starting another request."
+        },
+        "status": 201,
+        "receipt": "REVIEW-1E288A038E8C489CB58C30AA4C61E97D",
+        "duplicate": false
+      },
+      "explicit_retry": {
+        "path": "/v1/patients/PAT-7EA5A2E3600E43458C03124A0B5B1164/cases/CASE-ALPHA/questions/QUESTION-58AC0DD3517C4DAAA988F7A2E1D7D64C/return-for-verification",
+        "body": {
+          "synthetic": true,
+          "request_key": "6c1d5db0-04bb-4083-8195-69f49679f0fe",
+          "expected_queue_fingerprint": "09d694ec7f10e0d58562e8492470c85a608172e46ea84344ccfa21406cf168fd",
+          "reason": "Recover this exact fictional source verification return without starting another request."
+        },
+        "status": 200,
+        "receipt": "REVIEW-1E288A038E8C489CB58C30AA4C61E97D",
+        "duplicate": true
+      },
+      "source_refresh": {
+        "status": 200,
+        "patient": "PAT-7EA5A2E3600E43458C03124A0B5B1164",
+        "case": "CASE-ALPHA",
+        "receipt": "ACCESS-07BFA3CA298546D784FB7F9E72B6BF94"
+      },
+      "navigation_api_requests": 0,
+      "durable_matching_receipts": 1
+    }
+  },
+  "manual_screenshot_review": [
+    "h1-overview-recovery-320.png",
+    "h1-overview-recovery-390.png",
+    "h1-overview-recovery-1440.png",
+    "reading-patient-320.png",
+    "reading-clinical-390.png",
+    "h1-followthrough-attention-mobile.png",
+    "h1-connected-question-desktop.png"
+  ],
+  "independent_reviews": {
+    "whole_delta_remaining_findings": 0,
+    "receipt_review_blocking_gaps": 0,
+    "all_four_download_lengths_and_sha256_verified": true
+  },
+  "limits": [
+    "Independently authored fictional records only.",
+    "Same-session workflow; no separate database audit.",
+    "Contrary effective Review case is covered by client regression, not the positive recovery browser receipt.",
+    "No merge, deployment, clinical validation, biomedical appraisal or new authenticated roles.",
+    "Runtime evidence is pinned above; documentation-only closeout is tracked in PR #308."
+  ]
+}

@@ -52,8 +52,8 @@
 - [x] Preserve all inherited reading/follow-through assertions; test same-response filters and draft retention.
 - [x] Test Overview draft resume/counts; exact-return recovery after source refresh; no POST from navigation.
 - [x] Hold real quotation/brief responses across contextual navigation and verify late-response suppression.
-- [ ] Run the actual combined hosted browser workflow; inspect screenshots and downloaded receipts.
-- [ ] Obtain independent review, verify parent bytes/modes, record exact head/tree/results and remaining boundaries.
+- [x] Run the actual combined hosted browser workflow; inspect screenshots and downloaded receipts.
+- [x] Obtain independent review, verify parent bytes/modes, record exact head/tree/results and remaining boundaries.
 
 ## Execution ledger
 
@@ -71,4 +71,12 @@ Reassessment copy now states that source context needs reassessment rather than 
 
 Local client verification: 228 tests passed, zero failures/skips. The initial 216-test parent and first imported 227-test runs also passed; counts are nested executions, not separate capabilities.
 
-Independent whole-delta review of the complete implementation and browser probes found no Critical, Important or Minor findings. Review verified frontend-only scope and unchanged source-reading/follow-through helpers. Runtime browser results remain pending at this checkpoint. All four modified/new Python browser helpers compile; whitespace checks pass.
+Independent whole-delta review of the complete implementation and browser probes found no Critical, Important or Minor findings. Review verified frontend-only scope and unchanged source-reading/follow-through helpers. All four modified/new Python browser helpers compile; whitespace checks pass.
+
+GREEN evidence: hosted run [41657360248](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41657360248) passed on runtime head `f18876efe3609bd701857ef341ba0a5dfe005342`, tree `e8cc3c86cb3624114fc71da9dbc727a3033b0326`. This includes all 228 client tests, the TypeScript/Vite build, dependency gates, and the actual PostgreSQL/FastAPI/built-React browser journey. The new checks passed together with the inherited source reading, actual brief download, question review, follow-through, source amendment, permission withdrawal and session/case-boundary checks.
+
+Downloaded artifact `13240901200` matches GitHub's SHA-256 `a7add36f1f0f9f040d6a0e26e23ffdb08866d2fa0bc1e36764bae3f1d9966a72`. Its commit marker identifies the runtime head, and all 346 archived source blobs and executable modes match the local runtime tree. Relative to #305, 333 of 340 existing files remain identical; the seven changed existing files are frontend source, frontend test/config or browser acceptance files. All protected owners remain identical.
+
+Visual inspection covered Overview recovery at 320, 390 and 1440 pixels, patient reading at 320, clinical reading at 390, follow-through attention at 390, and the connected-question desktop view. The recovery action, visible focus ring and text remain contained. Independent receipt inspection confirmed exact 201-to-200 duplicate recovery with one durable receipt and zero navigation requests, both late-response suppression scenarios, and hashes/lengths of all four actual downloaded briefs. No blocking receipt gap was found.
+
+The documentation closeout adds a bounded OI-010 evidence reference without declaring the full investigation workflow complete. See [the verification report](../../ux/2026-11-03-reading-overview-verification.md) and its compact JSON receipt. PR #308 remains a draft stacked on #305; no merge, deployment or clinical validation is claimed.
