@@ -3,6 +3,8 @@ import {parseCaseBindingList, parseSourceIndex} from './source-contracts.js';
 import type {CaseBinding, SourceIndex} from './source-contracts.js';
 import {prepareSource,parseImportReceipt,verifyOriginal} from './source-intake.js';
 import type {ImportReceipt,OriginalSource} from './source-intake.js';
+import {parseSourceWorldModel} from './source-world-model.js';
+import type {SourceWorldModel} from './source-world-model.js';
 export type Patient = Readonly<{
   patient_id: string; origin_org: string; created_at: string;
   status: 'active' | 'suspended'; revision: number;
@@ -16,6 +18,9 @@ export type ViewState = Readonly<{
   original:OriginalSource|null; importReceipt:ImportReceipt|null;
   importOutcome:'idle'|'sending'|'confirmed'|'rejected'|'unknown'; importMessage:string;
   recordMessage: string;
+  worldModel:SourceWorldModel|null;
+  worldPhase:'idle'|'loading'|'ready'|'error';
+  worldMessage:string;
 }>;
 export type Transport = (input: string, init: RequestInit) => Promise<Response>;
 const KEY = /^[A-Za-z0-9][A-Za-z0-9_.:-]{2,127}$/;
@@ -31,8 +36,9 @@ const messages: Record<number,string> = {
   503:'The patient registry or access service is unavailable. No cached patient is shown.',
 };
 const emptyIntake=()=>({original:null,importReceipt:null,importOutcome:'idle' as const,importMessage:''});
-const fresh = (): ViewState => Object.freeze({connected:false,phase:'disconnected',patient:null,created:null,message:'Connect a local synthetic credential to use the patient registry.',cases:null,sourceIndex:null,recordsPhase:'idle',recordMessage:'Open an authorized fictional patient in Overview first.',...emptyIntake()});
-const emptyRecords=()=>({...emptyIntake(),cases:null,sourceIndex:null,recordsPhase:'idle' as const,recordMessage:'Load the current authorized case mappings to inspect original source metadata.'});
+const emptyWorld=()=>({worldModel:null,worldPhase:'idle' as const,worldMessage:'Choose an authorized active fictional case to inspect its source-derived World Model.'});
+const fresh = (): ViewState => Object.freeze({connected:false,phase:'disconnected',patient:null,created:null,message:'Connect a local synthetic credential to use the patient registry.',cases:null,sourceIndex:null,recordsPhase:'idle',recordMessage:'Open an authorized fictional patient in Overview first.',...emptyIntake(),...emptyWorld()});
+const emptyRecords=()=>({...emptyIntake(),...emptyWorld(),cases:null,sourceIndex:null,recordsPhase:'idle' as const,recordMessage:'Load the current authorized case mappings to inspect original source metadata.'});
 function exact(value: unknown, fields: string[]): value is Record<string,unknown> {
   return value !== null && typeof value==='object' && !Array.isArray(value) &&
     Object.keys(value).length===fields.length && fields.every(k=>Object.hasOwn(value,k));
@@ -138,7 +144,7 @@ export class RegistrySession {
       request===this.#records && this.#state.patient?.patient_id===patientId;
     const control=new AbortController();this.#controllers.add(control);
     const timeout=setTimeout(()=>control.abort(),10000);
-    this.#publish({...emptyIntake(),cases:null,sourceIndex:null,recordsPhase:'loading-cases',recordMessage:'Checking current case mapping permissions…'});
+    this.#publish({...emptyIntake(),...emptyWorld(),cases:null,sourceIndex:null,recordsPhase:'loading-cases',recordMessage:'Checking current case mapping permissions…'});
     try{
       const res=await this.transport('/v1/patients/'+encodeURIComponent(patientId)+'/case-bindings',this.#init(control));
       if(!current())return;
@@ -161,7 +167,7 @@ export class RegistrySession {
     if(!patientId || !this.#token || this.#state.phase!=='ready' ||
        !this.#state.cases?.some(item=>item.case_id===caseId && item.status==='active')){
       this.#records++;
-      this.#publish({...emptyIntake(),sourceIndex:null,recordsPhase:'error',
+      this.#publish({...emptyIntake(),...emptyWorld(),sourceIndex:null,recordsPhase:'error',
         recordMessage:'Select an active, currently authorized case first.'});
       return;
     }
@@ -170,7 +176,7 @@ export class RegistrySession {
       request===this.#records && this.#state.patient?.patient_id===patientId;
     const control=new AbortController();this.#controllers.add(control);
     const timeout=setTimeout(()=>control.abort(),10000);
-    this.#publish({...(this.#state.sourceIndex?.case_id!==caseId?emptyIntake():{original:null}),sourceIndex:null,recordsPhase:'loading-sources',
+    this.#publish({...emptyWorld(),...(this.#state.sourceIndex?.case_id!==caseId?emptyIntake():{original:null}),sourceIndex:null,recordsPhase:'loading-sources',
       recordMessage:'Checking exact source versions and current permissions…'});
     try{
       const url='/v1/patients/'+encodeURIComponent(patientId)+'/cases/'+encodeURIComponent(caseId)+'/sources';
@@ -189,6 +195,48 @@ export class RegistrySession {
     }catch(_){
       if(current())this.#publish({cases:null,sourceIndex:null,recordsPhase:'error',
         recordMessage:'Source response failed validation or the service is unavailable. No sources are shown.'});
+    }finally{clearTimeout(timeout);this.#controllers.delete(control);}
+  }
+
+  /** Source-only context is a read, never an authorization to execute Composer.
+   * Request generation prevents responses from earlier patients/cases/credentials
+   * or amended source views from repopulating the UI.
+   */
+  async loadWorldModel(caseId:string):Promise<void>{
+    const patientId=this.#state.patient?.patient_id;
+    if(!this.#token||!patientId||this.#state.phase!=='ready'||this.#uploading||
+       !/^CASE-[A-Z0-9-]{1,35}$/.test(caseId)||
+       !this.#state.cases?.some(x=>x.case_id===caseId&&x.status==='active')){
+      this.#records++;
+      this.#publish({...emptyWorld(),worldPhase:'error',
+        worldMessage:'Open an authorized fictional patient and active case first.'});
+      return;
+    }
+    const scope=this.#scope,read=this.#read,request=++this.#records;
+    const current=()=>scope===this.#scope&&read===this.#read&&request===this.#records&&
+      this.#state.patient?.patient_id===patientId&&
+      this.#state.cases?.some(x=>x.case_id===caseId&&x.status==='active');
+    const control=new AbortController();this.#controllers.add(control);
+    const timeout=setTimeout(()=>control.abort(),10000);
+    this.#publish({...emptyWorld(),worldPhase:'loading',
+      worldMessage:'Checking source-derived World Model and current permissions…'});
+    try{
+      const url='/v1/patients/'+encodeURIComponent(patientId)+'/cases/'+encodeURIComponent(caseId)+'/world-model';
+      const response=await this.transport(url,this.#init(control));
+      if(!current())return;
+      if(response.status===401){this.#httpError(401);return;}
+      if(response.status!==200){
+        this.#publish({...emptyWorld(),worldPhase:'error',
+          worldMessage:'World Model source scope unavailable or revoked. Previous snapshot cleared.'});
+        return;
+      }
+      const model=parseSourceWorldModel(await json(response,1048576),patientId,caseId);
+      if(!current())return;
+      this.#publish({worldModel:model,worldPhase:'ready',
+        worldMessage:'Source-derived snapshot verified at last read; no clinical assessment or AI execution is authorized.'});
+    }catch(_){
+      if(current())this.#publish({...emptyWorld(),worldPhase:'error',
+        worldMessage:'World Model response failed validation or transport. Previous snapshot cleared.'});
     }finally{clearTimeout(timeout);this.#controllers.delete(control);}
   }
 
@@ -235,7 +283,7 @@ export class RegistrySession {
       this.#state.patient?.patient_id===patientId&&this.#state.sourceIndex?.case_id===caseId;
     const control=new AbortController();this.#controllers.add(control);this.#uploading=true;
     const timeout=setTimeout(()=>control.abort(),10000);
-    this.#publish({original:null,importOutcome:'sending',importReceipt:null,importMessage:'Sending this original once. Do not switch context until its receipt returns.'});
+    this.#publish({...emptyWorld(),original:null,importOutcome:'sending',importReceipt:null,importMessage:'Sending this original once. Do not switch context until its receipt returns.'});
     try{
       const res=await this.transport('/v1/patients/'+encodeURIComponent(patientId)+'/cases/'+encodeURIComponent(caseId)+'/sources',
         this.#init(control,JSON.stringify({synthetic:true,original_text:text})));
