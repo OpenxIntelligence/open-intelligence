@@ -55,6 +55,37 @@ is introduced. Full Composer/evidence/report/review integration remains separate
 
 ## Execution evidence
 
-Pending at initial test-first publication. Record observed failures, final exact
-head, commands and hosted run links in the draft PR and canonical engineering
-progress records; do not infer a complete patient investigation from this slice.
+Tests-first commit: `5d5a723e57861fa63a845bc55c65592a1928636c`.
+[Hosted API run 41567217329](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41567217329)
+collected 145 tests against PostgreSQL 16 and reproduced 35 failed assertions
+(including subtests), with no test setup errors. The failures covered source
+tuple/hash/history mismatches, projection-time authority changes, projection
+failure and early receipt/lock release. The valid Unicode/amendment control
+passed. This is red evidence, not a successful implementation run.
+
+The local client regressions reproduced two loading-state failures before the
+fix. After the implementation, all 53 client tests passed using the actual
+TypeScript modules through Node 24.22.1's in-memory TypeScript stripping. This
+does not establish TypeScript type checking or a built-browser result. The
+local pure-source and HTTP contract command also passed 25 tests:
+
+```sh
+PYTHONPATH=apps/api/src:src:apps/api/tests /tmp/oi-h1-venv/bin/python -m unittest test_source_integrity test_contracts -v
+```
+
+Independent read-only implementation reviews found no blocking defect in the
+source validation or projection/authority ordering. The new browser regression
+holds only delivery of a real completed response; it uses the actual application,
+API and database and restores its temporary interception afterward.
+
+Final PostgreSQL, pinned frontend build and actual-browser verification remain
+required on the published implementation head. Record that exact head, commands
+and hosted run links in [draft PR #234](https://github.com/OpenxIntelligence/open-intelligence/pull/234)
+and the canonical engineering progress records. This slice serves the existing
+OI-006 source-provenance and OI-013 authorization/recovery backlog requirements;
+it does not complete either requirement or the patient investigation milestone.
+
+Operational limit: every read rehashes the complete case source history while
+the existing locks are held. It uses one additional query rather than an N+1
+query pattern, but large-history latency and pagination require separate
+qualification. No performance or distributed authorization atomicity is claimed.

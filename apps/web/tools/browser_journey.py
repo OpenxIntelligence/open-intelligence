@@ -124,6 +124,10 @@ def main():
             assert cd.evaluate("document.querySelector('[data-testid=world-no-approval]').textContent.includes('Composer execution: unavailable')")
             initial_world_fingerprint=cd.evaluate("document.querySelector('[data-testid=world-fingerprint]').textContent")
             assert len(initial_world_fingerprint)==64
+            from world_model_race_journey import exercise as exercise_world_model_races
+            exercise_world_model_races(cd,patient_id=pid,case_id=case,source_id=original_id,
+                original=original,fingerprint=initial_world_fingerprint,
+                credentials=credentials,write_grants=write_grants)
             cd.evaluate("Array.from(document.querySelectorAll('nav[aria-label=\"Patient workspace\"] button')).find(b=>b.textContent.includes('Records')).click()")
             amended=(
                 'OI-SYNTHETIC-REPORT/1\nPatient: CASE-ALPHA\nDocument: DOC-ONE\n'

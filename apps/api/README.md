@@ -133,6 +133,23 @@ Typed synthetic-only H1 API:
 - `GET /v1/patients/{patient_id}/cases/{case_id}/sources/{source_id}`: separately
   requires patient_read plus source_original_read to retrieve the exact original
   fictional text and hash, including superseded historical originals.
+- `GET /v1/patients/{patient_id}/cases/{case_id}/world-model`: requires
+  patient_read plus source_read. Projects the same source index into the existing
+  read-only `oi.pg-source-world-model/1` response; it grants no original-read or
+  clinical authority.
+
+Source-index and World Model reads revalidate every current and historical
+original against its hash, headers and immediate amendment predecessor. The
+complete current finding inventory must match the original key, state, quote
+and literal line; missing or extra assertions fail closed. One additional
+case-scoped source query performs this check without a query per finding.
+Projection and response-schema validation run under the existing patient and
+case-binding locks, before the final authority refresh and access-receipt
+commit. A preparation, authority, integrity or audit failure returns no source
+view or newly committed read receipt. A reserved receipt ID is not proof of
+network delivery, clinical review or continued authorization after the final
+check. Rehashing the complete source history adds work under these locks;
+large-history performance and pagination remain unqualified.
 
 No existing source, report or patient ledger has been copied into a second
 application database. The unmerged Python/SQLite reference remains a separate

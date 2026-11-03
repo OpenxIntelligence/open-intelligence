@@ -12,6 +12,7 @@ import json
 import uuid
 from collections.abc import Callable
 from datetime import datetime
+from typing import TypeVar
 
 from pydantic import TypeAdapter
 
@@ -23,9 +24,10 @@ from open_intelligence.store import InvalidInput, parse_report
 
 from .case_bindings import _case_id
 from .record_requests import PostgresRecordRequests
-from .source_integrity import validate_original
+from .source_integrity import SourceIntegrityError, validate_original, validate_snapshot
 
 _TIMESTAMP_JSON = TypeAdapter(datetime)
+PreparedResponse = TypeVar("PreparedResponse")
 
 
 def _source_id(value: object) -> str:
@@ -57,7 +59,8 @@ class PostgresSourceVersions:
         return row[4]
 
     def _read_receipt(self, patient_id: str, case_id: str, *, actor: str, purpose: str,
-                      binding_revision: int, event: str, recheck_authority: Callable[[], None],
+                      binding_revision: int, event: str, receipt_id: str,
+                      recheck_authority: Callable[[], None],
                       **references) -> str:
         """Authorize prepared disclosure, not guaranteed network delivery.
 
@@ -67,7 +70,6 @@ class PostgresSourceVersions:
         not transactionally locked with PostgreSQL or HTTP delivery.
         """
         recheck_authority()
-        receipt_id = "ACCESS-" + uuid.uuid4().hex.upper()
         self.registry.append_event(
             patient_id, event, receipt_id=receipt_id, case_id=case_id,
             actor=_key(actor, "actor"), purpose=purpose,
@@ -82,6 +84,10 @@ class PostgresSourceVersions:
             "FROM clinical_source.source_versions WHERE case_id=%s "
             "ORDER BY document_id,version", (case_id,),
         )
+        return self._source_metadata(rows)
+
+    @staticmethod
+    def _source_metadata(rows) -> list[dict]:
         return [
             {"source_id": r[0], "document_id": r[1], "version": r[2],
              "sha256": r[3], "kind": r[4], "event_date": r[5].isoformat(),
@@ -93,8 +99,32 @@ class PostgresSourceVersions:
             for r in rows
         ]
 
+    def _validate_index(self, case_id: str, sources: list[dict], assertions: list[tuple]) -> None:
+        # One additional case-scoped read, not one query per finding. Existing
+        # patient/binding locks still cover materialization and validation.
+        rows = self.registry._fetchall(
+            "SELECT source_id,document_id,version,sha256,kind,event_date,issued_at,"
+            "received_at,specimen_id,state,supersedes_id,raw "
+            "FROM clinical_source.source_versions WHERE case_id=%s "
+            "ORDER BY document_id,version", (case_id,),
+        )
+        if self._source_metadata(rows) != sources:
+            raise SourceIntegrityError("Stored source snapshot integrity check failed")
+        fields = ("source_id", "document_id", "version", "sha256", "kind", "event_date",
+                  "issued_at", "received_at", "specimen_id", "state", "supersedes_id", "raw")
+        originals = [dict(zip(fields, row), case_id=case_id) for row in rows]
+        validate_snapshot(originals, assertions, requested_case_id=case_id)
+
     def list(self, patient_id: str, case_id: str, *, organization: str,
-             actor: str, purpose: str, recheck_authority: Callable[[], None]) -> dict:
+             actor: str, purpose: str, recheck_authority: Callable[[], None],
+             prepare_response: Callable[[dict], PreparedResponse] | None = None) -> dict | PreparedResponse:
+        """Prepare a trusted read view before its final authority check and commit.
+
+        ``prepare_response`` is application-owned projection/DTO validation, not
+        an external tool or model. It runs under the existing locks. Its receipt
+        ID is reserved in memory and becomes a receipt only if the subsequent
+        authority check, event insertion and transaction commit all succeed.
+        """
         patient_id = _key(patient_id, "patient_id")
         case_id = _case_id(case_id)
         organization = _key(organization, "organization")
@@ -108,6 +138,7 @@ class PostgresSourceVersions:
                 "WHERE s.case_id=%s AND s.state='current' "
                 "ORDER BY s.document_id,s.version,a.source_line", (case_id,),
             )
+            self._validate_index(case_id, sources, rows)
             result = {
                 "contract": "oi.synthetic-original-sources/1",
                 "patient_id": patient_id, "case_id": case_id,
@@ -125,13 +156,17 @@ class PostgresSourceVersions:
             # Only this digest and bounded references enter the event ledger.
             digest = hashlib.sha256(json.dumps(result, sort_keys=True, ensure_ascii=False,
                                                 separators=(",", ":")).encode("utf-8")).hexdigest()
-            result["access_receipt_id"] = self._read_receipt(
+            receipt_id = "ACCESS-" + uuid.uuid4().hex.upper()
+            result["access_receipt_id"] = receipt_id
+            prepared = prepare_response(result) if prepare_response is not None else result
+            self._read_receipt(
                 patient_id, case_id, actor=actor, purpose=purpose,
                 binding_revision=binding_revision, event="source.read_authorized",
+                receipt_id=receipt_id,
                 recheck_authority=recheck_authority, snapshot_sha256=digest,
                 source_count=len(sources), assertion_count=len(rows),
             )
-            return result
+            return prepared
 
     def original(self, patient_id: str, case_id: str, source_id: str, *,
                  organization: str, actor: str, purpose: str,
@@ -171,6 +206,7 @@ class PostgresSourceVersions:
             result["access_receipt_id"] = self._read_receipt(
                 patient_id, case_id, actor=actor, purpose=purpose,
                 binding_revision=binding_revision, event="source.original_read_authorized",
+                receipt_id="ACCESS-" + uuid.uuid4().hex.upper(),
                 recheck_authority=recheck_authority, source_id=source_id,
                 sha256=row[1], source_version=row[3], source_state=row[4],
             )

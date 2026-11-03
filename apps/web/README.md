@@ -139,6 +139,16 @@ earlier SQLite PWM/Composer/report-review flow (#179); it provides one real
 PostgreSQL/React integration seam for later reconciliation. Actual real-patient
 identity, consent, source rights, clinical review and deployment remain blocked.
 
+### World Model and original-read cancellation
+
+Journey uses the same source owner and carries a per-read access receipt
+separately from its stable content fingerprint. If opening or closing an
+original invalidates a pending World Model request, the cancelled view leaves
+the loading state and requires an explicit retry. Its late response cannot
+restore the cancelled context. An already completed World Model remains
+available across original open/close actions. This behavior does not add a
+background retry, model call, approval or new clinical state.
+
 ### Verification (exact branch head required)
 The existing reviewed H1 web workflow now targets this integration branch and
 runs the original unit suite with added contract/isolation cases, TypeScript
@@ -148,6 +158,12 @@ fictional case+pathology report, displays exact source IDs and a literal
 HTML-like statement without execution, amends the original, checks old/new
 version history, removes source_read and checks that the previous content
 disappears.
+
+The browser journey also temporarily holds delivery of a real completed World
+Model HTTP response, opens and closes an original, releases the late response,
+and verifies that only an explicit retry restores the view. It preserves the
+actual response body, status, access receipt and content fingerprint; it does
+not replace the server with a mocked successful response.
 
 No result is claimed until the hosted job has passed on this branch's **final
 commit**. Keep parent #193, original frontend #181, patient workspace #179 and
