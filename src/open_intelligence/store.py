@@ -48,6 +48,23 @@ def valid_date(value: str) -> str:
     return value
 
 
+def today_utc() -> str:
+    return datetime.now(timezone.utc).date().isoformat()
+
+
+PURPOSE = re.compile(r"[a-z][a-z0-9-]{0,63}\Z")
+
+
+def valid_purpose(value: object) -> str:
+    """A grant purpose is an exact lowercase token (`individual-access`).
+    Empty, whitespace, uppercase, and glob-style (`*`) purposes are rejected:
+    this slice has no wildcard grants and no silent grant expansion. A grant
+    authorizes only requests whose required purpose equals its stated purpose."""
+    if not isinstance(value, str) or not PURPOSE.fullmatch(value):
+        raise InvalidInput("Grant purpose must be a lowercase token such as individual-access; wildcards are not permitted")
+    return value
+
+
 @dataclass(frozen=True)
 class Finding:
     key: str
@@ -461,6 +478,28 @@ CREATE TABLE IF NOT EXISTS biological_inventory_assertions (
 CREATE INDEX IF NOT EXISTS idx_biological_assets_case ON biological_assets(case_id, asset_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_assertions_asset ON biological_inventory_assertions(asset_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_assertions_source ON biological_inventory_assertions(source_version_id);
+-- B-01 fictional-actor grants: workflow governance for the synthetic case
+-- workspace, NOT identity proofing, NOT credential verification, NOT a
+-- production-security control. A grant authorizes one fictional actor for one
+-- case under one stated purpose inside a date window; revocation marks the
+-- row, never deletes it. Access grants and content rights (rights.py) are
+-- distinct systems; neither references the other.
+CREATE TABLE IF NOT EXISTS actor_grants (
+  id INTEGER PRIMARY KEY, actor_id TEXT NOT NULL,
+  case_id TEXT NOT NULL REFERENCES cases(case_id),
+  purpose TEXT NOT NULL, granted_at TEXT NOT NULL, expires_at TEXT NOT NULL,
+  revoked_at TEXT, created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_actor_grants_lookup ON actor_grants(actor_id, case_id, purpose);
+-- Audit of case-route access decisions. Deliberately NO foreign key on
+-- case_id: attempts against unknown case ids are logged too. Rows record
+-- actor/case/route/result only — never source text, quotes, or finding keys.
+CREATE TABLE IF NOT EXISTS access_log (
+  id INTEGER PRIMARY KEY, actor TEXT NOT NULL, case_id TEXT NOT NULL,
+  route TEXT NOT NULL, result TEXT NOT NULL CHECK(result IN ('allowed','denied')),
+  occurred_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_access_log_case ON access_log(case_id, id);
 """
 
 
@@ -581,6 +620,126 @@ class CaseStore:
 
     def cases(self) -> list[dict]:
         return self._dicts(self.db.execute("SELECT case_id,label,synthetic FROM cases ORDER BY case_id").fetchall())
+
+    # ---- B-01 fictional-actor grants (workflow governance, not identity) ----
+    # Free-text labels (reviewer_label, owner_label, asserted_by) remain
+    # non-authoritative attribution after this slice; they are never consulted
+    # here. Grants never touch rights.py: access grants and content rights are
+    # distinct systems.
+
+    def require_case(self, case_id: str) -> str:
+        """Public existence check with the existing unknown-case contract.
+
+        The HTTP grant gate calls this BEFORE any grant check so unknown case
+        ids keep returning 422 "Unknown case" (no new existence oracle).
+        """
+        return self._case(case_id)
+
+    def create_grant(self, actor_id: str, case_id: str, purpose: str,
+                     granted_at: str, expires_at: str) -> int:
+        """Record one fictional-actor grant row (ledger insert, never an edit).
+
+        Mirrors the AuthorizationReceipt field discipline in patient_access.py:
+        purpose/scope(case)/window/revocation. `individual-access` is the
+        purpose the case routes require; other exact-token purposes may exist
+        but authorize no case route in this slice.
+        """
+        actor_id = valid_id(actor_id)
+        self._case(case_id)
+        purpose = valid_purpose(purpose)
+        granted_at = valid_date(granted_at)
+        expires_at = valid_date(expires_at)
+        if expires_at < granted_at:
+            raise InvalidInput("Grant expiry precedes grant start")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            cur = self.db.execute("""INSERT INTO actor_grants
+                (actor_id,case_id,purpose,granted_at,expires_at,revoked_at,created_at)
+                VALUES (?,?,?,?,?,NULL,?)""",
+                (actor_id, case_id, purpose, granted_at, expires_at, now_utc()))
+            self._event(case_id, "actor_grant_created", grant_id=cur.lastrowid,
+                        actor_id=actor_id, purpose=purpose, expires_at=expires_at)
+            return int(cur.lastrowid)
+
+    def revoke_grant(self, grant_id: int, reason: str) -> dict:
+        """Mark a grant revoked (supersede-never-delete: the row stays).
+
+        Revocation blocks future reads. It deletes nothing: previously
+        imported sources, events, review events, and snapshot rows are
+        untouched, and still-authorized actors keep querying them.
+        """
+        if type(grant_id) is not int or grant_id < 1:
+            raise InvalidInput("Invalid grant ID")
+        if not isinstance(reason, str) or not 10 <= len(reason.strip()) <= 600:
+            raise InvalidInput("Revocation requires a 10–600 character reason")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            row = self.db.execute("SELECT case_id,revoked_at FROM actor_grants WHERE id=?",
+                                  (grant_id,)).fetchone()
+            if not row:
+                raise InvalidInput("Grant not found")
+            if row["revoked_at"] is not None:
+                return {"result": "revoked", "grant_id": grant_id, "duplicate": True}
+            self.db.execute("UPDATE actor_grants SET revoked_at=? WHERE id=?",
+                            (now_utc(), grant_id))
+            self._event(row["case_id"], "actor_grant_revoked",
+                        grant_id=grant_id, reason=reason.strip())
+            return {"result": "revoked", "grant_id": grant_id}
+
+    def has_active_grant(self, actor_id: str, case_id: str, purpose: str) -> bool:
+        """True only for a live grant: exact (actor, case, purpose) triple,
+        inside the [granted_at, expires_at] window, not revoked. Deny by
+        default: anything else — unknown actor, other purpose, expired,
+        revoked — is False. Never raises for unknown ids."""
+        if not isinstance(actor_id, str) or not isinstance(case_id, str) \
+                or not isinstance(purpose, str):
+            return False
+        today = today_utc()
+        row = self.db.execute("""SELECT 1 FROM actor_grants
+            WHERE actor_id=? AND case_id=? AND purpose=? AND revoked_at IS NULL
+            AND granted_at<=? AND expires_at>=? LIMIT 1""",
+            (actor_id, case_id, purpose, today, today)).fetchone()
+        return row is not None
+
+    def granted_cases(self, actor_id: str, purpose: str) -> list[dict]:
+        """Cases this fictional actor may list: same row shape as cases(),
+        filtered to live grants. Empty list when none — never an error."""
+        if not isinstance(actor_id, str) or not isinstance(purpose, str):
+            return []
+        today = today_utc()
+        return self._dicts(self.db.execute(
+            """SELECT c.case_id,c.label,c.synthetic FROM cases c WHERE EXISTS (
+                SELECT 1 FROM actor_grants g WHERE g.actor_id=? AND g.case_id=c.case_id
+                AND g.purpose=? AND g.revoked_at IS NULL
+                AND g.granted_at<=? AND g.expires_at>=?)
+            ORDER BY c.case_id""", (actor_id, purpose, today, today)).fetchall())
+
+    ACCESS_RESULTS = frozenset({"allowed", "denied"})
+
+    def record_access(self, actor_label: str, case_id: str, route: str, result: str) -> int:
+        """Append one access-decision row. Arguments are identifiers only —
+        never source text, quotes, or finding keys — so the log cannot leak
+        case content. Unknown case ids are loggable by design."""
+        if not isinstance(actor_label, str) or not 1 <= len(actor_label) <= 128:
+            raise InvalidInput("Access log actor label must have 1–128 characters")
+        valid_id(case_id)
+        if not isinstance(route, str) or not route.startswith("/api/cases/") or len(route) > 256:
+            raise InvalidInput("Access log route must be a case route path")
+        if result not in self.ACCESS_RESULTS:
+            raise InvalidInput("Access log result must be allowed or denied")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            cur = self.db.execute("""INSERT INTO access_log
+                (actor,case_id,route,result,occurred_at) VALUES (?,?,?,?,?)""",
+                (actor_label, case_id, route, result, now_utc()))
+            return int(cur.lastrowid)
+
+    def access_log(self, case_id: str) -> list[dict]:
+        """Access-decision rows for one case (per-case isolation preserved)."""
+        self._case(case_id)
+        return self._dicts(self.db.execute(
+            "SELECT id,actor,case_id,route,result,occurred_at FROM access_log "
+            "WHERE case_id=? ORDER BY id", (case_id,)).fetchall())
 
     def import_report(self, case_id: str, raw: bytes) -> dict:
         """Durably ingest bytes. An explicit amendment is required for changed text.

@@ -4,6 +4,10 @@ let caseId = null;
 let active = null;
 let refreshSequence = 0;
 let renderedCaseId = null;
+// B-01 fictional actor: workflow governance only — not identity verification,
+// not a login, not credentialed review. Sent on every API call; the server
+// gates case routes on a live grant for this actor and ignores it elsewhere.
+let fictionalActor = 'FICTIONAL-NAVIGATOR-A';
 const el = (id) => document.getElementById(id);
 function node(tag, text, className = '') {
   const item = document.createElement(tag);
@@ -19,12 +23,17 @@ function notice(message, error = false) {
   item.hidden = false;
 }
 async function api(path, payload) {
-  const response = await fetch(path, payload === undefined ? undefined : {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+  const actorHeaders = { 'X-Fictional-Actor': fictionalActor };
+  const response = await fetch(path, payload === undefined ? { headers: actorHeaders } : {
+    method: 'POST', headers: { ...actorHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
   });
   const type = response.headers.get('content-type') || '';
   const data = type.includes('json') ? await response.json() : await response.text();
-  if (!response.ok) throw Error(data.error || 'Request failed');
+  if (!response.ok) {
+    const failure = Error(data.error || 'Request failed');
+    failure.status = response.status;
+    throw failure;
+  }
   return data;
 }
 function pill(value, style = '') { return node('span', value, 'pill ' + style); }
@@ -42,26 +51,114 @@ function focusOverviewFromCasePicker(event) {
   event.preventDefault();
   overviewLink.focus();
 }
-async function initialize() {
+function unfinishedDraftPresent() {
+  return ['draft-observations', 'draft-summary', 'draft-assumptions', 'evidence-rationale',
+    'evidence-withdraw-reason', 'option-description'].some(id => el(id).value.trim());
+}
+function renderActorIndicator() {
+  // The Patient Mission renderer (mission.js) reads this dataset value so
+  // both scripts send the same fictional actor without sharing state.
+  document.body.dataset.fictionalActor = fictionalActor;
+  el('actor-input').value = fictionalActor;
+  el('actor-status').textContent = 'Acting as ' + fictionalActor +
+    ' (fictional grant only — not identity verification).';
+}
+async function loadCaseList() {
+  const cases = await api('/api/cases');
+  const picker = el('case-picker');
+  picker.replaceChildren();
+  for (const entry of cases) {
+    const option = node('option', entry.label.replace(/^Fictional case /, '') + ', ' + entry.case_id);
+    option.value = entry.case_id;
+    picker.append(option);
+  }
+  return cases;
+}
+async function applyActor() {
+  const next = el('actor-input').value.trim();
+  if (!/^[A-Z][A-Z0-9-]{1,39}$/.test(next)) {
+    el('actor-input').value = fictionalActor;
+    notice('Fictional actor ids use uppercase A–Z, numbers and hyphens.', true);
+    return;
+  }
+  if (next === fictionalActor) return;
+  // An unfinished narrative must never silently become attached to another actor's view.
+  if (unfinishedDraftPresent()) {
+    el('actor-input').value = fictionalActor;
+    notice('Save or explicitly clear the unfinished investigation draft before switching actors.', true);
+    return;
+  }
+  fictionalActor = next;
+  renderActorIndicator();
+  cancelSourceRead();
+  caseId = null;
+  active = null; // Reject writes while the next case list is loading.
+  if (el('source-dialog').open) el('source-dialog').close();
+  if (el('compare-dialog').open) el('compare-dialog').close();
   try {
-    const cases = await api('/api/cases');
-    const picker = el('case-picker');
-    picker.addEventListener('keydown', focusOverviewFromCasePicker);
-    for (const entry of cases) {
-      const option = node('option', entry.label.replace(/^Fictional case /, '') + ', ' + entry.case_id);
-      option.value = entry.case_id;
-      picker.append(option);
-    }
+    const cases = await loadCaseList();
+    await renderIncomingBoard(cases);
     if (!cases.length) {
-      el('case-heading').textContent = 'No synthetic cases found';
-      notice('Run PYTHONPATH=src python -m open_intelligence seed before opening the demo.', true);
+      el('case-heading').textContent = 'No granted cases for this fictional actor';
+      renderedCaseId = null;
+      clear('metrics');
+      clearCaseViews('No case data shown: this fictional actor holds no active grant.');
+      el('changes-anchor').textContent = 'Changes unavailable: this fictional actor holds no active grant.';
+      el('changes-disclaimer').textContent = '';
+      notice('This fictional actor holds no active grant on any case in this demo. Apply a granted fictional actor.', true);
       return;
     }
-    await renderIncomingBoard(cases);
+    caseId = cases[0].case_id;
+    await refresh();
+  } catch (err) { notice(err.message, true); }
+}
+function clearCaseViews(denied) {
+  for (const id of ['assertion-list', 'question-list', 'snapshot-list', 'source-list',
+      'source-change-list', 'asset-list', 'event-list', 'option-list',
+      'evidence-assessment-list', 'quarantine-list', 'model-investigation-list',
+      'source-choice', 'evidence-choice', 'patient-timeline', 'patient-findings',
+      'patient-questions', 'patient-uncertainty', 'changes-new-sources',
+      'changes-amendments', 'changes-stale', 'changes-questions']) {
+    clear(id);
+    empty(el(id), denied);
+  }
+  clear('timeline-events');
+  const item = node('li', null, 'timeline-entry');
+  item.append(node('p', denied, 'muted'));
+  el('timeline-events').append(item);
+  for (const id of ['question-choice', 'evidence-question-choice', 'evidence-source-choice',
+      'evidence-withdraw-id', 'model-investigation-question', 'option-snapshot-choice',
+      'dependency-option-choice', 'task-option-choice', 'threat-option-choice',
+      'review-option-choice', 'dependency-option-target-choice', 'dependency-source-choice',
+      'dependency-assessment-choice', 'dependency-task-choice', 'review-snapshot-choice'])
+    clear(id);
+  el('option-disclaimer').textContent = '';
+}
+function renderAccessDenied(requestedCase) {
+  // Never leave the previously rendered case visible under a denied case:
+  // clear every case-bound view and block writes until a granted case loads.
+  active = null;
+  renderedCaseId = null;
+  el('case-heading').textContent = 'Access denied for this fictional actor';
+  el('review-attention-heading').textContent = 'Investigation review status';
+  el('review-attention-summary').textContent = 'Review state unavailable: access denied for this fictional actor.';
+  el('review-attention').dataset.state = 'no-open-review';
+  clear('metrics');
+  clearCaseViews('No case data shown: this fictional actor holds no active grant.');
+  el('changes-anchor').textContent = 'Changes unavailable: access denied for this fictional actor.';
+  el('changes-disclaimer').textContent = '';
+  notice('Fictional actor ' + fictionalActor + ' holds no active grant for ' + requestedCase +
+    '. Switch to a granted case or apply a granted fictional actor.', true);
+}
+async function initialize() {
+  try {
+    renderActorIndicator();
+    el('actor-apply').addEventListener('click', applyActor);
+    const picker = el('case-picker');
+    picker.addEventListener('keydown', focusOverviewFromCasePicker);
     picker.addEventListener('change', () => {
       // An unfinished narrative must never silently become attached to another case.
-      if ((['draft-observations', 'draft-summary', 'draft-assumptions', 'evidence-rationale',
-            'evidence-withdraw-reason', 'option-description'].some(id => el(id).value.trim()))) {
+      if (unfinishedDraftPresent()) {
         picker.value = caseId;
         notice('Save or explicitly clear the unfinished investigation draft before switching cases.', true);
         return;
@@ -75,6 +172,13 @@ async function initialize() {
       if (el('compare-dialog').open) el('compare-dialog').close();
       refresh();
     });
+    const cases = await loadCaseList();
+    if (!cases.length) {
+      el('case-heading').textContent = 'No synthetic cases found';
+      notice('Run PYTHONPATH=src python -m open_intelligence seed before opening the demo.', true);
+      return;
+    }
+    await renderIncomingBoard(cases);
     caseId = cases[0].case_id;
     await refresh();
   } catch (err) { notice(err.message, true); }
@@ -180,7 +284,10 @@ async function refresh() {
     el('case-heading').textContent = active.case.label;
     render();
   } catch (err) {
-    if (sequence === refreshSequence && requestedCase === caseId) notice(err.message, true);
+    if (sequence === refreshSequence && requestedCase === caseId) {
+      if (err.status === 403) renderAccessDenied(requestedCase);
+      else notice(err.message, true);
+    }
   }
 }
 function readyCase() {

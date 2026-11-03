@@ -32,6 +32,17 @@ WEB = ROOT / "web"
 SYNTHETIC = ROOT / "examples" / "synthetic"
 ID_PART = r"([A-Z][A-Z0-9-]{1,39})"
 
+# B-01 fictional-actor grants: workflow governance for the synthetic case
+# workspace. The header carries a FICTIONAL actor id only — this is not
+# identity proofing, not credential verification, and not a
+# production-security control. Every case route requires purpose
+# "individual-access" (the only purpose patient_access.py accepts); grants
+# with any other stated purpose authorize no case route in this slice.
+FICTIONAL_ACTOR_HEADER = "X-Fictional-Actor"
+FICTIONAL_ACTOR_PURPOSE = "individual-access"
+DEMO_ACTOR = "FICTIONAL-NAVIGATOR-A"
+GRANT_DENIAL_MESSAGE = "Access denied: no active fictional-actor grant for this case"
+
 
 class Handler(BaseHTTPRequestHandler):
     # Purely local synthetic demonstration, with no authenticated user concept.
@@ -95,6 +106,68 @@ class Handler(BaseHTTPRequestHandler):
         # metadata provides an additional barrier; this is NOT authentication.
         return self.headers.get("Sec-Fetch-Site", "none") in {"none", "same-origin"}
 
+    def _fictional_actor(self) -> str | None:
+        """Presented fictional actor id, or None when missing/unparseable.
+
+        Any non-None value matches the synthetic-id alphabet; the grant
+        lookup decides authorization. Malformed values are unknown actors,
+        not 422s: behavior item 1 denies them with 403."""
+        raw = self.headers.get(FICTIONAL_ACTOR_HEADER)
+        if raw is None:
+            return None
+        actor = raw.strip()
+        if not re.fullmatch(ID_PART, actor):
+            return None
+        return actor
+
+    def _actor_label(self) -> str:
+        """Access-log actor field: the presented value, or "missing"."""
+        raw = self.headers.get(FICTIONAL_ACTOR_HEADER)
+        if raw is None or not raw.strip():
+            return "missing"
+        return raw.strip()[:128]
+
+    @staticmethod
+    def _case_route_id(path: str) -> str | None:
+        """Well-formed /api/cases/{ID}/... case id, else None.
+
+        Only well-formed ids are gated here; malformed segments fall through
+        to the existing 404 contract, and /api/cases itself is the global
+        list route with its own item-7 filtering."""
+        parts = path.split("/")
+        if len(parts) >= 5 and parts[1] == "api" and parts[2] == "cases" \
+                and parts[4] != "" and re.fullmatch(ID_PART, parts[3]):
+            return parts[3]
+        return None
+
+    def _grant_denial(self) -> None:
+        # One fixed shape with zero case-content fields, identical for
+        # missing/unknown actors, cross-case reads, and expired, revoked,
+        # or wrong-purpose grants.
+        return self._json(403, {"error": GRANT_DENIAL_MESSAGE})
+
+    def _require_case_grant(self, store: CaseStore, case_id: str, path: str) -> bool:
+        """Gate one case-scoped route. Returns True when allowed (and the
+        decision is logged); otherwise sends the denial and returns False.
+
+        Unknown case ids raise InvalidInput (422 "Unknown case") BEFORE the
+        grant check, preserving the existing contract with no new existence
+        oracle beyond what /api/cases already lists on this demo."""
+        label = self._actor_label()
+        route = path[:256]
+        try:
+            store.require_case(case_id)
+        except InvalidInput:
+            store.record_access(label, case_id, route, "denied")
+            raise
+        actor = self._fictional_actor()
+        if actor is None or not store.has_active_grant(actor, case_id, FICTIONAL_ACTOR_PURPOSE):
+            store.record_access(label, case_id, route, "denied")
+            self._grant_denial()
+            return False
+        store.record_access(actor, case_id, route, "allowed")
+        return True
+
     def do_GET(self) -> None:  # noqa: N802
         if not self._host_allowed():
             return self._json(403, {"error": "Unexpected Host for loopback-only demo"})
@@ -131,7 +204,13 @@ class Handler(BaseHTTPRequestHandler):
         store = CaseStore(self.db_path)
         try:
             if path == "/api/cases":
-                return self._json(200, store.cases())
+                actor = self._fictional_actor()
+                if actor is None:
+                    return self._grant_denial()
+                return self._json(200, store.granted_cases(actor, FICTIONAL_ACTOR_PURPOSE))
+            gated_case = self._case_route_id(path)
+            if gated_case is not None and not self._require_case_grant(store, gated_case, path):
+                return None
             if path == "/api/discovery":
                 return self._json(200, store.list_discovery())
             discovery_links = re.fullmatch(rf"/api/cases/{ID_PART}/discovery", path)
@@ -195,7 +274,14 @@ class Handler(BaseHTTPRequestHandler):
         if not self._origin_allowed():
             return self._json(403, {"error": "Cross-origin writes prohibited"})
         path = urlsplit(self.path).path
+        store = CaseStore(self.db_path)
         try:
+            # The grant gate runs before body validation: a missing or
+            # unknown actor on a case route is denied (403) even when the
+            # body is malformed, and unknown cases stay 422 either way.
+            gated_case = self._case_route_id(path)
+            if gated_case is not None and not self._require_case_grant(store, gated_case, path):
+                return None
             data = self._body()
             if path == "/api/bibliography/lookup":
                 if not self.allow_crossref_live:
@@ -214,7 +300,6 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(200, record)
                 finally:
                     self.metadata_request_lock.release()
-            store = CaseStore(self.db_path)
             try:
                 if path == "/api/cases":
                     store.add_case(data.get("case_id"), data.get("label"))
@@ -395,6 +480,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(status, {"error": str(error)})
         except (OverflowError, UnicodeEncodeError):
             return self._json(422, {"error": "Invalid text or identifier"})
+        finally:
+            # The gate and bibliography branches return before the inner
+            # try/finally; sqlite close() is idempotent, so closing here as
+            # well keeps every path clean without touching route code.
+            store.close()
 
 
 def seed(db_path: str) -> None:
@@ -409,6 +499,13 @@ def seed(db_path: str) -> None:
             for file in files:
                 outcome = store.import_report(case_id, (SYNTHETIC / file).read_bytes())
                 print(case_id, file, outcome["result"])
+            # B-01: the demo actor holds a fictional grant on each seeded demo
+            # case, so the deny-by-default gate leaves the local demo usable.
+            # Re-seeding never duplicates a live grant; seed is an explicit
+            # operator action, so it grants anew when no live grant exists.
+            if not store.has_active_grant(DEMO_ACTOR, case_id, FICTIONAL_ACTOR_PURPOSE):
+                store.create_grant(DEMO_ACTOR, case_id, FICTIONAL_ACTOR_PURPOSE,
+                                   "2020-01-01", "2999-12-31")
     finally:
         store.close()
 
