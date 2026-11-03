@@ -43,7 +43,7 @@ class PostgresSourceVersions:
             "SELECT patient_id,origin_org,status FROM coordination.patient_case_bindings "
             "WHERE case_id=%s FOR UPDATE", (case_id,)
         )
-        if row is None or row != (patient_id, organization, "active"):
+        if row is None or row[0] != patient_id or row[1] != organization or row[2] != "active":
             raise PatientRegistryDenied("Case/source mapping unavailable")
 
     def _sources(self, case_id: str) -> list[dict]:
