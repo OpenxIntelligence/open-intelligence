@@ -1119,6 +1119,22 @@ dialog pre {
   .glance-review .review-attention { margin-block: var(--space-3); }
   .dialog-fictional-label { color: #000; background: #fff; border: 2px solid #000; }
 }
+/* Plain-language patient report: read-only, printable, fictional labels. */
+.report-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-bottom: var(--space-4); }
+.report-actions .button { text-decoration: none; }
+.report-sections { display: grid; gap: var(--space-5); }
+.report-section { border-top: 2px solid var(--color-rule); padding-top: var(--space-3); }
+.report-section-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin-bottom: var(--space-2); }
+.report-section-head h3 { font-size: var(--text-lg); }
+.report-items { list-style: none; display: grid; gap: var(--space-3); padding: 0; }
+.report-item .quoted { margin-bottom: var(--space-1); }
+.report-item .ref { margin-top: var(--space-1); }
+@media print {
+  .report-actions { display: none; }
+  .report-section { break-inside: auto; }
+  .report-item { break-inside: avoid; }
+  #patient-report .pill-warn { color: #000; background: #fff; border: 2px solid #000; }
+}
 /* Guided journey shell: six navigation-only steps over the same record. */
 .panel-journey {
   margin-bottom: var(--space-5);
