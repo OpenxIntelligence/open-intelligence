@@ -16,12 +16,19 @@ acceptance criteria.
 - Read only an explicitly granted identity under its persisted organization.
 - Clear the displayed patient on a new request, refusal, credential change,
   logout or expiry; discard late responses from older selections/sessions.
-- Overview connected; Journey, Records, Investigations and Review clearly marked
-  not connected. The old reference application remains available unchanged.
+- Overview is connected; Records can read authorized canonical case bindings,
+  immutable source versions and current unreviewed source-reported statements.
+- An explicitly selected original is fetched only with independent
+  `source_original_read` permission and its UTF-8 bytes are checked against
+  the SHA-256 and version/state in the last authorized source index. Historical
+  originals remain inspectable, while a concurrent amendment requires an
+  explicit index refresh before the original can be shown again.
+- Journey, Investigations and Review remain visibly unconnected. The original
+  reference application and evidence/report/review owners are not replaced.
 
-No real account management, identity proofing, clinical records, source imports,
-caregiver delegation, consent, live model, biomedical retrieval or deployment is
-introduced. The backend remains responsible for authorization. An authorized
+No real account management, identity proofing, real clinical records, frontend
+source imports, caregiver delegation, consent, live model, biomedical retrieval,
+clinician review or deployment is introduced. The backend remains responsible for authorization. An authorized
 request can complete after a later grant change; this UI is not a consent service.
 
 ## Development setup
@@ -59,7 +66,10 @@ The dedicated `h1-web.yml` job uses the existing reviewed Python wheels and a
 real temporary PostgreSQL 16 service. `tools/browser_journey.py` starts the actual
 FastAPI process and built Vite UI, then uses Chromium for creation, retry,
 independent read grant, permission withdrawal, credential expiry, cross-org denial,
-reload clearing, landmarks and responsive width. The test changes synthetic grants
+source-case binding, actual fictional source ingestion by the existing API,
+source amendment/history, original-read permission withdrawal, exact original
+SHA-256 verification and stale-index rejection, reload clearing, landmarks and
+responsive width. The test changes synthetic grants
 outside the browser; the frontend cannot issue its own permission.
 
 This browser method uses the repo's existing standard-library CDP harness, not
@@ -152,3 +162,17 @@ disappears.
 No result is claimed until the hosted job has passed on this branch's **final
 commit**. Keep parent #193, original frontend #181, patient workspace #179 and
 the separate UX source-owner branches in draft review; do not auto-merge.
+
+## Exact-original inspection boundary (draft)
+
+The Records screen never infers a diagnosis or promotes a source-reported
+statement to clinician-approved assessment. The operator must grant distinct
+`patient_read`, `case_binding_read`, `source_read`, and `source_original_read`
+actions as appropriate. Every source GET is scoped to the selected canonical
+patient and bound fictional case, with the token kept only in tab memory.
+The original reader limits JSON to 128 KiB and decoded original bytes to
+64 KiB, checks the exact document/source/version/state, recomputes SHA-256, and
+renders the bytes as escaped text (not HTML). A denied, malformed, stale,
+tampered or late reply clears the original. These checks provide software
+integrity in the synthetic environment; they do not establish real-world
+identity, consent, medical validity, clinical safety or PHI authorization.
