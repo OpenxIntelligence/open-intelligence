@@ -2192,8 +2192,12 @@ class CaseStore:
                  json.dumps(validated.claims), json.dumps(validated.abstentions),
                  json.dumps(validated.dropped), now_utc()))
             investigation_id = int(cur.lastrowid)
-            self.db.execute("UPDATE questions SET state='addressed' WHERE id=? AND case_id=?",
-                            (question_id, case_id))
+            # An abstention states there is no answer: it must not hide the
+            # question as addressed. Only a non-abstained result addresses
+            # it here; human drafts address on acknowledgment instead.
+            if validated.status != "abstained":
+                self.db.execute("UPDATE questions SET state='addressed' WHERE id=? AND case_id=?",
+                                (question_id, case_id))
             self._event(case_id, "investigation_created", investigation_id=investigation_id,
                         template=template, status=validated.status, mode=mode)
             return investigation_id
