@@ -1,7 +1,9 @@
 import {StrictMode, useEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {createRoot} from 'react-dom/client';
 import {RegistrySession} from './registry-client';
+import {SourceIntake} from './source-intake-view';
 import './styles.css';
+import './source-intake.css';
 const session=new RegistrySession();
 const navigation=['Overview','Journey','Records','Investigations','Review'];
 function App(){
@@ -20,14 +22,14 @@ function App(){
  useEffect(()=>{if(state.created) setPatientId(state.created.patient_id)},[state.created]);
  useEffect(()=>{if(!state.connected){setPatientId('');setConfirmed(false)}},[state.connected]);
  useEffect(()=>{const clear=()=>session.disconnect();window.addEventListener('pagehide',clear);return()=>window.removeEventListener('pagehide',clear)},[]);
- const busy=state.phase==='creating'||state.phase==='reading';
+ const busy=state.phase==='creating'||state.phase==='reading'||state.importOutcome==='sending';
  function disconnect(){session.disconnect();setToken('');setPatientId('');setConfirmed(false);setSection('Overview');}
  return <div className="app">
   <a className="skip" href="#main">Skip to workspace</a>
   <aside className="rail" aria-label="Workspace navigation">
    <div className="brand"><span className="mark" aria-hidden="true">oi</span><span>Open<br/>Intelligence</span></div>
    <div className="environment">Development · fictional identities only</div>
-   <nav aria-label="Patient workspace">{navigation.map(name=><button type="button" key={name} aria-current={name===section?'page':undefined} onClick={()=>setSection(name)}><span>{name}</span>{name==='Records'?<span className="nav-hint">Read-only H1</span>:name!=='Overview'?<span className="nav-hint">Not connected</span>:null}</button>)}</nav>
+   <nav aria-label="Patient workspace">{navigation.map(name=><button type="button" key={name} aria-current={name===section?'page':undefined} onClick={()=>setSection(name)}><span>{name}</span>{name==='Records'?<span className="nav-hint">Original records</span>:name!=='Overview'?<span className="nav-hint">Not connected</span>:null}</button>)}</nav>
    <div className="rail-note">One patient context.<br/>Original sources.<br/>Human clinical authority.</div>
   </aside>
   <div className="body"><header className="topbar"><span>Patient workspace <span className="muted">/ {section}</span></span><span className={'connection '+readiness} data-testid="readiness">{readiness==='checking'?'Checking API':readiness==='ready'?'PostgreSQL API ready':'API unavailable'}</span></header>
@@ -35,14 +37,22 @@ function App(){
     <div className="heading"><div><p className="eyebrow">OPEN INTELLIGENCE · H1</p><h1>{section==='Overview'?'Start with the right patient.':section}</h1><p className="lede">{section==='Overview'?'A connected foundation for the patient’s story, evidence and care.':section==='Records'?'Inspect authorized fictional case mappings, original source history and unreviewed source statements.':'This capability remains part of the platform, but is not connected to this H1 API yet.'}</p></div></div>
     <div className="boundary" role="note"><strong>Development workspace, not a clinical service.</strong> Use operator-issued synthetic credentials and fictional identities only. These are not patient accounts, verified consent or professional sign-off.</div>
     {section==='Records'?<section className="panel records-workspace" data-testid="records-workspace" aria-labelledby="records-heading">
-     <span className="step">READ ONLY / CANONICAL SOURCE OWNER</span>
+     <span className="step">CANONICAL SOURCE OWNER / ORIGINALS</span>
      <h2 id="records-heading">Original source records</h2>
-     <p>Shows source-reported information from the existing scoped PostgreSQL API. No original document bytes, AI interpretation, clinical decision, identity verification or consent is available from this screen. Information is current only at its last successful check.</p>
+     <p>Shows source-reported information from the existing scoped PostgreSQL API. Original-text inspection and deliberate import require separate server permissions. AI interpretation, clinical decisions, verified identity and consent are not supplied by this screen. Information is current only at its last successful check.</p>
      {!state.patient?<div data-testid="records-no-patient"><p>Open an authorized fictional patient in Overview before loading records.</p><button onClick={()=>setSection('Overview')}>Go to patient overview</button></div>:
      <div>
       <p className="record-scope" data-testid="records-patient"><strong>Selected patient:</strong> <code>{state.patient.patient_id}</code></p>
       <button className="primary" data-testid="load-cases" disabled={state.recordsPhase.startsWith('loading')||busy} onClick={()=>void session.loadCases()}>Check authorized cases</button>
       <p role="status" aria-live="polite" data-testid="records-status" className={'status '+(state.recordsPhase==='error'?'error':'')}>{state.recordMessage}</p>
+      {state.importOutcome!=='idle'&&<p role="status" aria-live="polite" className="status" data-testid="import-receipt" data-outcome={state.importOutcome} data-result={state.importReceipt?.result??''}>{state.importMessage}</p>}
+      {state.original&&<section className="original-panel" aria-labelledby="opened-original" data-testid="opened-original">
+       <h3 id="opened-original">Exact original: {state.original.document_id} · v{state.original.version}</h3>
+       <p>{state.original.state} · SHA-256 <code>{state.original.sha256}</code></p>
+       <p>Verified against the selected version metadata. Clinical review: not established. Access was checked for this read.</p>
+       <button onClick={()=>session.dismissOriginal()}>Close original</button>
+       <pre className="original-text" data-testid="server-original">{state.original.original_text}</pre>
+      </section>}
       {state.cases!==null&&<section aria-labelledby="case-list-heading" data-testid="records-cases">
        <h3 id="case-list-heading">Case mappings</h3>
        {state.cases.length===0?<p>No current authorized case mappings were returned.</p>:
@@ -50,12 +60,13 @@ function App(){
          <div><strong><code>{item.case_id}</code></strong><span className="record-state"> {item.status}</span></div>
          <p>Origin: {item.source_organization} · System: {item.source_system} · Version {item.revision}</p>
          <p>Fictional identity verification: not established. Clinical sources automatically linked: no.</p>
-         <button data-testid="load-sources" disabled={item.status!=='active'||state.recordsPhase.startsWith('loading')} onClick={()=>void session.loadSources(item.case_id)}>Inspect source versions</button>
+         <button data-testid="load-sources" disabled={item.status!=='active'||state.recordsPhase.startsWith('loading')||busy} onClick={()=>void session.loadSources(item.case_id)}>Inspect source versions</button>
         </li>)}</ul>}
       </section>}
       {state.sourceIndex&&<section className="records-detail" data-testid="source-index" aria-labelledby="sources-heading">
        <h3 id="sources-heading">Source history for <code>{state.sourceIndex.case_id}</code></h3>
        <p>Immutable original source identifiers, hashes and historical versions. These records are independently fictional.</p>
+       <SourceIntake key={state.patient.patient_id+':'+state.sourceIndex.case_id} session={session} patientId={state.patient.patient_id} caseId={state.sourceIndex.case_id} sending={state.importOutcome==='sending'}/>
        {state.sourceIndex.sources.length===0?<p>No imported original sources for this case.</p>:
         <ol className="source-list">{state.sourceIndex.sources.map(item=><li key={item.source_id} data-testid="source-version">
          <div className="source-heading"><strong>{item.document_id} · v{item.version}</strong><span className="record-state">{item.state}</span></div>
@@ -65,7 +76,7 @@ function App(){
           <div><dt>Original source ID</dt><dd><code>{item.source_id}</code></dd></div>
           <div><dt>Original SHA-256</dt><dd><code>{item.sha256}</code></dd></div>
           {item.supersedes_id&&<div><dt>Supersedes</dt><dd><code>{item.supersedes_id}</code></dd></div>}
-         </dl></li>)}</ol>}
+         </dl><button data-testid="open-original" disabled={busy||state.recordsPhase.startsWith('loading')} onClick={()=>void session.loadOriginal(item.source_id)}>Inspect original v{item.version}</button></li>)}</ol>}
        <h3>Source-reported findings from current versions</h3>
        <p>Statements below are unreviewed quotations reported by fictional input files, not independently established clinical facts.</p>
        {state.sourceIndex.source_reported_assertions.length===0?<p>No source-reported assertions were returned.</p>:
