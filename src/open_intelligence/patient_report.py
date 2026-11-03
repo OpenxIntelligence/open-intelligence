@@ -154,8 +154,8 @@ def _overview(state: dict, current: list[dict], stale: list[dict]) -> dict:
     superseded = [item for item in state.get("sources", []) if item.get("state") != "current"]
     quarantined = list(state.get("quarantines", []))
     parts = [
-        f"This is a plain-language listing for fictional case {case['case_id']} "
-        f"({_visible_record_text(case['label'])}). It repeats the case record only.",
+        f"This is a plain-language listing for fictional case {case['case_id']}. "
+        "It repeats the case record only.",
         f"The record holds {_plural(len(current), 'current source document', 'current source documents')} "
         f"with {_plural(len(state.get('assertions', [])), 'reported statement', 'reported statements')}, "
         f"{_plural(open_count, 'open question', 'open questions')}, and "
