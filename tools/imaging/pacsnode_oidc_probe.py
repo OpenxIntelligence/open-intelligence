@@ -107,13 +107,13 @@ def signed_fixture_token(
         "purpose": "synthetic-research",
     }
     header = {"alg": "RS256", "typ": "JWT"}
-    message = ".".join(_b(json.dumps(obj, sort_keys=True, separators=(",", ":")).encode())
+    message = ".".join(_b64(json.dumps(obj, sort_keys=True, separators=(",", ":")).encode())
                        for obj in (header, claims))
     result = subprocess.run(
         ["openssl", "dgst", "-sha256", "-sign", str(private_key)],
         input=message.encode("ascii"), capture_output=True, check=True,
     )
-    return message + "." + _b(result.stdout)
+    return message + "." + _b64(result.stdout)
 
 
 def bounded_http(
