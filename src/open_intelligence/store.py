@@ -15,6 +15,12 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from .rights import RightsError, check_link_content, normalize_permissions
+from .care_records import (
+    SECOND_OPINION_DISCLAIMER,
+    SURVIVORSHIP_DISCLAIMER,
+    CareRecordInputError,
+    check_descriptive,
+)
 from .scoped_review import (
     check_claim_ref,
     check_note,
@@ -599,6 +605,63 @@ CREATE TABLE IF NOT EXISTS biological_inventory_assertions (
 CREATE INDEX IF NOT EXISTS idx_biological_assets_case ON biological_assets(case_id, asset_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_assertions_asset ON biological_inventory_assertions(asset_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_assertions_source ON biological_inventory_assertions(source_version_id);
+-- Second-opinion and survivorship care records: append-only, amendment-aware,
+-- descriptive-only. A second-opinion response is a separate record that never
+-- overwrites the original case conclusion; both stay visible side by side.
+-- Survivorship items are plain recorded plans, never directives. Rows are
+-- never deleted; review_state moves to needs_review when an anchored source
+-- version is superseded, and a new request or item is authored instead.
+CREATE TABLE IF NOT EXISTS second_opinion_requests (
+  id INTEGER PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(case_id),
+  question_id INTEGER NOT NULL REFERENCES questions(id),
+  snapshot_id INTEGER REFERENCES snapshots(id),
+  question_text TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('requested','response_recorded')),
+  review_state TEXT NOT NULL CHECK(review_state IN ('pending','reviewed_in_demo','needs_review')),
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS second_opinion_materials (
+  request_id INTEGER NOT NULL REFERENCES second_opinion_requests(id),
+  source_version_id INTEGER NOT NULL REFERENCES source_versions(id),
+  PRIMARY KEY(request_id,source_version_id)
+);
+CREATE TABLE IF NOT EXISTS second_opinion_responses (
+  id INTEGER PRIMARY KEY, request_id INTEGER NOT NULL UNIQUE REFERENCES second_opinion_requests(id),
+  responder_label TEXT NOT NULL, response_text TEXT NOT NULL,
+  anchor_source_version_id INTEGER NOT NULL REFERENCES source_versions(id),
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS second_opinion_review_events (
+  id INTEGER PRIMARY KEY, request_id INTEGER NOT NULL REFERENCES second_opinion_requests(id),
+  reviewer_label TEXT NOT NULL,
+  action TEXT NOT NULL CHECK(action IN ('acknowledge')),
+  scope TEXT NOT NULL, noted_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS survivorship_plans (
+  id INTEGER PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(case_id),
+  title TEXT NOT NULL, created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS survivorship_items (
+  id INTEGER PRIMARY KEY, plan_id INTEGER NOT NULL REFERENCES survivorship_plans(id),
+  case_id TEXT NOT NULL REFERENCES cases(case_id),
+  kind TEXT NOT NULL CHECK(kind IN ('followup','watch','trigger')),
+  description TEXT NOT NULL, recorded_date TEXT,
+  anchor_source_version_id INTEGER NOT NULL REFERENCES source_versions(id),
+  state TEXT NOT NULL CHECK(state IN ('recorded','triggered')),
+  review_state TEXT NOT NULL CHECK(review_state IN ('pending','reviewed_in_demo','needs_review')),
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS survivorship_review_events (
+  id INTEGER PRIMARY KEY, item_id INTEGER NOT NULL REFERENCES survivorship_items(id),
+  reviewer_label TEXT NOT NULL,
+  action TEXT NOT NULL CHECK(action IN ('acknowledge')),
+  scope TEXT NOT NULL, noted_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_so_requests_case ON second_opinion_requests(case_id);
+CREATE INDEX IF NOT EXISTS idx_so_materials_source ON second_opinion_materials(source_version_id);
+CREATE INDEX IF NOT EXISTS idx_so_responses_anchor ON second_opinion_responses(anchor_source_version_id);
+CREATE INDEX IF NOT EXISTS idx_surv_items_plan ON survivorship_items(plan_id);
+CREATE INDEX IF NOT EXISTS idx_surv_items_anchor ON survivorship_items(anchor_source_version_id);
 -- Follow-through: human-owned records of agreed case work. The task row
 -- holds CURRENT state only; every status change appends one event row
 -- with who/when/why, and event rows are never updated or deleted.
@@ -1260,6 +1323,11 @@ class CaseStore:
                     marks = ",".join("?" for _ in invalidated_bio_assays)
                     self.db.execute(f"UPDATE bio_assay_observations SET state='stale' WHERE id IN ({marks})",
                                     invalidated_bio_assays)
+            # Second-opinion and survivorship records stay case-scoped and
+            # anchor-exact like snapshots: only rows pinning the superseded
+            # version (or the invalidated original conclusion) reopen.
+            invalidated_second_opinions, invalidated_survivorship = self._invalidate_care_records(
+                case_id, previous["id"] if previous else None, invalidated)
             # B-05: record the explicit match decision that bound these bytes
             # to this case. Duplicates return before this point, so the
             # original link is never duplicated either.
@@ -1274,7 +1342,9 @@ class CaseStore:
                         invalidated_snapshots=invalidated, invalidated_options=invalidated_options,
                         invalidated_inventory_assertions=invalidated_inventory,
                         invalidated_bio_explanations=invalidated_bio_explanations,
-                        invalidated_bio_assay_observations=invalidated_bio_assays)
+                        invalidated_bio_assay_observations=invalidated_bio_assays,
+                        invalidated_second_opinions=invalidated_second_opinions,
+                        invalidated_survivorship_items=invalidated_survivorship)
             if previous is not None and invalidated:
                 self._create_re_review_tasks(
                     case_id=case_id, snapshot_ids=invalidated, cause="source_amendment",
@@ -1286,7 +1356,9 @@ class CaseStore:
                     "invalidated_snapshots": invalidated, "invalidated_options": invalidated_options,
                     "invalidated_inventory_assertions": invalidated_inventory,
                     "invalidated_bio_explanations": invalidated_bio_explanations,
-                    "invalidated_bio_assay_observations": invalidated_bio_assays}
+                    "invalidated_bio_assay_observations": invalidated_bio_assays,
+                    "invalidated_second_opinions": invalidated_second_opinions,
+                    "invalidated_survivorship_items": invalidated_survivorship}
 
     # ---- B-05: explicit subject binding + reversible quarantine correction ----
     SUBJECT_LINK_DECISION = "bound_by_declared_id_equality"
@@ -5090,6 +5162,12 @@ class CaseStore:
                 # OI-021 derived projection: same ledger, no second state.
                 "options": option_projection["options"],
                 "option_disclaimer": option_projection["disclaimer"],
+                # Second-opinion and survivorship records: separate descriptive
+                # records over the same ledger, never overwrites of originals.
+                "second_opinions": self.second_opinion_view(case_id)["requests"],
+                "second_opinion_disclaimer": SECOND_OPINION_DISCLAIMER,
+                "survivorship_plans": self.survivorship_view(case_id)["plans"],
+                "survivorship_disclaimer": SURVIVORSHIP_DISCLAIMER,
                 "patient_goals": self.patient_goals(case_id),
                 "patient_notes": self.patient_notes(case_id),
                 "patient_words_disclaimer": self.PATIENT_DISCLAIMER,
@@ -5183,6 +5261,353 @@ class CaseStore:
                           "- An acknowledgment in this demo is not clinician credential verification or a clinical sign-off.",
                           "- Amendments can make previous investigations stale; see the state above.", ""])
             return "\n".join(lines)
+
+    # ---- Second-opinion and survivorship care records ----
+    # Additive slice over the same ledger. A second-opinion response is a
+    # separate record that never overwrites the original case conclusion;
+    # survivorship items are plain recorded plans, never directives. Every
+    # row keeps its source anchor and review state; amendments reopen only
+    # dependent rows in the amended case.
+
+    @staticmethod
+    def _descriptive(field: str, value: object, min_len: int, max_len: int) -> str:
+        try:
+            return check_descriptive(field, value, min_len, max_len)
+        except CareRecordInputError as error:
+            raise InvalidInput(str(error)) from error
+
+    @staticmethod
+    def _record_label(value: object, field: str) -> str:
+        if not isinstance(value, str) or not 2 <= len(value.strip()) <= 80:
+            raise InvalidInput(f"Provide a {field}")
+        return value.strip()
+
+    def _invalidate_care_records(self, case_id: str, superseded_source_id: int | None,
+                                 invalidated_snapshot_ids: list[int]) -> tuple[list[int], list[int]]:
+        """Mark dependent care records needs_review. Caller owns a write transaction.
+
+        Only rows in THIS case whose pinned material, response/item anchor,
+        or linked original snapshot was superseded are affected. History is
+        preserved; other cases are untouched.
+        """
+        if superseded_source_id is None:
+            return [], []
+        so_ids: set[int] = set()
+        for row in self.db.execute(
+                """SELECT DISTINCT r.id FROM second_opinion_requests r
+                JOIN second_opinion_materials m ON m.request_id=r.id
+                WHERE r.case_id=? AND m.source_version_id=? AND r.review_state!='needs_review'""",
+                (case_id, superseded_source_id)).fetchall():
+            so_ids.add(row[0])
+        for row in self.db.execute(
+                """SELECT DISTINCT r.id FROM second_opinion_requests r
+                JOIN second_opinion_responses resp ON resp.request_id=r.id
+                WHERE r.case_id=? AND resp.anchor_source_version_id=? AND r.review_state!='needs_review'""",
+                (case_id, superseded_source_id)).fetchall():
+            so_ids.add(row[0])
+        if invalidated_snapshot_ids:
+            marks = ",".join("?" for _ in invalidated_snapshot_ids)
+            for row in self.db.execute(
+                    f"""SELECT id FROM second_opinion_requests WHERE case_id=?
+                    AND snapshot_id IN ({marks}) AND review_state!='needs_review'""",
+                    [case_id, *invalidated_snapshot_ids]).fetchall():
+                so_ids.add(row[0])
+        invalidated_so = sorted(so_ids)
+        if invalidated_so:
+            marks = ",".join("?" for _ in invalidated_so)
+            self.db.execute(f"UPDATE second_opinion_requests SET review_state='needs_review' WHERE id IN ({marks})",
+                            invalidated_so)
+            self._event(case_id, "second_opinion_review_reopened",
+                        source_version_id=superseded_source_id, invalidated_requests=invalidated_so)
+        surv_rows = self.db.execute(
+            """SELECT id FROM survivorship_items
+            WHERE case_id=? AND anchor_source_version_id=? AND review_state!='needs_review'""",
+            (case_id, superseded_source_id)).fetchall()
+        invalidated_surv = [row[0] for row in surv_rows]
+        if invalidated_surv:
+            marks = ",".join("?" for _ in invalidated_surv)
+            self.db.execute(f"UPDATE survivorship_items SET review_state='needs_review' WHERE id IN ({marks})",
+                            invalidated_surv)
+            self._event(case_id, "survivorship_review_reopened",
+                        source_version_id=superseded_source_id, invalidated_items=invalidated_surv)
+        return invalidated_so, invalidated_surv
+
+    def create_second_opinion_request(self, case_id: str, question_id: int, question_text: str,
+                                      source_version_ids: list[int],
+                                      snapshot_id: int | None = None) -> int:
+        """Record a second-opinion request: question, shared materials, status.
+
+        Materials are pinned by exact source version. The optional snapshot
+        links the original case conclusion under discussion; the request and
+        any later response never modify it.
+        """
+        case_id = self._case(case_id)
+        if type(question_id) is not int:
+            raise InvalidInput("Question ID must be an integer")
+        text = self._descriptive("Second-opinion question", question_text, 5, 500)
+        if (not isinstance(source_version_ids, list) or not source_version_ids
+                or len(source_version_ids) != len(set(source_version_ids))
+                or len(source_version_ids) > 50
+                or any(type(x) is not int or x < 1 for x in source_version_ids)):
+            raise InvalidInput("Shared materials must be 1\u201350 unique source version IDs")
+        if snapshot_id is not None and (type(snapshot_id) is not int or snapshot_id < 1):
+            raise InvalidInput("Original snapshot ID must be a positive integer")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            if not self.db.execute("SELECT 1 FROM questions WHERE id=? AND case_id=?",
+                                   (question_id, case_id)).fetchone():
+                raise InvalidInput("Question not in this case")
+            if snapshot_id is not None and not self.db.execute(
+                    "SELECT 1 FROM snapshots WHERE id=? AND case_id=?", (snapshot_id, case_id)).fetchone():
+                raise InvalidInput("Original investigation snapshot not in this case")
+            for sid in source_version_ids:
+                if not self.db.execute(
+                        "SELECT 1 FROM source_versions WHERE id=? AND case_id=? AND state='current'",
+                        (sid, case_id)).fetchone():
+                    raise InvalidInput("Shared material is missing, superseded, or belongs to another case")
+            cur = self.db.execute("""INSERT INTO second_opinion_requests
+                (case_id,question_id,snapshot_id,question_text,status,review_state,created_at)
+                VALUES (?,?,?,?,'requested','pending',?)""",
+                (case_id, question_id, snapshot_id, text, now_utc()))
+            request_id = int(cur.lastrowid)
+            for sid in source_version_ids:
+                self.db.execute("INSERT INTO second_opinion_materials VALUES (?,?)", (request_id, sid))
+            self._event(case_id, "second_opinion_requested", request_id=request_id,
+                        question_id=question_id, snapshot_id=snapshot_id,
+                        material_source_version_ids=list(source_version_ids))
+            return request_id
+
+    def record_second_opinion_response(self, case_id: str, request_id: int, responder_label: str,
+                                       response_text: str, anchor_source_version_id: int) -> int:
+        """Record one response as a separate record. The original is untouched.
+
+        Exactly one response per request: follow-up needs a new request, so
+        no response can silently replace an earlier one.
+        """
+        case_id = self._case(case_id)
+        if type(request_id) is not int or request_id < 1:
+            raise InvalidInput("Invalid second-opinion request ID")
+        responder = self._record_label(responder_label, "responder label")
+        text = self._descriptive("Second-opinion response", response_text, 10, 2000)
+        if type(anchor_source_version_id) is not int or anchor_source_version_id < 1:
+            raise InvalidInput("Anchor source version ID must be a positive integer")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            row = self.db.execute("SELECT status FROM second_opinion_requests WHERE id=? AND case_id=?",
+                                  (request_id, case_id)).fetchone()
+            if not row:
+                raise InvalidInput("Second-opinion request not in this case")
+            if row["status"] != "requested":
+                raise InvalidInput("A response is already recorded for this request; create a new request for follow-up")
+            anchor = self.db.execute("SELECT state FROM source_versions WHERE id=? AND case_id=?",
+                                     (anchor_source_version_id, case_id)).fetchone()
+            if not anchor or anchor["state"] != "current":
+                raise InvalidInput("Response anchor is missing, superseded, or belongs to another case")
+            try:
+                cur = self.db.execute("""INSERT INTO second_opinion_responses
+                    (request_id,responder_label,response_text,anchor_source_version_id,created_at)
+                    VALUES (?,?,?,?,?)""", (request_id, responder, text, anchor_source_version_id, now_utc()))
+            except sqlite3.IntegrityError:
+                raise InvalidInput("A response is already recorded for this request; create a new request for follow-up") from None
+            self.db.execute("UPDATE second_opinion_requests SET status='response_recorded' WHERE id=?", (request_id,))
+            self._event(case_id, "second_opinion_response_recorded", request_id=request_id,
+                        response_id=int(cur.lastrowid), anchor_source_version_id=anchor_source_version_id)
+            return int(cur.lastrowid)
+
+    def review_second_opinion(self, case_id: str, request_id: int, reviewer_label: str, scope: str) -> dict:
+        """Demo-acknowledge a second-opinion request record. History is kept."""
+        case_id = self._case(case_id)
+        if type(request_id) is not int or request_id < 1:
+            raise InvalidInput("Invalid second-opinion request ID")
+        reviewer = self._record_label(reviewer_label, "reviewer label")
+        scope_text = self._descriptive("Review scope", scope, 10, 300)
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            row = self.db.execute("SELECT review_state FROM second_opinion_requests WHERE id=? AND case_id=?",
+                                  (request_id, case_id)).fetchone()
+            if not row:
+                raise InvalidInput("Second-opinion request not in this case")
+            if row["review_state"] == "needs_review":
+                raise InvalidInput("Shared materials changed since this request; preserve it and create a new request")
+            if row["review_state"] == "reviewed_in_demo":
+                raise InvalidInput("Second-opinion request is already reviewed in this demo")
+            self.db.execute("UPDATE second_opinion_requests SET review_state='reviewed_in_demo' WHERE id=?", (request_id,))
+            cur = self.db.execute("""INSERT INTO second_opinion_review_events
+                (request_id,reviewer_label,action,scope,noted_at) VALUES (?,?,'acknowledge',?,?)""",
+                (request_id, reviewer, scope_text, now_utc()))
+            self._event(case_id, "second_opinion_reviewed", request_id=request_id,
+                        review_event_id=int(cur.lastrowid))
+            return {"result": "acknowledged_in_demo", "review_event_id": int(cur.lastrowid)}
+
+    def second_opinion_view(self, case_id: str) -> dict:
+        """Original conclusions and second-opinion responses, side by side.
+
+        The response is a separate record; this projection never merges it
+        into the original snapshot. Both stay visible with their own states.
+        """
+        self._case(case_id)
+        requests: list[dict] = []
+        for req in self.db.execute(
+                "SELECT * FROM second_opinion_requests WHERE case_id=? ORDER BY id", (case_id,)).fetchall():
+            req = dict(req)
+            question = self.db.execute("SELECT question FROM questions WHERE id=?",
+                                       (req["question_id"],)).fetchone()
+            materials = self._dicts(self.db.execute(
+                """SELECT v.id,v.document_id,v.version,v.state FROM second_opinion_materials m
+                JOIN source_versions v ON v.id=m.source_version_id
+                WHERE m.request_id=? ORDER BY v.document_id,v.version""", (req["id"],)).fetchall())
+            original = None
+            if req["snapshot_id"] is not None:
+                snap = self.db.execute(
+                    "SELECT id,question_id,summary,state,created_at,reviewed_at FROM snapshots WHERE id=?",
+                    (req["snapshot_id"],)).fetchone()
+                original = dict(snap) if snap else {"id": req["snapshot_id"], "missing": True}
+            response = self.db.execute(
+                "SELECT * FROM second_opinion_responses WHERE request_id=?", (req["id"],)).fetchone()
+            response_view = None
+            if response:
+                response_view = dict(response)
+                anchor = self.db.execute(
+                    "SELECT document_id,version,state FROM source_versions WHERE id=?",
+                    (response["anchor_source_version_id"],)).fetchone()
+                response_view["anchor"] = dict(anchor) if anchor else {"missing": True}
+            requests.append({
+                **req,
+                "question": question["question"] if question else None,
+                "materials": materials,
+                "original_snapshot": original,
+                "response": response_view,
+                "review_events": self._dicts(self.db.execute(
+                    "SELECT * FROM second_opinion_review_events WHERE request_id=? ORDER BY id",
+                    (req["id"],)).fetchall()),
+            })
+        return {"case_id": case_id, "disclaimer": SECOND_OPINION_DISCLAIMER, "requests": requests}
+
+    def create_survivorship_plan(self, case_id: str, title: str) -> int:
+        """Create a survivorship care plan record: a container for plain recorded items."""
+        case_id = self._case(case_id)
+        title_text = self._descriptive("Survivorship plan title", title, 1, 120)
+        with self.db:
+            cur = self.db.execute("INSERT INTO survivorship_plans (case_id,title,created_at) VALUES (?,?,?)",
+                                  (case_id, title_text, now_utc()))
+            plan_id = int(cur.lastrowid)
+            self._event(case_id, "survivorship_plan_created", plan_id=plan_id)
+            return plan_id
+
+    def add_survivorship_item(self, case_id: str, plan_id: int, kind: str, description: str,
+                              anchor_source_version_id: int, recorded_date: str | None = None) -> int:
+        """Record one follow-up, watch, or trigger item as a plain description.
+
+        A recorded date is a ledger note, never a clinical due date. New
+        items must anchor to a current source version in this case.
+        """
+        case_id = self._case(case_id)
+        if type(plan_id) is not int or plan_id < 1:
+            raise InvalidInput("Invalid survivorship plan ID")
+        if kind not in ("followup", "watch", "trigger"):
+            raise InvalidInput("Survivorship item kind must be followup, watch, or trigger")
+        text = self._descriptive("Survivorship item", description, 10, 500)
+        if type(anchor_source_version_id) is not int or anchor_source_version_id < 1:
+            raise InvalidInput("Anchor source version ID must be a positive integer")
+        recorded = None
+        if recorded_date is not None:
+            if not isinstance(recorded_date, str):
+                raise InvalidInput("Dates must use YYYY-MM-DD")
+            recorded = valid_date(recorded_date)
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            if not self.db.execute("SELECT 1 FROM survivorship_plans WHERE id=? AND case_id=?",
+                                   (plan_id, case_id)).fetchone():
+                raise InvalidInput("Survivorship plan not in this case")
+            anchor = self.db.execute("SELECT state FROM source_versions WHERE id=? AND case_id=?",
+                                     (anchor_source_version_id, case_id)).fetchone()
+            if not anchor or anchor["state"] != "current":
+                raise InvalidInput("Item anchor is missing, superseded, or belongs to another case")
+            cur = self.db.execute("""INSERT INTO survivorship_items
+                (plan_id,case_id,kind,description,recorded_date,anchor_source_version_id,
+                 state,review_state,created_at)
+                VALUES (?,?,?,?,?,?,'recorded','pending',?)""",
+                (plan_id, case_id, kind, text, recorded, anchor_source_version_id, now_utc()))
+            item_id = int(cur.lastrowid)
+            self._event(case_id, "survivorship_item_recorded", plan_id=plan_id, item_id=item_id, item_kind=kind)
+            return item_id
+
+    def review_survivorship_item(self, case_id: str, item_id: int, reviewer_label: str, scope: str) -> dict:
+        """Demo-acknowledge one survivorship item. History is kept."""
+        case_id = self._case(case_id)
+        if type(item_id) is not int or item_id < 1:
+            raise InvalidInput("Invalid survivorship item ID")
+        reviewer = self._record_label(reviewer_label, "reviewer label")
+        scope_text = self._descriptive("Review scope", scope, 10, 300)
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            row = self.db.execute("SELECT review_state FROM survivorship_items WHERE id=? AND case_id=?",
+                                  (item_id, case_id)).fetchone()
+            if not row:
+                raise InvalidInput("Survivorship item not in this case")
+            if row["review_state"] == "needs_review":
+                raise InvalidInput("Item anchor changed since recording; preserve it and record a new item")
+            if row["review_state"] == "reviewed_in_demo":
+                raise InvalidInput("Survivorship item is already reviewed in this demo")
+            self.db.execute("UPDATE survivorship_items SET review_state='reviewed_in_demo' WHERE id=?", (item_id,))
+            cur = self.db.execute("""INSERT INTO survivorship_review_events
+                (item_id,reviewer_label,action,scope,noted_at) VALUES (?,?,'acknowledge',?,?)""",
+                (item_id, reviewer, scope_text, now_utc()))
+            self._event(case_id, "survivorship_item_reviewed", item_id=item_id,
+                        review_event_id=int(cur.lastrowid))
+            return {"result": "acknowledged_in_demo", "review_event_id": int(cur.lastrowid)}
+
+    def mark_survivorship_trigger(self, case_id: str, item_id: int, reason: str) -> dict:
+        """Record that a review trigger's described condition was observed.
+
+        Only trigger items can be marked, exactly once. The reason describes
+        the observed record; it never directs care.
+        """
+        case_id = self._case(case_id)
+        if type(item_id) is not int or item_id < 1:
+            raise InvalidInput("Invalid survivorship item ID")
+        reason_text = self._descriptive("Trigger observation", reason, 10, 300)
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            row = self.db.execute("SELECT kind,state,review_state FROM survivorship_items WHERE id=? AND case_id=?",
+                                  (item_id, case_id)).fetchone()
+            if not row:
+                raise InvalidInput("Survivorship item not in this case")
+            if row["kind"] != "trigger":
+                raise InvalidInput("Only a review-trigger item can be marked as observed")
+            if row["state"] == "triggered":
+                raise InvalidInput("Trigger is already marked as observed")
+            if row["review_state"] == "needs_review":
+                raise InvalidInput("Item anchor changed since recording; preserve it and record a new item")
+            self.db.execute("UPDATE survivorship_items SET state='triggered' WHERE id=?", (item_id,))
+            self._event(case_id, "survivorship_trigger_marked", item_id=item_id, reason=reason_text)
+            return {"result": "triggered", "item_id": item_id}
+
+    def survivorship_view(self, case_id: str) -> dict:
+        """Recorded follow-up plans: plain descriptions with anchors and review state."""
+        self._case(case_id)
+        plans: list[dict] = []
+        for plan in self.db.execute(
+                "SELECT * FROM survivorship_plans WHERE case_id=? ORDER BY id", (case_id,)).fetchall():
+            plan = dict(plan)
+            items = []
+            for item in self.db.execute(
+                    "SELECT * FROM survivorship_items WHERE plan_id=? ORDER BY id", (plan["id"],)).fetchall():
+                item = dict(item)
+                anchor = self.db.execute(
+                    "SELECT document_id,version,state FROM source_versions WHERE id=?",
+                    (item["anchor_source_version_id"],)).fetchone()
+                items.append({
+                    **item,
+                    "anchor": dict(anchor) if anchor else {"missing": True},
+                    "recorded_date_label": ("Recorded date (not a clinical due date): " + item["recorded_date"]
+                                            if item["recorded_date"] else "No recorded date"),
+                    "review_events": self._dicts(self.db.execute(
+                        "SELECT * FROM survivorship_review_events WHERE item_id=? ORDER BY id",
+                        (item["id"],)).fetchall()),
+                })
+            plans.append({**plan, "items": items})
+        return {"case_id": case_id, "disclaimer": SURVIVORSHIP_DISCLAIMER, "plans": plans}
 
     # ---- B-08: contradiction synthesis + bounded reports (append-only) ----
     # New ledger table (limitation_notes, see SCHEMA) plus thin read/write

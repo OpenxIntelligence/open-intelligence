@@ -164,6 +164,55 @@ Remaining proof step: a live-server run against the real API with
 the operator key set, before the demo. The API completion itself
 was verified separately on 2026-10-31.
 
+## Second-opinion and survivorship care records
+
+The case workspace includes a **Second opinion & survivorship** panel for
+fictional record-keeping only. A second-opinion request records the
+question asked, the case question it is about, materials shared by exact
+source-version reference, an optional link to the original case
+conclusion under discussion, and a status. A response is recorded as a
+separate record anchored to one source version; exactly one response per
+request exists, so follow-up needs a new request. Recording a request or
+response never modifies the original snapshots or questions: the case
+state carries both, and the UI renders the original conclusion and the
+response side by side.
+
+Survivorship plans hold plain recorded items of three kinds: `followup`
+(recorded schedule notes with an optional recorded date), `watch` (plain
+descriptions), and `trigger` (recorded reasons to look again, which can
+be marked as observed exactly once). Every item keeps its source anchor
+and review state. A recorded date is a ledger note, never a clinical
+due date.
+
+All record text passes a descriptive-only guard at write time
+(`src/open_intelligence/care_records.py`): directive and clinical-claim
+wording (should, must, need to, recommend, prescribe, eligible, order or
+start treatment, watch for, seek care, call/contact, effective, proven,
+benefit, and similar) is rejected with an error naming the guarded
+wording. The guard is narrow; human review remains the gate, and every
+view carries a disclaimer stating what the records are not.
+
+Source amendments reopen only dependent records in the amended case:
+requests whose pinned materials, response anchor, or linked original
+conclusion was superseded, and items whose anchor was superseded, move
+to `needs_review` while history stays inspectable. New requests and
+items must anchor to current versions. Other cases are unaffected.
+
+```text
+POST /api/cases/{CASE-ID}/second-opinion-requests
+POST /api/cases/{CASE-ID}/second-opinion-requests/{N}/response
+POST /api/cases/{CASE-ID}/second-opinion-requests/{N}/review
+POST /api/cases/{CASE-ID}/survivorship-plans
+POST /api/cases/{CASE-ID}/survivorship-plans/{N}/items
+POST /api/cases/{CASE-ID}/survivorship-items/{N}/review
+POST /api/cases/{CASE-ID}/survivorship-items/{N}/trigger
+```
+
+Covered by `tests/test_second_survivorship.py` (store, guard, and HTTP
+flow). This slice adds no identity, consent, PHI support, clinical
+review, diagnostic inference, treatment selection, or care coordination.
+It is a source-grounded record surface for the synthetic engineering
+reference only.
 ## Follow-through tasks (case records for humans)
 
 Each case can carry follow-through tasks: what was agreed, who owns it,
