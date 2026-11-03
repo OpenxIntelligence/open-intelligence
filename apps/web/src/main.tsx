@@ -23,7 +23,7 @@ function WorkspaceContext({section,patientId,readiness,view,onViewChange}:{secti
   return()=>{observer.disconnect();window.removeEventListener('resize',measure);document.documentElement.style.removeProperty('--workspace-offset');};
  },[]);
  return <header ref={header} className="topbar" aria-label="Current workspace context">
-  <div className="workspace-context"><span className="workspace-location">Patient workspace <span className="muted">/ {section}</span></span>
+  <div className="workspace-context"><div className="workspace-location-row"><span className="workspace-location">Patient workspace <span className="muted">/ {section}</span></span><a className="workspace-navigation-link" href="#workspace-navigation">Change section</a></div>
    <span className="workspace-identity" data-testid="workspace-identity">{patientId?<><span className="workspace-context-label">Authorized fictional patient</span> <code>{patientId}</code></>:<span className="muted">No authorized patient open</span>}</span>
   </div>
   <div className="reading-controls"><div><label htmlFor="reading-view">Reading layout</label><select id="reading-view" value={view} onChange={e=>onViewChange(e.target.value as ReadingView)} aria-describedby="reading-view-help"><option value="patient">Patient reading</option><option value="clinical">Clinical reading</option></select><span id="reading-view-help">Presentation only · permissions unchanged</span></div>
@@ -77,7 +77,7 @@ function App(){
   <aside className="rail" aria-label="Workspace navigation">
    <div className="brand"><span className="mark" aria-hidden="true">oi</span><span>Open<br/>Intelligence</span></div>
    <div className="environment">Development · fictional identities only</div>
-   <nav aria-label="Patient workspace">{navigation.map(name=><button type="button" key={name} aria-current={name===section?'page':undefined} onClick={()=>navigate(name)}><span>{name}</span>{name==='Records'?<span className="nav-hint">Original records</span>:name==='Journey'?<span className="nav-hint">Source view</span>:name==='Investigations'?<span className="nav-hint">Source questions</span>:name==='Review'?<span className="nav-hint">Verification returns</span>:null}</button>)}</nav>
+   <nav id="workspace-navigation" tabIndex={-1} aria-label="Patient workspace">{navigation.map(name=><button type="button" key={name} aria-current={name===section?'page':undefined} onClick={()=>navigate(name)}><span>{name}</span>{name==='Records'?<span className="nav-hint">Original records</span>:name==='Journey'?<span className="nav-hint">Source view</span>:name==='Investigations'?<span className="nav-hint">Source questions</span>:name==='Review'?<span className="nav-hint">Verification returns</span>:null}</button>)}</nav>
    <div className="rail-note">One patient context.<br/>Original sources.<br/>Human clinical authority.</div>
   </aside>
   <div className="body"><WorkspaceContext section={section} patientId={state.patient?.patient_id??null} readiness={readiness} view={view} onViewChange={setView}/>

@@ -166,13 +166,30 @@ def exercise(cd, credentials, write_grants):
         print('PASS READING CONVERGENCE: actual source response; current/historical filter; source-adjacent quotations; retained reading state with no requests; refresh reset; keyboard provenance and focus recovery; 320/390/768/1280 layouts and doubled-text/short-height checks.')
         # Current-run audit evidence: navigation availability after reading a long record.
         navigation_observations = []
-        for width in (390, 1280):
-            cd.command('Emulation.setDeviceMetricsOverride', {'width':width,'height':900,'deviceScaleFactor':1,'mobile':False})
+        for width, height in ((390,900), (1280,900), (320,900), (320,256)):
+            cd.command('Emulation.setDeviceMetricsOverride', {'width':width,'height':height,'deviceScaleFactor':1,'mobile':False})
             cd.evaluate("document.querySelector('footer').scrollIntoView({block:'end'})")
             cd.evaluate("new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))")
             navigation_observations.append(cd.evaluate("(()=>{const n=document.querySelector('nav[aria-label=\"Patient workspace\"]');const r=n.getBoundingClientRect();return {width:innerWidth,scroll:scrollY,navigationTop:r.top,navigationBottom:r.bottom,visible:r.bottom>0&&r.top<innerHeight,section:document.querySelector('h1').textContent}})()"))
-            (out/f'workspace-navigation-bottom-{width}.png').write_bytes(base64.b64decode(cd.command('Page.captureScreenshot', {'format':'png'})['data']))
+            (out/f'workspace-navigation-bottom-{width}-{height}.png').write_bytes(base64.b64decode(cd.command('Page.captureScreenshot', {'format':'png'})['data']))
+            assert cd.evaluate('document.documentElement.scrollWidth<=innerWidth+1'), 'Navigation link must preserve reflow'
+            if height == 900:
+                assert cd.evaluate("(()=>{const r=document.querySelector('.workspace-navigation-link').getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight})()"), 'A visible path to sections must remain available at the end of Records'
+            # The native fragment changes focus/scroll only, preserving this mounted read.
+            cd.evaluate("window.__navigationSnapshot={index:document.querySelector('[data-testid=source-index]'),filter:document.querySelector('#source-filter').value,version:document.querySelector('#source-state').value,patient:document.querySelector('[data-testid=workspace-identity]').textContent,requests:window.__readingRequests};document.querySelector('.workspace-navigation-link').focus()")
+            key('Enter',13)
+            cd.wait("document.activeElement===document.querySelector('#workspace-navigation')", 'native navigation jump focuses its existing landmark')
+            cd.wait("(()=>{const r=document.activeElement.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight})()", 'navigation target is fully visible')
+            assert cd.evaluate("document.querySelector('[data-testid=source-index]')===window.__navigationSnapshot.index && document.querySelector('h1').textContent==='Records' && document.querySelector('#source-filter').value===window.__navigationSnapshot.filter && document.querySelector('#source-state').value===window.__navigationSnapshot.version && document.querySelector('[data-testid=workspace-identity]').textContent===window.__navigationSnapshot.patient && window.__readingRequests===window.__navigationSnapshot.requests"), 'Jump must not remount records, change patient/filter, navigate sections or request data'
+            (out/f'workspace-navigation-focused-{width}-{height}.png').write_bytes(base64.b64decode(cd.command('Page.captureScreenshot', {'format':'png'})['data']))
+            key('Tab',9)
+            assert cd.evaluate("document.activeElement===document.querySelector('#workspace-navigation button')"), 'Tab from navigation reaches Overview'
+            key('Tab',9);key('Tab',9);key('Enter',13)
+            cd.wait("document.activeElement===document.querySelector('h1')", 'existing Records button retains section-heading focus')
+            assert cd.evaluate("window.__readingRequests===window.__navigationSnapshot.requests && document.querySelector('#source-filter').value===window.__navigationSnapshot.filter"), 'Existing same-section activation retains filters without requests'
+            cd.evaluate('delete window.__navigationSnapshot')
         (out/'workspace-navigation-observations.json').write_text(json.dumps(navigation_observations, indent=2))
+        print('PASS WORKSPACE NAVIGATION: visible return link during long source reading; native Enter focuses existing navigation; Tab reaches destinations; same-section action retains heading focus; patient, mounted source/filter state and request counts preserved at 320/390/1280 widths and short viewport.')
     finally:
         cd.evaluate("if(window.__readingFetch){window.fetch=window.__readingFetch;delete window.__readingFetch;delete window.__readingRequests}")
         cd.command('Emulation.setDeviceMetricsOverride', {'width':1280,'height':1000,'deviceScaleFactor':1,'mobile':False})
