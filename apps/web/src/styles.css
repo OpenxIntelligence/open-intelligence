@@ -33,3 +33,26 @@
 .world-history{margin:20px 0;padding:14px;border:1px solid #d7e0d8;border-radius:8px}
 .world-history li{margin:8px 0;overflow-wrap:anywhere}
 @media(max-width:600px){.world-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+.composer-preview{border:1px solid #9aafa5;border-left:4px solid #b28b52;border-radius:9px;padding:18px;background:#f8f8f2;margin:18px 0}
+.composer-preview h3{margin:7px 0 14px}
+.composer-preview code{word-break:break-word;overflow-wrap:anywhere}
+.composer-preview blockquote{font-size:14px;font-style:normal;white-space:pre-wrap;overflow-wrap:anywhere;background:#fff;border-left:3px solid #879d91;padding:12px;margin:12px 0}
+.composer-preview p[role=note]{background:#f1ebda;padding:12px;border-left:2px solid #b28b52}
+.source-context-action button{margin-top:5px}
+@media(max-width:600px){.composer-preview{padding:13px}.source-context-action button{width:100%}}
+
+/* Canonical question intake is deliberately distinct from clinician approval. */
+.question-history{border:1px solid #d6e1d9;border-radius:10px;padding:18px;margin:20px 0;background:#fff}
+.question-history-heading{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px}
+.question-history-heading h3{margin:0 0 6px}
+.question-history-heading p{margin:0}
+.question-items{list-style:none;display:grid;gap:12px;padding:0;margin:14px 0 0}
+.question-items li{border:1px solid #d5e1d9;background:#f8fbf8;border-radius:8px;padding:14px;min-width:0}
+.question-items p{font-size:13px;margin:8px 0}
+.question-history code,.question-receipt code{word-break:break-word;overflow-wrap:anywhere}
+.question-status-title{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.question-status{font-size:12px;border-radius:18px;background:#e2ede6;color:#275443;padding:5px 10px}
+.question-status.reassessment{background:#f2e7d9;color:#764b21}
+.question-receipt{padding:12px;background:#edf5ee;border-left:3px solid #638673}
+@media(max-width:600px){.question-history{padding:12px}.question-history-heading button{width:100%}.question-status-title{flex-direction:column;gap:8px}}

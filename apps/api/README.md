@@ -169,6 +169,38 @@ reports source receipts as unavailable and no clinical interpretation is granted
 
 ## Product and release boundary
 
+### Source context and persistent questions
+
+The existing Composer preflight and question owner are connected to the same
+`oi.pg-source-world-model/1` snapshot used by React. They preserve the original
+patient, source and event owners; question intake is not a clinical review queue.
+
+- `POST .../cases/{case_id}/composer/source-preflight` requires independent
+  `composer_context_read`, `source_read` and `patient_read` grants. Supply the
+  current World Model `snapshot_fingerprint` as
+  `expected_source_snapshot_sha256`, plus an exact current source ID/line and
+  bounded question. The `/2` packet declares its snapshot contract and carries
+  a separate access receipt; changing receipts do not change its content hash.
+- `POST .../cases/{case_id}/questions` additionally requires `question_create`.
+  It revalidates that source context and preflight inside the question transaction,
+  refreshes authority and commits one immutable question plus one creation event.
+  Same-intent retries keep the original question ID; a stale packet under a new
+  key is rejected. It grants no clinical review or model execution.
+- `GET .../cases/{case_id}/questions` requires `question_read`, `source_read`
+  and `patient_read`. The `/2` list preserves original anchors and identifies
+  context requiring reassessment. Its access receipt describes the authorized
+  source context, not delivery or professional approval.
+
+All three consumer operations require the existing operations purpose. A
+follow-up migration preserves `0006_source_questions` and explicitly marks
+pre-existing fingerprint rows as legacy. Such rows require reassessment even
+when a hash happens to match a canonical hash; their immutable values are not
+rehashed or relabeled. New rows record the canonical fingerprint contract.
+See [question ownership and acceptance](../../docs/engineering/H1_CANONICAL_SOURCE_QUESTION_INTAKE.md)
+and [preflight boundaries](../../docs/engineering/H1_SOURCE_COMPOSER_PREFLIGHT.md).
+
+### Broader product boundary
+
 The first integrated product remains patient information → source-linked World
 Model → permitted evidence → investigation → human review → follow-up →
 reassessment. This contribution connects its identity foundation; it does not

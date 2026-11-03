@@ -128,29 +128,34 @@ def main():
             exercise_world_model_races(cd,patient_id=pid,case_id=case,source_id=original_id,
                 original=original,fingerprint=initial_world_fingerprint,
                 credentials=credentials,write_grants=write_grants)
-            cd.evaluate("Array.from(document.querySelectorAll('nav[aria-label=\"Patient workspace\"] button')).find(b=>b.textContent.includes('Records')).click()")
-            amended=(
-                'OI-SYNTHETIC-REPORT/1\nPatient: CASE-ALPHA\nDocument: DOC-ONE\n'
-                'Type: pathology\nEvent-Date: 2026-01-10\nIssued-At: 2026-01-12\n'
-                'Specimen: SPECIMEN-ONE\nAmends: DOC-ONE@1\n'
-                'Finding: marker|negative|Amended fictional marker is reported negative.\n'
-            )
-            status,new_receipt=add_synthetic(root+'/cases/'+case+'/sources',{
-                'synthetic':True,'original_text':amended})
-            assert status==201 and new_receipt['version']==2
-            cd.evaluate("document.querySelector('[data-testid=load-sources]').click()")
-            cd.wait("document.querySelectorAll('[data-testid=source-version]').length===2",'versioned amendment history')
-            assert cd.evaluate("document.querySelector('[data-testid=source-index]').textContent.includes('superseded')")
-            assert cd.evaluate("document.querySelector('[data-testid=source-index]').textContent.includes('Amended fictional marker is reported negative.')")
-            assert cd.evaluate("document.querySelectorAll('[data-testid=source-statement]').length===1")
-            cd.evaluate("Array.from(document.querySelectorAll('nav[aria-label=\"Patient workspace\"] button')).find(b=>b.textContent.includes('Journey')).click()")
-            cd.evaluate("document.querySelector('[data-testid=world-load]').click()")
-            cd.wait("document.querySelector('[data-testid=world-history-count]')?.textContent==='1'",'world model retains superseded source')
-            assert cd.evaluate("document.querySelector('[data-testid=world-current]').textContent==='1'")
-            assert cd.evaluate("document.querySelector('[data-testid=world-unresolved-count]').textContent==='0'")
-            assert cd.evaluate("document.querySelector('[data-testid=world-reported-state]').textContent==='negative'")
-            assert cd.evaluate("document.querySelector('[data-testid=world-fingerprint]').textContent") != initial_world_fingerprint
-            assert cd.evaluate(f"document.querySelector('[data-testid=world-projection]').textContent.includes({json.dumps(original_id)})")
+            from source_questions_journey import exercise as exercise_source_questions
+            with exercise_source_questions(cd,original_id,credentials,write_grants) as questions:
+                cd.evaluate("Array.from(document.querySelectorAll('nav[aria-label=\"Patient workspace\"] button')).find(b=>b.textContent.includes('Records')).click()")
+                amended=(
+                    'OI-SYNTHETIC-REPORT/1\nPatient: CASE-ALPHA\nDocument: DOC-ONE\n'
+                    'Type: pathology\nEvent-Date: 2026-01-10\nIssued-At: 2026-01-12\n'
+                    'Specimen: SPECIMEN-ONE\nAmends: DOC-ONE@1\n'
+                    'Finding: marker|negative|Amended fictional marker is reported negative.\n'
+                )
+                status,new_receipt=add_synthetic(root+'/cases/'+case+'/sources',{
+                    'synthetic':True,'original_text':amended})
+                assert status==201 and new_receipt['version']==2
+                questions.after_amendment(new_receipt['source_id'])
+                cd.evaluate("document.querySelector('[data-testid=load-sources]').click()")
+                cd.wait("document.querySelectorAll('[data-testid=source-version]').length===2",'versioned amendment history')
+                assert cd.evaluate("document.querySelector('[data-testid=source-index]').textContent.includes('superseded')")
+                assert cd.evaluate("document.querySelector('[data-testid=source-index]').textContent.includes('Amended fictional marker is reported negative.')")
+                assert cd.evaluate("document.querySelectorAll('[data-testid=source-statement]').length===1")
+                cd.evaluate("Array.from(document.querySelectorAll('nav[aria-label=\"Patient workspace\"] button')).find(b=>b.textContent.includes('Journey')).click()")
+                cd.evaluate("document.querySelector('[data-testid=world-load]').click()")
+                cd.wait("document.querySelector('[data-testid=world-history-count]')?.textContent==='1'",'world model retains superseded source')
+                assert cd.evaluate("document.querySelector('[data-testid=world-current]').textContent==='1'")
+                assert cd.evaluate("document.querySelector('[data-testid=world-unresolved-count]').textContent==='0'")
+                assert cd.evaluate("document.querySelector('[data-testid=world-reported-state]').textContent==='negative'")
+                assert cd.evaluate("document.querySelector('[data-testid=world-fingerprint]').textContent") != initial_world_fingerprint
+                assert cd.evaluate(f"document.querySelector('[data-testid=world-projection]').textContent.includes({json.dumps(original_id)})")
+                questions.finish(new_receipt['source_id'],credentials,write_grants,
+                    Path(os.environ.get('OI_WEB_ARTIFACT_DIR',ROOT/'apps/web/.evidence')))
             # Current source metadata access is independent from the historical original bytes.
             # World Model recheck must clear the old view after source-read grant withdrawal.
             credentials[0]['actions'].remove('source_read');write_grants()

@@ -125,48 +125,65 @@ class PostgresSourceVersions:
         ID is reserved in memory and becomes a receipt only if the subsequent
         authority check, event insertion and transaction commit all succeed.
         """
+        with self.registry.transaction():
+            return self.list_locked(
+                patient_id, case_id, organization=organization, actor=actor,
+                purpose=purpose, recheck_authority=recheck_authority,
+                prepare_response=prepare_response,
+            )
+
+    def list_locked(self, patient_id: str, case_id: str, *, organization: str,
+                    actor: str, purpose: str, recheck_authority: Callable[[], None],
+                    prepare_response: Callable[[dict], PreparedResponse] | None = None) -> dict | PreparedResponse:
+        """Prepare and audit the same source view inside the caller's transaction.
+
+        Question persistence uses this entry point so its write, prepared DTO,
+        final authority check and source access receipt commit together. This
+        helper never starts or commits a second transaction.
+        """
+        if not self.registry._transaction_active:
+            raise PatientRegistryError("Source preparation requires caller transaction")
         patient_id = _key(patient_id, "patient_id")
         case_id = _case_id(case_id)
         organization = _key(organization, "organization")
-        with self.registry.transaction():
-            binding_revision = self._binding(patient_id, case_id, organization, purpose)
-            sources = self._sources(case_id)
-            rows = self.registry._fetchall(
-                "SELECT a.source_id,a.finding_key,a.certainty,a.quote,a.source_line "
-                "FROM clinical_source.assertions a "
-                "JOIN clinical_source.source_versions s ON s.source_id=a.source_id "
-                "WHERE s.case_id=%s AND s.state='current' "
-                "ORDER BY s.document_id,s.version,a.source_line", (case_id,),
-            )
-            self._validate_index(case_id, sources, rows)
-            result = {
-                "contract": "oi.synthetic-original-sources/1",
-                "patient_id": patient_id, "case_id": case_id,
-                "sources": sources,
-                "source_reported_assertions": [
-                    {"source_id": r[0], "finding_key": r[1],
-                     "reported_state": r[2], "source_statement": r[3],
-                     "source_line": r[4], "clinical_review_state": "not_established"}
-                    for r in rows
-                ],
-                "synthetic": True, "clinical_interpretation": False,
-                "research_review_invalidation_integrated": False,
-            }
-            # Hash the exact materialized response before adding its receipt.
-            # Only this digest and bounded references enter the event ledger.
-            digest = hashlib.sha256(json.dumps(result, sort_keys=True, ensure_ascii=False,
-                                                separators=(",", ":")).encode("utf-8")).hexdigest()
-            receipt_id = "ACCESS-" + uuid.uuid4().hex.upper()
-            result["access_receipt_id"] = receipt_id
-            prepared = prepare_response(result) if prepare_response is not None else result
-            self._read_receipt(
-                patient_id, case_id, actor=actor, purpose=purpose,
-                binding_revision=binding_revision, event="source.read_authorized",
-                receipt_id=receipt_id,
-                recheck_authority=recheck_authority, snapshot_sha256=digest,
-                source_count=len(sources), assertion_count=len(rows),
-            )
-            return prepared
+        binding_revision = self._binding(patient_id, case_id, organization, purpose)
+        sources = self._sources(case_id)
+        rows = self.registry._fetchall(
+            "SELECT a.source_id,a.finding_key,a.certainty,a.quote,a.source_line "
+            "FROM clinical_source.assertions a "
+            "JOIN clinical_source.source_versions s ON s.source_id=a.source_id "
+            "WHERE s.case_id=%s AND s.state='current' "
+            "ORDER BY s.document_id,s.version,a.source_line", (case_id,),
+        )
+        self._validate_index(case_id, sources, rows)
+        result = {
+            "contract": "oi.synthetic-original-sources/1",
+            "patient_id": patient_id, "case_id": case_id,
+            "sources": sources,
+            "source_reported_assertions": [
+                {"source_id": r[0], "finding_key": r[1],
+                 "reported_state": r[2], "source_statement": r[3],
+                 "source_line": r[4], "clinical_review_state": "not_established"}
+                for r in rows
+            ],
+            "synthetic": True, "clinical_interpretation": False,
+            "research_review_invalidation_integrated": False,
+        }
+        # This receipt describes canonical source context, not delivery or
+        # question review. Projection and receipt IDs do not change the digest.
+        digest = hashlib.sha256(json.dumps(result, sort_keys=True, ensure_ascii=False,
+                                            separators=(",", ":")).encode("utf-8")).hexdigest()
+        receipt_id = "ACCESS-" + uuid.uuid4().hex.upper()
+        result["access_receipt_id"] = receipt_id
+        prepared = prepare_response(result) if prepare_response is not None else result
+        self._read_receipt(
+            patient_id, case_id, actor=actor, purpose=purpose,
+            binding_revision=binding_revision, event="source.read_authorized",
+            receipt_id=receipt_id,
+            recheck_authority=recheck_authority, snapshot_sha256=digest,
+            source_count=len(sources), assertion_count=len(rows),
+        )
+        return prepared
 
     def original(self, patient_id: str, case_id: str, source_id: str, *,
                  organization: str, actor: str, purpose: str,

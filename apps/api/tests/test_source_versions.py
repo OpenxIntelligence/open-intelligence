@@ -59,6 +59,7 @@ class SourceVersionFixture(unittest.TestCase):
 
     def setUp(self):
         with self.engine.begin() as c:
+            c.execute(text("DROP SCHEMA IF EXISTS investigation CASCADE"))
             c.execute(text("DROP SCHEMA IF EXISTS clinical_source CASCADE"))
             c.execute(text("DROP SCHEMA IF EXISTS coordination CASCADE"))
             c.execute(text("DROP SCHEMA IF EXISTS identity CASCADE"))
@@ -84,6 +85,7 @@ class SourceVersionFixture(unittest.TestCase):
 
     def tearDown(self):
         with self.engine.begin() as c:
+            c.execute(text("DROP SCHEMA IF EXISTS investigation CASCADE"))
             c.execute(text("DROP SCHEMA IF EXISTS clinical_source CASCADE"))
             c.execute(text("DROP SCHEMA IF EXISTS coordination CASCADE"))
             c.execute(text("DROP SCHEMA IF EXISTS identity CASCADE"))
