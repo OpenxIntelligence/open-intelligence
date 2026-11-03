@@ -35,6 +35,11 @@ SOP_UIDS = (
 MAX_DICOM_SIZE = 500_000
 MAX_WIRE_SIZE = 1_250_000
 BOUNDARY = "OI20261102SyntheticImageOnly"
+# This experiment explicitly disables the vendor's default HTJ2K lossless
+# archival transcoding, so both original file and raw pixel bytes can be
+# tested independently. The vendor's default codec needs a separate
+# decoded-pixel comparison; encoded byte inequality does not prove corruption.
+EXPECTED_RETRIEVAL_TRANSFER_SYNTAX = "1.2.840.10008.1.2.1"
 
 
 class RejectRedirect(HTTPRedirectHandler):
@@ -274,6 +279,7 @@ def run_evaluation(base_url: str) -> dict:
             returned_digests = {}
             returned_pixel_digests = {}
             exact_byte_match = {}
+            pixel_diagnostics = {}
             from pydicom import dcmread
             for sop in SOP_UIDS:
                 _, wado_type, wado_body = _request(
@@ -291,8 +297,27 @@ def run_evaluation(base_url: str) -> dict:
                         or str(parsed.SeriesInstanceUID) != IMAGE_SERIES_UID
                         or parsed.PatientID != "FICTIONAL-CASE-ALPHA"):
                     raise InvalidInput("Retrieved DICOM identities did not match uploaded SOP")
-                if sha256(parsed.PixelData).hexdigest() != expected_pixel[sop]:
-                    raise InvalidInput("Pixel data was modified on retrieval")
+                original = dcmread(BytesIO(payloads[SOP_UIDS.index(sop)]))
+                returned_ts = str(parsed.file_meta.TransferSyntaxUID)
+                source_ts = str(original.file_meta.TransferSyntaxUID)
+                pixel_matches = sha256(parsed.PixelData).hexdigest() == expected_pixel[sop]
+                # The only pixel claim made here is equality of the
+                # *encoded* bytes in the explicitly uncompressed test mode.
+                # If a codec transcodes, this comparison is inconclusive
+                # about the decoded numerical pixel array.
+                pixel_diagnostics[sop] = {
+                    "source_transfer_syntax": source_ts,
+                    "retrieved_transfer_syntax": returned_ts,
+                    "requested_uncompressed_transfer_syntax":
+                        EXPECTED_RETRIEVAL_TRANSFER_SYNTAX,
+                    "source_pixel_length": len(original.PixelData),
+                    "retrieved_pixel_length": len(parsed.PixelData),
+                    "source_pixel_sha256": expected_pixel[sop],
+                    "retrieved_pixel_sha256": sha256(parsed.PixelData).hexdigest(),
+                    "encoded_pixel_bytes_equal": pixel_matches,
+                    "retrieval_is_expected_uncompressed_encoding":
+                        returned_ts == EXPECTED_RETRIEVAL_TRANSFER_SYNTAX,
+                }
                 returned_digests[sop] = sha256(returned).hexdigest()
                 returned_pixel_digests[sop] = sha256(parsed.PixelData).hexdigest()
                 exact_byte_match[sop] = returned_digests[sop] == expected_digests[sop]
@@ -314,10 +339,20 @@ def run_evaluation(base_url: str) -> dict:
             else:
                 raise InvalidInput("Source amendment did not invalidate adapter binding")
 
+            encoding_verified = all(
+                p["encoded_pixel_bytes_equal"]
+                and p["retrieval_is_expected_uncompressed_encoding"]
+                for p in pixel_diagnostics.values()
+            )
+            qido_mime_verified = study_mime == instance_mime == "application/dicom+json"
             return {
-                "evaluation_status": ("technical_roundtrip_observed"
-                                      if study_mime == instance_mime == "application/dicom+json"
-                                      else "technical_roundtrip_with_qido_mime_deviation"),
+                "evaluation_status": (
+                    "technical_roundtrip_observed_with_standards_hold"
+                    if encoding_verified else
+                    "HOLD_uncompressed_pixel_or_transfer_syntax_mismatch"
+                ),
+                "technical_evaluation_passed": encoding_verified,
+                "clinical_or_full_dicomweb_approval": False,
                 "candidate": "knopkem/pacsnode standalone",
                 "source_commit": "e9b4334477a66967d290add9e0b9afa068f59dc0",
                 "backend_url": "127.0.0.1 loopback only",
@@ -339,6 +374,10 @@ def run_evaluation(base_url: str) -> dict:
                 "sop_original_sha256": expected_digests,
                 "sop_returned_sha256": returned_digests,
                 "sop_pixel_sha256": returned_pixel_digests,
+                "pixel_diagnostics": pixel_diagnostics,
+                "uncompressed_pixel_integrity_passed": encoding_verified,
+                "source_and_retrieved_objects_byte_identical":
+                    all(exact_byte_match.values()),
                 "exact_original_object_preserved": exact_byte_match,
                 "first_party_wrong_case_rejected": case_isolated_at_adapter,
                 "first_party_amendment_rejected": amendment_blocks_first_party_binding,
@@ -370,13 +409,21 @@ def main() -> int:
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(json.dumps(evidence, indent=2, sort_keys=True) + "\n",
                           encoding="utf-8")
-        if evidence["qido_media_type_conformant"]:
-            print("PASS: technical real-backend fictional STOW/QIDO/WADO roundtrip")
-        else:
-            print("TECHNICAL ROUNDTRIP: HOLD QIDO MIME standards gate; "
-                  "backend returns application/json not application/dicom+json")
+        if evidence["technical_evaluation_passed"]:
+            print("TECHNICAL TEST COMPLETE: uncompressed fictional pixel bytes match.")
+            if not evidence["qido_media_type_conformant"]:
+                print("STANDARDS HOLD: QIDO response used application/json "
+                      "rather than application/dicom+json")
+            if not evidence["source_and_retrieved_objects_byte_identical"]:
+                print("NOTE: complete DICOM file bytes were reserialized, "
+                      "even though uncompressed pixel bytes matched.")
+            print("No backend adoption, patient access control or clinical clearance.")
+            print("Evidence file:", output)
+            return 0
+        print("HOLD: uncompressed pixel integrity or transfer syntax mismatch; "
+              "inspect the bounded JSON diagnostics",file=sys.stderr)
         print("Evidence file:", output)
-        return 0
+        return 1
     except Exception as error:
         # Never dump binary objects, headers, server responses or patient data.
         print("HOLD: isolated backend evaluation failed:", str(error)[:280], file=sys.stderr)
