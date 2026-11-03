@@ -135,7 +135,7 @@ class SourceVersionHTTPTests(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertEqual(len(index["sources"]), 1)
             self.assertEqual(len(index["source_reported_assertions"]), 1)
-            self.assertEqual(index["source_reported_assertions"][0]["source_line"], 7)
+            self.assertEqual(index["source_reported_assertions"][0]["source_line"], 8)
             self.assertEqual(index["source_reported_assertions"][0]["reported_state"], "not-reported")
             self.assertFalse(index["clinical_interpretation"])
             self.assertFalse(index["research_review_invalidation_integrated"])
