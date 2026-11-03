@@ -20,11 +20,11 @@ Exact source/version names; current and historical original focus; keyboard scro
 - [x] Recover ZIPs, verify checksums and reconstruct the full base Git tree in an isolated local checkout.
 - [x] Add #353's computed-name, focus/return and original-scroll browser assertions using the exact donor reading helper; retain the two current document-disclosure assertions in its caller immediately before execution.
 - [x] Pass the existing fictional credential fixture to that helper, restoring its original grants in finally.
-- [ ] Publish tests-only checkpoint and observe expected missing accessible-name/focus failure in actual built-browser acceptance.
+- [x] Publish tests-only checkpoint and observe expected missing accessible-name/focus failure in actual built-browser acceptance.
 
 ## Task 2: Reuse source-owner implementation
-- [ ] Transfer App-local focus bookkeeping and the callback's trigger argument, preserving all current document and review wiring.
-- [ ] Add source/version/line/finding accessible names and focus/scroll styles. Preserve the current document empty-state message.
+- [x] Transfer App-local focus bookkeeping and the callback's trigger argument, preserving all current document and review wiring.
+- [x] Add source/version/line/finding accessible names and focus/scroll styles. Preserve the current document empty-state message.
 - [ ] Re-run exact-head client/build/rights and actual PostgreSQL/FastAPI/Chromium journey; inspect retained artifact, source hashes and narrow-screen capture.
 - [ ] Record source pins, actual failures/results and limitations in the existing continuity record/backlog and PR. Keep draft/unmerged/undeployed.
 
@@ -32,3 +32,7 @@ Exact source/version names; current and historical original focus; keyboard scro
 Base ZIP SHA-256: 622b5394eb535b7072f4c7cbdb2adf649256665e536eb7dabe0d8548d6c90e39.
 Donor ZIP SHA-256: 2cf23c43955e86e19cf8fbec3d3c901a8dbd609d145d3b526ec782ecca945e3b.
 Self-review only; no independent reviewer available in this execution. Full backend/restore acceptance belongs to #377, not this frontend delta. Hosted child acceptance is pending at this checkpoint.
+
+Observed tests-first head 1753aec4c8f5885d294aded1fcd12758d009f5b4: hosted run 41712366005 passed all 415 client tests and build/rights, then failed at the missing computed original-action name `Inspect original v1: DOC-ONE`. Downloaded artifact 13268470956 SHA-256 a4a00fe56faec49d7b9852e1086294ff72227cc7258c91ce8893c68873eb64d1 and commit marker matched. This is the observed integration regression, not a donor result.
+
+Local npm acquisition timed out at 25 seconds. The full local client attempt passed 403 controls but two renderer files could not load React (evidence-continuity-panel.test.mjs and question-evidence-panel.test.mjs). Global TypeScript was 5.8.3 rather than locked 5.9.3; no local full-build acceptance is claimed. All 13 local rights regression tests and the bounded data-entrypoint audit passed. Exact-head final hosted acceptance remains required.
