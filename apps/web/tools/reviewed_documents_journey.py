@@ -63,6 +63,7 @@ def exercise(cd,patient_id,directory,token,credentials,write_grants,artifacts,re
     assert path.read_bytes()==raw,'Browser download changed original PDF bytes'
     cd.command('Emulation.setDeviceMetricsOverride',{'width':390,'height':844,'deviceScaleFactor':1,'mobile':False})
     assert cd.evaluate('document.documentElement.scrollWidth<=window.innerWidth+1')
+    cd.evaluate("document.querySelector('[data-testid=reviewed-preview]').scrollIntoView({block:'start'})")
     image=cd.command('Page.captureScreenshot',{'format':'png'});(artifacts/'h1-reviewed-document-mobile.png').write_bytes(base64.b64decode(image['data']))
     restart_api()
     assert operator(prefix+'/'+first)['revisions']==saved['revisions']
