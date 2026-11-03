@@ -477,6 +477,19 @@ class FollowthroughChecks:
         assert 'Source changed: recorded work requires reassessment.' in first_work['text']
         assert 'Fictional second question coordinator' in second_work['text']
         assert any(row['recorded'] == 0 for row in question_work)
+        # Inspect the actual per-question work layout, not only the older
+        # case-wide task card. These are fictional, permission-scoped views.
+        screenshots.mkdir(parents=True, exist_ok=True)
+        for width, height, suffix in ((1440, 1100, 'desktop'), (390, 844, 'mobile')):
+            self.cd.command('Emulation.setDeviceMetricsOverride', {
+                'width': width, 'height': height, 'deviceScaleFactor': 1, 'mobile': False})
+            self.cd.wait('window.innerWidth===' + str(width), 'question-linked agenda viewport')
+            self.cd.evaluate("document.querySelector('[data-testid=second-opinion-agenda]').scrollIntoView({block:'start'})")
+            assert self.cd.evaluate('document.documentElement.scrollWidth<=window.innerWidth+1'), 'Question-linked agenda must not overflow horizontally'
+            image = self.cd.command('Page.captureScreenshot', {'format': 'png'})
+            (screenshots / ('h1-second-opinion-task-context-' + suffix + '.png')).write_bytes(base64.b64decode(image['data']))
+        self.cd.command('Emulation.setDeviceMetricsOverride', {
+            'width': 1440, 'height': 1100, 'deviceScaleFactor': 1, 'mobile': False})
         second_opinion_text = self.cd.evaluate("document.querySelector('[data-testid=second-opinion-preparation]').textContent")
         assert 'create a referral' in second_opinion_text and 'confirm an appointment' in second_opinion_text
         assert 'Do not treat the earlier preparation as current.' in second_opinion_text
