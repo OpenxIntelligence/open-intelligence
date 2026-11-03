@@ -94,8 +94,37 @@ were skipped because this intentionally failing baseline stopped the job.
 
 The baseline web workflow passed. Its result is not a substitute for rerunning
 both workflows with the production repair. The five actual-database test methods
-remain byte-identical between the failing baseline and the repair candidate;
-only the two successful ordering expectations change to include the new check.
+were byte-identical at the first repaired candidate,
+`319e68b1445cb4547db56bb82d173ce47f88274b`; only the two successful ordering
+expectations changed to include the new check. A later test-only error-contract
+correction is recorded below.
+
+## Initial repaired candidate and test-expectation correction
+
+The [first repaired API run](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41709538488/job/126173678131)
+executed 621 methods in 714.711 seconds with four assertion failures, no errors
+and no skipped test methods. The status/unchanged-rows checks passed for all ten
+new database scenarios. Four then failed an incorrect exact-detail expectation:
+missing import, patient, patient-read or image-original grants return the existing
+`{"detail":"Patient unavailable"}` envelope through `records_authorized`.
+The tests had assumed the `Image unavailable` envelope used for actor,
+organization and purpose drift. The three ordering subcases passed.
+
+The test-only correction supplies the actual grant-denial envelope to the helper
+and socket assertion. It retains every status, unchanged-row, no-store,
+no-receipt, no-sensitive-content and positive-retry assertion. The production
+fix remains unchanged. The failing baseline stopped at the earlier status/row
+assertion, so this later expected-detail correction does not remove the original
+defect detector. Retry assertions after the four failing checks, reference
+regressions, and all recovery gates were not completed by that failed run and
+must pass at the corrected final head.
+
+The first repaired [web run](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41709538769)
+passed 297 client tests, build and actual PostgreSQL/FastAPI/Chromium acceptance.
+Artifact 13266047502 was downloaded and its SHA-256 recomputed as
+`0b428ab36b8cffbdf8253f6f45dcd924ae96d4a7c10ffc32e6a0759e999da87b`.
+Its commit marker and all 465 source blobs matched that candidate. It is retained
+as an earlier checkpoint; the corrected final head requires its own verification.
 
 The final tested commit, completed workflow results, artifact hashes and
 canonical readback belong in the PR verification receipt and the existing

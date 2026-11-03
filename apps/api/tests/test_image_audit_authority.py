@@ -48,7 +48,8 @@ class AuditTailObservation:
 
 
 class ImageAuditAuthorityTests(AuditTailObservation, disclosure.ImageDisclosureAuthorityTests):
-    def withheld_after_append(self, base, path, event, change, *, raw=None, status=404):
+    def withheld_after_append(self, base, path, event, change, *, raw=None, status=404,
+                             unavailable_detail="Image unavailable"):
         initial = copy.deepcopy(self.creds)
         before = self.custody_state()
         reads_before = self.read_events()
@@ -64,7 +65,7 @@ class ImageAuditAuthorityTests(AuditTailObservation, disclosure.ImageDisclosureA
         self.assertEqual((response[0], unchanged), (status, True))
         self.assert_withheld(response, status, reads_before)
         self.assertEqual(response[1], {"detail": {
-            404: "Image unavailable",
+            404: unavailable_detail,
             401: "Authentication required",
             503: "Access service unavailable",
         }[status]})
@@ -80,7 +81,7 @@ class ImageAuditAuthorityTests(AuditTailObservation, disclosure.ImageDisclosureA
             before = self.withheld_after_append(
                 base, path, "image.original_imported", {
                     "actions": [a for a in self.creds[0]["actions"] if a != "image_import"],
-                }, raw=raw)
+                }, raw=raw, unavailable_detail="Patient unavailable")
             status, image, _ = disclosure.read_image_route(base, path, raw=raw)
             self.assertEqual((status, image["result"]), (201, "imported"))
             after = self.custody_state()
@@ -99,7 +100,8 @@ class ImageAuditAuthorityTests(AuditTailObservation, disclosure.ImageDisclosureA
             self.assertEqual((status, amendment["version"]), (201, 2))
             path = self.url(patient) + "/" + amendment["source_id"] + "/images"
             before = self.withheld_after_append(
-                base, path, "image.source_linked", {"patient_ids": []}, raw=raw)
+                base, path, "image.source_linked", {"patient_ids": []}, raw=raw,
+                unavailable_detail="Patient unavailable")
             status, image, _ = disclosure.read_image_route(base, path, raw=raw)
             self.assertEqual((status, image["result"], image["image_id"]),
                              (201, "linked", image_id))
@@ -145,7 +147,11 @@ class ImageAuditAuthorityTests(AuditTailObservation, disclosure.ImageDisclosureA
             for name, change, status in changes:
                 with self.subTest(authority=name):
                     before = self.withheld_after_append(
-                        base, path, "image.original_read_authorized", change, status=status)
+                        base, path, "image.original_read_authorized", change, status=status,
+                        # Grant denial comes from the existing shared authority
+                        # helper; context drift is mapped by the image route.
+                        unavailable_detail=("Patient unavailable" if name == "patient_read"
+                                            else "Image unavailable"))
                     code, body, headers = disclosure.read_image_route(base, path)
                     self.assertEqual((code, body), (200, raw))
                     self.assertEqual(headers["Cache-Control"], "no-store")
@@ -183,7 +189,7 @@ class SocketImageAuditAuthorityTests(
                 self.assertEqual([kind for kind, _ in observed], ["image.original_read_authorized"])
                 unchanged = self.durable_state() == before
                 self.assertEqual((result[0], unchanged), (404, True))
-                self.assertEqual(result[1], {"detail": "Image unavailable"})
+                self.assertEqual(result[1], {"detail": "Patient unavailable"})
                 self.assert_withheld(result, 404, before)
                 self.assertEqual(len(calls), calls_before + 1)
                 self.read_socket_original(base, path)
