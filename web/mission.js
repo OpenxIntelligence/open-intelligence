@@ -177,11 +177,30 @@
     renderGuardrails(mission);
   }
 
+  // M-3: same denial sentence as app.js clearCaseViews callers. An empty
+  // picker means no granted case is shown (grantless actor); every
+  // mission-owned element must clear rather than keep prior-case quotes.
+  const DENIED_NO_GRANTED_CASE =
+    "No case data shown: this fictional actor holds no active grant.";
+
+  function clearMissionForEmptyPicker() {
+    requestSequence++; // Drop any in-flight mission response for a prior case.
+    delete section.dataset.caseId;
+    section.dataset.workflowStatus = "unavailable";
+    status.textContent = DENIED_NO_GRANTED_CASE;
+    status.className = "pill pill-neutral";
+    empty(summary, DENIED_NO_GRANTED_CASE);
+    empty(known, DENIED_NO_GRANTED_CASE);
+    empty(unresolved, DENIED_NO_GRANTED_CASE);
+    empty(changes, DENIED_NO_GRANTED_CASE);
+    empty(actions, DENIED_NO_GRANTED_CASE);
+    guardrails.replaceChildren();
+  }
+
   async function refreshMission() {
     const caseId = picker.value;
     if (!caseId) {
-      status.textContent = "No synthetic cases found";
-      status.className = "pill pill-neutral";
+      clearMissionForEmptyPicker();
       return;
     }
     const sequence = ++requestSequence;
