@@ -1,0 +1,1 @@
+PASS: React/Vite -> actual FastAPI/PostgreSQL 16; identity/create/retry; exact case/source read, immutable amendment history, unreviewed quoted text and rights revocation; cross-organization isolation, credential expiry/reload, keyboard landmarks and mobile layout. Independently fictional records only; no clinical workflow or production identity claim.

@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "apps/web/tools/browser_journey.py", line 181, in <module>
+    if __name__=='__main__':main()
+                            ^^^^^^
+  File "apps/web/tools/browser_journey.py", line 115, in main
+    check_source_presentation(cd,pid,1)
+  File "apps/web/tools/workspace_ux_checks.py", line 87, in check_source_presentation
+    assert not presentation_failures, '; '.join(presentation_failures)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Clearing filters must return keyboard focus to the source filter; Overview must not claim no records are loaded while retaining source records
