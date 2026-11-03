@@ -1,5 +1,34 @@
 # Open Intelligence H1 patient registry API
 
+## Exact manual-passage references (dependent candidate)
+
+`GET /v1/patients/{patient_id}/cases/{case_id}/documents/{source_id}/selections/{revision_id}/{selection_key}`
+resolves one saved human-selected passage through the existing source owner.
+The `oi.reviewed-document-selection/1` envelope contains an immutable `anchor`
+and its SHA-256 (canonical sorted compact UTF-8 JSON). The anchor binds patient,
+case, original source/version/hash, frozen extraction method/hash, annotation
+revision/review hash, selecting actor/time, key, selected state, literal quotation,
+line and physical PDF page. Text pages and non-PDF extraction hashes are null.
+
+Source state, latest annotation revision and selection freshness stay outside the
+anchor. A correction or source amendment marks an earlier reference
+`selection_reassessment_required` without changing its quote or hash. A missing
+revision/key never falls back to a newer selection. All selections remain
+`user_selected` / `not_performed`; currentness is not clinical verification.
+
+Each read independently requires patient, source-read and original-read authority;
+serialization and source-owned access audit occur inside the locked binding
+transaction. Original credentials are checked again after audit persistence.
+Denied reads disclose no passage and roll back their access receipt. The hash is
+not a capability token: a future question/report consumer must re-resolve the
+reference under its own authority and freshness rules.
+
+This is a read-only prerequisite for manual-passage → canonical-question/report
+integration. It does not create questions, promote annotations into source-authored
+facts, execute a model, grant clinical approval or complete that broader workflow.
+No database migration or dependency is added. Exact-head acceptance and limitations
+belong in the dependent draft PR and the existing convergence gate.
+
 > **Pinned-main reconciliation:** #354 remains the document owner at `7b16a9a900737f07adb03e35362922c886424e9b`. This dependent source checkpoint preserves that concurrent update, includes accepted main `c4798ae` and records #374 ancestry. See the [convergence gate](../../docs/engineering/H1_EVIDENCE_CONVERGENCE_MERGE_GATE.md) for the exact composition and its separate verification requirements. The earlier checkpoint below retains its original scope.
 
 This is the FastAPI/PostgreSQL 16 composition root for [issue #112](https://github.com/OpenxIntelligence/open-intelligence/issues/112).

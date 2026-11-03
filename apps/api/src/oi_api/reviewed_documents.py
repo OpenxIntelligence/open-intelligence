@@ -5,6 +5,7 @@ never inserted as source-authored assertions. PDF extraction precedes locks.
 """
 import hashlib
 import json
+import re
 import uuid
 
 from open_intelligence.document_intake import (
@@ -22,6 +23,41 @@ def canonical(value):
 
 def fingerprint(value):
     return hashlib.sha256(canonical(value).encode()).hexdigest()
+
+
+def selection_reference(doc, patient_id, case_id, revision_id, selection_key):
+    """Project one exact selection from an integrity-validated source document.
+
+    This pure projection grants no access. Call only after the source owner's
+    locked binding and _load checks; consumers must re-resolve under authority.
+    Mutable freshness is deliberately outside the immutable anchor hash.
+    """
+    if (type(revision_id) is not str or re.fullmatch(r"ANN-[A-F0-9]{32}", revision_id) is None
+            or type(selection_key) is not str
+            or re.fullmatch(r"[a-z][a-z0-9_-]{0,59}", selection_key) is None):
+        raise PatientRegistryError("Invalid document selection reference")
+    if doc["case_id"] != case_id:
+        raise PatientRegistryDenied("Document selection unavailable")
+    revision = next((r for r in doc["revisions"] if r["revision_id"] == revision_id), None)
+    finding = next((f for f in revision["findings"] if f["key"] == selection_key), None) if revision else None
+    if finding is None:
+        raise PatientRegistryDenied("Document selection unavailable")
+    preview = doc["preview"]
+    anchor = dict(patient_id=patient_id, case_id=case_id, source_id=doc["source_id"],
+        document_id=doc["document_id"], source_version=doc["version"], original_sha256=doc["sha256"],
+        extraction_method=preview["extraction_method"], extraction_sha256=preview.get("extraction_sha256"),
+        annotation_revision_id=revision_id, annotation_revision=revision["revision"],
+        review_sha256=revision["review_sha256"], selected_by=revision["actor"], selected_at=revision["created_at"],
+        selection_key=selection_key, selected_state=finding["state"], quote=finding["quote"],
+        line=finding["line"], page=preview["lines"][finding["line"]-1].get("page"),
+        classification_origin="user_selected", clinical_review="not_performed")
+    latest = doc["revisions"][-1]["revision_id"]
+    current = doc["state"] == "current" and revision_id == latest
+    return dict(contract="oi.reviewed-document-selection/1", anchor=anchor,
+        anchor_sha256=fingerprint(anchor), source_state=doc["state"],
+        latest_annotation_revision_id=latest,
+        selection_state="current_unreviewed_selection" if current else "selection_reassessment_required",
+        synthetic=True, clinical_approval=False, model_execution=False)
 
 
 class ReviewedDocuments(PostgresSourceVersions):
@@ -190,6 +226,26 @@ class ReviewedDocuments(PostgresSourceVersions):
                 event="source.original_read_authorized" if original else "source.document_read_authorized",
                 receipt_id=receipt_id,recheck_authority=recheck_authority,source_id=source_id,
                 sha256=doc["sha256"] if doc else None)
+            return response
+
+    def read_selection(self, patient_id, case_id, source_id, revision_id, selection_key, *,
+                       organization, actor, purpose, recheck_authority, prepare_response):
+        """Disclose one exact manual passage under fresh original-read authority."""
+        with self.registry.transaction():
+            binding = self._binding(patient_id, case_id, organization, purpose)
+            doc = self._load(case_id, source_id)
+            result = selection_reference(doc, patient_id, case_id, revision_id, selection_key)
+            receipt_id = "ACCESS-" + uuid.uuid4().hex.upper()
+            result["access_receipt_id"] = receipt_id
+            response = prepare_response(result)
+            self._read_receipt(patient_id, case_id, actor=actor, purpose=purpose,
+                binding_revision=binding, event="source.document_selection_read_authorized",
+                receipt_id=receipt_id, recheck_authority=recheck_authority,
+                source_id=source_id, annotation_revision_id=revision_id,
+                selection_key=selection_key, anchor_sha256=result["anchor_sha256"])
+            # An audit callback can change external authority too. Withhold the
+            # prepared response and roll back the receipt if that happened.
+            recheck_authority()
             return response
 
     def correct(self, patient_id, case_id, source_id, payload, *, organization, actor,
