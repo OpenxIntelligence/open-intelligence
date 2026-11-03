@@ -19,6 +19,8 @@ import re
 import unicodedata
 
 from .followthrough import OPEN_STATUSES
+from .source_provenance import assertion_provenance, source_provenance
+from .store import InvalidInput
 
 FICTIONAL_BANNER = (
     "Fictional demo report. This is not a real patient file, "
@@ -64,6 +66,10 @@ OPERATIONAL_PLAIN = {
 # Fixed detail skeletons. Recorded values fill the slots; the surrounding
 # words are report voice and are scanned by test alongside the framing.
 DETAIL_FINDING = "Finding {finding_key}; source states: {plain} ({certainty})."
+DETAIL_MANUAL_FINDING = (
+    "Finding {finding_key}; user-selected status: {certainty}. "
+    "Passage and status manually selected. Clinical review not performed."
+)
 TIMELINE_ENTRY_TEXT = (
     "On {event_date}, a {kind} report ({document_id}, version {version}) "
     "was recorded. It was finalized on {issued_at}."
@@ -148,16 +154,51 @@ def _section(section_id: str, title: str, summary: str, items: list[dict],
     }
 
 
+def _manual_finding_reference(assertion: dict, source: dict | None) -> dict | None:
+    """Retain intake provenance without relabeling a manual selection as fact.
+
+    The source owner supplies this snapshot's frozen anchors. Shared validators
+    check its receipt association; this projection does not reparse the PDF or
+    authenticate a consistently forged source snapshot.
+    """
+    origin = source_provenance(source or {})
+    line = assertion.get("source_line")
+    if origin and (type(line) is not int or not 1 <= line <= 512):
+        raise InvalidInput("Invalid manual source line")
+    provenance = assertion_provenance(assertion, origin, line)
+    if not provenance:
+        return None
+    if (source is None or source.get("state") != "current" or
+            type(assertion.get("certainty")) is not str or
+            assertion["certainty"] not in CERTAINTY_PLAIN):
+        raise InvalidInput("Manual finding requires a current source and recorded status")
+    for value in (assertion.get("id"), assertion.get("source_version_id"), source.get("version")):
+        if type(value) is not int or not 1 <= value <= 9223372036854775807:
+            raise InvalidInput("Invalid manual source identity")
+    digest = source.get("sha256")
+    if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+        raise InvalidInput("Invalid original source digest")
+    return {
+        "assertion_id": assertion["id"], "source_version_id": assertion["source_version_id"],
+        "document_id": source["document_id"], "document_version": source["version"],
+        "sha256": digest, "source_line": line, **provenance,
+    }
+
+
 def _overview(state: dict, current: list[dict], stale: list[dict]) -> dict:
     case = state["case"]
     open_count = sum(1 for item in state.get("questions", []) if item.get("state") == "open")
     superseded = [item for item in state.get("sources", []) if item.get("state") != "current"]
     quarantined = list(state.get("quarantines", []))
+    sources = {source["id"]: source for source in state.get("sources", [])}
+    manual_sources = any("document_intake" in source for source in current)
+    statement_label = ("recorded passage", "recorded passages") if manual_sources else (
+        "reported statement", "reported statements")
     parts = [
         f"This is a plain-language listing for fictional case {case['case_id']}. "
         "It repeats the case record only.",
         f"The record holds {_plural(len(current), 'current source document', 'current source documents')} "
-        f"with {_plural(len(state.get('assertions', [])), 'reported statement', 'reported statements')}, "
+        f"with {_plural(len(state.get('assertions', [])), *statement_label)}, "
         f"{_plural(open_count, 'open question', 'open questions')}, and "
         f"{_plural(len(state.get('options', [])), 'recorded option', 'recorded options')}.",
     ]
@@ -182,9 +223,10 @@ def _overview(state: dict, current: list[dict], stale: list[dict]) -> dict:
         )
     items = []
     for assertion in state.get("assertions", []):
+        reference = _manual_finding_reference(assertion, sources.get(assertion.get("source_version_id")))
         certainty = assertion.get("certainty", "unknown")
         plain = CERTAINTY_PLAIN.get(certainty, "unknown")
-        items.append({
+        item = {
             "text": _visible_record_text(assertion.get("quote", "")),
             "detail": DETAIL_FINDING.format(
                 finding_key=_visible_record_text(assertion.get("finding_key")), plain=plain,
@@ -193,7 +235,26 @@ def _overview(state: dict, current: list[dict], stale: list[dict]) -> dict:
                 f"Source version #{assertion.get('source_version_id')}, "
                 f"line {assertion.get('source_line')}."
             ),
-        })
+        }
+        if reference:
+            _check_framing(DETAIL_MANUAL_FINDING)
+            item["detail"] = DETAIL_MANUAL_FINDING.format(
+                finding_key=_visible_record_text(assertion.get("finding_key")), certainty=certainty)
+            anchor = (f"physical page {reference['source_page']}, page line {reference['page_line']}, "
+                      f"global extraction line {reference['source_line']}"
+                      if reference.get("text_origin") == "pdf_extraction" else
+                      f"line {reference['source_line']}")
+            citation = (
+                f"Source version #{reference['source_version_id']} "
+                f"({_visible_record_text(reference['document_id'])}@{reference['document_version']}); "
+                f"{anchor}; original SHA-256: {reference['sha256']}; "
+                f"transcription review SHA-256: {reference['transcription_review_sha256']}"
+            )
+            if reference.get("text_origin") == "pdf_extraction":
+                citation += (f"; extraction SHA-256: {reference['extraction_sha256']}"
+                             f"; page text SHA-256: {reference['page_text_sha256']}")
+            item.update(citation=citation + ".", source_reference=reference)
+        items.append(item)
     return _section(
         "overview",
         "Overview: what the record contains",

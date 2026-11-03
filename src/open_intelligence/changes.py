@@ -66,6 +66,10 @@ def changes_since_review(store: CaseStore, case_id: str, since_event_id: int | N
         if anchor is None:
             raise InvalidInput("Case has no events to anchor on")
         after = [event for event in events if event["id"] > anchor["id"]]
+        from .document_intake import classification_provenance
+        intake_receipts = store._document_intake_receipts(case_id)
+        def provenance(source_id: int) -> dict:
+            return classification_provenance(intake_receipts[source_id]) if source_id in intake_receipts else {}
 
         def source_row(source_id: int) -> dict | None:
             row = store.db.execute(
@@ -74,9 +78,19 @@ def changes_since_review(store: CaseStore, case_id: str, since_event_id: int | N
             return dict(row) if row else None
 
         def findings_for(source_id: int) -> list[dict]:
-            return [dict(row) for row in store.db.execute(
-                "SELECT finding_key,certainty,quote,source_line FROM assertions WHERE source_version_id=? ORDER BY finding_key",
+            findings = [dict(row) for row in store.db.execute(
+                "SELECT source_version_id,finding_key,certainty,quote,source_line FROM assertions WHERE source_version_id=? ORDER BY finding_key",
                 (source_id,)).fetchall()]
+            store._annotate_source_assertions(findings, intake_receipts)
+            return findings
+
+        def reported_finding(item: dict) -> dict:
+            result = {"finding_key": item["finding_key"], "reported_state": item["certainty"],
+                      **provenance(item["source_version_id"])}
+            if item.get("text_origin") == "pdf_extraction":
+                result.update({key: item[key] for key in
+                               ("quote", "source_line", "source_page", "page_line", "page_text_sha256")})
+            return result
 
         new_sources: list[dict] = []
         amendments: list[dict] = []
@@ -90,6 +104,7 @@ def changes_since_review(store: CaseStore, case_id: str, since_event_id: int | N
                 findings = findings_for(details["source_id"])
                 if details.get("amends_id") is None:
                     new_sources.append({
+                        **provenance(row["id"]),
                         "event_id": event["id"],
                         "occurred_at": event["occurred_at"],
                         "source_id": row["id"],
@@ -100,7 +115,7 @@ def changes_since_review(store: CaseStore, case_id: str, since_event_id: int | N
                         "issued_at": row["issued_at"],
                         "received_at": row["received_at"],
                         "reported_findings": [
-                            {"finding_key": f["finding_key"], "reported_state": f["certainty"]}
+                            reported_finding(f)
                             for f in findings
                         ],
                     })
@@ -109,6 +124,9 @@ def changes_since_review(store: CaseStore, case_id: str, since_event_id: int | N
                     diff = _finding_diff(
                         findings_for(details["amends_id"]) if previous else [], findings)
                     amendments.append({
+                        **provenance(row["id"]),
+                        **({"previous_classification_origin": "user_selected"}
+                           if details["amends_id"] in intake_receipts else {}),
                         "event_id": event["id"],
                         "occurred_at": event["occurred_at"],
                         "source_id": row["id"],

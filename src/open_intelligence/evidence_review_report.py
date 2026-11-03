@@ -158,9 +158,25 @@ class EvidenceReviewReport:
                     f"  Reported event date: {_quoted(p['event_date'])}",
                     f"  Report issued: {_quoted(p['issued_at'])}",
                     f"  Workspace received: {_quoted(p['received_at'] or 'not recorded')}",
-                    f"  Source-reported state: {_quoted(p['reported_state'])}",
+                    (f"  User-selected status: {_quoted(p['reported_state'])}"
+                     if p.get("classification_origin") == "user_selected"
+                     else f"  Source-reported state: {_quoted(p['reported_state'])}"),
+                    *([
+                        f"  Classification origin: {_quoted(p['classification_origin'])}",
+                        f"  Annotation method: {_quoted(p['annotation_method'])}",
+                        f"  Clinical review: {_quoted(p['clinical_review'])}",
+                        f"  Transcription review SHA-256: {p['transcription_review_sha256']}",
+                    ] if "classification_origin" in p else []),
+                    *([
+                        f"  Text origin: {_quoted(p['text_origin'])}",
+                        f"  Extraction SHA-256: {p['extraction_sha256']}",
+                        f"  Physical PDF page: {p['source_page']}; page line: {p['page_line']}; extraction line: {p['source_line']}",
+                        f"  Page text SHA-256: {p['page_text_sha256']}",
+                    ] if p.get("text_origin") == "pdf_extraction" else []),
                     f"  Original statement: {_quoted(p['original_statement'])}",
                     f"  Evidence ID: {_quoted(e['knowledge_id'])}",
+                    f"  Evidence content item: {_quoted(e['content_item'])}",
+                    f"  Content item basis: {_quoted(e['content_item_basis'])}",
                     f"  Public reference: {_quoted(e['public_identifier'])}",
                     f"  Evidence version: {_quoted(e['version'])}; date: {_quoted(e['source_date'])}",
                     f"  Evidence text SHA-256: {e['evidence_text_sha256']}",

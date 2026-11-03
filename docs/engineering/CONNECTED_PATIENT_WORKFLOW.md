@@ -1,5 +1,51 @@
 # Connected patient workflow integration — 2 November 2026 local / 3 November UTC
 
+## Current increment: reviewed PDF provenance through governed reports
+
+This increment builds on #210 at `9735414c947c211ab20154638179d0be8ff2db32`, selectively incorporates #203 at `f9ba8d66b56a7d6669ef0ffce902af6565e1b477` for content-specific evidence rights, and composes the PDF/patient-record behavior from #215 at `3be1106b5cd34523c4746e2df6f123048beb5659`. All three source PRs remain separate, draft and unmerged. The #210 source artifact was checksum verified and all 215 files matched its official Git blobs; all 223 local #215 files matched their pinned Git blobs before composition.
+
+The patient-facing value is continuity: one reviewed document can remain traceable through the clinical context, Patient World Model, investigation, evidence comparison, readable report, governed evidence report and review history. The implementation reuses existing patient, EHR, LIS, source, evidence, question, report, receipt and follow-through owners.
+
+### Source and report contracts
+
+- Authored structured-text sources retain their original four-field prepared source reference: assertion ID, source-version ID, original SHA-256 and global line.
+- Manually transcribed text additionally retains `classification_origin`, `annotation_method`, `clinical_review` and `transcription_review_sha256`. The status is user-selected and clinical review is `not_performed`.
+- PDF passages additionally retain `text_origin`, `extraction_sha256`, `source_page`, `page_line` and `page_text_sha256`. An extraction line is not represented as a line in the original PDF bytes.
+- The existing World Model receipt/anchor validation is shared through `source_provenance.py`; the projection contract is preserved. Knowledge context, Composer alignment, quotation packets, rendered reports, clinical source/note links and prepared-report receipts carry the same provenance.
+- Readable local reports display manual status and PDF source coordinates. The governed report binds the richer patient reference through existing packet/body hashes, content-specific rights checks, independent export/review-return permissions and final context rechecks.
+- `CaseStore.add_review_receipt` derives the current reference from original assertions and the immutable intake receipt/rendition under its existing `BEGIN IMMEDIATE`. A missing, relabeled, mismatched, extraneous or malformed field is rejected before receipt/event persistence. It does not open a nested `state()` transaction.
+- Receipt events retain reference/hash metadata, not the report body or quoted clinical content. Report preparation and return remain nonterminal. A final permission failure withholds the report body while preserving an already committed preparation receipt.
+
+### Composition decisions
+
+The existing #210 identity, authority, clinical integration and follow-through methods remain. The PDF child tables, immutable extraction/receipt behavior, UI and pinned `pypdf==6.21.4` dependency are reused from #215. No new ledger, clinical interpretation, report schema or source store is added; the existing source schema gains only the previously tested PDF/intake child tables required by that source owner.
+
+The numeric Composer retains #210's rights-broker fingerprint binding and #215's exclusion of manual numerical passages from its qualified calculation contract. Existing text Unicode source rendering, case/race guards, readable-report export and follow-through routes are preserved. The local HTTP host does not expose the governed report service.
+
+Five obsolete live-research CI steps were present in the #210 baseline. The existing no-download guard first failed on them. This candidate replaces them with offline boundary tests; all five guard regressions then passed. No patient-data acquisition command was executed. This branch correction does not close the separate historical repository/artifact audit or change main.
+
+### Acceptance and verification
+
+`tests/test_pdf_governed_report.py` uses the existing canonical patient/EHR/LIS fixture, then creates an independently authored two-page PDF in the same `LinkedLabCaseStore`. It exercises manual/PDF provenance through clinical context, Composer, World Model, content-specific permitted evidence, exact quotation packet, governed report and persisted nonterminal receipt. It also covers manual plain text and legacy authored sources; missing/mismatched/relabeled provenance; actual-source verification at receipt write; source amendment; independent actor/purpose/export restrictions; late evidence-rights withdrawal; and preserved sources/receipts after close/reopen.
+
+The meaningful red phase exposed both loss of manual provenance and a legacy-only prepared reference being accepted for a real PDF. The initial report tests and direct downgrade test passed after the contract/write changes. An independent alignment test also exposed original SHA/document/version disagreement between knowledge and Composer. That correction passed its regression, and all 12 new governed PDF-report tests passed in 21.020 seconds. The focused 38-test readable-report/HTTP suite and 41-test intake/Composer/HTTP suite passed.
+
+Final combined local verification: **797 Python/domain/HTTP tests passed in 324.468 seconds**, with no failures or unclosed-database ResourceWarnings in the captured run; **144 JavaScript tests passed**, zero failed or skipped, in 4.415 seconds. Commands: `PYTHONPATH=src:tests python -m unittest discover -s tests -p 'test_*.py' -v` using the hash-locked PDF virtual environment, and `node --test tests/test_*.js`. The five CI no-download policy regressions are included in the Python suite. All 11 workflow YAML files parse. These are software regressions on fictional data, not clinical validation.
+
+`tests/test_patient_report_manual_provenance.py` verifies manual/PDF wording, exact source references, authored compatibility and the existing local report HTTP/text-export path. The extended document-intake browser journey retains the earlier actual PDF upload, source jump, evidence, recorded replay, review, amendment and restart checks while adding readable report/follow-through coverage.
+
+Hosted browser verification is pending at publication. The draft PR's exact-commit workflow links and subsequent verification receipt are the authority for hosted status. The connected gate retains all six #210 browser journeys and all five #215 PDF/Composer/rights journeys; it archives source, logs, screenshots and receipts. Earlier 660-test results below belong to #210 and are not results for this increment.
+
+### Remaining boundaries
+
+Only independently authored fictional sources and evidence are used. No Sid data, real patient-derived synthetic data, live model, scientific efficacy claim, licensed guideline content, clinical sign-off or real clinical action is involved. The PDF parser keeps its existing 64 KiB / 20-page / 512-line bounds and no-OCR limits. It runs in a constrained process, not an operating-system security sandbox.
+
+This is source-level integration of the Python/SQLite reference, not the completed H1 migration. Authenticated H1 #213/#216 still need one canonical response contract. Governed report transport, production identity/consent, real-patient security, external publisher grants, clinical validation and release authorization remain separate gates. No source branch or main is merged or closed by this package.
+
+---
+
+## Historical #210 composition receipt
+
 ## Scope
 This candidate reconciles #175 (canonical patient/EHR/LIS/PWM, Composer v2, authorized evidence report and review receipt), #161 (source-linked patient record and question handoff), and #197/#174 (readable report, durable tasks, amendment attention, export freshness). It preserves existing owners rather than adding patient/source/evidence/review stores.
 

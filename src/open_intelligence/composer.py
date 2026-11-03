@@ -24,11 +24,18 @@ ASSERTION_KEYS = ("id", "source_version_id", "finding_key", "certainty",
                   "quote", "source_line")
 ASSESSMENT_KEYS = ("id", "evidence_version_id", "relation", "applicability",
                    "rationale", "sha256")
+INTAKE_PROVENANCE_KEYS = ("classification_origin", "annotation_method",
+                          "clinical_review", "transcription_review_sha256",
+                          "text_origin", "extraction_sha256", "source_page",
+                          "page_line", "page_text_sha256")
 
 
-def _fields(row: dict, keys: tuple[str, ...]) -> dict:
+def _fields(row: dict, keys: tuple[str, ...], *, include_intake: bool = False) -> dict:
     """Select explicit public fields; never export an entire DB row."""
-    return {key: row[key] for key in keys}
+    selected = {key: row[key] for key in keys}
+    if include_intake:
+        selected.update({key: row[key] for key in INTAKE_PROVENANCE_KEYS if key in row})
+    return selected
 
 
 def _fingerprint(case_id: str, question: dict, sources: list[dict],
@@ -38,9 +45,9 @@ def _fingerprint(case_id: str, question: dict, sources: list[dict],
         "version": CONTEXT_VERSION,
         "case_id": case_id,
         "question": _fields(question, QUESTION_KEYS),
-        "sources": sorted((_fields(x, SOURCE_KEYS) for x in sources),
+        "sources": sorted((_fields(x, SOURCE_KEYS, include_intake=True) for x in sources),
                           key=lambda row: row["id"]),
-        "assertions": sorted((_fields(x, ASSERTION_KEYS) for x in assertions),
+        "assertions": sorted((_fields(x, ASSERTION_KEYS, include_intake=True) for x in assertions),
                              key=lambda row: row["id"]),
         "assessments": sorted((_fields(x, ASSESSMENT_KEYS) for x in assessments),
                               key=lambda row: row["id"]),
@@ -88,8 +95,8 @@ def composer_context_fingerprint(store: CaseStore, case_id: str,
 
 def _composer_fingerprint_in_snapshot(store: CaseStore, case_id: str, question_id: int) -> str:
     store._case(case_id)
-    if type(question_id) is not int or question_id < 1:
-        raise InvalidInput("Composer question ID must be a positive integer")
+    if type(question_id) is not int or not 1 <= question_id <= 2**63 - 1:
+        raise InvalidInput("Composer question ID must be a positive integer within the supported range")
     question = store.db.execute(
         "SELECT id,question,state FROM questions WHERE id=? AND case_id=?",
         (question_id, case_id)).fetchone()
@@ -115,9 +122,17 @@ def _composer_fingerprint_in_snapshot(store: CaseStore, case_id: str, question_i
              AND v.state='current' AND v.rights='original-synthetic'
            ORDER BY a.id""",
         (case_id, question_id)).fetchall()
+    from .document_intake import classification_provenance
+    intake_by_source = store._document_intake_receipts(case_id)
+    source_rows = [dict(row) for row in sources]
+    assertion_rows = [dict(row) for row in assertions]
+    for source in source_rows:
+        if source["id"] in intake_by_source:
+            source.update(classification_provenance(intake_by_source[source["id"]]))
+    store._annotate_source_assertions(assertion_rows, intake_by_source)
     return _fingerprint(
-        case_id, dict(question), [dict(row) for row in sources],
-        [dict(row) for row in assertions], [dict(row) for row in assessments],
+        case_id, dict(question), source_rows,
+        assertion_rows, [dict(row) for row in assessments],
         store._broker_context_inputs(case_id, question_id)[1])
 
 
@@ -129,8 +144,8 @@ def build_composer_context(store: CaseStore, case_id: str,
     amendment raced the subsequent fingerprint calculation, retry rather than
     presenting a preview with a mismatching token. No database writes.
     """
-    if type(question_id) is not int or question_id < 1:
-        raise InvalidInput("Composer question ID must be a positive integer")
+    if type(question_id) is not int or not 1 <= question_id <= 2**63 - 1:
+        raise InvalidInput("Composer question ID must be a positive integer within the supported range")
     for _ in range(3):
         state = store.state(case_id)
         facts = store.investigation_facts(case_id, question_id)
@@ -149,7 +164,7 @@ def build_composer_context(store: CaseStore, case_id: str,
         s = source_by_id.get(a["source_version_id"])
         if not s:
             continue
-        anchors.append({
+        anchor = {
             "source_version_id": a["source_version_id"],
             "document_id": s["document_id"],
             "version": s["version"],
@@ -158,7 +173,9 @@ def build_composer_context(store: CaseStore, case_id: str,
             "reported_state": a["certainty"],
             "statement": a["quote"],
             "specimen_id": s["specimen_id"],
-        })
+        }
+        anchor.update({key: a[key] for key in INTAKE_PROVENANCE_KEYS if key in a})
+        anchors.append(anchor)
 
     mission = build_patient_mission(state)
     cutoffs = [s["received_at"] for s in sources if s.get("received_at")]
@@ -173,7 +190,7 @@ def build_composer_context(store: CaseStore, case_id: str,
         "fingerprint": token,
         "data_cutoff": max(cutoffs) if cutoffs else None,
         "current_sources": [
-            dict(_fields(s, SOURCE_KEYS), state="current") for s in sources[:100]],
+            dict(_fields(s, SOURCE_KEYS, include_intake=True), state="current") for s in sources[:100]],
         "source_anchors": anchors,
         "source_count": len(sources),
         "source_preview_limit": 100,
