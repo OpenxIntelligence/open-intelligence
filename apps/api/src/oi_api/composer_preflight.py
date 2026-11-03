@@ -39,6 +39,33 @@ class PostgresSourceComposerPreflight:
                 expected_source_snapshot_sha256: str,
                 source_id: str, source_line: int,
                 question: str) -> dict:
+        return self._prepare(
+            patient_id, case_id, organization=organization, actor=actor,
+            purpose=purpose, expected_source_snapshot_sha256=expected_source_snapshot_sha256,
+            source_id=source_id, source_line=source_line, question=question,
+            locked=False,
+        )
+
+    def preview_locked(self, patient_id: str, case_id: str, *,
+                       organization: str, actor: str, purpose: str,
+                       expected_source_snapshot_sha256: str,
+                       source_id: str, source_line: int,
+                       question: str) -> dict:
+        """Write-time revalidation in an already-owned source transaction."""
+        if not self.registry._transaction_active:
+            raise PatientRegistryError("Composer locked preflight requires caller transaction")
+        return self._prepare(
+            patient_id, case_id, organization=organization, actor=actor,
+            purpose=purpose, expected_source_snapshot_sha256=expected_source_snapshot_sha256,
+            source_id=source_id, source_line=source_line, question=question,
+            locked=True,
+        )
+
+    def _prepare(self, patient_id: str, case_id: str, *,
+                 organization: str, actor: str, purpose: str,
+                 expected_source_snapshot_sha256: str,
+                 source_id: str, source_line: int,
+                 question: str, locked: bool) -> dict:
         patient_id = _key(patient_id, "patient_id")
         case_id = _case_id(case_id)
         organization = _key(organization, "organization")
@@ -61,9 +88,10 @@ class PostgresSourceComposerPreflight:
         # assertion/line matches under the existing qualified-case row lock.
         # This read commits before returning: its fingerprint is a historical
         # preflight receipt, never a durable authorization at execution time.
-        world = PostgresWorldModelRead(self.registry).read(
-            patient_id, case_id, organization=organization
-        )
+        reader = PostgresWorldModelRead(self.registry)
+        world = (reader.read_locked(patient_id, case_id, organization=organization)
+                 if locked else
+                 reader.read(patient_id, case_id, organization=organization))
         if not hmac.compare_digest(
             world["source_snapshot_sha256"], expected_source_snapshot_sha256
         ):
