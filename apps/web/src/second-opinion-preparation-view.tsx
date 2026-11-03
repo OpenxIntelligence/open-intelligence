@@ -56,7 +56,7 @@ export function SecondOpinionPreparation({state,onNavigate}:{state:ViewState;onN
             <p className="small">{task.dueDate?'Revisit date: '+task.dueDate:'No revisit date recorded'}</p>
             {task.reviewTrigger.trim()&&<p className="small">Revisit trigger: {task.reviewTrigger}</p>}
             {task.needsRecheck&&<p className="small" data-testid="second-opinion-question-task-recheck">Source changed: recorded work requires reassessment.</p>}
-            {task.revisitDatePassed&&<p className="small" data-testid="second-opinion-question-task-past-date">Revisit date passed as of {item.work.evaluatedOn} (operational flag, not clinical urgency).</p>}
+            {task.revisitDatePassed&&<p className="small" data-testid="second-opinion-question-task-past-date">Revisit date passed as of {item.work?.evaluatedOn} (operational flag, not clinical urgency).</p>}
            </li>)}
           </ul>:<p className="small">No open tasks in this read. Historical work remains available in Investigations.</p>}
           {item.work.openCount>item.work.preview.length&&<p className="small" data-testid="second-opinion-question-work-more">{item.work.openCount-item.work.preview.length} additional open tasks are available in Investigations.</p>}
