@@ -2,13 +2,33 @@ import json
 import logging
 import socket
 import unittest
+from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from oi_api.app import create_app
 from oi_api.config import ConfigurationError, Settings
 from oi_api.contracts import DatabaseStatus
+from oi_api.patients import SourceVersion
+from oi_api.sources import PostgresSourceVersions
+from open_intelligence.postgres_registry import PostgresPatientRegistry
 
 from http_support import get_json, running_server
+
+
+class SourceSerializationTests(unittest.TestCase):
+    def test_index_timestamp_is_identical_before_and_after_http_serialization(self):
+        registry = PostgresPatientRegistry(SimpleNamespace(autocommit=False))
+        owner = PostgresSourceVersions(registry)
+        for zone in (timezone.utc, timezone(timedelta(hours=-5)), timezone(timedelta(hours=5, minutes=30))):
+            for microsecond in (0, 123000, 123456):
+                received = datetime(2026, 11, 2, 12, 30, 15, microsecond, tzinfo=zone)
+                row = ("SRC-" + "A" * 32, "DOC-ONE", 1, "a" * 64, "pathology",
+                       received.date(), received.date(), received, None, "current", None)
+                with self.subTest(zone=str(zone), microsecond=microsecond):
+                    with patch.object(registry, "_fetchall", return_value=[row]):
+                        source = owner._sources("CASE-ALPHA")[0]
+                    self.assertEqual(source, SourceVersion(**source).model_dump(mode="json"))
 
 
 class SettingsTests(unittest.TestCase):

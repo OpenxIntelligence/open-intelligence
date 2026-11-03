@@ -7,9 +7,11 @@ consent. Missing, expired, ambiguous or unreadable configuration fails closed.
 from datetime import datetime, timezone
 import hashlib
 import hmac
+import re
 from pathlib import Path
 from typing import Literal, Protocol
 
+from fastapi import HTTPException, Request
 from pydantic import Field, ValidationError, field_validator, model_validator
 
 from open_intelligence.patient_registry import _key
@@ -73,11 +75,33 @@ class DenyAuthentication:
         return None
 
 
+def authenticate_request(request: Request, authentication: Authentication) -> Principal:
+    """Authenticate afresh without retaining bearer credentials in the context."""
+    values = request.headers.getlist("authorization")
+    if len(values) != 1:
+        raise HTTPException(401, "Authentication required", headers={"WWW-Authenticate": "Bearer"})
+    scheme, _, token = values[0].partition(" ")
+    if scheme.lower() != "bearer" or re.fullmatch(r"[A-Za-z0-9._~-]{32,256}", token) is None:
+        raise HTTPException(401, "Authentication required", headers={"WWW-Authenticate": "Bearer"})
+    try:
+        context = authentication.authenticate(token)
+    except Exception:
+        raise HTTPException(503, "Access service unavailable") from None
+    if context is None:
+        raise HTTPException(401, "Authentication required", headers={"WWW-Authenticate": "Bearer"})
+    if not isinstance(context, Principal):
+        raise HTTPException(503, "Access service unavailable")
+    if context.expires_at <= datetime.now(timezone.utc):
+        raise HTTPException(401, "Authentication required", headers={"WWW-Authenticate": "Bearer"})
+    return context
+
+
 class SyntheticFileAuthentication:
     """Operator-controlled local fixture; reread every time, never cache grants.
 
-    File replacement takes effect on the next request. A synchronous operation
-    already authorized can finish; this is not distributed revocation atomicity.
+    Source reads also refresh this authority before their access receipt commits.
+    Changes after the final check can still precede delivery; this is not
+    distributed revocation atomicity. Other operations authenticate at entry.
     No raw bearer token is stored in this file or returned in its parsed context.
     """
 
