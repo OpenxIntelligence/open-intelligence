@@ -386,7 +386,7 @@ def main():
             denied(source_one, ingest=True)
             denied(source_two, ingest=True)
             before = snapshot()
-            assert before["revision"] == "0006_image_custody"
+            assert before["revision"] == "0008_questions_images_merge"
             assert before["bindings"][0]["status"] == "revoked"
             for row in before["objects"]:
                 assert row["sha256"] == row["raw_sha256"]
