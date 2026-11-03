@@ -164,6 +164,52 @@ Remaining proof step: a live-server run against the real API with
 the operator key set, before the demo. The API completion itself
 was verified separately on 2026-10-31.
 
+## Clinician overview projection
+
+The case view now includes a read-only **Clinician overview** panel. It
+organizes the recorded file for one fictional case; it makes no care decision.
+
+```text
+GET /api/cases/{CASE-ID}/clinician-overview
+```
+
+The projection is pure: `build_clinician_overview(state)` derives six
+sections from the current `CaseStore.state()` snapshot with no new tables
+and no writes — current sources with version numbers, open questions,
+pending reviews, follow-up tasks, goals count, and journey stage. Every
+item carries a citation to its source version or record id. Pending
+reviews list draft snapshots, stale snapshots whose question is still
+open, options with `needs_review`, and quarantined deliveries — the same
+ledger the workspace already shows, not a second truth. Follow-up tasks
+list preparation tasks that are not `done` or `cancelled`, exactly as
+recorded. Historical stale snapshots whose question was later addressed
+stay in history but leave pending. Goals are not recorded in the current
+synthetic ledger, so the count is honestly `0` with an explicit note.
+Journey stage is a workflow label only (`awaiting_sources`,
+`ready_to_define_question`, `investigation_in_progress`,
+`review_required`, `reviewed_in_demo`); it is `review_required` whenever
+pending is non-empty, including drafts waiting for acknowledgment.
+
+Both the JSON and the panel display the exact disclaimer:
+
+```text
+Summary of the recorded case file only — not a clinical recommendation, not a treatment decision.
+```
+
+The projection's own wording avoids authorize/prescribe/order/
+recommend/direct-care language; the disclaimer carries the word
+"recommendation" only in negated form. Verbatim question, task, and
+option labels are quoted ledger facts. Empty sections render honest
+empty text, never invented content. The renderer uses existing CSS
+classes and `textContent` only, labels every item FICTIONAL, follows the
+selected case, discards stale responses after case switches, and
+refreshes when the workspace changes. Unknown case ids return `422`
+with `Unknown case`, as elsewhere.
+
+This slice adds no identity, consent, goals ledger, PHI support,
+diagnostic inference, treatment selection, or clinical approval. See
+`tests/test_clinician_overview.py` for the store, HTTP, and UI-contract
+checks, including case isolation and a view-wide directive-wording scan.
 ## Evidence quality and limitations panel
 
 Each fictional source version can carry zero or more human-authored
