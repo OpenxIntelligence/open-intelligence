@@ -38,3 +38,11 @@
 - Green: all 278 client tests passed, zero failures/skips; pinned TypeScript 5.9.3 and Vite 7.3.7 production build passed. Five standalone timestamp checks and Python compilation passed. Local Pydantic is 2.14.1; this is not a pinned backend/HTTP/database pass.
 - Source fidelity: all six reused files have exactly the original donor blob hashes. Existing main UI, session, reading component, database/migrations, grants, dependencies and workflows are byte-identical to #319.
 - Hosted acceptance and independent review: pending at initial publication; record each exact-head outcome in the PR before completion.
+
+## Verification continuation after two Chrome startup failures
+
+The initial runtime `ca3bb8f201bb2dff386896f6a667c8390dfcc65d` passed its full React/PG16/Chromium workflow (41665786603), 278 clients, and artifact checks: 405 source files and three actual report downloads. Independent automated review found no blocking finding. API workflow 41665786647 attempts 1 and 2 each passed 416 PostgreSQL/API tests and 287 reference tests, then failed before the inherited Chrome DevTools endpoint became available. No recovery probe ran in either attempt. No application assertion failed, but the full API workflow was not successful.
+
+Bounded scope extension: reuse all four unchanged files from diagnostic owner #317 `cc10d8cb229f0eb3552362cc75ca27ed8ee4962c`. Capture bounded escaped Chrome stderr and process exit status without changing sandbox settings, flags, 12-second deadline, browser assertions or cleanup. The four original subprocess/loopback tests first reproduced the missing helper in this checkout. This is instrumentation, not a claim to fix the unknown launch cause. Rerun the independent hosted checks on the resulting exact head and retain all failed attempts.
+
+Concurrent #322 contains the same six original donor blobs on #318, while this candidate retains #319's import disclosure. These are overlapping candidates requiring one source-owner integration decision, not separate fixes to merge blindly. #328 attention and #330 client calendar validation remain separately owned and outside this runtime.
