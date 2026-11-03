@@ -15,6 +15,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from .rights import RightsError, check_link_content, normalize_permissions
+from . import task_receipts
 
 ID = re.compile(r"[A-Z][A-Z0-9-]{1,39}\Z")
 KEY = re.compile(r"[a-z][a-z0-9_-]{0,59}\Z")
@@ -506,6 +507,8 @@ class CaseStore:
         self.db.row_factory = sqlite3.Row
         self.db.execute("PRAGMA foreign_keys=ON")
         self.db.executescript(SCHEMA)
+        # B-09: append-only completion receipts; IF NOT EXISTS keeps old DBs intact.
+        self.db.executescript(task_receipts.RECEIPT_SCHEMA)
         self._migrate_discovery_rights()
 
     def _migrate_discovery_rights(self) -> None:
@@ -1048,22 +1051,75 @@ class CaseStore:
             self._reopen_option_dependents(case_id, option_id, "preparation_task_added")
             return int(cur.lastrowid)
 
-    def set_preparation_task_status(self, case_id: str, task_id: int, status: str) -> None:
+    def set_preparation_task_status(self, case_id: str, task_id: int, status: str,
+                                    acting_label: str | None = None) -> dict | None:
+        """Human-driven task transition; ``done`` additionally writes a receipt.
+
+        The existing lifecycle and its ``preparation_task_status_changed``
+        events are unchanged. A transition to ``done`` pins the option's
+        basis (snapshot + source/evidence premise ids) into one immutable
+        ``task_completion_receipts`` row and emits a
+        ``task_completion_receipted`` event in the same transaction.
+        Completion against a superseded basis is rejected (documented B-09
+        rule): the status, events, and receipts are left untouched. The
+        acting label defaults to the task owner's label when omitted;
+        authorized-actor binding waits on B-01. The label is validated
+        only on done transitions; other transitions ignore it. Returns
+        None when the status is unchanged, else the transition outcome;
+        receipt_id is set only on done transitions (the new or preserved
+        receipt id). Nothing auto-completes: only this explicit call
+        writes receipts.
+        """
         self._case(case_id)
         if status not in self.TASK_STATUSES:
             raise InvalidInput("Invalid preparation task status")
         with self.db:
             self.db.execute("BEGIN IMMEDIATE")
-            row = self.db.execute("SELECT option_id,status FROM preparation_tasks WHERE id=? AND case_id=?",
+            row = self.db.execute("SELECT option_id,status,owner_label FROM preparation_tasks WHERE id=? AND case_id=?",
                                   (task_id, case_id)).fetchone()
             if not row:
                 raise InvalidInput("Preparation task not in this case")
             if row["status"] == status:
-                return
+                return None
+            actor: str | None = None
+            if status == "done":
+                actor = row["owner_label"] if acting_label is None else task_receipts.valid_acting_label(acting_label)
+                problems = task_receipts.current_basis_problems(self.db, case_id, int(row["option_id"]))
+                if problems:
+                    raise InvalidInput(
+                        "Task basis is superseded (" + "; ".join(problems) + "); "
+                        "preserve this record and complete a new task on a current proposal")
             self.db.execute("UPDATE preparation_tasks SET status=? WHERE id=?", (status, task_id))
             self._event(case_id, "preparation_task_status_changed", option_id=row["option_id"],
                         task_id=task_id, previous_status=row["status"], status=status)
+            receipt_id: int | None = None
+            # actor is set if and only if this is a done transition (above).
+            if actor is not None:
+                outcome = task_receipts.write_completion_receipt(
+                    self.db, case_id=case_id, task_id=task_id, option_id=int(row["option_id"]),
+                    owner_label=row["owner_label"], acting_label=actor, recorded_at=now_utc())
+                receipt_id = int(outcome["receipt_id"])
+                if outcome["created"]:
+                    basis = outcome["basis"]
+                    self._event(case_id, "task_completion_receipted", option_id=row["option_id"],
+                                task_id=task_id, receipt_id=receipt_id,
+                                snapshot_id=basis["snapshot_id"],
+                                source_version_ids=basis["source_version_ids"],
+                                evidence_version_ids=basis["evidence_version_ids"])
             self._reopen_option_dependents(case_id, row["option_id"], "preparation_task_changed")
+            return {"task_id": task_id, "previous_status": row["status"],
+                    "status": status, "receipt_id": receipt_id}
+
+    def get_task_receipt(self, case_id: str, task_id: int) -> dict | None:
+        """Read one immutable completion receipt, or None when absent.
+
+        There is deliberately no update or delete path: receipts are
+        append-only. Returns None for tasks outside this case.
+        """
+        self._case(case_id)
+        if type(task_id) is not int or task_id < 1:
+            raise InvalidInput("Invalid preparation task ID")
+        return task_receipts.get_receipt(self.db, case_id, task_id)
 
     def add_optionality_threat(self, case_id: str, option_id: int, kind: str, description: str,
                                threat_date: str | None = None, threat_basis: str = "unknown",
@@ -1317,14 +1373,21 @@ class CaseStore:
             display_operational = option["operational_status"]
             if contradicted and display_operational in ("proposed", "reviewed"):
                 display_operational = "held"
+            # B-09: receipt markers + open-vs-receipted grouping are derived
+            # annotations; the stored task rows and review meanings are unchanged.
+            task_rows = self._dicts(self.db.execute(
+                "SELECT * FROM preparation_tasks WHERE option_id=? ORDER BY id", (option_id,)).fetchall())
+            task_rows, task_receipt_summary = task_receipts.annotate_tasks_with_receipts(self.db, task_rows)
             options.append({
                 **dict(option),
                 "snapshot_state": snap["state"] if snap else "missing",
                 "derived_epistemic_status": derived_epistemic,
                 "display_operational_status": display_operational,
                 "dependencies": deps,
-                "preparation_tasks": self._dicts(self.db.execute(
-                    "SELECT * FROM preparation_tasks WHERE option_id=? ORDER BY id", (option_id,)).fetchall()),
+                "dependency_loss": task_receipts.derive_dependency_loss(self.db, case_id, option_id),
+                "preparation_tasks": task_rows,
+                "open_task_ids": task_receipt_summary["open_task_ids"],
+                "receipted_task_ids": task_receipt_summary["receipted_task_ids"],
                 "threats": self._dicts(self.db.execute(
                     "SELECT * FROM optionality_threats WHERE option_id=? ORDER BY id", (option_id,)).fetchall()),
                 "review_events": reviews,
@@ -1342,6 +1405,7 @@ class CaseStore:
             "disclaimer": ("For discussion only. This view states no clinical eligibility, safety, or next step. "
                            "A potential discussion deadline is not a clinical deadline. "
                            "Snapshot filtering shows current state and recorded associations, not as-known-at replay."),
+            "receipt_disclaimer": task_receipts.RECEIPT_DISCLAIMER,
             "options": options,
         }
 
@@ -2558,6 +2622,7 @@ class CaseStore:
                 # OI-021 derived projection: same ledger, no second state.
                 "options": option_projection["options"],
                 "option_disclaimer": option_projection["disclaimer"],
+                "option_receipt_disclaimer": option_projection["receipt_disclaimer"],
                 "quarantines": self._dicts(self.db.execute(
                     "SELECT id,declared_patient_id,sha256,reason,received_at FROM quarantine WHERE target_case_id=? ORDER BY id DESC",
                     (case_id,)).fetchall()),

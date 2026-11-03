@@ -343,8 +343,14 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(201, {"task_id": task_id})
                 task_status = re.fullmatch(rf"/api/cases/{ID_PART}/tasks/([0-9]+)/status", path)
                 if task_status:
-                    store.set_preparation_task_status(task_status[1], int(task_status[2]), data.get("status"))
-                    return self._json(200, {"result": "task_status_updated"})
+                    # B-09: acting label is optional and recorded only on done.
+                    outcome = store.set_preparation_task_status(
+                        task_status[1], int(task_status[2]), data.get("status"),
+                        acting_label=data.get("acting_label"))
+                    payload: dict = {"result": "task_status_updated"}
+                    if outcome is not None:
+                        payload["receipt_id"] = outcome["receipt_id"]
+                    return self._json(200, payload)
                 option_threat = re.fullmatch(rf"/api/cases/{ID_PART}/options/([0-9]+)/threats", path)
                 if option_threat:
                     threat_id = store.add_optionality_threat(

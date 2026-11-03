@@ -1028,7 +1028,8 @@ function renderJourney() {
     : 'No discussion items have been proposed yet. An item appears here once a draft exists to discuss.');
 }
 function renderOptions() {
-  el('option-disclaimer').textContent = active.option_disclaimer || '';
+  el('option-disclaimer').textContent = [active.option_disclaimer, active.option_receipt_disclaimer]
+    .filter(x => x).join(' ');
   const options = active.options || [];
   const fill = (id, items, labelFn, allowEmpty = false) => {
     const select = el(id);
@@ -1063,9 +1064,16 @@ function renderOptions() {
       pill(option.derived_epistemic_status, option.derived_epistemic_status === 'contradicted' ? 'pill-alert' : ''),
       pill(option.display_operational_status, option.display_operational_status === 'held' ? 'pill-alert' : ''),
       pill('review: ' + option.review_state, option.review_state === 'needs_review' ? 'pill-warn' : ''));
+    if (option.dependency_loss && option.dependency_loss.present) {
+      top.append(pill('dependency loss: ' + option.dependency_loss.causes.length + ' cause(s)', 'pill-alert'));
+    }
     box.append(top, node('p', option.description),
       node('p', 'Based on investigation #' + option.snapshot_id + ' (' + option.snapshot_state + ') · ' +
         option.potential_discussion_deadline.label, 'snapshot-meta'));
+    if (option.dependency_loss && option.dependency_loss.present) {
+      box.append(node('p', 'Dependency loss (derived, never a stored threat): ' +
+        option.dependency_loss.causes.join('; '), 'snapshot-meta'));
+    }
     if (option.dependencies.length) {
       const deps = node('ul');
       for (const dep of option.dependencies) {
@@ -1079,7 +1087,14 @@ function renderOptions() {
     if (option.preparation_tasks.length) {
       box.append(node('p', 'Preparation tasks: ' + option.preparation_tasks.map(t =>
         t.label + ' · owner ' + t.owner_label + ' · ' + t.status +
+        (t.receipt_id ? ' · receipt #' + t.receipt_id :
+          (t.receipt_marker === 'receipt_predates_slice' ? ' · receipt predates this view' : ' · no receipt')) +
         (t.lead_time_days !== null && t.lead_time_days !== undefined ? ' · lead ' + t.lead_time_days + 'd' : '')).join('; '), 'snapshot-meta'));
+      if (Array.isArray(option.open_task_ids) && Array.isArray(option.receipted_task_ids)) {
+        const open = option.open_task_ids.map(n => '#' + n).join(', ') || 'none';
+        const receipted = option.receipted_task_ids.map(n => '#' + n).join(', ') || 'none';
+        box.append(node('p', 'Open tasks: ' + open + ' · Receipted tasks: ' + receipted, 'snapshot-meta'));
+      }
     }
     if (option.threats.length) {
       box.append(node('p', 'Optionality threats: ' + option.threats.map(t =>
