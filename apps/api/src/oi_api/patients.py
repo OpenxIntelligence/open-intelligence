@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Literal
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import Field, StrictBool, field_validator
 
@@ -849,7 +850,7 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
                  responses={200: {"model": SourceImageReceipt}, **errors},
                  operation_id="import_source_image_v1")
     def import_source_image(request: Request, patient_id: str, case_id: str, source_id: str,
-                            response: Response, original: bytes = Body(media_type="application/dicom"),
+                            original: bytes = Body(media_type="application/dicom"),
                             context: Principal = Depends(principal)):
         if request.query_params:
             raise HTTPException(422, "Invalid request")
@@ -859,16 +860,20 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
         try:
             with registry(context) as patients:
                 records_authorized(patients, context, patient_id, "image_import")
-                result = PostgresSourceImages(patients).import_original(
+                return PostgresSourceImages(patients).import_original(
                     patient_id, case_id, source_id, original, organization=context.organization,
                     actor=context.actor, purpose=context.purpose,
-                    prepare_response=lambda result: SourceImageReceipt(**result),
+                    # Validate and encode the actual body before the image
+                    # owner's final authority check, event and commit. Returning
+                    # a DTO would let FastAPI encode it after those boundaries.
+                    prepare_response=lambda result: JSONResponse(
+                        SourceImageReceipt(**result).model_dump(mode="json"),
+                        status_code=200 if result["result"] == "duplicate" else 201,
+                        headers={"Cache-Control": "no-store"}),
                     recheck_authority=lambda: refresh_source_authority(
                         request, context, patients, patient_id, "image_import"))
         except PatientRegistryDenied:
             raise HTTPException(404, "Image unavailable") from None
-        response.status_code = 200 if result.result == "duplicate" else 201
-        return result
 
     @router.get("/{patient_id}/cases/{case_id}/sources/{source_id}/images",
                 response_model=SourceImageIndex, responses=errors,
@@ -883,7 +888,9 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
                 return PostgresSourceImages(patients).list(
                     patient_id, case_id, source_id, organization=context.organization,
                     actor=context.actor, purpose=context.purpose,
-                    prepare_response=lambda result: SourceImageIndex(**result),
+                    prepare_response=lambda result: JSONResponse(
+                        SourceImageIndex(**result).model_dump(mode="json"),
+                        headers={"Cache-Control": "no-store"}),
                     recheck_authority=lambda: refresh_source_authority(
                         request, context, patients, patient_id, "image_read"))
         except PatientRegistryDenied:

@@ -12,7 +12,8 @@ Both published migration histories are retained under the explicit
 `0008_merge_image_questions` head. Source, question and image grants remain
 independent; an amendment preserves historical question anchors and image bytes
 while requiring reassessment and explicit image relinking. Image response
-preparation now precedes the final authority check and committed event.
+preparation, including actual JSON encoding for metadata and import receipts,
+now precedes the final authority check and committed event.
 
 See [the combined contract and acceptance scope](../../docs/engineering/H1_IMAGE_QUESTION_CONVERGENCE.md).
 The domain sections below retain their incremental history; statements that
@@ -372,7 +373,10 @@ history, same-key retries, exact image bytes and denied revoked access. A fresh
 receipt in the restored database, absent from the original database, confirms
 which database served the restored HTTP response.
 The API/database cases also cover final credential changes during real image
-response preparation in test_image_disclosure_authority.py. The existing image
+response preparation and JSON encoding, encoder failure, and deferred database
+commit failure in test_image_disclosure_authority.py. JSON responses validate the
+existing model and encode inside the source transaction, keeping duplicate
+imports at 200 and new objects/links at 201. The existing image
 custody, migration, bounded parser and HTTP ingress tests remain separate.
 See the [implementation record](../../docs/superpowers/plans/2026-11-03-h1-image-custody.md)
 for scope, alternatives and remaining boundaries.
