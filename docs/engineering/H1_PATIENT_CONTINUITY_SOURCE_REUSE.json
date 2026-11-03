@@ -2,9 +2,10 @@
   "schema": "oi.h1-patient-continuity-source-reuse/1",
   "shared_owner": {
     "pr": 287,
-    "published_commit": "f7b0f683ab64ba2de7363744b65b8e26528f3138",
-    "local_equivalent_commit": "bd9b563cfca3cfaca51a58adb75c9e79209a1b02",
-    "tree": "a72d810aaf32a76f9c736aa1df4232e3bcd9ced0"
+    "published_commit": "247705700080052705817fee9e8f7b54afa8ffaa",
+    "local_equivalent_commit": "b025f53b1aefe9a02e0aad69b0fdc054b26c0435",
+    "tree": "e5764062351a83a20b4cc41ce8da8deee28fc688",
+    "verified_runtime_commit": "f7b0f683ab64ba2de7363744b65b8e26528f3138"
   },
   "overview_owner": {
     "pr": 286,
@@ -24,7 +25,7 @@
     "apps/web/package-lock.json": "5fde6b11a97f71461e1c1b22248c2930641da134",
     "apps/web/tools/browser_journey.py": "3932206905b28179592455a54dd92798a193e747",
     "apps/web/src/source-quote-review-packet.ts": "f4b297022b616b99bcf4c68d52d34e42ca756843",
-    "docs/project-state": "a77513515bb155cf9429e5058c6dd15472169948"
+    "docs/project-state": "e825b060d55490c18af74d67ba6f1d1ed407b5e5"
   },
   "shared_session_adaptation": "Only the patientContinuity re-export; all parent session behavior unchanged.",
   "continuation_changes": [
@@ -36,5 +37,13 @@
   "historical_tests_first_commit": "61a4734138c6961e221a9a14b833a325c0c516c0",
   "new_dependencies": false,
   "new_migrations": false,
-  "clinical_approval": false
+  "clinical_approval": false,
+  "verified_implementation_checkpoint": {
+    "published_commit": "372c69be705bb756fefcc7d4c6cd8a801ec407d0",
+    "local_commit": "75e91537952ba93e196c553b559261e42f482f1f",
+    "tree": "0fc131c9b95a9f3eabd674df2a5e89e8468c5b57",
+    "api_run": 41630262836,
+    "web_run": 41630262777,
+    "subsequent_change": "Documentation only: preserve the shared owner completion receipt and update ownership references."
+  }
 }

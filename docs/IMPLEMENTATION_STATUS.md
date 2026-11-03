@@ -6,7 +6,7 @@
 
 Draft [#288](https://github.com/OpenxIntelligence/open-intelligence/pull/288)
 continues [#287](https://github.com/OpenxIntelligence/open-intelligence/pull/287)
-at `f7b0f683ab64ba2de7363744b65b8e26528f3138`, retaining its API, recovery,
+at `247705700080052705817fee9e8f7b54afa8ffaa`, retaining its API, recovery,
 source and review owners unchanged. It brings #286's Overview onto that shared
 workflow and fixes a hosted-browser-reproduced contextual-navigation defect:
 prepared packet/brief views must clear when leaving a section through any link.

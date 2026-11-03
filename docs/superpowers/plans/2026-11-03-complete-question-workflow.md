@@ -55,14 +55,18 @@ Interface: callback returns an already serialized `JSONResponse` from the same e
 - [x] Add actual PostgreSQL/HTTP tests for actual encoding, final grant withdrawal/identity change, encoder failure, held locks and failed audit/commit; unchanged donor must fail materially under hosted verification.
 - [x] Add cross-owner lifecycle acceptance for a custom question, exact packet, return history, authorized brief, amendment and explicit retry; preserve all donor browser assertions.
 - [x] Construct packet JSON inside `prepare_response`, before the owner refresh/audit/commit; retain headers and status.
-- [ ] Run full existing API/PostgreSQL and built-React/browser hosted gates on the exact candidate, with no DB skips counted as passes.
+- [x] Run full existing API/PostgreSQL and built-React/browser hosted gates on the exact candidate, with no DB skips counted as passes.
 
 ### 4. Review, evidence and durable handoff
 
 - [x] Fresh whole-branch review of code, scope, donor preservation and failure-mode tests.
-- [ ] Correct material findings, verify relevant regressions, record any limitations/rulings.
-- [ ] Update existing owner contracts/backlog with actual evidence, source-reuse manifest and final verification receipt; preserve the initial assessment as initial state.
-- [ ] Publish/verify draft PR and report exact commit, executed gates, remaining platform gaps and next owner integration. Do not merge, deploy or send external messages.
+- [x] Correct material findings, verify relevant regressions, record any limitations/rulings.
+- [x] Update existing owner contracts/backlog with actual evidence, source-reuse manifest and final verification receipt; preserve the initial assessment as initial state.
+- [x] Publish/verify draft PR and record exact commit, executed gates, remaining platform gaps and next owner integration. Do not merge, deploy or send external messages.
+
+## Completion receipt
+
+[Draft PR #287](https://github.com/OpenxIntelligence/open-intelligence/pull/287), verified runtime commit `f7b0f683ab64ba2de7363744b65b8e26528f3138`, tree `a72d810aaf32a76f9c736aa1df4232e3bcd9ced0`: both hosted gates passed, including 301 actual API/PostgreSQL executions, 245 reference executions, 170 client tests, real browser journeys, and patient/source/review restart/restore probes. Independent review findings are resolved. [Complete evidence, source reuse and limitations](../../project-state/IMPLEMENTATION_EVIDENCE.md). Subsequent evidence-only documentation records these completed results; any later runtime change needs fresh acceptance.
 
 ## Initial execution ledger
 

@@ -8,12 +8,14 @@ question, task, review or source store.
 ## Source ownership
 
 The final base is [#287](https://github.com/OpenxIntelligence/open-intelligence/pull/287)
-at `f7b0f683ab64ba2de7363744b65b8e26528f3138`, tree
-`a72d810aaf32a76f9c736aa1df4232e3bcd9ced0`. The available local commit
-`bd9b563cfca3cfaca51a58adb75c9e79209a1b02` has exactly that tree. All API code
+at `247705700080052705817fee9e8f7b54afa8ffaa`, tree
+`e5764062351a83a20b4cc41ce8da8deee28fc688`. The available local commit
+`b025f53b1aefe9a02e0aad69b0fdc054b26c0435` has exactly that tree. All API code
 and tests, migrations, source/domain code, inherited reference tests, workflows,
 dependency locks, and the shared owner's project-state assessment are retained
 unchanged. The shared session differs only by the Overview projection re-export.
+The owner's final four-file documentation receipt is preserved; its runtime is
+identical to the earlier `f7b0f683ab64ba2de7363744b65b8e26528f3138` checkpoint.
 
 Overview comes from [#286](https://github.com/OpenxIntelligence/open-intelligence/pull/286)
 at `eb3cff81a4edeaf433d25cc069c9894c3bc52d0b`. Its projection, component and
