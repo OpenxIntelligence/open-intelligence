@@ -1,8 +1,9 @@
 """Exact human-only H1 evidence wire contracts, distinct from source-only briefs."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 import hashlib
+import re
 from typing import Annotated, Literal
 
 from pydantic import Field, StrictBool, StrictInt, field_validator, model_validator
@@ -24,11 +25,26 @@ Relation = Literal["supports", "contradicts", "context", "unknown"]
 Applicability = Literal["applicable", "limited", "not_applicable", "unknown"]
 ReportState = Literal["current_unreviewed", "historical_reassessment_required", "content_withheld"]
 
+_WIRE_TIMESTAMP = re.compile(
+    r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}"
+    r"(?::[0-9]{2}(?:\.[0-9]+)?)?(?:Z|[+-][0-9]{2}:[0-9]{2})"
+)
+
 
 def aware(value: str) -> str:
+    # fromisoformat alone accepts arbitrary single-character separators,
+    # including line breaks. Preserve valid wire bytes; never normalize them.
+    if len(value) > 64 or not _WIRE_TIMESTAMP.fullmatch(value):
+        raise ValueError("Timestamp requires an ISO date, T separator and explicit timezone")
     when = datetime.fromisoformat(value)
     if when.tzinfo is None or when.utcoffset() is None:
         raise ValueError("Timestamp requires an explicit timezone")
+    return value
+
+
+def calendar_date(value: str) -> str:
+    if date.fromisoformat(value).isoformat() != value:
+        raise ValueError("Issue date requires an exact YYYY-MM-DD calendar date")
     return value
 
 
@@ -149,6 +165,7 @@ class EvidenceVersion(Contract):
     statement: str | None = Field(default=..., min_length=10, max_length=1200)
     created_at: str
     _aware = field_validator("created_at")(aware)
+    _date = field_validator("issued_at")(calendar_date)
 
     @model_validator(mode="after")
     def integrity(self):
