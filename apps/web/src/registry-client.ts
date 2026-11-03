@@ -154,6 +154,22 @@ export class RegistrySession {
     const control=new AbortController();this.#controllers.add(control);
     try{
       const response=await this.transport('/v1/patients/'+encodeURIComponent(patient)+'/cases/'+encodeURIComponent(caseId)+'/documents'+path,this.#init(control,body));
+      if(!current()){
+        void response.body?.cancel().catch(()=>{});
+        throw Error('Patient or case changed');
+      }
+      // A denied endpoint cannot leave the shared case looking authorized.
+      // Status is authoritative even when a proxy returns a non-JSON body.
+      if([401,403,404].includes(response.status)){
+        if(response.status===401)this.#httpError(401);
+        else{
+          this.#records++;
+          this.#publish({...emptyRecords(),...this.#resetInvestigation(),recordsPhase:'error',
+            recordMessage:'Document access unavailable or mapping changed. Reload case permissions.'});
+        }
+        void response.body?.cancel().catch(()=>{});
+        return{status:response.status,body:null,headers:response.headers};
+      }
       let value:unknown;
       if(path.endsWith('/original')&&response.status===200){
         value=await boundedBytes(response,65536);
@@ -164,7 +180,6 @@ export class RegistrySession {
         value=await json(response,32*1024*1024);
       }
       if(!current())throw Error('Patient or case changed');
-      if(response.status===401)this.#httpError(401);
       if(body===undefined&&response.status===200&&path!=='/preview'&&!path.endsWith('/original')&&
         (!value||typeof value!=='object'||(value as {patient_id?:string}).patient_id!==patient||(value as {case_id?:string}).case_id!==caseId))throw Error('Wrong document scope');
       return{status:response.status,body:value,headers:response.headers};

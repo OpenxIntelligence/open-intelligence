@@ -11,6 +11,7 @@ export function ReviewedDocumentWorkspace({session,patientId,caseId}:{session:Re
  const [documentId,setDocumentId]=useState(''),[kind,setKind]=useState('other'),[eventDate,setEventDate]=useState(''),[issuedDate,setIssuedDate]=useState(''),[amends,setAmends]=useState('');
  const [confirmed,setConfirmed]=useState(false),[reason,setReason]=useState(''),[localMessage,setLocalMessage]=useState(''),[downloading,setDownloading]=useState(false);
  const lifetime=useRef(0),fileGeneration=useRef(0),selected=useRef('');
+ const fileInput=useRef<HTMLInputElement>(null);
  selected.current=state.document?state.document.source_id+state.document.sha256:'';
  useEffect(()=>{lifetime.current++;return()=>{lifetime.current++;fileGeneration.current++;client.dispose();}},[client]);
  useEffect(()=>{setFindings(state.document?.revisions.at(-1)?.findings??[]);setConfirmed(false);setReason('');setQuote('');setLine(1);},[state.preview,state.document]);
@@ -51,9 +52,9 @@ export function ReviewedDocumentWorkspace({session,patientId,caseId}:{session:Re
   <p>Preview a fictional record, confirm its case and select exact passages. Originals and correction history stay preserved. PDF extraction supports small text-based files; no OCR or clinical interpretation.</p>
   <p className="small">Case <code>{caseId}</code> · Patient <code>{patientId}</code></p>
   <div className="actions"><button disabled={locked} onClick={()=>void client.load()}>Refresh reviewed documents</button>
-   <button disabled={state.phase==='saving'} onClick={()=>{fileGeneration.current++;client.discard();setUpload(null);setFindings([]);setLocalMessage('');}}>Discard local selection or uncertain intent</button></div>
+   <button disabled={state.phase==='saving'} onClick={()=>{fileGeneration.current++;client.discard();setUpload(null);setFindings([]);setLocalMessage('');if(fileInput.current)fileInput.current.value='';}}>Discard local selection or uncertain intent</button></div>
   {state.documents.length>0&&<ul>{state.documents.map(doc=><li key={doc.source_id}><button disabled={locked} onClick={()=>void client.open(doc.source_id)}>{doc.document_id} · v{doc.version} · {doc.state}</button> <span>{doc.filename}</span></li>)}</ul>}
-  <label>Fictional text or PDF file<input data-testid="reviewed-file" type="file" accept=".txt,.pdf,text/plain,application/pdf" disabled={locked} onChange={e=>void choose(e.target.files?.[0])}/></label>
+  <label>Fictional text or PDF file<input ref={fileInput} data-testid="reviewed-file" type="file" accept=".txt,.pdf,text/plain,application/pdf" disabled={locked} onChange={e=>void choose(e.target.files?.[0])}/></label>
   <button data-testid="preview-reviewed" disabled={!upload||locked} onClick={()=>void client.preview(upload)}>Preview selected file without saving</button>
   <p role="status" data-testid="reviewed-status">{state.message}</p>{localMessage&&<p role="status">{localMessage}</p>}
   {state.pending&&<button data-testid="retry-reviewed" disabled={state.phase==='saving'} onClick={()=>void client.retry()}>Retry exact save to recover receipt</button>}

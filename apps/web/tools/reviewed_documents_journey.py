@@ -102,12 +102,27 @@ def exercise(cd,patient_id,directory,token,credentials,write_grants,artifacts,re
     credentials[0]['actions'].remove('source_original_read');write_grants()
     before=list(destination.iterdir());cd.evaluate("document.querySelector('[data-testid=download-reviewed]').click()")
     cd.wait("!document.querySelector('[data-testid=download-reviewed]')",'revoked original cleared')
+    cd.wait("!document.querySelector('[data-testid=source-index]') && document.querySelector('[data-testid=records-status]').textContent.includes('Document access unavailable')",'document denial clears the shared Records scope')
+    assert cd.evaluate("!document.querySelector('[data-testid=reviewed-file]') && !document.querySelector('[data-testid=source-statement]')"), 'Denied scope unmounts local File and server quotations'
     assert list(destination.iterdir())==before,'Denied original created a download'
     credentials[0]['actions'].append('source_original_read');write_grants()
+    cd.evaluate("document.querySelector('[data-testid=load-cases]').click()")
+    cd.wait("document.querySelector('[data-testid=records-status]').textContent==='Select an active case to check its original source metadata.'",'explicit case permission reload')
+    cd.evaluate("[...document.querySelectorAll('[data-testid=case-row]')].find(e=>e.textContent.includes('CASE-WEB-REVIEWED')).querySelector('[data-testid=load-sources]').click()")
+    cd.wait("Boolean(document.querySelector('[data-testid=reviewed-document-disclosure]')) && Boolean(document.querySelector('#source-filter'))",'reauthorized structured source and empty document intake')
+    assert cd.evaluate("!document.querySelector('[data-testid=reviewed-document-disclosure]').open && !document.querySelector('[data-testid=reviewed-preview]') && document.querySelector('[data-testid=reviewed-file]').files.length===0"), 'Fresh scope cannot restore the old file or preview'
+    toggle(True)
+    credentials[0]['actions'].remove('source_read');write_grants()
+    click('Refresh reviewed documents')
+    cd.wait("!document.querySelector('[data-testid=source-index]') && document.querySelector('[data-testid=records-status]').textContent.includes('Document access unavailable')",'denied document listing withdraws shared source authority')
+    assert cd.evaluate("!document.querySelector('[data-testid=reviewed-file]') && !document.querySelector('[data-testid=source-statement]')"), 'Document-list denial clears both local intent and earlier server source text'
+    credentials[0]['actions'].append('source_read');write_grants()
+    assert operator(prefix+'/'+first)['revisions']==saved['revisions'], 'Denial and reauthorization must not mutate saved selections'
     receipt=dict(patient_id=patient_id,case_id=CASE,source_id=first,original_sha256=hashlib.sha256(raw).hexdigest(),
         extraction_sha256=saved['preview']['extraction_sha256'],revision_ids=[r['revision_id'] for r in saved['revisions']],
         physical_page=2,selected_lines=[2,3],actual_download_equal=True,preview_did_not_persist=True,
         keyboard_disclosure=True,collapsed_state_preserved=True,disclosure_requests=0,structured_intake_coexists=True,manual_selections_excluded_from_structured_index=True,
-        restart_preserved_revisions=True,revocation_created_no_download=True,clinical_approval=False)
+        restart_preserved_revisions=True,revocation_created_no_download=True,denial_cleared_shared_records=True,
+        reauthorization_did_not_restore_local_file=True,document_list_denial_cleared_source_text=True,clinical_approval=False)
     (artifacts/'reviewed-document-workflow.json').write_text(json.dumps(receipt,indent=2)+'\n')
-    print('PASS REVIEWED DOCUMENT: actual PDF upload/preview, original custody, page-two selections, immutable correction, exact binary browser download, restart, independent original denial and 390px layout. Fictional only.')
+    print('PASS REVIEWED DOCUMENT: actual PDF upload/preview, original custody, page-two selections, immutable correction, exact binary browser download, restart, original/list denial clears shared Records and local intent, explicit reauthorization starts empty, and 390px layout. Fictional only.')
