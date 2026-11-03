@@ -6,7 +6,7 @@ Original EHR behavior owner: PR #74, head `a1ce73e4bfa0eabee15e378968c424229a96c
 
 ## Actual implementation
 
-`PostgresClinicalEncounters` runs the original `ClinicalEncounters` schedule, transition, draft, attestation and correction code. The shared implementation gains only `_execute`, `_insert_id` and `_command_transaction` hooks. No copied second workflow or patient registry is introduced. Original SQLite tests are retained unchanged (blob `2f8ce6163c39d8fc59cbdb206b217584cb649d0c`).
+`PostgresClinicalEncounters` runs the original `ClinicalEncounters` schedule, transition, draft, attestation and correction code. The shared implementation gains only `_execute`, `_insert_id` and `_command_transaction` hooks. No copied second workflow or patient registry is introduced. The original 18 SQLite encounter test methods are preserved. The parity child adds nine original source-authorization/integrity regression tests from PR #291 rather than replacing the tests or forking the state machine.
 
 The PostgreSQL adapter uses the PR #148 canonical registry and its owned DB-API connection. All EHR writes, immutable command receipts and reference-only identity journal events share the registry transaction. `FOR UPDATE` on the canonical patient serializes competing commands and patient suspension; optimistic encounter/note revisions still reject stale writes. Identical retries reuse a committed result after reauthorization. Different patients do not share this row lock. This conservative granularity needs workload testing before production.
 
@@ -34,6 +34,24 @@ PYTHONPATH=src:tests:. python -m unittest discover -s tests -p 'test_*.py' -q
 ```
 
 Do not point the destructive research setup or invented fixtures at production.
+
+## Verified B-01c integration continuation (3 November 2026)
+
+This is [draft child PR #301](https://github.com/OpenxIntelligence/open-intelligence/pull/301), stacked on original port [#290](https://github.com/OpenxIntelligence/open-intelligence/pull/290). Parent PR #290's real PostgreSQL 17.11 and 18.6 runs [41629516514](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41629516514) initially failed with `TypeError: tuple indices must be integers or slices, not str` in the SQLite oracle of the lifecycle comparison, **before the PG comparison was established**. The test-only correction sets `sqlite3.Row` on that raw SQLite oracle connection, matching the existing domain's named-row contract. No application source/identity record or clinical operation was changed by this fixture correction.
+
+The new tests were run **before** the source repair. [Red PostgreSQL 17/18 run 41640715296](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41640715296) then passed the previously blocked full lifecycle comparison but reproduced **two explicit integrity failures on each server version**: a modified current note row was accepted for attestation and a modified historical row was disclosed. These were test-side altered *returned rows after real PostgreSQL reads*, not destructive edits to source database tables or real patient material. The corresponding [red UI/SQLite run 41640715388](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41640715388) reproduced nine original source-domain authorization/note-integrity failures; its separate Chromium startup also failed before a browser assertion, so no UI red behavior is claimed from that startup failure.
+
+**Green implementation:** the original shared `ClinicalEncounters` domain now implements:
+- A final host-policy check before persisting command/event/receipt; repeat-command receipts also require current authorization at disclosure.
+- Final read-boundary checks before disclosing encounter listings and historical notes (the PostgreSQL adapter retains its own locked/transaction-end checks).
+- Content SHA-256 verification for each current clinical note before subsequent revision/attestation and each historical version before disclosure. Failed integrity checks block publication or further mutation, not erase stored history.
+- One shared implementation for SQLite and PostgreSQL; **no new master patient, second EHR, source ledger, schema, API, framework, provider or runtime dependency**. All note content in tests is independently authored fictional text.
+
+At exact child head `b7dc6da07450b9bc7494949aba23cbf94b584cd3`, [real PostgreSQL 17/18 run 41640968947](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41640968947) completed **44 tests on each server, with no skips**. The two added integrity regressions now pass alongside actual concurrent command, patient-revision, immutability, source/permission and two-driver tests. [UI/general suite run 41640968951](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41640968951) passed **288 Python/HTTP tests (15 PG-only tests skipped there by design)**, 16 Node tests and existing Chromium source/keyboard journeys. PostgreSQL tests were executed separately with skip-forbidden CI; the 15 skips in the UI job must not be portrayed as PostgreSQL acceptance skips.
+
+These are software test results, not evidence of real clinical accuracy, lawful attestation, publisher provenance or production-ready revocation. SHA-256 only detects mismatched stored content; a privileged party replacing both content and hash would require stronger source authenticity, custody and signature controls. External policy systems are not transactionally locked by these application rechecks.
+
+The new child must remain draft and source-owner reviewed. Keep the original [#291](https://github.com/OpenxIntelligence/open-intelligence/pull/291) as evidence/ownership for the shared repairs; deduplicate it with this port in a reviewable integration, rather than merging two divergent versions of the clinical encounter module. Integration of LIS/source/Composer on PostgreSQL is the next dependency and is **not** established by this slice.
 
 ## Remaining acceptance gates
 
