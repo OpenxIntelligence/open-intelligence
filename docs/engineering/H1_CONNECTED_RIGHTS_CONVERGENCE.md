@@ -1,5 +1,7 @@
 # Connected reviewed intake: existing dependency-rights safeguards
 
+> **Pinned-main reconciliation:** #354 remains the document owner at `7b16a9a900737f07adb03e35362922c886424e9b`. This dependent source checkpoint preserves that concurrent update, includes accepted main `c4798ae` and records #374 ancestry. See the [convergence gate](H1_EVIDENCE_CONVERGENCE_MERGE_GATE.md) for the exact composition and its separate verification requirements. The earlier checkpoint below retains its original scope.
+
 ## Current candidate — reviewed-document convergence in #354
 
 **Checkpoint: 3 November 2026. Local composition verified; exact combined

@@ -1,16 +1,25 @@
 # H1 question evidence and patient follow-through convergence
 
-## Current checkpoint — existing #354 reviewed-document candidate
+> **Current pinned-main reconciliation:** see the [convergence gate](H1_EVIDENCE_CONVERGENCE_MERGE_GATE.md) for the exact composition and its separate verification record. Existing [#354](https://github.com/OpenxIntelligence/open-intelligence/pull/354) remains the canonical document candidate at `7b16a9a900737f07adb03e35362922c886424e9b`. This dependent checkpoint preserves that owner, reconciles accepted main `c4798ae85004713593f83458abd2102be6729095` and records explicit #374 ancestry. The green hosted receipt for #354 does not establish acceptance of this composition. Earlier checkpoints below retain their original scope.
 
-**3 November 2026: local composition verified; exact combined hosted acceptance
-pending.** The current work continues #354 from
-`d9b81f08a97998e8f95d2a1cc7c43b4165e99862`, composing frozen #368 review/evidence
-continuity, #369 task timestamps, #362 restored-document HTTP acceptance and
-#367 shared CI inputs. The [current candidate record](H1_CONNECTED_RIGHTS_CONVERGENCE.md#current-candidate--reviewed-document-convergence-in-354)
-contains the exact input heads, observed local checks and remaining gates; the
-[execution plan](../superpowers/plans/2026-11-03-reviewed-document-convergence.md)
-defines the bounded sequence. Main was separately observed at
-`c4798ae85004713593f83458abd2102be6729095` and remains the Python/SQLite reference.
+## Canonical document candidate — existing #354 convergence
+
+On 3 November 2026, [draft #354](https://github.com/OpenxIntelligence/open-intelligence/pull/354)
+advanced from the frozen foundation
+`d9b81f08a97998e8f95d2a1cc7c43b4165e99862` to
+`7b16a9a900737f07adb03e35362922c886424e9b`. It already composes #368
+review/evidence continuity, #369 strict task timestamps, #362 restored-document
+HTTP acceptance and #367 shared CI inputs, including the later reviewed-document
+and late-inbox browser checks. The [owner candidate record](H1_CONNECTED_RIGHTS_CONVERGENCE.md#current-candidate--reviewed-document-convergence-in-354)
+and [original execution plan](../superpowers/plans/2026-11-03-reviewed-document-convergence.md)
+retain the frozen inputs and original local publication checkpoint; #354's PR
+receipt records its subsequent hosted result.
+
+The dependent checkpoint reconciles accepted main
+`c4798ae85004713593f83458abd2102be6729095` and explicit #374 ancestry while
+preserving #354's existing composition. Its exact-head API/browser/recovery
+acceptance is separate from the green #354 receipt and is tracked in the
+[convergence gate](H1_EVIDENCE_CONVERGENCE_MERGE_GATE.md).
 
 Preserve document-aware authority clearing alongside evidence and Review drafts,
 all existing immutable source/report histories, exact retry owners and the

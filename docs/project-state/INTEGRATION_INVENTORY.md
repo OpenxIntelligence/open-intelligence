@@ -1,26 +1,32 @@
 # Integration inventory — current contracts and unfinished connections
 
+> **Current pinned-main reconciliation:** see the [convergence gate](../engineering/H1_EVIDENCE_CONVERGENCE_MERGE_GATE.md) for the exact composition and its separate verification record. Existing [#354](https://github.com/OpenxIntelligence/open-intelligence/pull/354) remains the canonical document candidate at `7b16a9a900737f07adb03e35362922c886424e9b`. This dependent checkpoint preserves that owner, reconciles accepted main `c4798ae85004713593f83458abd2102be6729095` and records explicit #374 ancestry. The green hosted receipt for #354 does not establish acceptance of this composition. Earlier checkpoints below retain their original scope.
+
 **Assessment:** 3 November 2026 (America/New_York).  
-**Current candidate:** continue existing [#354](https://github.com/OpenxIntelligence/open-intelligence/pull/354) from `d9b81f08a97998e8f95d2a1cc7c43b4165e99862`. **Local composition verified; exact combined hosted acceptance pending.** Main was separately observed at `c4798ae85004713593f83458abd2102be6729095` and remains the Python/SQLite reference. No H1 merge or deployment is established.
+**Canonical document candidate:** existing [#354](https://github.com/OpenxIntelligence/open-intelligence/pull/354) at `7b16a9a900737f07adb03e35362922c886424e9b`, advanced from the frozen `d9b81f08a97998e8f95d2a1cc7c43b4165e99862` foundation. Its green hosted receipt belongs to that owner. The dependent accepted-main reconciliation and explicit #374 ancestry require their own exact-head acceptance in the convergence gate above. H1 remains unmerged and undeployed.
 
-## Current composition and acceptance boundary
+## Canonical composition and dependent acceptance boundary
 
-| Existing owner | Included scope | Remaining combined gate |
+| Existing owner | Included scope | Reconciliation gate |
 | --- | --- | --- |
-| #354 reviewed documents, comparisons and rights | Exact text/PDF originals, immutable manual selections, document-aware denial reset, comparison draft/retry owners and dependency identity controls | Preserve all current document behavior while adding the donors below |
+| #354 reviewed documents, comparisons and rights | Exact text/PDF originals, immutable manual selections, document-aware denial reset, comparison draft/retry owners, dependency identity controls and the later reviewed-document/late-inbox browser checks | Preserve all current document behavior with accepted main and explicit #374 ancestry |
 | #368 evidence/review continuity | Strict evidence chronology, truthful pending status and app-owned memory-only Review reasons, including #324's repair | Actual Review navigation and current document-denial clearing, without stale text returning after fresh access |
 | #369 task chronology | Strict creation/history timestamps and withholding malformed actionable views | Actual malformed-response and valid-recovery browser checks together with document/review flows |
-| #362 restored-document HTTP | Existing source-recovery assertions, exact bytes/history/retries, independent grants and restored revoked-binding denial | Execute against the new combined PostgreSQL/API candidate, not only the donor head |
-| #367 CI and documentation | Shared-source/test trigger coverage and existing data-boundary audit | Both full API/recovery and web/browser workflows at the exact published head |
+| #362 restored-document HTTP | Existing source-recovery assertions, exact bytes/history/retries, independent grants and restored revoked-binding denial | Execute against the reconciled PostgreSQL/API candidate, preserving the donor and #354 receipts separately |
+| #367 CI and documentation | Shared-source/test trigger coverage and existing data-boundary audit | Both full API/recovery and web/browser workflows at the exact reconciled head |
+| Accepted main and #374 ancestry | Reference fixes at pinned main `c4798ae`; explicit #374 lineage, whose workflow matches the #367 contribution | Record the exact composition and its own verification in the existing convergence gate |
 
-All input SHAs and actual local checks are in the [candidate record](../engineering/H1_CONNECTED_RIGHTS_CONVERGENCE.md#current-candidate--reviewed-document-convergence-in-354)
-and [bounded plan](../superpowers/plans/2026-11-03-reviewed-document-convergence.md).
+The [owner candidate record](../engineering/H1_CONNECTED_RIGHTS_CONVERGENCE.md#current-candidate--reviewed-document-convergence-in-354)
+and [original bounded plan](../superpowers/plans/2026-11-03-reviewed-document-convergence.md)
+retain #354's frozen donor inputs and original local publication checkpoint.
+The [convergence gate](../engineering/H1_EVIDENCE_CONVERGENCE_MERGE_GATE.md)
+records the separate accepted-main composition and remaining exact-head checks.
 Manual selections still do not enter structured World Model/question/report
 snapshots. DOI, imaging/archive and clinical-domain candidates remain separate;
 synthetic engineering checks do not qualify real identity, clinical review or
 release-wide rights.
 
-**Historical #355/#367 publication checkpoint:** [#355](https://github.com/OpenxIntelligence/open-intelligence/pull/355) at `6f836b451c2e8426e5c3b2be194408424f95c69f` already contained the earlier approved runtime composition. Its child #367 added shared-source CI coverage and reconciled documentation while preserving parent backlog/plan. Exact child hosted acceptance was pending at that source checkpoint; its later receipt belongs to #367 and is not combined #354 acceptance.
+**Historical #355/#367 publication checkpoint:** [#355](https://github.com/OpenxIntelligence/open-intelligence/pull/355) at `6f836b451c2e8426e5c3b2be194408424f95c69f` already contained the earlier approved runtime composition. Its child #367 added shared-source CI coverage and reconciled documentation while preserving parent backlog/plan. Exact child hosted checks were pending when that original checkpoint was written and subsequently passed; those receipts establish neither #354 acceptance nor acceptance of the dependent pinned-main reconciliation.
 
 **Historical baselines:** reference main `24519839aa8ac1ea3aff88a956349ba72798a72a`; selected connected H1 draft [#328](https://github.com/OpenxIntelligence/open-intelligence/pull/328) at `5a188d4e18e4d80bc2ba1d662c966abc3096301f`, with locally verified #330/#335/#339 corrections. Earlier #276 and #293/#298 assessments are preserved below as historical checkpoints. Other drafts are named separately.
 
@@ -35,7 +41,6 @@ source owner is introduced. Manual-provenance propagation into World Model,
 questions and reports remains open. Final commit-specific results are in the PR;
 older checkpoints below are retained as historical evidence.
 
-## Current integration checkpoint — 3 November 2026
 ## Historical integration scope — #328 plus bounded local corrections
 
 The [current project checkpoint](PROJECT_STATE.md) and

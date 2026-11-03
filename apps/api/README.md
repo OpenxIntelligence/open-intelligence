@@ -1,5 +1,7 @@
 # Open Intelligence H1 patient registry API
 
+> **Pinned-main reconciliation:** #354 remains the document owner at `7b16a9a900737f07adb03e35362922c886424e9b`. This dependent source checkpoint preserves that concurrent update, includes accepted main `c4798ae` and records #374 ancestry. See the [convergence gate](../../docs/engineering/H1_EVIDENCE_CONVERGENCE_MERGE_GATE.md) for the exact composition and its separate verification requirements. The earlier checkpoint below retains its original scope.
+
 This is the FastAPI/PostgreSQL 16 composition root for [issue #112](https://github.com/OpenxIntelligence/open-intelligence/issues/112).
 It mounts the existing canonical patient registry and a small synthetic record-request operational domain, with migrations and durable event receipts.
 The Python/SQLite prototype remains the evidence/investigation reference. This

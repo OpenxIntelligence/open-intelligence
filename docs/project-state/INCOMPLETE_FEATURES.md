@@ -1,26 +1,33 @@
 # Incomplete features and qualification gaps
 
+> **Current pinned-main reconciliation:** see the [convergence gate](../engineering/H1_EVIDENCE_CONVERGENCE_MERGE_GATE.md) for the exact composition and its separate verification record. Existing [#354](https://github.com/OpenxIntelligence/open-intelligence/pull/354) remains the canonical document candidate at `7b16a9a900737f07adb03e35362922c886424e9b`. This dependent checkpoint preserves that owner, reconciles accepted main `c4798ae85004713593f83458abd2102be6729095` and records explicit #374 ancestry. The green hosted receipt for #354 does not establish acceptance of this composition. Earlier checkpoints below retain their original scope.
+
 Assessment checkpoint: **3 November 2026, America/New_York**. This assessment maps the existing [execution backlog](../EXECUTION_BACKLOG.csv); it does not create another backlog or replace source-owner specifications.
 
-## Current gap reconciliation — reviewed-document candidate #354
+## Current gap reconciliation — canonical document candidate #354
 
-**Local composition verified; exact combined hosted acceptance pending.**
-Continue existing #354 from `d9b81f08a97998e8f95d2a1cc7c43b4165e99862` with
-the frozen #368/#369/#362/#367 contributions. Ordinary text/PDF custody, manual
-selection history and recoverable comparisons are already in the #354 foundation;
-evidence/review continuity, task-date validation, restored-document HTTP checks
-and shared CI coverage are being qualified together. The
-[candidate record](../engineering/H1_CONNECTED_RIGHTS_CONVERGENCE.md#current-candidate--reviewed-document-convergence-in-354)
-records exact inputs, observed local checks and pending combined acceptance.
-Main `c4798ae85004713593f83458abd2102be6729095` remains the reference; H1 is
-unmerged and undeployed. The earlier #355/#367 and #328 assessments are historical
-checkpoints. Do not rebuild their existing source, question, evidence, report or
-task owners.
+Existing [#354](https://github.com/OpenxIntelligence/open-intelligence/pull/354)
+at `7b16a9a900737f07adb03e35362922c886424e9b` remains the document owner.
+It advances the frozen `d9b81f08a97998e8f95d2a1cc7c43b4165e99862` foundation
+with #368/#369/#362/#367. Ordinary text/PDF custody, manual selection history,
+recoverable comparisons, evidence/Review continuity, task-date validation,
+restored-document HTTP checks and shared CI coverage are already composed there,
+including the later reviewed-document and late-inbox browser checks. The
+[owner candidate record](../engineering/H1_CONNECTED_RIGHTS_CONVERGENCE.md#current-candidate--reviewed-document-convergence-in-354)
+retains its original frozen inputs and local checkpoint; #354's PR receipt
+records the subsequent hosted result.
+
+The [convergence gate](../engineering/H1_EVIDENCE_CONVERGENCE_MERGE_GATE.md)
+tracks the dependent accepted-main reconciliation and explicit #374 ancestry.
+That composition requires its own exact-head acceptance; #354's green result
+does not prove it. H1 remains unmerged and undeployed. Earlier #355/#367 and
+#328 assessments retain their historical scope. Preserve the existing source,
+question, evidence, report and task owners.
 
 | Material remaining requirement | Current evidence | Next work in the existing owner |
 |---|---|---|
 | Representative document → reviewed structured information | #354 includes bounded ordinary text/PDF preview, exact originals and immutable manual selections through #323/#349. Manual selections remain excluded from structured World Model/question/report snapshots; viewing or passage selection does not establish general clinical extraction. | OI-006/007/009 and GH-323: retain exact original/page/line/correction provenance and qualify its explicit connection through existing source/question/report owners. |
-| One candidate preserving document, evidence, review and task boundaries | Local #354 composition now includes #368/#369/#362/#367; local checks are recorded, but exact combined hosted acceptance and independent whole-change review remain pending. | OI-010/013: qualify current-denial draft clearing, malformed chronology, exact retries and actual restored-document HTTP on the same published head. |
+| One candidate preserving document, evidence, review and task boundaries | #354 at `7b16a9a` already includes #368/#369/#362/#367 and the later reviewed-document/late-inbox checks. Its hosted receipt is separate from the accepted-main reconciliation checkpoint. | OI-010/013: qualify the pinned-main composition at its own published head, preserving current-denial draft clearing, malformed chronology, exact retries and actual restored-document HTTP. |
 | Qualified evidence → investigation → human review | H1 reports contain human-authored comparisons and explicitly disclose no model execution, exhaustive search or clinical review. Preflight is not execution. | OI-004/008/011/014: reuse the existing evidence/Composer owners with one permitted live or frozen source, supporting/contradictory evidence, reproducible inputs, abstention and qualified scoped review. |
 | Patient accounts, profiles, caregiver authority and professional sign-off | Current authentication is a synthetic fixture adapter; reading layout and task owner labels do not verify people, consent or professional authority. | OI-012/013: qualify the existing authentication/authority ports, delegation and revocation; bind review to exact artifact, patient snapshot, scope and reviewer. |
 | Complete clinical context and multiple care settings | Source-only World Model has bounded exact-date/key/specimen logic. It is not a complete episode/lesion/assay/unit/medication record. | OI-002/006/009/016: preserve raw and normalized values, uncertain dates and missing states; add pediatric/guardian, hematologic, multimorbid, rural, disability, survivorship and palliative scenarios to existing evaluation owners. |
@@ -30,6 +37,16 @@ task owners.
 See the exact [30-domain ownership mapping](../research/PATIENT_JOURNEY_CAPABILITY_CROSSWALK_2026-11-03.md)
 and [15-step MVP acceptance](PRODUCT_REQUIREMENTS.md). A domain label or green
 synthetic test count is not a percentage-complete measure.
+
+## Historical #367 gap reconciliation — inherited #328 capabilities on #355
+
+That publication follow-up targeted #355, whose runtime matched its approved local composition. The full-product gaps below remain applicable except where the newer convergence gate explicitly establishes a bounded capability. The [current project checkpoint](PROJECT_STATE.md) supersedes older absence
+claims below. At #328 (`5a188d4e18e4d80bc2ba1d662c966abc3096301f`), H1 source,
+question, fictional evidence originals/citations, human-authored comparisons,
+immutable reports and follow-through were already connected. That local
+candidate composed existing #330/#335/#339 corrections; hosted acceptance was
+still required at this original checkpoint. Its later #367 checks passed, and
+the pinned-main reconciliation requires its own acceptance. Do not rebuild these existing owners.
 
 ## Historical #276 evidence boundary
 

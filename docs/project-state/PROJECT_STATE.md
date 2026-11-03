@@ -1,28 +1,37 @@
 # Open Intelligence — current project state
 
+> **Current pinned-main reconciliation:** see the [convergence gate](../engineering/H1_EVIDENCE_CONVERGENCE_MERGE_GATE.md) for the exact composition and its separate verification record. Existing [#354](https://github.com/OpenxIntelligence/open-intelligence/pull/354) remains the canonical document candidate at `7b16a9a900737f07adb03e35362922c886424e9b`. This dependent checkpoint preserves that owner, reconciles accepted main `c4798ae85004713593f83458abd2102be6729095` and records explicit #374 ancestry. The green hosted receipt for #354 does not establish acceptance of this composition. Earlier checkpoints below retain their original scope.
+
 Assessment date: 3 November 2026. Initial assessment recorded before this branch's product changes.
 
-## Current candidate — existing #354 reviewed-document convergence
+## Canonical document candidate — existing #354 convergence
 
-**Local composition verified; exact combined hosted acceptance pending.** The
-selected existing candidate is [draft #354](https://github.com/OpenxIntelligence/open-intelligence/pull/354)
-at frozen base `d9b81f08a97998e8f95d2a1cc7c43b4165e99862`. This continuation
-composes the existing #368 evidence chronology/recovery and Review drafts,
-#369 strict task timestamps, #362 restored-document HTTP probe and #367 shared
-acceptance triggers/documentation. The [candidate record](../engineering/H1_CONNECTED_RIGHTS_CONVERGENCE.md#current-candidate--reviewed-document-convergence-in-354)
-pins all donors, records actual local verification, and states the remaining
-independent review and exact combined API/browser/recovery gates.
+Existing [draft #354](https://github.com/OpenxIntelligence/open-intelligence/pull/354)
+remains the canonical document candidate at
+`7b16a9a900737f07adb03e35362922c886424e9b`. It advances the frozen
+`d9b81f08a97998e8f95d2a1cc7c43b4165e99862` foundation with #368 evidence
+chronology/recovery and Review drafts, #369 strict task timestamps, #362
+restored-document HTTP and #367 shared acceptance triggers/documentation,
+including the later reviewed-document and late-inbox browser checks. The
+[owner candidate record](../engineering/H1_CONNECTED_RIGHTS_CONVERGENCE.md#current-candidate--reviewed-document-convergence-in-354)
+retains the exact donor inputs and original local publication checkpoint;
+#354's PR receipt records its subsequent hosted result.
 
-Main was separately observed at
-[`c4798ae85004713593f83458abd2102be6729095`](https://github.com/OpenxIntelligence/open-intelligence/commit/c4798ae85004713593f83458abd2102be6729095),
-still the Python/SQLite reference. The H1 candidate remains unmerged and
-undeployed. Document originals and manual selection history are present in the
-#354 foundation; manual selections are **not** yet structured investigation
-provenance in the World Model, questions or reports. Real identity/delegation,
-qualified biomedical/model use, professional review, independent user/clinical
-evaluation and release-wide rights remain open.
+This dependent checkpoint reconciles accepted main
+[`c4798ae85004713593f83458abd2102be6729095`](https://github.com/OpenxIntelligence/open-intelligence/commit/c4798ae85004713593f83458abd2102be6729095)
+and explicit #374 ancestry while preserving #354's composition and ownership.
+The [convergence gate](../engineering/H1_EVIDENCE_CONVERGENCE_MERGE_GATE.md)
+records the pinned composition, local evidence and its separate exact-head
+API/browser/recovery requirements. The green #354 receipt does not establish
+acceptance of this reconciled head.
 
-This implements existing OI-007/008/009/010/013 and GH-323 work. It preserves
+H1 remains unmerged and undeployed. Document originals and manual selection
+history are present in #354; manual selections are **not** yet structured
+investigation provenance in the World Model, questions or reports. Real
+identity/delegation, qualified biomedical/model use, professional review,
+independent user/clinical evaluation and release-wide rights remain open.
+
+This continues existing OI-007/008/009/010/013 and GH-323 work. It preserves
 the selected H1 stack, source owners and full platform ambition. The historical
 #355/#367 and earlier sections below retain their original evidence and scope;
 their publication-time pending statements are not the current acceptance record.
