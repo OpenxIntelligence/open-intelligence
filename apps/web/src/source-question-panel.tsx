@@ -8,14 +8,14 @@ export function SourceQuestionPanel({state,session,busy}:{state:ViewState;sessio
    draft.question.trim()===draft.question&&
    !Array.from(draft.question).some(ch=>ch.charCodeAt(0)<32||ch.charCodeAt(0)===127);
  const unresolvedWrite=state.questionSaveMessage.startsWith('Save outcome unknown.');
- const stage=unresolvedWrite?'uncertain':state.composerPreview?'prepared':draft?'draft':'select';
+ const stage=unresolvedWrite?'uncertain':state.savedQuestion&&state.composerPreview?'saved':state.composerPreview?'prepared':draft?'draft':'select';
  return <section data-testid="source-question-panel" aria-label="Source-linked question intake">
    <div className="question-flow" data-testid="question-flow" aria-label="Question preparation steps">
     <h3>Investigate a source statement</h3>
     <ol>
      <li data-stage={stage==='select'?'current':'complete'}><strong>1. Select a source</strong><span>{stage==='select'?'Choose a source statement below':'Source selected'}</span></li>
-     <li data-stage={stage==='draft'?'current':stage==='select'?'waiting':stage==='uncertain'?'attention':'complete'}><strong>2. Prepare context</strong><span>{stage==='uncertain'?'Save result uncertain':stage==='prepared'?'Source context prepared':stage==='draft'?'Check the current source':'Awaiting source'}</span></li>
-     <li data-stage={stage==='prepared'?'current':stage==='uncertain'?'attention':'waiting'}><strong>3. Save question</strong><span>{stage==='uncertain'?'Retry same save':stage==='prepared'?'Explicit action required':'Not yet saved'}</span></li>
+     <li data-stage={stage==='draft'?'current':stage==='select'?'waiting':stage==='uncertain'?'attention':'complete'}><strong>2. Prepare context</strong><span>{stage==='uncertain'?'Save result uncertain':stage==='saved'?'Question saved':stage==='prepared'?'Source context prepared':stage==='draft'?'Check the current source':'Awaiting source'}</span></li>
+     <li data-stage={stage==='saved'?'complete':stage==='prepared'?'current':stage==='uncertain'?'attention':'waiting'}><strong>3. Save question</strong><span>{stage==='uncertain'?'Retry same save':stage==='saved'?'Source-linked intake recorded':stage==='prepared'?'Explicit action required':'Not yet saved'}</span></li>
     </ol>
     <p>Question intake only. No AI execution or clinical review.</p>
    </div>
