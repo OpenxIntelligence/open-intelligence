@@ -179,7 +179,11 @@
 
   async function refreshMission() {
     const caseId = picker.value;
-    if (!caseId) return;
+    if (!caseId) {
+      status.textContent = "No synthetic cases found";
+      status.className = "pill pill-neutral";
+      return;
+    }
     const sequence = ++requestSequence;
     status.textContent = "Loading…";
     status.className = "pill pill-neutral";

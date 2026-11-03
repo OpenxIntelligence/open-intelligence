@@ -24,7 +24,9 @@ from .investigation import (
     validate_output,
 )
 from .mission import build_patient_mission
+from .owned_questions import question_gap_rollup
 from .store import CaseStore, InvalidInput, MAX_SOURCE_BYTES
+from .synthetic_metrics import fixture_run
 from .timeline import case_timeline
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -228,6 +230,8 @@ class Handler(BaseHTTPRequestHandler):
             if case_options:
                 query = parse_qs(urlsplit(self.path).query)
                 snapshot_raw = query.get("snapshot_id", [None])[0]
+                if snapshot_raw is not None and not snapshot_raw.isdigit():
+                    raise InvalidInput("snapshot_id must be a positive integer")
                 snapshot_id = int(snapshot_raw) if snapshot_raw is not None else None
                 return self._json(200, store.option_view(case_options[1], snapshot_id))
             case_mission = re.fullmatch(rf"/api/cases/{ID_PART}/mission", path)
@@ -251,6 +255,9 @@ class Handler(BaseHTTPRequestHandler):
             inv_one = re.fullmatch(rf"/api/cases/{ID_PART}/investigations/([0-9]+)", path)
             if inv_one:
                 return self._json(200, store.get_investigation(inv_one[1], int(inv_one[2])))
+            question_rollup = re.fullmatch(rf"/api/cases/{ID_PART}/questions/([0-9]+)/rollup", path)
+            if question_rollup:
+                return self._json(200, question_gap_rollup(store, question_rollup[1], int(question_rollup[2])))
             if path == "/api/investigations/templates":
                 return self._json(200, {"templates": [
                     {"id": template_id, "description": text[:160]}
@@ -262,6 +269,35 @@ class Handler(BaseHTTPRequestHandler):
             if exported:
                 contents = store.export_markdown(exported[1], int(exported[2])).encode("utf-8")
                 return self._send(200, contents, "text/markdown; charset=utf-8")
+            question_synthesis = re.fullmatch(rf"/api/cases/{ID_PART}/questions/([0-9]+)/synthesis", path)
+            if question_synthesis:
+                return self._json(200, store.question_synthesis(question_synthesis[1], int(question_synthesis[2])))
+            snapshot_synthesis = re.fullmatch(rf"/api/cases/{ID_PART}/snapshots/([0-9]+)/synthesis", path)
+            if snapshot_synthesis:
+                return self._json(200, store.snapshot_synthesis(snapshot_synthesis[1], int(snapshot_synthesis[2])))
+            synthesis_report = re.fullmatch(rf"/api/cases/{ID_PART}/snapshots/([0-9]+)/synthesis-report", path)
+            if synthesis_report:
+                contents = store.synthesis_report(synthesis_report[1], int(synthesis_report[2])).encode("utf-8")
+                return self._send(200, contents, "text/markdown; charset=utf-8")
+            synthesis_patient = re.fullmatch(rf"/api/cases/{ID_PART}/snapshots/([0-9]+)/synthesis-report-patient", path)
+            if synthesis_patient:
+                contents = store.synthesis_patient_report(synthesis_patient[1], int(synthesis_patient[2])).encode("utf-8")
+                return self._send(200, contents, "text/markdown; charset=utf-8")
+            metrics = re.fullmatch(r"/api/metrics/synthetic", path)
+            if metrics:
+                query = parse_qs(urlsplit(self.path).query)
+
+                def _manifest(values: list[str] | None) -> list[str]:
+                    names: list[str] = []
+                    for value in values or []:
+                        names.extend(part.strip() for part in value.split(","))
+                    return [name for name in names if name]
+
+                return self._json(200, fixture_run(
+                    store, _manifest(query.get("dev")), _manifest(query.get("held_out"))))
+            re_review_list = re.fullmatch(rf"/api/cases/{ID_PART}/re-review-tasks", path)
+            if re_review_list:
+                return self._json(200, store.list_re_review_tasks(re_review_list[1]))
             return self._json(404, {"error": "Route not found"})
         except InvalidInput as error:
             return self._json(422, {"error": str(error)})
@@ -321,7 +357,25 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(200, store.import_report(imports[1], raw.encode("utf-8")))
                 questions = re.fullmatch(rf"/api/cases/{ID_PART}/questions", path)
                 if questions:
-                    return self._json(201, {"question_id": store.add_question(questions[1], data.get("question"))})
+                    owner = data.get("owner_label")
+                    if isinstance(owner, str) and not owner.strip():
+                        owner = None
+                    return self._json(201, {"question_id": store.add_question(
+                        questions[1], data.get("question"), owner)})
+                question_owner = re.fullmatch(rf"/api/cases/{ID_PART}/questions/([0-9]+)/owner", path)
+                if question_owner:
+                    history_id = store.assign_question_owner(
+                        question_owner[1], int(question_owner[2]), data.get("owner_label"))
+                    return self._json(200, {"history_id": history_id})
+                question_triage = re.fullmatch(rf"/api/cases/{ID_PART}/questions/([0-9]+)/triage", path)
+                if question_triage:
+                    store.set_question_triage(question_triage[1], int(question_triage[2]), data.get("triage"))
+                    return self._json(200, {"result": "triage_updated"})
+                question_note = re.fullmatch(rf"/api/cases/{ID_PART}/questions/([0-9]+)/evidence-notes", path)
+                if question_note:
+                    note_id = store.add_question_evidence_note(
+                        question_note[1], int(question_note[2]), data.get("note"))
+                    return self._json(201, {"note_id": note_id})
                 evidence_assessment = re.fullmatch(rf"/api/cases/{ID_PART}/evidence-assessments", path)
                 if evidence_assessment:
                     return self._json(201, {"assessment_id": store.assess_synthetic_evidence(
@@ -365,6 +419,13 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(200, store.review_broker_link(
                         broker_review[1], int(broker_review[2]), data.get("relation"),
                         data.get("applicability"), data.get("rationale")))
+                limitation_note = re.fullmatch(rf"/api/cases/{ID_PART}/limitation-notes", path)
+                if limitation_note:
+                    return self._json(201, {"note_id": store.add_limitation_note(
+                        limitation_note[1], data.get("question_id"),
+                        assessment_id=data.get("assessment_id"),
+                        broker_link_id=data.get("broker_link_id"),
+                        note=data.get("note"), author_label=data.get("author_label"))})
                 bio_assets = re.fullmatch(rf"/api/cases/{ID_PART}/biological-assets", path)
                 if bio_assets:
                     return self._json(201, {"biological_asset_id": store.add_biological_asset(
@@ -391,6 +452,26 @@ class Handler(BaseHTTPRequestHandler):
                 if review:
                     store.acknowledge_demo_review(review[1], int(review[2]), data.get("reviewer_label"))
                     return self._json(200, {"result": "acknowledged_in_demo"})
+                scoped_decision = re.fullmatch(rf"/api/cases/{ID_PART}/snapshots/([0-9]+)/scoped-decisions", path)
+                if scoped_decision:
+                    return self._json(201, store.record_scoped_decision(
+                        scoped_decision[1], int(scoped_decision[2]), data.get("reviewer_label"),
+                        data.get("scope"), data.get("note")))
+                scoped_dissent = re.fullmatch(rf"/api/cases/{ID_PART}/snapshots/([0-9]+)/scoped-dissents", path)
+                if scoped_dissent:
+                    return self._json(201, store.record_scoped_dissent(
+                        scoped_dissent[1], int(scoped_dissent[2]), data.get("reviewer_label"),
+                        data.get("claim_ref"), data.get("rationale")))
+                scoped_handoff = re.fullmatch(rf"/api/cases/{ID_PART}/snapshots/([0-9]+)/scoped-handoffs", path)
+                if scoped_handoff:
+                    return self._json(201, store.record_scoped_handoff(
+                        scoped_handoff[1], int(scoped_handoff[2]), data.get("from_reviewer"),
+                        data.get("to_reviewer")))
+                re_review_close = re.fullmatch(rf"/api/cases/{ID_PART}/re-review-tasks/([0-9]+)/close", path)
+                if re_review_close:
+                    return self._json(200, store.close_re_review_task(
+                        re_review_close[1], int(re_review_close[2]),
+                        data.get("closing_snapshot_id"), data.get("no_change_note")))
                 option_create = re.fullmatch(rf"/api/cases/{ID_PART}/options", path)
                 if option_create:
                     option_id = store.create_option(
@@ -418,8 +499,14 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(201, {"task_id": task_id})
                 task_status = re.fullmatch(rf"/api/cases/{ID_PART}/tasks/([0-9]+)/status", path)
                 if task_status:
-                    store.set_preparation_task_status(task_status[1], int(task_status[2]), data.get("status"))
-                    return self._json(200, {"result": "task_status_updated"})
+                    # B-09: acting label is optional and recorded only on done.
+                    outcome = store.set_preparation_task_status(
+                        task_status[1], int(task_status[2]), data.get("status"),
+                        acting_label=data.get("acting_label"))
+                    payload: dict = {"result": "task_status_updated"}
+                    if outcome is not None:
+                        payload["receipt_id"] = outcome["receipt_id"]
+                    return self._json(200, payload)
                 option_threat = re.fullmatch(rf"/api/cases/{ID_PART}/options/([0-9]+)/threats", path)
                 if option_threat:
                     threat_id = store.add_optionality_threat(
