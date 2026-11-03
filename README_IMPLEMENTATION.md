@@ -164,6 +164,70 @@ Remaining proof step: a live-server run against the real API with
 the operator key set, before the demo. The API completion itself
 was verified separately on 2026-10-31.
 
+## Case search and triage list (read-only)
+
+Find fictional cases and see work counts at a glance, without leaking
+one case's contents into another view. This slice adds no tables, no
+writes, no clinical urgency, and no treatment logic.
+
+```text
+GET /api/cases?search=<substring>&sort=recent|id
+```
+
+- `GET /api/cases` without a query still returns the existing
+  id-ordered `[{case_id, label, synthetic}]` rows unchanged.
+- With `search` or `sort` present, each item returns only:
+  `case_id`, `label`, `created_at`, `last_activity_at`,
+  `last_activity_event_id`, `synthetic`, and
+  `counts: {sources, open_questions, pending_reviews,
+  overdue_follow_ups}`. No source text, finding quotes, question
+  text, draft summaries, or notes appear in the list payload.
+- Search matches case id and display label substrings only,
+  case-insensitive. Empty search returns all cases. A term matching
+  nothing returns `[]`, never an error.
+- `sort=id` orders by case id (existing order). `sort=recent`
+  orders by latest recorded activity (latest event id per case).
+  Any other sort returns the existing `422` boundary.
+- Counts derive from the same tables and state filters the case
+  views use: current sources (`state='current'`), open questions
+  (`state='open'`), drafts awaiting demo review
+  (`snapshots.state='draft'`). Stale snapshots are preserved
+  history; their rework signal is the reopened open question.
+  `overdue_follow_ups` is always `0` because the demo ledger
+  contains no follow-up due dates, urgency, or priority — none is
+  shown or inferred. This is not a clinical triage list.
+
+The `#case-search` panel provides a search box and sort control,
+plain-language counts, a `FICTIONAL` label on every item, an honest
+empty state, and an `Open this case` action that reuses the existing
+case-picker change path (including its unfinished-draft guard) and
+loads the unchanged case view. Rendering uses `textContent` only,
+reuses existing CSS classes, clears the list on every response, and
+discards stale responses by sequence. The search box and sort are
+global list controls, not per-case drafts, so a case switch does not
+clear them; the list refreshes after workspace changes via the
+existing event list.
+
+Files: `src/open_intelligence/case_search.py` (new read-only
+projection), `web/case_search.js` (new renderer),
+`tests/test_case_search.py` (store + HTTP + UI-contract),
+`src/open_intelligence/__main__.py` (query handling and static
+route only), `web/index.html` (new section, nav link, script tag
+only). No existing behavior, contract, or test was changed.
+
+Reviewer to run (not run here; shell execution is blocked in this
+authoring session):
+
+```bash
+PYTHONPATH=src python -m compileall -q src
+node --check web/case_search.js
+PYTHONPATH=src python -m unittest tests.test_case_search -v
+PYTHONPATH=src python -m unittest discover -s tests
+```
+
+Limitations: no pagination, no follow-up ledger, no urgency model,
+and no cross-case clinical comparison. The list shows workflow
+counts only and must not be described as clinical triage.
 ## Investigation workspace slice
 
 Durable investigation questions that survive amendments and stay linked to

@@ -13,6 +13,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from tools.crossref_metadata import MetadataInputError, fetch_public_doi, project_work
 
+from .case_search import list_cases
 from .changes import changes_since_review
 from .followthrough import followthrough_view
 from .investigation import (
@@ -187,6 +188,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._static("app.js", "text/javascript; charset=utf-8")
             if path == "/mission.js":
                 return self._static("mission.js", "text/javascript; charset=utf-8")
+            if path == "/case_search.js":
+                return self._static("case_search.js", "text/javascript; charset=utf-8")
             if path == "/provenance.js":
                 return self._static("provenance.js", "text/javascript; charset=utf-8")
             if path == "/consent.js":
@@ -223,7 +226,15 @@ class Handler(BaseHTTPRequestHandler):
                 actor = self._fictional_actor()
                 if actor is None:
                     return self._grant_denial()
-                return self._json(200, store.granted_cases(actor, FICTIONAL_ACTOR_PURPOSE))
+                query = parse_qs(urlsplit(self.path).query)
+                if "search" not in query and "sort" not in query:
+                    return self._json(200, store.granted_cases(actor, FICTIONAL_ACTOR_PURPOSE))
+                granted = store.granted_cases(actor, FICTIONAL_ACTOR_PURPOSE)
+                search = query.get("search", [""])[0]
+                sort = query.get("sort", ["id"])[0]
+                return self._json(200, list_cases(
+                    store, search=search, sort=sort,
+                    allowed_ids={c["case_id"] for c in granted}))
             gated_case = self._case_route_id(path)
             if gated_case is not None and not self._require_case_grant(store, gated_case, path):
                 return None

@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
   <script src="/mission.js" defer></script>
+  <script src="/case_search.js" defer></script>
   <script src="/provenance.js" defer></script>
   <script src="/consent.js" defer></script>
   <script src="/clinician-overview.js" defer></script>
@@ -41,6 +42,7 @@
         <summary>Navigate</summary>
         <nav id="workspace-nav" aria-label="Workspace sections">
           <a href="#overview">Case overview</a>
+          <a href="#case-search">Find cases</a>
           <a href="#journey">Guided journey</a>
           <a href="#incoming-board">Incoming board</a>
           <a href="#review-queue">Review queue</a>
@@ -180,6 +182,21 @@
         </div>
       </section>
       <div id="notice" role="status" aria-live="polite" class="notice" hidden></div>
+      <section class="panel" id="case-search">
+        <div class="panel-head"><div><div class="eyebrow">FIND CASES · READ-ONLY LIST</div><h2>Find cases</h2></div><span class="pill pill-warn">FICTIONAL DEMO CASES ONLY</span></div>
+        <p class="muted">Search fictional cases by case ID or label. Counts show current work at a glance. This is not a clinical triage list: the demo data contains no urgency or priority, so none is shown or inferred. Selecting a case opens the same record below — there is no second copy.</p>
+        <form id="case-search-form">
+          <label for="case-search-input">Search by case ID or label</label>
+          <input id="case-search-input" type="text" maxlength="80" placeholder="Type part of a case ID or label" autocomplete="off">
+          <label for="case-search-sort">Sort</label>
+          <select id="case-search-sort">
+            <option value="recent">Most recent activity first</option>
+            <option value="id">Case ID (A to Z)</option>
+          </select>
+        </form>
+        <p id="case-search-count" class="muted tiny" role="status" aria-live="polite">Loading fictional cases…</p>
+        <div id="case-search-list" class="questions" aria-live="polite"></div>
+      </section>
       <section class="panel" id="incoming-board">
         <div class="panel-head"><div><div class="eyebrow">00 / WORKLIST</div><h2>Incoming board</h2></div><span class="pill pill-warn">FICTIONAL DEMO CASES ONLY</span></div>
         <p class="muted">One shared worklist for the fictional cases in this local demo, most recent source event first. It is not a triage list: the demo data contains no urgency, priority, or next clinical step, so none is shown or inferred. Selecting a case opens the same record the clinician workspace shows — there is no second copy.</p>
