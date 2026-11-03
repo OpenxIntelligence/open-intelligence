@@ -358,6 +358,9 @@ class ProvenanceHttpTests(unittest.TestCase):
         status, _ = self.request("/api/cases",
                                  {"case_id": "CASE-GAMMA", "label": "Fictional Gamma"})
         self.assertIn(status, (201, 422))
+        CaseStore(self.path).create_grant(
+            "FICTIONAL-NAVIGATOR-A", "CASE-GAMMA", "individual-access",
+            "2020-01-01", "2999-12-31")
         original = _report(
             "CASE-GAMMA", "DOC-GAMMA", "2026-08-01", "2026-08-02",
             [("finding-a", "reported", "Fictional gamma original wording.")],
@@ -400,6 +403,9 @@ class ProvenanceHttpTests(unittest.TestCase):
         status, _ = self.request("/api/cases",
                                  {"case_id": "CASE-DELTA", "label": "Fictional Delta"})
         self.assertIn(status, (201, 422))
+        CaseStore(self.path).create_grant(
+            "FICTIONAL-NAVIGATOR-A", "CASE-DELTA", "individual-access",
+            "2020-01-01", "2999-12-31")
         original = _report(
             "CASE-DELTA", "DOC-DELTA", "2026-09-01", "2026-09-02",
             [("finding-a", "reported", "Fictional delta original wording.")]).decode()
