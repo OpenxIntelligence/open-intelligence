@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "scope": "Source-owned ordinary-text/PDF intake to connected reports and follow-through; independently fictional inputs only",
+  "connected_parent": "2a246b54bb29cbd844c77f06f8e3a20ddff8dcc7",
+  "pdf_parent": "3be1106b5cd34523c4746e2df6f123048beb5659",
+  "common_behavior_reference": "24519839aa8ac1ea3aff88a956349ba72798a72a",
+  "reviewed_application_digest_sha256": "680fb9e8ec33d124bc3dfee05be89650151d868bc531c601dc9a0f7d382cdade",
+  "source_files_before_transport": 294,
+  "local_parent_python_tests_passed": 686,
+  "local_combined_javascript_tests_passed": 172,
+  "local_combined_python": "Focused document provenance, governed report and HTTP checks passed. Complete local PDF validation blocked: required exact pypdf 6.21.4 not available. No full combined Python pass claimed.",
+  "local_browser": "Not qualified; hosted Chromium with unchanged assertions and parser pin is required.",
+  "hosted_status_at_authoring": "Pending; final exact candidate commit, tree, logs and PR receipts are authoritative.",
+  "independent_external_review": false,
+  "clinical_validation": false,
+  "production_deployment": false,
+  "automatic_merge": false
+}
