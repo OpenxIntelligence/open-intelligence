@@ -59,3 +59,17 @@ build and actual database/browser acceptance require the new head's hosted run.
 Self-review covered scope guards, immutable flags, hidden-card draft retention,
 new-receipt filter reset and unavailable-versus-empty semantics. No independent
 reviewer or clinical validation is claimed.
+
+## Hosted failure and bounded harness repair
+At implementation head 67a1f3732be3d810682855e38e6a04223f2cd54d, run 41636773262
+passed 216 client tests, production build and the existing dependency gates. The real
+browser progressed through inherited workflow checks and new filter counts, visible
+rows, retained drafts, zero filter HTTP calls and refresh reset, then failed Enter
+activation. The failure screenshot showed the correct focused native button.
+A local real-Chromium isolated native-button reproduction produced zero clicks for
+keyDown/keyUp (no keypress), and one click for rawKeyDown/char(\r)/keyUp. This matches
+the existing tests/ui_glance_journey.py input sequence. Repair changes the test's
+input sequence only, retains all assertions, and adds no application workaround.
+The new exact-head complete hosted journey is still required.
+Failure artifact 13231725547 SHA-256:
+5766192b32fd2cbb539237b1f6fa66071a0499dffd8f9d4a359f797020b97234.

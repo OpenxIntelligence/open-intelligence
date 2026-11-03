@@ -333,7 +333,8 @@ class FollowthroughChecks:
         assert self.cd.evaluate("[...document.querySelectorAll('[data-testid=followthrough-task]')].filter(e=>e.getClientRects().length>0).length") == 3
         # Keyboard activation uses an actual input event rather than calling click().
         self.cd.evaluate("document.querySelector('[data-testid=followthrough-filter-recheck]').focus()")
-        self.cd.command('Input.dispatchKeyEvent', {'type': 'keyDown', 'key': 'Enter', 'code': 'Enter', 'windowsVirtualKeyCode': 13})
+        self.cd.command('Input.dispatchKeyEvent', {'type': 'rawKeyDown', 'key': 'Enter', 'code': 'Enter', 'windowsVirtualKeyCode': 13})
+        self.cd.command('Input.dispatchKeyEvent', {'type': 'char', 'text': '\r', 'unmodifiedText': '\r', 'key': 'Enter', 'code': 'Enter', 'windowsVirtualKeyCode': 13})
         self.cd.command('Input.dispatchKeyEvent', {'type': 'keyUp', 'key': 'Enter', 'code': 'Enter', 'windowsVirtualKeyCode': 13})
         self.cd.wait("document.querySelector('[data-testid=followthrough-filter-recheck]').getAttribute('aria-pressed')==='true'",
                      'keyboard-select source-changed work')
