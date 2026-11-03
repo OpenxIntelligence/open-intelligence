@@ -82,6 +82,20 @@ MAX_PROMPT_CHARS = 64000
 
 
 def _assertion_line(item: dict) -> str:
+    if item.get("classification_origin") == "user_selected":
+        extracted_anchor = (
+            f"text_origin=pdf_extraction source_page={item.get('source_page')} "
+            f"page_line={item.get('page_line')} extraction_line={item.get('source_line')} "
+            f"extraction_sha256={item.get('extraction_sha256')} "
+            if item.get("text_origin") == "pdf_extraction" else "")
+        return (f"- source_version_id={item.get('source_version_id')} "
+                f"finding={item.get('finding_key')} user_selected_status={item.get('certainty')} "
+                "classification_origin=user_selected "
+                f"annotation_method={item.get('annotation_method')} "
+                f"clinical_review={item.get('clinical_review')} "
+                f"transcription_review_sha256={item.get('transcription_review_sha256')} "
+                f"{extracted_anchor}"
+                f"quote={item.get('quote')!r}")
     return (f"- source_version_id={item.get('source_version_id')} "
             f"finding={item.get('finding_key')} certainty={item.get('certainty')} "
             f"quote={item.get('quote')!r}")
@@ -150,6 +164,15 @@ def build_prompt(template_id: str, question: str, assertions: list[dict],
         "",
         "Case assertions (source statements, with source version ids):",
     ]
+    if any(item.get("classification_origin") == "user_selected" for item in assertions):
+        lines[-1] = "Case source quotations and classifications (with source version ids):"
+        lines.append(
+            "For manual classifications, the literal quote is primary. A user-selected status is "
+            "not source-authored or clinically verified. Manual transcription confirmation only "
+            "records selected text and metadata, not clinical approval. Preserve any discrepancy "
+            "between the quote and user_selected_status; do not treat that status as independent "
+            "source evidence or silently reinterpret the quote. Clinical review has not been performed."
+        )
     for item in assertions:
         lines.append(_assertion_line(item))
     lines.append("")

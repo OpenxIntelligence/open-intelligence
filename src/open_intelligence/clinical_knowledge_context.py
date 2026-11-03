@@ -15,6 +15,7 @@ from .clinical_continuity import ClinicalContinuityError
 from .clinical_lab_bridge import LinkedLabCaseStore
 from .composer import composer_context_fingerprint
 from .knowledge_context import compile_context, KnowledgeContextError
+from .source_provenance import PROVENANCE_FIELDS
 
 # A trusted caller must provide an independently authorized and versioned
 # source-rights service in production. This fixture callback is NOT one.
@@ -61,14 +62,25 @@ class AuthorizedClinicalKnowledge:
         if (composer["source_count"] > composer["source_preview_limit"] or
                 len(packet["patient_assertions"]) != len(composer["source_anchors"])):
             raise ClinicalContinuityError("Composer source preview is incomplete")
+        originals = {row["id"]: row for row in composer["current_sources"]}
+        if (len(originals) != composer["source_count"] or
+                any(row["source_version_id"] not in originals
+                    for row in composer["source_anchors"])):
+            raise ClinicalContinuityError("Composer original source references are incomplete")
         from_packet = {
             (x["source_version_id"], x["source_line"],
-             x["finding_key"], x["reported_state"], x["source_statement"])
+             x["finding_key"], x["reported_state"], x["source_statement"],
+             x["source_document"], x["version"], x["source_hash"],
+             _sealed({key: x[key] for key in PROVENANCE_FIELDS if key in x}))
             for x in packet["patient_assertions"]
         }
         from_composer = {
             (x["source_version_id"], x["source_line"],
-             x["finding_key"], x["reported_state"], x["statement"])
+             x["finding_key"], x["reported_state"], x["statement"],
+             originals[x["source_version_id"]]["document_id"],
+             originals[x["source_version_id"]]["version"],
+             originals[x["source_version_id"]]["sha256"],
+             _sealed({key: x[key] for key in PROVENANCE_FIELDS if key in x}))
             for x in composer["source_anchors"]
         }
         if from_packet != from_composer or len(from_packet) != len(packet["patient_assertions"]):

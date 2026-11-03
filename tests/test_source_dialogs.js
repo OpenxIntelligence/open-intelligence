@@ -11,6 +11,73 @@ const end = app.indexOf('async function downloadSnapshot(', start);
 assert.ok(start >= 0 && end > start, 'Expected source-reader functions in actual app.js');
 const reader = app.slice(start, end);
 
+function pdfSource(h, source = h.before) {
+  source.sha256 = 'a'.repeat(64);
+  source.document_intake = {media_type:'application/pdf', extraction_sha256:'b'.repeat(64)};
+  source.classification_origin = 'user_selected';
+  return {source_id:source.id, original_sha256:source.sha256, extraction_sha256:'b'.repeat(64),
+    text_origin:'pdf_extraction', media_type:'application/pdf', page_count:2,
+    text:'Independent fictional first page.\n<script>literal second page</script>',
+    lines:[{line:1,page:1,page_line:1,text:'Independent fictional first page.'},
+      {line:2,page:2,page_line:1,text:'<script>literal second page</script>'}]};
+}
+
+test('PDF source reader shows literal extracted page anchor without claiming original text', async()=>{
+  const h=harness(), response=pdfSource(h);
+  const request=h.ctx.openSource(h.before,2); h.requests[0].resolve(response); await request;
+  assert.equal(h.el('source-dialog').open,true);
+  assert.match(h.el('dialog-title').textContent,/extracted PDF text/);
+  assert.match(h.el('dialog-context').textContent,/physical page 2, extracted line 1/);
+  assert.match(h.el('dialog-context').textContent,/manually selected; clinical review not performed/);
+  const mark=h.el('dialog-text').querySelector('mark.source-highlight');
+  assert.equal(mark.textContent,'<script>literal second page</script>');
+  assert.equal(mark.dataset.page,'2'); assert.equal(mark.dataset.line,'2');
+});
+
+test('PDF source reader refuses a response for a different extraction or source', async()=>{
+  for (const change of [{extraction_sha256:'c'.repeat(64)},{original_sha256:'c'.repeat(64)},
+    {source_id:99},{text_origin:'original'},{page_count:true}]) {
+    const h=harness(),response=pdfSource(h);
+    const request=h.ctx.openSource(h.before,2); h.requests[0].resolve({...response,...change}); await request;
+    assert.equal(h.el('source-dialog').open,false); assert.equal(h.notices.length,1);
+  }
+});
+
+test('PDF source reader refuses forged page mapping and changed extraction text', async()=>{
+  for (const change of [{text:'altered quotation'},
+    {lines:[{line:1,page:3,page_line:1,text:'forged page'}]}]) {
+    const h=harness(),response=pdfSource(h);
+    const request=h.ctx.openSource(h.before,2); h.requests[0].resolve({...response,...change}); await request;
+    assert.equal(h.el('source-dialog').open,false);
+  }
+});
+
+test('a delayed PDF response cannot reopen a dismissed or switched source', async()=>{
+  const h=harness(),response=pdfSource(h);
+  const request=h.ctx.openSource(h.before,2); h.cancel();
+  h.requests[0].resolve(response); await request;
+  assert.equal(h.el('source-dialog').open,false);
+});
+
+test('PDF amendment comparison identifies extracted text and preserves page inspection path', async()=>{
+  const h=harness(),before=pdfSource(h),after=pdfSource(h,h.after);
+  const request=h.ctx.openComparison(h.before,h.after);
+  h.requests[0].resolve(before); h.requests[1].resolve(after); await request;
+  assert.equal(h.el('compare-dialog').open,true);
+  assert.match(h.el('compare-title').textContent,/readable text versions/);
+  assert.match(h.el('compare-context').textContent,/extracted PDF text/);
+  assert.match(h.el('compare-context').textContent,/inspect either source for page anchors/);
+  assert.equal(h.el('compare-before').textContent,before.text);
+});
+
+test('manual text passage remains described as manual in source reader', async()=>{
+  const h=harness(); h.before.classification_origin='user_selected';
+  const request=h.ctx.openSource(h.before,1);
+  h.requests[0].resolve({text:'Manually selected source passage.'}); await request;
+  assert.match(h.el('dialog-context').textContent,/Manually selected passage/);
+  assert.doesNotMatch(h.el('dialog-context').textContent,/Source-reported statement/);
+});
+
 function element() {
   return {children: [], open: false, _text: '', dataset: {},
     get textContent() {return this._text + this.children.map(x => x.textContent).join('');},
@@ -116,13 +183,29 @@ test('source highlighting preserves the original text and invalid anchors are ho
   assert.equal(h.el('dialog-text').textContent,text);
 });
 
-test('source anchors use the parser splitlines contract without changing original separators',()=>{
-  for (const separator of ['\u000b', '\u000c', '\u001c', '\u001d', '\u001e', '\u0085', '\u2028', '\u2029']) {
+test('Unicode-separated source opens the exact parser-numbered finding without moving its anchor', async()=>{
+  const h=harness();
+  const text='OI-SYNTHETIC-REPORT/1\nPatient: CASE-A\nDocument: PATH-A\n' +
+    'Type: pathology\nEvent-Date: 2026-06-01\nIssued-At: 2026-06-02\u2028' +
+    'Specimen: INVENTED-A\nFinding: marker-a|reported|Fictional statement A.\n' +
+    'Finding: marker-b|negative|Fictional statement B.\n';
+  const pending=h.ctx.openSource(h.before,8);
+  h.requests[0].resolve({text}); await pending;
+  assert.equal(h.el('source-dialog').open,true);
+  assert.equal(h.el('dialog-text').querySelector('mark.source-highlight').textContent,
+    'Finding: marker-a|reported|Fictional statement A.');
+  assert.equal(h.el('dialog-text').textContent,text);
+});
+
+test('source anchors follow parser line boundaries while preserving every original separator',()=>{
+  for (const separator of ['\n','\r\n','\u000b','\u000c','\u001c','\u001d','\u001e','\u0085','\u2028','\u2029']) {
     const h=harness();
     const text='Header'+separator+'Finding: marker-a|reported|Fictional statement A.\nFinding: marker-b|negative|Fictional statement B.\n';
     assert.equal(h.ctx.renderOriginalSource(text,2),true);
-    assert.equal(h.el('dialog-text').querySelector('mark').textContent,
+    assert.equal(h.el('dialog-text').querySelector('mark.source-highlight').textContent,
       'Finding: marker-a|reported|Fictional statement A.');
+    assert.equal(h.el('dialog-text').textContent,text);
+    assert.equal(h.ctx.renderOriginalSource(text,4),false, 'A final separator must not invent another source line');
     assert.equal(h.el('dialog-text').textContent,text);
   }
 });

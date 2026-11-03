@@ -15,6 +15,8 @@ from collections.abc import Callable
 
 from .patient_registry import PatientRegistry, PatientRegistryError, PatientRegistryDenied
 from .store import CaseStore, InvalidInput, now_utc
+from .document_intake import classification_provenance
+from .source_provenance import source_provenance, assertion_provenance
 
 
 class ClinicalSourceLinkDenied(PermissionError):
@@ -204,7 +206,7 @@ class ClinicalSourceProvenance:
                ORDER BY r.id""",
             (patient_id, case_id, note_version_id),
         ).fetchall()
-        return [
+        result = [
             {
                 **dict(row),
                 "provenance_state": (
@@ -215,6 +217,32 @@ class ClinicalSourceProvenance:
             }
             for row in rows
         ]
+        self._annotate_provenance(case_id, result)
+        return result
+
+    def _annotate_provenance(self, case_id: str, assertions: list[dict],
+                             sources: list[dict] | None = None) -> None:
+        """Keep original transcription status on clinical source references.
+
+        The same source owner supplies immutable receipts and PDF rendition
+        anchors. Callers retain their existing transaction/read boundaries;
+        this helper adds no record, interpretation or clinical approval.
+        """
+        receipts = self.sources._document_intake_receipts(case_id)
+        provenance = {
+            source_id: source_provenance({
+                "document_intake": receipt, **classification_provenance(receipt),
+            }) for source_id, receipt in receipts.items()
+        }
+        self.sources._annotate_source_assertions(assertions, receipts)
+        for row in assertions:
+            assertion_provenance(
+                row, provenance.get(row["source_version_id"], {}), row["source_line"])
+        for row in sources or []:
+            source_id = row["source_version_id"]
+            if source_id in receipts:
+                row.update(provenance[source_id])
+                row["document_intake"] = dict(receipts[source_id])
 
     def context_snapshot(self, patient_id: str, case_id: str, *,
                          actor: str, purpose: str) -> dict:
@@ -269,6 +297,7 @@ class ClinicalSourceProvenance:
                        ORDER BY a.id""", (case_id,)
                 ).fetchall()
             ]
+            self._annotate_provenance(case_id, current_observations, sources)
             links = [
                 dict(x) for x in self.db.execute(
                     """SELECT r.id AS link_id,r.note_version_id,r.source_version_id,
@@ -301,5 +330,8 @@ class ClinicalSourceProvenance:
                     if link["provenance_state"] == "source_superseded_review_required"
                 }),
                 "clinical_interpretation": "not_generated",
-                "source_coverage": "bounded_original_synthetic_reports_only",
+                "source_coverage": (
+                    "source_linked_authored_and_manually_classified_observations"
+                    if any("document_intake" in source for source in sources)
+                    else "bounded_original_synthetic_reports_only"),
             }

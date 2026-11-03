@@ -16,6 +16,7 @@ from .evidence_review_packet import EvidenceReviewPacket
 from .knowledge_context import KnowledgeContextError
 from .clinical_continuity import ClinicalContinuityError
 from .store import InvalidInput
+from .source_provenance import PROVENANCE_FIELDS
 
 def _digest(payload: dict) -> str:
     try:
@@ -172,8 +173,11 @@ class AuthorizedEvidenceReviewHandoff:
                 "body_sha256": report_reference["body_sha256"],
                 "packet_sha256": expected,
                 "question_id": question_id,
-                "patient_source": {key: cited[key] for key in
-                    ("assertion_id", "source_version_id", "sha256", "source_line")},
+                "patient_source": {
+                    **{key: cited[key] for key in
+                       ("assertion_id", "source_version_id", "sha256", "source_line")},
+                    **{key: cited[key] for key in PROVENANCE_FIELDS if key in cited},
+                },
             }
         # Distinct write-action authorization, rechecked at the effect boundary.
         self._authorize_return(patient_id, actor, purpose)

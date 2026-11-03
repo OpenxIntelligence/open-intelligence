@@ -60,7 +60,8 @@ function fixture(caseId = 'FICTION-A', marker = 'Authored record') {
   return {state, model};
 }
 function harness() {
-  const document = {createElement: tag => new Element(tag, document)};
+  const document = new EventTarget();
+  document.createElement = tag => new Element(tag, document);
   const elements = Object.fromEntries(['root', 'status', 'timeline', 'findings', 'questions', 'uncertainty'].map(name => [name, document.createElement('div')]));
   const requests = [], sourceCalls = [], questionCalls = [], refreshes = [];
   const ctx = vm.createContext({document}); vm.runInContext(code, ctx);
@@ -201,4 +202,212 @@ test('acknowledged replacement retains stale history without claiming another re
   assert.match(h.elements.questions.textContent, /1 historical stale version/);
   assert.equal(nodes(h.elements.questions, 'button').length, 0);
   assert.equal(nodes(h.elements.questions, 'a')[0].href, '#investigations');
+});
+
+function manualFixture(pdf = true) {
+  const input = fixture();
+  const provenance = {
+    classification_origin: 'user_selected',
+    annotation_method: pdf ? 'manual-exact-extraction-line-selection' : 'manual-exact-line-selection',
+    clinical_review: 'not_performed', transcription_review_sha256: 'd'.repeat(64),
+    ...(pdf ? {text_origin: 'pdf_extraction', extraction_sha256: 'e'.repeat(64)} : {}),
+  };
+  const receipt = {
+    filename: pdf ? 'fictional-report.pdf' : 'fictional-report.txt',
+    media_type: pdf ? 'application/pdf' : 'text/plain; charset=utf-8',
+    extraction_method: pdf ? 'pypdf-text-v1' : 'utf8-plain-text-v1',
+    annotation_method: provenance.annotation_method, manual_transcription_confirmed: true,
+    clinical_review: 'not_performed', review_sha256: 'd'.repeat(64),
+    ...(pdf ? {extraction_sha256: 'e'.repeat(64)} : {}),
+  };
+  for (const source of input.state.sources.filter(row => row.id !== 3))
+    Object.assign(source, provenance, {document_intake: structuredClone(receipt)});
+  for (const source of [...input.model.current_sources, ...input.model.history].filter(row => row.source_version_id !== 3))
+    Object.assign(source, provenance, {document_intake: structuredClone(receipt)});
+  for (const assertion of input.state.assertions.filter(row => row.source_version_id === 2)) {
+    const anchor = pdf ? {source_page: 2, page_line: assertion.source_line - 4, page_text_sha256: 'f'.repeat(64)} : {};
+    Object.assign(assertion, provenance, anchor);
+    Object.assign(input.model.observations.find(row => row.assertion_id === assertion.id), provenance, anchor);
+  }
+  for (const conflict of input.model.conflicts) for (const ref of conflict.observation_refs) {
+    const observation = input.model.observations.find(row => row.assertion_id === ref.assertion_id);
+    if (observation.classification_origin) {
+      Object.assign(ref, provenance, {source_sha256: observation.source_sha256},
+        pdf ? {source_page: observation.source_page, page_line: observation.page_line, page_text_sha256: 'f'.repeat(64)} : {});
+    }
+  }
+  return input;
+}
+
+test('PDF selections keep manual status, physical page anchors and the original source action', async () => {
+  const h = harness(); await render(h, manualFixture());
+  const card = nodes(h.elements.findings, 'article')[0];
+  assert.match(card.textContent, /User-selected status: Reported/);
+  assert.match(card.textContent, /Clinical review not performed/);
+  assert.match(card.textContent, /page 2.*extraction line 5/i);
+  const action = nodes(card, 'button')[0];
+  assert.equal(action.attributes['data-source-id'], '2');
+  assert.equal(action.attributes['data-source-line'], '5');
+  assert.equal(action.attributes['data-source-page'], '2');
+  action.click(); assert.deepEqual(h.sourceCalls, [[2, 5]]);
+  assert.match(h.elements.timeline.textContent, /PDF.*manually selected/i);
+  assert.match(h.elements.uncertainty.textContent, /selected statuses differ/i);
+  assert.doesNotMatch(h.elements.uncertainty.textContent, /Sources disagree:/);
+  const conflict = nodes(h.elements.uncertainty, 'article').find(item => /selected statuses differ/i.test(item.textContent));
+  assert.match(conflict.textContent, /Clinical review not performed/);
+  nodes(nodes(h.elements.timeline, 'details')[0], 'button')[0].click();
+  assert.deepEqual(h.sourceCalls[1], [1, null]);
+  const authored = nodes(h.elements.findings, 'article')[1];
+  assert.doesNotMatch(authored.textContent, /User-selected status/);
+});
+
+test('ordinary text manual selections stay distinct without inventing PDF page references', async () => {
+  const h = harness(); await render(h, manualFixture(false));
+  const card = nodes(h.elements.findings, 'article')[0];
+  assert.match(card.textContent, /User-selected status: Reported/);
+  assert.match(card.textContent, /Clinical review not performed/);
+  assert.doesNotMatch(card.textContent, /page|extraction line/i);
+  nodes(card, 'button')[0].click(); assert.deepEqual(h.sourceCalls, [[2, 5]]);
+});
+
+for (const [name, change] of [
+  ['source manual origin omitted', m => { delete m.current_sources[0].classification_origin; }],
+  ['source original receipt omitted', m => { delete m.current_sources[0].document_intake; }],
+  ['source original receipt forged', m => { m.current_sources[0].document_intake.review_sha256 = '0'.repeat(64); }],
+  ['source extraction digest changed', m => { m.current_sources[0].extraction_sha256 = '0'.repeat(64); }],
+  ['historical source downgraded', m => { delete m.history[0].clinical_review; }],
+  ['authored source given invented manual origin', m => { m.current_sources[1].classification_origin = 'user_selected'; }],
+  ['observation origin omitted', m => { delete m.observations[0].classification_origin; }],
+  ['observation method changed', m => { m.observations[0].annotation_method = 'automatic'; }],
+  ['observation review falsely approved', m => { m.observations[0].clinical_review = 'approved'; }],
+  ['observation original receipt changed', m => { m.observations[0].transcription_review_sha256 = '0'.repeat(64); }],
+  ['observation PDF origin downgraded', m => { m.observations[0].text_origin = 'original'; }],
+  ['observation extraction digest omitted', m => { delete m.observations[0].extraction_sha256; }],
+  ['observation page omitted', m => { delete m.observations[0].source_page; }],
+  ['observation page changed', m => { m.observations[0].source_page = 1; }],
+  ['observation page line changed', m => { m.observations[0].page_line = 99; }],
+  ['observation page digest changed', m => { m.observations[0].page_text_sha256 = '0'.repeat(64); }],
+  ['authored observation given invented PDF anchor', m => { m.observations[1].source_page = 9; }],
+  ['unresolved payload downgraded', m => { m.unresolved = structuredClone(m.unresolved); delete m.unresolved[0].classification_origin; }],
+  ['unresolved page forged', m => { m.unresolved = structuredClone(m.unresolved); m.unresolved[0].source_page = 1; }],
+  ['conflict provenance omitted', m => { delete m.conflicts[0].observation_refs[0].annotation_method; }],
+  ['conflict original digest changed', m => { m.conflicts[0].observation_refs[0].source_sha256 = '0'.repeat(64); }],
+  ['conflict page line changed', m => { m.conflicts[0].observation_refs[0].page_line = 88; }],
+]) {
+  test(`manual/PDF ${name} clears all actions instead of downgrading provenance`, async () => {
+    const h = harness(); await render(h);
+    const oldSource = nodes(h.elements.findings, 'button')[0], oldQuestion = nodes(h.elements.questions, 'button')[0];
+    const input = manualFixture(); change(input.model);
+    const pending = h.component.load(input.state); h.requests.at(-1).resolve(input.model);
+    assert.equal(await pending, false);
+    oldSource.click(); oldQuestion.click();
+    assert.equal(h.sourceCalls.length, 0); assert.equal(h.questionCalls.length, 0);
+    assert.equal(h.elements.findings.textContent, '');
+    assert.equal(h.elements.questions.textContent, '');
+    assert.equal(h.elements.root.dataset.state, 'unavailable');
+    assert.equal(buttons(h).length, 1);
+  });
+}
+
+test('partial manual provenance in the case snapshot is rejected even if copied by the response', async () => {
+  const h = harness(), input = manualFixture();
+  delete input.state.assertions[0].page_text_sha256;
+  delete input.model.observations[0].page_text_sha256;
+  const pending = h.component.load(input.state); h.requests.at(-1).resolve(input.model);
+  assert.equal(await pending, false);
+  assert.equal(h.elements.root.dataset.state, 'unavailable');
+});
+
+test('omitting a known same-specimen disagreement cannot produce an all-clear uncertainty view', async () => {
+  const h = harness(), input = fixture();
+  input.state.assertions = input.state.assertions.slice(0, 2);
+  input.model.observations = input.model.observations.slice(0, 2);
+  input.model.unresolved = [];
+  input.model.conflicts = [];
+  input.model.summary.source_disagreements = 0;
+  const pending = h.component.load(input.state); h.requests.at(-1).resolve(input.model);
+  assert.equal(await pending, false);
+  assert.equal(h.elements.root.dataset.state, 'unavailable');
+  assert.doesNotMatch(h.elements.uncertainty.textContent, /No unresolved source findings/);
+  assert.equal(h.elements.findings.textContent, '');
+});
+
+test('duplicating one disagreement cannot stand in for a different omitted conflict group', async () => {
+  const h = harness(), input = fixture();
+  for (let i = 0; i < 2; i++) {
+    input.state.assertions.push({...input.state.assertions[i], id: 90 + i, finding_key: 'Marker B', source_line: 20 + i});
+    input.model.observations.push({...input.model.observations[i], assertion_id: 90 + i, finding_key: 'Marker B', source_line: 20 + i});
+  }
+  input.model.conflicts.push(structuredClone(input.model.conflicts[0]));
+  input.model.summary.source_disagreements = 2;
+  const pending = h.component.load(input.state); h.requests.at(-1).resolve(input.model);
+  assert.equal(await pending, false);
+  assert.equal(h.elements.root.dataset.state, 'unavailable');
+  assert.equal(h.elements.findings.textContent, '');
+});
+
+function questionHandoff() {
+  const app = fs.readFileSync(path.join(__dirname, '../web/app.js'), 'utf8');
+  const start = app.indexOf('function focusPatientQuestion('), end = app.indexOf('async function refresh()', start);
+  assert.ok(start >= 0 && end > start, 'The patient view needs a connected question handoff');
+  const ids = ['question-choice', 'evidence-question-choice', 'model-investigation-question'];
+  const elements = Object.fromEntries([...ids, 'draft-observations', 'draft-summary', 'draft-assumptions', 'evidence-rationale'].map(id => [id,
+    {value: ids.includes(id) ? '20' : '', options: [{value: '20'}, {value: '22'}], changes: [],
+      dispatchEvent(event) { this.changes.push({type: event.type, value: this.value}); }, focus() { this.focused = true; }}]));
+  const messages = [], window = {location: {hash: ''}};
+  const ctx = vm.createContext({active: {questions: [{id: 20, state: 'open'}, {id: 22, state: 'open'}]},
+    readyCase: () => 'FICTION-A', el: id => elements[id], window,
+    Event: class {constructor(type) {this.type = type;}}, notice: (message, error) => messages.push({message, error})});
+  vm.runInContext(app.slice(start, end), ctx);
+  return {elements, messages, window, open: id => ctx.focusPatientQuestion(id)};
+}
+
+test('patient question handoff selects one durable question and refreshes Composer context', () => {
+  const h = questionHandoff(); h.open(22);
+  for (const id of ['question-choice', 'evidence-question-choice', 'model-investigation-question'])
+    assert.equal(h.elements[id].value, '22');
+  assert.deepEqual(h.elements['model-investigation-question'].changes, [{type: 'change', value: '22'}]);
+  assert.equal(h.window.location.hash, 'investigations');
+  assert.equal(h.elements['model-investigation-question'].focused, true);
+});
+
+test('patient question handoff cannot move an unfinished report to another question', () => {
+  const h = questionHandoff(); h.elements['draft-summary'].value = 'Independent fictional draft in progress';
+  h.open(22);
+  for (const id of ['question-choice', 'evidence-question-choice', 'model-investigation-question'])
+    assert.equal(h.elements[id].value, '20');
+  assert.equal(h.elements['model-investigation-question'].changes.length, 0);
+  assert.equal(h.messages.at(-1).error, true);
+  assert.equal(h.window.location.hash, '');
+});
+
+test('host refresh refuses a misbound case snapshot before rendering or fetching its projection', async () => {
+  const h = harness(), wrong = fixture('FICTION-B');
+  const app = fs.readFileSync(path.join(__dirname, '../web/app.js'), 'utf8');
+  const start = app.indexOf('async function refresh()'), end = app.indexOf('function readyCase()', start);
+  assert.ok(start >= 0 && end > start);
+  const document = h.elements.root.ownerDocument;
+  const hostElements = {'case-heading': document.createElement('h2'), 'model-investigation-list': document.createElement('div')};
+  const requests = [], rendered = [], notices = [];
+  const ctx = vm.createContext({document, CustomEvent, caseId: 'FICTION-A', active: fixture().state, refreshSequence: 0,
+    patientRecord: h.component, api: route => new Promise(resolve => requests.push({route, resolve})),
+    clear: id => hostElements[id].replaceChildren(), el: id => hostElements[id],
+    empty: (target, message) => {target.textContent = message;},
+    render: () => rendered.push(ctx.active.case.case_id), notice: message => notices.push(message)});
+  vm.runInContext(app.slice(start, end), ctx);
+  const pending = ctx.refresh();
+  assert.equal(h.elements.root.dataset.state, 'loading');
+  assert.equal(requests[0].route, '/api/cases/FICTION-A/state');
+  requests[0].resolve(wrong.state);
+  await new Promise(setImmediate);
+  // Let the old, unguarded implementation finish rather than hanging the test.
+  for (const request of h.requests) request.resolve(wrong.model);
+  await pending;
+  assert.deepEqual(rendered, []);
+  assert.equal(h.requests.length, 0, 'A wrong-case world-model endpoint was fetched');
+  assert.equal(ctx.active, null);
+  assert.equal(h.elements.root.dataset.state, 'unavailable');
+  assert.equal(h.elements.findings.textContent, '');
+  assert.equal(h.elements.questions.textContent, '');
+  assert.ok(notices.some(message => /selected case|match/i.test(message)));
 });

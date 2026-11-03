@@ -1,5 +1,9 @@
 # Implementation slice 01 — source and investigation ledger
 
+## Current report convergence — 2 November 2026 local / 3 November UTC
+
+The current candidate composes #210's patient/EHR/LIS, readable-report and follow-through owners, #203's content-specific evidence rights, and #215's reviewed PDF/Patient World Model workflow. Manual classification, original/extraction identity and physical-page anchors now continue through clinical context, quoted evidence, governed report rendering and the original append-only receipt transaction. An omitted manual reference cannot be accepted as an authored source. Existing local readable reports preserve the same distinction. Final local verification passed **797 Python/domain/HTTP tests and 144 JavaScript tests**, including 12 new governed PDF-report cases and five new readable-report cases. See [CONNECTED_PATIENT_WORKFLOW.md](engineering/CONNECTED_PATIENT_WORKFLOW.md) for commands, meaningful red/green evidence and limitations; the draft PR's exact-commit run receipt records subsequent hosted status. This is draft reference implementation work; H1 authenticated report transport and real-patient authorization remain outstanding. Historical milestone descriptions below retain their original scope.
+
 **Stage:** local experimental synthetic-only code. **Not released for clinical use.**
 
 **Backlog coverage:** Part of OI-003, OI-006, OI-007, OI-009 and OI-010. Does not complete the broader investigation/evidence stage (OI-008), identity/governance (OI-012–013), or clinical evaluation (OI-014 onward).

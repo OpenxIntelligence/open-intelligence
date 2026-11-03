@@ -15,6 +15,7 @@ import json
 from .clinical_continuity import ClinicalContinuityError
 from .clinical_knowledge_context import AuthorizedClinicalKnowledge
 from .knowledge_context import KnowledgeContextError
+from .source_provenance import PROVENANCE_FIELDS
 
 MAX_QUOTE = 400
 
@@ -95,10 +96,14 @@ class EvidenceReviewPacket:
                     "received_at": observation["received_at"],
                     "reported_state": observation["reported_state"],
                     "original_statement": observation["source_statement"],
+                    **{key: observation[key] for key in PROVENANCE_FIELDS
+                       if key in observation},
                 },
                 "external_reference": {
                     "knowledge_id": kid,
                     "family": source["family"],
+                    "content_item": source["content_item"],
+                    "content_item_basis": source["content_item_basis"],
                     "public_identifier": source["public_identifier"],
                     "version": source["version"],
                     "source_date": source["source_date"],

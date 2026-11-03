@@ -4,7 +4,7 @@ on:
     branches: [work/connected-patient-composition-20261103]
     paths: ['.github/workflows/connected-patient-workflow.yml', 'tools/compose_connected_patient_workflow.py', 'tests/test_connected_patient_workflow.py', 'docs/engineering/CONNECTED_PATIENT_WORKFLOW.md']
   pull_request:
-    branches: [integration/pwm-v2-report-review-20261102]
+    branches: [integration/pwm-v2-report-review-20261102, integration/connected-patient-workflow-41558360041-1]
 permissions:
   contents: read
 jobs:
@@ -26,6 +26,9 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: '3.13'
+      - name: Install the exact inherited PDF extraction dependency
+        run: |
+          python -m pip install --require-hashes --only-binary=:all: --no-deps -r requirements-pdf.lock
       - name: Reproduce pinned source composition
         if: github.event_name == 'push'
         run: |
@@ -49,6 +52,10 @@ jobs:
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "tree=$(git rev-parse HEAD^{tree})" >> "$GITHUB_OUTPUT"
           git archive --format=zip --output=verification-artifacts/source-under-test.zip HEAD
+      - name: Reject known patient-data acquisition paths
+        run: |
+          set -euo pipefail
+          python tools/audit_ci_data_boundaries.py 2>&1 | tee verification-artifacts/data-boundary.txt
       - name: Compile and original JavaScript suites
         run: |
           set -euo pipefail
@@ -70,11 +77,24 @@ jobs:
           for journey in browser_journey browser_source_dialogs ui_glance_journey patient_mission_browser_journey; do
             python "tests/$journey.py" 2>&1 | tee "verification-artifacts/$journey.txt"
           done
+      - name: Retained PDF, Composer and rights browser journeys
+        run: |
+          set -euo pipefail
+          for journey in document_intake_browser_journey composer_browser_journey composer_lab_browser_journey composer_durable_browser_journey composer_broker_browser_journey; do
+            python "tests/$journey.py" 2>&1 | tee "verification-artifacts/$journey.txt"
+          done
       - name: Bundle the verified candidate only
         if: github.event_name == 'push'
         run: |
           git bundle create verification-artifacts/candidate.bundle refs/heads/connected-candidate ^1d5cd0502b5789371165539149dcecad8df5e551 ^ad9713a443d2fe98e74f7d83605db776571e9929 ^3df25cc417f308f7ea1247962656ffa2afc62d5d
           git bundle verify verification-artifacts/candidate.bundle
+      - name: Stage PDF intake screenshots and receipt
+        if: always()
+        run: |
+          mkdir -p verification-artifacts
+          if [ -d composer-broker-artifacts ]; then
+            cp -a composer-broker-artifacts verification-artifacts/
+          fi
       - name: Preserve reproducible synthetic evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

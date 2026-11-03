@@ -1,8 +1,11 @@
 ## Running the first implementation locally
 
-This is an **original, dependency-free Python 3.11+** experimental implementation. No clinical backend, model, hosted API, third-party UI library, or professional license is required for the synthetic-only exercise.
+This is the existing **Python/SQLite browser reference implementation**, tested with Python 3.12 and 3.13. Bounded PDF extraction uses the inherited, exact pinned `pypdf` package; the dependency notice, wheel hash and limitations are recorded in [DOCUMENT_INTAKE.md](docs/engineering/DOCUMENT_INTAKE.md). The clinical/report domain services and local case workspace share the original source owner. The accepted FastAPI/PostgreSQL/React migration remains separate.
 
 ```bash
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install --require-hashes --only-binary=:all: --no-deps -r requirements-pdf.lock
 PYTHONPATH=src python -m open_intelligence seed
 PYTHONPATH=src python -m open_intelligence serve
 # Visit http://127.0.0.1:8765
@@ -14,6 +17,7 @@ To run the verification suite:
 PYTHONPATH=src python -m compileall -q src
 node --check web/app.js
 node --check web/mission.js
+node --test tests/test_*.js
 PYTHONPATH=src python -m unittest discover -s tests -v
 PYTHONPATH=src python tests/browser_journey.py
 PYTHONPATH=src python tests/patient_mission_browser_journey.py
@@ -26,6 +30,16 @@ For the demonstration: create a question in `CASE-ALPHA`, save an investigation 
 **Scope and warnings:** this is local-only software with no authentication, no access controls suitable for PHI, no clinical inference, no live literature or trials, and no clinical review. Never insert real patient data. The supported structured test format is `OI-SYNTHETIC-REPORT/1`, not a general-purpose clinical document parser. Source statements are author-supplied within report bytes. There is no treatment recommender, trial matching, or AI agent. The demo reviewer acknowledgment cannot attest professional credentials. The engineering controls are not evidence of medical safety or regulatory status.
 
 The project distribution license remains undecided. Public source visibility is not an open-source license grant. All test reports and UI code are independently authored for this repository.
+
+## Reviewed documents through the existing report workflow
+
+The case workspace accepts bounded, independently authored fictional plain-text and born-digital PDF files. A person confirms exact passage selections and classifications; those selections preserve their manual origin and do not become source-authored findings or clinical review. Originals, frozen PDF extractions, physical page and line anchors remain inspectable through Patient Record, Composer, local readable reports, amendment history and follow-through.
+
+The same source references now continue through the existing authorized clinical knowledge, quotation packet, evidence report and append-only review receipt services. The receipt owner revalidates the complete manual/PDF identity under its existing write transaction. Removing those fields cannot downgrade a PDF passage to an authored-source reference. Content-specific metadata/API-output/abstract/full-text permissions remain separate from report export and review-return authority.
+
+The local readable-report HTTP route remains a synthetic loopback interface. The authorized evidence report is a domain service with injected fixture authority; no authenticated clinical-report endpoint or real-patient permission is established by this composition. Report preparation/return is nonterminal and does not close a question or record professional sign-off.
+
+For the maintained source-owner reconciliation, executable acceptance and actual verification status, see [CONNECTED_PATIENT_WORKFLOW.md](docs/engineering/CONNECTED_PATIENT_WORKFLOW.md). No model or live biomedical source is required by its PDF report tests.
 
 ## Patient Mission workflow projection
 

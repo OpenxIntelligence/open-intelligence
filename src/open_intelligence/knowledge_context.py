@@ -15,7 +15,10 @@ import re
 from datetime import date
 from typing import Any, Mapping
 
-from .rights import RightsError, normalize_permissions, permitted
+from .rights import (RightsError, normalize_permissions, permitted,
+                     validate_content_item)
+from .source_provenance import source_provenance, assertion_provenance
+from .store import InvalidInput
 
 SOURCE_FAMILIES = frozenset({
     "nccn", "asco", "esmo", "nci_pdq", "pubmed", "pmc", "civic",
@@ -79,6 +82,9 @@ def _source(item: Mapping[str, Any]) -> dict:
     )
     try:
         permissions = normalize_permissions(item["permissions"])
+        # Omission retains the original full-text contract; null/unknown labels
+        # cannot silently default or acquire another artifact's permissions.
+        content_item = validate_content_item(item.get("content_item", "full_text"))
     except RightsError as exc:
         raise KnowledgeContextError(str(exc)) from exc
     metadata = item.get("title")
@@ -95,9 +101,9 @@ def _source(item: Mapping[str, Any]) -> dict:
     )
     # Rights to download and *read* a PDF are not rights to feed it to an LLM.
     model_text_allowed = bool(
-        approved and permitted(permissions, "full_text", "store")
-        and permitted(permissions, "full_text", "display")
-        and permitted(permissions, "full_text", "ml_use")
+        approved and permitted(permissions, content_item, "store")
+        and permitted(permissions, content_item, "display")
+        and permitted(permissions, content_item, "ml_use")
     )
     if metadata is not None and not metadata_allowed and content_state == "current" and state != "revoked":
         raise KnowledgeContextError("cannot ingest source title without metadata rights")
@@ -108,6 +114,9 @@ def _source(item: Mapping[str, Any]) -> dict:
     return {
         "id": identifier,
         "family": family,
+        "content_item": content_item,
+        "content_item_basis": ("declared" if "content_item" in item
+                               else "legacy_full_text_default"),
         "public_identifier": public_id,
         "version": version,
         "source_date": source_date,
@@ -121,7 +130,7 @@ def _source(item: Mapping[str, Any]) -> dict:
         # Reading/displaying/model processing does not grant redistribution.
         "report_export_allowed": bool(
             model_text_allowed and excerpt and metadata_allowed
-            and permitted(permissions, "full_text", "redistribute")
+            and permitted(permissions, content_item, "redistribute")
             and permitted(permissions, "metadata", "redistribute")
         ),
         "evidence_text_sha256": (
@@ -148,23 +157,38 @@ def compile_context(case_id: str, case_state: Mapping[str, Any],
     if case_state["case"].get("case_id") != case_id:
         raise KnowledgeContextError("cross-patient case snapshot")
     versions = {}
+    provenance_by_source = {}
     for item in case_state.get("sources", []):
+        if not isinstance(item, dict):
+            raise KnowledgeContextError("invalid original source reference")
         sid = item.get("id")
         if type(sid) is not int or sid <= 0 or sid in versions:
             raise KnowledgeContextError("ambiguous source version identifier")
         versions[sid] = item
+        try:
+            provenance_by_source[sid] = source_provenance(item)
+        except InvalidInput as exc:
+            raise KnowledgeContextError(str(exc)) from exc
     observed = []
     current_ids = set()
     for item in case_state.get("assertions", []):
+        if not isinstance(item, dict):
+            raise KnowledgeContextError("invalid original assertion reference")
         sid = item.get("source_version_id")
         parent = versions.get(sid)
         if parent is None or parent.get("state") != "current":
             raise KnowledgeContextError("assertion depends on non-current or missing original source")
-        if type(item.get("id")) is not int or type(item.get("source_line")) is not int:
+        if (type(item.get("id")) is not int or item["id"] <= 0 or
+                type(item.get("source_line")) is not int or item["source_line"] <= 0):
             raise KnowledgeContextError("source assertion needs stable ID and line")
         if item["id"] in current_ids:
             raise KnowledgeContextError("duplicated assertion")
         current_ids.add(item["id"])
+        try:
+            provenance = assertion_provenance(
+                item, provenance_by_source[sid], item["source_line"])
+        except InvalidInput as exc:
+            raise KnowledgeContextError(str(exc)) from exc
         observed.append({
             "id": item["id"],
             "finding_key": item["finding_key"],
@@ -178,7 +202,9 @@ def compile_context(case_id: str, case_state: Mapping[str, Any],
             "issued_at": parent["issued_at"],
             "received_at": parent.get("received_at"),
             "source_statement": item["quote"],
-            "epistemic_kind": "reported_observation",
+            "epistemic_kind": ("manually_classified_observation" if provenance
+                               else "reported_observation"),
+            **provenance,
         })
     if not isinstance(knowledge_sources, list) or not isinstance(comparison_proposals or [], list):
         raise KnowledgeContextError("knowledge sources and links must be lists")

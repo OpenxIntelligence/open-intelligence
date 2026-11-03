@@ -146,11 +146,27 @@ def case_timeline(store: CaseStore, case_id: str) -> dict:
             (case_id,)).fetchall()]
 
         def findings_for(source_id: int) -> list[dict]:
-            return [dict(row) for row in store.db.execute(
-                "SELECT finding_key,certainty FROM assertions WHERE source_version_id=? ORDER BY finding_key",
+            findings = [dict(row) for row in store.db.execute(
+                "SELECT source_version_id,finding_key,certainty,quote,source_line FROM assertions WHERE source_version_id=? ORDER BY finding_key",
                 (source_id,)).fetchall()]
+            store._annotate_source_assertions(findings, intake_receipts)
+            return findings
 
         current = sorted((row for row in rows if row["state"] == "current"), key=_order_key)
+        from .document_intake import classification_provenance
+        intake_receipts = store._document_intake_receipts(case_id)
+        def provenance(source_id: int) -> dict:
+            return classification_provenance(intake_receipts[source_id]) if source_id in intake_receipts else {}
+
+        def reported_finding(item: dict) -> dict:
+            result = {"finding_key": item["finding_key"], "reported_state": item["certainty"],
+                      **provenance(item["source_version_id"])}
+            if item.get("text_origin") == "pdf_extraction":
+                # A global extraction line is not an original PDF byte/line
+                # reference. Keep its exact frozen physical-page anchor.
+                result.update({key: item[key] for key in
+                               ("quote", "source_line", "source_page", "page_line", "page_text_sha256")})
+            return result
         entries = [{
             "source_id": row["id"],
             "document_id": row["document_id"],
@@ -164,7 +180,7 @@ def case_timeline(store: CaseStore, case_id: str) -> dict:
             "state": "current",
             "supersedes_source_id": row["supersedes_id"],
             "reported_findings": [
-                {"finding_key": item["finding_key"], "reported_state": item["certainty"]}
+                reported_finding(item)
                 for item in findings_for(row["id"])
             ],
         } for row in current]
