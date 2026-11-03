@@ -149,6 +149,8 @@ class Handler(BaseHTTPRequestHandler):
             if case_options:
                 query = parse_qs(urlsplit(self.path).query)
                 snapshot_raw = query.get("snapshot_id", [None])[0]
+                if snapshot_raw is not None and not snapshot_raw.isdigit():
+                    raise InvalidInput("snapshot_id must be a positive integer")
                 snapshot_id = int(snapshot_raw) if snapshot_raw is not None else None
                 return self._json(200, store.option_view(case_options[1], snapshot_id))
             case_mission = re.fullmatch(rf"/api/cases/{ID_PART}/mission", path)
