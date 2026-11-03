@@ -1,0 +1,3 @@
+# A unified diff uses one space to encode an empty context line. Check the
+# applied upstream source separately; preserve this required patch syntax.
+tools/imaging/patches/*.patch whitespace=-blank-at-eol

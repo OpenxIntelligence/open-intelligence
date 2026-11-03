@@ -1,0 +1,1672 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index 788957c..47facec 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -2311,6 +2311,7 @@ dependencies = [
+  "pacs-plugin",
+  "serde",
+  "serde_json",
++ "sha2",
+  "tempfile",
+  "thiserror",
+  "tokio",
+diff --git a/crates/pacs-admin-plugin/src/web.rs b/crates/pacs-admin-plugin/src/web.rs
+index 65d90c1..1f8ca55 100644
+--- a/crates/pacs-admin-plugin/src/web.rs
++++ b/crates/pacs-admin-plugin/src/web.rs
+@@ -4236,6 +4236,7 @@ fn internal_store_error(error: pacs_core::PacsError) -> StatusCode {
+ fn pacs_error_to_status(error: &PacsError) -> StatusCode {
+     match error {
+         PacsError::NotFound { .. } => StatusCode::NOT_FOUND,
++        PacsError::Conflict(_) => StatusCode::CONFLICT,
+         PacsError::Forbidden(_) => StatusCode::FORBIDDEN,
+         PacsError::InvalidUid(_) | PacsError::InvalidRequest(_) => StatusCode::BAD_REQUEST,
+         PacsError::NotAcceptable(_) => StatusCode::NOT_ACCEPTABLE,
+diff --git a/crates/pacs-api/src/error.rs b/crates/pacs-api/src/error.rs
+index b09b30c..2cb95ad 100644
+--- a/crates/pacs-api/src/error.rs
++++ b/crates/pacs-api/src/error.rs
+@@ -24,6 +24,7 @@ impl IntoResponse for ApiError {
+             PacsError::DicomParse(msg)
+             | PacsError::InvalidUid(msg)
+             | PacsError::InvalidRequest(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
++            PacsError::Conflict(msg) => (StatusCode::CONFLICT, msg.clone()),
+             PacsError::Forbidden(msg) => (StatusCode::FORBIDDEN, msg.clone()),
+             PacsError::NotAcceptable(msg) => (StatusCode::NOT_ACCEPTABLE, msg.clone()),
+             PacsError::UnsupportedMediaType(msg) => {
+@@ -75,6 +76,12 @@ mod tests {
+         assert_eq!(err.into_response().status(), StatusCode::BAD_REQUEST);
+     }
+ 
++    #[test]
++    fn test_immutable_conflict_is_409() {
++        let err = ApiError(PacsError::Conflict("immutable SOP conflict".into()));
++        assert_eq!(err.into_response().status(), StatusCode::CONFLICT);
++    }
++
+     #[test]
+     fn test_forbidden_is_403() {
+         let err = ApiError(PacsError::Forbidden("not allowed".into()));
+diff --git a/crates/pacs-api/src/routes/stow.rs b/crates/pacs-api/src/routes/stow.rs
+index da150ea..43715b8 100644
+--- a/crates/pacs-api/src/routes/stow.rs
++++ b/crates/pacs-api/src/routes/stow.rs
+@@ -1,5 +1,7 @@
+ //! STOW-RS (Store Over the Web) handler — `POST /wado/studies`.
+ 
++use std::collections::BTreeSet;
++
+ use axum::{
+     extract::State,
+     http::{HeaderMap, StatusCode},
+@@ -138,9 +140,10 @@ pub async fn stow_store(
+     }
+ 
+     // Persist each instance.
+-    let study_uid_str = parsed[0].instance.study_uid.to_string();
+     let user_id = auth_user.map(|user| user.user_id.clone());
+     let mut stored = Vec::new();
++    let mut failed = Vec::new();
++    let mut stored_studies = BTreeSet::new();
+ 
+     if let Some(user) = auth_user {
+         let role = user
+@@ -176,26 +179,29 @@ pub async fn stow_store(
+             &p.instance.series_uid,
+             &p.instance.instance_uid,
+         );
+-        state
+-            .blobs
+-            .put(&blob_key, p.encoded_bytes.clone())
+-            .await
+-            .map_err(ApiError::from)?;
+-        state
+-            .store
+-            .store_study(&p.study)
+-            .await
+-            .map_err(ApiError::from)?;
+-        state
+-            .store
+-            .store_series(&p.series)
+-            .await
+-            .map_err(ApiError::from)?;
+-        state
+-            .store
+-            .store_instance(&p.instance)
+-            .await
+-            .map_err(ApiError::from)?;
++        let persistence = async {
++            state.blobs.put(&blob_key, p.encoded_bytes.clone()).await?;
++            state
++                .store
++                .store_instance_hierarchy(&p.study, &p.series, &p.instance)
++                .await?;
++            Ok::<(), PacsError>(())
++        }
++        .await;
++        match persistence {
++            Ok(()) => {}
++            Err(PacsError::Conflict(_)) => {
++                // PS3.18 Annex I: report the failed SOP without exposing internal
++                // storage details. Table I.2-2 defines 0110H as Processing failure.
++                failed.push(json!({
++                    "00081150": { "vr": "UI", "Value": [p.instance.sop_class_uid.as_deref().unwrap_or("")] },
++                    "00081155": { "vr": "UI", "Value": [p.instance.instance_uid.to_string()] },
++                    "00081197": { "vr": "US", "Value": [0x0110_u16] },
++                }));
++                continue;
++            }
++            Err(error) => return Err(ApiError::from(error)),
++        }
+ 
+         state
+             .plugins
+@@ -212,16 +218,37 @@ pub async fn stow_store(
+         stored.push(json!({
+             "00081150": { "vr": "UI", "Value": [p.instance.sop_class_uid.as_deref().unwrap_or("")] },
+             "00081155": { "vr": "UI", "Value": [p.instance.instance_uid.to_string()] },
++            "00081190": { "vr": "UR", "Value": [format!(
++                "wado/studies/{}/series/{}/instances/{}",
++                p.instance.study_uid, p.instance.series_uid, p.instance.instance_uid
++            )] },
+         }));
++        stored_studies.insert(p.instance.study_uid.to_string());
+     }
+ 
+-    // PS3.18 STOW-RS response
+-    let response_body = json!({
+-        "00081190": { "vr": "UR", "Value": [format!("wado/studies/{study_uid_str}")] },
+-        "00081199": { "vr": "SQ", "Value": stored },
+-    });
++    // PS3.18 10.5.3: never return an all-failed 409 after another part was stored.
++    let status = if failed.is_empty() {
++        StatusCode::OK
++    } else if stored.is_empty() {
++        StatusCode::CONFLICT
++    } else {
++        StatusCode::ACCEPTED
++    };
++    // Retrieve URL is Type 2: leave it empty when no single successfully stored
++    // study can be named. Each successful SOP has its own retrieve reference.
++    let mut response_body = json!({ "00081190": { "vr": "UR" } });
++    if stored_studies.len() == 1 {
++        let study_uid = stored_studies.iter().next().expect("one stored study");
++        response_body["00081190"]["Value"] = json!([format!("wado/studies/{study_uid}")]);
++    }
++    if !stored.is_empty() {
++        response_body["00081199"] = json!({ "vr": "SQ", "Value": stored });
++    }
++    if !failed.is_empty() {
++        response_body["00081198"] = json!({ "vr": "SQ", "Value": failed });
++    }
+ 
+-    Ok((StatusCode::OK, Json(response_body)))
++    Ok((status, Json(response_body)))
+ }
+ 
+ /// Extract the `boundary` parameter from a `Content-Type` header value.
+@@ -328,6 +355,134 @@ mod tests {
+         Bytes::from(body)
+     }
+ 
++    async fn immutable_stow_response(
++        store: MockMetaStore,
++        blobs: MockBlobStr,
++        instance_uids: &[&str],
++    ) -> (StatusCode, serde_json::Value) {
++        let boundary = "immutable-sop-conflict";
++        let parts: Vec<_> = instance_uids
++            .iter()
++            .map(|uid| make_dicom_part("1.2.840.10008.5.1.4.1.1.2", "CT", uid))
++            .collect();
++        let app = build_router(make_test_state(store, blobs));
++        let response = app
++            .oneshot(
++                Request::builder()
++                    .method("POST")
++                    .uri("/wado/studies")
++                    .header(
++                        "content-type",
++                        format!("multipart/related; type=\"application/dicom\"; boundary={boundary}"),
++                    )
++                    .body(Body::from(build_multipart_body(boundary, &parts)))
++                    .unwrap(),
++            )
++            .await
++            .unwrap();
++        let status = response.status();
++        let bytes = response.into_body().collect().await.unwrap().to_bytes();
++        (status, serde_json::from_slice(&bytes).unwrap())
++    }
++
++    fn assert_failed_sop_references(body: &serde_json::Value, expected: &[&str]) {
++        assert_eq!(body["00081198"]["vr"], "SQ");
++        let failed = body["00081198"]["Value"].as_array().unwrap();
++        assert_eq!(failed.len(), expected.len());
++        for (item, uid) in failed.iter().zip(expected) {
++            assert_eq!(item["00081150"]["Value"][0], "1.2.840.10008.5.1.4.1.1.2");
++            assert_eq!(item["00081155"]["Value"][0], *uid);
++            assert_eq!(item["00081197"]["vr"], "US");
++            // PS3.18 Table I.2-2: 0110H (272) is Processing failure.
++            assert_eq!(item["00081197"]["Value"][0], 272);
++        }
++    }
++
++    #[tokio::test]
++    async fn test_stow_single_immutable_conflict_reports_failed_sop_without_indexing() {
++        let mut blobs = MockBlobStr::new();
++        blobs.expect_put().once().returning(|_, _| {
++            Err(PacsError::Conflict("private filesystem claim detail".into()))
++        });
++        // No metadata expectations: a blob conflict must not touch the index.
++        let (status, body) = immutable_stow_response(
++            MockMetaStore::new(), blobs, &["1.2.3.4.5"],
++        ).await;
++        assert_eq!(status, StatusCode::CONFLICT);
++        assert_failed_sop_references(&body, &["1.2.3.4.5"]);
++        assert!(body.get("00081199").is_none());
++        assert!(!body.to_string().contains("private filesystem claim detail"));
++    }
++
++    #[tokio::test]
++    async fn test_stow_all_immutable_conflicts_reports_every_failed_sop() {
++        let mut blobs = MockBlobStr::new();
++        blobs.expect_put().times(2).returning(|_, _| {
++            Err(PacsError::Conflict("immutable SOP conflict".into()))
++        });
++        let (status, body) = immutable_stow_response(
++            MockMetaStore::new(), blobs, &["1.2.3.4.5", "1.2.3.4.6"],
++        ).await;
++        assert_eq!(status, StatusCode::CONFLICT);
++        assert_failed_sop_references(&body, &["1.2.3.4.5", "1.2.3.4.6"]);
++        assert!(body.get("00081199").is_none());
++    }
++
++    async fn assert_mixed_immutable_conflict(instance_uids: &[&str]) {
++        let mut store = MockMetaStore::new();
++        store.expect_store_study().once().returning(|_| Ok(()));
++        store.expect_store_series().once().returning(|_| Ok(()));
++        store.expect_store_instance().once()
++            .withf(|instance| instance.instance_uid.as_ref() == "1.2.3.4.5")
++            .returning(|_| Ok(()));
++        let mut blobs = MockBlobStr::new();
++        blobs.expect_put().once()
++            .withf(|key, _| key == "1.2.3/1.2.3.4/1.2.3.4.5")
++            .returning(|_, _| Ok(()));
++        blobs.expect_put().once()
++            .withf(|key, _| key == "1.2.3/1.2.3.4/1.2.3.4.6")
++            .returning(|_, _| Err(PacsError::Conflict("immutable SOP conflict".into())));
++        let (status, body) = immutable_stow_response(store, blobs, instance_uids).await;
++        assert_eq!(status, StatusCode::ACCEPTED);
++        assert_failed_sop_references(&body, &["1.2.3.4.6"]);
++        let stored = body["00081199"]["Value"].as_array().unwrap();
++        assert_eq!(stored.len(), 1);
++        assert_eq!(stored[0]["00081155"]["Value"][0], "1.2.3.4.5");
++    }
++
++    #[tokio::test]
++    async fn test_stow_immutable_conflict_after_success_reports_partial_success() {
++        assert_mixed_immutable_conflict(&["1.2.3.4.5", "1.2.3.4.6"]).await;
++    }
++
++    #[tokio::test]
++    async fn test_stow_immutable_success_after_conflict_is_still_attempted() {
++        assert_mixed_immutable_conflict(&["1.2.3.4.6", "1.2.3.4.5"]).await;
++    }
++
++    #[tokio::test]
++    async fn test_stow_immutable_metadata_conflict_is_reported_per_instance() {
++        let mut store = MockMetaStore::new();
++        store.expect_store_study().times(2).returning(|_| Ok(()));
++        store.expect_store_series().times(2).returning(|_| Ok(()));
++        store.expect_store_instance().once()
++            .withf(|instance| instance.instance_uid.as_ref() == "1.2.3.4.5")
++            .returning(|_| Err(PacsError::Conflict("immutable parent binding".into())));
++        store.expect_store_instance().once()
++            .withf(|instance| instance.instance_uid.as_ref() == "1.2.3.4.6")
++            .returning(|_| Ok(()));
++        let mut blobs = MockBlobStr::new();
++        blobs.expect_put().times(2).returning(|_, _| Ok(()));
++        let (status, body) = immutable_stow_response(
++            store, blobs, &["1.2.3.4.5", "1.2.3.4.6"],
++        ).await;
++        assert_eq!(status, StatusCode::ACCEPTED);
++        assert_failed_sop_references(&body, &["1.2.3.4.5"]);
++        let stored = body["00081199"]["Value"].as_array().unwrap();
++        assert_eq!(stored.len(), 1);
++        assert_eq!(stored[0]["00081155"]["Value"][0], "1.2.3.4.6");
++    }
++
+     #[test]
+     fn test_extract_boundary_unquoted() {
+         assert_eq!(
+@@ -405,7 +560,7 @@ mod tests {
+     }
+ 
+     #[tokio::test]
+-    async fn test_stow_accepts_sr_and_seg_sop_classes() {
++    async fn test_stow_immutable_success_accepts_sr_and_seg_sop_classes() {
+         let mut store = MockMetaStore::new();
+         store.expect_store_study().times(2).returning(|_| Ok(()));
+         store.expect_store_series().times(2).returning(|series| {
+@@ -457,6 +612,7 @@ mod tests {
+         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+         let stored = json["00081199"]["Value"].as_array().unwrap();
+         assert_eq!(stored.len(), 2);
++        assert!(json.get("00081198").is_none());
+         assert_eq!(
+             stored[0]["00081150"]["Value"][0],
+             json!("1.2.840.10008.5.1.4.1.1.88.22")
+diff --git a/crates/pacs-core/src/blob/mod.rs b/crates/pacs-core/src/blob/mod.rs
+index df9e0e7..d2205fe 100644
+--- a/crates/pacs-core/src/blob/mod.rs
++++ b/crates/pacs-core/src/blob/mod.rs
+@@ -15,7 +15,12 @@ use crate::error::PacsResult;
+ #[cfg_attr(test, mockall::automock)]
+ #[async_trait]
+ pub trait BlobStore: Send + Sync {
+-    /// Stores `data` under `key`, overwriting any existing object.
++    /// Stores `data` under `key` according to the backend's replacement policy.
++    ///
++    /// The standalone filesystem backend keeps a permanent SOP UID claim:
++    /// exact bytes at the same hierarchy are idempotent, and a replacement or
++    /// hierarchy change returns [`crate::error::PacsError::Conflict`]. Other
++    /// backends do not acquire that guarantee from this trait declaration.
+     async fn put(&self, key: &str, data: Bytes) -> PacsResult<()>;
+ 
+     /// Retrieves the object stored at `key`.
+diff --git a/crates/pacs-core/src/error.rs b/crates/pacs-core/src/error.rs
+index fcc26f4..f341bdf 100644
+--- a/crates/pacs-core/src/error.rs
++++ b/crates/pacs-core/src/error.rs
+@@ -27,6 +27,10 @@ pub enum PacsError {
+     #[error("invalid request: {0}")]
+     InvalidRequest(String),
+ 
++    /// A valid operation conflicts with an immutable stored object or binding.
++    #[error("conflict: {0}")]
++    Conflict(String),
++
+     /// The authenticated caller is not allowed to perform the requested action.
+     #[error("forbidden: {0}")]
+     Forbidden(String),
+@@ -79,6 +83,15 @@ mod tests {
+         );
+     }
+ 
++    #[test]
++    fn test_immutable_conflict_display() {
++        let error = PacsError::Conflict("immutable SOP already has different bytes".into());
++        assert_eq!(
++            error.to_string(),
++            "conflict: immutable SOP already has different bytes"
++        );
++    }
++
+     #[test]
+     fn test_forbidden_display() {
+         let e = PacsError::Forbidden("viewer role cannot delete studies".into());
+diff --git a/crates/pacs-core/src/store/mod.rs b/crates/pacs-core/src/store/mod.rs
+index d389f02..c8b067b 100644
+--- a/crates/pacs-core/src/store/mod.rs
++++ b/crates/pacs-core/src/store/mod.rs
+@@ -26,6 +26,23 @@ pub trait MetadataStore: Send + Sync {
+     /// Stores (inserts or upserts) an [`Instance`] in the metadata store.
+     async fn store_instance(&self, instance: &Instance) -> PacsResult<()>;
+ 
++    /// Persists one instance and its study/series metadata through one backend entry point.
++    ///
++    /// The standalone SQLite implementation overrides this operation with a
++    /// transaction so a rejected hierarchy conflict leaves existing metadata
++    /// unchanged. This compatibility default is sequential, not atomic; other
++    /// backends do not acquire the SQLite guarantee from this declaration.
++    async fn store_instance_hierarchy(
++        &self,
++        study: &Study,
++        series: &Series,
++        instance: &Instance,
++    ) -> PacsResult<()> {
++        self.store_study(study).await?;
++        self.store_series(series).await?;
++        self.store_instance(instance).await
++    }
++
+     /// Returns all studies matching the given query parameters.
+     async fn query_studies(&self, q: &StudyQuery) -> PacsResult<Vec<Study>>;
+ 
+diff --git a/crates/pacs-dimse/src/server/provider.rs b/crates/pacs-dimse/src/server/provider.rs
+index 5d4e96f..65574e0 100644
+--- a/crates/pacs-dimse/src/server/provider.rs
++++ b/crates/pacs-dimse/src/server/provider.rs
+@@ -256,16 +256,10 @@ impl PacsStoreProvider {
+         };
+ 
+         // ── Persist metadata ───────────────────────────────────────────────
+-        if let Err(e) = self.store.store_study(&study).await {
+-            error!(error = %e, study_uid = %study_uid, "Failed to store study metadata");
+-            return StoreResult::failure(STATUS_PROCESSING_FAILURE);
+-        }
+-        if let Err(e) = self.store.store_series(&series).await {
+-            error!(error = %e, series_uid = %series_uid, "Failed to store series metadata");
+-            return StoreResult::failure(STATUS_PROCESSING_FAILURE);
+-        }
+-        if let Err(e) = self.store.store_instance(&instance).await {
+-            error!(error = %e, instance_uid = %instance_uid, "Failed to store instance metadata");
++        // SQLite rolls this whole hierarchy back on a parent/instance conflict.
++        // Other backend implementations retain their documented transaction scope.
++        if let Err(e) = self.store.store_instance_hierarchy(&study, &series, &instance).await {
++            error!(error = %e, instance_uid = %instance_uid, "Failed to store instance hierarchy");
+             return StoreResult::failure(STATUS_PROCESSING_FAILURE);
+         }
+ 
+@@ -1268,6 +1262,20 @@ mod tests {
+         );
+     }
+ 
++    #[tokio::test]
++    async fn on_store_immutable_blob_conflict_returns_processing_failure_without_indexing() {
++        // No metadata expectations: a permanently claimed SOP conflict must
++        // stop before any study, series, or instance metadata operation.
++        let mock_store = MockTestStore::new();
++        let mut mock_blobs = MockTestBlobs::new();
++        mock_blobs.expect_put().once().returning(|_, _| {
++            Err(pacs_core::PacsError::Conflict("immutable SOP conflict".into()))
++        });
++        let provider = PacsStoreProvider::new(Arc::new(mock_store), Arc::new(mock_blobs));
++        let result = provider.on_store(minimal_store_event()).await;
++        assert_eq!(result.status, STATUS_PROCESSING_FAILURE);
++    }
++
+     #[tokio::test]
+     async fn on_store_metadata_failure_returns_failure() {
+         let mut mock_store = MockTestStore::new();
+diff --git a/crates/pacs-fs-storage/Cargo.toml b/crates/pacs-fs-storage/Cargo.toml
+index ac1677f..868ab43 100644
+--- a/crates/pacs-fs-storage/Cargo.toml
++++ b/crates/pacs-fs-storage/Cargo.toml
+@@ -13,11 +13,12 @@ async-trait  = { workspace = true }
+ bytes        = { workspace = true }
+ serde        = { workspace = true }
+ serde_json   = { workspace = true }
++sha2         = "=0.10.9"
++tempfile     = { workspace = true }
+ thiserror    = { workspace = true }
+ tokio        = { workspace = true }
+ tracing      = { workspace = true }
+ url          = { workspace = true }
+ 
+ [dev-dependencies]
+-tempfile   = { workspace = true }
+ tokio      = { workspace = true }
+diff --git a/crates/pacs-fs-storage/src/fs.rs b/crates/pacs-fs-storage/src/fs.rs
+index f1f9add..b75f381 100644
+--- a/crates/pacs-fs-storage/src/fs.rs
++++ b/crates/pacs-fs-storage/src/fs.rs
+@@ -5,11 +5,10 @@ use std::path::{Path, PathBuf};
+ use async_trait::async_trait;
+ use bytes::Bytes;
+ use pacs_core::{BlobStore, PacsError, PacsResult};
+-use tokio::fs;
+ use tracing::{debug, trace};
+ use url::Url;
+ 
+-use crate::{config::FilesystemStorageConfig, error::FsStorageError};
++use crate::{config::FilesystemStorageConfig, error::FsStorageError, immutable};
+ 
+ /// Filesystem-backed blob store for standalone pacsnode deployments.
+ #[derive(Debug, Clone)]
+@@ -30,6 +29,7 @@ impl FsBlobStore {
+         let path = PathBuf::from(root);
+         std::fs::create_dir_all(&path)?;
+         let canonical_root = path.canonicalize().unwrap_or(path);
++        immutable::initialize(&canonical_root)?;
+ 
+         Ok(Self {
+             root: canonical_root,
+@@ -37,24 +37,7 @@ impl FsBlobStore {
+     }
+ 
+     fn path_for_key(&self, key: &str) -> PacsResult<PathBuf> {
+-        let trimmed = key.trim();
+-        if trimmed.is_empty() {
+-            return Err(PacsError::InvalidRequest(
+-                "blob key must not be empty".into(),
+-            ));
+-        }
+-
+-        let mut path = self.root.clone();
+-        for segment in trimmed.split('/') {
+-            if segment.is_empty() || segment == "." || segment == ".." || segment.contains('\\') {
+-                return Err(PacsError::InvalidRequest(format!(
+-                    "blob key contains an unsafe path segment: {segment}"
+-                )));
+-            }
+-            path.push(segment);
+-        }
+-
+-        Ok(path)
++        immutable::alias_path(&self.root, key)
+     }
+ 
+     fn map_io_error(error: std::io::Error, key: &str) -> PacsError {
+@@ -82,49 +65,45 @@ impl FsBlobStore {
+ #[async_trait]
+ impl BlobStore for FsBlobStore {
+     async fn put(&self, key: &str, data: Bytes) -> PacsResult<()> {
+-        let path = self.path_for_key(key)?;
+-        if let Some(parent) = path.parent() {
+-            fs::create_dir_all(parent)
+-                .await
+-                .map_err(|error| Self::map_io_error(error, key))?;
+-        }
+-
+         trace!(key, root = %self.root.display(), "put filesystem blob");
+-        fs::write(path, data)
++        let root = self.root.clone();
++        let key = key.to_string();
++        // Blocking publication has no async cancellation point between claiming
++        // a complete object and retaining its immutable payload directory.
++        tokio::task::spawn_blocking(move || immutable::put(&root, &key, &data))
+             .await
+-            .map_err(|error| Self::map_io_error(error, key))
++            .map_err(|_| PacsError::Internal("immutable filesystem task failed".into()))?
+     }
+ 
+     async fn get(&self, key: &str) -> PacsResult<Bytes> {
+-        let path = self.path_for_key(key)?;
+         trace!(key, root = %self.root.display(), "get filesystem blob");
+-        fs::read(path)
++        let root = self.root.clone();
++        let key = key.to_string();
++        tokio::task::spawn_blocking(move || immutable::get(&root, &key))
+             .await
+-            .map(Bytes::from)
+-            .map_err(|error| Self::map_io_error(error, key))
++            .map_err(|_| PacsError::Internal("immutable filesystem task failed".into()))?
+     }
+ 
+     async fn delete(&self, key: &str) -> PacsResult<()> {
+-        let path = self.path_for_key(key)?;
+         debug!(key, root = %self.root.display(), "delete filesystem blob");
+-        match fs::remove_file(path).await {
+-            Ok(()) => Ok(()),
+-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+-            Err(error) => Err(Self::map_io_error(error, key)),
+-        }
++        let root = self.root.clone();
++        let key = key.to_string();
++        tokio::task::spawn_blocking(move || immutable::delete(&root, &key))
++            .await
++            .map_err(|_| PacsError::Internal("immutable filesystem task failed".into()))?
+     }
+ 
+     async fn exists(&self, key: &str) -> PacsResult<bool> {
+-        let path = self.path_for_key(key)?;
+         trace!(key, root = %self.root.display(), "exists filesystem blob");
+-        match fs::metadata(path).await {
+-            Ok(metadata) => Ok(metadata.is_file()),
+-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+-            Err(error) => Err(Self::map_io_error(error, key)),
++        match self.get(key).await {
++            Ok(_) => Ok(true),
++            Err(PacsError::NotFound { .. }) => Ok(false),
++            Err(error) => Err(error),
+         }
+     }
+ 
+     async fn presigned_url(&self, key: &str, _ttl_secs: u32) -> PacsResult<String> {
++        self.get(key).await?;
+         let path = self.path_for_key(key)?;
+         let canonical = path
+             .canonicalize()
+diff --git a/crates/pacs-fs-storage/src/immutable.rs b/crates/pacs-fs-storage/src/immutable.rs
+new file mode 100644
+index 0000000..1c9e232
+--- /dev/null
++++ b/crates/pacs-fs-storage/src/immutable.rs
+@@ -0,0 +1,290 @@
++//! Immutable, process-safe SOP publication for the standalone filesystem store.
++//!
++//! A completed object and its integrity record are staged before an atomic
++//! no-replace hard link claims the SOP UID. Composite-key aliases are published
++//! only from that claim. This is local-filesystem behavior, not an S3 contract.
++//! Directory/file syncing is deliberate, but is not a tested power-loss or
++//! backup-recovery guarantee. An interrupted pre-claim write can leave an orphan.
++
++use std::{
++    fs::{self, File, OpenOptions},
++    io::{self, Write},
++    path::{Path, PathBuf},
++};
++
++use bytes::Bytes;
++use pacs_core::{PacsError, PacsResult};
++use serde::{Deserialize, Serialize};
++use sha2::{Digest, Sha256};
++
++const INTERNAL: &str = ".pacs-immutable-v1";
++const MAX_CLAIM_BYTES: u64 = 4096;
++
++#[derive(Debug, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
++struct Claim {
++    version: u32,
++    sop_uid: String,
++    key: String,
++    byte_length: u64,
++    sha256: String,
++    object_directory: String,
++}
++
++fn invalid_data(message: &'static str) -> io::Error {
++    io::Error::new(io::ErrorKind::InvalidData, message)
++}
++
++fn storage_error(error: io::Error) -> PacsError {
++    PacsError::Blob(Box::new(error))
++}
++
++fn missing(key: &str) -> PacsError {
++    PacsError::NotFound {
++        resource: "blob",
++        uid: key.to_string(),
++    }
++}
++
++fn conflict() -> PacsError {
++    PacsError::Conflict("SOP UID already owns different bytes or parent identifiers".into())
++}
++
++fn digest(data: &[u8]) -> String {
++    format!("{:x}", Sha256::digest(data))
++}
++
++fn sync_directory(path: &Path) -> io::Result<()> {
++    File::open(path)?.sync_all()
++}
++
++/// Enable only an empty root or an already initialized immutable layout.
++/// Existing unclaimed archives require an explicit, separately validated
++/// migration; starting this backend must never silently reinterpret them.
++pub(crate) fn initialize(root: &Path) -> io::Result<()> {
++    let internal = root.join(INTERNAL);
++    match fs::symlink_metadata(&internal) {
++        Ok(meta) if meta.file_type().is_dir() => {}
++        Ok(_) => return Err(invalid_data("immutable storage directory is not a directory")),
++        Err(error) if error.kind() == io::ErrorKind::NotFound => {
++            for entry in fs::read_dir(root)? {
++                if entry?.file_name() != INTERNAL {
++                    // A separate process may have initialized this layout and
++                    // published a complete alias since our first metadata read.
++                    // Such an alias cannot precede its initialized claim store.
++                    let initialized = [&internal, &internal.join("objects"), &internal.join("claims")]
++                        .iter().all(|path| fs::symlink_metadata(path)
++                            .map(|meta| meta.file_type().is_dir()).unwrap_or(false));
++                    if !initialized {
++                        return Err(invalid_data("legacy unclaimed blob root requires explicit migration"));
++                    }
++                    break;
++                }
++            }
++        }
++        Err(error) => return Err(error),
++    }
++    for path in [internal.clone(), internal.join("objects"), internal.join("claims")] {
++        fs::create_dir_all(&path)?;
++        if !fs::symlink_metadata(&path)?.file_type().is_dir() {
++            return Err(invalid_data("immutable storage path must not be a symlink"));
++        }
++    }
++    sync_directory(&internal)?;
++    sync_directory(root)
++}
++
++fn key_parts(key: &str) -> PacsResult<[&str; 3]> {
++    let parts: Vec<_> = key.split('/').collect();
++    if parts.len() != 3 || parts.iter().any(|part| {
++        part.is_empty() || part.len() > 64
++            || !part.bytes().all(|byte| byte.is_ascii_digit() || byte == b'.')
++            || part.split('.').any(str::is_empty)
++    }) {
++        return Err(PacsError::InvalidRequest(
++            "filesystem blob key must contain three safe DICOM UIDs".into(),
++        ));
++    }
++    Ok([parts[0], parts[1], parts[2]])
++}
++
++pub(crate) fn alias_path(root: &Path, key: &str) -> PacsResult<PathBuf> {
++    let [study, series, sop] = key_parts(key)?;
++    Ok(root.join(study).join(series).join(sop))
++}
++
++fn claim_path(root: &Path, sop: &str) -> PathBuf {
++    root.join(INTERNAL).join("claims").join(format!("{sop}.json"))
++}
++
++fn object_path(root: &Path, claim: &Claim) -> PathBuf {
++    root.join(INTERNAL).join("objects")
++        .join(&claim.object_directory).join("object.dcm")
++}
++
++fn read_claim(root: &Path, sop: &str) -> PacsResult<Option<(Claim, Bytes)>> {
++    let path = claim_path(root, sop);
++    let metadata = match fs::symlink_metadata(&path) {
++        Ok(metadata) => metadata,
++        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
++        Err(error) => return Err(storage_error(error)),
++    };
++    if !metadata.file_type().is_file() || metadata.len() > MAX_CLAIM_BYTES {
++        return Err(storage_error(invalid_data("invalid immutable SOP claim file")));
++    }
++    let encoded = fs::read(&path).map_err(storage_error)?;
++    let claim: Claim = serde_json::from_slice(&encoded)
++        .map_err(|_| storage_error(invalid_data("invalid immutable SOP claim")))?;
++    let parts = key_parts(&claim.key)
++        .map_err(|_| storage_error(invalid_data("invalid immutable SOP claim key")))?;
++    if claim.version != 1 || claim.sop_uid != sop || parts[2] != sop
++        || !claim.object_directory.starts_with("object-")
++        || !claim.object_directory.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
++        || claim.sha256.len() != 64
++        || !claim.sha256.bytes().all(|byte| byte.is_ascii_hexdigit())
++    {
++        return Err(storage_error(invalid_data("invalid immutable SOP claim identity")));
++    }
++    let original = object_path(root, &claim);
++    if !fs::symlink_metadata(&original).map_err(storage_error)?.file_type().is_file() {
++        return Err(storage_error(invalid_data("immutable object is not a regular file")));
++    }
++    let bytes = fs::read(original).map_err(storage_error)?;
++    if bytes.len() as u64 != claim.byte_length || digest(&bytes) != claim.sha256 {
++        return Err(storage_error(invalid_data("immutable original failed persisted integrity check")));
++    }
++    Ok(Some((claim, Bytes::from(bytes))))
++}
++
++fn publish_alias(root: &Path, key: &str, claim: &Claim, original: &[u8]) -> PacsResult<()> {
++    let alias = alias_path(root, key)?;
++    let parent = alias.parent().expect("validated three-component key");
++    fs::create_dir_all(parent).map_err(storage_error)?;
++    match fs::hard_link(object_path(root, claim), &alias) {
++        Ok(()) => sync_directory(parent).map_err(storage_error),
++        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
++            if !fs::symlink_metadata(&alias).map_err(storage_error)?.file_type().is_file()
++                || fs::read(alias).map_err(storage_error)?.as_slice() != original
++            {
++                return Err(storage_error(invalid_data("existing blob alias differs from immutable original")));
++            }
++            Ok(())
++        }
++        Err(error) => Err(storage_error(error)),
++    }
++}
++
++fn accept_existing(root: &Path, key: &str, data: &[u8], claim: Claim, original: Bytes) -> PacsResult<()> {
++    if claim.key != key || original.as_ref() != data {
++        return Err(conflict());
++    }
++    // An identical retry may finish alias publication after interruption. It
++    // cannot replace a mismatching alias or erase the permanent original claim.
++    publish_alias(root, key, &claim, &original)
++}
++
++pub(crate) fn put(root: &Path, key: &str, data: &[u8]) -> PacsResult<()> {
++    let [_, _, sop] = key_parts(key)?;
++    if let Some((claim, original)) = read_claim(root, sop)? {
++        return accept_existing(root, key, data, claim, original);
++    }
++    let alias = alias_path(root, key)?;
++    match fs::symlink_metadata(&alias) {
++        Ok(_) => {
++            // Another writer may have just published both its claim and alias.
++            if let Some((claim, original)) = read_claim(root, sop)? {
++                return accept_existing(root, key, data, claim, original);
++            }
++            return Err(storage_error(invalid_data("existing blob has no immutable claim")));
++        }
++        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
++        Err(error) => return Err(storage_error(error)),
++    }
++
++    let objects = root.join(INTERNAL).join("objects");
++    let staging = tempfile::Builder::new().prefix("object-")
++        .tempdir_in(&objects).map_err(storage_error)?;
++    let original_path = staging.path().join("object.dcm");
++    let mut original = OpenOptions::new().write(true).create_new(true)
++        .open(&original_path).map_err(storage_error)?;
++    original.write_all(data).map_err(storage_error)?;
++    original.sync_all().map_err(storage_error)?;
++    drop(original);
++    let claim = Claim {
++        version: 1,
++        sop_uid: sop.to_string(),
++        key: key.to_string(),
++        byte_length: data.len() as u64,
++        sha256: digest(data),
++        object_directory: staging.path().file_name().expect("temporary object directory")
++            .to_string_lossy().into_owned(),
++    };
++    let encoded = serde_json::to_vec(&claim)
++        .map_err(|_| storage_error(invalid_data("could not encode immutable SOP claim")))?;
++    let staged_claim = staging.path().join("claim.json");
++    let mut claim_file = OpenOptions::new().write(true).create_new(true)
++        .open(&staged_claim).map_err(storage_error)?;
++    claim_file.write_all(&encoded).map_err(storage_error)?;
++    claim_file.sync_all().map_err(storage_error)?;
++    drop(claim_file);
++    sync_directory(staging.path()).map_err(storage_error)?;
++
++    // Keep the complete object BEFORE publishing a claim to it. Cancellation
++    // or an error after this point must never run a tempdir destructor on a
++    // published winner. Only a writer whose no-replace link failed removes its
++    // own unique staging directory; it cannot remove another writer's object.
++    let owned_staging = staging.keep();
++    sync_directory(&objects).map_err(storage_error)?;
++    match fs::hard_link(&staged_claim, claim_path(root, sop)) {
++        Ok(()) => {
++            sync_directory(&root.join(INTERNAL).join("claims")).map_err(storage_error)?;
++            publish_alias(root, key, &claim, data)
++        }
++        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
++            fs::remove_dir_all(&owned_staging).map_err(storage_error)?;
++            let (winner, original) = read_claim(root, sop)?
++                .ok_or_else(|| storage_error(invalid_data("published SOP claim disappeared")))?;
++            accept_existing(root, key, data, winner, original)
++        }
++        Err(error) => {
++            let _ = fs::remove_dir_all(&owned_staging);
++            Err(storage_error(error))
++        }
++    }
++}
++
++pub(crate) fn get(root: &Path, key: &str) -> PacsResult<Bytes> {
++    let [_, _, sop] = key_parts(key)?;
++    let (claim, original) = read_claim(root, sop)?.ok_or_else(|| missing(key))?;
++    if claim.key != key {
++        return Err(missing(key));
++    }
++    let alias = alias_path(root, key)?;
++    let metadata = fs::symlink_metadata(&alias).map_err(|error| {
++        if error.kind() == io::ErrorKind::NotFound { missing(key) } else { storage_error(error) }
++    })?;
++    if !metadata.file_type().is_file() {
++        return Err(storage_error(invalid_data("blob alias is not a regular file")));
++    }
++    let visible = fs::read(alias).map_err(storage_error)?;
++    if visible.as_slice() != original.as_ref() {
++        return Err(storage_error(invalid_data("blob alias failed immutable original comparison")));
++    }
++    Ok(original)
++}
++
++pub(crate) fn delete(root: &Path, key: &str) -> PacsResult<()> {
++    match get(root, key) {
++        Ok(_) => {}
++        Err(PacsError::NotFound { .. }) => return Ok(()),
++        Err(error) => return Err(error),
++    }
++    let alias = alias_path(root, key)?;
++    match fs::remove_file(&alias) {
++        Ok(()) => sync_directory(alias.parent().expect("validated key")).map_err(storage_error),
++        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
++        Err(error) => Err(storage_error(error)),
++    }
++    // The immutable claim and original deliberately survive logical deletion.
++    // A previously used SOP UID cannot be reassigned to different bytes.
++}
+diff --git a/crates/pacs-fs-storage/src/lib.rs b/crates/pacs-fs-storage/src/lib.rs
+index 5c6b3ef..9a08b5b 100644
+--- a/crates/pacs-fs-storage/src/lib.rs
++++ b/crates/pacs-fs-storage/src/lib.rs
+@@ -17,6 +17,7 @@
+ pub mod config;
+ pub mod error;
+ pub mod fs;
++mod immutable;
+ pub mod plugin;
+ 
+ pub use config::FilesystemStorageConfig;
+diff --git a/crates/pacs-fs-storage/tests/immutable_sop.rs b/crates/pacs-fs-storage/tests/immutable_sop.rs
+new file mode 100644
+index 0000000..da7df27
+--- /dev/null
++++ b/crates/pacs-fs-storage/tests/immutable_sop.rs
+@@ -0,0 +1,286 @@
++//! Black-box regression contract for standalone immutable SOP storage.
++//! All payloads are independently authored test bytes; no patient objects.
++
++use std::{
++    fs,
++    path::Path,
++    process::{Child, Command, Stdio},
++    sync::Arc,
++    time::{Duration, Instant},
++};
++
++use bytes::Bytes;
++use pacs_core::{BlobStore, PacsError};
++use pacs_fs_storage::{FilesystemStorageConfig, FsBlobStore};
++use sha2::{Digest, Sha256};
++use tempfile::TempDir;
++use tokio::sync::Barrier;
++
++const KEY: &str = "1.2.3/4.5.6/7.8.9";
++const ORIGINAL: &[u8] = b"independently authored immutable original\0\x01\x02\xff";
++
++fn store_at(root: &Path) -> FsBlobStore {
++    FsBlobStore::new(&FilesystemStorageConfig {
++        root: root.to_string_lossy().into_owned(),
++    }).expect("filesystem store")
++}
++
++fn hash(bytes: &[u8]) -> String {
++    format!("{:x}", Sha256::digest(bytes))
++}
++
++#[tokio::test]
++async fn immutable_replay_and_conflict_preserve_original_across_fresh_store() {
++    let directory = TempDir::new().unwrap();
++    let store = store_at(directory.path());
++    store.put(KEY, Bytes::from_static(ORIGINAL)).await.unwrap();
++    let original_modified = fs::metadata(directory.path().join(KEY)).unwrap().modified().unwrap();
++    drop(store);
++
++    let reopened = store_at(directory.path());
++    reopened.put(KEY, Bytes::from_static(ORIGINAL)).await.unwrap();
++    assert_eq!(fs::metadata(directory.path().join(KEY)).unwrap().modified().unwrap(), original_modified);
++    assert!(matches!(reopened.put(KEY, Bytes::from_static(b"different bytes")).await,
++                     Err(PacsError::Conflict(_))));
++    let returned = reopened.get(KEY).await.unwrap();
++    assert_eq!(returned.as_ref(), ORIGINAL);
++    assert_eq!(hash(&returned), hash(ORIGINAL));
++}
++
++#[tokio::test]
++async fn immutable_sop_cannot_rebind_study_or_series_even_with_identical_bytes() {
++    let directory = TempDir::new().unwrap();
++    let store = store_at(directory.path());
++    store.put(KEY, Bytes::from_static(ORIGINAL)).await.unwrap();
++    for other_key in ["9.9/4.5.6/7.8.9", "1.2.3/9.8/7.8.9"] {
++        assert!(matches!(store.put(other_key, Bytes::from_static(ORIGINAL)).await,
++                         Err(PacsError::Conflict(_))));
++        assert!(!directory.path().join(other_key).exists());
++        assert!(matches!(store.get(other_key).await, Err(PacsError::NotFound { .. })));
++    }
++    assert_eq!(store.get(KEY).await.unwrap().as_ref(), ORIGINAL);
++}
++
++#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
++async fn immutable_independent_stores_have_one_winner_for_concurrent_conflict() {
++    let directory = TempDir::new().unwrap();
++    let first = store_at(directory.path());
++    let second = store_at(directory.path());
++    let barrier = Arc::new(Barrier::new(2));
++    let first_barrier = barrier.clone();
++    let first_task = tokio::spawn(async move {
++        first_barrier.wait().await;
++        first.put(KEY, Bytes::from(vec![0x31; 512 * 1024])).await
++    });
++    let second_task = tokio::spawn(async move {
++        barrier.wait().await;
++        second.put(KEY, Bytes::from(vec![0x72; 512 * 1024])).await
++    });
++    let a = first_task.await.unwrap();
++    let b = second_task.await.unwrap();
++    let winner = match (a, b) {
++        (Ok(()), Err(PacsError::Conflict(_))) => 0x31,
++        (Err(PacsError::Conflict(_)), Ok(())) => 0x72,
++        other => panic!("exactly one independent writer must win: {other:?}"),
++    };
++    let reopened = store_at(directory.path());
++    let expected = vec![winner; 512 * 1024];
++    assert_eq!(reopened.get(KEY).await.unwrap().as_ref(), expected.as_slice());
++    assert_eq!(hash(&fs::read(directory.path().join(KEY)).unwrap()), hash(&expected));
++}
++
++#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
++async fn immutable_concurrent_identical_writers_all_converge_without_replacement() {
++    let directory = TempDir::new().unwrap();
++    let barrier = Arc::new(Barrier::new(8));
++    let mut tasks = Vec::new();
++    for _ in 0..8 {
++        let store = store_at(directory.path());
++        let barrier = barrier.clone();
++        tasks.push(tokio::spawn(async move {
++            barrier.wait().await;
++            store.put(KEY, Bytes::from_static(ORIGINAL)).await
++        }));
++    }
++    for task in tasks {
++        task.await.unwrap().expect("identical concurrent replay");
++    }
++    assert_eq!(store_at(directory.path()).get(KEY).await.unwrap().as_ref(), ORIGINAL);
++}
++
++#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
++async fn immutable_public_alias_never_exposes_a_partial_new_object() {
++    let directory = TempDir::new().unwrap();
++    let store = store_at(directory.path());
++    let payload = vec![0x5a; 8 * 1024 * 1024];
++    let expected_hash = hash(&payload);
++    let writer = tokio::spawn(async move { store.put(KEY, Bytes::from(payload)).await });
++    while !writer.is_finished() {
++        match fs::read(directory.path().join(KEY)) {
++            Ok(visible) => {
++                assert_eq!(visible.len(), 8 * 1024 * 1024);
++                assert_eq!(hash(&visible), expected_hash);
++            }
++            Err(error) => assert_eq!(error.kind(), std::io::ErrorKind::NotFound),
++        }
++        tokio::task::yield_now().await;
++    }
++    writer.await.unwrap().unwrap();
++    assert_eq!(hash(&fs::read(directory.path().join(KEY)).unwrap()), expected_hash);
++}
++
++#[tokio::test]
++async fn immutable_identical_retry_repairs_missing_alias_without_reassigning_claim() {
++    let directory = TempDir::new().unwrap();
++    let store = store_at(directory.path());
++    store.put(KEY, Bytes::from_static(ORIGINAL)).await.unwrap();
++    // Model an interrupted publication after durable claim creation, before
++    // the ordinary raw-DICOM alias is available. This is not a crash test.
++    fs::remove_file(directory.path().join(KEY)).unwrap();
++    drop(store);
++    let reopened = store_at(directory.path());
++    assert!(matches!(reopened.get(KEY).await, Err(PacsError::NotFound { .. })));
++    assert!(matches!(reopened.put(KEY, Bytes::from_static(b"conflicting retry")).await,
++                     Err(PacsError::Conflict(_))));
++    assert!(!directory.path().join(KEY).exists());
++    reopened.put(KEY, Bytes::from_static(ORIGINAL)).await.unwrap();
++    assert_eq!(reopened.get(KEY).await.unwrap().as_ref(), ORIGINAL);
++}
++
++#[tokio::test]
++async fn immutable_persisted_digest_detects_external_original_mutation() {
++    let directory = TempDir::new().unwrap();
++    let store = store_at(directory.path());
++    store.put(KEY, Bytes::from_static(ORIGINAL)).await.unwrap();
++    let mut mutated = ORIGINAL.to_vec();
++    mutated[0] ^= 1;
++    fs::write(directory.path().join(KEY), mutated).unwrap();
++    drop(store);
++    let reopened = store_at(directory.path());
++    assert!(matches!(reopened.get(KEY).await, Err(PacsError::Blob(_))));
++    assert!(matches!(reopened.put(KEY, Bytes::from_static(ORIGINAL)).await,
++                     Err(PacsError::Blob(_))));
++    assert!(reopened.exists(KEY).await.is_err());
++}
++
++#[tokio::test]
++async fn immutable_logical_delete_cannot_reuse_a_previously_claimed_sop() {
++    let directory = TempDir::new().unwrap();
++    let store = store_at(directory.path());
++    store.put(KEY, Bytes::from_static(ORIGINAL)).await.unwrap();
++    store.delete(KEY).await.unwrap();
++    assert!(!store.exists(KEY).await.unwrap());
++    drop(store);
++    let reopened = store_at(directory.path());
++    assert!(matches!(reopened.put(KEY, Bytes::from_static(b"reassigned UID")).await,
++                     Err(PacsError::Conflict(_))));
++    reopened.put(KEY, Bytes::from_static(ORIGINAL)).await.unwrap();
++    assert_eq!(reopened.get(KEY).await.unwrap().as_ref(), ORIGINAL);
++}
++
++#[test]
++fn immutable_legacy_unclaimed_archive_fails_closed_without_modifying_original() {
++    let directory = TempDir::new().unwrap();
++    let alias = directory.path().join(KEY);
++    fs::create_dir_all(alias.parent().unwrap()).unwrap();
++    fs::write(&alias, ORIGINAL).unwrap();
++    let result = FsBlobStore::new(&FilesystemStorageConfig {
++        root: directory.path().to_string_lossy().into_owned(),
++    });
++    assert!(result.is_err());
++    assert_eq!(fs::read(alias).unwrap(), ORIGINAL);
++}
++
++struct ChildGuard(Child);
++
++impl Drop for ChildGuard {
++    fn drop(&mut self) {
++        if self.0.try_wait().ok().flatten().is_none() {
++            let _ = self.0.kill();
++        }
++        let _ = self.0.wait();
++    }
++}
++
++fn wait_for_marker(path: &Path) {
++    let deadline = Instant::now() + Duration::from_secs(15);
++    while !path.exists() {
++        assert!(Instant::now() < deadline, "child synchronization timed out");
++        std::thread::sleep(Duration::from_millis(5));
++    }
++}
++
++fn wait_for_child(child: &mut ChildGuard) {
++    let deadline = Instant::now() + Duration::from_secs(15);
++    loop {
++        if let Some(status) = child.0.try_wait().unwrap() {
++            assert!(status.success(), "independent writer process failed: {status}");
++            return;
++        }
++        assert!(Instant::now() < deadline, "independent writer process timed out");
++        std::thread::sleep(Duration::from_millis(5));
++    }
++}
++
++// The parent test invokes this exact harness test in independent OS processes.
++// Ordinary suite discovery has no child environment and does no writer work.
++#[test]
++fn immutable_writer_process() {
++    let Ok(root) = std::env::var("PACS_IMMUTABLE_CHILD_ROOT") else { return; };
++    let coordination = std::env::var("PACS_IMMUTABLE_CHILD_COORDINATION").unwrap();
++    let name = std::env::var("PACS_IMMUTABLE_CHILD_NAME").unwrap();
++    let fill: u8 = std::env::var("PACS_IMMUTABLE_CHILD_FILL").unwrap().parse().unwrap();
++    let store = store_at(Path::new(&root));
++    let coordination = Path::new(&coordination);
++    fs::write(coordination.join(format!("ready-{name}")), b"ready").unwrap();
++    wait_for_marker(&coordination.join("release"));
++    let runtime = tokio::runtime::Runtime::new().unwrap();
++    let result = runtime.block_on(store.put(KEY, Bytes::from(vec![fill; 256 * 1024])));
++    let status = match result {
++        Ok(()) => "stored",
++        Err(PacsError::Conflict(_)) => "conflict",
++        Err(error) => panic!("unexpected child storage error: {error}"),
++    };
++    fs::write(coordination.join(format!("result-{name}")), status).unwrap();
++}
++
++#[tokio::test]
++async fn immutable_independent_processes_cannot_both_claim_conflicting_originals() {
++    let directory = TempDir::new().unwrap();
++    let root = directory.path().join("blobs");
++    drop(store_at(&root));
++    let executable = std::env::current_exe().unwrap();
++    let spawn = |name: &str, fill: u8| {
++        ChildGuard(Command::new(&executable)
++            .arg("--exact").arg("immutable_writer_process").arg("--nocapture")
++            .env("PACS_IMMUTABLE_CHILD_ROOT", &root)
++            .env("PACS_IMMUTABLE_CHILD_COORDINATION", directory.path())
++            .env("PACS_IMMUTABLE_CHILD_NAME", name)
++            .env("PACS_IMMUTABLE_CHILD_FILL", fill.to_string())
++            .stdout(Stdio::null()).stderr(Stdio::inherit()).spawn().unwrap())
++    };
++    let mut first = spawn("first", 0x31);
++    let mut second = spawn("second", 0x72);
++    wait_for_marker(&directory.path().join("ready-first"));
++    wait_for_marker(&directory.path().join("ready-second"));
++    fs::write(directory.path().join("release"), b"go").unwrap();
++    wait_for_child(&mut first);
++    wait_for_child(&mut second);
++    let first_status = fs::read_to_string(directory.path().join("result-first")).unwrap();
++    let second_status = fs::read_to_string(directory.path().join("result-second")).unwrap();
++    let winner = match (first_status.as_str(), second_status.as_str()) {
++        ("stored", "conflict") => 0x31,
++        ("conflict", "stored") => 0x72,
++        other => panic!("separate processes both claimed or both lost: {other:?}"),
++    };
++    let expected = vec![winner; 256 * 1024];
++    assert_eq!(store_at(&root).get(KEY).await.unwrap().as_ref(), expected.as_slice());
++    assert_eq!(hash(&fs::read(root.join(KEY)).unwrap()), hash(&expected));
++    // A third fresh process can replay the winning original without changing it.
++    let modified = fs::metadata(root.join(KEY)).unwrap().modified().unwrap();
++    let mut replay = spawn("replay", winner);
++    wait_for_child(&mut replay);
++    assert_eq!(fs::read_to_string(directory.path().join("result-replay")).unwrap(), "stored");
++    assert_eq!(fs::metadata(root.join(KEY)).unwrap().modified().unwrap(), modified);
++    assert_eq!(store_at(&root).get(KEY).await.unwrap().as_ref(), expected.as_slice());
++}
+diff --git a/crates/pacs-sqlite-store/src/store.rs b/crates/pacs-sqlite-store/src/store.rs
+index 11bd353..3df25e1 100644
+--- a/crates/pacs-sqlite-store/src/store.rs
++++ b/crates/pacs-sqlite-store/src/store.rs
+@@ -32,6 +32,138 @@ impl SqliteMetadataStore {
+     }
+ }
+ 
++async fn write_study(connection: &mut sqlx::SqliteConnection, study: &Study) -> PacsResult<()> {
++    sqlx::query(
++        r#"
++        INSERT INTO studies (
++            study_uid, patient_id, patient_name, study_date, study_time,
++            accession_number, modalities, referring_physician, description,
++            num_series, num_instances, metadata, created_at, updated_at
++        ) VALUES (
++            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now'),
++            STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now')
++        )
++        ON CONFLICT(study_uid) DO UPDATE SET
++            patient_id = excluded.patient_id,
++            patient_name = excluded.patient_name,
++            study_date = excluded.study_date,
++            study_time = excluded.study_time,
++            accession_number = excluded.accession_number,
++            modalities = excluded.modalities,
++            referring_physician = excluded.referring_physician,
++            description = excluded.description,
++            metadata = excluded.metadata,
++            updated_at = STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now')
++        "#,
++    )
++    .bind(study.study_uid.as_ref())
++    .bind(study.patient_id.as_deref())
++    .bind(study.patient_name.as_deref())
++    .bind(study.study_date)
++    .bind(study.study_time.as_deref())
++    .bind(study.accession_number.as_deref())
++    .bind(Json(study.modalities.clone()))
++    .bind(study.referring_physician.as_deref())
++    .bind(study.description.as_deref())
++    .bind(study.num_series)
++    .bind(study.num_instances)
++    .bind(Json(study.metadata.as_value().clone()))
++    .execute(&mut *connection)
++    .await
++    .map_err(map_store_err)?;
++
++    Ok(())
++}
++
++async fn write_series(connection: &mut sqlx::SqliteConnection, series: &Series) -> PacsResult<()> {
++    let result = sqlx::query(
++        r#"
++        INSERT INTO series (
++            series_uid, study_uid, modality, series_number, description,
++            body_part, num_instances, metadata, created_at
++        ) VALUES (
++            ?, ?, ?, ?, ?, ?, ?, ?, STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now')
++        )
++        ON CONFLICT(series_uid) DO UPDATE SET
++            modality = excluded.modality,
++            series_number = excluded.series_number,
++            description = excluded.description,
++            body_part = excluded.body_part,
++            metadata = excluded.metadata
++        WHERE series.study_uid = excluded.study_uid
++        "#,
++    )
++    .bind(series.series_uid.as_ref())
++    .bind(series.study_uid.as_ref())
++    .bind(series.modality.as_deref())
++    .bind(series.series_number)
++    .bind(series.description.as_deref())
++    .bind(series.body_part.as_deref())
++    .bind(series.num_instances)
++    .bind(Json(series.metadata.as_value().clone()))
++    .execute(&mut *connection)
++    .await
++    .map_err(map_store_err)?;
++
++    if result.rows_affected() == 0 {
++        return Err(PacsError::Conflict(
++            "Series UID already belongs to another study".into(),
++        ));
++    }
++
++    Ok(())
++}
++
++async fn write_instance(connection: &mut sqlx::SqliteConnection, instance: &Instance) -> PacsResult<()> {
++    // The unique constraint and conditional statement are one SQLite write
++    // operation, so independent connections cannot race a read/check/write
++    // into replacing an existing instance or moving its hierarchy.
++    let result = sqlx::query(
++        r#"
++        INSERT INTO instances (
++            instance_uid, series_uid, study_uid, sop_class_uid, instance_number,
++            transfer_syntax, rows, columns, blob_key, metadata, created_at
++        )
++        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now')
++        WHERE EXISTS (SELECT 1 FROM series WHERE series_uid = ? AND study_uid = ?)
++        ON CONFLICT(instance_uid) DO UPDATE SET
++            instance_uid = instances.instance_uid
++        WHERE instances.series_uid = excluded.series_uid
++          AND instances.study_uid = excluded.study_uid
++          AND instances.blob_key = excluded.blob_key
++          AND instances.sop_class_uid IS excluded.sop_class_uid
++          AND instances.instance_number IS excluded.instance_number
++          AND instances.transfer_syntax IS excluded.transfer_syntax
++          AND instances.rows IS excluded.rows
++          AND instances.columns IS excluded.columns
++          AND instances.metadata = excluded.metadata
++        "#,
++    )
++    .bind(instance.instance_uid.as_ref())
++    .bind(instance.series_uid.as_ref())
++    .bind(instance.study_uid.as_ref())
++    .bind(instance.sop_class_uid.as_deref())
++    .bind(instance.instance_number)
++    .bind(instance.transfer_syntax.as_deref())
++    .bind(instance.rows)
++    .bind(instance.columns)
++    .bind(instance.blob_key.as_str())
++    .bind(Json(instance.metadata.as_value().clone()))
++    .bind(instance.series_uid.as_ref())
++    .bind(instance.study_uid.as_ref())
++    .execute(&mut *connection)
++    .await
++    .map_err(map_store_err)?;
++
++    if result.rows_affected() == 0 {
++        return Err(PacsError::Conflict(
++            "SOP instance metadata or parent identity conflicts with the stored object".into(),
++        ));
++    }
++
++    Ok(())
++}
++
+ fn push_optional_limit_offset(
+     qb: &mut QueryBuilder<Sqlite>,
+     limit: Option<u32>,
+@@ -458,118 +590,43 @@ fn map_store_err(error: sqlx::Error) -> PacsError {
+ impl MetadataStore for SqliteMetadataStore {
+     #[instrument(skip(self, study), fields(study_uid = %study.study_uid))]
+     async fn store_study(&self, study: &Study) -> PacsResult<()> {
+-        sqlx::query(
+-            r#"
+-            INSERT INTO studies (
+-                study_uid, patient_id, patient_name, study_date, study_time,
+-                accession_number, modalities, referring_physician, description,
+-                num_series, num_instances, metadata, created_at, updated_at
+-            ) VALUES (
+-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now'),
+-                STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now')
+-            )
+-            ON CONFLICT(study_uid) DO UPDATE SET
+-                patient_id = excluded.patient_id,
+-                patient_name = excluded.patient_name,
+-                study_date = excluded.study_date,
+-                study_time = excluded.study_time,
+-                accession_number = excluded.accession_number,
+-                modalities = excluded.modalities,
+-                referring_physician = excluded.referring_physician,
+-                description = excluded.description,
+-                metadata = excluded.metadata,
+-                updated_at = STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now')
+-            "#,
+-        )
+-        .bind(study.study_uid.as_ref())
+-        .bind(study.patient_id.as_deref())
+-        .bind(study.patient_name.as_deref())
+-        .bind(study.study_date)
+-        .bind(study.study_time.as_deref())
+-        .bind(study.accession_number.as_deref())
+-        .bind(Json(study.modalities.clone()))
+-        .bind(study.referring_physician.as_deref())
+-        .bind(study.description.as_deref())
+-        .bind(study.num_series)
+-        .bind(study.num_instances)
+-        .bind(Json(study.metadata.as_value().clone()))
+-        .execute(&self.pool)
+-        .await
+-        .map_err(map_store_err)?;
+-
+-        Ok(())
++        let mut connection = self.pool.acquire().await.map_err(map_store_err)?;
++        write_study(&mut connection, study).await
+     }
+ 
+     #[instrument(skip(self, series), fields(series_uid = %series.series_uid))]
+     async fn store_series(&self, series: &Series) -> PacsResult<()> {
+-        sqlx::query(
+-            r#"
+-            INSERT INTO series (
+-                series_uid, study_uid, modality, series_number, description,
+-                body_part, num_instances, metadata, created_at
+-            ) VALUES (
+-                ?, ?, ?, ?, ?, ?, ?, ?, STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now')
+-            )
+-            ON CONFLICT(series_uid) DO UPDATE SET
+-                study_uid = excluded.study_uid,
+-                modality = excluded.modality,
+-                series_number = excluded.series_number,
+-                description = excluded.description,
+-                body_part = excluded.body_part,
+-                metadata = excluded.metadata
+-            "#,
+-        )
+-        .bind(series.series_uid.as_ref())
+-        .bind(series.study_uid.as_ref())
+-        .bind(series.modality.as_deref())
+-        .bind(series.series_number)
+-        .bind(series.description.as_deref())
+-        .bind(series.body_part.as_deref())
+-        .bind(series.num_instances)
+-        .bind(Json(series.metadata.as_value().clone()))
+-        .execute(&self.pool)
+-        .await
+-        .map_err(map_store_err)?;
+-
+-        Ok(())
++        let mut connection = self.pool.acquire().await.map_err(map_store_err)?;
++        write_series(&mut connection, series).await
+     }
+ 
+     #[instrument(skip(self, instance), fields(instance_uid = %instance.instance_uid))]
+     async fn store_instance(&self, instance: &Instance) -> PacsResult<()> {
+-        sqlx::query(
+-            r#"
+-            INSERT INTO instances (
+-                instance_uid, series_uid, study_uid, sop_class_uid, instance_number,
+-                transfer_syntax, rows, columns, blob_key, metadata, created_at
+-            ) VALUES (
+-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now')
+-            )
+-            ON CONFLICT(instance_uid) DO UPDATE SET
+-                series_uid = excluded.series_uid,
+-                study_uid = excluded.study_uid,
+-                sop_class_uid = excluded.sop_class_uid,
+-                instance_number = excluded.instance_number,
+-                transfer_syntax = excluded.transfer_syntax,
+-                rows = excluded.rows,
+-                columns = excluded.columns,
+-                blob_key = excluded.blob_key,
+-                metadata = excluded.metadata
+-            "#,
+-        )
+-        .bind(instance.instance_uid.as_ref())
+-        .bind(instance.series_uid.as_ref())
+-        .bind(instance.study_uid.as_ref())
+-        .bind(instance.sop_class_uid.as_deref())
+-        .bind(instance.instance_number)
+-        .bind(instance.transfer_syntax.as_deref())
+-        .bind(instance.rows)
+-        .bind(instance.columns)
+-        .bind(instance.blob_key.as_str())
+-        .bind(Json(instance.metadata.as_value().clone()))
+-        .execute(&self.pool)
+-        .await
+-        .map_err(map_store_err)?;
+-
++        let mut connection = self.pool.acquire().await.map_err(map_store_err)?;
++        write_instance(&mut connection, instance).await
++    }
++
++    /// Commit the full hierarchy or roll back all earlier parent updates.
++    #[instrument(skip(self, study, series, instance), fields(instance_uid = %instance.instance_uid))]
++    async fn store_instance_hierarchy(
++        &self,
++        study: &Study,
++        series: &Series,
++        instance: &Instance,
++    ) -> PacsResult<()> {
++        if study.study_uid != series.study_uid
++            || study.study_uid != instance.study_uid
++            || series.series_uid != instance.series_uid
++            || instance.blob_key != pacs_core::blob_key_for(
++                &instance.study_uid, &instance.series_uid, &instance.instance_uid)
++        {
++            return Err(PacsError::Conflict("Inconsistent DICOM hierarchy identity".into()));
++        }
++        let mut transaction = self.pool.begin().await.map_err(map_store_err)?;
++        write_study(&mut transaction, study).await?;
++        write_series(&mut transaction, series).await?;
++        write_instance(&mut transaction, instance).await?;
++        transaction.commit().await.map_err(map_store_err)?;
+         Ok(())
+     }
+ 
+@@ -1439,6 +1496,199 @@ mod tests {
+         }
+     }
+ 
++    async fn immutable_reopen(tempdir: &TempDir) -> SqliteMetadataStore {
++        let path = tempdir.path().join("pacsnode.db");
++        let options = SqliteConnectOptions::from_str(&format!("sqlite://{}", path.display()))
++            .unwrap().foreign_keys(true);
++        let pool = SqlitePoolOptions::new().max_connections(1)
++            .connect_with(options).await.unwrap();
++        SqliteMetadataStore::new(pool)
++    }
++
++    #[tokio::test]
++    async fn immutable_instance_replay_cannot_change_identity_or_indexed_metadata() {
++        let (directory, store) = test_store().await;
++        let study = sample_study();
++        let series = sample_series(&study.study_uid);
++        let instance = sample_instance(&study.study_uid, &series.series_uid);
++        store.store_study(&study).await.unwrap();
++        store.store_series(&series).await.unwrap();
++        store.store_instance(&instance).await.unwrap();
++        let original = store.get_instance(&instance.instance_uid).await.unwrap();
++        let reopened = immutable_reopen(&directory).await;
++        reopened.store_instance(&instance).await.expect("identical index replay");
++
++        let mut other_study = study.clone();
++        other_study.study_uid = StudyUid::from("9.8.7");
++        let mut other_series = series.clone();
++        other_series.study_uid = other_study.study_uid.clone();
++        other_series.series_uid = SeriesUid::from("9.8.7.1");
++        reopened.store_study(&other_study).await.unwrap();
++        reopened.store_series(&other_series).await.unwrap();
++        let mut moved = instance.clone();
++        moved.study_uid = other_study.study_uid;
++        moved.series_uid = other_series.series_uid;
++        moved.blob_key = blob_key_for(&moved.study_uid, &moved.series_uid, &moved.instance_uid);
++        let mut changed_blob_key = instance.clone();
++        changed_blob_key.blob_key = "9.9/8.8/7.7".into();
++        let mut changed_metadata = instance.clone();
++        changed_metadata.rows = Some(256);
++        changed_metadata.metadata = DicomJson::from(json!({"changed": true}));
++        for replacement in [moved, changed_blob_key, changed_metadata] {
++            assert!(matches!(reopened.store_instance(&replacement).await,
++                             Err(PacsError::Conflict(_))));
++        }
++        let retained = reopened.get_instance(&instance.instance_uid).await.unwrap();
++        assert_eq!(retained.study_uid, original.study_uid);
++        assert_eq!(retained.series_uid, original.series_uid);
++        assert_eq!(retained.blob_key, original.blob_key);
++        assert_eq!(retained.rows, original.rows);
++        assert_eq!(retained.metadata.as_value(), original.metadata.as_value());
++        assert_eq!(retained.created_at, original.created_at);
++        assert_eq!(reopened.get_statistics().await.unwrap().num_instances, 1);
++    }
++
++    #[tokio::test]
++    async fn immutable_series_uid_cannot_move_to_another_study() {
++        let (_directory, store) = test_store().await;
++        let study = sample_study();
++        let mut other = study.clone();
++        other.study_uid = StudyUid::from("9.8.7");
++        store.store_study(&study).await.unwrap();
++        store.store_study(&other).await.unwrap();
++        let series = sample_series(&study.study_uid);
++        store.store_series(&series).await.unwrap();
++        let mut moved = series.clone();
++        moved.study_uid = other.study_uid.clone();
++        moved.description = Some("must not replace original series".into());
++        assert!(matches!(store.store_series(&moved).await, Err(PacsError::Conflict(_))));
++        let retained = store.get_series(&series.series_uid).await.unwrap();
++        assert_eq!(retained.study_uid, study.study_uid);
++        assert_eq!(retained.description, series.description);
++        assert_eq!(store.get_study(&study.study_uid).await.unwrap().num_series, 1);
++        assert_eq!(store.get_study(&other.study_uid).await.unwrap().num_series, 0);
++    }
++
++    #[tokio::test]
++    async fn immutable_instance_requires_the_series_actual_study_parent() {
++        let (_directory, store) = test_store().await;
++        let study = sample_study();
++        let mut other = study.clone();
++        other.study_uid = StudyUid::from("9.8.7");
++        store.store_study(&study).await.unwrap();
++        store.store_study(&other).await.unwrap();
++        let series = sample_series(&study.study_uid);
++        store.store_series(&series).await.unwrap();
++        let inconsistent = sample_instance(&other.study_uid, &series.series_uid);
++        assert!(matches!(store.store_instance(&inconsistent).await, Err(PacsError::Conflict(_))));
++        assert!(matches!(store.get_instance(&inconsistent.instance_uid).await,
++                         Err(PacsError::NotFound { .. })));
++        assert_eq!(store.get_statistics().await.unwrap().num_instances, 0);
++    }
++
++    #[tokio::test]
++    async fn immutable_rejected_new_sop_rolls_back_all_existing_study_changes() {
++        let (_directory, store) = test_store().await;
++        let study_a = sample_study();
++        let series_a = sample_series(&study_a.study_uid);
++        let instance_a = sample_instance(&study_a.study_uid, &series_a.series_uid);
++        store.store_instance_hierarchy(&study_a, &series_a, &instance_a).await.unwrap();
++        let mut study_b = sample_study();
++        study_b.study_uid = StudyUid::from("9.8.7");
++        study_b.patient_id = Some("PATIENT-B".into());
++        let mut series_b = sample_series(&study_b.study_uid);
++        series_b.series_uid = SeriesUid::from("9.8.7.1");
++        let mut instance_b = sample_instance(&study_b.study_uid, &series_b.series_uid);
++        instance_b.instance_uid = SopInstanceUid::from("9.8.7.1.1");
++        instance_b.blob_key = blob_key_for(&study_b.study_uid, &series_b.series_uid, &instance_b.instance_uid);
++        store.store_instance_hierarchy(&study_b, &series_b, &instance_b).await.unwrap();
++        let before_study = serde_json::to_value(store.get_study(&study_a.study_uid).await.unwrap()).unwrap();
++        let before_series = serde_json::to_value(store.get_series(&series_b.series_uid).await.unwrap()).unwrap();
++
++        let mut incoming_study = study_a.clone();
++        incoming_study.patient_id = Some("MUST-NOT-REPLACE-PATIENT".into());
++        incoming_study.patient_name = Some("Rejected^Mutation".into());
++        incoming_study.description = Some("must roll back".into());
++        incoming_study.metadata = DicomJson::from(json!({"rejected": true}));
++        let mut incoming_series = series_b.clone();
++        incoming_series.study_uid = study_a.study_uid.clone();
++        let mut incoming_instance = sample_instance(&study_a.study_uid, &series_b.series_uid);
++        incoming_instance.instance_uid = SopInstanceUid::from("1.2.3.999");
++        incoming_instance.blob_key = blob_key_for(
++            &incoming_instance.study_uid, &incoming_instance.series_uid, &incoming_instance.instance_uid);
++        assert!(matches!(store.store_instance_hierarchy(
++            &incoming_study, &incoming_series, &incoming_instance).await,
++            Err(PacsError::Conflict(_))));
++        assert_eq!(serde_json::to_value(store.get_study(&study_a.study_uid).await.unwrap()).unwrap(), before_study);
++        assert_eq!(serde_json::to_value(store.get_series(&series_b.series_uid).await.unwrap()).unwrap(), before_series);
++        assert!(matches!(store.get_instance(&incoming_instance.instance_uid).await,
++                         Err(PacsError::NotFound { .. })));
++        assert_eq!(store.get_statistics().await.unwrap().num_instances, 2);
++    }
++
++    #[tokio::test]
++    async fn immutable_instance_conflict_rolls_back_study_and_series_updates() {
++        let (_directory, store) = test_store().await;
++        let mut study = sample_study();
++        let mut series = sample_series(&study.study_uid);
++        let mut instance = sample_instance(&study.study_uid, &series.series_uid);
++        store.store_instance_hierarchy(&study, &series, &instance).await.unwrap();
++        let before_study = serde_json::to_value(store.get_study(&study.study_uid).await.unwrap()).unwrap();
++        let before_series = serde_json::to_value(store.get_series(&series.series_uid).await.unwrap()).unwrap();
++        let before_instance = serde_json::to_value(store.get_instance(&instance.instance_uid).await.unwrap()).unwrap();
++        study.patient_name = Some("Rejected^Patient".into());
++        study.metadata = DicomJson::from(json!({"rejected_study": true}));
++        series.description = Some("must roll back series".into());
++        series.metadata = DicomJson::from(json!({"rejected_series": true}));
++        instance.rows = Some(128);
++        assert!(matches!(store.store_instance_hierarchy(&study, &series, &instance).await,
++                         Err(PacsError::Conflict(_))));
++        assert_eq!(serde_json::to_value(store.get_study(&study.study_uid).await.unwrap()).unwrap(), before_study);
++        assert_eq!(serde_json::to_value(store.get_series(&series.series_uid).await.unwrap()).unwrap(), before_series);
++        assert_eq!(serde_json::to_value(store.get_instance(&instance.instance_uid).await.unwrap()).unwrap(), before_instance);
++    }
++
++    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
++    async fn immutable_independent_sqlite_pools_cannot_race_a_sop_rebind() {
++        let (directory, first) = test_store().await;
++        let second = immutable_reopen(&directory).await;
++        let study = sample_study();
++        let mut other_study = study.clone();
++        other_study.study_uid = StudyUid::from("9.8.7");
++        let series = sample_series(&study.study_uid);
++        let mut other_series = sample_series(&other_study.study_uid);
++        other_series.series_uid = SeriesUid::from("9.8.7.1");
++        for parent in [&study, &other_study] {
++            first.store_study(parent).await.unwrap();
++        }
++        for parent in [&series, &other_series] {
++            first.store_series(parent).await.unwrap();
++        }
++        let first_instance = sample_instance(&study.study_uid, &series.series_uid);
++        let second_instance = sample_instance(&other_study.study_uid, &other_series.series_uid);
++        let uid = first_instance.instance_uid.clone();
++        let first_parent = first_instance.study_uid.clone();
++        let second_parent = second_instance.study_uid.clone();
++        let barrier = std::sync::Arc::new(tokio::sync::Barrier::new(2));
++        let first_barrier = barrier.clone();
++        let a = tokio::spawn(async move {
++            first_barrier.wait().await;
++            first.store_instance_hierarchy(&study, &series, &first_instance).await
++        });
++        let b = tokio::spawn(async move {
++            barrier.wait().await;
++            second.store_instance_hierarchy(&other_study, &other_series, &second_instance).await
++        });
++        let winner = match (a.await.unwrap(), b.await.unwrap()) {
++            (Ok(()), Err(PacsError::Conflict(_))) => first_parent,
++            (Err(PacsError::Conflict(_)), Ok(())) => second_parent,
++            other => panic!("expected one immutable metadata winner: {other:?}"),
++        };
++        let reopened = immutable_reopen(&directory).await;
++        assert_eq!(reopened.get_instance(&uid).await.unwrap().study_uid, winner);
++        assert_eq!(reopened.get_statistics().await.unwrap().num_instances, 1);
++    }
++
+     #[tokio::test]
+     async fn round_trips_hierarchy_queries_and_counts() {
+         let (_tempdir, store) = test_store().await;

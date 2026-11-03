@@ -1,0 +1,966 @@
+{
+  "acceptance_blockers": [
+    "conflicting_sop_original_replaced"
+  ],
+  "amendment_http_calls_after_restart": 0,
+  "amendment_refused_after_restart": true,
+  "backend_adoption_approved": false,
+  "backup_restore_verified": false,
+  "binary_sha256": "8b23947af89ebb54df21f5cc11805d7791031736691b592fb7c0056ccf80baad",
+  "changed_object_withheld_by_source_guard": true,
+  "classification": "HOLD_NOT_APPROVED",
+  "clinical_validation": false,
+  "config_sha256": "3677eb3c016967d796e00ec3db2b4732cc50bbf0abd38336be4d7c795e4cd017",
+  "conflicting_sop_rejected_and_original_preserved": false,
+  "conflicting_submission": {
+    "dicom_sha256": "86e3bcfc20eda53ea62d0eba1022add5c8d641fdf3a8a157ad23433797ca0375",
+    "pixel_sha256": "43780eaeed6c64b7e44add42f8777306f9c3bbfeebfe5dd86bad0ac9167146d5",
+    "same_identity_changed_pixels": true,
+    "sop_uid": "2.25.110026110201000000000000000003"
+  },
+  "crash_recovery_verified": false,
+  "evaluation_completed": true,
+  "evaluation_network_boundary": {
+    "after": {
+      "addresses": [
+        {
+          "family": "inet",
+          "interface": "lo",
+          "local": "127.0.0.1",
+          "prefixlen": 8,
+          "scope": "host"
+        },
+        {
+          "family": "inet6",
+          "interface": "lo",
+          "local": "::1",
+          "prefixlen": 128,
+          "scope": "host"
+        }
+      ],
+      "expected_ports": {
+        "dicom": 11112,
+        "http": 18042
+      },
+      "interfaces": [
+        {
+          "flags": [
+            "LOOPBACK",
+            "UP",
+            "LOWER_UP"
+          ],
+          "name": "lo",
+          "operstate": "UNKNOWN"
+        }
+      ],
+      "kind": "oi.pacs-network-namespace/1",
+      "listeners": [
+        {
+          "address": "0.0.0.0",
+          "family": "inet",
+          "inode": 28161,
+          "pid": 8845,
+          "port": 11112
+        },
+        {
+          "address": "0.0.0.0",
+          "family": "inet",
+          "inode": 29186,
+          "pid": 8845,
+          "port": 18042
+        }
+      ],
+      "namespace_confined": true,
+      "parent_namespace": "net:[4026531833]",
+      "probe_namespace": "net:[4026532252]",
+      "routes": [
+        {
+          "destination": "127.0.0.0/8",
+          "family": "inet",
+          "interface": "lo",
+          "table": "local",
+          "type": "local"
+        },
+        {
+          "destination": "127.0.0.1",
+          "family": "inet",
+          "interface": "lo",
+          "table": "local",
+          "type": "local"
+        },
+        {
+          "destination": "127.255.255.255",
+          "family": "inet",
+          "interface": "lo",
+          "table": "local",
+          "type": "broadcast"
+        },
+        {
+          "destination": "::1",
+          "family": "inet6",
+          "interface": "lo",
+          "table": "local",
+          "type": "local"
+        }
+      ],
+      "server_namespace": "net:[4026532252]",
+      "server_pid": 8845,
+      "server_socket_inodes": [
+        28161,
+        29183,
+        29184,
+        29186,
+        29965
+      ],
+      "server_start_ticks": 25877
+    },
+    "before": {
+      "addresses": [
+        {
+          "family": "inet",
+          "interface": "lo",
+          "local": "127.0.0.1",
+          "prefixlen": 8,
+          "scope": "host"
+        },
+        {
+          "family": "inet6",
+          "interface": "lo",
+          "local": "::1",
+          "prefixlen": 128,
+          "scope": "host"
+        }
+      ],
+      "expected_ports": {
+        "dicom": 11112,
+        "http": 18042
+      },
+      "interfaces": [
+        {
+          "flags": [
+            "LOOPBACK",
+            "UP",
+            "LOWER_UP"
+          ],
+          "name": "lo",
+          "operstate": "UNKNOWN"
+        }
+      ],
+      "kind": "oi.pacs-network-namespace/1",
+      "listeners": [
+        {
+          "address": "0.0.0.0",
+          "family": "inet",
+          "inode": 27234,
+          "pid": 8805,
+          "port": 11112
+        },
+        {
+          "address": "0.0.0.0",
+          "family": "inet",
+          "inode": 29924,
+          "pid": 8805,
+          "port": 18042
+        }
+      ],
+      "namespace_confined": true,
+      "parent_namespace": "net:[4026531833]",
+      "probe_namespace": "net:[4026532252]",
+      "routes": [
+        {
+          "destination": "127.0.0.0/8",
+          "family": "inet",
+          "interface": "lo",
+          "table": "local",
+          "type": "local"
+        },
+        {
+          "destination": "127.0.0.1",
+          "family": "inet",
+          "interface": "lo",
+          "table": "local",
+          "type": "local"
+        },
+        {
+          "destination": "127.255.255.255",
+          "family": "inet",
+          "interface": "lo",
+          "table": "local",
+          "type": "broadcast"
+        },
+        {
+          "destination": "::1",
+          "family": "inet6",
+          "interface": "lo",
+          "table": "local",
+          "type": "local"
+        }
+      ],
+      "server_namespace": "net:[4026532252]",
+      "server_pid": 8805,
+      "server_socket_inodes": [
+        27234,
+        29921,
+        29922,
+        29924,
+        29925
+      ],
+      "server_start_ticks": 25691
+    }
+  },
+  "evaluation_network_namespace_confined": true,
+  "event_idempotency_verified": false,
+  "expected_transfer_syntax": "1.2.840.10008.1.2.1",
+  "kind": "oi.pacs-lifecycle/1",
+  "lifecycle_acceptance_passed": false,
+  "original_dicom_sha256": {
+    "2.25.110026110201000000000000000003": "d56d410837e07a69269b31791245763ad6df0cc45d5f4e4baf6dd93338698c4c",
+    "2.25.110026110201000000000000000004": "fabb62845c7c4ed1c14b6fa59cec39564551b97d379bf9bd4eac4cdaf9f966f5"
+  },
+  "original_pixel_sha256": {
+    "2.25.110026110201000000000000000003": "ea99f710d9d0b8ba192295c969a63ed7ce8fc5743da20d2057fa2b6d2c404bfb",
+    "2.25.110026110201000000000000000004": "4af5ad632250bc5d41621b7b0575ddbe86df85c89a213455b542439ad194f6c8"
+  },
+  "pacs_authorization_verified": false,
+  "phases": {
+    "after_restart": {
+      "inventory_matches": true,
+      "objects": {
+        "2.25.110026110201000000000000000003": {
+          "explicit_uncompressed_syntax_verified": true,
+          "http_status": 200,
+          "identity_matches": true,
+          "original_bytes_match": true,
+          "pixel_bytes_match": true,
+          "returned_dicom_bytes": 1018,
+          "returned_dicom_sha256": "d56d410837e07a69269b31791245763ad6df0cc45d5f4e4baf6dd93338698c4c",
+          "returned_pixel_sha256": "ea99f710d9d0b8ba192295c969a63ed7ce8fc5743da20d2057fa2b6d2c404bfb",
+          "source_bound_read_accepted": true,
+          "source_bound_receipt": {
+            "caller_authenticated": false,
+            "case_authorization_verified": false,
+            "case_id": "CASE-ALPHA",
+            "clinical_review_state": "not_performed",
+            "disclaimer": "Synthetic research-only source and byte freshness proof. Not user authentication, consent, DICOM server ACL, clinical imaging, or external-object revocation.",
+            "kind": "synthetic_source_bound_wado_read",
+            "original_bytes_verified": true,
+            "pacs_adoption_approved": false,
+            "retrieved_original_dicom_sha256": "d56d410837e07a69269b31791245763ad6df0cc45d5f4e4baf6dd93338698c4c",
+            "series_uid": "2.25.110026110201000000000000000002",
+            "sop_uid": "2.25.110026110201000000000000000003",
+            "source_current_before_and_after": true,
+            "source_document_id": "IMG-ALPHA",
+            "source_event_date": "2026-05-17",
+            "source_sha256": "e7e860b66f1a1bff8f40e47f6769b1c6104d78cb6959f7dbe0267d6d10da4fa2",
+            "source_version": 1,
+            "source_version_id": 1,
+            "study_uid": "2.25.110026110201000000000000000001",
+            "upstream_revocation_verified": false
+          }
+        },
+        "2.25.110026110201000000000000000004": {
+          "explicit_uncompressed_syntax_verified": true,
+          "http_status": 200,
+          "identity_matches": true,
+          "original_bytes_match": true,
+          "pixel_bytes_match": true,
+          "returned_dicom_bytes": 1018,
+          "returned_dicom_sha256": "fabb62845c7c4ed1c14b6fa59cec39564551b97d379bf9bd4eac4cdaf9f966f5",
+          "returned_pixel_sha256": "4af5ad632250bc5d41621b7b0575ddbe86df85c89a213455b542439ad194f6c8",
+          "source_bound_read_accepted": true,
+          "source_bound_receipt": {
+            "caller_authenticated": false,
+            "case_authorization_verified": false,
+            "case_id": "CASE-ALPHA",
+            "clinical_review_state": "not_performed",
+            "disclaimer": "Synthetic research-only source and byte freshness proof. Not user authentication, consent, DICOM server ACL, clinical imaging, or external-object revocation.",
+            "kind": "synthetic_source_bound_wado_read",
+            "original_bytes_verified": true,
+            "pacs_adoption_approved": false,
+            "retrieved_original_dicom_sha256": "fabb62845c7c4ed1c14b6fa59cec39564551b97d379bf9bd4eac4cdaf9f966f5",
+            "series_uid": "2.25.110026110201000000000000000002",
+            "sop_uid": "2.25.110026110201000000000000000004",
+            "source_current_before_and_after": true,
+            "source_document_id": "IMG-ALPHA",
+            "source_event_date": "2026-05-17",
+            "source_sha256": "e7e860b66f1a1bff8f40e47f6769b1c6104d78cb6959f7dbe0267d6d10da4fa2",
+            "source_version": 1,
+            "source_version_id": 1,
+            "study_uid": "2.25.110026110201000000000000000001",
+            "upstream_revocation_verified": false
+          }
+        }
+      },
+      "qido_instance_rows": 2,
+      "qido_media_types": {
+        "instance": "application/json",
+        "study": "application/json"
+      },
+      "qido_sop_multiplicity": {
+        "2.25.110026110201000000000000000003": 1,
+        "2.25.110026110201000000000000000004": 1
+      },
+      "qido_study_rows": 1,
+      "qido_unexpected_sop_rows": 0
+    },
+    "baseline": {
+      "inventory_matches": true,
+      "objects": {
+        "2.25.110026110201000000000000000003": {
+          "explicit_uncompressed_syntax_verified": true,
+          "http_status": 200,
+          "identity_matches": true,
+          "original_bytes_match": true,
+          "pixel_bytes_match": true,
+          "returned_dicom_bytes": 1018,
+          "returned_dicom_sha256": "d56d410837e07a69269b31791245763ad6df0cc45d5f4e4baf6dd93338698c4c",
+          "returned_pixel_sha256": "ea99f710d9d0b8ba192295c969a63ed7ce8fc5743da20d2057fa2b6d2c404bfb",
+          "source_bound_read_accepted": true,
+          "source_bound_receipt": {
+            "caller_authenticated": false,
+            "case_authorization_verified": false,
+            "case_id": "CASE-ALPHA",
+            "clinical_review_state": "not_performed",
+            "disclaimer": "Synthetic research-only source and byte freshness proof. Not user authentication, consent, DICOM server ACL, clinical imaging, or external-object revocation.",
+            "kind": "synthetic_source_bound_wado_read",
+            "original_bytes_verified": true,
+            "pacs_adoption_approved": false,
+            "retrieved_original_dicom_sha256": "d56d410837e07a69269b31791245763ad6df0cc45d5f4e4baf6dd93338698c4c",
+            "series_uid": "2.25.110026110201000000000000000002",
+            "sop_uid": "2.25.110026110201000000000000000003",
+            "source_current_before_and_after": true,
+            "source_document_id": "IMG-ALPHA",
+            "source_event_date": "2026-05-17",
+            "source_sha256": "e7e860b66f1a1bff8f40e47f6769b1c6104d78cb6959f7dbe0267d6d10da4fa2",
+            "source_version": 1,
+            "source_version_id": 1,
+            "study_uid": "2.25.110026110201000000000000000001",
+            "upstream_revocation_verified": false
+          }
+        },
+        "2.25.110026110201000000000000000004": {
+          "explicit_uncompressed_syntax_verified": true,
+          "http_status": 200,
+          "identity_matches": true,
+          "original_bytes_match": true,
+          "pixel_bytes_match": true,
+          "returned_dicom_bytes": 1018,
+          "returned_dicom_sha256": "fabb62845c7c4ed1c14b6fa59cec39564551b97d379bf9bd4eac4cdaf9f966f5",
+          "returned_pixel_sha256": "4af5ad632250bc5d41621b7b0575ddbe86df85c89a213455b542439ad194f6c8",
+          "source_bound_read_accepted": true,
+          "source_bound_receipt": {
+            "caller_authenticated": false,
+            "case_authorization_verified": false,
+            "case_id": "CASE-ALPHA",
+            "clinical_review_state": "not_performed",
+            "disclaimer": "Synthetic research-only source and byte freshness proof. Not user authentication, consent, DICOM server ACL, clinical imaging, or external-object revocation.",
+            "kind": "synthetic_source_bound_wado_read",
+            "original_bytes_verified": true,
+            "pacs_adoption_approved": false,
+            "retrieved_original_dicom_sha256": "fabb62845c7c4ed1c14b6fa59cec39564551b97d379bf9bd4eac4cdaf9f966f5",
+            "series_uid": "2.25.110026110201000000000000000002",
+            "sop_uid": "2.25.110026110201000000000000000004",
+            "source_current_before_and_after": true,
+            "source_document_id": "IMG-ALPHA",
+            "source_event_date": "2026-05-17",
+            "source_sha256": "e7e860b66f1a1bff8f40e47f6769b1c6104d78cb6959f7dbe0267d6d10da4fa2",
+            "source_version": 1,
+            "source_version_id": 1,
+            "study_uid": "2.25.110026110201000000000000000001",
+            "upstream_revocation_verified": false
+          }
+        }
+      },
+      "qido_instance_rows": 2,
+      "qido_media_types": {
+        "instance": "application/json",
+        "study": "application/json"
+      },
+      "qido_sop_multiplicity": {
+        "2.25.110026110201000000000000000003": 1,
+        "2.25.110026110201000000000000000004": 1
+      },
+      "qido_study_rows": 1,
+      "qido_unexpected_sop_rows": 0
+    },
+    "conflicting_replay": {
+      "inventory_matches": true,
+      "objects": {
+        "2.25.110026110201000000000000000003": {
+          "explicit_uncompressed_syntax_verified": true,
+          "guard_failure_type": "InvalidInput",
+          "http_status": 200,
+          "identity_matches": true,
+          "original_bytes_match": false,
+          "pixel_bytes_match": false,
+          "returned_dicom_bytes": 1018,
+          "returned_dicom_sha256": "86e3bcfc20eda53ea62d0eba1022add5c8d641fdf3a8a157ad23433797ca0375",
+          "returned_pixel_sha256": "43780eaeed6c64b7e44add42f8777306f9c3bbfeebfe5dd86bad0ac9167146d5",
+          "source_bound_read_accepted": false
+        },
+        "2.25.110026110201000000000000000004": {
+          "explicit_uncompressed_syntax_verified": true,
+          "http_status": 200,
+          "identity_matches": true,
+          "original_bytes_match": true,
+          "pixel_bytes_match": true,
+          "returned_dicom_bytes": 1018,
+          "returned_dicom_sha256": "fabb62845c7c4ed1c14b6fa59cec39564551b97d379bf9bd4eac4cdaf9f966f5",
+          "returned_pixel_sha256": "4af5ad632250bc5d41621b7b0575ddbe86df85c89a213455b542439ad194f6c8",
+          "source_bound_read_accepted": true,
+          "source_bound_receipt": {
+            "caller_authenticated": false,
+            "case_authorization_verified": false,
+            "case_id": "CASE-ALPHA",
+            "clinical_review_state": "not_performed",
+            "disclaimer": "Synthetic research-only source and byte freshness proof. Not user authentication, consent, DICOM server ACL, clinical imaging, or external-object revocation.",
+            "kind": "synthetic_source_bound_wado_read",
+            "original_bytes_verified": true,
+            "pacs_adoption_approved": false,
+            "retrieved_original_dicom_sha256": "fabb62845c7c4ed1c14b6fa59cec39564551b97d379bf9bd4eac4cdaf9f966f5",
+            "series_uid": "2.25.110026110201000000000000000002",
+            "sop_uid": "2.25.110026110201000000000000000004",
+            "source_current_before_and_after": true,
+            "source_document_id": "IMG-ALPHA",
+            "source_event_date": "2026-05-17",
+            "source_sha256": "e7e860b66f1a1bff8f40e47f6769b1c6104d78cb6959f7dbe0267d6d10da4fa2",
+            "source_version": 1,
+            "source_version_id": 1,
+            "study_uid": "2.25.110026110201000000000000000001",
+            "upstream_revocation_verified": false
+          }
+        }
+      },
+      "qido_instance_rows": 2,
+      "qido_media_types": {
+        "instance": "application/json",
+        "study": "application/json"
+      },
+      "qido_sop_multiplicity": {
+        "2.25.110026110201000000000000000003": 1,
+        "2.25.110026110201000000000000000004": 1
+      },
+      "qido_study_rows": 1,
+      "qido_unexpected_sop_rows": 0
+    },
+    "identical_replay": {
+      "inventory_matches": true,
+      "objects": {
+        "2.25.110026110201000000000000000003": {
+          "explicit_uncompressed_syntax_verified": true,
+          "http_status": 200,
+          "identity_matches": true,
+          "original_bytes_match": true,
+          "pixel_bytes_match": true,
+          "returned_dicom_bytes": 1018,
+          "returned_dicom_sha256": "d56d410837e07a69269b31791245763ad6df0cc45d5f4e4baf6dd93338698c4c",
+          "returned_pixel_sha256": "ea99f710d9d0b8ba192295c969a63ed7ce8fc5743da20d2057fa2b6d2c404bfb",
+          "source_bound_read_accepted": true,
+          "source_bound_receipt": {
+            "caller_authenticated": false,
+            "case_authorization_verified": false,
+            "case_id": "CASE-ALPHA",
+            "clinical_review_state": "not_performed",
+            "disclaimer": "Synthetic research-only source and byte freshness proof. Not user authentication, consent, DICOM server ACL, clinical imaging, or external-object revocation.",
+            "kind": "synthetic_source_bound_wado_read",
+            "original_bytes_verified": true,
+            "pacs_adoption_approved": false,
+            "retrieved_original_dicom_sha256": "d56d410837e07a69269b31791245763ad6df0cc45d5f4e4baf6dd93338698c4c",
+            "series_uid": "2.25.110026110201000000000000000002",
+            "sop_uid": "2.25.110026110201000000000000000003",
+            "source_current_before_and_after": true,
+            "source_document_id": "IMG-ALPHA",
+            "source_event_date": "2026-05-17",
+            "source_sha256": "e7e860b66f1a1bff8f40e47f6769b1c6104d78cb6959f7dbe0267d6d10da4fa2",
+            "source_version": 1,
+            "source_version_id": 1,
+            "study_uid": "2.25.110026110201000000000000000001",
+            "upstream_revocation_verified": false
+          }
+        },
+        "2.25.110026110201000000000000000004": {
+          "explicit_uncompressed_syntax_verified": true,
+          "http_status": 200,
+          "identity_matches": true,
+          "original_bytes_match": true,
+          "pixel_bytes_match": true,
+          "returned_dicom_bytes": 1018,
+          "returned_dicom_sha256": "fabb62845c7c4ed1c14b6fa59cec39564551b97d379bf9bd4eac4cdaf9f966f5",
+          "returned_pixel_sha256": "4af5ad632250bc5d41621b7b0575ddbe86df85c89a213455b542439ad194f6c8",
+          "source_bound_read_accepted": true,
+          "source_bound_receipt": {
+            "caller_authenticated": false,
+            "case_authorization_verified": false,
+            "case_id": "CASE-ALPHA",
+            "clinical_review_state": "not_performed",
+            "disclaimer": "Synthetic research-only source and byte freshness proof. Not user authentication, consent, DICOM server ACL, clinical imaging, or external-object revocation.",
+            "kind": "synthetic_source_bound_wado_read",
+            "original_bytes_verified": true,
+            "pacs_adoption_approved": false,
+            "retrieved_original_dicom_sha256": "fabb62845c7c4ed1c14b6fa59cec39564551b97d379bf9bd4eac4cdaf9f966f5",
+            "series_uid": "2.25.110026110201000000000000000002",
+            "sop_uid": "2.25.110026110201000000000000000004",
+            "source_current_before_and_after": true,
+            "source_document_id": "IMG-ALPHA",
+            "source_event_date": "2026-05-17",
+            "source_sha256": "e7e860b66f1a1bff8f40e47f6769b1c6104d78cb6959f7dbe0267d6d10da4fa2",
+            "source_version": 1,
+            "source_version_id": 1,
+            "study_uid": "2.25.110026110201000000000000000001",
+            "upstream_revocation_verified": false
+          }
+        }
+      },
+      "qido_instance_rows": 2,
+      "qido_media_types": {
+        "instance": "application/json",
+        "study": "application/json"
+      },
+      "qido_sop_multiplicity": {
+        "2.25.110026110201000000000000000003": 1,
+        "2.25.110026110201000000000000000004": 1
+      },
+      "qido_study_rows": 1,
+      "qido_unexpected_sop_rows": 0
+    }
+  },
+  "power_loss_durability_verified": false,
+  "process_restarts_verified": true,
+  "real_patient_data_used": false,
+  "restart_observations": [
+    {
+      "after": {
+        "addresses": [
+          {
+            "family": "inet",
+            "interface": "lo",
+            "local": "127.0.0.1",
+            "prefixlen": 8,
+            "scope": "host"
+          },
+          {
+            "family": "inet6",
+            "interface": "lo",
+            "local": "::1",
+            "prefixlen": 128,
+            "scope": "host"
+          }
+        ],
+        "expected_ports": {
+          "dicom": 11112,
+          "http": 18042
+        },
+        "interfaces": [
+          {
+            "flags": [
+              "LOOPBACK",
+              "UP",
+              "LOWER_UP"
+            ],
+            "name": "lo",
+            "operstate": "UNKNOWN"
+          }
+        ],
+        "kind": "oi.pacs-network-namespace/1",
+        "listeners": [
+          {
+            "address": "0.0.0.0",
+            "family": "inet",
+            "inode": 29135,
+            "pid": 8825,
+            "port": 11112
+          },
+          {
+            "address": "0.0.0.0",
+            "family": "inet",
+            "inode": 29945,
+            "pid": 8825,
+            "port": 18042
+          }
+        ],
+        "namespace_confined": true,
+        "parent_namespace": "net:[4026531833]",
+        "probe_namespace": "net:[4026532252]",
+        "routes": [
+          {
+            "destination": "127.0.0.0/8",
+            "family": "inet",
+            "interface": "lo",
+            "table": "local",
+            "type": "local"
+          },
+          {
+            "destination": "127.0.0.1",
+            "family": "inet",
+            "interface": "lo",
+            "table": "local",
+            "type": "local"
+          },
+          {
+            "destination": "127.255.255.255",
+            "family": "inet",
+            "interface": "lo",
+            "table": "local",
+            "type": "broadcast"
+          },
+          {
+            "destination": "::1",
+            "family": "inet6",
+            "interface": "lo",
+            "table": "local",
+            "type": "local"
+          }
+        ],
+        "server_namespace": "net:[4026532252]",
+        "server_pid": 8825,
+        "server_socket_inodes": [
+          29135,
+          29942,
+          29943,
+          29945,
+          29946
+        ],
+        "server_start_ticks": 25788
+      },
+      "before": {
+        "addresses": [
+          {
+            "family": "inet",
+            "interface": "lo",
+            "local": "127.0.0.1",
+            "prefixlen": 8,
+            "scope": "host"
+          },
+          {
+            "family": "inet6",
+            "interface": "lo",
+            "local": "::1",
+            "prefixlen": 128,
+            "scope": "host"
+          }
+        ],
+        "expected_ports": {
+          "dicom": 11112,
+          "http": 18042
+        },
+        "interfaces": [
+          {
+            "flags": [
+              "LOOPBACK",
+              "UP",
+              "LOWER_UP"
+            ],
+            "name": "lo",
+            "operstate": "UNKNOWN"
+          }
+        ],
+        "kind": "oi.pacs-network-namespace/1",
+        "listeners": [
+          {
+            "address": "0.0.0.0",
+            "family": "inet",
+            "inode": 27234,
+            "pid": 8805,
+            "port": 11112
+          },
+          {
+            "address": "0.0.0.0",
+            "family": "inet",
+            "inode": 29924,
+            "pid": 8805,
+            "port": 18042
+          }
+        ],
+        "namespace_confined": true,
+        "parent_namespace": "net:[4026531833]",
+        "probe_namespace": "net:[4026532252]",
+        "routes": [
+          {
+            "destination": "127.0.0.0/8",
+            "family": "inet",
+            "interface": "lo",
+            "table": "local",
+            "type": "local"
+          },
+          {
+            "destination": "127.0.0.1",
+            "family": "inet",
+            "interface": "lo",
+            "table": "local",
+            "type": "local"
+          },
+          {
+            "destination": "127.255.255.255",
+            "family": "inet",
+            "interface": "lo",
+            "table": "local",
+            "type": "broadcast"
+          },
+          {
+            "destination": "::1",
+            "family": "inet6",
+            "interface": "lo",
+            "table": "local",
+            "type": "local"
+          }
+        ],
+        "server_namespace": "net:[4026532252]",
+        "server_pid": 8805,
+        "server_socket_inodes": [
+          27234,
+          29921,
+          29922,
+          29924,
+          29937
+        ],
+        "server_start_ticks": 25691
+      },
+      "binary_sha256": "8b23947af89ebb54df21f5cc11805d7791031736691b592fb7c0056ccf80baad",
+      "config_sha256": "3677eb3c016967d796e00ec3db2b4732cc50bbf0abd38336be4d7c795e4cd017",
+      "old_listeners_absent": true,
+      "old_process_reaped_before_start": true,
+      "restart_verified": true,
+      "run_directory": "/home/runner/work/_temp/oi-pacsnode-lifecycle.wfCZrM",
+      "same_run_directory": true,
+      "sqlite_path": "/home/runner/work/_temp/oi-pacsnode-lifecycle.wfCZrM/data/pacsnode.db",
+      "stop_exit_code": 0,
+      "stop_signal": "SIGINT"
+    },
+    {
+      "after": {
+        "addresses": [
+          {
+            "family": "inet",
+            "interface": "lo",
+            "local": "127.0.0.1",
+            "prefixlen": 8,
+            "scope": "host"
+          },
+          {
+            "family": "inet6",
+            "interface": "lo",
+            "local": "::1",
+            "prefixlen": 128,
+            "scope": "host"
+          }
+        ],
+        "expected_ports": {
+          "dicom": 11112,
+          "http": 18042
+        },
+        "interfaces": [
+          {
+            "flags": [
+              "LOOPBACK",
+              "UP",
+              "LOWER_UP"
+            ],
+            "name": "lo",
+            "operstate": "UNKNOWN"
+          }
+        ],
+        "kind": "oi.pacs-network-namespace/1",
+        "listeners": [
+          {
+            "address": "0.0.0.0",
+            "family": "inet",
+            "inode": 28161,
+            "pid": 8845,
+            "port": 11112
+          },
+          {
+            "address": "0.0.0.0",
+            "family": "inet",
+            "inode": 29186,
+            "pid": 8845,
+            "port": 18042
+          }
+        ],
+        "namespace_confined": true,
+        "parent_namespace": "net:[4026531833]",
+        "probe_namespace": "net:[4026532252]",
+        "routes": [
+          {
+            "destination": "127.0.0.0/8",
+            "family": "inet",
+            "interface": "lo",
+            "table": "local",
+            "type": "local"
+          },
+          {
+            "destination": "127.0.0.1",
+            "family": "inet",
+            "interface": "lo",
+            "table": "local",
+            "type": "local"
+          },
+          {
+            "destination": "127.255.255.255",
+            "family": "inet",
+            "interface": "lo",
+            "table": "local",
+            "type": "broadcast"
+          },
+          {
+            "destination": "::1",
+            "family": "inet6",
+            "interface": "lo",
+            "table": "local",
+            "type": "local"
+          }
+        ],
+        "server_namespace": "net:[4026532252]",
+        "server_pid": 8845,
+        "server_socket_inodes": [
+          28161,
+          29183,
+          29184,
+          29186,
+          29963
+        ],
+        "server_start_ticks": 25877
+      },
+      "before": {
+        "addresses": [
+          {
+            "family": "inet",
+            "interface": "lo",
+            "local": "127.0.0.1",
+            "prefixlen": 8,
+            "scope": "host"
+          },
+          {
+            "family": "inet6",
+            "interface": "lo",
+            "local": "::1",
+            "prefixlen": 128,
+            "scope": "host"
+          }
+        ],
+        "expected_ports": {
+          "dicom": 11112,
+          "http": 18042
+        },
+        "interfaces": [
+          {
+            "flags": [
+              "LOOPBACK",
+              "UP",
+              "LOWER_UP"
+            ],
+            "name": "lo",
+            "operstate": "UNKNOWN"
+          }
+        ],
+        "kind": "oi.pacs-network-namespace/1",
+        "listeners": [
+          {
+            "address": "0.0.0.0",
+            "family": "inet",
+            "inode": 29135,
+            "pid": 8825,
+            "port": 11112
+          },
+          {
+            "address": "0.0.0.0",
+            "family": "inet",
+            "inode": 29945,
+            "pid": 8825,
+            "port": 18042
+          }
+        ],
+        "namespace_confined": true,
+        "parent_namespace": "net:[4026531833]",
+        "probe_namespace": "net:[4026532252]",
+        "routes": [
+          {
+            "destination": "127.0.0.0/8",
+            "family": "inet",
+            "interface": "lo",
+            "table": "local",
+            "type": "local"
+          },
+          {
+            "destination": "127.0.0.1",
+            "family": "inet",
+            "interface": "lo",
+            "table": "local",
+            "type": "local"
+          },
+          {
+            "destination": "127.255.255.255",
+            "family": "inet",
+            "interface": "lo",
+            "table": "local",
+            "type": "broadcast"
+          },
+          {
+            "destination": "::1",
+            "family": "inet6",
+            "interface": "lo",
+            "table": "local",
+            "type": "local"
+          }
+        ],
+        "server_namespace": "net:[4026532252]",
+        "server_pid": 8825,
+        "server_socket_inodes": [
+          27304,
+          29135,
+          29942,
+          29943,
+          29945
+        ],
+        "server_start_ticks": 25788
+      },
+      "binary_sha256": "8b23947af89ebb54df21f5cc11805d7791031736691b592fb7c0056ccf80baad",
+      "config_sha256": "3677eb3c016967d796e00ec3db2b4732cc50bbf0abd38336be4d7c795e4cd017",
+      "old_listeners_absent": true,
+      "old_process_reaped_before_start": true,
+      "restart_verified": true,
+      "run_directory": "/home/runner/work/_temp/oi-pacsnode-lifecycle.wfCZrM",
+      "same_run_directory": true,
+      "sqlite_path": "/home/runner/work/_temp/oi-pacsnode-lifecycle.wfCZrM/data/pacsnode.db",
+      "stop_exit_code": 0,
+      "stop_signal": "SIGINT"
+    }
+  ],
+  "source_binding": {
+    "case_id": "CASE-ALPHA",
+    "source_document_id": "IMG-ALPHA",
+    "source_event_date": "2026-05-17",
+    "source_sha256": "e7e860b66f1a1bff8f40e47f6769b1c6104d78cb6959f7dbe0267d6d10da4fa2",
+    "source_version": 1,
+    "source_version_id": 1
+  },
+  "source_ledger_unchanged_after_restart": true,
+  "standards_conformance_verified": false,
+  "synthetic_only": true,
+  "uploads": {
+    "conflicting_replay": {
+      "http_status": 200,
+      "response_media_sha256": "bacb769b46f6d169fb227ea026550f411d46cbe66a9c2a6ba36449c8cf8e4dea",
+      "response_media_type": "application/json",
+      "response_sha256": "bc65a443f24958bc8d77e2a5404a5b70c9022a108472ab5d780e7bbed3492318",
+      "submitted_count": 1
+    },
+    "identical_replay": {
+      "http_status": 200,
+      "response_media_sha256": "bacb769b46f6d169fb227ea026550f411d46cbe66a9c2a6ba36449c8cf8e4dea",
+      "response_media_type": "application/json",
+      "response_sha256": "ec676ad2cb8893e73a22f6f8e758af23552c58bb58ca1f4e7f64088a22b677cc",
+      "submitted_count": 2
+    },
+    "seed": {
+      "http_status": 200,
+      "response_media_sha256": "bacb769b46f6d169fb227ea026550f411d46cbe66a9c2a6ba36449c8cf8e4dea",
+      "response_media_type": "application/json",
+      "response_sha256": "ec676ad2cb8893e73a22f6f8e758af23552c58bb58ca1f4e7f64088a22b677cc",
+      "submitted_count": 2
+    }
+  },
+  "upstream_commit": "e9b4334477a66967d290add9e0b9afa068f59dc0",
+  "upstream_license_approved": false,
+  "wrong_case_http_calls": 0,
+  "wrong_case_refused": true
+}

@@ -1,0 +1,48 @@
+{
+  "backend_adoption_approved": false,
+  "changed_upstream_files": [
+    "Cargo.lock",
+    "crates/pacs-admin-plugin/src/web.rs",
+    "crates/pacs-api/src/error.rs",
+    "crates/pacs-api/src/routes/stow.rs",
+    "crates/pacs-core/src/blob/mod.rs",
+    "crates/pacs-core/src/error.rs",
+    "crates/pacs-core/src/store/mod.rs",
+    "crates/pacs-dimse/src/server/provider.rs",
+    "crates/pacs-fs-storage/Cargo.toml",
+    "crates/pacs-fs-storage/src/fs.rs",
+    "crates/pacs-fs-storage/src/immutable.rs",
+    "crates/pacs-fs-storage/src/lib.rs",
+    "crates/pacs-fs-storage/tests/immutable_sop.rs",
+    "crates/pacs-sqlite-store/src/store.rs"
+  ],
+  "derived_cargo_lock_sha256": "49d369d9448ce0337375bf11511fd079d365edc15535cfc57cb3d16c8dbdf144",
+  "derived_source_sha256": {
+    "Cargo.lock": "49d369d9448ce0337375bf11511fd079d365edc15535cfc57cb3d16c8dbdf144",
+    "crates/pacs-admin-plugin/src/web.rs": "d0c20e82042c5e74b53557f3adce6fe1cefe837d3acb3899be58bbb65d191a87",
+    "crates/pacs-api/src/error.rs": "f9a10237cba85fbd9915f50b90628859f8acc2190e6129fbf61f8133127f7fc5",
+    "crates/pacs-api/src/routes/stow.rs": "b0aba1046917fd566ae81579837cf0c54f8cbadaa36f6a72d9efbb0918d2e2f8",
+    "crates/pacs-core/src/blob/mod.rs": "046867e42f4c9cc59c1f9293fa8d79fadc15cf2f028d624e55c62c3f9196f832",
+    "crates/pacs-core/src/error.rs": "ba4fc37525e28d18d6712813ea071d6cde916ba0cf093c0abf54ec279cd3334d",
+    "crates/pacs-core/src/store/mod.rs": "af492e715e6fce0b7b7da1da54a13010647cff52a7988edc0e88126a1da34e19",
+    "crates/pacs-dimse/src/server/provider.rs": "f6ef632513d684fc1b7164282bce602a725421cb04d2f659c2d0b9b2c45c1813",
+    "crates/pacs-fs-storage/Cargo.toml": "8bcfbec12125a28c9b44c279c46782fd1122d598c4a2858ba319c9beb186825e",
+    "crates/pacs-fs-storage/src/fs.rs": "c10caeb22236915be22b372273345e5b5505b43ac9932c239b2b368dc5040580",
+    "crates/pacs-fs-storage/src/immutable.rs": "c66d61c1b576e559c089773e4ba93031120d3a6da59a774fdd75327af1c9dfee",
+    "crates/pacs-fs-storage/src/lib.rs": "4df6b66af0f47cf0061273c74c7463b1555af34518e2e88850d65ad971b4743d",
+    "crates/pacs-fs-storage/tests/immutable_sop.rs": "1dd030ed6514dbff626862a1e598d35e3d98b9c0d322c0a181d4c24d054332f6",
+    "crates/pacs-sqlite-store/src/store.rs": "437ae2fdad352906d30e969f0eeb624cb9557fc76e02f330ff338d901168bbdc"
+  },
+  "kind": "oi.pacsnode-storage-patch/1",
+  "original_cargo_lock_sha256": "ec18ccd828aedb35888484ad915bf1b4baaf324e2844330f642136bdd64a9e58",
+  "patch_sha256": "d0a61a74d250df8a35b529474e2e9751d6b4b1ae7a4e564dee2527d912f00113",
+  "scope": "standalone_sqlite_filesystem",
+  "upstream_commit": "e9b4334477a66967d290add9e0b9afa068f59dc0",
+  "upstream_failure": {
+    "artifact_zip_sha256": "aa7d5e5f24404926f21f1975ea38305cf05154ef8a279e17456b2f626deed7e3",
+    "evaluator_commit": "c7d6b18cb74fb1dc53e6af92b4cecb3ee08cb75d",
+    "lifecycle_exit_code": 2,
+    "run_id": 41570215759
+  },
+  "upstream_repository": "https://github.com/knopkem/pacsnode"
+}
