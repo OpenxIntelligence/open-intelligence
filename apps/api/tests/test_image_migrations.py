@@ -20,7 +20,7 @@ class ImageMigrationTests(SourceVersionFixture):
         migrate(self.admin, "upgrade", "head")
         with self.engine.connect() as connection:
             self.assertEqual(connection.execute(text("SELECT id FROM clinical_source.oi_unrelated_image_fixture")).scalar_one(), 42)
-            self.assertEqual(connection.execute(text("SELECT version_num FROM public.alembic_version")).scalar_one(), "0006_image_custody")
+            self.assertEqual(connection.execute(text("SELECT version_num FROM public.alembic_version")).scalar_one(), "0008_questions_images_merge")
 
     def test_conflicting_image_table_is_preserved_without_silent_adoption(self):
         migrate(self.admin, "downgrade", "0005_source_versions")
@@ -39,5 +39,5 @@ class ImageMigrationTests(SourceVersionFixture):
         with self.assertRaises(SQLAlchemyError):
             migrate(self.admin, "downgrade", "0005_source_versions")
         with self.engine.connect() as connection:
-            self.assertEqual(connection.execute(text("SELECT version_num FROM public.alembic_version")).scalar_one(), "0006_image_custody")
+            self.assertEqual(connection.execute(text("SELECT version_num FROM public.alembic_version")).scalar_one(), "0008_questions_images_merge")
         self.assertIn("source_image_links", inspect(self.engine).get_table_names(schema="clinical_source"))
