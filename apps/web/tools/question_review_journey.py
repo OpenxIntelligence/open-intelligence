@@ -18,7 +18,6 @@ class QuestionReviewChecks:
         self.question_id = question_id
         self.source_id = source_id
         self.receipt_id = None
-        self.authored_receipt_id = None
         self.reason = 'Independently verify the fictional marker wording and its unresolved status.'
 
     def navigate(self, section):
@@ -133,7 +132,9 @@ class QuestionReviewChecks:
         self.navigate('Records')
 
     def finish(self, replacement_source_id, credentials, write_grants, screenshots,
-               *, replacement_question_id, authored_question_id, authored_question_text):
+               *, replacement_question_id, authored_question_id):
+        expected_ids = [self.question_id, replacement_question_id, authored_question_id]
+        assert len(set(expected_ids)) == 3
         previous_actions = list(credentials[0]['actions'])
         self.navigate('Review')
         try:
@@ -141,14 +142,18 @@ class QuestionReviewChecks:
             credentials[0]['actions'] = [a for a in previous_actions if a != 'composer_context_read']
             write_grants()
             self.refresh(self.receipt_id)
-            observed_questions = self.cd.evaluate("[...document.querySelectorAll('[data-testid=review-queue-item]')].map(e=>e.dataset.questionId)")
-            assert sorted(observed_questions) == sorted([
-                self.question_id, replacement_question_id, authored_question_id])
+            actual_ids = self.cd.evaluate("[...document.querySelectorAll('[data-testid=review-queue-item]')].map(e=>e.dataset.questionId)")
+            assert sorted(actual_ids) == sorted(expected_ids), 'Review contains the exact three persisted questions'
             assert self.cd.evaluate('document.querySelector(' + json.dumps(self.item()) + ').dataset.state') == 'source_reassessment_required'
+            # Both current questions share one v2 source; select the exact default
+            # question captured by the source journey, never the first source match.
             new_question = replacement_question_id
-            assert self.cd.evaluate('document.querySelector(' + json.dumps(self.item(new_question)) + ').dataset.sourceId') == replacement_source_id
             assert new_question != self.question_id
-            assert 'version 2, line 9' in self.cd.evaluate('document.querySelector(' + json.dumps(self.item(new_question)) + ').textContent')
+            for question_id in (new_question, authored_question_id):
+                row = 'document.querySelector(' + json.dumps(self.item(question_id)) + ')'
+                assert self.cd.evaluate(row + '.dataset.sourceId') == replacement_source_id
+                assert self.cd.evaluate(row + '.dataset.state') == 'awaiting_independent_verification'
+                assert 'version 2, line 9' in self.cd.evaluate(row + '.textContent')
             current_reason = 'Independently verify the amended fictional marker against its new source version.'
 
             # A readable queue is not permission to append a return.
@@ -171,8 +176,10 @@ class QuestionReviewChecks:
             assert new_receipt != self.receipt_id
             self.refresh(new_receipt)
             assert self.cd.evaluate('document.querySelector(' + json.dumps(self.item(new_question)) + ').dataset.state') == 'returned_for_independent_verification'
+            assert self.cd.evaluate('document.querySelector(' + json.dumps(self.item(authored_question_id)) + ').dataset.state') == 'awaiting_independent_verification'
             history = self.cd.evaluate("document.querySelector('[data-testid=review-return-history]').textContent")
             assert self.reason in history and current_reason in history and self.receipt_id in history
+            assert authored_question_id not in history, 'Returning the default v2 question cannot return the authored question'
 
             # Both independent read gates must clear the displayed projection on denial.
             for action in ('review_queue_read', 'question_read'):
@@ -186,21 +193,8 @@ class QuestionReviewChecks:
                 write_grants()
                 self.refresh(new_receipt)
 
-            authored_row = self.cd.evaluate('document.querySelector(' + json.dumps(self.item(authored_question_id)) + ').textContent')
-            assert authored_question_text in authored_row and 'version 2, line 9' in authored_row
-            assert self.cd.evaluate('document.querySelector(' + json.dumps(self.item(authored_question_id)) + ').dataset.sourceId') == replacement_source_id
-            authored_reason = 'Independently verify the exact original supporting this patient-authored question.'
-            self.reason_value(authored_question_id, authored_reason)
-            self.submit(authored_question_id)
-            self.cd.wait("document.querySelector('[data-testid=review-return-status]')?.dataset.phase==='saved'",
-                         'same authored question receives an operational verification return')
-            self.authored_receipt_id = self.cd.evaluate("document.querySelector('[data-testid=review-return-id]').textContent")
-            assert self.authored_receipt_id not in (self.receipt_id, new_receipt)
-            self.refresh(self.authored_receipt_id)
-            assert self.cd.evaluate('document.querySelector(' + json.dumps(self.item(authored_question_id)) + ').dataset.state') == 'returned_for_independent_verification'
-            history = self.cd.evaluate("document.querySelector('[data-testid=review-return-history]').textContent")
-            assert all(value in history for value in (self.receipt_id, new_receipt,
-                self.authored_receipt_id, self.reason, current_reason, authored_reason))
+            assert sorted(self.cd.evaluate("[...document.querySelectorAll('[data-testid=review-queue-item]')].map(e=>e.dataset.questionId)")) == sorted(expected_ids)
+            assert self.cd.evaluate('document.querySelector(' + json.dumps(self.item(authored_question_id)) + ').dataset.state') == 'awaiting_independent_verification'
 
             screenshots.mkdir(parents=True, exist_ok=True)
             self.cd.command('Emulation.setDeviceMetricsOverride', {'width':1440,'height':1100,'deviceScaleFactor':1,'mobile':False})

@@ -1,4 +1,5 @@
 import {test} from 'node:test';
+import {createHash} from 'node:crypto';
 import assert from 'node:assert/strict';
 import {RegistrySession,patientContinuity} from '../.test-dist/registry-client.js';
 
@@ -48,6 +49,40 @@ const prepared=(question,hash='b'.repeat(64))=>({
  preflight_sha256:hash,
 });
 const path='/v1/patients/'+PID+'/cases/'+CASE;
+const OTHER='Which wording in this fictional original still needs independent verification?';
+const hash=value=>createHash('sha256').update(value,'utf8').digest('hex');
+const stable=value=>Array.isArray(value)?'['+value.map(stable).join(',')+']':
+ value!==null&&typeof value==='object'?'{'+Object.keys(value).sort().map(k=>JSON.stringify(k)+':'+stable(value[k])).join(',')+'}':JSON.stringify(value);
+const savedQuestion=()=>({question_id:QID,patient_id:PID,case_id:CASE,question:QUESTION,
+ source_id:SID,source_line:8,source_sha256:sha,source_version:1,
+ source_snapshot_sha256:'a'.repeat(64),source_snapshot_contract:'oi.pg-source-world-model/1',
+ preflight_sha256:'c'.repeat(64),created_at:'2026-11-02T12:00:00Z',
+ source_context_state:'current_unreviewed_question',human_review_state:'not_submitted',clinical_approval:false,model_executed:false});
+const history=()=>({contract:'oi.synthetic-source-questions/2',access_receipt_id:'ACCESS-'+'B'.repeat(32),
+ patient_id:PID,case_id:CASE,questions:[savedQuestion()],synthetic:true,clinical_review_connected:false,clinical_approval:false});
+function sourcePacket(){
+ const q=savedQuestion();
+ const value={contract:'oi.synthetic-question-source-review-packet/1',patient_id:PID,case_id:CASE,
+  question_id:QID,question:QUESTION,
+  original_anchor:{source_id:SID,source_line:8,source_sha256:sha,source_version:1,
+   source_snapshot_sha256:q.source_snapshot_sha256,source_snapshot_contract:q.source_snapshot_contract,
+   preflight_sha256:q.preflight_sha256},
+  source_context_state:'current_unreviewed_source',current_source_snapshot_sha256:'a'.repeat(64),
+  selected_statement:world().observations[0],related_statements:[],related_statement_count_total:0,
+  related_statements_truncated:false,current_source_count:1,current_observation_count:1,
+  external_biomedical_evidence_qualified:false,published_evidence_rights_verified:false,
+  medical_interpretation_performed:false,clinical_review_connected:false,clinical_approval:false,
+  reviewer_identity_verified:false,synthetic:true,review_next_step:'independent_source_verification_required'};
+ return {...value,packet_sha256:hash(stable(value)),source_access_receipt_id:'ACCESS-'+'F'.repeat(32)};
+}
+function sourceBrief(){
+ const body=QUESTION+'\n'+world().observations[0].source_statement+'\nNo clinical approval.\n';
+ return {contract:'oi.synthetic-source-brief/2',synthetic:true,patient_id:PID,case_id:CASE,
+  source_snapshot_contract:'oi.pg-source-world-model/1',source_snapshot_sha256:'a'.repeat(64),
+  access_receipt_id:'ACCESS-'+'C'.repeat(32),question:savedQuestion(),selected_source:prepared(QUESTION).selected_source,
+  prepared_at:'2026-11-02T12:01:00Z',media_type:'text/plain;charset=utf-8',body,body_sha256:hash(body),
+  clinical_approval:false,model_executed:false,biomedical_evidence_included:false};
+}
 test('patient overview follows actual draft, uncertain retry, confirmed save and disconnect',async()=>{
  const fixture=await ready(makeSession({failFirstWrite:true}));
  const {s}=fixture;
@@ -76,10 +111,13 @@ function makeSession(options={}){
    return response(prepared(q,q===QUESTION?'c'.repeat(64):'b'.repeat(64)));
   }
   if(url===path+'/questions'){
+   if(init.method==='GET')return response(history());
    writes++;
    if(options.failFirstWrite&&writes===1)throw Error('uncertain fictional network');
    return response({question_id:QID,duplicate:writes>1},writes>1?200:201);
   }
+  if(url.endsWith('/source-review-packet'))return options.delayedPacket?.promise??response(sourcePacket());
+  if(url.endsWith('/brief'))return options.delayedBrief?.promise??response(sourceBrief());
   return response(patient());
  });
  return {s,requests,get writes(){return writes}};
@@ -213,4 +251,49 @@ test('uncertain write cannot be silently discarded or rewritten under a new requ
  s.changeQuestionDraft('Another independently fictional question with a new meaning?');
  assert.notEqual(s.snapshot().questionDraft.question,QUESTION);
  assert.equal(s.snapshot().composerPreview,null);
+});
+
+for(const action of ['start','resume','edit','prepare','default preflight'])
+test(action+' authoring clears the earlier saved question quotation and brief together',async()=>{
+ const f=await ready(),s=f.s;
+ if(!['start','default preflight'].includes(action)){
+  s.chooseQuestionDraft(SID,8);s.changeQuestionDraft(action==='edit'?QUESTION:OTHER);
+ }
+ await s.loadSavedQuestions(CASE);await s.loadQuestionSourcePacket(QID);await s.prepareSourceBrief(QID);
+ assert.equal(s.snapshot().sourceQuotePacket.question_id,QID);
+ assert.equal(s.snapshot().sourceBrief.question.question_id,QID);
+ const before=f.requests.length;
+ const preparing=action==='prepare'?s.prepareDraftQuestion():action==='default preflight'?
+  s.prepareSourceContext(SID,8):action==='edit'?s.changeQuestionDraft(OTHER):s.chooseQuestionDraft(SID,8);
+ const switched=s.snapshot();await preparing;
+ assert.equal(switched.sourceQuotePacket,null,'A previous saved quotation must disappear synchronously');
+ assert.equal(switched.sourceBrief,null,'A previous saved brief must disappear synchronously');
+ assert.notEqual(switched.sourceQuotePhase,'loading');assert.notEqual(switched.briefPhase,'loading');
+ assert.equal(s.snapshot().sourceQuotePacket,null);assert.equal(s.snapshot().sourceBrief,null);
+ if(['start','resume','edit'].includes(action))assert.equal(f.requests.length,before,'Draft changes do not fetch or save');
+ else{
+  assert.equal(s.snapshot().composerPhase,'ready');assert.equal(s.snapshot().questions,null);
+  assert.notEqual(s.snapshot().composerPreview.question,QUESTION);
+ }
+ assert.equal(f.writes,0);assert.equal(s.snapshot().worldPhase,'ready');
+});
+
+for(const action of ['start','edit','prepare'])for(const reader of ['packet','brief'])
+test('delayed '+reader+' cannot restore old saved-question content after draft '+action,async()=>{
+ const pending=later();const f=await ready(makeSession(reader==='packet'?
+  {delayedPacket:pending}:{delayedBrief:pending})),s=f.s;
+ if(action!=='start'){s.chooseQuestionDraft(SID,8);s.changeQuestionDraft(action==='edit'?QUESTION:OTHER);}
+ await s.loadSavedQuestions(CASE);
+ const reading=reader==='packet'?s.loadQuestionSourcePacket(QID):s.prepareSourceBrief(QID);
+ assert.equal(s.snapshot()[reader==='packet'?'sourceQuotePhase':'briefPhase'],'loading');
+ const preparing=action==='prepare'?s.prepareDraftQuestion():
+  action==='edit'?s.changeQuestionDraft(OTHER):s.chooseQuestionDraft(SID,8);
+ const switched=s.snapshot();
+ pending.resolve(response(reader==='packet'?sourcePacket():sourceBrief()));
+ const [result]=await Promise.all([reading,preparing]);
+ assert.equal(switched.sourceQuotePacket,null);assert.equal(switched.sourceBrief,null);
+ assert.notEqual(switched.sourceQuotePhase,'loading');assert.notEqual(switched.briefPhase,'loading');
+ assert.equal(s.snapshot().sourceQuotePacket,null);assert.equal(s.snapshot().sourceBrief,null);
+ if(reader==='brief')assert.equal(result,null,'A superseded brief must not reach the downloader');
+ assert.equal(f.writes,0);assert.equal(s.snapshot().worldPhase,'ready');
 });

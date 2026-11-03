@@ -19,13 +19,18 @@ The image custody/migration integration in #278 remains its own lane. Only its a
 
 ## Required behavior
 
-1. Preserve one patient, case, original-source, question and return-receipt owner. Keep both actual integration parents and all inherited source identities, events, permissions and amendment semantics.
+### Live ownership update
+
+After the initial audit, #287 was published at 11:21 UTC and independently owns the #276/#280 backend, review-response and recovery convergence. The final #288 candidate adopts #287 at `f7b0f683ab64ba2de7363744b65b8e26528f3138`, tree `a72d810aaf32a76f9c736aa1df4232e3bcd9ced0`. All API code/tests, workflows, locks and source/domain code match it. The shared session differs only by the Overview projection re-export. This continuation owns the #286 Overview handoff, the reproduced contextual-navigation clearing repair and the combined acceptance evidence. Its first tests-only checkpoint remains diagnostic history. The initial pinned table above records the sources actually inspected before that overlap was discovered.
+
+1. Preserve one patient, case, original-source, question and return-receipt owner. Preserve the published initial integration history and the adopted #287 parent, including all inherited source identities, events, permissions and amendment semantics.
 2. Overview distinguishes unfinished, uncertain and confirmed questions and last-read current versus reassessment state. Failed or unknown history is not zero. Navigation preserves the same patient's draft and clears prepared sensitive views as required by the existing session contract.
 3. One authored saved question can be inspected, returned for independent source verification and downloaded as a source-only brief. Selecting another question must invalidate mismatched pending/prepared packet or brief responses.
 4. A source amendment preserves original questions, return receipts and already downloaded files. Current disclosure and new work use current context; historical exact-return retries recover their original receipt without silently retargeting it.
 5. Exact-source packet and review response JSON bytes are prepared inside the existing source transaction, before the same-bearer final authority check and commit. Preparation, final authority or commit failure withholds the response and rolls back attempted effects. Required permissions remain independent.
 6. Same-case import and temporary metadata failure preserve an uncertain/in-flight review return's exact intent and idempotency key. Actual patient/case/permission loss clears sensitive state and prevents stale responses restoring it. Recovery is explicit; no automatic return POST.
 7. Preserve all inherited regression and browser assertions. Add meaningful combined acceptance and actual encoding-time denial/rollback checks where existing evidence is insufficient.
+8. Every navigation entry point, including contextual buttons and Overview links, clears prepared packet/brief responses and invalidates their pending deliveries. It preserves the existing authored draft and exact uncertain-return intent contracts.
 
 ## Global constraints
 

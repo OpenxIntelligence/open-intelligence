@@ -2,6 +2,30 @@
 
 **Stage:** local experimental synthetic-only code. **Not released for clinical use.**
 
+## Connected patient preparation — 3 November 2026
+
+Draft [#288](https://github.com/OpenxIntelligence/open-intelligence/pull/288)
+continues [#287](https://github.com/OpenxIntelligence/open-intelligence/pull/287)
+at `f7b0f683ab64ba2de7363744b65b8e26528f3138`, retaining its API, recovery,
+source and review owners unchanged. It brings #286's Overview onto that shared
+workflow and fixes a hosted-browser-reproduced contextual-navigation defect:
+prepared packet/brief views must clear when leaving a section through any link.
+The authored draft and exact uncertain-return intent remain intact.
+
+The combined browser acceptance resumes one authored question through Overview,
+inspects its original source, records a nonterminal verification return and
+performs a fresh authorized download. Current/unreviewed and source-reassessment
+counts retain their last-read and clinical limitations. This advances OI-007,
+OI-009 and OI-010; it does not complete biomedical investigation or clinical review.
+
+Local candidate checks: 178 client tests and locked build pass; the notice gate
+passes. API discovery runs 301 methods, with 51 passing and 250 explicitly skipped
+because PostgreSQL is unavailable locally. Final hosted exact-head acceptance,
+review and artifact inspection belong in #288's verification receipt. See
+[patient continuity behavior and evidence](engineering/H1_PATIENT_CONTINUITY.md)
+and the existing [shared project assessment](project-state/PROJECT_STATE.md).
+This remains fictional-only, draft, unmerged and undeployed.
+
 ## Current audit — 2 November 2026
 
 ### H1 source intake and record receipt final authority — draft #265

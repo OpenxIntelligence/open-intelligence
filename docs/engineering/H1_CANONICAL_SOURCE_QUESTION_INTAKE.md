@@ -69,6 +69,16 @@ clinical review or supply a biomedical answer.
 
 ## Patient value and exact scope
 
+### Authored-question and source-inspection convergence
+
+[Draft #287](https://github.com/OpenxIntelligence/open-intelligence/pull/287) joins
+the existing #280 authored-question/quotation consumer to #276's review-return,
+intake-authority and brief owners. User-authored text passes the same canonical
+source-line preflight and immutable question owner. The separately authorized
+`source-review-packet` is a read-only original-source projection, prepared as
+complete JSON before final authority and commit. It introduces no evidence or
+clinical-review record. [Implementation and verification trace](../project-state/IMPLEMENTATION_EVIDENCE.md).
+
 A patient/care-team member using the synthetic React Investigations workspace
 can inspect the authorized, original-source World Model, prepare an exact
 source/version/line Composer preview and deliberately **save the associated
@@ -188,16 +198,3 @@ The test database user is a superuser; tests do not prove least-privilege
 service roles, row-level security, real identity consent, PHI encryption,
 clinical audit access, interoperability, actual hospital records or
 licensed guidelines. All ancestor branches remain draft/unmerged.
-
-
-### Connected authoring, inspection and brief candidate
-
-The #264-based convergence imports #268's memory-only custom question editor and
-#266's separately authorized source quotation packet without changing this
-question service, its snapshot contract, schema or migration history. The same
-literal saved question now feeds both source inspection and fresh text export.
-Mixed-question delayed responses are rejected by a shared client selection;
-server authority remains independent per operation. Local and exact-head hosted
-results belong to the [maintained brief record](H1_SOURCE_LINKED_BRIEF.md), not
-this original #244 acceptance. Biomedical evidence, professional review and
-clinical authority remain unconnected.

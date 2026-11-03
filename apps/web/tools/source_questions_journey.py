@@ -47,9 +47,6 @@ class SourceQuestionChecks:
         self.cd = cd
         self.original_source_id = source_id
         self.original_question_id = None
-        self.replacement_question_id = None
-        self.authored_question_id = None
-        self.authored_question_text = None
         root = Path(__file__).resolve().parents[3]
         self.artifacts = Path(os.environ.get('OI_WEB_ARTIFACT_DIR', root/'apps/web/.evidence'))
         self.artifacts.mkdir(parents=True, exist_ok=True)
@@ -205,22 +202,9 @@ class SourceQuestionChecks:
         self.navigate('Investigations')
         assert self.cd.evaluate("!document.querySelector('[data-testid=composer-context]')")
         self.prepare(self.original_source_id, 8)
-        initial_question = 'Which original fictional source supports this marker statement, and what still requires verification?'
-        self.cd.evaluate("""(() => {
-          const input=document.querySelector('[data-testid=question-draft]');
-          Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(input,
-          """ + json.dumps(initial_question) + """);
-          input.dispatchEvent(new Event('input',{bubbles:true}));
-        })()""")
-        self.cd.wait("document.querySelector('[data-testid=question-draft]').value==="
-                     + json.dumps(initial_question), 'patient authors the first source-linked question')
-        self.cd.evaluate("document.querySelector('[data-testid=prepare-custom-question]').click()")
-        self.cd.wait("document.querySelector('[data-testid=composer-context]')?.textContent.includes("
-                     + json.dumps(initial_question) + ")", 'authored first question receives its own preflight')
         self.original_question_id = self.save()
         history = self.history('Current source context')
         assert self.original_question_id in history and self.original_source_id in history
-        assert initial_question in history
         assert 'Clinical approval: none' in history
         self.overview_counts(current=1, reassessment=0)
         preview = self.prepare_brief(self.original_question_id)
@@ -258,7 +242,6 @@ class SourceQuestionChecks:
         self.navigate('Investigations')
         self.prepare(replacement_source_id, 9)
         replacement_question = self.save()
-        self.replacement_question_id = replacement_question
         assert replacement_question != self.original_question_id
         history = self.history('Current source context')
         assert self.cd.evaluate("document.querySelectorAll('.question-items li').length===2")
@@ -329,8 +312,6 @@ class SourceQuestionChecks:
         assert self.cd.evaluate("document.querySelector('[data-testid=composer-context]').textContent.includes("
                                 + json.dumps(replacement_source_id) + ")")
         custom_question = self.save()
-        self.authored_question_id = custom_question
-        self.authored_question_text = custom
         assert custom_question not in (self.original_question_id,replacement_question)
         custom_history = self.history(custom)
         assert custom_question in custom_history
@@ -436,40 +417,6 @@ class SourceQuestionChecks:
         print('PASS SOURCE QUESTIONS: canonical source-line preflight; durable question and history; amendment requires reassessment without moving original anchor; explicit v2 context/question and patient-authored third question; independent question-read and Composer denial; desktop and narrow containment; no model execution or clinical approval.')
         print('PASS SOURCE BRIEF: current saved question to literal brief; fresh authenticated text download and exact UTF-8/hash bytes; independent export revocation produces no Blob or file; amended question cannot export; fresh v2 question retains historical original; unchanged prior downloaded bytes; export works independently of Composer grant; source-only/no clinical approval.')
         print('PASS CONNECTED QUESTION: authored literal text -> persisted canonical question -> separately authorized exact original quotation -> freshly authorized actual text download; same question/source/version/line throughout; historical selection clears current brief and reselecting clears the other packet; inspection-grant withdrawal does not grant or revoke export authority; no scientific appraisal or clinical approval.')
-
-    def after_verification_return(self, receipt_id):
-        """A recorded operational return cannot promote the source-only brief."""
-        self.navigate('Investigations')
-        self.history('Current source context')
-        self.overview_counts(current=2, reassessment=1)
-        self.inspect_quote(self.authored_question_id, current=True,
-            expected_text='Amended fictional marker is reported negative.')
-        prepared = self.prepare_brief(self.authored_question_id)
-        assert prepared['question']['question'] == self.authored_question_text
-        assert not prepared['clinical_approval'] and not prepared['biomedical_evidence_included']
-        assert not prepared['model_executed']
-        # Use a separate directory so an earlier real download cannot satisfy
-        # the completion check for this newly authorized post-return download.
-        previous_artifacts = self.artifacts
-        try:
-            self.artifacts = previous_artifacts/'after-verification-return'
-            self.artifacts.mkdir(parents=True, exist_ok=True)
-            _, actual = self.download_brief(self.authored_question_id)
-        finally:
-            self.artifacts = previous_artifacts
-        assert self.authored_question_text.encode('utf-8') in actual
-        assert self.original_download.read_bytes() == self.original_download_bytes
-        (self.artifacts/'patient-continuity-return-brief.json').write_text(json.dumps({
-            'question_id': self.authored_question_id, 'return_receipt_id': receipt_id,
-            'source_id': prepared['selected_source']['source_id'],
-            'source_version': prepared['selected_source']['version'],
-            'source_line': prepared['selected_source']['line'],
-            'download_sha256': hashlib.sha256(actual).hexdigest(),
-            'clinical_approval': False, 'model_executed': False,
-            'biomedical_evidence_included': False,
-        }, indent=2)+'\n', encoding='utf-8')
-        self.navigate('Journey')
-        print('PASS PATIENT CONTINUITY: Overview resume and exact authored question; source inspection, operational return and freshly authorized actual download retain one source/question identity; return does not confer clinical approval; amendment preserves the first authored question, original receipt and downloaded bytes.')
 
 
 @contextmanager

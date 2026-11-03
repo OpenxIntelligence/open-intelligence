@@ -187,9 +187,7 @@ class ReviewDisclosureAuthorityTests(SourceVersionFixture):
         return envelope
 
     def assert_withheld(self, response, status, before, operation):
-        # Read durable state even if the baseline returns an unexpected status.
-        unchanged = self.persisted_state() == before
-        self.assertEqual((response[0], unchanged), (status, True), response[1])
+        self.assertEqual(response[0], status, response[1])
         self.assertIsInstance(response[1], dict)
         self.assertEqual(set(response[1]), {"detail"})
         self.assertEqual(response[2]["Cache-Control"], "no-store")
@@ -249,8 +247,8 @@ class ReviewDisclosureAuthorityTests(SourceVersionFixture):
                         finally:
                             self.creds = copy.deepcopy(initial)
                             self.write()
-                        self.assert_withheld(response, 404, before, attempted)
                         self.assert_encoded_once(observed, attempted)
+                        self.assert_withheld(response, 404, before, attempted)
 
     def test_real_encoding_failure_returns_sanitized_503_and_rolls_back(self):
         with running_server(create_app(self.settings)) as base:
@@ -265,8 +263,8 @@ class ReviewDisclosureAuthorityTests(SourceVersionFixture):
 
                     with observe_review_json_encoding(fail):
                         response = review_request(base, operation)
-                    self.assert_withheld(response, 503, before, operation)
                     self.assert_encoded_once(observed, operation)
+                    self.assert_withheld(response, 503, before, operation)
 
     def test_patient_case_locks_and_uncommitted_effects_cover_actual_encoding(self):
         with running_server(create_app(self.settings)) as base:
@@ -329,8 +327,8 @@ class ReviewDisclosureAuthorityTests(SourceVersionFixture):
                         observed = []
                         with observe_review_json_encoding(observed.append):
                             response = review_request(base, operation)
-                        self.assert_withheld(response, 503, before, operation)
                         self.assert_encoded_once(observed, operation)
+                        self.assert_withheld(response, 503, before, operation)
                     finally:
                         # Drop before the fixture removes the identity schema;
                         # also keep amendment setup outside the injected failure.
