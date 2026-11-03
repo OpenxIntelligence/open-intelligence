@@ -230,7 +230,16 @@ class PostgresSourceVersions:
             return result
 
     def import_original(self, patient_id: str, case_id: str, original: bytes, *,
-                        organization: str, actor: str, purpose: str) -> dict:
+                        organization: str, actor: str, purpose: str,
+                        recheck_authority: Callable[[], None],
+                        prepare_response: Callable[[dict], PreparedResponse] | None = None) -> dict | PreparedResponse:
+        """Prepare every success and refresh authority before source commit.
+
+        Response preparation is application-owned work, including serialization
+        at the HTTP boundary. Failure rolls back tentative imports, amendment
+        state, assertions, quarantine and events. Duplicate exits use the same
+        boundary before disclosing a historical source identity.
+        """
         patient_id = _key(patient_id, "patient_id")
         case_id = _case_id(case_id)
         organization = _key(organization, "organization")
@@ -244,6 +253,12 @@ class PostgresSourceVersions:
         except InvalidInput:
             raise PatientRegistryError("Unsupported fictional report format") from None
         digest = hashlib.sha256(original).hexdigest()
+
+        def complete(result):
+            prepared = prepare_response(result) if prepare_response is not None else result
+            recheck_authority()
+            return prepared
+
         with self.registry.transaction():
             self._binding(patient_id, case_id, organization, purpose)
             if parsed.patient_id != case_id:
@@ -255,8 +270,8 @@ class PostgresSourceVersions:
                     (case_id, digest),
                 )
                 if existing is not None:
-                    return {"result": "quarantined", "duplicate": True,
-                            "source_id": None, "version": None}
+                    return complete({"result": "quarantined", "duplicate": True,
+                                     "source_id": None, "version": None})
                 self.registry._execute(
                     "INSERT INTO clinical_source.quarantine "
                     "(target_case_id,declared_case_id,sha256,raw,reason) "
@@ -267,8 +282,8 @@ class PostgresSourceVersions:
                     patient_id, "source.original.quarantined",
                     case_id=case_id, actor=actor,
                 )
-                return {"result": "quarantined", "duplicate": False,
-                        "source_id": None, "version": None}
+                return complete({"result": "quarantined", "duplicate": False,
+                                 "source_id": None, "version": None})
             old = self.registry._fetchone(
                 "SELECT source_id,version,sha256,kind,event_date,specimen_id "
                 "FROM clinical_source.source_versions "
@@ -281,11 +296,11 @@ class PostgresSourceVersions:
                 (case_id, parsed.document_id, digest),
             )
             if previously_seen is not None:
-                return {"result": "duplicate", "duplicate": True,
-                        "source_id": previously_seen[0], "version": previously_seen[1]}
+                return complete({"result": "duplicate", "duplicate": True,
+                                 "source_id": previously_seen[0], "version": previously_seen[1]})
             if old is not None and old[2] == digest:
-                return {"result": "duplicate", "duplicate": True,
-                        "source_id": old[0], "version": old[1]}
+                return complete({"result": "duplicate", "duplicate": True,
+                                 "source_id": old[0], "version": old[1]})
             if old is not None and parsed.amends != (parsed.document_id, old[1]):
                 raise PatientRegistryConflict("Changed original requires latest explicit amendment")
             if old is None and parsed.amends is not None:
@@ -324,5 +339,5 @@ class PostgresSourceVersions:
                 case_id=case_id, source_id=source_id,
                 version=version, actor=actor,
             )
-            return {"result": "imported", "duplicate": False,
-                    "source_id": source_id, "version": version}
+            return complete({"result": "imported", "duplicate": False,
+                             "source_id": source_id, "version": version})

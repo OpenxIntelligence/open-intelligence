@@ -17,6 +17,46 @@ A single append-only `record.request.received` event records `request_id`, `case
 
 A revoked case relationship hides the exact source reference and blocks subsequent source use, without fabricating a deletion of history. `record_request_read` alone may show that a record has been received but must not reveal source identifiers or bytes. `source_original_read` is still required to view original source text.
 
+## Final write authority — continuation on #244
+
+[Draft #265](https://github.com/OpenxIntelligence/open-intelligence/pull/265)
+extends this existing receive command and the existing original-source import
+command. It is based on canonical source/question head
+`3b6c466950852c20f99d57a70dd196fd2862571a`; it does not replace the active
+question/review convergence in #262 or source-only brief in #264.
+
+Both writers now prepare their existing receipt's validated JSON and HTTP status
+while their patient/case/request locks are held, then refresh the original bearer
+before their existing transaction commits. Source intake requires current
+`patient_read` and `source_import`; receive requires current `patient_read`,
+`record_request_receive` and `source_read`. Actor, organization, purpose and patient
+scope must still match. The same boundary covers original/amended imports,
+quarantine, duplicate originals/quarantine, first received pointers and historical
+receipt retries. No new grant, table or event type is introduced.
+
+A denial or response-preparation failure rolls back the tentative source,
+assertions, predecessor supersession, quarantine or received event as applicable.
+Already committed originals and historical receipt pointers remain unchanged. A
+restored legitimate grant may retry. The JSON body is prepared before commit;
+network delivery occurs afterward and can still be uncertain. External authority
+may change after the last successful check.
+
+The two domain methods require a `recheck_authority` callback and accept the same
+application-owned `prepare_response` callback pattern already used by the source
+and question owners. The HTTP adapters supply both. In-process callers must
+provide their trusted current-authority check; client-supplied callbacks or rights
+objects are not an API feature.
+
+Twelve new real PostgreSQL/HTTP regressions cover late grants/identity changes,
+quarantine/duplicates, historical retry, DTO and actual JSON preparation, and
+independent-session locks. The first hosted red checkpoint exposed an incorrect
+generic JSON-render test hook; the refined checkpoint reproduced committed writes
+after denied authority/preparation and released locks. The final fixture covers
+both FastAPI's typed serializer and explicit prepared JSON. See the
+[implementation record](../superpowers/plans/2026-11-02-h1-intake-authority.md).
+Final exact-head API, recovery and built React/Chromium results are recorded in
+the draft PR's verification receipt; local PostgreSQL availability is not claimed.
+
 ## Explicit limitations
 
 - The record request's institution/label is user-authored fictional input; it is **not independently authenticated as the source provider** or evidence that an external hospital was contacted.

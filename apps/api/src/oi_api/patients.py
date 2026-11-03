@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import Field, StrictBool, field_validator
 
@@ -575,21 +576,25 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
                  response_model=ReceivedRecordRequest, status_code=201,
                  responses={200: {"model": ReceivedRecordRequest}, **errors},
                  operation_id="receive_original_record_request_v1")
-    def receive_record(patient_id: str, request_id: str,
-                       payload: ReceiveRecordRequest, response: Response,
+    def receive_record(request: Request, patient_id: str, request_id: str,
+                       payload: ReceiveRecordRequest,
                        context: Principal = Depends(principal)):
         try:
             with registry(context) as patients:
-                records_authorized(patients, context, patient_id, "record_request_receive")
-                records_authorized(patients, context, patient_id, "source_read")
-                result = PostgresRecordRequests(patients).receive(
+                actions = ("record_request_receive", "source_read")
+                for action in actions:
+                    records_authorized(patients, context, patient_id, action)
+                return PostgresRecordRequests(patients).receive(
                     patient_id, request_id, payload.case_id, payload.source_id,
                     organization=context.organization, actor=context.actor,
-                    purpose=context.purpose)
+                    purpose=context.purpose,
+                    prepare_response=lambda result: JSONResponse(
+                        content=ReceivedRecordRequest(**result).model_dump(mode="json"),
+                        status_code=200 if result["duplicate"] else 201),
+                    recheck_authority=lambda: final_question_authority(
+                        request, context, patients, patient_id, actions))
         except PatientRegistryDenied:
             raise HTTPException(404, "Record request or source unavailable") from None
-        response.status_code = 200 if result["duplicate"] else 201
-        return ReceivedRecordRequest(**result)
 
 
     @router.get("/{patient_id}/case-bindings", response_model=CaseBindingList,
@@ -781,20 +786,23 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
                  response_model=OriginalSourceReceipt, status_code=201,
                  responses={200: {"model": OriginalSourceReceipt}, **errors},
                  operation_id="import_original_source_v1")
-    def import_original_source(patient_id: str, case_id: str,
-                               payload: ImportOriginalSource, response: Response,
+    def import_original_source(request: Request, patient_id: str, case_id: str,
+                               payload: ImportOriginalSource,
                                context: Principal = Depends(principal)):
         try:
             with registry(context) as patients:
                 records_authorized(patients, context, patient_id, "source_import")
-                result = PostgresSourceVersions(patients).import_original(
+                return PostgresSourceVersions(patients).import_original(
                     patient_id, case_id, payload.original_text.encode("utf-8"),
                     organization=context.organization, actor=context.actor,
-                    purpose=context.purpose)
+                    purpose=context.purpose,
+                    prepare_response=lambda result: JSONResponse(
+                        content=OriginalSourceReceipt(**result).model_dump(mode="json"),
+                        status_code=201 if result["result"] == "imported" else 200),
+                    recheck_authority=lambda: refresh_source_authority(
+                        request, context, patients, patient_id, "source_import"))
         except PatientRegistryDenied:
             raise HTTPException(404, "Source unavailable") from None
-        response.status_code = 201 if result["result"] == "imported" else 200
-        return OriginalSourceReceipt(**result)
 
     @router.get("/{patient_id}/cases/{case_id}/sources/{source_id}",
                 response_model=OriginalSource, responses=errors,

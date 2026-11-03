@@ -103,8 +103,9 @@ def authenticate_request(request: Request, authentication: Authentication) -> Pr
 class SyntheticFileAuthentication:
     """Operator-controlled local fixture; reread every time, never cache grants.
 
-    File replacement takes effect on the next request. A synchronous operation
-    already authorized can finish; this is not distributed revocation atomicity.
+    Every authentication call rereads the fixture. Operations with a final
+    authority check can refuse changes during preparation; other operations
+    still use their entry check. This is not distributed revocation atomicity.
     No raw bearer token is stored in this file or returned in its parsed context.
     """
 

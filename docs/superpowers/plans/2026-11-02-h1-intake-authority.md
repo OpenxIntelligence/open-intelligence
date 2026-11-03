@@ -31,11 +31,11 @@
 
 **Interfaces:** Existing source-version HTTP fixture and real PG16 disposable database; no production changes.
 
-- [ ] Add tests for revoked source_import/patient_read, patient membership and changed principal during import/amendment/quarantine/duplicates; assert expected HTTP refusal and exact unchanged database state.
-- [ ] Add record receipt/new and duplicate tests for independently revoked receive/read grants and changed identity; assert zero new received events and legitimate restored retry.
-- [ ] Add DTO/JSON failure and late-grant mutation tests; retain actual transaction and writer effects.
-- [ ] Compile/discover locally and record PostgreSQL skips honestly; publish a tests-first draft and run actual PG16 acceptance.
-- [ ] Inspect hosted red evidence for the intended permission/commit failures before runtime changes.
+- [x] Add tests for revoked source_import/patient_read, patient membership and changed principal during import/amendment/quarantine/duplicates; assert expected HTTP refusal and exact unchanged database state.
+- [x] Add record receipt/new and duplicate tests for independently revoked receive/read grants and changed identity; assert zero new received events and legitimate restored retry.
+- [x] Add DTO/JSON failure and late-grant mutation tests; retain actual transaction and writer effects.
+- [x] Compile/discover locally and record PostgreSQL skips honestly; publish a tests-first draft and run actual PG16 acceptance.
+- [x] Inspect hosted red evidence for the intended permission/commit failures before runtime changes.
 
 ## Task 2: Extend the existing writer completion protocol
 
@@ -43,8 +43,8 @@
 
 **Interfaces:** Both methods require recheck_authority: Callable[[], None] and accept prepare_response: Callable[[dict], PreparedResponse] | None = None. Every successful return prepares the existing receipt, then invokes the callback inside the transaction. The routes pass prepared JSONResponse and their existing same-bearer reauthentication functions.
 
-- [ ] Implement the completion path for every successful intake branch and both receive branches.
-- [ ] Prepare validated JSON bytes/status before authority refresh; keep existing read/question behavior and independent authorization checks.
+- [x] Implement the completion path for every successful intake branch and both receive branches.
+- [x] Prepare validated JSON bytes/status before authority refresh; keep existing read/question behavior and independent authorization checks.
 - [ ] Run local available tests and full hosted API/PG16 plus React/browser gates on exact head; resolve actual failures without weakening acceptance.
 - [ ] Obtain independent whole-branch review; fix material findings with regression evidence.
 
@@ -65,3 +65,6 @@
 - Unchanged local base: 192 API tests discovered, 42 executed successfully and 150 skipped because real PostgreSQL is absent. New regression module: ten methods discovered, all ten skipped locally for the same explicit reason. Compilation and whitespace checks passed. Hosted execution is required for red/green evidence.
 - First hosted red checkpoint `8c0c8655280e6b1ffb7dce9b5983b6237b4cb944`, run [41573301941](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41573301941): 202 actual API/PG executions; 33 failed assertions/subtests, zero test errors/skips. Entry-only authority was reproduced on import/amendment/quarantine/duplicate/receive paths. The unchanged React workflow passed.
 - Test instrumentation correction: typed FastAPI responses bypassed JSONResponse.render on the unchanged base, so the render fault and lock hook did not fire. Those failures are not evidence that the old renderer threw or held/released a lock. Added receipt-constructor hooks that run on both old and new routes; moved the lock probe there. The new raw-response helper inspects unexpected plaintext errors, and refusal assertions now read durable state even if the HTTP status is wrong. Keep the candidate's separate explicit-render checks and the same refusal/rollback expectations.
+- Refined hosted red checkpoint `ead1b34ad07afafa058b605be441077e65486248`, run [41573745553](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41573745553): 204 actual API/PG executions; 37 failed assertions/subtests, zero test errors/skips. Constructor-time revocation yielded `(201, database changed)`, constructor failure yielded `(500, database changed)`, and the independent connection acquired both case locks during preparation. Inherited behavior remained passing. The JSON-only hook failures retain the limitation above.
+- Serialization instrumentation now covers both public Pydantic TypeAdapter.dump_json (the pinned FastAPI typed fast path) and explicit JSONResponse.render. A local real HTTP instrumentation check exercised each path exactly once before using that hook in final acceptance; it was not PostgreSQL/product acceptance. No response/rollback expectation was weakened.
+- Runtime implementation reuses each writer's existing transaction and final authority helpers. Local 204-test discovery completed: 42 available checks passed, 162 PG-dependent executions explicitly skipped. Compilation and whitespace checks passed. Full actual PG/HTTP and built-browser verification remain required on the published implementation head.

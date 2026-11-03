@@ -15,6 +15,7 @@ from urllib.request import Request, urlopen
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from starlette.responses import JSONResponse
+from pydantic import TypeAdapter
 
 from oi_api.app import create_app
 from oi_api.patients import OriginalSourceReceipt, ReceivedRecordRequest
@@ -156,6 +157,29 @@ class IntakeWriteAuthorityTests(SourceVersionFixture):
                 content = {"unparsed_error_body": raw}
             return response.status, content, dict(response.headers)
 
+    @contextmanager
+    def after_receipt_json(self, marker, action):
+        """Keep actual encoding on both FastAPI's typed and explicit paths."""
+        render = JSONResponse.render
+        dump_json = TypeAdapter.dump_json
+        def matches(content):
+            return ((isinstance(content, dict) and marker in content and "source_id" in content)
+                    or (marker == "result" and isinstance(content, OriginalSourceReceipt))
+                    or (marker == "request_id" and isinstance(content, ReceivedRecordRequest)))
+        def rendered(response, content):
+            encoded = render(response, content)
+            if matches(content):
+                action()
+            return encoded
+        def typed(adapter, content, *args, **kwargs):
+            encoded = dump_json(adapter, content, *args, **kwargs)
+            if matches(content):
+                action()
+            return encoded
+        with patch.object(JSONResponse, "render", rendered), \
+                patch.object(TypeAdapter, "dump_json", typed):
+            yield
+
     def test_import_final_grants_and_identity_are_independently_refreshed(self):
         changes = [
             ("grant:source_import", 404), ("grant:patient_read", 404),
@@ -273,7 +297,6 @@ class IntakeWriteAuthorityTests(SourceVersionFixture):
             self.assertEqual(self.durable_state(), before)
 
     def test_final_recheck_follows_actual_json_preparation_for_both_commands(self):
-        render = JSONResponse.render
         with running_server(create_app(self.settings)) as base:
             patient = self.setup_case(base)
             source_id = self.ingest(base, patient)[1]["source_id"]
@@ -286,12 +309,8 @@ class IntakeWriteAuthorityTests(SourceVersionFixture):
             for operation, marker, change in operations:
                 with self.subTest(command=marker):
                     before = self.durable_state()
-                    def prepared(response, content):
-                        encoded = render(response, content)
-                        if marker in content and "source_id" in content:
-                            self.change_authority(change)
-                        return encoded
-                    with self.restore_authority(), patch.object(JSONResponse, "render", prepared):
+                    with self.restore_authority(), self.after_receipt_json(
+                            marker, lambda: self.change_authority(change)):
                         result = operation()
                     self.assert_refused_without_write(result, before)
 
@@ -342,7 +361,6 @@ class IntakeWriteAuthorityTests(SourceVersionFixture):
                     self.assert_refused_without_write(result, before, 503)
 
     def test_json_failure_rolls_back_both_commands(self):
-        render = JSONResponse.render
         with running_server(create_app(self.settings)) as base:
             patient = self.setup_case(base)
             source_id = self.ingest(base, patient)[1]["source_id"]
@@ -356,12 +374,9 @@ class IntakeWriteAuthorityTests(SourceVersionFixture):
             for path, body, marker in operations:
                 with self.subTest(command=marker):
                     before = self.durable_state()
-                    def broken(response, content):
-                        encoded = render(response, content)
-                        if marker in content and "source_id" in content:
-                            raise ValueError("PRIVATE-FIXTURE-SERIALIZATION-FAILURE")
-                        return encoded
-                    with patch.object(JSONResponse, "render", broken):
+                    def broken():
+                        raise ValueError("PRIVATE-FIXTURE-SERIALIZATION-FAILURE")
+                    with self.after_receipt_json(marker, broken):
                         result = self.raw_post(base, path, body)
                     self.assert_refused_without_write(result, before, 503)
 
