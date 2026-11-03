@@ -155,7 +155,7 @@ def _overview(state: dict, current: list[dict], stale: list[dict]) -> dict:
     quarantined = list(state.get("quarantines", []))
     parts = [
         f"This is a plain-language listing for fictional case {case['case_id']} "
-        f"({case['label']}). It repeats the case record only.",
+        f"({_visible_record_text(case['label'])}). It repeats the case record only.",
         f"The record holds {_plural(len(current), 'current source document', 'current source documents')} "
         f"with {_plural(len(state.get('assertions', [])), 'reported statement', 'reported statements')}, "
         f"{_plural(open_count, 'open question', 'open questions')}, and "
@@ -185,9 +185,9 @@ def _overview(state: dict, current: list[dict], stale: list[dict]) -> dict:
         certainty = assertion.get("certainty", "unknown")
         plain = CERTAINTY_PLAIN.get(certainty, "unknown")
         items.append({
-            "text": assertion.get("quote", ""),
+            "text": _visible_record_text(assertion.get("quote", "")),
             "detail": DETAIL_FINDING.format(
-                finding_key=assertion.get("finding_key"), plain=plain,
+                finding_key=_visible_record_text(assertion.get("finding_key")), plain=plain,
                 certainty=certainty),
             "citation": (
                 f"Source version #{assertion.get('source_version_id')}, "
@@ -208,21 +208,24 @@ def _timeline(current: list[dict], superseded: list[dict]) -> dict:
     for source in sorted(current, key=_order_key):
         items.append({
             "text": TIMELINE_ENTRY_TEXT.format(
-                event_date=source["event_date"], kind=source["kind"],
-                document_id=source["document_id"], version=source["version"],
+                event_date=source["event_date"], kind=_visible_record_text(source["kind"]),
+                document_id=_visible_record_text(source["document_id"]), version=source["version"],
                 issued_at=source["issued_at"]),
             "detail": TIMELINE_ENTRY_DETAIL.format(
-                specimen=source["specimen_id"] or "not recorded",
+                specimen=(_visible_record_text(source["specimen_id"])
+                          if source["specimen_id"] else "not recorded"),
                 received_at=source["received_at"]),
-            "citation": f"Source version #{source['id']} ({source['document_id']}@{source['version']}).",
+            "citation": f"Source version #{source['id']} "
+                f"({_visible_record_text(source['document_id'])}@{source['version']}).",
         })
     for source in sorted(superseded, key=lambda row: (row["document_id"], row["version"], row["id"])):
         items.append({
             "text": TIMELINE_HISTORY_TEXT.format(
-                document_id=source["document_id"], version=source["version"],
+                document_id=_visible_record_text(source["document_id"]), version=source["version"],
                 event_date=source["event_date"]),
             "detail": TIMELINE_HISTORY_DETAIL,
-            "citation": f"Source version #{source['id']} ({source['document_id']}@{source['version']}).",
+            "citation": f"Source version #{source['id']} "
+                f"({_visible_record_text(source['document_id'])}@{source['version']}).",
         })
     summary = (
         f"The record lists {_plural(len(current), 'current report', 'current reports')} "
@@ -245,7 +248,7 @@ def _questions(state: dict) -> dict:
     addressed = sum(1 for item in questions if item.get("state") != "open")
     stale = sum(1 for item in state.get("snapshots", []) if item.get("state") == "stale")
     items = [{
-        "text": item.get("question", ""),
+        "text": _visible_record_text(item.get("question", "")),
         "detail": QUESTION_DETAIL.format(created_at=item.get("created_at")),
         "citation": f"Question record #{item.get('id')}.",
     } for item in sorted(open_items, key=lambda row: row.get("id", 0))]
@@ -274,7 +277,8 @@ def _options(state: dict) -> dict:
             f"{_plural(len(option.get('threats', [])), 'recorded concern', 'recorded concerns')}."
         )
         items.append({
-            "text": f"{option.get('label')}: {option.get('description')}",
+            "text": (f"{_visible_record_text(option.get('label'))}: "
+                     f"{_visible_record_text(option.get('description'))}"),
             "detail": OPTION_DETAIL.format(
                 epistemic=epistemic, operational=operational,
                 snapshot_id=option.get("snapshot_id"),
@@ -310,6 +314,16 @@ def _quoted_task_text(value: str) -> str:
         else char
         for char in quoted
     )
+
+
+def _visible_record_text(value: object) -> str:
+    """Show one source-attributed value literally without changing its stored bytes.
+
+    Ordinary Unicode is preserved, but embedded line breaks, controls and
+    bidi formatting become visible escapes. The report's own headings and
+    status lines therefore cannot be forged by recorded material.
+    """
+    return _quoted_task_text(str(value))[1:-1]
 
 
 def _task_line(template: str, **values: object) -> str:
@@ -449,7 +463,7 @@ def build_patient_report(state: dict) -> dict:
     _check_framing(READING_NOTE)
     return {
         "case_id": case["case_id"],
-        "case_label": case["label"],
+        "case_label": _visible_record_text(case["label"]),
         "fictional": True,
         "demo_notice": FICTIONAL_BANNER,
         "reading_note": READING_NOTE,
