@@ -1,6 +1,7 @@
 # H1 question evidence and patient follow-through convergence
 
-**Status:** implementation in draft #307; combined verification pending.
+**Status:** original convergence in draft #307; subsequent combined acceptance
+is recorded below. All contributions remain subject to explicit review.
 **Scope:** independently authored fictional engineering inputs only.
 **Product job:** keep one saved patient question, its citation discovery, separately
 authored comparisons/reports and follow-up work in the same governed application.
@@ -119,3 +120,202 @@ professional signoff, production accounts/consent, full clinical/PDF/annotation
 parity, real-patient readiness or deployment. An explicit catalog-to-passage link
 would require its own provenance and rights contract; this increment does not
 invent that relationship.
+
+## Connected reading, citation history and report-download integration — 3 November 2026
+
+This continuation serves OI-008/009/010/013 and existing issue #92. Reading an
+original quotation, asking its canonical question, inspecting evidence and
+downloading the resulting report must retain the same source and authority
+boundaries. Separate passing branches did not establish this combined behavior.
+
+### Inspected source and preserved owners
+
+| Source | Exact revision | Contribution in this candidate |
+| --- | --- | --- |
+| Main | `24519839aa8ac1ea3aff88a956349ba72798a72a` | Still the earlier prototype; not the deployed or merged H1 workflow |
+| #318, based on #314/#307 | `0db90a45ec256d380c01d503162e31ac8ee419b5` | Baseline connected source reading, question entry, evidence comparison, reports and follow-through |
+| #315 | `58bc5f7bc5b8c5ba39e4d93768031aa22cedacd9` | Exact copies of the citation contract and its two added regression methods |
+| #316 | `66f44d42b8d47a1b6e8da0bb82f968de8de311dc` | Exact copies of the report-download implementation, four client tests and both browser-helper changes |
+
+Only six source/test files are transplanted. Each equals its cited owner's Git
+blob. Original PRs and their documentation remain available and unchanged; this
+is selective integration, not an assertion that all donor branches were merged.
+The existing database, migration, patient, source, question, session, report and
+rights owners are retained. No dependency, model, content source, asset or service
+is adopted and no schema or permission is changed.
+
+The current Notion precedence and accepted H1 decisions were read alongside the
+repository instructions, plan, backlog and existing Google engineering record.
+Historical PRs #56/#70/#74/#76/#85/#89/#93/#131 were checked and remain open,
+unmerged drafts; their descriptions are not proof of integrated behavior.
+This is a bounded integration audit, not a complete platform, history or privacy
+audit. The long-term first-party clinical platform remains in scope.
+
+### Reproduced gaps and local verification
+
+Before copying production changes, the unchanged donor tests ran on the reading
+baseline. Citation contracts produced 20 failing assertions across the two added
+methods: malformed historical timestamps were accepted. The two positive report
+download tests failed because the cover was absent; denial and patient-switch
+negative controls already passed. These are observed behavioral failures, not
+import errors or cancelled jobs.
+
+After restoring the original owners' production changes:
+
+- All **278 compiled client tests passed**, zero failures/skips, using the pinned
+  TypeScript compiler and actual React component builds. `npm run build` passed.
+- All **12 citation contract tests passed**, including exact valid timestamp
+  preservation and rejection during full response preparation.
+- Local API discovery ran **416 methods: 96 passed, 320 skipped** because a
+  disposable PostgreSQL instance was unavailable. This is not full API acceptance.
+  Local server setup failed because this runtime cannot change Unix user/groups;
+  the existing hosted PG16 workflow remains the full acceptance environment.
+- The frontend dependency gate passed with 18 installed and two optional
+  uninspected packages. Its scope remains local synthetic development.
+- A separate read-only review passed the static patient-data boundary scan, nine
+  boundary regressions and ten dependency-gate negative controls. It identified
+  no blocking boundary defect. The web-only workflow does not directly invoke
+  that scanner; the API workflow does. Static scans do not prove runtime egress.
+- The shared wheel cache contained an unrelated extra PDF wheel, which correctly
+  failed the exact-set gate. No package was deleted and no policy was relaxed.
+  A fresh directory containing only the 24 inventory-named artifacts then passed
+  the unchanged exact-wheel/hash/notice gate (99 supplier-native and 13 embedded
+  entries remain separately scoped declarations).
+- A second code review confirmed all six donor blobs and found no material
+  integration defect in fresh-read checks, preserved report bytes or browser
+  helper ordering. Its focused download suite passed 4/4. This is an automated
+  reviewer, not independent human, legal or clinical acceptance.
+
+### Combined acceptance and continuation
+
+Run the existing H1 API and H1 web workflows at the exact published candidate.
+Required evidence is actual PostgreSQL/HTTP/browser execution, source reading and
+native keyboard question handoff, current and historical report downloads,
+separate whole-file/body hashes, original-byte preservation, fresh receipt/status,
+rights denial, case isolation, restart and backup/restore. Donor workflow success
+is not substituted for candidate evidence. The PR records the actual run URLs
+and outcomes; an in-progress job is not a pass.
+
+The download cover describes status returned by the fresh read, while the
+preserved body and original preparation remain byte-identical. Earlier downloads
+cannot be recalled. Strict citation timestamps prevent misleading history but do
+not independently authenticate a publisher, actor or event.
+
+No new patient-journey study, technology clearance, external biomedical retrieval
+or scientific AI evaluation was performed. Those existing research registers
+remain authoritative within their recorded scopes. The next milestone is owner
+review of one combined candidate and its full dependency chain, followed by a
+rights-qualified live-evidence connection through the existing question owner.
+Production accounts/consent, professional review, source licensing, clinical
+qualification and real-patient release remain separate unresolved gates.
+No merge, deployment or clinical validation is authorized or claimed.
+
+## Connected follow-up attention — 3 November 2026
+
+The next bounded continuation restores the existing follow-up attention feature
+from #299 into the source-reading/evidence/report candidate #322. The latter's
+combined application still showed only an undifferentiated task list. This is
+reuse of the original presentation owner, not a second work ledger or urgency
+model. Existing OI-007/009/010/013 remain the acceptance items.
+
+### Design and execution plan
+
+- Base: #322 `19b75317701ae01fc93844077ac94c351fd982bd`, tree
+  `9f120084d641ad340a0ee3d85b755480d990e45b`. The isolated local checkout
+  reconstructed this exact tree from #318 plus the seven-file #322 patch.
+- Donor: #299 `b47cc6ddde922bb53aa399b7d05adaee2d07620c`.
+  Preserve its two production files, 21 unit tests and browser journey byte for
+  byte. Its existing design remains the behavior contract.
+- Reuse All work, Source changed, Revisit date passed, Unassigned and Completed /
+  deferred filters. Counts overlap and use the server's dated snapshot. Preserve
+  exact task identities/order/history and unsaved transition text while filtering.
+- Withhold tasks/counts on absent, loading, denied or contradictory scope; a
+  known empty authorized result is distinct from unavailable work. A new receipt
+  resets to All work. Filtering itself performs no reads or writes.
+- Add one real composed React/session regression for simultaneous authored
+  evidence and follow-up attention, including independent task-read denial.
+- Run compiled client tests, production build, dependency gate and the existing
+  hosted PostgreSQL/FastAPI/Chromium journey at the published head. Preserve all
+  source-reading, report-download, amendment, recovery and permission assertions.
+  Obtain a separate read-only code review before declaring completion.
+
+### Observed local checkpoint
+
+Tests first: all 278 inherited client checks passed and all 21 unchanged donor
+attention tests failed on the #322 tree because the projection was absent. The
+new composed-screen test separately failed at the missing attention controls,
+after successfully loading and rendering the existing evidence packet.
+After applying the donor implementation, all **300 compiled client tests passed**
+with zero failures, cancellations or skips. The four donor code/test/browser
+blobs exactly match their published #299 object hashes. Build, hosted combined
+acceptance and independent review are recorded in the continuation PR as they
+complete; they are not inferred from either parent's prior green workflow.
+
+No backend, migrations, session/authentication code, dependency, CSS or workflow
+changes. Source owners and main remain unchanged; only a draft child is prepared.
+Next: converge owner-reviewed candidates and exercise the same connected workflow
+with reviewed document intake and the separately governed DOI connector. These
+are separate pending branches, not capabilities delivered by this increment.
+
+## Verified #322 / #328 integration review — 3 November 2026
+
+This checkpoint records live GitHub reads, immutable source review and retained
+artifact verification. It supersedes the earlier pending-run wording for these
+exact heads; it does not approve the wider parent chain or a future merge.
+
+### Exact dependency and ownership
+
+- #322 head: `19b75317701ae01fc93844077ac94c351fd982bd`; sole parent
+  #318 `0db90a45ec256d380c01d503162e31ac8ee419b5`.
+- #328 head: `5a188d4e18e4d80bc2ba1d662c966abc3096301f`; sole parent
+  is the #322 head above. Its tree is
+  `269ce69e54fa1338dbfa87ae6e043b36f11d6ba6`.
+- #299 is a selectively reused donor, not an ancestor. All four intended
+  production/test/browser blobs match donor
+  `b47cc6ddde922bb53aa399b7d05adaee2d07620c` exactly.
+- The two changes together touch 12 paths relative to #318. The 397 files
+  unchanged by #328 retain their #322 Git blob IDs and modes. The #328 document appends
+  to the complete #322 document without replacing its existing content.
+
+### Directly checked hosted evidence
+
+| Exact head | Run | Observed coverage |
+| --- | --- | --- |
+| #322 `19b7531` | [41664891696](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41664891696) | 278 client tests; build; actual PostgreSQL/FastAPI/React browser journey |
+| #322 `19b7531` | [41664891742](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41664891742) | 416 API tests without skips; 287 prototype tests; HTTP, restart and backup/restore acceptance |
+| #328 `5a188d4` | [41666427184](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41666427184) | 300 client tests without skips; build; complete connected browser journey, including follow-through attention |
+
+All three runs completed successfully on attempt 1. Checkout logs identify the
+exact PR heads above, rather than GitHub's synthetic merge commits.
+Artifact `13246611987` has SHA-256
+`a954037043d7fbf8321e2641530d30d9ce6cd9d27ea93660392dbbee984f825f`.
+Its commit record and all 403 source files match the #328 tree; executable
+file modes were also checked. This audit did not repeat the full test suites.
+
+The separate full API workflow did not run on #328. Its path filters exclude
+#328's frontend/documentation-only delta. Parent backend acceptance is retained
+as parent evidence, not relabelled as a child run. The current #328 merge-preview
+commit has the same tree as its head, but was not the checkout used in the run.
+
+### Review and remaining gates
+
+Separate automated reviews found no material defect in the bounded evidence
+contract/export or follow-through changes. Canonical patient, source, question,
+evidence, report, task and authorization owners are retained. These reviews are
+not submitted GitHub approvals or human, legal or clinical acceptance.
+
+Both PRs remain open drafts with no submitted review. #322 targets the #318
+branch; #328 targets the #322 branch. Neither targets main. Relative to main
+`24519839aa8ac1ea3aff88a956349ba72798a72a`, #328 is 168 commits ahead,
+zero behind, with 262 changed paths. A review of this two-commit delta does not
+approve that full inherited change set.
+
+Before merge: identify the destination and parent-chain review scope; obtain
+the appropriate human owner acceptance; run both existing H1 workflows on the
+actual approved candidate; record its commit, tree, checkout identities and
+results. A later documentation or code commit is a new candidate. Do not merge
+the child into an obsolete parent branch without an explicit retargeting plan.
+
+No source change, merge, deployment, branch-protection change, real-patient
+use or clinical approval is authorized by this evidence record.
+

@@ -48,6 +48,56 @@ class QuestionEvidenceContractTests(unittest.TestCase):
                 self.assertEqual(parsed, original)
                 self.assertNotIn(metadata()["title"], json.dumps(parsed))
 
+    def test_historical_citation_timestamp_is_visible_calendar_time_without_coercion(self):
+        # The created-at time is an immutable read receipt, not a client date.
+        # Python's standard ISO parser permits unusual Unicode separators;
+        # the HTTP model must deny those rather than render misleading history.
+        valid = (
+            "2026-11-03T00:00:00+00:00",
+            "2024-02-29T23:59:59.123456-05:00",
+            "2026-11-03T12:01:02Z",
+            "2026-11-03T12:01:02.1+01:30",
+        )
+        for value in valid:
+            with self.subTest(valid=value):
+                result = EvidenceLink(**{**link(), "created_at": value})
+                self.assertEqual(result.model_dump(mode="json")["created_at"], value)
+        invalid = (
+            "", "2026-02-30T00:00:00+00:00", "2025-02-29T00:00:00+00:00",
+            "2026-11-03", "2026-11-03T00:00:00",
+            "2026-11-03 00:00:00+00:00",
+            "2026-11-03\n00:00:00+00:00",
+            "2026-11-03\t00:00:00+00:00",
+            "2026-11-03\u202e00:00:00+00:00",
+            "2026-11-03\u202800:00:00+00:00",
+            "2026-11-03T25:00:00+00:00",
+            "2026-11-03T00:61:00+00:00",
+            "2026-11-03T00:00:61+00:00",
+            "2026-11-03T00:00:00+25:00",
+            "2026-11-03T00:00:00+05:99",
+            "2026-11-03T00:00:00.1234567+00:00",
+            "2026-11-03T00:00:00+00:00\n",
+            "2026-11-03T00:00:00+00:00extra",
+            b"2026-11-03T00:00:00+00:00",
+            None,
+            20261103,
+        )
+        for value in invalid:
+            with self.subTest(invalid=repr(value)), self.assertRaises(ValidationError):
+                EvidenceLink(**{**link(), "created_at": value})
+
+    def test_invalid_citation_history_timestamp_aborts_wire_preparation(self):
+        wire = {
+            "contract": "oi.pg-question-evidence-links/1",
+            "patient_id": "FICTIONAL-PATIENT", "case_id": "CASE-FICTIONAL",
+            "question_id": "QUESTION-" + "B" * 32,
+            "source_context_state": "current_unreviewed_question",
+            "source_access_receipt_id": "ACCESS-" + "C" * 32,
+            "links": [{**link(), "created_at": "2026-11-03\u202812:00:00+00:00"}],
+        }
+        with self.assertRaises(ValidationError):
+            _prepare(EvidenceLinks, wire)
+
     def test_metadata_identity_must_agree_with_its_exact_citation(self):
         for change in ({"citation": "FICT-OTHER@1"}, {"citation": "FICT-DEMO@2"},
                        {"id": "FICT-OTHER"}, {"version": "2"}):

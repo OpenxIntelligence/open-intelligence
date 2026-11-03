@@ -212,7 +212,7 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
                 'fresh authorized report inspection')
 
     def download(report_value):
-        destination = artifacts / 'evidence-report-downloads' / report_value['report_id']
+        destination = artifacts / 'evidence-report-downloads' / report_value['report_id'] / report_value['state']
         destination.mkdir(parents=True, exist_ok=True)
         cd.command('Browser.setDownloadBehavior', {'behavior': 'allow', 'downloadPath': str(destination.resolve())})
         before = len(responses())
@@ -223,9 +223,21 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
         path = next(destination.iterdir())
         actual = path.read_bytes()
         fresh = last('/evidence-reports/' + report_value['report_id'])
-        assert actual == fresh['body'].encode('utf-8') == report_value['body'].encode('utf-8')
+        cover, separator, body = actual.partition(b'--- BEGIN PRESERVED REPORT BODY ---\n')
+        assert separator and cover.startswith('OPEN INTELLIGENCE — EVIDENCE REPORT DOWNLOAD\n'.encode('utf-8'))
+        assert body == fresh['body'].encode('utf-8') == report_value['body'].encode('utf-8')
+        assert hashlib.sha256(body).hexdigest() == fresh['body_sha256']
+        assert fresh['state'] == report_value['state']
+        status = ('HISTORICAL — REASSESSMENT REQUIRED' if fresh['state'] == 'historical_reassessment_required'
+                  else 'CURRENT — UNREVIEWED')
+        assert status.encode('utf-8') in cover
+        for key in ('patient_id', 'case_id', 'question_id', 'report_id', 'prepared_at',
+                    'access_receipt_id', 'body_sha256', 'snapshot_sha256'):
+            assert fresh[key].encode('utf-8') in cover, key
+        assert f'Original body UTF-8 bytes: {len(body)}'.encode('utf-8') in cover
         assert fresh['access_receipt_id'] != report_value['access_receipt_id']
-        return path, actual
+        assert report_value['access_receipt_id'].encode('utf-8') not in cover
+        return path, actual, fresh['access_receipt_id']
 
     try:
         initial = inspect()
@@ -247,7 +259,7 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
         counter_assessment = assess(counter, 'contradicts', 'the entry was absent in this authored example',
             'This independently invented counterexample is retained as a contradictory human proposal.')
         first_report = report([support_assessment['assessment_id'], counter_assessment['assessment_id']])
-        downloaded_path, downloaded = download(first_report)
+        downloaded_path, downloaded, download_access = download(first_report)
         assert support['evidence_id'] in first_report['body'] and counter['evidence_id'] in first_report['body']
         assert cd.evaluate("document.querySelectorAll('[data-testid=evidence-report-body] script').length===0")
         if on_report is not None:
@@ -287,10 +299,13 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
         historical = last('/evidence-reports/' + first_report['report_id'])
         assert historical['state'] == 'historical_reassessment_required'
         assert historical['body'] == first_report['body'] and downloaded_path.read_bytes() == downloaded
+        historical_path, historical_bytes, historical_access = download(historical)
+        assert historical_path != downloaded_path and historical_bytes != downloaded
+        assert downloaded_path.read_bytes() == downloaded
         corrected_assessment = assess(corrected, 'unknown', 'café 🧪 labels as uncertain',
             'The correction requires a new explicit human proposal; no conclusion is carried forward.')
         second_report = report([corrected_assessment['assessment_id'], counter_assessment['assessment_id']])
-        second_path, second_bytes = download(second_report)
+        second_path, second_bytes, second_access = download(second_report)
 
         cd.command('Emulation.setDeviceMetricsOverride', {'width': 390, 'height': 844,
                    'deviceScaleFactor': 1, 'mobile': False})
@@ -319,22 +334,28 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
             assert withheld['body_sha256'] == report_value['body_sha256']
             assert not cd.evaluate("Boolean(document.querySelector('[data-testid=evidence-report-body]'))")
         assert downloaded_path.read_bytes() == downloaded and second_path.read_bytes() == second_bytes
+        assert historical_path.read_bytes() == historical_bytes
         assert cd.evaluate('localStorage.length===0 && sessionStorage.length===0')
         receipt = {
-            'contract': 'oi.h1-question-evidence-browser-acceptance/1', 'patient_id': patient_id,
+            'contract': 'oi.h1-question-evidence-browser-acceptance/2', 'patient_id': patient_id,
             'case_id': case_id, 'question_id': question_id, 'source_id': source_id,
             'original_download_relative_path': str(original_path.relative_to(artifacts)),
             'original_download_sha256': support['sha256'],
             'evidence': [support, counter, corrected],
             'assessments': [support_assessment, counter_assessment, corrected_assessment],
             'reports': [{**{k: v for k, v in r.items() if k not in {'body', 'snapshot'}},
-                         'download_relative_path': str(p.relative_to(artifacts)), 'download_bytes': len(b)}
-                        for r, p, b in ((first_report, downloaded_path, downloaded),
-                                        (second_report, second_path, second_bytes))],
+                         'download_relative_path': str(p.relative_to(artifacts)), 'download_bytes': len(b),
+                         'download_sha256': hashlib.sha256(b).hexdigest(),
+                         'download_access_receipt_id': access}
+                        for r, p, b, access in ((first_report, downloaded_path, downloaded, download_access),
+                                                (historical, historical_path, historical_bytes, historical_access),
+                                                (second_report, second_path, second_bytes, second_access))],
             'actual_api_restart_preserved_report': True,
             'lost_response_exact_retry_recovered_once': True,
             'fresh_export_revocation_no_blob': True,
             'evidence_amendment_requires_reassessment': True,
+            'historical_download_carries_fresh_status_and_receipt': True,
+            'download_cover_preserves_exact_body_bytes_and_hash': True,
             'withdrawal_withholds_historical_reports': True,
             'original_downloads_unchanged': True, 'clinical_approval': False, 'model_executed': False,
         }
