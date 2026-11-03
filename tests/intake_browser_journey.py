@@ -143,6 +143,59 @@ def main():
             screenshot('intake-report-history.png', '#snapshot-list')
 
             create_case('CASE-BETA', 'Beta')
+            # Unsubmitted source-linked questions must survive a blocked
+            # patient switch, matching the established PR #163 behavior.
+            session.evaluate("document.querySelector('#question-text').value='Which fictional finding still needs review?'")
+            session.evaluate("""(() => {
+              const picker = document.querySelector('#case-picker');
+              picker.value = 'CASE-ALPHA'; picker.dispatchEvent(new Event('change'));
+            })()""")
+            assert session.evaluate("document.querySelector('#case-picker').value") == 'CASE-BETA'
+            assert session.evaluate("document.querySelector('#question-text').value") == 'Which fictional finding still needs review?'
+            assert 'clear' in session.evaluate("document.querySelector('#notice').textContent")
+            session.evaluate("document.querySelector('#question-text').value=''")
+
+            # The fallback paste field is also original case-scoped source
+            # input; a case change must not destroy its unsubmitted bytes.
+            session.evaluate("document.querySelector('#report-text').value=" +
+                             json.dumps('OI-SYNTHETIC-REPORT/1\\nPatient: CASE-BETA\\n'))
+            session.evaluate("""(() => {
+              const picker = document.querySelector('#case-picker');
+              picker.value = 'CASE-ALPHA'; picker.dispatchEvent(new Event('change'));
+            })()""")
+            assert session.evaluate("document.querySelector('#case-picker').value") == 'CASE-BETA'
+            assert session.evaluate("document.querySelector('#report-text').value") == 'OI-SYNTHETIC-REPORT/1\\nPatient: CASE-BETA\\n'
+            session.evaluate("document.querySelector('#report-text').value=''")
+
+            # Real selected file bytes must remain selected; intake.js clears
+            # the input on an accepted case switch, so this guard matters.
+            dom = session.command('DOM.getDocument')
+            file_input = session.command('DOM.querySelector', {
+                'nodeId': dom['root']['nodeId'], 'selector': '#intake-files'})
+            session.command('DOM.setFileInputFiles', {
+                'nodeId': file_input['nodeId'],
+                'files': [str((data / 'beta-pathology.txt').resolve())]})
+            assert session.evaluate("document.querySelector('#intake-files').files.length") == 1
+            session.evaluate("""(() => {
+              const picker = document.querySelector('#case-picker');
+              picker.value = 'CASE-ALPHA'; picker.dispatchEvent(new Event('change'));
+            })()""")
+            assert session.evaluate("document.querySelector('#case-picker').value") == 'CASE-BETA'
+            assert session.evaluate("document.querySelector('#intake-files').files.length") == 1
+            session.evaluate("document.querySelector('#intake-files').value=''; document.querySelector('#intake-files').dispatchEvent(new Event('change'))")
+
+            # After explicit clearing, the existing case guard permits a
+            # genuine switch in either direction without leaking source UI.
+            session.evaluate("""(() => {
+              const picker = document.querySelector('#case-picker');
+              picker.value = 'CASE-ALPHA'; picker.dispatchEvent(new Event('change'));
+            })()""")
+            session.wait("document.querySelector('#case-picker').value === 'CASE-ALPHA' && document.querySelector('#case-heading').textContent === 'Fictional case Alpha'", 'cleared draft case switch')
+            session.evaluate("""(() => {
+              const picker = document.querySelector('#case-picker');
+              picker.value = 'CASE-BETA'; picker.dispatchEvent(new Event('change'));
+            })()""")
+            session.wait("document.querySelector('#case-heading').textContent === 'Fictional case Beta'", 'return to clean beta case')
             assert session.evaluate("document.querySelectorAll('#source-list .source-card').length") == 0
             assert session.evaluate("document.querySelectorAll('#intake-receipts li').length") == 0
             import_files([data/'beta-pathology.txt'], ['imported'])
