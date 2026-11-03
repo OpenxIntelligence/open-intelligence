@@ -105,3 +105,9 @@
 .overview-access{margin-top:26px;border-top:1px solid #d7e0d8;padding-top:18px}
 .overview-access-heading{font-size:16px;font-family:inherit;letter-spacing:0;margin:0 0 14px;color:#435b50}
 .overview-access .panel{box-shadow:none}
+
+/* UX-05: visible source assertions; provenance stays one disclosure away. */
+.finding-provenance{margin-top:12px;padding-top:8px;border-top:1px solid #dce3dc}
+.finding-provenance summary{min-height:44px;display:list-item;align-content:center;color:#174b48;font-size:13px}
+.finding-provenance .source-metadata{margin:8px 0 0}
+.finding-list li>small{display:block;margin-top:8px}
