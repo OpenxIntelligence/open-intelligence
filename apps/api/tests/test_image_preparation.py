@@ -174,6 +174,27 @@ class ImagePreparationTests(unittest.TestCase):
                 self.assertEqual(self.registry.committed, [])
                 self.assertEqual(self.order, ["begin", "prepare", "authority", "event", "rollback"])
 
+    def test_authority_withdrawn_during_audit_append_rolls_back_image_response(self):
+        for operation in ("import", "index", "original"):
+            with self.subTest(operation=operation):
+                self.setUp()
+                append_event = self.registry.append_event
+
+                def withdraw_after_append(*args, **kwargs):
+                    append_event(*args, **kwargs)
+                    self.allowed = False
+
+                self.registry.append_event = withdraw_after_append
+
+                def prepare(*parts):
+                    self.order.append("prepare")
+                    return parts
+
+                with self.assertRaises(PatientRegistryDenied):
+                    self.call(operation, prepare)
+                self.assertEqual(self.registry.committed, [])
+                self.assertEqual(self.order, ["begin", "prepare", "authority", "event", "authority", "rollback"])
+
 
 if __name__ == "__main__":
     unittest.main()
