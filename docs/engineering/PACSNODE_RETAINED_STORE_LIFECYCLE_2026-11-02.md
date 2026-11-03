@@ -13,6 +13,42 @@ source-bound WADO guard, pinned fixture generator, namespace observations and
 release-HOLD owner. No product schema, original-custody service, patient API,
 authorization model or application dependency is added.
 
+## Preserved original failure and corrective work
+
+The original unpatched experiment at evaluator commit
+`c7d6b18cb74fb1dc53e6af92b4cecb3ee08cb75d` completed in
+[run 41570215759](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41570215759)
+with **lifecycle acceptance false, exit 2**, and
+`conflicting_sop_original_replaced`. After HTTP 200 for the conflicting upload,
+the object returned under the same SOP UID matched the conflicting submission
+exactly. The original-bound guard withheld it and the sibling remained intact.
+The first restart and identical replay preserved both originals. The second
+restart established amendment refusal before HTTP, not another full byte check.
+
+The original numerical receipt is archived verbatim at
+`examples/synthetic/pacsnode_lifecycle_failure_41570215759.json`, SHA-256
+`a8dc80f1e5a6b0401cb8824a016e292b088dfca2bc75c55292160db7132e6063`.
+The downloaded artifact ZIP digest was independently verified as
+`aa7d5e5f24404926f21f1975ea38305cf05154ef8a279e17456b2f626deed7e3`.
+These failed observations remain historical evidence after any later fix.
+
+The user authorized a corrective storage experiment. Its
+[design](../superpowers/specs/2026-11-02-pacsnode-immutable-sop-design.md) and
+[plan](../superpowers/plans/2026-11-02-pacsnode-immutable-sop.md) require immutable
+SOP publication, explicit conflicts, concurrency and post-conflict restart.
+The isolated upstream patch and provenance live in `tools/imaging/patches`.
+This builds a locally modified derivative of the same pinned source; no
+upstream release or adopted application dependency is claimed.
+
+The current hosted workflow enables `--immutable-write-checks` and requires
+positive exit 0, four exact authored/winning objects, concurrent conflict and
+identical upload checks, and three verified orderly restarts. The second
+restart now retrieves all originals after conflicts, before further upload;
+the third retains amendment refusal. It also runs the same independent Rust
+regression before and after applying the patch. The following original
+sequence/exit-2 characterization describes the preserved c7d6b18 experiment;
+the corrective workflow no longer accepts a negative result as a passing fix.
+
 ## Current ownership
 
 - #180 owns the initial real pinned STOW/QIDO/WADO original-byte experiment.
@@ -21,7 +57,7 @@ authorization model or application dependency is added.
   and #137's fictional-data corrections.
 - #220 already supplied a limited same-storage restart while enabling native
   OIDC. This continuation keeps configuration fixed and tests duplicate writes.
-- The concurrently active H1 imaging/source-access work remains the owner of
+- PR #242's H1 original-image custody and source-access work remains the owner of
   trusted custody and actor/case/purpose grants. This experiment is not its
   replacement and does not reconcile the sibling OIDC branch into #219.
 
@@ -41,7 +77,7 @@ never reconstructed from backend output. The existing finite Explicit VR LE
 fixture decoder is used for independent identity/pixel comparisons; it is not a
 general DICOM parser or clinical image validator.
 
-## Executable sequence
+## Original unpatched executable sequence
 
 1. Start the unchanged binary in a new Linux network namespace with only
    loopback and a new standalone configuration/storage directory. Require both
@@ -72,7 +108,7 @@ An ignored signal, unsuccessful shutdown or changed configuration cannot count
 as an orderly restart. Cleanup may force termination, but that is not successful
 restart evidence.
 
-## Receipt and CI interpretation
+## Original receipt and characterization interpretation
 
 `pacsnode-lifecycle.json` retains phase-specific source receipts, original and
 returned hashes, exact logical inventory, upload statuses and process facts.
@@ -100,22 +136,23 @@ existing security/adoption assessment is not overridden. The accompanying draft
 PR and its exact-head workflow artifact are the result record for a particular
 execution; the source does not hardcode a successful external result.
 
-## Upstream source findings to verify live
+## Upstream source findings confirmed by the original live run
 
 The pinned [STOW route](https://github.com/knopkem/pacsnode/blob/e9b4334477a66967d290add9e0b9afa068f59dc0/crates/pacs-api/src/routes/stow.rs)
 writes a blob before separate study, series and instance statements. The
 [filesystem store](https://github.com/knopkem/pacsnode/blob/e9b4334477a66967d290add9e0b9afa068f59dc0/crates/pacs-fs-storage/src/fs.rs)
 uses a direct overwrite, and the
 [SQLite instance store](https://github.com/knopkem/pacsnode/blob/e9b4334477a66967d290add9e0b9afa068f59dc0/crates/pacs-sqlite-store/src/store.rs)
-upserts on the instance UID. These paths predict that a conflicting upload can
-replace an original; that prediction is distinct from an inspected live receipt.
+upserts on the instance UID. The original live receipt confirmed that a
+conflicting upload replaces the object returned under the existing SOP UID.
 The [shutdown handler](https://github.com/knopkem/pacsnode/blob/e9b4334477a66967d290add9e0b9afa068f59dc0/crates/pacs-server/src/main.rs)
 uses `tokio::signal::ctrl_c`, so this experiment uses SIGINT.
 
 ## Remaining limits
 
 Orderly restart is not crash atomicity, power-loss durability, backup restore,
-concurrent-write safety, physical deduplication or upstream-event idempotency.
+physical deduplication or upstream-event idempotency. Concurrent-write evidence
+belongs to the corrective experiment and its exact derived build receipt.
 Two tiny fictional CT objects are not representative clinical imaging coverage.
 Source freshness does not authenticate a caller or authorize direct PACS access.
 QIDO/STOW conformance, default compressed storage, native patient/tenant policy,

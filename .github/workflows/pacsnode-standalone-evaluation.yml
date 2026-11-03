@@ -91,7 +91,40 @@ jobs:
           # Do not run the default Docker Compose. That deployment's
           # MinIO and image assets require a SEPARATE rights gate.
           echo "MIT declared in NOTICE/Cargo.toml; no adoption or legal clearance."
-      - name: Record Rust compiler version and pin resolved crate declarations
+      - name: Prove the original regression and apply the isolated immutable SOP patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/oi-pacsnode-source"
+          git diff --exit-code
+          mkdir -p crates/pacs-fs-storage/tests
+          cp "$GITHUB_WORKSPACE/tools/imaging/upstream_tests/oi_immutable_sop_red.rs" \
+            crates/pacs-fs-storage/tests/oi_immutable_sop_red.rs
+          upstream_red_exit=0
+          cargo test --locked -p pacs-fs-storage --test oi_immutable_sop_red -- --nocapture \
+            > "$GITHUB_WORKSPACE/verification-artifacts/pacsnode-immutable-upstream-red-tests.txt" 2>&1 \
+            || upstream_red_exit=$?
+          # Require an actual assertion failure, not a compile or network error.
+          test "$upstream_red_exit" = 101
+          grep -Fq 'same SOP content conflict must be rejected' \
+            "$GITHUB_WORKSPACE/verification-artifacts/pacsnode-immutable-upstream-red-tests.txt"
+          grep -Fq 'test result: FAILED. 0 passed; 1 failed;' \
+            "$GITHUB_WORKSPACE/verification-artifacts/pacsnode-immutable-upstream-red-tests.txt"
+          python - "$GITHUB_WORKSPACE" "$PACS_SOURCE_COMMIT" <<'PY'
+          import hashlib, json, sys
+          from pathlib import Path
+          root = Path(sys.argv[1])
+          manifest = json.loads((root / 'tools/imaging/patches/pacsnode-immutable-sop.json').read_text())
+          patch = root / 'tools/imaging/patches/pacsnode-immutable-sop.patch'
+          assert manifest['upstream_commit'] == sys.argv[2]
+          assert hashlib.sha256(patch.read_bytes()).hexdigest() == manifest['patch_sha256']
+          assert manifest['backend_adoption_approved'] is False
+          assert manifest['scope'] == 'standalone_sqlite_filesystem'
+          PY
+          git apply --check "$GITHUB_WORKSPACE/tools/imaging/patches/pacsnode-immutable-sop.patch"
+          git apply "$GITHUB_WORKSPACE/tools/imaging/patches/pacsnode-immutable-sop.patch"
+          echo "Applied locally maintained immutable SOP patch; upstream release is unchanged."
+      - name: Record Rust compiler version and pin derived crate declarations
         shell: bash
         run: |
           set -euo pipefail
@@ -99,6 +132,7 @@ jobs:
           rustc --version | tee "$GITHUB_WORKSPACE/verification-artifacts/rustc-version.txt"
           cargo --version
           cargo metadata --format-version 1 --locked > "$RUNNER_TEMP/pacs-metadata.json"
+          sha256sum Cargo.lock > "$GITHUB_WORKSPACE/verification-artifacts/pacsnode-derived-cargo-lock-sha256.txt"
           python - "$RUNNER_TEMP/pacs-metadata.json" "$GITHUB_WORKSPACE/verification-artifacts/cargo-license-snapshot.json" <<'PY'
           import json,sys
           from pathlib import Path
@@ -119,6 +153,19 @@ jobs:
           Path(sys.argv[2]).write_text(json.dumps(receipt,indent=2)+'\n')
           print(f"Recorded {len(entries)} crate declarations; {len(flags)} license flags")
           PY
+      - name: Verify immutable storage and metadata Rust regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/oi-pacsnode-source"
+          cargo test --locked -p pacs-fs-storage -- --nocapture 2>&1 |
+            tee "$GITHUB_WORKSPACE/verification-artifacts/pacsnode-immutable-storage-tests.txt"
+          cargo test --locked -p pacs-sqlite-store store::tests -- --nocapture 2>&1 |
+            tee "$GITHUB_WORKSPACE/verification-artifacts/pacsnode-immutable-metadata-tests.txt"
+          cargo test --locked -p pacs-api immutable -- --nocapture 2>&1 |
+            tee "$GITHUB_WORKSPACE/verification-artifacts/pacsnode-immutable-api-tests.txt"
+          cargo test --locked -p pacs-dimse immutable -- --nocapture 2>&1 |
+            tee "$GITHUB_WORKSPACE/verification-artifacts/pacsnode-immutable-dimse-tests.txt"
       - name: Compile only the standalone SQLite and filesystem backend
         shell: bash
         run: |
@@ -126,6 +173,33 @@ jobs:
           cd "$RUNNER_TEMP/oi-pacsnode-source"
           cargo build --locked -p pacs-server --no-default-features --features standalone --bin pacsnode
           test -x target/debug/pacsnode
+          python - "$GITHUB_WORKSPACE" "$PACS_SOURCE_COMMIT" <<'PY'
+          import hashlib, json, subprocess, sys
+          from pathlib import Path
+          root = Path(sys.argv[1])
+          manifest_path = root / 'tools/imaging/patches/pacsnode-immutable-sop.json'
+          manifest = json.loads(manifest_path.read_text())
+          changed = subprocess.check_output(['git', 'diff', '--name-only'], text=True).splitlines()
+          added = subprocess.check_output(
+              ['git', 'ls-files', '--others', '--exclude-standard'], text=True).splitlines()
+          changed = sorted(set(changed + added) - {
+              'crates/pacs-fs-storage/tests/oi_immutable_sop_red.rs'})
+          assert sorted(changed) == sorted(manifest['changed_upstream_files'])
+          hashes = {name: hashlib.sha256(Path(name).read_bytes()).hexdigest() for name in changed}
+          assert hashes == manifest['derived_source_sha256']
+          build = {
+              'kind': 'oi.pacsnode-derived-build/1',
+              'upstream_commit': sys.argv[2],
+              'patch_sha256': manifest['patch_sha256'],
+              'manifest_sha256': hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
+              'derived_source_sha256': hashes,
+              'binary_sha256': hashlib.sha256(Path('target/debug/pacsnode').read_bytes()).hexdigest(),
+              'scope': manifest['scope'], 'upstream_release_modified': False,
+              'backend_adoption_approved': False,
+          }
+          (root / 'verification-artifacts/pacsnode-derived-build.json').write_text(
+              json.dumps(build, indent=2, sort_keys=True) + '\n')
+          PY
       - name: Run actual PACS and probe in an isolated network namespace
         shell: bash
         run: |
@@ -133,7 +207,7 @@ jobs:
           pacs_run_directory=$(mktemp -d "$RUNNER_TEMP/oi-pacsnode-run.XXXXXX")
           parent_namespace=$(readlink /proc/self/ns/net)
           # The pinned upstream hard-codes wildcard HTTP and DIMSE listeners.
-          # Keep its source unchanged; bring up only lo in a fresh namespace.
+          # The storage patch does not change listeners; enable only loopback.
           sudo unshare --net -- bash tools/imaging/run_confined_pacsnode.sh \
             "$RUNNER_TEMP/oi-pacsnode-source/target/debug/pacsnode" \
             "$GITHUB_WORKSPACE" "$pacs_run_directory" "$parent_namespace" \
@@ -144,6 +218,12 @@ jobs:
           for name in ('pacsnode-real-dicomweb.json', 'imaging-release-hold-assessment.json',
                        'pacsnode-test-config-sha256.txt', 'pacsnode-test-storage-transfer-syntax.txt'):
               assert (Path('verification-artifacts') / name).stat().st_size > 0, name
+          build = json.loads(Path('verification-artifacts/pacsnode-derived-build.json').read_text())
+          for name in ('pacsnode-real-dicomweb.json', 'imaging-release-hold-assessment.json'):
+              path = Path('verification-artifacts') / name
+              receipt = json.loads(path.read_text())
+              receipt['evaluation_build'] = build
+              path.write_text(json.dumps(receipt, indent=2, sort_keys=True) + '\n')
           d=json.loads(Path('verification-artifacts/imaging-release-hold-assessment.json').read_text())
           assert d['classification']=='HOLD_NOT_APPROVED'
           assert d['approval_automatically_granted'] is False
@@ -152,7 +232,7 @@ jobs:
           assert d['direct_access_boundary_characterized'] is True
           assert d['pacs_service_access_controls'] is False
           PY
-      - name: Characterize retained-store restart and duplicate SOP protection
+      - name: Require real immutable SOP acceptance with concurrent uploads and restart
         shell: bash
         run: |
           set -euo pipefail
@@ -164,9 +244,8 @@ jobs:
             "$GITHUB_WORKSPACE" "$pacs_lifecycle_directory" "$parent_namespace" \
             "$(command -v python)" lifecycle || lifecycle_exit=$?
           printf '%s\n' "$lifecycle_exit" > verification-artifacts/pacsnode-lifecycle-exit-code.txt
-          # Exit 2 is a completed NEGATIVE acceptance result. Keep it intact;
-          # this step validates the characterization, not backend acceptance.
-          # An incomplete run, missing evidence, or another failure is red CI.
+          # The prior unpatched exit2 receipt remains permanently archived.
+          # A corrective build must satisfy every bounded integrity criterion.
           python - "$lifecycle_exit" <<'PY'
           import json, sys
           from pathlib import Path
@@ -174,11 +253,16 @@ jobs:
           from tools.imaging.pacsnode_lifecycle_evaluation import acceptance_exit_code
           d = json.loads(Path('verification-artifacts/pacsnode-lifecycle.json').read_text())
           status = int(sys.argv[1])
-          assert status in (0, 2) and status == acceptance_exit_code(d)
+          build = json.loads(Path('verification-artifacts/pacsnode-derived-build.json').read_text())
+          d['evaluation_build'] = build
+          Path('verification-artifacts/pacsnode-lifecycle.json').write_text(
+              json.dumps(d, indent=2, sort_keys=True) + '\n')
+          assert status == 0 and status == acceptance_exit_code(d)
           assert d['evaluation_completed'] is True
           assert d['evaluation_network_namespace_confined'] is True
           assert d['process_restarts_verified'] is True
-          assert len(d['restart_observations']) == 2
+          assert len(d['restart_observations']) == 3
+          assert d['binary_sha256'] == build['binary_sha256']
           assert d['source_ledger_unchanged_after_restart'] is True
           assert d['wrong_case_refused'] is True and d['wrong_case_http_calls'] == 0
           assert d['amendment_refused_after_restart'] is True
@@ -194,21 +278,37 @@ jobs:
                   assert obj['returned_dicom_sha256'] == d['original_dicom_sha256'][sop]
                   assert obj['returned_pixel_sha256'] == d['original_pixel_sha256'][sop]
                   assert obj['source_bound_read_accepted'] is True
-          if status == 2:
-              assert d['lifecycle_acceptance_passed'] is False
-              assert d['acceptance_blockers'] == ['conflicting_sop_original_replaced']
-              target = d['phases']['conflicting_replay']['objects'][pacs.SOP_UIDS[0]]
-              sibling = d['phases']['conflicting_replay']['objects'][pacs.SOP_UIDS[1]]
-              assert target['returned_dicom_sha256'] == d['conflicting_submission']['dicom_sha256']
-              assert target['returned_dicom_sha256'] != d['original_dicom_sha256'][pacs.SOP_UIDS[0]]
-              assert target['source_bound_read_accepted'] is False
-              assert d['changed_object_withheld_by_source_guard'] is True
-              assert sibling['original_bytes_match'] and sibling['source_bound_read_accepted']
-              print('NEGATIVE RESULT RETAINED: conflicting SOP replaced the original; acceptance FAILED')
-          else:
-              assert d['lifecycle_acceptance_passed'] is True and d['acceptance_blockers'] == []
-              assert d['conflicting_sop_rejected_and_original_preserved'] is True
-              print('Bounded lifecycle contract passed; adoption still HOLD')
+          assert d['lifecycle_acceptance_passed'] is True and d['acceptance_blockers'] == []
+          assert d['conflicting_sop_rejected_and_original_preserved'] is True
+          assert d['uploads']['conflicting_replay']['http_status'] == 409
+          for field in ('immutable_write_checks_required', 'immutable_write_checks_passed',
+                        'concurrent_conflicting_uploads_preserved_winner',
+                        'concurrent_identical_uploads_preserved_inventory',
+                        'post_conflict_restart_preserved_originals'):
+              assert d[field] is True, field
+          race = d['concurrency']['new_sop_conflict']
+          assert sorted(u['http_status'] for u in race['uploads']) == [200, 409]
+          assert race['winner_preserved_after_rejection'] is True
+          for name in ('identical_new_sop', 'identical_replay'):
+              group = d['concurrency'][name]
+              assert all(u['http_status'] == 200 for u in group['uploads'])
+              assert group['preserved_inventory'] is True
+          retry = d['concurrency']['conflict_retry']
+          assert retry['upload']['http_status'] == 409
+          assert retry['originals_preserved_after_rejection'] is True
+          expected = d['immutable_original_dicom_sha256']
+          assert len(expected) == 4 and set(pacs.SOP_UIDS).issubset(expected)
+          for name in ('after_concurrent_identical', 'after_concurrent_identical_replay',
+                       'after_conflict_retry', 'after_conflicts_restart'):
+              phase = d['phases'][name]
+              assert phase['inventory_matches'] is True
+              assert phase['qido_sop_multiplicity'] == dict.fromkeys(expected, 1)
+              for sop, original in expected.items():
+                  obj = phase['objects'][sop]
+                  assert obj['returned_dicom_sha256'] == original
+                  assert obj['returned_pixel_sha256'] == d['immutable_original_pixel_sha256'][sop]
+                  assert obj['source_bound_read_accepted'] is True
+          print('Bounded immutable SOP lifecycle acceptance PASSED; adoption remains HOLD')
           PY
       - name: Preserve only source and numerical receipts, no image objects
         if: always()
@@ -225,6 +325,13 @@ jobs:
             verification-artifacts/pacsnode-dicom-regression-tests.txt
             verification-artifacts/pacsnode-upstream-commit.txt
             verification-artifacts/pacsnode-cargo-lock-sha256.txt
+            verification-artifacts/pacsnode-derived-cargo-lock-sha256.txt
+            verification-artifacts/pacsnode-derived-build.json
+            verification-artifacts/pacsnode-immutable-upstream-red-tests.txt
+            verification-artifacts/pacsnode-immutable-storage-tests.txt
+            verification-artifacts/pacsnode-immutable-metadata-tests.txt
+            verification-artifacts/pacsnode-immutable-api-tests.txt
+            verification-artifacts/pacsnode-immutable-dimse-tests.txt
             verification-artifacts/rustc-version.txt
             verification-artifacts/cargo-license-snapshot.json
             verification-artifacts/pacsnode-real-dicomweb.json

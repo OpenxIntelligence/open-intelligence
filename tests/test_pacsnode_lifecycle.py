@@ -8,9 +8,11 @@ from __future__ import annotations
 from contextlib import redirect_stderr, redirect_stdout
 from hashlib import sha256
 from io import StringIO
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
 import tempfile
+from threading import Barrier, Lock, Thread
 import unittest
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlsplit
@@ -155,6 +157,128 @@ class StatefulDicomBoundary:
         return {"restart_number": self.restarts, "restart_verified": True}
 
 
+class ConcurrentDicomServer:
+    """Real loopback HTTP boundary with an atomic, controlled test store.
+
+    The barrier is in the HTTP server, proving that both uploads reached it
+    before either writer is allowed to decide the winner. This is a test
+    oracle only; Rust storage and real-process behavior are verified in CI.
+    """
+    RACE_UID = "2.25.110026110201000000000000000006"
+    IDENTICAL_UID = "2.25.110026110201000000000000000007"
+
+    def __init__(self, work_dir, originals, *, overwrite_race=False,
+                 write_then_reject_race=False, lose_after_second_restart=False,
+                 duplicate_identical_inventory=False):
+        self.work_dir, self.originals = work_dir, originals
+        self.stored = {}
+        self.restarts = 0
+        self.events = []
+        self.posts = []
+        self.lock = Lock()
+        self.barriers = {uid: Barrier(2) for uid in (self.RACE_UID, self.IDENTICAL_UID)}
+        self.arrivals = {uid: 0 for uid in self.barriers}
+        self.overwrite_race = overwrite_race
+        self.write_then_reject_race = write_then_reject_race
+        self.lose_after_second_restart = lose_after_second_restart
+        self.duplicate_identical_inventory = duplicate_identical_inventory
+        owner = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def send_payload(self, status, media, data):
+                self.send_response(status)
+                self.send_header("Content-Type", media)
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
+            def do_POST(self):
+                count = int(self.headers.get("Content-Length", "0"))
+                if not 0 < count < 20_000 or self.path != "/wado/studies":
+                    self.send_payload(400, "text/plain", b"bounded input required")
+                    return
+                incoming = {_unpack(data)["sop"]: data for data in
+                            pacs.multipart_dicom_parts(self.headers["Content-Type"],
+                                                       self.rfile.read(count))}
+                with owner.lock:
+                    owner.events.append(("POST", self.path, owner.restarts))
+                    owner.posts.append(dict(incoming))
+                    uid = next(iter(incoming))
+                    if len(incoming) == 1 and uid in owner.arrivals:
+                        owner.arrivals[uid] += 1
+                        barrier = (owner.barriers[uid] if owner.arrivals[uid] <= 2
+                                   else None)
+                    else:
+                        barrier = None
+                if barrier is not None:
+                    barrier.wait(timeout=5)
+                status = 200
+                with owner.lock:
+                    for uid, data in incoming.items():
+                        existing = owner.stored.get(uid)
+                        if existing is not None and existing != data:
+                            status = 409
+                            if uid == owner.RACE_UID and owner.overwrite_race:
+                                owner.stored[uid] = data
+                                status = 200
+                            elif uid == owner.RACE_UID and owner.write_then_reject_race:
+                                owner.stored[uid] = data
+                            break
+                    if status == 200:
+                        owner.stored.update(incoming)
+                self.send_payload(status, "application/dicom+json", b"{}")
+
+            def do_GET(self):
+                parsed = urlsplit(self.path)
+                with owner.lock:
+                    owner.events.append(("GET", parsed.path, owner.restarts))
+                    stored = dict(owner.stored)
+                prefix = (f"/wado/studies/{pacs.IMAGE_STUDY_UID}/series/"
+                          f"{pacs.IMAGE_SERIES_UID}/instances")
+                if parsed.path == "/wado/studies":
+                    reply = [{"0020000D": {"vr": "UI", "Value": [pacs.IMAGE_STUDY_UID]}}]
+                elif parsed.path == prefix:
+                    ids = list(stored)
+                    if owner.duplicate_identical_inventory and owner.IDENTICAL_UID in stored:
+                        ids.append(owner.IDENTICAL_UID)
+                    reply = [{"0020000D": {"vr": "UI", "Value": [pacs.IMAGE_STUDY_UID]},
+                              "0020000E": {"vr": "UI", "Value": [pacs.IMAGE_SERIES_UID]},
+                              "00080018": {"vr": "UI", "Value": [uid]}} for uid in ids]
+                elif parsed.path.startswith(prefix + "/"):
+                    uid = parsed.path[len(prefix) + 1:]
+                    if uid not in stored:
+                        self.send_payload(404, "text/plain", b"missing")
+                        return
+                    media, body = pacs.multipart_body([stored[uid]])
+                    self.send_payload(200, media, body)
+                    return
+                else:
+                    self.send_payload(404, "text/plain", b"unknown")
+                    return
+                self.send_payload(200, "application/dicom+json", json.dumps(reply).encode())
+
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.thread = Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+        self.origin = f"http://127.0.0.1:{self.server.server_port}"
+
+    def close(self):
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join(timeout=5)
+
+    def restart(self):
+        self.restarts += 1
+        if self.lose_after_second_restart and self.restarts == 2:
+            self.stored.pop(self.RACE_UID, None)
+        if not (self.work_dir / "source.sqlite").is_file():
+            raise AssertionError("Real source ledger was lost")
+        return {"restart_number": self.restarts, "restart_verified": True}
+
+
 class PacsnodeLifecycleTests(unittest.TestCase):
     def setUp(self):
         self.assertIsNotNone(lifecycle, "The lifecycle evaluator must be implemented")
@@ -213,6 +337,110 @@ class PacsnodeLifecycleTests(unittest.TestCase):
                     self.assertTrue(entry["source_bound_read_accepted"])
                     self.assertEqual(entry["returned_dicom_sha256"],
                                      sha256(self.originals[uid]).hexdigest())
+
+
+    def test_non_conflict_400_does_not_satisfy_explicit_409_contract(self):
+        def wrap(boundary):
+            def request(url, **kwargs):
+                try:
+                    return boundary.request(url, **kwargs)
+                except pacs.BackendHTTPError as error:
+                    if error.status == 409:
+                        raise pacs.BackendHTTPError(400) from None
+                    raise
+            return request
+
+        receipt, _ = self.evaluate(request_wrapper=wrap)
+        self.assertFalse(receipt["lifecycle_acceptance_passed"])
+        self.assertFalse(receipt["conflicting_sop_rejected_and_original_preserved"])
+        self.assertIn("conflicting_sop_not_explicitly_rejected", receipt["acceptance_blockers"])
+
+    def immutable_evaluate(self, **options):
+        backend = ConcurrentDicomServer(self.work_dir, self.originals, **options)
+        self.addCleanup(backend.close)
+        receipt = lifecycle.run_lifecycle_evaluation(
+            backend.origin, self.work_dir, backend.restart, originals=self.originals,
+            immutable_write_checks=True)
+        self.assertNotIn(PRIVATE_ERROR, json.dumps(receipt))
+        self.assertNotIn("DICM", json.dumps(receipt))
+        self.assertEqual(receipt["classification"], "HOLD_NOT_APPROVED")
+        return receipt, backend
+
+    def test_concurrent_immutable_winner_replays_and_post_conflict_restart(self):
+        receipt, backend = self.immutable_evaluate()
+        self.assertTrue(receipt["evaluation_completed"], receipt)
+        self.assertTrue(receipt["lifecycle_acceptance_passed"], receipt)
+        self.assertTrue(receipt["immutable_write_checks_required"])
+        self.assertTrue(receipt["immutable_write_checks_passed"])
+        self.assertTrue(receipt["concurrent_conflicting_uploads_preserved_winner"])
+        self.assertTrue(receipt["concurrent_identical_uploads_preserved_inventory"])
+        self.assertTrue(receipt["post_conflict_restart_preserved_originals"])
+        self.assertEqual(len(receipt["restart_observations"]), 3)
+        race = receipt["concurrency"]["new_sop_conflict"]
+        self.assertEqual(sorted(r["http_status"] for r in race["uploads"]), [200, 409])
+        winner = race["winner_submission_index"]
+        self.assertEqual(race["uploads"][winner]["http_status"], 200)
+        self.assertEqual(sha256(backend.stored[backend.RACE_UID]).hexdigest(),
+                         race["submission_dicom_sha256"][winner])
+        self.assertTrue(race["winner_preserved_after_rejection"])
+        self.assertTrue(receipt["concurrency"]["conflict_retry"]["originals_preserved_after_rejection"])
+        self.assertEqual(receipt["concurrency"]["conflict_retry"]["upload"]["http_status"], 409)
+        for group in ("identical_new_sop", "identical_replay"):
+            self.assertEqual([r["http_status"] for r in receipt["concurrency"][group]["uploads"]],
+                             [200, 200])
+        for phase_name in ("after_conflict_retry", "after_concurrent_identical",
+                           "after_concurrent_identical_replay", "after_conflicts_restart"):
+            phase = receipt["phases"][phase_name]
+            self.assertTrue(phase["inventory_matches"])
+            for uid, data in self.originals.items():
+                self.assertEqual(phase["objects"][uid]["returned_dicom_sha256"],
+                                 sha256(data).hexdigest())
+            self.assertTrue(all(entry["original_bytes_match"] and entry["pixel_bytes_match"]
+                                and entry["source_bound_read_accepted"]
+                                for entry in phase["objects"].values()))
+        final = receipt["phases"]["after_conflicts_restart"]
+        self.assertEqual(final["qido_instance_rows"], 4)
+        self.assertEqual(set(final["qido_sop_multiplicity"].values()), {1})
+        self.assertTrue(receipt["amendment_refused_after_restart"])
+        self.assertEqual(receipt["amendment_http_calls_after_restart"], 0)
+        self.assertEqual([e for e in backend.events if e[2] >= 3], [])
+        self.assertEqual(backend.arrivals[backend.IDENTICAL_UID], 2)
+        self.assertEqual(backend.arrivals[backend.RACE_UID], 5)
+
+    def test_concurrent_double_success_is_not_immutable_acceptance(self):
+        receipt, _ = self.immutable_evaluate(overwrite_race=True)
+        self.assertFalse(receipt["evaluation_completed"])
+        self.assertFalse(receipt["lifecycle_acceptance_passed"])
+        self.assertFalse(receipt["immutable_write_checks_passed"])
+        self.assertEqual([r["http_status"] for r in
+                          receipt["concurrency"]["new_sop_conflict"]["uploads"]], [200, 200])
+
+    def test_concurrent_409_cannot_hide_replaced_winner(self):
+        receipt, _ = self.immutable_evaluate(write_then_reject_race=True)
+        self.assertFalse(receipt["lifecycle_acceptance_passed"])
+        self.assertFalse(receipt["immutable_write_checks_passed"])
+        self.assertFalse(receipt["concurrency"]["new_sop_conflict"]["winner_preserved_after_rejection"])
+        observed = receipt["phases"]["after_concurrent_conflict"]["objects"][ConcurrentDicomServer.RACE_UID]
+        self.assertFalse(observed["original_bytes_match"])
+        self.assertFalse(observed["source_bound_read_accepted"])
+
+    def test_conflict_restart_loss_is_not_hidden_by_reupload(self):
+        receipt, backend = self.immutable_evaluate(lose_after_second_restart=True)
+        self.assertFalse(receipt["evaluation_completed"])
+        self.assertFalse(receipt["lifecycle_acceptance_passed"])
+        self.assertFalse(receipt["post_conflict_restart_preserved_originals"])
+        self.assertEqual(receipt["failure_stage"], "after_conflicts_restart")
+        self.assertEqual(backend.restarts, 2)
+        self.assertEqual(receipt["phases"]["after_conflicts_restart"]["objects"]
+                         [backend.RACE_UID]["http_status"], 404)
+        self.assertFalse(any(event[0] == "POST" and event[2] >= 2 for event in backend.events))
+
+    def test_concurrent_identical_duplicate_inventory_fails(self):
+        receipt, _ = self.immutable_evaluate(duplicate_identical_inventory=True)
+        self.assertFalse(receipt["lifecycle_acceptance_passed"])
+        self.assertFalse(receipt["concurrent_identical_uploads_preserved_inventory"])
+        self.assertEqual(receipt["phases"]["after_concurrent_identical"]["qido_sop_multiplicity"]
+                         [ConcurrentDicomServer.IDENTICAL_UID], 2)
 
     def test_lost_backend_storage_fails_without_reuploading_originals(self):
         receipt, boundary = self.evaluate(lose_on_restart=True)

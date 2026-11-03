@@ -180,6 +180,8 @@ def main() -> int:
     parser.add_argument('--run-directory', type=Path, required=True)
     parser.add_argument('--parent-namespace', required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--immutable-write-checks', action='store_true',
+                        help='Require concurrent immutable writes and post-conflict restart')
     args = parser.parse_args()
     result = {'kind': 'oi.pacs-lifecycle/1', 'classification': 'HOLD_NOT_APPROVED',
               'evaluation_completed': False, 'lifecycle_acceptance_passed': False,
@@ -196,14 +198,15 @@ def main() -> int:
         before = owner.start()
         stage = 'lifecycle_protocol'
         result = run_lifecycle_evaluation(
-            'http://127.0.0.1:18042', args.run_directory / 'oi-source', owner.restart)
+            'http://127.0.0.1:18042', args.run_directory / 'oi-source', owner.restart,
+            immutable_write_checks=args.immutable_write_checks)
         result['evaluation_network_boundary'] = {'before': before}
         stage = 'network_after'
         after = wait_for_confined_backend(owner.process, args.parent_namespace)
         result['evaluation_network_boundary']['after'] = after
         restarts = result.get('restart_observations', [])
         result['process_restarts_verified'] = (
-            len(restarts) == 2 and all(
+            len(restarts) == (3 if args.immutable_write_checks else 2) and all(
                 r.get('restart_verified') is True and r.get('stop_exit_code') == 0
                 and r.get('stop_signal') == 'SIGINT'
                 and r.get('old_process_reaped_before_start') is True

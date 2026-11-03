@@ -1,15 +1,17 @@
 """Bounded fictional retained-store experiment; never an adoption decision.
 
-Only the two authored 2x2 Explicit VR LE objects are supported. Original
+Only the bounded authored 2x2 Explicit VR LE objects are supported. Original
 expectations stay in this experiment; no product custody/identity schema is
 introduced. The live process owner is pacsnode_lifecycle_process.py.
 """
 from __future__ import annotations
 
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from hashlib import sha256
 from pathlib import Path
+from threading import Barrier
 from typing import Callable
 from urllib.parse import urlencode
 
@@ -65,19 +67,19 @@ def _observe_phase(result: dict, name: str, base: str, ledger: CaseStore,
                 ('0020000E', pacs.IMAGE_SERIES_UID)))
         phase.update(
             inventory_matches=(study_ids == [pacs.IMAGE_STUDY_UID]
-                               and Counter(sop_ids) == Counter(pacs.SOP_UIDS)
+                               and Counter(sop_ids) == Counter(list(originals))
                                and context_matches),
             qido_study_rows=len(studies), qido_instance_rows=len(rows),
             # Never copy an unknown backend identity into an output artifact.
-            qido_sop_multiplicity={uid: sop_ids.count(uid) for uid in pacs.SOP_UIDS},
-            qido_unexpected_sop_rows=sum(uid not in pacs.SOP_UIDS for uid in sop_ids),
+            qido_sop_multiplicity={uid: sop_ids.count(uid) for uid in originals},
+            qido_unexpected_sop_rows=sum(uid not in originals for uid in sop_ids),
             qido_media_types={'study': study_media, 'instance': instance_media})
     except Exception as error:
         phase['qido_failure_type'] = type(error).__name__
         first_error = error
     # A failed query does not establish that an upload had no side effects.
     # Observe both already-known objects, then retain the failed query status.
-    for sop in pacs.SOP_UIDS:
+    for sop in originals:
         entry = {'http_status': None, 'returned_dicom_sha256': None,
                  'original_bytes_match': False, 'pixel_bytes_match': False,
                  'source_bound_read_accepted': False, 'identity_matches': False}
@@ -130,9 +132,9 @@ def _observe_phase(result: dict, name: str, base: str, ledger: CaseStore,
     return phase
 
 
-def _originals_match(phase: dict) -> bool:
+def _originals_match(phase: dict, expected_sops=pacs.SOP_UIDS) -> bool:
     return (phase['inventory_matches'] is True
-            and set(phase['objects']) == set(pacs.SOP_UIDS)
+            and set(phase['objects']) == set(expected_sops)
             and all(entry.get('http_status') == 200
                     and entry.get('original_bytes_match') is True
                     and entry.get('pixel_bytes_match') is True
@@ -172,9 +174,149 @@ def _conflicting_pixels(original: bytes) -> bytes:
     return changed
 
 
+# Fixed fictional IDs reserved only for this finite concurrency experiment.
+CONCURRENT_CONFLICT_SOP = "2.25.110026110201000000000000000006"
+CONCURRENT_IDENTICAL_SOP = "2.25.110026110201000000000000000007"
+
+
+def _new_authored_sop(original: bytes, sop: str) -> bytes:
+    """Reidentify the known authored fixture, preserving its explicit encoding."""
+    before = _unpack(original)
+    if sop not in (CONCURRENT_CONFLICT_SOP, CONCURRENT_IDENTICAL_SOP):
+        raise InvalidInput('Unexpected concurrency fixture identity')
+    old, new = before['sop'].encode(), sop.encode()
+    # One file-meta and one dataset UID; equal lengths preserve both lengths
+    # and file-meta group length. Refuse every layout outside this fixture.
+    if len(old) != len(new) or original.count(old) != 2:
+        raise InvalidInput('Unexpected authored fixture UID placement')
+    changed = original.replace(old, new)
+    after = _unpack(changed)
+    if after != {**before, 'sop': sop}:
+        raise InvalidInput('Concurrency fixture changed unrelated fields')
+    return changed
+
+
+def _parallel_store_objects(base: str, payloads: tuple[bytes, bytes]) -> list[dict]:
+    """Start exactly two bounded HTTP requests; retain both outcomes on failure."""
+    gate = Barrier(2)
+
+    def store_one(payload):
+        try:
+            gate.wait(timeout=5)
+            return _store_objects(base, [payload])
+        except Exception as error:
+            return {'http_status': None, 'failure_type': type(error).__name__,
+                    'submitted_count': 1}
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(store_one, payload) for payload in payloads]
+        return [future.result() for future in futures]
+
+
+def _immutable_concurrency(result: dict, base: str, ledger: CaseStore,
+                           bindings: dict, originals: dict[str, bytes]) -> dict[str, bytes]:
+    """Exercise fresh conflicts and identical creation/replay at the real HTTP boundary.
+
+    The expected winning object comes only from the pre-authored submission
+    receiving the unique success response. WADO never defines expectations.
+    """
+    payloads = dict(originals)
+    first_binding = bindings[pacs.SOP_UIDS[0]]
+    checks = result['concurrency']
+    race_original = _new_authored_sop(originals[pacs.SOP_UIDS[0]], CONCURRENT_CONFLICT_SOP)
+    submissions = (race_original, _conflicting_pixels(race_original))
+    race = {
+        'sop_uid': CONCURRENT_CONFLICT_SOP,
+        'submission_dicom_sha256': [sha256(data).hexdigest() for data in submissions],
+        'submission_pixel_sha256': [_unpack(data)['pixel_sha256'] for data in submissions],
+        'winner_submission_index': None, 'winner_preserved_after_rejection': False,
+    }
+    checks['new_sop_conflict'] = race
+    race['uploads'] = _parallel_store_objects(base, submissions)
+    success = [i for i, upload in enumerate(race['uploads'])
+               if upload['http_status'] in (200, 201, 202)]
+    rejected = [i for i, upload in enumerate(race['uploads'])
+                if upload['http_status'] == 409]
+    unique_winner = len(success) == 1 and len(rejected) == 1
+    if unique_winner:
+        race['winner_submission_index'] = success[0]
+    # Even ambiguous/failed uploads may have written bytes. Retain bounded
+    # observations against a declared authored candidate, then fail closed.
+    expected_index = success[0] if unique_winner else 0
+    race['observation_expectation_submission_index'] = expected_index
+    payloads[CONCURRENT_CONFLICT_SOP] = submissions[expected_index]
+    bindings[CONCURRENT_CONFLICT_SOP] = replace(
+        first_binding, sop_uid=CONCURRENT_CONFLICT_SOP,
+        original_dicom_sha256=sha256(submissions[expected_index]).hexdigest())
+    result['immutable_original_dicom_sha256'] = {
+        sop: sha256(data).hexdigest() for sop, data in payloads.items()}
+    observed = _observe_phase(result, 'after_concurrent_conflict', base,
+                              ledger, bindings, payloads)
+    race['winner_preserved_after_rejection'] = (
+        unique_winner and _originals_match(observed, payloads))
+    if not race['winner_preserved_after_rejection']:
+        raise InvalidInput('Concurrent conflict did not preserve a unique acknowledged winner')
+    result['concurrent_conflicting_uploads_preserved_winner'] = True
+
+    identical = _new_authored_sop(originals[pacs.SOP_UIDS[1]], CONCURRENT_IDENTICAL_SOP)
+    payloads[CONCURRENT_IDENTICAL_SOP] = identical
+    bindings[CONCURRENT_IDENTICAL_SOP] = replace(
+        first_binding, sop_uid=CONCURRENT_IDENTICAL_SOP,
+        original_dicom_sha256=sha256(identical).hexdigest())
+    result['immutable_original_dicom_sha256'] = {
+        sop: sha256(data).hexdigest() for sop, data in payloads.items()}
+    result['immutable_original_pixel_sha256'] = {
+        sop: _unpack(data)['pixel_sha256'] for sop, data in payloads.items()}
+    identical_result = {'sop_uid': CONCURRENT_IDENTICAL_SOP,
+                        'preserved_inventory': False}
+    checks['identical_new_sop'] = identical_result
+    identical_result['uploads'] = _parallel_store_objects(base, (identical, identical))
+    observed = _observe_phase(result, 'after_concurrent_identical', base,
+                              ledger, bindings, payloads)
+    identical_result['preserved_inventory'] = (
+        all(upload['http_status'] in (200, 201, 202)
+            for upload in identical_result['uploads'])
+        and _originals_match(observed, payloads))
+    if not identical_result['preserved_inventory']:
+        raise InvalidInput('Concurrent identical creation changed inventory or original bytes')
+
+    winner = payloads[CONCURRENT_CONFLICT_SOP]
+    replay = {'sop_uid': CONCURRENT_CONFLICT_SOP, 'preserved_inventory': False}
+    checks['identical_replay'] = replay
+    replay['uploads'] = _parallel_store_objects(base, (winner, winner))
+    observed = _observe_phase(result, 'after_concurrent_identical_replay', base,
+                              ledger, bindings, payloads)
+    replay['preserved_inventory'] = (
+        all(upload['http_status'] in (200, 201, 202) for upload in replay['uploads'])
+        and _originals_match(observed, payloads))
+    if not replay['preserved_inventory']:
+        raise InvalidInput('Concurrent identical replay changed inventory or original bytes')
+    result['concurrent_identical_uploads_preserved_inventory'] = True
+
+    retry = {'sop_uid': CONCURRENT_CONFLICT_SOP,
+             'originals_preserved_after_rejection': False}
+    checks['conflict_retry'] = retry
+    upload_error = None
+    try:
+        retry['upload'] = _store_objects(base, [submissions[1 - expected_index]])
+    except Exception as error:
+        retry['upload'] = {'http_status': None, 'failure_type': type(error).__name__}
+        upload_error = error
+    observed = _observe_phase(result, 'after_conflict_retry', base,
+                              ledger, bindings, payloads)
+    retry['originals_preserved_after_rejection'] = (
+        retry['upload']['http_status'] == 409 and _originals_match(observed, payloads))
+    if upload_error is not None:
+        raise upload_error
+    if not retry['originals_preserved_after_rejection']:
+        raise InvalidInput('Rejected conflict retry changed an original object')
+    return payloads
+
+
 def run_lifecycle_evaluation(base_url: str, work_dir: Path,
                              restart_backend: Callable[[], dict], *,
-                             originals: dict[str, bytes] | None = None) -> dict:
+                             originals: dict[str, bytes] | None = None,
+                             immutable_write_checks: bool = False) -> dict:
     """Observe one seed, retrieve-only restart, replay and conflict, then amendment.
 
     ``originals`` and the restart callback support deterministic test injection;
@@ -185,6 +327,11 @@ def run_lifecycle_evaluation(base_url: str, work_dir: Path,
         'kind': 'oi.pacs-lifecycle/1', 'classification': 'HOLD_NOT_APPROVED',
         'evaluation_completed': False, 'lifecycle_acceptance_passed': False,
         'phases': {}, 'uploads': {}, 'restart_observations': [],
+        'immutable_write_checks_required': immutable_write_checks is True,
+        'immutable_write_checks_passed': False, 'concurrency': {},
+        'concurrent_conflicting_uploads_preserved_winner': False,
+        'concurrent_identical_uploads_preserved_inventory': False,
+        'post_conflict_restart_preserved_originals': False,
         'source_ledger_unchanged_after_restart': False,
         'wrong_case_refused': False, 'wrong_case_http_calls': 0,
         'amendment_refused_after_restart': False,
@@ -303,7 +450,7 @@ def run_lifecycle_evaluation(base_url: str, work_dir: Path,
                     and not target['original_bytes_match'])):
             raise InvalidInput('Conflict observation is not an inspectable original read')
         result['conflicting_sop_rejected_and_original_preserved'] = (
-            result['uploads'][stage]['http_status'] in (400, 409, 422)
+            result['uploads'][stage]['http_status'] == 409
             and _originals_match(conflicting))
         if not target['original_bytes_match']:
             if (target['returned_dicom_sha256'] != sha256(conflict).hexdigest()
@@ -314,6 +461,30 @@ def run_lifecycle_evaluation(base_url: str, work_dir: Path,
             result['acceptance_blockers'].append('conflicting_sop_original_replaced')
         elif not result['conflicting_sop_rejected_and_original_preserved']:
             result['acceptance_blockers'].append('conflicting_sop_not_explicitly_rejected')
+        if immutable_write_checks:
+            stage = 'immutable_concurrency'
+            if not result['conflicting_sop_rejected_and_original_preserved']:
+                raise InvalidInput('Immutable mode requires the first explicit conflict gate')
+            immutable_payloads = _immutable_concurrency(result, base, ledger, bindings, payloads)
+            if ledger.state('CASE-ALPHA') != original_state:
+                raise InvalidInput('Concurrency changed the original source history')
+            ledger.close()
+            ledger = None
+            stage = 'restart_after_conflicts'
+            restart = restart_backend()
+            result['restart_observations'].append(restart)
+            if restart.get('restart_verified') is not True or not source_path.is_file():
+                raise InvalidInput('Post-conflict retained restart was not verified')
+            ledger = CaseStore(source_path)
+            stage = 'after_conflicts_restart'
+            if ledger.state('CASE-ALPHA') != original_state:
+                raise InvalidInput('Source history changed after conflict restart')
+            persisted = _observe_phase(result, stage, base, ledger, bindings, immutable_payloads)
+            result['post_conflict_restart_preserved_originals'] = _originals_match(
+                persisted, immutable_payloads)
+            if not result['post_conflict_restart_preserved_originals']:
+                raise InvalidInput('Originals changed after conflicts and retained restart')
+            result['immutable_write_checks_passed'] = True
         stage = 'amendment'
         ledger.import_report('CASE-ALPHA', AMENDMENT)
         amended_state = ledger.state('CASE-ALPHA')
@@ -323,7 +494,7 @@ def run_lifecycle_evaluation(base_url: str, work_dir: Path,
         restart = restart_backend()
         result['restart_observations'].append(restart)
         if restart.get('restart_verified') is not True or not source_path.is_file():
-            raise InvalidInput('Second retained restart was not verified')
+            raise InvalidInput('Post-amendment retained restart was not verified')
         ledger = CaseStore(source_path)
         stage = 'source_after_amendment_restart'
         if ledger.state('CASE-ALPHA') != amended_state:

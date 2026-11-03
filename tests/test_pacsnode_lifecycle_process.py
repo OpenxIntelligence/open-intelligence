@@ -247,6 +247,49 @@ class PacsProcessTests(unittest.TestCase):
         with self.assertRaises(ChildProcessError):
             os.waitpid(original.pid, os.WNOHANG)
 
+    def test_corrective_cli_requires_three_restart_receipts_before_accepting(self):
+        live_owner = self.owner()
+        evidence = live_owner.start()
+        for restart_count, expected_exit in ((2, 1), (3, 0)):
+            with self.subTest(restart_count=restart_count):
+                run_directory = self.root / f"corrective-cli-{restart_count}"
+                run_directory.mkdir()
+                (run_directory / "config.toml").write_bytes(self.config)
+                output = self.root / f"corrective-{restart_count}.json"
+                owner = Mock(spec=process_owner.PacsProcess)
+                owner.start.return_value = evidence
+                owner.process = live_owner.process
+                owner.binary_sha256 = "0" * 64
+                owner.config_sha256 = "1" * 64
+                restart = {
+                    "restart_verified": True, "stop_exit_code": 0,
+                    "stop_signal": "SIGINT", "old_process_reaped_before_start": True,
+                    "old_listeners_absent": True, "binary_sha256": "0" * 64,
+                    "config_sha256": "1" * 64, "before": evidence, "after": evidence,
+                }
+                protocol = {
+                    "evaluation_completed": True, "lifecycle_acceptance_passed": True,
+                    "immutable_write_checks_required": True,
+                    "immutable_write_checks_passed": True,
+                    "phases": {}, "acceptance_blockers": [],
+                    "restart_observations": [dict(restart) for _ in range(restart_count)],
+                }
+                argv = ["lifecycle", "--binary", str(self.binary), "--run-directory",
+                        str(run_directory), "--parent-namespace", "net:[101]",
+                        "--output", str(output), "--immutable-write-checks"]
+                # Protocol and network facts are test doubles here; real child
+                # ownership is covered separately above. This exercises the
+                # CLI's refusal to accept a missing post-conflict restart.
+                with patch.object(process_owner, "PacsProcess", return_value=owner), \
+                        patch.object(process_owner, "run_lifecycle_evaluation", return_value=protocol), \
+                        patch.object(sys, "argv", argv):
+                    exit_code = process_owner.main()
+                self.assertEqual(exit_code, expected_exit)
+                saved = json.loads(output.read_text())
+                self.assertEqual(saved["process_restarts_verified"], restart_count == 3)
+                self.assertEqual(saved["evaluation_completed"], restart_count == 3)
+                owner.close.assert_called_once_with()
+
     def test_cli_cleanup_failure_saves_partial_receipt_without_losing_primary_failure(self):
         run_directory = self.root / "fresh-cli-directory"
         run_directory.mkdir()

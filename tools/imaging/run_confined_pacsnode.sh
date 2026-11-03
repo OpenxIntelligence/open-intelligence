@@ -49,7 +49,7 @@ mkdir -p "$pacs_repo/verification-artifacts"
 cd "$pacs_run_directory"
 "$pacs_binary" generate-config standalone
 # The pinned generator enables optional admin/viewer plugins. Disable those
-# runtime routes without modifying the pinned vendor source or binary.
+# runtime routes in the supplied, separately recorded evaluation build.
 "$pacs_python" - <<'PY'
 from hashlib import sha256
 from pathlib import Path
@@ -82,6 +82,7 @@ if [ "$pacs_mode" = lifecycle ]; then
   exec "$pacs_python" -m tools.imaging.pacsnode_lifecycle_process \
     --binary "$pacs_binary" --run-directory "$pacs_run_directory" \
     --parent-namespace "$pacs_parent_namespace" \
+    --immutable-write-checks \
     --output "$pacs_repo/verification-artifacts/pacsnode-lifecycle.json"
 fi
 "$pacs_binary" > "$pacs_repo/verification-artifacts/pacsnode-stdout.txt" 2>&1 &
