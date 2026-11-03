@@ -103,9 +103,12 @@ function App(){
        <p>Statements below are unreviewed quotations reported by fictional input files, not independently established clinical facts.</p>
        {state.sourceIndex.source_reported_assertions.length===0?<p>No source-reported assertions were returned.</p>:
         <ul className="finding-list">{state.sourceIndex.source_reported_assertions.map((finding,i)=><li key={finding.source_id+':'+finding.source_line+':'+i} data-testid="source-finding">
-         <p><strong>{finding.finding_key}</strong> · reported state: {finding.reported_state} · line {finding.source_line}</p>
+         <p><strong>{finding.finding_key}</strong> · reported state: {finding.reported_state}</p>
          <blockquote data-testid="source-statement">{finding.source_statement}</blockquote>
-         <small>Review state: not established · <code>{finding.source_id}</code></small>
+         <small>Source-reported · clinical review not established</small>
+         <details className="finding-provenance" data-testid="finding-provenance"><summary>Verify original source and line</summary>
+          <dl className="source-metadata"><div><dt>Source ID</dt><dd><code>{finding.source_id}</code></dd></div><div><dt>Original line</dt><dd>{finding.source_line}</dd></div></dl>
+         </details>
         </li>)}</ul>}
        <p className="muted">Amendments are preserved as separate versions. Research/review invalidation is not yet integrated with this PostgreSQL screen.</p>
       </section>}
