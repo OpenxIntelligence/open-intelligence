@@ -1,11 +1,11 @@
-"""Actual Compose recovery of canonical questions and original-image custody.
+"""Actual Compose recovery of canonical questions, image custody and returns.
 
 Reuses the canonical registry, source, access-fixture and Compose owners. All
 objects are independently authored by the stdlib-only test fixture generator;
 no patient images, external PACS, optional codecs or new service are involved.
 The returned receipts attest prepared disclosure, not delivery to a client.
-Both populated domains are reopened through the API after a real pg_restore;
-this is neither a model investigation nor a clinical review handoff.
+All three populated domains are reopened through the API after real pg_restore.
+Verification returns are operational records, without clinical approval.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -35,7 +35,10 @@ STUDY = "2.25.112026110301"
 SERIES = "2.25.112026110302"
 SOPS = ("2.25.112026110303", "2.25.112026110304")
 MAX_IMAGE_BYTES = 2_097_152
-EXPECTED_SCHEMA_REVISION = "0008_merge_image_questions"
+EXPECTED_SCHEMA_REVISION = "0009_image_review_merge"
+QUEUE_CONTRACT = "oi.synthetic-question-review-return-queue/2"
+RETURN_FINGERPRINT_CONTRACT = "oi.synthetic-source-review-return/2"
+RETURN_REASON = "Please independently verify this fictional imaging source and its uncertainty."
 ACCESS_EVENTS = "'image.read_authorized','image.original_read_authorized'"
 IMAGE_FIELDS = {
     "image_id", "source_id", "case_id", "sha256", "byte_count",
@@ -92,7 +95,8 @@ def main():
                          "image_read", "image_original_read"]
         question_actions = ["source_read", "composer_context_read",
                             "question_create", "question_read"]
-        actions = image_actions + question_actions
+        review_actions = ["review_queue_read", "review_return"]
+        actions = image_actions + question_actions + review_actions
         credential = {
             "token_sha256": hashlib.sha256(token.encode()).hexdigest(),
             "actor": "ACTOR-IMAGE-PROOF", "organization": "ORG-IMAGE-PROOF",
@@ -103,6 +107,9 @@ def main():
         image_ids = []
         expected_questions = {}
         question_intents = {}
+        queue_fingerprints = {}
+        return_intents = {}
+        expected_return_history = {}
         source_access_receipts = set()
         active_database = "oi_api_synthetic"
 
@@ -280,6 +287,106 @@ def main():
             assert len(added) == len(question_intents)
             assert all(row["event_type"] == "source.read_authorized" for row in added)
 
+        def return_path(question_id):
+            return case_path + "/questions/" + question_id + "/return-for-verification"
+
+        def read_review_queue():
+            status, value, _ = request(case_path + "/review-queue")
+            assert status == 200 and value["contract"] == QUEUE_CONTRACT
+            assert (value["patient_id"], value["case_id"]) == (patient, CASE)
+            remember_source_access(value)
+            for flag in ("clinical_approval", "reviewer_identity_verified",
+                         "external_notification_sent", "review_completion_supported"):
+                assert value[flag] is False
+            rows = {row["question_id"]: row for row in value["items"]}
+            assert len(rows) == len(value["items"]) == len(expected_questions)
+            assert set(rows) == set(expected_questions)
+            for question_id, expected in expected_questions.items():
+                item = rows[question_id]
+                for field in ("question_id", "patient_id", "case_id", "question", "source_id",
+                              "source_line", "source_sha256", "source_version",
+                              "source_snapshot_sha256", "source_snapshot_contract",
+                              "preflight_sha256", "created_at", "source_context_state"):
+                    assert item[field] == expected[field], "Review queue changed its question anchor"
+                assert item["queue_fingerprint_contract"] == RETURN_FINGERPRINT_CONTRACT
+                assert item["clinical_approval"] is False and item["reviewer_identity_verified"] is False
+                prior = return_intents.get(question_id)
+                current = expected["source_context_state"] == "current_unreviewed_question"
+                if current:
+                    fingerprint = item["queue_fingerprint"]
+                    assert re.fullmatch(r"[0-9a-f]{64}", fingerprint)
+                    queue_fingerprints.setdefault(question_id, fingerprint)
+                    assert fingerprint == queue_fingerprints[question_id], \
+                        "Image/access/return activity changed the review fingerprint"
+                    assert item["review_state"] == ("returned_for_independent_verification" if prior
+                                                     else "awaiting_independent_verification")
+                    assert item["current_return_receipt_id"] == (prior[1]["receipt_id"] if prior else None)
+                    assert (item["return_count"], item["prior_return_count"]) == (int(prior is not None), 0)
+                else:
+                    assert item["review_state"] == "source_reassessment_required"
+                    assert item["queue_fingerprint"] is None and item["current_return_receipt_id"] is None
+                    assert (item["return_count"], item["prior_return_count"]) == (0, int(prior is not None))
+            receipts = {row["receipt_id"]: row for row in value["receipts"]}
+            assert len(receipts) == len(value["receipts"]) == len(return_intents)
+            assert set(receipts) == {saved["receipt_id"] for _, saved in return_intents.values()}
+            for question_id, (intent, saved) in return_intents.items():
+                receipt = receipts[saved["receipt_id"]]
+                assert receipt["question_id"] == question_id
+                assert receipt["queue_fingerprint"] == intent["expected_queue_fingerprint"]
+                assert receipt["source_snapshot_sha256"] == expected_questions[question_id]["source_snapshot_sha256"]
+                assert receipt["source_snapshot_contract"] == "oi.pg-source-world-model/1"
+                assert receipt["queue_fingerprint_contract"] == RETURN_FINGERPRINT_CONTRACT
+                assert receipt["action"] == "returned" and receipt["reason"] == RETURN_REASON
+                assert receipt["actor_label"] == credential["actor"]
+                assert datetime.fromisoformat(receipt["created_at"].replace("Z", "+00:00")).tzinfo is not None
+                for flag in ("clinical_approval", "reviewer_identity_verified", "external_notification_sent"):
+                    assert receipt[flag] is False
+                expected_return_history.setdefault(receipt["receipt_id"], receipt)
+                assert receipt == expected_return_history[receipt["receipt_id"]], \
+                    "Amendment, relinking or recovery rewrote an immutable return"
+            return value
+
+        def return_question(question_id, version):
+            value = read_review_queue()
+            item = next(row for row in value["items"] if row["question_id"] == question_id)
+            assert item["review_state"] == "awaiting_independent_verification"
+            intent = {"synthetic": True, "request_key": "COMPOSE-IMAGE-RETURN-V" + str(version),
+                      "expected_queue_fingerprint": item["queue_fingerprint"], "reason": RETURN_REASON}
+            status, saved, _ = request(return_path(question_id), intent)
+            assert status == 201 and saved["duplicate"] is False
+            assert saved["question_id"] == question_id
+            assert re.fullmatch(r"REVIEW-[0-9A-F]{32}", saved["receipt_id"])
+            assert saved["receipt_id"] not in expected_return_history
+            return_intents[question_id] = (intent, {**saved, "duplicate": True})
+            read_review_queue()
+
+        def retry_returns():
+            before = snapshot()
+            returned_events = [row for row in before["events"]
+                               if row["event_type"] == "investigation.review.returned_for_verification"]
+            for question_id, (intent, saved) in return_intents.items():
+                status, value, _ = request(return_path(question_id), intent)
+                assert (status, value) == (200, saved), "Retry changed the original return identity"
+            after = snapshot()
+            assert after["review_receipts"] == before["review_receipts"], "Retry rewrote a return"
+            assert [row for row in after["events"]
+                    if row["event_type"] == "investigation.review.returned_for_verification"] == returned_events
+            added = after["events"][len(before["events"]):]
+            assert len(added) == len(return_intents)
+            assert all(row["event_type"] == "source.read_authorized" for row in added)
+
+        def denied_reviews(*, queue=True, returning=True, authenticated=True):
+            before = snapshot()
+            requests = [(case_path + "/review-queue", None)] if queue else []
+            if returning:
+                requests.extend((return_path(qid), intent) for qid, (intent, _) in return_intents.items())
+            for path, body in requests:
+                status, value, headers = request(path, body, authenticated=authenticated)
+                assert status == (404 if authenticated else 401), "Review denial did not fail closed"
+                assert type(value) is dict and set(value) == {"detail"}
+                assert headers.get("X-OI-Access-Receipt") is None
+            assert snapshot() == before, "Denied review request changed a receipt or durable history"
+
         def denied_question_requests(paths, *, authenticated=True):
             before = snapshot()
             for path, body in paths:
@@ -414,6 +521,13 @@ def main():
                       source_id,source_line,source_sha256,source_version,
                       source_snapshot_sha256,preflight_sha256,created_at,source_snapshot_contract
                      FROM investigation.source_questions) q),
+                  'review_receipts', (SELECT COALESCE(json_agg(r ORDER BY r.receipt_id),'[]'::json) FROM
+                    (SELECT receipt_id,question_id,patient_id,case_id,origin_org,request_key,
+                      intent_sha256,queue_fingerprint,source_snapshot_sha256,actor,purpose,action,
+                      encode(sha256(convert_to(reason,'UTF8')),'hex') AS reason_sha256,
+                      octet_length(reason) AS reason_byte_count,created_at,
+                      source_snapshot_contract,queue_fingerprint_contract
+                     FROM investigation.question_review_receipts) r),
                   'events', (SELECT json_agg(e ORDER BY e.id) FROM
                     (SELECT id,patient_id,event_type,metadata_json,occurred_at
                      FROM identity.identity_domain_events) e),
@@ -461,6 +575,21 @@ def main():
             assert not (set(source_receipts) & {item[0] for item in expected_access})
             audit = json.dumps(state["events"], ensure_ascii=False)
             assert token not in audit and all(question not in audit for question in QUESTIONS)
+            assert RETURN_REASON not in audit
+            assert len(state["review_receipts"]) == len(return_intents)
+            assert {row["receipt_id"] for row in state["review_receipts"]} == set(expected_return_history)
+            for row in state["review_receipts"]:
+                expected = expected_return_history[row["receipt_id"]]
+                assert row["reason_sha256"] == hashlib.sha256(RETURN_REASON.encode()).hexdigest()
+                assert row["reason_byte_count"] == len(RETURN_REASON.encode())
+                assert (row["patient_id"], row["case_id"]) == (patient, CASE)
+                for field in ("receipt_id", "question_id", "queue_fingerprint", "source_snapshot_sha256",
+                              "source_snapshot_contract", "queue_fingerprint_contract", "action"):
+                    assert row[field] == expected[field], "Persisted return provenance changed"
+            returns = [row for row in state["events"]
+                       if row["event_type"] == "investigation.review.returned_for_verification"]
+            assert len(returns) == len(return_intents)
+            assert {row["metadata_json"]["receipt_id"] for row in returns} == set(expected_return_history)
             return state
 
         def restore_database(database):
@@ -528,6 +657,7 @@ def main():
             assert re.fullmatch(r"SRC-[0-9A-F]{32}", source_one)
             question_one = create_question(source_one, 1, ORIGINAL)
             first_fingerprint = expected_questions[question_one]["source_snapshot_sha256"]
+            read_review_queue()
             for index in range(2):
                 ingest_image(source_one, index, "imported")
             before_retry = snapshot()
@@ -541,6 +671,11 @@ def main():
             assert prepared["preflight_sha256"] == expected_questions[question_one]["preflight_sha256"]
             read_questions()
             retry_questions()
+            # The queue fingerprint was captured before image import and reads.
+            # Image receipts must not invalidate a deliberate verification return.
+            read_review_queue()
+            return_question(question_one, 1)
+            retry_returns()
             check_history()
             check_question_history()
 
@@ -555,8 +690,11 @@ def main():
                 denied(source_one, **arguments)
                 if missing == "patient_read":
                     denied_questions()
+                    denied_reviews()
                 else:
                     read_questions()
+                    read_review_queue()
+                    retry_returns()
             for missing, body in (("question_read", None),
                                   ("question_create", question_intents[question_one])):
                 credential["actions"] = [action for action in actions if action != missing]
@@ -564,11 +702,22 @@ def main():
                 denied_question_requests([(case_path + "/questions", body)])
                 read_images(source_one)
                 read_originals(source_one)
+            for missing in review_actions:
+                credential["actions"] = [action for action in actions if action != missing]
+                save_access()
+                denied_reviews(queue=missing == "review_queue_read", returning=missing == "review_return")
+                read_images(source_one)
+                read_originals(source_one)
+                if missing == "review_queue_read":
+                    retry_returns()
+                else:
+                    read_review_queue()
             # Image reads still succeed with no source disclosure, Composer or
             # question grant. Their grants cannot authorize the question path.
             credential["actions"] = list(image_actions)
             save_access()
             denied_questions()
+            denied_reviews()
             read_images(source_one)
             read_originals(source_one)
             credential["actions"] = list(actions)
@@ -576,15 +725,18 @@ def main():
             save_access()
             denied(source_one, ingest=True)
             denied_questions()
+            denied_reviews()
             credential["patient_ids"] = [patient]
             credential["purpose"] = "research"
             save_access()
             denied(source_one, ingest=True)
             denied_questions()
+            denied_reviews()
             credential["purpose"] = "operations"
             save_access()
             denied(source_one, ingest=True, authenticated=False)
             denied_question_requests([(case_path + "/questions", None)], authenticated=False)
+            denied_reviews(authenticated=False)
 
             for service in ("api", "db"):
                 before = snapshot()
@@ -595,10 +747,12 @@ def main():
                 read_originals(source_one)
                 read_questions()
                 retry_questions()
+                read_review_queue()
+                retry_returns()
                 check_history()
                 check_question_history()
                 verify_stored_originals()
-                print("Populated v1 question, exact image originals and receipts survived " + service + " restart")
+                print("Populated v1 question/return, exact image originals and receipts survived " + service + " restart")
 
             status, receipt, _ = request(source_path, {"synthetic": True, "original_text": AMENDED})
             assert (status, receipt["result"], receipt["version"]) == (201, "imported", 2)
@@ -607,6 +761,13 @@ def main():
             original_question_row = snapshot()["questions"]
             expected_questions[question_one]["source_context_state"] = "source_reassessment_required"
             read_questions()
+            historical_returns = read_review_queue()["receipts"]
+            old_intent, _ = return_intents[question_one]
+            before_stale = snapshot()
+            assert request(return_path(question_one), {
+                **old_intent, "request_key": "COMPOSE-IMAGE-STALE-NEW-RETURN"})[0] == 409
+            assert snapshot() == before_stale, "Rejected stale return changed durable history"
+            retry_returns()
             denied(source_one, ingest=True)
             for index in range(2):
                 ingest_image(source_two, index, "linked")
@@ -619,11 +780,15 @@ def main():
             denied(source_one)
             assert snapshot()["questions"] == original_question_row, "Relinking rewrote the historical question"
             read_questions()
+            assert read_review_queue()["receipts"] == historical_returns
+            retry_returns()
             question_two = create_question(source_two, 2, AMENDED)
             assert question_two != question_one
             second_fingerprint = expected_questions[question_two]["source_snapshot_sha256"]
             assert second_fingerprint != first_fingerprint
+            return_question(question_two, 2)
             retry_questions()
+            retry_returns()
             check_history()
             state = check_question_history()
             assert len(state["objects"]) == 2 and len(state["links"]) == 4
@@ -637,6 +802,7 @@ def main():
             assert event_kinds.count("image.original_imported") == 2
             assert event_kinds.count("image.source_linked") == 2
             assert event_kinds.count("investigation.question.created") == 2
+            assert event_kinds.count("investigation.review.returned_for_verification") == 2
 
             # Both historical and current questions now exist. Restart the
             # actual services with this populated amended state before backup.
@@ -647,12 +813,14 @@ def main():
                 assert snapshot() == before, "Restart changed amended question/image history"
                 read_questions()
                 retry_questions()
+                read_review_queue()
+                retry_returns()
                 read_images(source_two)
                 read_originals(source_two)
                 denied(source_one)
                 check_history()
                 check_question_history()
-                print("Historical v1/current v2 questions and linked image originals survived " + service + " restart")
+                print("Historical v1/current v2 questions/returns and linked images survived " + service + " restart")
 
             # Restore an ACTIVE populated case and then recreate the same API
             # against that database, so reopened states and retries are served
@@ -662,6 +830,7 @@ def main():
             before = restore_database(restored_database)
             assert before["bindings"][0]["status"] == "active"
             assert len(before["questions"]) == 2
+            assert len(before["review_receipts"]) == 2
             use_restored_database(restored_database)
             assert snapshot() == before, "Recreated API changed restored data before reads"
             restored_receipt = read_questions()
@@ -672,7 +841,16 @@ def main():
             )
             assert query(receipt_query) == 1, "Restored HTTP response lacks a receipt in the restored DB"
             assert query(receipt_query, source_database) == 0, "HTTP still used the pre-restore DB"
+            restored_review_receipt = read_review_queue()["access_receipt_id"]
+            review_receipt_query = (
+                "SELECT to_json(count(*)) FROM identity.identity_domain_events "
+                "WHERE event_type='source.read_authorized' AND metadata_json->>'receipt_id'='"
+                + restored_review_receipt + "'"
+            )
+            assert query(review_receipt_query) == 1, "Restored review HTTP did not write to the restored DB"
+            assert query(review_receipt_query, source_database) == 0, "Review HTTP still used the source DB"
             retry_questions()
+            retry_returns()
             read_images(source_two)
             read_originals(source_two)
             denied(source_one, ingest=True)
@@ -685,10 +863,20 @@ def main():
             read_originals(source_two)
             credential["actions"] = list(actions)
             save_access()
+            for missing in review_actions:
+                credential["actions"] = [action for action in actions if action != missing]
+                save_access()
+                denied_reviews(queue=missing == "review_queue_read", returning=missing == "review_return")
+                read_originals(source_two)
+            credential["actions"] = list(actions)
+            save_access()
             read_questions()
+            read_review_queue()
+            retry_returns()
             check_history()
             check_question_history()
-            print("Active restored API reopened exact v1/v2 questions, original images and idempotent retries")
+            assert snapshot(source_database) == before, "Restored HTTP mutated the pre-restore database"
+            print("Active restored API reopened exact v1/v2 questions/returns, original images and same-key retries")
 
             status, revoked, _ = request(patient_path + "/case-bindings/" + CASE + "/revoke", {
                 "synthetic": True, "reason": "Withdraw the independently fictional image Compose binding"})
@@ -696,6 +884,7 @@ def main():
             denied(source_one, ingest=True)
             denied(source_two, ingest=True)
             denied_questions()
+            denied_reviews()
             before = snapshot()
             assert before["revision"] == EXPECTED_SCHEMA_REVISION
             assert before["bindings"][0]["status"] == "revoked"
@@ -712,6 +901,7 @@ def main():
                 denied(source_one, ingest=True)
                 denied(source_two, ingest=True)
                 denied_questions()
+                denied_reviews()
             # Retain the original revoked-state backup proof as well. A second
             # tiny restore must not reactivate the binding or disclose either
             # image originals or questions, and denied reads mint no receipts.
@@ -722,8 +912,9 @@ def main():
             denied(source_one, ingest=True)
             denied(source_two, ingest=True)
             denied_questions()
+            denied_reviews()
             assert snapshot() == before, "Restored revoked access changed durable history"
-            print("PASS: populated canonical v1/v2 questions and exact synthetic DICOM originals; "
+            print("PASS: canonical v1/v2 questions, immutable verification returns and exact DICOM originals; "
                   "independent grants, immutable anchors, distinct receipts, API/DB restart, "
                   "amendment reassessment, explicit same-object relinking, active restored HTTP/retries, "
                   "and revoked restored denial through actual PostgreSQL dump/restore")

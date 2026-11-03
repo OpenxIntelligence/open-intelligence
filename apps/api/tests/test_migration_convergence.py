@@ -49,10 +49,8 @@ TABLE_ORDER = {
 
 
 class MigrationConvergenceGraphTests(unittest.TestCase):
-    def test_published_owner_branches_converge_at_one_explicit_merge(self):
+    def test_published_image_question_merge_preserves_its_original_parents(self):
         script = ScriptDirectory.from_config(Config(str(API_ROOT / "alembic.ini")))
-        self.assertEqual(script.get_heads(), [MERGE_REVISION])
-        self.assertEqual(SCHEMA_REVISION, MERGE_REVISION)
         self.assertEqual(script.get_revision(MERGE_REVISION).down_revision,
                          (QUESTION_REVISION, IMAGE_REVISION))
         self.assertEqual(script.get_revision(QUESTION_REVISION).down_revision,
@@ -65,13 +63,15 @@ class MigrationConvergenceGraphTests(unittest.TestCase):
 
 @unittest.skipUnless(os.environ.get("OI_API_RUN_DATABASE_TESTS") == "1",
                      "Requires a disposable actual PostgreSQL 16 test database")
-class PopulatedBranchUpgradeTests(unittest.TestCase):
+class PopulatedMigrationFixture(unittest.TestCase):
     """Seed the actual published schemas, never stamp or relax app readiness.
 
     The current app correctly refuses either parent revision. Direct SQL here is
     an explicitly authored migration fixture using each parent's real constraints;
     it is not a replacement application writer or an authorization workaround.
     """
+
+    table_order = TABLE_ORDER
 
     @classmethod
     def setUpClass(cls):
@@ -123,7 +123,7 @@ class PopulatedBranchUpgradeTests(unittest.TestCase):
                 try:
                     cursor.execute("SELECT version_num FROM public.alembic_version")
                     self.assertEqual([tuple(row) for row in cursor.fetchall()],
-                                     [(MERGE_REVISION,)])
+                                     [(SCHEMA_REVISION,)])
                 finally:
                     cursor.close()
         else:
@@ -134,11 +134,11 @@ class PopulatedBranchUpgradeTests(unittest.TestCase):
     def _snapshot(self, tables=None):
         result = {}
         with self.engine.connect() as connection:
-            for table in TABLE_ORDER if tables is None else tables:
+            for table in self.table_order if tables is None else tables:
                 if connection.execute(text("SELECT to_regclass(:table)"),
                                       {"table": table}).scalar_one() is not None:
                     rows = connection.execute(text(
-                        f"SELECT * FROM {table} ORDER BY {TABLE_ORDER[table]}"
+                        f"SELECT * FROM {table} ORDER BY {self.table_order[table]}"
                     )).mappings()
                     result[table] = [
                         {key: bytes(value) if isinstance(value, memoryview) else value
@@ -250,6 +250,8 @@ class PopulatedBranchUpgradeTests(unittest.TestCase):
                     connection.execute(text(statement))
         self.assertEqual(self._snapshot(), before)
 
+
+class PopulatedBranchUpgradeTests(PopulatedMigrationFixture):
     def _upgrade_from(self, parent):
         migrate(self.settings, "upgrade", parent)
         self.assertEqual(self._heads(), {parent})
@@ -264,15 +266,19 @@ class PopulatedBranchUpgradeTests(unittest.TestCase):
         self.assertTrue(all(table not in before for table in missing))
         self._assert_readiness(False)
 
-        migrate(self.settings, "upgrade", "head")
+        # Keep the original published merge proof separate from current
+        # application readiness, which also requires the review owner.
+        migrate(self.settings, "upgrade", MERGE_REVISION)
         self.assertEqual(self._heads(), {MERGE_REVISION})
         self.assertEqual(self._snapshot(before), before)
         after = self._snapshot()
         for table in missing:
             self.assertEqual(after[table], [])
-        self._assert_readiness(True)
+        self._assert_readiness(False)
         migrate(self.settings, "upgrade", "head")
+        self.assertEqual(self._heads(), {SCHEMA_REVISION})
         self.assertEqual(self._snapshot(), after)
+        self._assert_readiness(True)
 
         # Both owners remain usable and immutable after the missing branch is
         # applied. Adding its first record does not replace the prior owner.
@@ -297,8 +303,12 @@ class PopulatedBranchUpgradeTests(unittest.TestCase):
         self.assertEqual(self._heads(), {QUESTION_REVISION, IMAGE_REVISION})
         before = self._snapshot()
         self._assert_readiness(False)
-        migrate(self.settings, "upgrade", "head")
+        migrate(self.settings, "upgrade", MERGE_REVISION)
         self.assertEqual(self._heads(), {MERGE_REVISION})
+        self.assertEqual(self._snapshot(), before)
+        self._assert_readiness(False)
+        migrate(self.settings, "upgrade", "head")
+        self.assertEqual(self._heads(), {SCHEMA_REVISION})
         self.assertEqual(self._snapshot(), before)
         self._assert_readiness(True)
         self._assert_immutable_owners()
