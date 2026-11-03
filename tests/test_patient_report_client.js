@@ -110,7 +110,8 @@ function harness(t, initialCase = 'CASE-A') {
     requests[index].resolve({ok: status < 400, status, json: async () => payload});
     await flush();
   };
-  return {get, document, window, printed, printScopes, requests, urls, flush, signal, changeCase, respond};
+  return {get, document, window, printed, printScopes, requests, urls, flush, signal, changeCase, respond,
+    makeError: message => vm.runInContext(`new Error(${JSON.stringify(message)})`, context)};
 }
 
 function assertBlocked(h) {
@@ -474,3 +475,94 @@ test('failed global writes permit manual recovery only after settlement', async 
   assert.match(h.get('#report-sections').textContent, /failed global update/);
   assert.equal(h.get('#report-print').disabled, false);
 });
+
+const malformedResponses = [
+  ['false fictional flag', payload => { payload.fictional = false; }],
+  ['truthy fictional flag', payload => { payload.fictional = 'true'; }],
+  ['missing fictional flag', payload => { delete payload.fictional; }],
+  ['unsupported report origin', payload => { payload.generated_from = 'clinical interpretation'; }],
+  ['missing origin', payload => { delete payload.generated_from; }],
+  ['missing demo notice', payload => { delete payload.demo_notice; }],
+  ['object case label', payload => { payload.case_label = {label: 'Untrusted'}; }],
+  ['missing reading note', payload => { delete payload.reading_note; }],
+  ['negative event position', payload => { payload.as_of.event_id = -1; }],
+  ['unsafe event position', payload => { payload.as_of.event_id = Number.MAX_SAFE_INTEGER + 1; }],
+  ['partial event timestamp', payload => { payload.as_of.occurred_at = null; }],
+  ['empty section list', payload => { payload.sections = []; payload.section_ids = []; }],
+  ['mismatched section identifiers', payload => { payload.section_ids = ['timeline']; }],
+  ['duplicate section identifiers', payload => {
+    payload.sections.push(structuredClone(payload.sections[0]));
+    payload.section_ids.push('overview');
+  }],
+  ['missing items array', payload => { delete payload.sections[0].items; }],
+  ['object entry text', payload => { payload.sections[0].items[0].text = {value: 'Untrusted'}; }],
+  ['missing entry detail', payload => { delete payload.sections[0].items[0].detail; }],
+  ['missing entry citation', payload => { delete payload.sections[0].items[0].citation; }],
+  ['mismatched item count', payload => { payload.sections[0].item_count = 2; }],
+  ['invalid citation count', payload => { payload.sections[0].cited_count = 2; }],
+  ['string item count', payload => { payload.sections[0].item_count = '1'; }],
+  ['missing section framing', payload => { delete payload.sections[0].summary; }],
+  ['empty text artifact', payload => { payload.text = ''; }],
+];
+
+for (const [label, mutate] of malformedResponses) {
+  test(`malformed report ${label} cannot revive display or export; a valid retry recovers`, async t => {
+    const h = harness(t);
+    await h.flush();
+    await h.respond(0, report());
+    const oldUrl = h.get('#report-text-link').href;
+    h.signal('oi:case-state-updated');
+    await h.flush();
+    const payload = report('CASE-A', 'MALFORMED_REPORT_CANARY');
+    mutate(payload);
+    await h.respond(1, payload);
+    assertBlocked(h);
+    assert.doesNotMatch(h.get('#report-sections').textContent, /MALFORMED_REPORT_CANARY/);
+    assert.equal(h.urls.length, 1, 'rejected response never creates a Blob URL');
+    await assert.rejects(fetch(oldUrl));
+    h.get('#report-refresh').dispatchEvent(new Event('click'));
+    await h.flush();
+    await h.respond(2, report('CASE-A', 'Valid response after explicit retry'));
+    assert.equal(h.get('#report-print').disabled, false);
+    assert.equal(await (await fetch(h.get('#report-text-link').href)).text(),
+      report('CASE-A', 'Valid response after explicit retry').text);
+  });
+}
+
+test('a valid report with no recorded event keeps explicit nulls and remains downloadable', async t => {
+  const h = harness(t);
+  await h.flush();
+  const payload = report();
+  payload.as_of = {event_id: null, occurred_at: null, due_evaluated_on: null};
+  await h.respond(0, payload);
+  assert.equal(h.get('#report-print').disabled, false);
+  assert.equal(await (await fetch(h.get('#report-text-link').href)).text(), payload.text);
+});
+
+test('backend error bodies cannot disclose unrelated record text in the report surface', async t => {
+  const h = harness(t);
+  await h.flush();
+  await h.respond(0, {error: 'UNRELATED_CASE_ERROR_CANARY'}, 500);
+  assertBlocked(h);
+  assert.doesNotMatch(h.get('#report-sections').textContent, /UNRELATED_CASE_ERROR_CANARY/);
+  assert.match(h.get('#report-meta').textContent, /unavailable/i);
+  assert.equal(h.urls.length, 0);
+});
+
+for (const boundary of ['JSON decoding', 'network transport']) {
+  test(`${boundary} failures do not echo raw record or transport details`, async t => {
+    const h = harness(t);
+    await h.flush();
+    // Use the client realm, as actual browser fetch/JSON errors do.
+    const error = h.makeError('UNRELATED_RESPONSE_DETAIL_CANARY');
+    if (boundary === 'JSON decoding') {
+      h.requests[0].resolve({ok: true, status: 200, json: async () => { throw error; }});
+    } else {
+      h.requests[0].reject(error);
+    }
+    await h.flush();
+    assertBlocked(h);
+    assert.doesNotMatch(h.get('#report-sections').textContent, /UNRELATED_RESPONSE_DETAIL_CANARY/);
+    assert.equal(h.urls.length, 0);
+  });
+}

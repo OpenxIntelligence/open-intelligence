@@ -17,6 +17,14 @@ class ConnectedIntakeEntryTests(unittest.TestCase):
             with self.subTest(marker=marker):
                 self.assertIn(marker, page)
 
+    def test_each_input_adapter_and_composer_is_mounted_once(self):
+        from open_intelligence.workspace_host import workspace_html
+        page = workspace_html()
+        for asset in ('/intake.js', '/document-intake.js', '/composer.js', '/report.js'):
+            self.assertEqual(page.count('src="' + asset + '"'), 1, asset)
+        for control in ('source-upload-form', 'intake-upload-form', 'composer-context'):
+            self.assertEqual(page.count('id="' + control + '"'), 1, control)
+
 
 if __name__ == '__main__':
     unittest.main()

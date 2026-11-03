@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import re
@@ -24,6 +26,9 @@ from .investigation import (
     meta_api_key,
     validate_output,
 )
+from .composer import build_composer_context, composer_context_fingerprint
+from .composer_lab import composer_lab_trend
+from .durable_runs import DurableComposerRuns
 from .mission import build_patient_mission
 from .patient_report import build_patient_report, render_text
 from .store import CaseStore, InvalidInput, MAX_SOURCE_BYTES
@@ -34,6 +39,7 @@ ROOT = Path(__file__).resolve().parents[2]
 WEB = ROOT / "web"
 SYNTHETIC = ROOT / "examples" / "synthetic"
 ID_PART = r"([A-Z][A-Z0-9-]{1,39})"
+DOCUMENT_BODY_BYTES = 131072
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -48,7 +54,8 @@ class Handler(BaseHTTPRequestHandler):
         # Avoid logging source text, patient-like fields or query strings.
         print("[local demo]", fmt % args)
 
-    def _headers(self, status: int, kind: str, size: int) -> None:
+    def _headers(self, status: int, kind: str, size: int, *,
+                 filename: str | None = None) -> None:
         self.send_response(status)
         self.send_header("Content-Type", kind)
         self.send_header("Content-Length", str(size))
@@ -56,10 +63,15 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Security-Policy", "default-src 'self'; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
+        if filename is not None:
+            # The source owner returns a validated ASCII basename, never a
+            # client-supplied path or an untrusted Content-Disposition value.
+            self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
         self.end_headers()
 
-    def _send(self, status: int, body: bytes, kind: str) -> None:
-        self._headers(status, kind, len(body))
+    def _send(self, status: int, body: bytes, kind: str, *,
+              filename: str | None = None) -> None:
+        self._headers(status, kind, len(body), filename=filename)
         self.wfile.write(body)
 
     def _json(self, status: int, payload: dict | list) -> None:
@@ -68,22 +80,63 @@ class Handler(BaseHTTPRequestHandler):
     def _static(self, name: str, mime: str) -> None:
         self._send(200, (WEB / name).read_bytes(), mime)
 
-    def _body(self) -> dict:
+    def _body(self, max_bytes: int = MAX_SOURCE_BYTES + 8192, *,
+              strict: bool = False) -> dict:
         if self.headers.get("Content-Type", "").split(";", 1)[0].strip() != "application/json":
             raise InvalidInput("Only application/json is accepted")
         try:
             n = int(self.headers.get("Content-Length", "0"))
         except ValueError:
             raise InvalidInput("Invalid Content-Length") from None
-        if not 0 < n <= MAX_SOURCE_BYTES + 8192:
+        if not 0 < n <= max_bytes:
             raise InvalidInput("Request body exceeds local-demo limit")
+
+        def unique_fields(pairs):
+            result = {}
+            for key, value in pairs:
+                if key in result:
+                    raise InvalidInput("Duplicate JSON fields are not accepted")
+                result[key] = value
+            return result
+
+        def reject_constant(_value):
+            raise InvalidInput("Non-finite JSON values are not accepted")
+
         try:
-            data = json.loads(self.rfile.read(n))
-        except (UnicodeDecodeError, json.JSONDecodeError):
+            raw = self.rfile.read(n)
+            data = (json.loads(raw, object_pairs_hook=unique_fields,
+                               parse_constant=reject_constant)
+                    if strict else json.loads(raw))
+        except InvalidInput:
+            raise
+        except (UnicodeDecodeError, ValueError, RecursionError):
             raise InvalidInput("Invalid JSON body") from None
         if not isinstance(data, dict):
             raise InvalidInput("JSON object required")
         return data
+
+    @staticmethod
+    def _document_bytes(data: dict, *, preview: bool) -> bytes:
+        required = {"filename", "content_base64"}
+        if not preview:
+            required |= {"metadata", "findings", "expected_sha256", "confirmed_case_id"}
+            if isinstance(data.get("filename"), str) and data["filename"].lower().endswith(".pdf"):
+                required.add("expected_extraction_sha256")
+        if set(data) != required:
+            raise InvalidInput("Document intake requires exactly the documented fields")
+        encoded = data["content_base64"]
+        if (not isinstance(encoded, str) or not encoded
+                or len(encoded) > 4 * ((MAX_SOURCE_BYTES + 2) // 3)):
+            raise InvalidInput("Document content must be base64 for at most 64 KiB")
+        try:
+            raw = base64.b64decode(encoded, validate=True)
+        except (ValueError, binascii.Error):
+            raise InvalidInput("Invalid document base64") from None
+        if not raw or len(raw) > MAX_SOURCE_BYTES:
+            raise InvalidInput("Document must be nonempty and at most 64 KiB")
+        if base64.b64encode(raw).decode("ascii") != encoded:
+            raise InvalidInput("Document base64 must use its canonical encoding")
+        return raw
 
     def _host_allowed(self) -> bool:
         # Host validation prevents a remote-controlled domain resolving to
@@ -111,8 +164,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._static("patient-record.js", "text/javascript; charset=utf-8")
             if path == "/mission.js":
                 return self._static("mission.js", "text/javascript; charset=utf-8")
+            if path == "/composer.js":
+                return self._static("composer.js", "text/javascript; charset=utf-8")
             if path == "/report.js":
                 return self._static("report.js", "text/javascript; charset=utf-8")
+            if path == "/document-intake.js":
+                return self._static("document-intake.js", "text/javascript; charset=utf-8")
             if path == "/style.css":
                 return self._static("style.css", "text/css; charset=utf-8")
             if path == "/tokens.css":
@@ -152,6 +209,11 @@ class Handler(BaseHTTPRequestHandler):
             case_state = re.fullmatch(rf"/api/cases/{ID_PART}/state", path)
             if case_state:
                 return self._json(200, store.state(case_state[1]))
+            world = re.fullmatch(rf"/api/cases/{ID_PART}/world-model", path)
+            if world:
+                # One existing transactionally consistent synthetic snapshot.
+                # Case scoping is not patient authorization or clinical review.
+                return self._json(200, synthetic_world_model(store.state(world[1]), world[1]))
             case_options = re.fullmatch(rf"/api/cases/{ID_PART}/options", path)
             if case_options:
                 query = parse_qs(urlsplit(self.path).query)
@@ -172,6 +234,34 @@ class Handler(BaseHTTPRequestHandler):
                                       "text/plain; charset=utf-8")
                 payload["text"] = text
                 return self._json(200, payload)
+            lab_tool = re.fullmatch(rf"/api/cases/{ID_PART}/composer/tools/lab-trend", path)
+            if lab_tool:
+                query = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
+                allowed = {"question_id", "context_fingerprint", "finding_key"}
+                if set(query) != allowed or any(len(query[k]) != 1 for k in allowed):
+                    raise InvalidInput("Exactly one question_id, context_fingerprint and finding_key required")
+                question_raw = query["question_id"][0]
+                if not question_raw.isdigit() or int(question_raw) < 1:
+                    raise InvalidInput("Composer question_id must be a positive integer")
+                return self._json(200, composer_lab_trend(
+                    store, lab_tool[1], int(question_raw),
+                    query["context_fingerprint"][0], query["finding_key"][0]))
+            runs_list = re.fullmatch(rf"/api/cases/{ID_PART}/composer/runs", path)
+            if runs_list:
+                return self._json(200, {"runs": DurableComposerRuns(store).list(runs_list[1])})
+            run_item = re.fullmatch(rf"/api/cases/{ID_PART}/composer/runs/([0-9]+)", path)
+            if run_item:
+                return self._json(200, DurableComposerRuns(store).get(
+                    run_item[1],int(run_item[2])))
+            composer_preview = re.fullmatch(rf"/api/cases/{ID_PART}/composer/context", path)
+            if composer_preview:
+                questions = parse_qs(urlsplit(self.path).query, keep_blank_values=True).get("question_id", [])
+                if (len(questions) != 1 or not questions[0].isascii() or not questions[0].isdigit()
+                        or len(questions[0]) > 19 or not 1 <= int(questions[0]) <= 9223372036854775807):
+                    raise InvalidInput("Composer requires one positive signed 64-bit question_id")
+                raw_question = questions[0]
+                return self._json(200, build_composer_context(
+                    store, composer_preview[1], int(raw_question)))
             changes = re.fullmatch(rf"/api/cases/{ID_PART}/changes-since-review", path)
             if changes:
                 raw_since = parse_qs(urlsplit(self.path).query).get("since_event_id", [None])[0]
@@ -187,12 +277,6 @@ class Handler(BaseHTTPRequestHandler):
             followthrough = re.fullmatch(rf"/api/cases/{ID_PART}/followthrough", path)
             if followthrough:
                 return self._json(200, followthrough_view(store, followthrough[1]))
-            # Only fictional source-backed state; NOT a verified clinical PWM.
-            world = re.fullmatch(rf"/api/cases/{ID_PART}/world-model", path)
-            if world:
-                return self._json(200, synthetic_world_model(
-                    store.state(world[1]), world[1]
-                ))
             inv_list = re.fullmatch(rf"/api/cases/{ID_PART}/investigations", path)
             if inv_list:
                 return self._json(200, {"investigations": store.list_investigations(inv_list[1])})
@@ -203,9 +287,25 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, {"templates": [
                     {"id": template_id, "description": text[:160]}
                     for template_id, text in TEMPLATES.items()]})
+            source_download = re.fullmatch(rf"/api/cases/{ID_PART}/sources/([0-9]+)/download", path)
+            if source_download:
+                # Bound URL input before Python's decimal conversion and the
+                # source owner's SQLite integer lookup. Other source routes
+                # keep their existing behavior.
+                source_id_text = source_download[2]
+                if len(source_id_text) > 19:
+                    raise InvalidInput("Invalid source identifier")
+                source_id = int(source_id_text)
+                if not 1 <= source_id <= 9223372036854775807:
+                    raise InvalidInput("Invalid source identifier")
+                document = store.source_document(source_download[1], source_id)
+                return self._send(200, document["raw"], document["media_type"],
+                                  filename=document["filename"])
             source = re.fullmatch(rf"/api/cases/{ID_PART}/sources/([0-9]+)", path)
             if source:
-                return self._json(200, {"text": store.source_text(source[1], int(source[2]))})
+                if len(source[2]) > 19:
+                    raise InvalidInput("Invalid source identifier")
+                return self._json(200, store.source_view(source[1], int(source[2])))
             exported = re.fullmatch(rf"/api/cases/{ID_PART}/snapshots/([0-9]+)/export", path)
             if exported:
                 contents = store.export_markdown(exported[1], int(exported[2])).encode("utf-8")
@@ -223,7 +323,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(403, {"error": "Cross-origin writes prohibited"})
         path = urlsplit(self.path).path
         try:
-            data = self._body()
+            document_upload = re.fullmatch(rf"/api/cases/{ID_PART}/documents(/preview)?", path)
+            # Base64 plus bounded annotations needs a larger envelope. All
+            # other routes keep their existing request-body limit unchanged.
+            data = (self._body(DOCUMENT_BODY_BYTES, strict=True)
+                    if document_upload else self._body())
             if path == "/api/bibliography/lookup":
                 if not self.allow_crossref_live:
                     return self._json(403, {"error": "Live Crossref lookup disabled by default; use explicit local server option"})
@@ -243,6 +347,18 @@ class Handler(BaseHTTPRequestHandler):
                     self.metadata_request_lock.release()
             store = CaseStore(self.db_path)
             try:
+                if document_upload:
+                    preview = document_upload[2] is not None
+                    raw = self._document_bytes(data, preview=preview)
+                    if preview:
+                        return self._json(200, store.preview_document(
+                            document_upload[1], raw, data["filename"]))
+                    return self._json(200, store.import_document(
+                        document_upload[1], raw, data["filename"],
+                        metadata=data["metadata"], findings=data["findings"],
+                        expected_sha256=data["expected_sha256"],
+                        confirmed_case_id=data["confirmed_case_id"],
+                        expected_extraction_sha256=data.get("expected_extraction_sha256")))
                 if path == "/api/cases":
                     store.add_case(data.get("case_id"), data.get("label"))
                     return self._json(201, {"result": "created"})
@@ -395,6 +511,23 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(200, store.review_option(
                         option_review[1], int(option_review[2]), data.get("reviewer_label"),
                         data.get("action"), data.get("scope"), data.get("snapshot_id")))
+                run_list = re.fullmatch(rf"/api/cases/{ID_PART}/composer/runs", path)
+                if run_list:
+                    if set(data) != {"question_id","context_fingerprint","finding_key","idempotency_key"}:
+                        raise InvalidInput("Run creation requires exact task fields")
+                    return self._json(201, DurableComposerRuns(store).queue(
+                        run_list[1],data["question_id"],data["context_fingerprint"],
+                        data["finding_key"],data["idempotency_key"]))
+                run_action = re.fullmatch(
+                    rf"/api/cases/{ID_PART}/composer/runs/([0-9]+)/(execute|cancel)",path)
+                if run_action:
+                    if data:
+                        raise InvalidInput("Run action requires empty JSON object")
+                    ledger = DurableComposerRuns(store)
+                    receipt = (ledger.execute(run_action[1],int(run_action[2]))
+                               if run_action[3] == "execute"
+                               else ledger.cancel(run_action[1],int(run_action[2])))
+                    return self._json(200,receipt)
                 inv_create = re.fullmatch(rf"/api/cases/{ID_PART}/investigations", path)
                 if inv_create:
                     case_id = inv_create[1]
@@ -405,9 +538,23 @@ class Handler(BaseHTTPRequestHandler):
                     if mode not in ("live", "replay"):
                         raise InvalidInput("Mode must be live or replay")
                     question_id = data.get("question_id")
-                    if type(question_id) is not int:
-                        raise InvalidInput("question_id must be an integer")
+                    if type(question_id) is not int or not 1 <= question_id <= 2**63 - 1:
+                        raise InvalidInput("question_id must be a positive integer within the supported range")
+                    context_fingerprint = data.get("context_fingerprint")
+                    if context_fingerprint is not None:
+                        if (not isinstance(context_fingerprint, str) or
+                                not re.fullmatch(r"[0-9a-f]{64}", context_fingerprint)):
+                            raise InvalidInput("Invalid Composer context fingerprint")
+                        actual = composer_context_fingerprint(store, case_id, question_id)
+                        if context_fingerprint != actual:
+                            raise InvalidInput("stale Composer context: refresh current sources and evidence")
                     facts = store.investigation_facts(case_id, question_id)
+                    # The server binds every external-content run, even when a
+                    # legacy client omits the optional preview fingerprint.
+                    if context_fingerprint is not None and context_fingerprint != facts["context_fingerprint"]:
+                        raise InvalidInput("stale Composer context: refresh current sources and evidence")
+                    if facts["external_evidence"]:
+                        context_fingerprint = facts["context_fingerprint"]
                     if mode == "replay":
                         fixture = json.loads((SYNTHETIC / "demo-investigation.json").read_text())
                         # Replace placeholders with real current ids, then
@@ -420,16 +567,19 @@ class Handler(BaseHTTPRequestHandler):
                                     cite["id"] = first_source
                                 if cite.get("id") == "FIRST_ASSESSMENT" and first_assessment is not None:
                                     cite["id"] = first_assessment
-                        validated = validate_output(fixture, facts["valid_sources"], facts["valid_assessments"])
+                        validated = validate_output(fixture, facts["valid_sources"], facts["valid_assessments"], facts["valid_brokers"])
                         validated.model = "recorded-replay"
                         validated.mode = "replay"
                     else:
                         prompt = build_prompt(template, facts["question"]["question"],
-                                              facts["assertions"], facts["assessments"])
+                                              facts["assertions"], facts["assessments"], facts["external_evidence"])
+                        if context_fingerprint is not None and context_fingerprint != composer_context_fingerprint(store, case_id, question_id):
+                            raise InvalidInput("stale Composer context: evidence changed before execution")
                         payload = call_meta_api(prompt, meta_api_key())
-                        validated = validate_output(payload, facts["valid_sources"], facts["valid_assessments"])
+                        validated = validate_output(payload, facts["valid_sources"], facts["valid_assessments"], facts["valid_brokers"])
                     investigation_id = store.save_investigation(
-                        case_id, question_id, template, validated, mode)
+                        case_id, question_id, template, validated, mode,
+                        context_fingerprint=context_fingerprint, input_receipts=facts["input_receipts"])
                     return self._json(201, store.get_investigation(case_id, investigation_id))
                 return self._json(404, {"error": "Route not found"})
             finally:

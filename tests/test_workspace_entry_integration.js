@@ -30,6 +30,9 @@ function harness() {
     fetch: () => new Promise(() => {}),
     OIIntake: {mount(options) { Object.assign(callbacks, options); return {render() {}, resetScope() {}}; }}});
   vm.runInContext('const el = id => document.getElementById(id); const pendingCaseWrites = new Map();\n' + hostFunctions, context);
+  const start = app.indexOf("document.addEventListener('oi:composer-open-source'");
+  const end = app.indexOf("el('model-investigation-form')", start);
+  vm.runInContext(app.slice(start, end), context);
   vm.runInContext(entry, context);
   const send = detail => document.dispatchEvent(new CustomEvent('oi:composer-open-source', {detail}));
   return {get, callbacks, context, opened, notices, send};
@@ -79,4 +82,12 @@ test('source actions cannot use the old accepted state while any host write is u
   const h = harness(); h.context.api('/api/cases/CASE-A/imports', {});
   h.send({caseId: 'CASE-A', sourceId: 2, line: 8});
   assert.equal(h.opened.length, 0, 'Source change in flight must not open the old accepted anchor');
+});
+
+
+test('reviewed text or PDF draft vetoes new workspace without erasing selected bytes', () => {
+  const h = harness(); const original = {name: 'fictional.pdf'};
+  h.get('intake-file').files = [original];
+  assert.equal(h.callbacks.canSwitch(), false);
+  assert.equal(h.get('intake-file').files[0], original);
 });

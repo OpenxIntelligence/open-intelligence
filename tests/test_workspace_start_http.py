@@ -93,4 +93,13 @@ class WorkspaceStartHttpTests(unittest.TestCase):
     self.read(route)
    self.assertEqual(err.exception.code,422)
 
+ def test_connected_composer_route_retains_single_question_parameter_guard(self):
+  self.read('/api/cases',{'case_id':'CASE-START','label':'Fictional case Start'})
+  qid=self.read('/api/cases/CASE-START/questions',{'question':'Which fictional source needs review?'})['question_id']
+  for query in (f'question_id={qid}&question_id={qid}', f'question_id={qid}&question_id=', 'question_id=9223372036854775808'):
+   with self.subTest(query=query):
+    with self.assertRaises(HTTPError) as err:
+     self.read('/api/cases/CASE-START/composer/context?'+query)
+    self.assertEqual(err.exception.code,422);err.exception.close()
+
 if __name__=='__main__':unittest.main()

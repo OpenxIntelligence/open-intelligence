@@ -236,6 +236,28 @@ CREATE TABLE IF NOT EXISTS assertions (
   source_line INTEGER NOT NULL,
   UNIQUE(source_version_id,finding_key)
 );
+CREATE TABLE IF NOT EXISTS document_intake_metadata (
+  source_version_id INTEGER PRIMARY KEY REFERENCES source_versions(id),
+  filename TEXT NOT NULL, media_type TEXT NOT NULL,
+  extraction_method TEXT NOT NULL, annotation_method TEXT NOT NULL,
+  manual_transcription_confirmed INTEGER NOT NULL CHECK(manual_transcription_confirmed=1),
+  clinical_review TEXT NOT NULL CHECK(clinical_review='not_performed'),
+  review_sha256 TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS source_text_renditions (
+  source_version_id INTEGER PRIMARY KEY REFERENCES source_versions(id),
+  original_sha256 TEXT NOT NULL, extraction_sha256 TEXT NOT NULL,
+  extractor_json TEXT NOT NULL, page_count INTEGER NOT NULL CHECK(page_count BETWEEN 1 AND 20),
+  pages_json TEXT NOT NULL, lines_json TEXT NOT NULL, text TEXT NOT NULL
+);
+CREATE TRIGGER IF NOT EXISTS source_text_renditions_no_update
+BEFORE UPDATE ON source_text_renditions BEGIN
+  SELECT RAISE(ABORT, 'Persisted source extraction is immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS source_text_renditions_no_delete
+BEFORE DELETE ON source_text_renditions BEGIN
+  SELECT RAISE(ABORT, 'Persisted source extraction is immutable');
+END;
 CREATE TABLE IF NOT EXISTS questions (
   id INTEGER PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(case_id),
   question TEXT NOT NULL, state TEXT NOT NULL CHECK(state IN ('open','addressed')),
@@ -674,13 +696,122 @@ class CaseStore:
             self.db.execute("BEGIN IMMEDIATE")
             return self._import_report_in_transaction(case_id, raw, report, digest)
 
+    def preview_document(self, case_id: str, raw: bytes, filename: str) -> dict:
+        """Read-only document preview; no inferred assertions or persistent upload."""
+        from .document_intake import preview_document
+        case_id = self._case(case_id)
+        return {"case_id": case_id, **preview_document(raw, filename)}
+
+    def _document_intake_receipts(self, case_id: str) -> dict[int, dict]:
+        """Read existing source-linked receipts inside the caller snapshot."""
+        rows = self._dicts(self.db.execute(
+            """SELECT d.*,r.extraction_sha256 FROM document_intake_metadata d
+            JOIN source_versions s ON s.id=d.source_version_id
+            LEFT JOIN source_text_renditions r ON r.source_version_id=s.id WHERE s.case_id=?""",
+            (case_id,)).fetchall())
+        receipts = {}
+        for row in rows:
+            source_id = row.pop("source_version_id")
+            row["manual_transcription_confirmed"] = bool(row["manual_transcription_confirmed"])
+            if row["extraction_sha256"] is None:
+                del row["extraction_sha256"]
+            receipts[source_id] = row
+        return receipts
+
+    def _annotate_source_assertions(self, assertions: list[dict], receipts: dict[int, dict]) -> None:
+        """Attach manual origin and physical-page anchors from the same source owner.
+
+        Callers supply case-scoped receipts and assertions inside a read snapshot.
+        A PDF extraction line must never be presented as an original-byte line.
+        """
+        from .document_intake import classification_provenance
+        renditions = {}
+        for assertion in assertions:
+            source_id = assertion["source_version_id"]
+            if source_id not in receipts:
+                continue
+            receipt = receipts[source_id]
+            assertion.update(classification_provenance(receipt))
+            if not receipt.get("extraction_sha256"):
+                continue
+            if source_id not in renditions:
+                row = self.db.execute(
+                    "SELECT lines_json,pages_json FROM source_text_renditions WHERE source_version_id=?",
+                    (source_id,)).fetchone()
+                if row is None:
+                    raise InvalidInput("A reviewed PDF extraction is unavailable")
+                renditions[source_id] = (json.loads(row["lines_json"]), json.loads(row["pages_json"]))
+            lines, pages = renditions[source_id]
+            line_number = assertion["source_line"]
+            if not 1 <= line_number <= len(lines):
+                raise InvalidInput("A reviewed PDF anchor is unavailable")
+            anchor = lines[line_number - 1]
+            assertion.update({"source_page": anchor["page"], "page_line": anchor["page_line"],
+                              "page_text_sha256": pages[anchor["page"] - 1]["sha256"]})
+
+    def import_document(self, case_id: str, raw: bytes, filename: str,
+                        metadata: dict, findings: list[dict],
+                        expected_sha256: str, confirmed_case_id: str,
+                        expected_extraction_sha256: str | None = None) -> dict:
+        """Commit explicitly confirmed manual transcription to the original ledger.
+
+        The reviewed annotations are immutable for a given original. A filename
+        change is an idempotent retry, retaining the original upload filename.
+        All source, freshness, event and intake receipt writes share one lock.
+        """
+        from .document_intake import review_document
+        case_id = self._case(case_id)
+        report, receipt, rendition = review_document(
+            case_id, raw, filename, metadata, findings, expected_sha256,
+            confirmed_case_id, expected_extraction_sha256)
+        digest = hashlib.sha256(raw).hexdigest()
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            # Check the original across this case, so changing a document ID
+            # cannot silently reuse identical bytes with different annotations.
+            duplicate = self.db.execute(
+                """SELECT s.id,s.version,d.review_sha256 FROM source_versions s
+                LEFT JOIN document_intake_metadata d ON d.source_version_id=s.id
+                WHERE s.case_id=? AND s.sha256=? ORDER BY s.id LIMIT 1""",
+                (case_id, digest)).fetchone()
+            if duplicate is not None:
+                if duplicate["review_sha256"] != receipt["review_sha256"]:
+                    raise InvalidInput("Original bytes already exist with different metadata or findings")
+                return {"result": "duplicate", "source_id": duplicate["id"], "version": duplicate["version"]}
+            result = self._import_report_in_transaction(case_id, raw, report, digest)
+            if rendition is not None:
+                self.db.execute(
+                    """INSERT INTO source_text_renditions
+                    (source_version_id,original_sha256,extraction_sha256,extractor_json,
+                     page_count,pages_json,lines_json,text) VALUES (?,?,?,?,?,?,?,?)""",
+                    (result["source_id"], digest, rendition["extraction_sha256"],
+                     json.dumps(rendition["extractor"], sort_keys=True, ensure_ascii=False),
+                     rendition["page_count"], json.dumps(rendition["pages"], ensure_ascii=False),
+                     json.dumps(rendition["lines"], ensure_ascii=False), rendition["text"]))
+            self.db.execute(
+                """INSERT INTO document_intake_metadata
+                (source_version_id,filename,media_type,extraction_method,annotation_method,
+                 manual_transcription_confirmed,clinical_review,review_sha256)
+                VALUES (?,?,?,?,?,?,?,?)""",
+                (result["source_id"], receipt["filename"], receipt["media_type"],
+                 receipt["extraction_method"], receipt["annotation_method"],
+                 int(receipt["manual_transcription_confirmed"]), receipt["clinical_review"],
+                 receipt["review_sha256"]))
+            self._event(case_id, "document_transcription_confirmed",
+                        source_id=result["source_id"], sha256=digest,
+                        review_sha256=receipt["review_sha256"],
+                        extraction_method=receipt["extraction_method"],
+                        annotation_method=receipt["annotation_method"],
+                        clinical_review="not_performed",
+                        **({"extraction_sha256": rendition["extraction_sha256"]}
+                           if rendition is not None else {}))
+            return result
+
     def _import_report_in_transaction(self, case_id: str, raw: bytes,
                                       report: ParsedReport, digest: str) -> dict:
-        """Call only inside a BEGIN IMMEDIATE transaction held by this store.
-        
-        Shared by ordinary import and the gated synthetic adapter; all source,
-        binding and receipt changes commit or roll back together.
-        """
+        """Shared source/version/assertion persistence under the caller write lock."""
+        if not self.db.in_transaction:
+            raise InvalidInput("Source import requires its owning write transaction")
         if report.patient_id != case_id:
             # Idempotent quarantine across repeated wrong-case deliveries.
             existing = self.db.execute(
@@ -736,10 +867,6 @@ class CaseStore:
                 self.db.execute(f"UPDATE snapshots SET state='stale' WHERE id IN ({marks})", invalidated)
                 self.db.execute(f"""UPDATE questions SET state='open' WHERE case_id=? AND id IN
                     (SELECT question_id FROM snapshots WHERE id IN ({marks}))""", [case_id, *invalidated])
-                # An amendment changes freshness for investigations too:
-                # they cite the superseded source's facts, so mark them stale
-                # rather than silently leaving them current.
-                # All current-source changes are handled together after import.
             # OI-021, same transaction: only options in THIS case that
             # cite the superseded version or a stale snapshot reopen.
             invalidated_options = self._invalidate_options(
@@ -774,6 +901,7 @@ class CaseStore:
                     invalidated_model_investigation_ids=invalidated_models)
         return {"result": "imported", "source_id": source_id, "version": version,
                 "invalidated_snapshots": invalidated, "invalidated_options": invalidated_options,
+                "invalidated_model_investigation_ids": invalidated_models,
                 "invalidated_inventory_assertions": invalidated_inventory}
 
 
@@ -2860,6 +2988,8 @@ class CaseStore:
 
     def investigation_facts(self, case_id: str, question_id: int) -> dict:
         """One coherent snapshot for text, rights, citation IDs, and receipts."""
+        if type(question_id) is not int or not 1 <= question_id <= 2**63 - 1:
+            raise InvalidInput("Question id must be a positive SQLite integer")
         if self.db.in_transaction:
             return self._investigation_facts_in_snapshot(case_id, question_id)
         with self.db:
@@ -2879,6 +3009,8 @@ class CaseStore:
             FROM assertions JOIN source_versions ON source_versions.id=assertions.source_version_id
             WHERE assertions.case_id=? AND source_versions.state='current' ORDER BY assertions.id""",
             (case_id,)).fetchall())
+        intake_by_source = self._document_intake_receipts(case_id)
+        self._annotate_source_assertions(assertions, intake_by_source)
         assessments = self._dicts(self.db.execute(
             """SELECT a.id,a.relation,a.applicability,a.rationale,v.statement
             FROM evidence_assessments a JOIN evidence_versions v ON v.id=a.evidence_version_id
@@ -2916,6 +3048,8 @@ class CaseStore:
         An attempt, including a completed hypothesis, is not the explicit
         snapshot acknowledgment performed by ``acknowledge_demo_review``.
         """
+        if type(question_id) is not int or not 1 <= question_id <= 2**63 - 1:
+            raise InvalidInput("Question id must be a positive SQLite integer")
         self._case(case_id)
         if type(question_id) is not int or question_id < 1:
             raise InvalidInput("Question id must be a positive integer")
@@ -3032,11 +3166,19 @@ class CaseStore:
                 """SELECT id,document_id,version,sha256,kind,event_date,issued_at,received_at,
                 specimen_id,state,supersedes_id FROM source_versions WHERE case_id=?
                 ORDER BY event_date,document_id,version""", (case_id,)).fetchall())
+            from .document_intake import classification_provenance
+            intake_by_source = self._document_intake_receipts(case_id)
+            for source in source_rows:
+                if source["id"] in intake_by_source:
+                    receipt = intake_by_source[source["id"]]
+                    source["document_intake"] = receipt
+                    source.update(classification_provenance(receipt))
             assert_rows = self._dicts(self.db.execute(
                 """SELECT assertions.id,source_version_id,finding_key,certainty,quote,source_line
                 FROM assertions JOIN source_versions ON source_versions.id=assertions.source_version_id
                 WHERE assertions.case_id=? AND source_versions.state='current' ORDER BY assertions.id""",
                 (case_id,)).fetchall())
+            self._annotate_source_assertions(assert_rows, intake_by_source)
             snapshot_rows = self._dicts(self.db.execute(
                 "SELECT * FROM snapshots WHERE case_id=? ORDER BY id DESC", (case_id,)).fetchall())
             for snapshot in snapshot_rows:
@@ -3117,12 +3259,48 @@ class CaseStore:
             }
 
     def source_text(self, case_id: str, source_id: int) -> str:
+        """Readable source text; PDF text comes only from its frozen rendition."""
+        return self.source_view(case_id, source_id)["text"]
+
+    def source_view(self, case_id: str, source_id: int) -> dict:
+        """Read original text or labeled PDF extraction without reparsing bytes."""
+        document = self.source_document(case_id, source_id)
+        view = {"source_id": source_id, "media_type": document["media_type"],
+                "original_sha256": document["sha256"]}
+        if document["media_type"] != "application/pdf":
+            return {**view, "text": document["raw"].decode("utf-8"), "text_origin": "original"}
+        row = self.db.execute(
+            "SELECT * FROM source_text_renditions WHERE source_version_id=?", (source_id,)).fetchone()
+        if row is None or row["original_sha256"] != document["sha256"]:
+            raise InvalidInput("PDF extraction is unavailable or does not match the original")
+        return {**view, "text": row["text"], "text_origin": "pdf_extraction",
+                "extraction_sha256": row["extraction_sha256"], "page_count": row["page_count"],
+                "extractor": json.loads(row["extractor_json"]),
+                "pages": json.loads(row["pages_json"]), "lines": json.loads(row["lines_json"])}
+
+    def source_document(self, case_id: str, source_id: int) -> dict:
+        """Retrieve exact original bytes and safe download metadata for one case."""
         self._case(case_id)
-        row = self.db.execute("SELECT raw FROM source_versions WHERE case_id=? AND id=?",
-                              (case_id, source_id)).fetchone()
-        if not row:
+        if type(source_id) is not int or not 1 <= source_id <= 9223372036854775807:
+            raise InvalidInput("Source ID must be a bounded positive integer")
+        row = self.db.execute(
+            """SELECT s.id,s.document_id,s.version,s.raw,s.sha256,d.filename,d.media_type,
+            d.extraction_method,d.annotation_method,d.manual_transcription_confirmed
+            FROM source_versions s LEFT JOIN document_intake_metadata d ON d.source_version_id=s.id
+            WHERE s.case_id=? AND s.id=?""", (case_id, source_id)).fetchone()
+        if row is None:
             raise InvalidInput("Source not in this case")
-        return bytes(row["raw"]).decode("utf-8")
+        raw = bytes(row["raw"])
+        return {
+            "source_id": row["id"], "document_id": row["document_id"], "version": row["version"],
+            "raw": raw, "sha256": row["sha256"], "byte_count": len(raw),
+            "filename": row["filename"] or f"{row['document_id']}-v{row['version']}.txt",
+            "media_type": row["media_type"] or "text/plain; charset=utf-8",
+            "extraction_method": row["extraction_method"] or "synthetic-authored-format-v1",
+            "annotation_method": row["annotation_method"] or "source-authored-finding-lines",
+            "manual_transcription_confirmed": bool(row["manual_transcription_confirmed"]),
+            "clinical_review": "not_performed",
+        }
 
     def export_markdown(self, case_id: str, snapshot_id: int) -> str:
         self._case(case_id)
@@ -3136,20 +3314,43 @@ class CaseStore:
                 raise InvalidInput("Investigation not in this case")
             sources = self.db.execute("""SELECT v.* FROM source_versions v JOIN snapshot_sources ss ON ss.source_version_id=v.id
                 WHERE ss.snapshot_id=? ORDER BY v.document_id,v.version""", (snapshot_id,)).fetchall()
+            intake_by_source = self._document_intake_receipts(case_id)
             lines = ["# Open Intelligence — synthetic investigation", "",
                      "> Research demonstration only. No clinical review or patient-specific treatment recommendation.", "",
                      f"Case: `{case_id}` | Investigation: {snapshot_id} | State: **{snapshot['state']}**",
                      f"Created: {snapshot['created_at']} | Demo acknowledgment: {snapshot['reviewed_at'] or 'None'}", "",
                      "## Question", "", snapshot["question"], "", "## Draft (human-authored)", "",
-                     snapshot["summary"], "", "## Source versions and original text", ""]
+                     snapshot["summary"], "", "## Source versions and readable text", ""]
             for source in sources:
-                raw_text = bytes(source["raw"]).decode("utf-8")
+                view = self.source_view(case_id, source["id"])
+                raw_text = view["text"]
                 # Prevent raw input from escaping Markdown source fences.
                 longest = max((len(run) for run in re.findall(r"`+", raw_text)), default=0)
                 fence = "`" * max(3, longest + 1)
                 lines.extend([f"### {source['document_id']}@{source['version']} — {source['state']}", "",
-                              f"SHA-256: `{source['sha256']}` | Event: {source['event_date']} | Issued: {source['issued_at']}", "",
-                              fence + "text", raw_text, fence, ""])
+                              f"SHA-256: `{source['sha256']}` | Event: {source['event_date']} | Issued: {source['issued_at']}", ""])
+                if source["id"] in intake_by_source:
+                    receipt = intake_by_source[source["id"]]
+                    lines.extend([
+                        "Manual transcription provenance: `classification_origin=user_selected` | "
+                        f"`annotation_method={receipt['annotation_method']}` | `clinical_review=not_performed`",
+                        f"Transcription review SHA-256: `{receipt['review_sha256']}`",
+                        "The literal quote is primary; user-selected classifications are not source-authored "
+                        "or clinically verified. Transcription confirmation is not clinical approval.", "",
+                    ])
+                if view["text_origin"] == "pdf_extraction":
+                    lines.extend([
+                        "PDF extracted text below is a derived rendition, not original PDF bytes or a visual transcription.",
+                        f"Extraction SHA-256: `{view['extraction_sha256']}` | "
+                        f"Extractor: {view['extractor']['name']} {view['extractor']['version']} | "
+                        f"Physical pages: {view['page_count']}",
+                        "Original PDF: "
+                        f"`/api/cases/{case_id}/sources/{source['id']}/download` (same-case attachment route).",
+                        "Page anchors (global extraction line → physical page / page extraction line):",
+                        *[f"- {item['line']} → {item['page']} / {item['page_line']}"
+                          for item in view["lines"]], "",
+                    ])
+                lines.extend([fence + "text", raw_text, fence, ""])
             evidence = self.db.execute("""SELECT a.*,v.evidence_key,v.version,v.state AS evidence_state,
                 v.title,v.sha256,v.raw,v.rights,v.statement_line FROM snapshot_evidence se
                 JOIN evidence_assessments a ON a.id=se.assessment_id

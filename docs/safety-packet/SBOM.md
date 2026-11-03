@@ -1,5 +1,37 @@
 # Software Bill of Materials (SBOM) — Open Intelligence demo, branch `oi/safety-packet`
 
+## Bounded PDF extension — 3 November 2026 UTC
+
+This additive receipt supersedes the earlier **standard-library-only** runtime
+claim for branches containing the PDF extension. The text-only path still has
+no third-party runtime package. The optional PDF path and complete test suite
+require Python 3.12+ with the exact component below; the reference clean
+environment was Python 3.12.14. CI exercises Python 3.12 and 3.13.
+
+| Component | Exact artifact | License and verification | Scope / remaining limits |
+| --- | --- | --- | --- |
+| pypdf 6.21.4 | `pypdf-6.21.4-py3-none-any.whl`; SHA-256 `33e4fb41ca352810eb4e9838aa0d82d6888a5f8bf682f43e99cce5faa666255c`; source `b2c3fa2ee689f582a0de256a45e30bd96c68f807` | BSD-3-Clause; exact source LICENSE Git blob `ab327d0312875458ba74983867f1b2622b6de39d`; wheel notice SHA-256 `a97ac230e5f33ef10a5367a850eb01f91f1a0b064e34742c7794d2294557f524`; exact notice retained at `THIRD_PARTY_NOTICES/pypdf.txt` | Bounded synthetic PDF-to-text adapter only; no optional extras, models, datasets or font/image packages adopted. |
+
+Hash-required wheel installation and installed metadata were inspected. On
+Python 3.12 the base wheel has no unconditional third-party runtime dependency;
+the clean environment contains only pip 25.0.1 (installer) and pypdf 6.21.4.
+The selected optional component graph is represented in
+[`PDF_DEPENDENCY_SBOM.json`](PDF_DEPENDENCY_SBOM.json); it is not a full deployment
+image SBOM. Installation is specified by `requirements-pdf.lock`.
+
+The original source ledger owns PDF bytes and immutable extraction children.
+`pdf_intake.py` supervises a fresh bounded `pdf_worker.py` process. No external
+PDF, patient record, model weight, OCR dataset or sample corpus is incorporated;
+tests generate fictional documents with `tests/pdf_fixtures.py` using the
+standard library. Numeric lab computation holds manually transcribed text/PDF
+sources; the pre-existing authored synthetic measurement contract is unchanged.
+
+See [the maintained intake contract](../engineering/DOCUMENT_INTAKE.md) for
+the upstream license/release/advisory evidence, resource limits and known format
+restrictions. This scoped component review does not select the project license,
+grant source-document rights, certify clinical use, or clear every dependency
+elsewhere in the repository. Earlier branch inventories follow as history.
+
 Scope: this inventory covers the current tree on this branch (current
 `main` merged in; refreshed 2026-11-02). It supersedes the earlier
 `main`-only revision (`46bb1db`), which excluded the investigation

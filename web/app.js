@@ -22,9 +22,11 @@ function notice(message, error = false) {
 async function api(path, payload, {responseEnvelope = false} = {}) {
   const target = payload === undefined ? null : path.match(/^\/api\/cases\/([^/]+)\//);
   const mutationCase = target ? decodeURIComponent(target[1]) : null;
-  // Shared evidence/rights updates can affect several cases. The DOI lookup
-  // is the server's only read-only POST and does not change a case record.
-  const writeScope = payload !== undefined && path !== '/api/bibliography/lookup' ?
+  // Explicit read-only POSTs do not mutate the ledger. Document preview uses
+  // the source owner's parser but creates no source or clinical assertion.
+  const readOnlyPost = path === '/api/bibliography/lookup' ||
+    /^\/api\/cases\/[A-Z][A-Z0-9-]{1,39}\/documents\/preview$/.test(path);
+  const writeScope = payload !== undefined && !readOnlyPost ?
     (mutationCase || '*') : null;
   const scope = mutationCase ? 'case' : 'all-cases';
   if (writeScope) {
@@ -66,7 +68,8 @@ function hasUnsavedCaseWork() {
       'option-description', 'ft-title', 'ft-detail', 'ft-due', 'ft-trigger',
       'ft-actor', 'ft-reason', 'ft-owner', 'ft-update-due', 'ft-update-actor',
       'ft-update-reason'].some(id => Boolean(el(id)?.value.trim())) ||
-    Boolean(el('ft-clear-due')?.checked) || Boolean(el('source-file')?.files?.length);
+    Boolean(el('ft-clear-due')?.checked) || Boolean(el('source-file')?.files?.length) ||
+    Boolean(el('intake-file')?.files?.length);
 }
 function pill(value, style = '') { return node('span', value, 'pill ' + style); }
 function empty(container, text) { container.append(node('p', text, 'empty')); }
@@ -107,6 +110,7 @@ async function initialize() {
       }
       cancelSourceRead();
       caseId = picker.value;
+      documentIntake.syncCase(caseId);
       active = null; // Reject writes while the next case is loading.
       for (const id of ['question-text', 'report-text', 'evidence-rationale', 'draft-observations',
         'draft-summary', 'draft-assumptions']) el(id).value = '';
@@ -195,6 +199,9 @@ function focusPatientQuestion(questionId) {
     }
     el('evidence-question-choice').value = target;
     el('model-investigation-question').value = target;
+    // Composer owns its source context and must invalidate the earlier question's
+    // fingerprint when this handoff changes the selected durable question.
+    el('model-investigation-question').dispatchEvent(new Event('change'));
     window.location.hash = 'investigations';
     el('model-investigation-question').focus();
     notice('Question Q' + questionId + ' selected for evidence investigation. No investigation has run yet.');
@@ -215,6 +222,8 @@ async function refresh() {
     // The user can switch cases while a response is in flight. Never render
     // the previous case underneath the newly selected case or its actions.
     if (sequence !== refreshSequence || caseId !== requestedCase) return;
+    if (response?.case?.case_id !== requestedCase)
+      throw Error('The returned record does not match the selected case. Refresh to try again.');
     active = response;
     el('case-heading').textContent = active.case.label;
     render();
@@ -224,6 +233,7 @@ async function refresh() {
     await patientRecord.load(response);
   } catch (err) {
     if (sequence === refreshSequence && requestedCase === caseId) {
+      active = null;
       patientRecord.clear('The selected record could not be loaded. Refresh to try again.');
       notice(err.message, true);
     }
@@ -402,6 +412,7 @@ function renderBiologicalAssets() {
   }
 }
 function render() {
+  documentIntake.syncCase(caseId);
   const sameCase = renderedCaseId === caseId;
   const priorQuestion = sameCase ? el('question-choice').value : null;
   const priorModelQuestion = sameCase ? el('model-investigation-question').value : null;
@@ -451,9 +462,19 @@ function render() {
     const meta = node('div', null, 'source-meta');
     for (const text of [source.kind, 'Event ' + source.event_date, 'Issued ' + source.issued_at,
       'Received ' + source.received_at.substring(0, 10), 'SHA ' + source.sha256.slice(0, 12) + '…']) meta.append(node('span', text));
-    const button = node('button', 'View original text', 'button secondary minor');
+    const button = node('button', source.text_origin === 'pdf_extraction'
+      ? 'View extracted PDF text' : 'View original text', 'button secondary minor');
     button.type = 'button'; button.addEventListener('click', () => openSource(source));
-    card.append(top, meta, button); el('source-list').append(card);
+    card.append(top, meta, button);
+    if (source.document_intake) {
+      card.append(node('p', source.document_intake.filename +
+        ' · Manually confirmed passages · Clinical review not performed', 'muted tiny'));
+      const download = node('a', 'Download original file', 'button secondary minor');
+      download.href = '/api/cases/' + caseId + '/sources/' + source.id + '/download';
+      download.download = source.document_intake.filename;
+      card.append(download);
+    }
+    el('source-list').append(card);
   }
   clear('assertion-list');
   if (!active.assertions.length) empty(el('assertion-list'), 'No current reported statements.');
@@ -461,20 +482,26 @@ function render() {
     const card = node('div', null, 'finding');
     const heading = node('div', null, 'finding-head');
     const labels = node('div', null, 'finding-labels');
-    labels.append(pill('Source says', 'pill-neutral'), pill(assertion.certainty,
+    labels.append(pill('Source says', 'pill-neutral'), pill(
+      (assertion.classification_origin === 'user_selected' ? 'User-selected: ' : '') + assertion.certainty,
       ['pending', 'indeterminate', 'conflicting', 'not-reported', 'not-assessed'].includes(assertion.certainty) ? 'pill-warn' : ''));
     heading.append(node('strong', assertion.finding_key), labels);
     card.append(heading, node('p', assertion.quote, 'quoted'));
     const supportingSource = active.sources.find(source =>
       Number(source.id) === Number(assertion.source_version_id));
     const sourceButton = node('button', supportingSource
-      ? 'Inspect ' + supportingSource.document_id + '@' + supportingSource.version + ', line ' + assertion.source_line
+      ? 'Inspect ' + supportingSource.document_id + '@' + supportingSource.version +
+        (assertion.text_origin === 'pdf_extraction'
+          ? ', page ' + assertion.source_page + ', extracted line ' + assertion.page_line
+          : ', line ' + assertion.source_line)
       : 'Exact source version unavailable', 'button secondary minor source-jump');
     sourceButton.type = 'button';
     sourceButton.disabled = !supportingSource;
     if (supportingSource)
       sourceButton.addEventListener('click', () => openSource(supportingSource, Number(assertion.source_line)));
     card.append(sourceButton);
+    if (assertion.classification_origin === 'user_selected')
+      card.append(node('p', 'Passage and status manually selected. Clinical review not performed.', 'muted tiny'));
     el('assertion-list').append(card);
   }
   renderBiologicalAssets();
@@ -731,6 +758,37 @@ function originalText(response) {
     throw Error('Original source text is unavailable. No comparison was produced.');
   return response.text;
 }
+function validatePdfSourceView(source, response) {
+  const expected = source.document_intake?.extraction_sha256;
+  if (response.text_origin !== 'pdf_extraction' || response.media_type !== 'application/pdf' ||
+      response.source_id !== source.id || response.original_sha256 !== source.sha256 ||
+      !/^[0-9a-f]{64}$/.test(expected || '') || response.extraction_sha256 !== expected ||
+      !Number.isInteger(response.page_count) || response.page_count < 1 || response.page_count > 20 ||
+      !Array.isArray(response.lines) || !response.lines.length || response.lines.length > 512 ||
+      response.lines.some((line, index) => !line || line.line !== index + 1 ||
+        typeof line.text !== 'string' || /[\r\n]/.test(line.text) ||
+        !Number.isInteger(line.page) || line.page < 1 || line.page > response.page_count ||
+        !Number.isInteger(line.page_line) || line.page_line < 1 || line.page_line > 512) ||
+      response.lines.map(line => line.text).join('\n') !== response.text)
+    throw Error('PDF extraction identity or page anchors are unavailable. Reload the source.');
+}
+function renderExtractedSource(response, lineNumber) {
+  const viewer = el('dialog-text');
+  viewer.replaceChildren();
+  let anchored = false;
+  for (const line of response.lines) {
+    if (line.line > 1) viewer.append(document.createTextNode('\n'));
+    viewer.append(node('span', 'Page ' + line.page + ' · extracted line ' + line.page_line + ': ', 'ref'));
+    if (line.line === lineNumber) {
+      const mark = node('mark', line.text, 'source-highlight');
+      mark.dataset.line = String(line.line);
+      mark.dataset.page = String(line.page);
+      mark.dataset.pageLine = String(line.page_line);
+      viewer.append(mark); anchored = true;
+    } else viewer.append(document.createTextNode(line.text));
+  }
+  return anchored;
+}
 async function openSource(requested, lineNumber = null) {
   let read;
   try {
@@ -739,13 +797,26 @@ async function openSource(requested, lineNumber = null) {
     const response = await api('/api/cases/' + read.caseId + '/sources/' + source.id);
     if (!sourceReadIsCurrent(read)) return;
     const text = originalText(response);
-    el('dialog-title').textContent = source.document_id + '@' + source.version + ', original UTF-8';
-    const anchored = renderOriginalSource(text, lineNumber);
-    el('dialog-context').textContent = anchored
-      ? 'Source-reported statement, highlighted original line ' + lineNumber + '. Not clinically reviewed.'
-      : lineNumber === null
-        ? 'Exact original report and source version. Not clinically reviewed.'
-        : 'Requested source line is not present in this version. Original text is preserved below.';
+    const pdf = source.document_intake?.media_type === 'application/pdf' || response.text_origin === 'pdf_extraction';
+    if (pdf) validatePdfSourceView(source, response);
+    el('dialog-title').textContent = source.document_id + '@' + source.version +
+      (pdf ? ', extracted PDF text' : ', original UTF-8');
+    const anchored = pdf ? renderExtractedSource(response, lineNumber) : renderOriginalSource(text, lineNumber);
+    if (pdf) {
+      const anchor = anchored ? response.lines[lineNumber - 1] : null;
+      el('dialog-context').textContent =
+        (anchor ? 'Highlighted physical page ' + anchor.page + ', extracted line ' + anchor.page_line + '. ' : '') +
+        'Text extracted from the preserved PDF; page line numbers describe the extraction. ' +
+        'Reading order, completeness and visible text require checking against the original download. ' +
+        'Passages and statuses are manually selected; clinical review not performed.';
+    } else {
+      const origin = source.classification_origin === 'user_selected' ? 'Manually selected passage' : 'Source-reported statement';
+      el('dialog-context').textContent = anchored
+        ? origin + ', highlighted original line ' + lineNumber + '. Not clinically reviewed.'
+        : lineNumber === null
+          ? 'Exact original report and source version. Not clinically reviewed.'
+          : 'Requested source line is not present in this version. Original text is preserved below.';
+    }
     showSourceView('source-dialog');
     if (anchored) el('dialog-text').querySelector('mark.source-highlight')?.scrollIntoView({block:'center'});
   } catch (err) {
@@ -769,11 +840,21 @@ async function openComparison(requestedPrevious, requestedCurrent) {
       api('/api/cases/' + read.caseId + '/sources/' + source.id)));
     if (!sourceReadIsCurrent(read)) return;
     const beforeText = originalText(before), afterText = originalText(after);
-    el('compare-title').textContent = current.document_id + ': original versions ' +
+    const hasPdf = before.text_origin === 'pdf_extraction' || after.text_origin === 'pdf_extraction';
+    for (const [source, response] of [[previous,before],[current,after]]) {
+      if (source.document_intake?.media_type === 'application/pdf' || response.text_origin === 'pdf_extraction')
+        validatePdfSourceView(source, response);
+    }
+    el('compare-title').textContent = current.document_id + (hasPdf ? ': readable text versions ' : ': original versions ') +
       previous.version + ' and ' + current.version;
     el('compare-before-title').textContent = previous.document_id + '@' + previous.version + ' · ' + previous.state;
     el('compare-after-title').textContent = current.document_id + '@' + current.version + ' · ' + current.state;
     renderReportLineComparison(beforeText, afterText);
+    if (hasPdf) el('compare-context').textContent =
+      'This comparison uses extracted PDF text where applicable. It does not compare original PDF bytes, page images or layout. ' +
+      'Line numbers identify the global extraction; inspect either source for page anchors and download its original. ' +
+      el('compare-context').textContent.replace('Both complete original texts', 'Both readable text renditions')
+        .replace('Exact source text', 'Readable text');
     showSourceView('compare-dialog');
   } catch (err) {
     if (!read || sourceReadIsCurrent(read)) notice(err.message, true);
@@ -1238,20 +1319,25 @@ async function loadModelTemplates() {
     }
   } catch (err) { notice(err.message, true); }
 }
+let modelInvestigationLoadSequence = 0;
 async function loadModelInvestigations() {
+  const sequence = ++modelInvestigationLoadSequence;
+  const caseSequence = refreshSequence;
   const requested = caseId;
-  const sequence = refreshSequence;
-  const current = () => sequence === refreshSequence && requested === caseId &&
-    active?.case.case_id === requested && renderedCaseId === requested;
+  const stillCurrent = () => requested === caseId && sequence === modelInvestigationLoadSequence &&
+    caseSequence === refreshSequence && active?.case.case_id === requested && renderedCaseId === requested;
+  // A refresh can represent a rights withdrawal. Clear already displayed text
+  // immediately, and do not let an older same-case response put it back.
+  clear('model-investigation-list');
   try {
     const data = await api('/api/cases/' + requested + '/investigations');
-    if (!current()) return;
+    if (!stillCurrent()) return;
     clear('model-investigation-list');
     const items = data.investigations || [];
     if (!items.length) { empty(el('model-investigation-list'), 'No model investigations yet.'); return; }
     for (const item of items) {
       const detail = await api('/api/cases/' + requested + '/investigations/' + item.id);
-      if (!current()) return;
+      if (!stillCurrent()) return;
       const box = node('div', null, 'snapshot');
       const top = node('div', null, 'topline');
       top.append(node('strong', 'Model investigation #' + detail.id),
@@ -1261,7 +1347,7 @@ async function loadModelInvestigations() {
           detail.stale ? 'pill-alert' : 'pill-warn'));
       box.append(top, node('p', detail.model + ' · ' + detail.created_at, 'snapshot-meta'));
       for (const claim of detail.claims || []) {
-        box.append(node('p', claim.text));
+        box.append(node('p', claim.text, 'model-claim'));
         box.append(node('p', 'Uncertainty: ' + claim.uncertainty + ' · Cited: ' +
           (claim.citations || []).map(x => x.type + ' #' + x.id).join(', '), 'muted'));
         if (claim.limits) box.append(node('p', 'Limits: ' + claim.limits, 'muted'));
@@ -1272,12 +1358,22 @@ async function loadModelInvestigations() {
       if ((detail.dropped || []).length) {
         box.append(node('p', detail.dropped.length + ' claim(s) dropped by validation, never repaired', 'muted'));
       }
-      if (detail.stale) box.append(node('p', 'A source was amended. This investigation is stale until reconciled.', 'muted'));
+      if (detail.output_withheld) {
+        box.append(node('p', 'Output withheld: an evidence input or its permissions changed. ' +
+          'Review the current sources and run a new investigation. The original input receipt is retained.', 'muted'));
+      } else if (detail.stale) {
+        box.append(node('p', 'A source or evidence assessment changed. This investigation is stale until reconciled.', 'muted'));
+      }
+      if ((detail.input_receipts || []).length) {
+        box.append(node('p', 'Recorded external inputs: ' + detail.input_receipts.map(input =>
+          'broker #' + input.broker_link_id + ' / rights source #' + input.rights_source_id
+        ).join('; ') + '.', 'tiny muted'));
+      }
       box.append(node('p', detail.disclaimer || 'Research demonstration only.', 'muted'));
       el('model-investigation-list').append(box);
     }
   } catch (err) {
-    if (current()) notice(err.message, true);
+    if (stillCurrent()) notice(err.message, true);
   }
 }
 async function loadChangesSinceReview() {
@@ -1332,7 +1428,8 @@ function renderChangesSinceReview(data) {
       'snapshot-meta'));
     const findings = item.reported_findings || [];
     card.append(node('p', findings.length
-      ? 'Reported findings: ' + findings.map(entry => entry.finding_key + ' (' + entry.reported_state + ')').join('; ')
+      ? (item.classification_origin === 'user_selected' ? 'User-selected finding statuses: ' : 'Reported findings: ') +
+        findings.map(entry => entry.finding_key + ' (' + entry.reported_state + ')').join('; ')
       : 'No reported findings recorded for this source version.', 'muted'));
     el('changes-new-sources').append(card);
   }
@@ -1349,6 +1446,8 @@ function renderChangesSinceReview(data) {
       ' · Source version #' + item.source_id + ' supersedes #' + item.supersedes_source_id +
       ' · ' + item.kind + ', event ' + item.event_date + ', received ' + item.received_at, 'snapshot-meta'));
     const diff = item.finding_key_diff || {};
+    if (item.classification_origin === 'user_selected' || item.previous_classification_origin === 'user_selected')
+      card.append(node('p', 'This comparison includes user-selected statuses. Clinical review not performed.', 'muted tiny'));
     const added = diff.added_finding_keys || [];
     const removed = diff.removed_finding_keys || [];
     const stateChanges = diff.reported_state_changes || [];
@@ -1399,19 +1498,63 @@ function renderChangesSinceReview(data) {
     el('changes-questions').append(row);
   }
 }
+document.addEventListener('oi:composer-open-source', event => {
+    // Reuse the chart's exact-source reader, not a second fetch or source cache.
+    // An old context button must not outlive its case/version/line membership.
+    try {
+      const selected=readyCase(), detail=event.detail;
+      if(pendingCaseWrites.size > 0 || !detail || detail.caseId!==selected ||
+         !Number.isSafeInteger(detail.sourceId) || detail.sourceId<1 ||
+         !Number.isSafeInteger(detail.line) || detail.line<1 ||
+         !active.sources.some(source=>source.id===detail.sourceId && source.state==='current') ||
+         !active.assertions.some(assertion=>assertion.source_version_id===detail.sourceId &&
+           assertion.source_line===detail.line)) return;
+      void openSource({id:detail.sourceId},detail.line);
+    } catch(error) { notice('Source context changed. Refresh the record before opening this source.',true); }
+  });
+
 el('model-investigation-form').addEventListener('submit', async event => {
   event.preventDefault();
   try {
     const requestedCase = readyCase();
+    const contextFingerprint = el('composer-context-fingerprint').value;
+    if (!/^[a-f0-9]{64}$/.test(contextFingerprint)) {
+      throw Error('Preview and verify the current Composer source context before running.');
+    }
     await api('/api/cases/' + requestedCase + '/investigations', {
       question_id: Number(el('model-investigation-question').value),
       template: el('model-investigation-template').value,
       mode: el('model-investigation-mode').value,
+      context_fingerprint: contextFingerprint,
     });
     if (requestedCase !== caseId) return;
     notice('Model investigation stored as a hypothesis pending review.');
     await refresh();
-  } catch (err) { notice(err.message, true); }
+  } catch (err) {
+    // A legitimate source amendment can race an in-progress task. Never leave
+    // the user with a visually reusable old fingerprint after the server
+    // rejects the task; update both chart and Composer from canonical state.
+    if (String(err.message).includes('stale Composer context')) {
+      try { await refresh(); } catch (_) { /* notice below owns error feedback */ }
+      document.dispatchEvent(new Event('oi:composer-refresh'));
+    }
+    notice(err.message, true);
+  }
+});
+const documentIntake = window.OpenIntelligenceIntake.mount({
+  api, getCase: readyCase,
+  onImported: () => refresh(),
+  onSource: async sourceId => {
+    const requestedCase = readyCase();
+    await refresh();
+    if (requestedCase !== caseId) return;
+    const source = active.sources.find(item => item.id === sourceId);
+    if (source) await openSource(source);
+  },
+  onQuestion: () => {
+    el('question-text').scrollIntoView({block: 'center'});
+    el('question-text').focus();
+  },
 });
 initialize();
 initializeBibliography();

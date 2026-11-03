@@ -34,9 +34,15 @@ class Element extends EventTarget {
   reset() {}
 }
 function payload(text = 'Before the original import', event = 1) {
+  // Match the actual server envelope, not a partial renderer-only fixture.
   return {case_id: 'CASE-A', case_label: 'Fictional A', reading_note: 'Not clinically reviewed.',
+    fictional: true, demo_notice: 'Fictional demo; not clinically reviewed.',
+    generated_from: 'recorded case data only; no new inference',
     as_of: {event_id: event, occurred_at: '2026-11-03T00:00:00Z'},
+    section_ids: ['overview'],
     sections: [{id: 'overview', title: 'Recorded source', summary: 'Fictional only.',
+      fictional_note: 'Fictional demo; not clinically reviewed.', empty_text: 'No recorded entries.',
+      item_count: 1, cited_count: 1,
       items: [{text, detail: 'Unreviewed', citation: 'Source version #1'}], sources_note: 'Source-linked'}],
     text};
 }
@@ -149,4 +155,16 @@ test('an unrelated unresolved write cannot be erased by intake settlement', asyn
   await h.respond(2, {revoked: true}); await global;
   assert.equal(h.get('report-refresh').disabled, false); blocked(h);
   assert.deepEqual(h.events.filter(e => e.caseId === 'CASE-A').map(e => e.pendingWrites), [1,2,1,0]);
+});
+
+test('document preview is read-only, while reviewed document save invalidates report', async t => {
+  const h = await harness(t);
+  const preview = h.ctx.api('/api/cases/CASE-A/documents/preview', {fictional: true});
+  assert.equal(h.get('report-print').disabled, false);
+  assert.equal(h.events.length, 0, 'Read-only preview cannot emit a write lifetime');
+  await h.respond(1, {preview: true}); await preview;
+  const save = h.ctx.api('/api/cases/CASE-A/documents', {fictional: true});
+  blocked(h); assert.equal(h.get('report-refresh').disabled, true);
+  await h.respond(2, {result: 'imported', source_id: 2, version: 1}); await save;
+  blocked(h);
 });

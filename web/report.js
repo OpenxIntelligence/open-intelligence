@@ -104,6 +104,39 @@
     return block;
   }
 
+  function validateReportEnvelope(report, caseId) {
+    // Validate display structure before rendering or allocating a downloadable
+    // artifact. This does not authenticate source references or compare the
+    // meaning of the structured sections with the server's text rendition.
+    const record = value => value !== null && typeof value === "object" && !Array.isArray(value);
+    const text = value => typeof value === "string";
+    const nonempty = value => text(value) && value.trim().length > 0;
+    const count = value => Number.isSafeInteger(value) && value >= 0;
+    const fail = () => { throw new Error("Report response is incomplete or inconsistent."); };
+    if (!record(report) || report.case_id !== caseId || report.fictional !== true ||
+        report.generated_from !== "recorded case data only; no new inference" ||
+        ![report.case_label, report.demo_notice, report.reading_note, report.text].every(nonempty) ||
+        !record(report.as_of) || !Array.isArray(report.sections) || !report.sections.length ||
+        !Array.isArray(report.section_ids) || report.section_ids.length !== report.sections.length) fail();
+    const {event_id: eventId, occurred_at: occurredAt} = report.as_of;
+    if (!((eventId === null && occurredAt === null) ||
+        (Number.isSafeInteger(eventId) && eventId > 0 && nonempty(occurredAt)))) fail();
+    const identifiers = new Set();
+    for (const [index, reportSection] of report.sections.entries()) {
+      if (!record(reportSection) || !nonempty(reportSection.id) ||
+          reportSection.id !== report.section_ids[index] || identifiers.has(reportSection.id) ||
+          ![reportSection.title, reportSection.fictional_note, reportSection.summary,
+            reportSection.empty_text, reportSection.sources_note].every(text) ||
+          !Array.isArray(reportSection.items) || !count(reportSection.item_count) ||
+          reportSection.item_count !== reportSection.items.length ||
+          !count(reportSection.cited_count) || reportSection.cited_count > reportSection.item_count) fail();
+      identifiers.add(reportSection.id);
+      for (const item of reportSection.items) {
+        if (!record(item) || ![item.text, item.detail, item.citation].every(text)) fail();
+      }
+    }
+  }
+
   function renderReport(report, caseId, sequence) {
     // The server supplies structured sections and text from the same state.
     // Download that accepted text instead of fetching a newer report later.
@@ -136,20 +169,18 @@
       const response = await fetch(`/api/cases/${encodeURIComponent(caseId)}/patient-report`, {
         cache: "no-store",
       });
+      // Error bodies may contain unrelated records. Never parse them for display.
+      if (!response.ok) throw new Error("Report request failed.");
       const payload = await response.json();
       if (sequence !== requestSequence || picker.value !== caseId || hasPendingWrites(caseId)) return;
-      if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
-      if (!payload || payload.case_id !== caseId || typeof payload.text !== "string" ||
-          !Array.isArray(payload.sections)) {
-        throw new Error("Report does not match the selected case or lacks its text snapshot.");
-      }
+      validateReportEnvelope(payload, caseId);
       renderReport(payload, caseId, sequence);
     } catch (error) {
       if (sequence !== requestSequence || picker.value !== caseId) return;
       invalidateReport();
       meta.textContent = "Plain-language report unavailable.";
       container.replaceChildren(element(
-        "p", "empty", error instanceof Error ? error.message : "Unknown error",
+        "p", "empty", "Report content could not be loaded or verified. Refresh to try again.",
       ));
     }
   }
