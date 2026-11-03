@@ -30,9 +30,13 @@ class QuestionFingerprintMigrationTests(SourceVersionFixture):
         migrate(self.admin, "downgrade", "0006_source_questions")
         legacy_id = "QUESTION-" + "A" * 32
         with self.engine.begin() as connection:
-            self.assertEqual(connection.execute(text(
+            # Downgrading the question branch does not erase the separately
+            # published image-custody branch. Two intermediate Alembic heads
+            # are intentional; neither alone satisfies merged readiness.
+            self.assertEqual(set(connection.execute(text(
                 "SELECT version_num FROM public.alembic_version"
-            )).scalar_one(), "0006_source_questions")
+            )).scalars().all()),
+                {"0006_source_questions", "0006_image_custody"})
             self.assertEqual(connection.execute(text(
                 "SELECT count(*) FROM information_schema.columns "
                 "WHERE table_schema='investigation' AND table_name='source_questions' "
@@ -66,9 +70,10 @@ class QuestionFingerprintMigrationTests(SourceVersionFixture):
 
         migrate(self.admin, "upgrade", "0007_question_snapshot_contract")
         with self.engine.connect() as connection:
-            self.assertEqual(connection.execute(text(
+            self.assertEqual(set(connection.execute(text(
                 "SELECT version_num FROM public.alembic_version"
-            )).scalar_one(), "0007_question_snapshot_contract")
+            )).scalars().all()),
+                {"0007_question_snapshot_contract", "0006_image_custody"})
             migrated = dict(connection.execute(text(
                 "SELECT * FROM investigation.source_questions WHERE question_id=:id"
             ), {"id": legacy_id}).mappings().one())
