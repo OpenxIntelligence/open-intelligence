@@ -11,6 +11,7 @@ from pathlib import Path
 import sqlite3
 import unittest
 import uuid
+from unittest.mock import patch
 
 from open_intelligence.clinical_encounters import (
     ClinicalEncounters, ClinicalConflict, ClinicalAuthorizationError,
@@ -23,7 +24,7 @@ from test_postgres_registry_bakeoff import DSN, REQUIRE, asyncpg, pg8000, pg_con
 MODULE = "open_intelligence.postgres_encounters"
 AVAILABLE = importlib.util.find_spec(MODULE) is not None
 if AVAILABLE:
-    from open_intelligence.postgres_encounters import PostgresClinicalEncounters
+    from open_intelligence.postgres_encounters import PostgresClinicalEncounters, _Rows
 ROOT = Path(__file__).resolve().parents[1]
 ACTOR = dict(actor="CLINICIAN-ONE", purpose="care")
 
@@ -62,6 +63,7 @@ class PostgresEHRParityTests(unittest.TestCase):
         self.pid = self.pg.create_patient(organization=self.org, request_key="CREATE-ONE", **ACTOR)["patient_id"]
         self.ehr = PostgresClinicalEncounters(self.pg, self.policy)
         sql = sqlite3.connect(":memory:")
+        sql.row_factory = sqlite3.Row  # Oracle uses the same named-row contract as CaseStore.
         self.addCleanup(sql.close)
         self.oracle_registry = PatientRegistry(sql, self.policy)
         self.sid = self.oracle_registry.create_patient(organization=self.org, request_key="CREATE-ONE", **ACTOR)["patient_id"]
@@ -224,6 +226,60 @@ class PostgresEHRParityTests(unittest.TestCase):
             self.ehr.list_encounters(self.pid,**ACTOR)
         with self.assertRaises(PatientRegistryDenied):
             self.ehr.schedule(self.pid,"ENCOUNTER-ONE","outpatient","2026-11-01",request_key="SCHEDULE-ENCOUNTER-ONE",**ACTOR)
+
+
+    def test_real_postgres_current_note_integrity_rejects_tampered_read(self):
+        """Live PG domain refuses to attest a mismatched current note body/hash.
+
+        Intercept only the selected returned row to emulate damaged restored
+        storage: no immutable trigger is disabled on a shared test database.
+        All commands and other reads still execute on real PostgreSQL.
+        """
+        eid = self.start()
+        self.ehr.write_note(self.pid, eid, "NOTE-ONE", "Original independent synthetic note",
+                            expected_version=0, request_key="DRAFT-CORRUPT-ONE", **ACTOR)
+        original = self.ehr._execute
+
+        def inject_corrupt_body(sql, parameters=()):
+            result = original(sql, parameters)
+            if "JOIN clinical_note_versions v" in sql and "v.sha256" in sql:
+                row = result.fetchone()
+                if row is not None:
+                    altered = dict(row)
+                    altered["body"] = "Altered synthetic note after its source hash"
+                    return _Rows([altered])
+            return result
+
+        with patch.object(self.ehr, "_execute", side_effect=inject_corrupt_body):
+            with self.assertRaisesRegex(ClinicalConflict, "integrity"):
+                self.ehr.attest_note(self.pid, eid, "NOTE-ONE",
+                                     expected_version=1, request_key="ATTEST-CORRUPT-ONE", **ACTOR)
+        self.assertEqual(len(self.ehr.note_history(self.pid, eid, "NOTE-ONE", **ACTOR)), 1)
+        self.assertEqual(self.count("ehr.clinical_encounter_commands"), 3)
+
+    def test_real_postgres_historical_notes_fail_closed_on_digest_mismatch(self):
+        """A historical-row discrepancy is rejected before client disclosure."""
+        eid = self.start()
+        self.ehr.write_note(self.pid, eid, "NOTE-ONE", "First fictional version",
+                            expected_version=0, request_key="DRAFT-HISTORY-ONE", **ACTOR)
+        self.ehr.write_note(self.pid, eid, "NOTE-ONE", "Second fictional version",
+                            expected_version=1, request_key="DRAFT-HISTORY-TWO", **ACTOR)
+        original = self.ehr._execute
+
+        def inject_historical_corruption(sql, parameters=()):
+            result = original(sql, parameters)
+            if "JOIN clinical_note_versions v" in sql and "ORDER BY v.version" in sql:
+                rows = result.fetchall()
+                if rows:
+                    rows[0] = dict(rows[0], body="Altered historical fictional text")
+                return _Rows(rows)
+            return result
+
+        with patch.object(self.ehr, "_execute", side_effect=inject_historical_corruption):
+            with self.assertRaisesRegex(ClinicalConflict, "integrity"):
+                self.ehr.note_history(self.pid, eid, "NOTE-ONE", **ACTOR)
+        self.assertEqual(len(self.ehr.note_history(self.pid, eid, "NOTE-ONE", **ACTOR)), 2)
+
 
 
 if __name__ == "__main__":
