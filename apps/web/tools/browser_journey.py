@@ -192,6 +192,15 @@ def main():
                 'source_read withdrawal hides identifiers after refreshed grant')
             assert cd.evaluate("!document.querySelector('[data-testid=original-report]')")
             assert sid not in cd.evaluate('document.querySelector("[data-testid=record-requests]").textContent')
+            cd.evaluate("document.querySelector('[data-testid=world-nav]').click()")
+            value('#world-case-id','CASE-ALPHA')
+            cd.evaluate("document.querySelector('[data-testid=world-case-id]').form.requestSubmit()")
+            cd.wait("document.querySelector('[data-testid=world-status]').textContent.includes('Patient unavailable')",
+                    'World Model cannot bypass missing source-read grant')
+            assert cd.evaluate("!document.querySelector('[data-testid=world-model-result]')")
+            cd.evaluate("document.querySelector('[data-testid=records-nav]').click()")
+            cd.wait("Boolean(document.querySelector('[data-testid=load-records]'))",
+                    'return to records after a denied source-model read')
             credentials[0]['actions'].append('source_read')
             credentials[0]['actions'].remove('source_original_read');write_grants()
             cd.evaluate("document.querySelector('[data-testid=load-records]').click()")
