@@ -1,4 +1,4 @@
-import {useEffect,useState} from 'react';
+import {useState} from 'react';
 import type {RegistrySession,ViewState} from './registry-client';
 import type {SourceQuestion} from './source-questions-view';
 import {canCreateFollowthrough,FOLLOWTHROUGH_TRANSITIONS,validFollowthroughDraft,
@@ -10,27 +10,24 @@ type Props={state:ViewState;session:RegistrySession;busy:boolean};
 const blankDraft=():FollowthroughDraft=>({title:'',detail:'',owner_label:'',due_date:null,review_trigger:'',reason:''});
 const labels:Record<FollowthroughStatus,string>={created:'Created',assigned:'Assigned',acknowledged:'Acknowledged',completed:'Completed',deferred:'Deferred'};
 
-/** The exact saved question is the entry point. Text remains in component memory only. */
+/** The exact saved question is the entry point. Unsent text stays in the tab session. */
 export function FollowthroughCreate({state,session,busy,question}:Props&{question:SourceQuestion}){
- const [open,setOpen]=useState(false),[draft,setDraft]=useState<FollowthroughDraft>(blankDraft);
+ const retained=state.followthroughDrafts[question.question_id];
+ const open=!!retained&&retained.patient_id===question.patient_id&&retained.case_id===question.case_id&&
+  retained.source_snapshot_sha256===question.source_snapshot_sha256&&retained.preflight_sha256===question.preflight_sha256;
+ const draft=open?retained.fields:blankDraft();
  const blocked=busy||state.followthroughWritePhase==='saving'||state.followthroughWritePhase==='unknown';
  const current=state.worldPhase==='ready'&&state.questionListPhase==='ready'&&canCreateFollowthrough(question,state.worldModel);
- const field=(key:keyof FollowthroughDraft,value:string|null)=>setDraft(previous=>({...previous,[key]:value}));
- useEffect(()=>{
-  // Only creation has revision 1; another task's transition must preserve this draft.
-  if(state.followthroughWritePhase==='saved'&&state.followthroughReceipt?.revision===1&&
-     state.followthroughReceipt.question_id===question.question_id){
-   setDraft(blankDraft());setOpen(false);
-  }
- },[state.followthroughReceipt,state.followthroughWritePhase,question.question_id]);
+ const field=(key:keyof FollowthroughDraft,value:string|null)=>session.editFollowthroughDraft(question.question_id,{...draft,[key]:value});
  return <div className="followthrough-create">
   <button type="button" data-testid="followthrough-open-create" disabled={blocked||!current}
-   onClick={()=>setOpen(true)}>Record follow-up work for this question</button>
+   onClick={()=>session.editFollowthroughDraft(question.question_id,draft)}>Record follow-up work for this question</button>
   {!current&&<p className="muted">New work needs a question prepared from the current source context. Earlier task history stays available below.</p>}
   {open&&<form data-testid="followthrough-create-form" className="followthrough-form"
     onSubmit={event=>{event.preventDefault();void session.createFollowthrough(question.question_id,draft);}}>
    <h4>Record the next piece of work</h4>
    <p>Record a coordination or verification task. The platform will not perform it, send a notification or issue a clinical order.</p>
+   <p className="muted">Unsent details stay in this tab while you inspect the same case. They clear when the source context or access changes, or when you disconnect or reload.</p>
    <fieldset disabled={blocked||!current}>
     <legend className="visually-hidden">Follow-up details</legend>
     <label>Task title
@@ -58,7 +55,7 @@ export function FollowthroughCreate({state,session,busy,question}:Props&{questio
     <p className="muted">Title, details and timing are retained as recorded in this first version. Assignment changes through defer and reassign, preserving history.</p>
     <div className="actions">
      <button type="submit" className="primary" data-testid="followthrough-create" disabled={!validFollowthroughDraft(draft)}>Record follow-up task</button>
-     <button type="button" data-testid="followthrough-cancel" onClick={()=>{setOpen(false);setDraft(blankDraft());}}>Clear draft</button>
+     <button type="button" data-testid="followthrough-cancel" onClick={()=>session.clearFollowthroughDraft(question.question_id)}>Clear draft</button>
     </div>
    </fieldset>
   </form>}

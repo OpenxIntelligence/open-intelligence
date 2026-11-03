@@ -8,6 +8,10 @@ export type FollowthroughStatus='created'|'assigned'|'acknowledged'|'completed'|
 export type FollowthroughDraft=Readonly<{
  title:string;detail:string;owner_label:string;due_date:string|null;review_trigger:string;reason:string;
 }>;
+/** Unsent presentation input, bound to an already authorized question context. */
+export type FollowthroughUnsentDraft=Readonly<{
+ patient_id:string;case_id:string;source_snapshot_sha256:string;preflight_sha256:string;fields:FollowthroughDraft;
+}>;
 export type FollowthroughTransition=Readonly<{status:FollowthroughStatus;owner_label:string;reason:string}>;
 export type FollowthroughEvent=Readonly<{
  event_id:string;revision:number;previous_status:FollowthroughStatus|null;status:FollowthroughStatus;
