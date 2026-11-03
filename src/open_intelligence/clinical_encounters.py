@@ -231,6 +231,12 @@ class ClinicalEncounters:
                     raise ClinicalConflict("Idempotency key reused for a different command")
                 return json.loads(previous["result_json"])
             result = mutate()
+            # The host policy may be revoked while a command is assembling its
+            # event and domain writes. Re-check before committing the shared
+            # transaction so those writes and receipts roll back together.
+            # This does not replace production authorization or make a grant
+            # change outside this database atomically observable.
+            self._allow(actor, patient_id, action, purpose)
             self.host.db.execute("""INSERT INTO clinical_encounter_commands
                (patient_id,request_key,operation,request_hash,result_json,occurred_at)
                VALUES(?,?,?,?,?,?)""", (patient_id, request_key, action, digest,
