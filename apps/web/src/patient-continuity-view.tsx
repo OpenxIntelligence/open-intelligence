@@ -25,6 +25,13 @@ export function PatientContinuity({state,onNavigate}:{state:ViewState;onNavigate
     </>:<p>Question status has not been checked for the current case, or is unavailable. Open Questions to load the authorized history.</p>}
     <button type="button" data-testid="continuity-open-questions" onClick={()=>onNavigate('Investigations')}>Open questions</button>
    </div>
+   {view.caseId&&<div className="continuity-item" data-testid="continuity-verification">
+    <h3>Independent source verification</h3>
+    <p>Inspect the authorized verification-return inbox for this case. A return is a documented
+       request for independent source checking, not a medical review, clinical decision or notification.</p>
+    <button type="button" data-testid="continuity-open-verification"
+      onClick={()=>onNavigate('Review')}>Open verification returns</button>
+   </div>}
    <div className="continuity-item">
     <h3>Your original records</h3>
     <p>Inspect original documents and their versions, or add another fictional record to an authorized case.</p>
