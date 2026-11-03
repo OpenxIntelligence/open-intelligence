@@ -10,7 +10,14 @@ class PatientRequestLimit:
         self.app = app
 
     async def __call__(self, scope, receive, send):
-        if scope["type"] != "http" or scope["method"] != "POST" or scope["path"] != "/v1/patients":
+        route = scope.get("path", "")
+        bounded = route == "/v1/patients" or (
+            route.startswith("/v1/patients/") and (
+                route.endswith("/record-requests") or
+                ("/record-requests/" in route and route.endswith("/cancel"))
+            )
+        )
+        if scope["type"] != "http" or scope["method"] != "POST" or not bounded:
             await self.app(scope, receive, send)
             return
 
