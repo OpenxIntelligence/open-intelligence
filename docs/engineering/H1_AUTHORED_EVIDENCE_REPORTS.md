@@ -398,3 +398,10 @@ sandbox/flags, timeouts, steps and assertions remain unchanged. Logs discarded
 Chrome's startup stderr, so the precise browser-exit or timing cause on the newer
 26.04 image is not established. This does not claim to qualify that image.
 Exact-head results for the pinned runner and both H1 gates are recorded in #300.
+
+
+### Date and timestamp contract follow-up — draft #303
+
+The report contract now requires an actual `YYYY-MM-DD` evidence issue date and a bounded, explicit-timezone timestamp with a literal `T` separator. Python's ISO parser alone accepts arbitrary single-character separators, including line breaks; the former plain issue-date string also admitted invalid calendar dates and extra report lines. The client already rejects those representations. Validation rejects invalid inputs rather than normalizing valid strings, preserving canonical hashes and the original report renderer's byte compatibility. This is an internal/report wire-contract hardening; it does not establish a route bypass of the existing original-evidence parser or clinical authority.
+
+Three added regression methods exercise both renderer versions, every shared report timestamp location, valid leap days, timezone offsets, fractional seconds and unchanged input strings. The existing immutable legacy report checksum assertion remains unchanged. An isolated execution of the original production `aware` function reproduced newline acceptance; thirteen isolated repaired-function probes and Python compilation passed. Local full-suite loading was blocked by absent FastAPI and is not a test pass. Tests-first and final exact-head PostgreSQL/browser results are recorded in [draft #303](https://github.com/OpenxIntelligence/open-intelligence/pull/303). No migration, dependency, renderer format, stored-body rewrite or permission change is included. Related OI-008/OI-009/OI-010.
