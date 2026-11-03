@@ -164,6 +164,42 @@ Remaining proof step: a live-server run against the real API with
 the operator key set, before the demo. The API completion itself
 was verified separately on 2026-10-31.
 
+## Visit records slice (FICTIONAL recorded history)
+
+Visits are plain recorded history — dates and notes, never directives,
+never due dates. The slice is additive: two new tables, three new routes,
+one new case-view panel, and `tests/test_visit_records.py`. No existing
+table, route, test, or review-authority behavior was changed.
+
+- Tables: `visits` (one logical record per case) plus append-only
+  `visit_versions` (recorded date, free-text visit type, notes, optional
+  source anchor, review state `recorded`, current/superseded state,
+  `previous_id` chain). Amendments supersede the old version and append a
+  new current version; history rows are never updated or deleted.
+- Routes: `POST /api/cases/{case}/visits` records version 1;
+  `POST /api/cases/{case}/visits/{id}/amend` appends the next version;
+  `GET /api/cases/{case}/visits` lists this case's visits with full
+  history in version order. Unknown case ids return 422, as elsewhere.
+- Descriptive-only guard at write time, same class as the existing
+  option/discovery guards: directive and prescriptive wording (should,
+  must, need to, order, start/stop treatment, seek care, watch for,
+  effective/proven/benefit, and equivalents such as recommend, prescribe,
+  or eligible) is rejected in visit type, notes, and source anchor with a
+  clear error. Base verb forms are rejected while past-tense history
+  (ordered, started) stays writable. Recorded dates are history only: JSON
+  and UI label them "recorded date — not a clinical due date".
+- UI: a "Visits" panel in the case view with FICTIONAL labels throughout,
+  per-visit history (oldest first), and "no source recorded" wherever a
+  visit carries no source anchor. Rendering uses textContent only with
+  existing CSS classes; the case-switch guard and clearing cover every new
+  field, and stale in-flight responses are discarded after case changes.
+- Review state is always `recorded`: visits are unreviewed history, never
+  a clinical conclusion, instruction, or treatment guide. Amending a visit
+  touches no other record, and no case's visits appear in another case.
+
+Run the new checks with the usual suite (`python -m unittest discover -s
+tests -v`); the slice adds store, HTTP, and UI-contract coverage. Nothing
+here was executed by the authoring agent; a reviewer runs the suite.
 ## Case search and triage list (read-only)
 
 Find fictional cases and see work counts at a glance, without leaking

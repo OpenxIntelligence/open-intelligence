@@ -305,6 +305,9 @@ class Handler(BaseHTTPRequestHandler):
             inv_one = re.fullmatch(rf"/api/cases/{ID_PART}/investigations/([0-9]+)", path)
             if inv_one:
                 return self._json(200, store.get_investigation(inv_one[1], int(inv_one[2])))
+            visits_list = re.fullmatch(rf"/api/cases/{ID_PART}/visits", path)
+            if visits_list:
+                return self._json(200, store.list_visits(visits_list[1]))
             workspace_list = re.fullmatch(rf"/api/cases/{ID_PART}/workspace-questions", path)
             if workspace_list:
                 return self._json(200, {"workspace_questions": store.list_workspace_questions(workspace_list[1])})
@@ -760,6 +763,18 @@ class Handler(BaseHTTPRequestHandler):
                     investigation_id = store.save_investigation(
                         case_id, question_id, template, validated, mode)
                     return self._json(201, store.get_investigation(case_id, investigation_id))
+                visits_record = re.fullmatch(rf"/api/cases/{ID_PART}/visits", path)
+                if visits_record:
+                    return self._json(201, store.record_visit(
+                        visits_record[1], data.get("recorded_date"),
+                        data.get("visit_type"), data.get("notes"),
+                        data.get("source_anchor")))
+                visit_amend = re.fullmatch(rf"/api/cases/{ID_PART}/visits/([0-9]+)/amend", path)
+                if visit_amend:
+                    return self._json(201, store.amend_visit(
+                        visit_amend[1], int(visit_amend[2]),
+                        data.get("recorded_date"), data.get("visit_type"),
+                        data.get("notes"), data.get("source_anchor")))
                 consent_create = re.fullmatch(rf"/api/cases/{ID_PART}/consents", path)
                 if consent_create:
                     consent_id = store.record_consent(
