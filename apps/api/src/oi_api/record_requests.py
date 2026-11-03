@@ -134,7 +134,7 @@ class PostgresRecordRequests:
                 raise PatientRegistryDenied("Record request unavailable")
             if row[0] == "cancelled":
                 return {"request_id": request_id, "duplicate": True}
-            if row != ("requested", 1):
+            if row[0] != "requested" or row[1] != 1:
                 raise PatientRegistryConflict("Record request state changed")
             changed = self.patients._fetchone(
                 "UPDATE coordination.record_requests SET status='cancelled',revision=2,"
