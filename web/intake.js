@@ -157,8 +157,8 @@
         // One inspection surface, not another intake application. For a
         // single file keep the exact plain-text preview unchanged.
         $('source-upload-preview').textContent=batch.length===1 ? batch[0].text :
-          batch.map(file=>'FILE '+file.name+' ('+file.byteLength+' bytes)\\n'+file.text)
-            .join('\\n------ NEXT ORIGINAL ------\\n');
+          batch.map(file=>'FILE '+file.name+' ('+file.byteLength+' bytes)\n'+file.text)
+            .join('\n------ NEXT ORIGINAL ------\n');
         $('source-preview-details').hidden=false;
         const mismatched=batch.filter(item=>item.declaredCase!==selected).length;
         tell('source-upload-status',batch.length+' original file(s) inspected · '+
