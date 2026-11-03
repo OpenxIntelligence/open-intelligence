@@ -69,6 +69,8 @@ def main():
                 assert cd.evaluate("!document.querySelector('#credential')")
             def read():cd.evaluate("document.querySelector('#patient-id').form.requestSubmit()")
             assert cd.evaluate("document.querySelector('#patient-id').disabled")
+            assert cd.evaluate("!document.querySelector('[data-testid=overview-context]')")
+            assert cd.evaluate("document.querySelector('[data-testid=overview-access]')!==null")
             connect()
             cd.evaluate("document.querySelector('.create-panel').open=true;document.querySelector('#synthetic-confirm').click();document.querySelector('#synthetic-confirm').form.requestSubmit()")
             cd.wait("Boolean(document.querySelector('[data-testid=created-id] code'))",'actual persisted identity creation')
@@ -76,6 +78,7 @@ def main():
             assert pid.startswith('PAT-') and len(pid)==36
             assert cd.evaluate("!document.querySelector('[data-testid=patient-card]')")
             assert cd.evaluate("!document.querySelector('[data-testid=overview-next]')")
+            assert cd.evaluate("!document.querySelector('[data-testid=overview-context]')")
             cd.evaluate("document.querySelector('#synthetic-confirm').form.requestSubmit()")
             cd.wait("document.querySelector('[data-testid=created-id]').textContent.includes('Existing identity recovered')",'same-key idempotent create')
             read();cd.wait("document.querySelector('[data-testid=status]').textContent.includes('Patient unavailable')",'creation confers no read grant')
@@ -85,6 +88,9 @@ def main():
             cd.wait("Boolean(document.querySelector('[data-testid=patient-card]'))",'separate grant permits canonical patient read')
             assert cd.evaluate("document.querySelector('[data-testid=patient-card]').textContent").count(pid)==1
             assert cd.evaluate("document.querySelectorAll('[data-testid=overview-next] .overview-actions button').length===3")
+            assert cd.evaluate("Boolean(document.querySelector('[data-testid=overview-context]'))")
+            assert cd.evaluate("document.querySelector('[data-testid=patient-card]').compareDocumentPosition(document.querySelector('[data-testid=overview-access]')) & Node.DOCUMENT_POSITION_FOLLOWING ? true : false")
+            assert cd.evaluate("document.querySelector('[data-testid=overview-next]').compareDocumentPosition(document.querySelector('[data-testid=overview-access]')) & Node.DOCUMENT_POSITION_FOLLOWING ? true : false")
             for target,screen in [('overview-records','records-workspace'),('overview-journey','world-workspace'),('overview-investigations','world-workspace')]:
                 cd.evaluate("document.querySelector('[data-testid="+target+"]').click()")
                 cd.wait("Boolean(document.querySelector('[data-testid="+screen+"]'))",'overview enters '+target)
