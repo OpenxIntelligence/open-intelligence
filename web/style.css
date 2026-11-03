@@ -1119,3 +1119,27 @@ dialog pre {
   .glance-review .review-attention { margin-block: var(--space-3); }
   .dialog-fictional-label { color: #000; background: #fff; border: 2px solid #000; }
 }
+/* Plain-language patient report: read-only, printable, fictional labels. */
+.report-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-bottom: var(--space-4); }
+.report-actions .button { text-decoration: none; }
+.report-actions [aria-disabled="true"] { opacity: .55; cursor: not-allowed; }
+.report-sections { display: grid; gap: var(--space-5); }
+.report-section { border-top: 2px solid var(--color-rule); padding-top: var(--space-3); }
+.report-section-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin-bottom: var(--space-2); }
+.report-section-head h3 { font-size: var(--text-lg); }
+.report-items { list-style: none; display: grid; gap: var(--space-3); padding: 0; }
+.report-item .quoted { margin-bottom: var(--space-1); }
+.report-item .ref { margin-top: var(--space-1); }
+.report-item > p { white-space: pre-line; overflow-wrap: anywhere; }
+@media print {
+  .report-actions { display: none; }
+  .report-section { break-inside: auto; }
+  .report-item { break-inside: avoid; }
+  #patient-report .pill-warn { color: #000; background: #fff; border: 2px solid #000; }
+  body.printing-patient-report > :not(.layout),
+  body.printing-patient-report .layout > :not(.main),
+  body.printing-patient-report .main > :not(#patient-report) { display: none; }
+  body.printing-patient-report .layout { display: block; }
+  body.printing-patient-report .main { padding: 0; margin: 0; max-width: none; }
+  body.printing-patient-report #patient-report { padding: 0; margin: 0; border: 0; box-shadow: none; }
+}
