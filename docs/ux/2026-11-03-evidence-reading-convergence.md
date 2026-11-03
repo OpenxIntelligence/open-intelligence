@@ -53,6 +53,35 @@ Retain React/Vite/TypeScript, native controls and existing CSS. No dependency ad
 5. Compare all other paths byte-for-byte and by executable mode against #314. Keep backend, APIs, database, contracts, session, dependencies, workflows and clinical/business logic unchanged.
 6. Append verified results to the existing Notion and Google research records. Keep original specifications/history and branch owners intact.
 
-## Verification status
+## Verification history
 
-Implementation and tests are being prepared. Parent/donor passing runs are historical evidence only and do not verify this combined change. No merge, deployment, independent participant study, complete accessibility certification, clinical validation or full-initiative completion is claimed.
+Initial implementation `40c4eb99f77d15fd645c97ba7522223d9bcf18df`, tree `fc7387da45b27bfa50122b66a247f0b5757768c5`, passed all 274 inherited client tests, TypeScript/Vite build, dependency gates, reading-layout acceptance and the complete inherited question/evidence/report/follow-through scenarios in run 41662718464. Its final added reauthorization helper timed out; the overall run failed and is not acceptance.
+
+Cause: the helper treated the immediate removal of source content during loading as a completed denial. It restored the source grant before the pending read settled and could click still-disabled controls. `76f9ab52bf2ca69f1cb3bd074b0240b467d0af43` changes only the browser helper to await the terminal denied response and enabled case refresh, then the completed mapping response. No timeout was lengthened and no assertion, production code, grant policy or API was weakened. Full hosted rerun is recorded in PR #318.
+
+Local checks: 266 non-render client tests passed with Node TypeScript transformation; this is not the pinned TypeScript compiler or production build. The first strip-only attempt failed on an existing parameter property; transform mode executed the unchanged tests. Both browser helpers compile and whitespace checks pass. Local full React/build/PostgreSQL acceptance was unavailable; hosted results are attributed separately.
+
+Boundary: all 395 parent files outside the six declared presentation/test/documentation paths are unchanged in bytes and executable modes. Initial candidate tree exactly matches the published GitHub tree. Self-review checked preserved navigation dismissals, busy guards, literal/source-line handoff, current-only assertions, response-scope reset and original-reader callbacks. No independent reviewer or participant study was used in this continuation.
+
+No merge, deployment, complete accessibility certification, clinical validation or full-initiative completion is claimed. Browser reflow and doubled computed text are not full browser zoom or screen-reader testing. Separate API suites were not rerun for this presentation-only child; existing backend acceptance and other unmerged corrections remain separately scoped.
+
+## Passing runtime checkpoint
+
+Runtime head `76f9ab52bf2ca69f1cb3bd074b0240b467d0af43`, tree `7b40f888c7f2f169f4307cc3feaeeb0af25e98df`, passed [run 41663340203](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41663340203), job 126011993066. Decoded checkout logs identify this exact head. All **274 client tests**, the TypeScript/Vite build, existing rights/dependency gates and the complete actual PostgreSQL 16 → FastAPI → built React → Chromium journey passed. Zero client failures or skips. Source reading, native keyboard handoff, all inherited evidence/report/review/follow-through journeys and the corrected completed-denial/reauthorization test ran together. No API mocks or substituted successful responses were introduced.
+
+Artifact 13243401116 has SHA-256 `0b1029bd877df44655f28531cb66ca4eaab0c3786ff847282b1ac29ece55de78`. The source archive, original-source and report downloads, screenshots, client tests and browser receipt are retained by that run. This is an immutable runtime checkpoint; [PR #318](https://github.com/OpenxIntelligence/open-intelligence/pull/318) tracks verification of subsequent documentation-only heads.
+
+| Observation | Result / limit |
+|---|---|
+| Loaded-source navigation and reading-layout changes | Filters preserved; zero additional API requests |
+| Fresh response / reconnect / denied read / reauthorization | Correct reset; denied quotation/provenance remains absent until a new permitted read |
+| Current quotation → question | Native Enter activation; one fresh World Model read; no implicit POST, save, preflight or model call |
+| Provenance and filter recovery | Native keyboard disclosure; Clear returns focus to the filter |
+| Responsive checks | Both reading layouts at 320/390/768/1280px; 320×256 focus; doubled computed text and spacing |
+| JS size, baseline → candidate | 441,870 → 446,895 bytes; deterministic local gzip 117,542 → 118,970 bytes |
+| CSS size, baseline → candidate | 21,030 → 24,570 bytes; deterministic local gzip 4,681 → 5,435 bytes |
+| Performance interpretation | No dependency change; +2,182 total gzip bytes. No measured user-task speed, large-record-scale benchmark or superiority claim |
+
+Screenshots reviewed for the unchanged runtime include patient quotations at 390px, clinical quotations at 1280px, the 320px filter and the connected evidence-report view at 390px. Source statements, version labels, the direct question action and original-details disclosure are readable and contained. The focused controls remain visible. This inspection does not replace a participant or screen-reader study. The baseline screenshots capture different positions/fixtures; they are not a pixel-diff experiment.
+
+The full research report's 22 deliverables remain the program index. This receipt updates the actual combined implementation, feature map, alternatives, technology decision, scoped QA and technical-integrity evidence. Production role experiences, clinical workflows absent from this baseline, independent UX/accessibility evaluation, full browser zoom and broader branch convergence remain open.
