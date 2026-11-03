@@ -80,6 +80,27 @@
 .source-brief-preview pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:36rem;overflow:auto;padding:14px;border:1px solid #d7e0d8;border-radius:6px;background:#fcfdfb;font:inherit;font-size:13px}
 .source-brief-preview button,.question-items button{max-width:100%;white-space:normal;overflow-wrap:anywhere}
 
+/* Recorded question work reuses the existing case, question and source owners. */
+.followthrough-panel{border:1px solid #d6e1d9;border-radius:10px;padding:18px;margin:22px 0;background:#fff;min-width:0}
+.followthrough-panel h3{margin:0 0 6px}.followthrough-panel h4,.followthrough-create h4{font-size:15px;margin:0 0 10px}
+.followthrough-create{margin:14px 0 0}.followthrough-create>button{margin-top:4px}
+.followthrough-form{border-top:1px solid #d7e0d8;margin-top:16px;padding-top:16px}
+.followthrough-form fieldset{border:0;padding:0;margin:0;min-width:0}
+.followthrough-form legend{font-weight:600;margin-bottom:12px}
+.followthrough-form label{font-size:14px}.followthrough-form input,.followthrough-form textarea{font:inherit;font-size:14px}
+.followthrough-form textarea{display:block;width:100%;max-width:100%;resize:vertical;padding:11px 12px;border:1px solid #a9b6b3;border-radius:6px;color:inherit;background:#fff;margin:8px 0 12px}
+.followthrough-form textarea:focus{outline:3px solid #ba8639;outline-offset:3px}
+.followthrough-form textarea:disabled{background:#edf0ed;color:#52635d}
+.followthrough-fields{display:grid;grid-template-columns:minmax(170px,1fr) minmax(0,2fr);gap:16px}
+.followthrough-items{list-style:none;padding:0;display:grid;gap:16px;margin:18px 0}
+.followthrough-task{border:1px solid #d5e1d9;border-radius:8px;padding:18px;background:#f8fbf8;min-width:0;overflow-wrap:anywhere}
+.followthrough-task p{margin:10px 0;font-size:13px}.followthrough-task details{margin:16px 0}
+.followthrough-task code,.followthrough-panel code{word-break:break-word;overflow-wrap:anywhere}
+.followthrough-task .followthrough-flag{padding:12px;border-left:3px solid #b28b52;background:#f8f3e9;color:#6b4b25}
+.followthrough-history ol{padding-left:22px}.followthrough-history li{padding:10px 0;border-bottom:1px solid #d7e0d8}
+.followthrough-panel button{max-width:100%;white-space:normal;overflow-wrap:anywhere}
+.visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
+@media(max-width:600px){.followthrough-panel,.followthrough-task{padding:12px}.followthrough-fields{grid-template-columns:1fr;gap:0}.followthrough-panel .actions button,.followthrough-form .actions button{width:100%}}
 /* Exact source quotation packet: literal text, bounded and clearly unreviewed. */
 .source-quote-inspection{padding:22px;border:1px solid #c1d2c7;border-left:4px solid #a88b5f;background:#fcfdf9;border-radius:8px;margin-top:18px;min-width:0}
 .source-quote-inspection h3{font-size:20px;margin:10px 0}.source-quote-inspection h4{font-size:16px;margin:16px 0}

@@ -665,7 +665,7 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
                         return False
                     if action == "patient_create":
                         return subject == context.organization
-                    if action not in {"patient_read", "record_request_create", "record_request_read", "record_request_cancel", "record_request_receive", "case_binding_create", "case_binding_read", "case_binding_revoke", "source_import", "source_read", "source_original_read", "composer_context_read", "question_create", "question_read", "review_queue_read", "review_return", "source_brief_export", "review_packet_read"} or subject not in context.patient_ids:
+                    if action not in {"patient_read", "record_request_create", "record_request_read", "record_request_cancel", "record_request_receive", "case_binding_create", "case_binding_read", "case_binding_revoke", "source_import", "source_read", "source_original_read", "composer_context_read", "question_create", "question_read", "review_queue_read", "review_return", "source_brief_export", "review_packet_read", "followthrough_read", "followthrough_create", "followthrough_update"} or subject not in context.patient_ids:
                         return False
                     cursor = connection.cursor()
                     try:
@@ -1158,4 +1158,10 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
         except PatientRegistryDenied:
             raise HTTPException(404, "Source unavailable") from None
 
+    from .followthrough_routes import register_followthrough_routes
+    register_followthrough_routes(
+        router, principal=principal, registry=registry,
+        records_authorized=records_authorized,
+        final_question_authority=final_question_authority, errors=errors,
+    )
     return router

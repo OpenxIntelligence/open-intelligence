@@ -7,6 +7,24 @@ branch now connects canonical PostgreSQL sources, source questions and
 nonterminal verification-return receipts; the evidence/report persistence
 boundary remains a separate integration.
 
+## Canonical saved-question follow-through
+
+The synthetic task increment extends the existing saved-question/source owner
+with immutable task origins and append-only operational status history. See
+[the follow-through contract and verification ledger](../../docs/engineering/H1_QUESTION_FOLLOWTHROUGH.md).
+Apply migration `0009_question_followthrough` explicitly. The three versioned
+routes list tasks, create a task from an exact saved question and append a legal
+transition. Independent `followthrough_read`, `followthrough_create` and
+`followthrough_update` grants supplement patient, question and source access.
+
+A stable request key recovers the original receipt; concurrent updates require
+the current revision. Original source anchors survive amendment, while open
+work is marked for rechecking. Completion records attributed work and neither
+approves a clinical finding nor contacts an external service. Real JSON bytes
+are prepared before final authorization and audit commit. The actual container
+recovery probe is `python apps/api/tools/verify_followthrough_compose.py`.
+Hosted results and remaining limits are recorded in the linked ledger.
+
 ## Historical pending-record milestone
 
 The following record-request milestone predates canonical source persistence.

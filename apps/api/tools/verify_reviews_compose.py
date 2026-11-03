@@ -197,7 +197,7 @@ def main():
             events = [event for event in state["events"]
                       if event["event_type"] == "investigation.review.returned_for_verification"]
             assert len(events) == len(state["receipts"]) == 2, "Retry duplicated a return effect"
-            assert state["revision"] == "0008_review_convergence"
+            assert state["revision"] == "0009_question_followthrough"
             encoded = json.dumps(state["events"], ensure_ascii=False)
             assert token not in encoded and "Independently fictional café marker" not in encoded
             return state

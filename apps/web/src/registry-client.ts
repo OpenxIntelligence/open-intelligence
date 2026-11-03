@@ -15,6 +15,10 @@ import {decodeReviewQueue,decodeReviewReturnResult,validReturnReason,FICTIONAL_R
 import type {ReviewQueue,ReviewReturnResult} from './review-queue-view.js';
 import {canPrepareSourceBrief,decodeSourceBrief} from './source-brief.js';
 import type {SourceBrief} from './source-brief.js';
+import {canCreateFollowthrough,decodeFollowthrough,decodeFollowthroughReceipt,
+  validFollowthroughDraft,validFollowthroughTransition} from './followthrough-view.js';
+import type {FollowthroughDraft,FollowthroughIntent,FollowthroughList,
+  FollowthroughReceipt,FollowthroughTransition} from './followthrough-view.js';
 export type Patient = Readonly<{
   patient_id: string; origin_org: string; created_at: string;
   status: 'active' | 'suspended'; revision: number;
@@ -46,6 +50,10 @@ export type ViewState = Readonly<{
   reviewReturn:ReviewReturnResult|null;reviewReturnPhase:'idle'|'saving'|'saved'|'unknown'|'error';
   reviewReturnMessage:string;reviewReturnIntent:ReviewReturnIntent|null;
   sourceBrief:SourceBrief|null;briefPhase:'idle'|'loading'|'ready'|'error';briefMessage:string;
+  followthrough:FollowthroughList|null;followthroughCaseId:string|null;
+  followthroughPhase:'idle'|'loading'|'ready'|'error';followthroughMessage:string;
+  followthroughReceipt:FollowthroughReceipt|null;followthroughIntent:FollowthroughIntent|null;
+  followthroughWritePhase:'idle'|'saving'|'saved'|'unknown'|'error';followthroughWriteMessage:string;
   sourceQuotePacket:QuestionSourceReviewPacket|null;
   sourceQuotePhase:'idle'|'loading'|'ready'|'error';sourceQuoteMessage:string;
 }>;
@@ -70,6 +78,10 @@ const emptyReview=()=>({reviewQueue:null,reviewPhase:'idle' as const,
   reviewReturnMessage:'No return action is in progress.'});
 const emptyBrief=()=>({sourceBrief:null,briefPhase:'idle' as const,
   briefMessage:'Prepare a source-linked brief from a current saved question. Each download checks permission again.'});
+const emptyFollowthrough=()=>({followthrough:null,followthroughCaseId:null,followthroughPhase:'idle' as const,
+  followthroughMessage:'Choose an authorized case to inspect work recorded for its saved questions.',
+  followthroughReceipt:null,followthroughIntent:null,followthroughWritePhase:'idle' as const,
+  followthroughWriteMessage:'No follow-up action is in progress.'});
 const emptyInvestigation=()=>({questionDraft:null,composerPreview:null,composerPhase:'idle' as const,
   composerMessage:'Select an exact current source observation to prepare a non-executing context.',
   savedQuestion:null,questionSavePhase:'idle' as const,
@@ -78,7 +90,7 @@ const emptyInvestigation=()=>({questionDraft:null,composerPreview:null,composerP
   questionListMessage:'Open an authorized case to inspect saved source questions.',
   ...emptyBrief(),sourceQuotePacket:null,sourceQuotePhase:'idle' as const,
   sourceQuoteMessage:'Select a saved question to inspect its source quotation and evidence gaps.'});
-const fresh = (): ViewState => Object.freeze({connected:false,phase:'disconnected',patient:null,created:null,message:'Connect a local synthetic credential to use the patient registry.',cases:null,sourceIndex:null,recordsPhase:'idle',recordMessage:'Open an authorized fictional patient in Overview first.',...emptyIntake(),...emptyWorld(),...emptyInvestigation(),...emptyReview()});
+const fresh = (): ViewState => Object.freeze({connected:false,phase:'disconnected',patient:null,created:null,message:'Connect a local synthetic credential to use the patient registry.',cases:null,sourceIndex:null,recordsPhase:'idle',recordMessage:'Open an authorized fictional patient in Overview first.',...emptyIntake(),...emptyWorld(),...emptyInvestigation(),...emptyReview(),...emptyFollowthrough()});
 const emptyRecords=()=>({...emptyIntake(),...emptyWorld(),cases:null,sourceIndex:null,recordsPhase:'idle' as const,recordMessage:'Load the current authorized case mappings to inspect original source metadata.'});
 function exact(value: unknown, fields: string[]): value is Record<string,unknown> {
   return value !== null && typeof value==='object' && !Array.isArray(value) &&
@@ -116,6 +128,7 @@ export class RegistrySession {
   #worldRead=0; #composerRead=0; #questionRead=0; #questionWrite=0; #briefRead=0;
   #questionKey=''; #questionFingerprint=''; #savingQuestion=false;
   #reviewRead=0; #reviewWrite=0; #reviewKey=''; #reviewIntent=''; #savingReview=false;
+  #followRead=0; #followWrite=0; #savingFollowthrough=false;
   #quoteRead=0;
   #inspectionQuestionId:string|null=null;
   #listeners=new Set<()=>void>(); #controllers=new Set<AbortController>(); #creating=false; #uploading=false;
@@ -123,6 +136,17 @@ export class RegistrySession {
   snapshot=():ViewState=>this.#state;
   subscribe=(listener:()=>void):(()=>void)=>{this.#listeners.add(listener);return()=>this.#listeners.delete(listener);};
   #publish(patch:Partial<ViewState>){this.#state=Object.freeze({...this.#state,...patch});for(const listener of this.#listeners)listener();}
+  #resetFollowthrough(preserveCase?:string){
+    this.#followRead++;this.#followWrite++;this.#savingFollowthrough=false;
+    const intent=this.#state.followthroughIntent;
+    if(intent&&intent.patient_id===this.#state.patient?.patient_id&&intent.case_id===preserveCase&&
+       ['saving','unknown'].includes(this.#state.followthroughWritePhase)){
+      return {...emptyFollowthrough(),followthroughCaseId:preserveCase,followthroughIntent:intent,
+        followthroughWritePhase:'unknown' as const,followthroughWriteMessage:
+          'The earlier write outcome is uncertain. Retry its exact recorded intent to recover the receipt, or explicitly abandon recovery.'};
+    }
+    return {...emptyFollowthrough(),followthroughCaseId:preserveCase??null};
+  }
   #resetReview(preserveCase?:string){
     this.#reviewRead++;this.#reviewWrite++;this.#savingReview=false;
     const intent=this.#state.reviewReturnIntent;
@@ -134,11 +158,11 @@ export class RegistrySession {
     this.#reviewKey='';this.#reviewIntent='';
     return emptyReview();
   }
-  #resetInvestigation(preserveReviewCase?:string){
+  #resetInvestigation(preserveReviewCase?:string,preserveFollowthroughCase=preserveReviewCase){
     this.#inspectionQuestionId=null;
     this.#worldRead++;this.#composerRead++;this.#questionRead++;this.#questionWrite++;this.#briefRead++;this.#quoteRead++;
     this.#questionKey='';this.#questionFingerprint='';this.#savingQuestion=false;
-    return {...emptyInvestigation(),...this.#resetReview(preserveReviewCase)};
+    return {...emptyInvestigation(),...this.#resetReview(preserveReviewCase),...this.#resetFollowthrough(preserveFollowthroughCase)};
   }
   #resetWorld(preserveReviewCase?:string){
     this.#publish({...emptyWorld(),...this.#resetInvestigation(preserveReviewCase)});
@@ -226,26 +250,29 @@ export class RegistrySession {
       this.#publish({...emptyRecords(),...this.#resetInvestigation(),recordsPhase:'error',recordMessage:'Open an authorized fictional patient in Overview first.',...emptyIntake()});
       return;
     }
-    const retainedCase=this.#state.reviewReturnIntent?.case_id;
+    const retainedCase=this.#state.reviewReturnIntent?.case_id,
+      retainedFollowthroughCase=this.#state.followthroughIntent?.case_id;
     const scope=this.#scope,read=this.#read,request=++this.#records;
     const current=()=>scope===this.#scope && read===this.#read &&
       request===this.#records && this.#state.patient?.patient_id===patientId;
     const control=new AbortController();this.#controllers.add(control);
     const timeout=setTimeout(()=>control.abort(),10000);
-    this.#publish({...emptyIntake(),...emptyWorld(),...this.#resetInvestigation(retainedCase),cases:null,sourceIndex:null,recordsPhase:'loading-cases',recordMessage:'Checking current case mapping permissions…'});
+    this.#publish({...emptyIntake(),...emptyWorld(),...this.#resetInvestigation(retainedCase,retainedFollowthroughCase),cases:null,sourceIndex:null,recordsPhase:'loading-cases',recordMessage:'Checking current case mapping permissions…'});
     try{
       const res=await this.transport('/v1/patients/'+encodeURIComponent(patientId)+'/case-bindings',this.#init(control));
       if(!current())return;
       if(res.status===401){this.#httpError(401);return;}
       if(res.status!==200){
         this.#publish({cases:null,sourceIndex:null,recordsPhase:'error',
-          ...([403,404].includes(res.status)?this.#resetReview():{}),
+          ...([403,404].includes(res.status)?{...this.#resetReview(),...this.#resetFollowthrough()}:{}),
           recordMessage:'Case mappings unavailable or permission changed. No records are shown.'});
         return;
       }
       const mappings=parseCaseBindingList(await json(res),patientId);
       if(!current())return;
-      this.#publish({cases:mappings,sourceIndex:null,recordsPhase:'ready',
+      const pendingCase=this.#state.followthroughIntent?.case_id;
+      this.#publish({...((pendingCase&&!mappings.some(item=>item.case_id===pendingCase&&item.status==='active'))?this.#resetFollowthrough():{}),
+        cases:mappings,sourceIndex:null,recordsPhase:'ready',
         ...(retainedCase&&!mappings.some(item=>item.case_id===retainedCase&&item.status==='active')?this.#resetReview():{}),
         recordMessage:mappings.length===0?'No permitted fictional case mappings were returned.':'Select an active case to check its original source metadata.'});
     }catch(_){
@@ -276,7 +303,7 @@ export class RegistrySession {
       if(res.status===401){this.#httpError(401);return;}
       if(res.status!==200){
         this.#publish({cases:null,sourceIndex:null,recordsPhase:'error',
-          ...([403,404].includes(res.status)?this.#resetReview():{}),
+          ...([403,404].includes(res.status)?{...this.#resetReview(),...this.#resetFollowthrough()}:{}),
           recordMessage:'Sources unavailable, denied or mapping revoked. Reload case permissions.'});
         return;
       }
@@ -292,6 +319,7 @@ export class RegistrySession {
 
   /** The inbox is derived from existing questions. Reading it never authorizes a return. */
   async loadReviewQueue(caseId:string):Promise<void>{
+    if(this.#state.followthroughCaseId&&this.#state.followthroughCaseId!==caseId)this.#publish(this.#resetFollowthrough(caseId));
     const retained=this.#resetReview(caseId);
     const patientId=this.#state.patient?.patient_id;
     this.#publish(retained);
@@ -439,7 +467,7 @@ export class RegistrySession {
       if(!current())return;
       if(response.status===401){this.#httpError(401);return;}
       if(response.status!==200){
-        this.#publish({...emptyWorld(),...([403,404].includes(response.status)?this.#resetReview():{}),worldPhase:'error',
+        this.#publish({...emptyWorld(),...([403,404].includes(response.status)?{...this.#resetReview(),...this.#resetFollowthrough()}:{}),worldPhase:'error',
           worldMessage:'World Model source scope unavailable or revoked. Previous snapshot cleared.'});
         return;
       }
@@ -709,6 +737,7 @@ export class RegistrySession {
   }
 
   async loadSavedQuestions(caseId:string):Promise<void>{
+    if(this.#state.followthroughCaseId&&this.#state.followthroughCaseId!==caseId)this.#publish(this.#resetFollowthrough(caseId));
     this.dismissSourceQuotePacket();
     const patientId=this.#state.patient?.patient_id;
     const query=++this.#questionRead,scope=this.#scope,patientRead=this.#read,worldRead=this.#worldRead;
@@ -733,7 +762,7 @@ export class RegistrySession {
       if(!current())return;
       if(res.status===401){this.#httpError(res.status);return;}
       if(res.status!==200){
-        this.#publish({...([403,404].includes(res.status)?{...this.#resetReview(),reviewPhase:'error' as const,
+        this.#publish({...([403,404].includes(res.status)?{...this.#resetReview(),...this.#resetFollowthrough(),reviewPhase:'error' as const,
           reviewMessage:'Question or source access is unavailable. Previous review content is cleared.'}:{}),
           questions:null,questionListPhase:'error',
           questionListMessage:'Saved questions unavailable under current authority.'});
@@ -750,6 +779,153 @@ export class RegistrySession {
       if(current())this.#publish({questions:null,questionListPhase:'error',
         questionListMessage:'Question history could not be verified; no cached questions are shown.'});
     }finally{clearTimeout(timeout);this.#controllers.delete(controller);}
+  }
+
+  /** A fresh task projection requires its own grant. A patient read never grants it. */
+  async loadFollowthrough(caseId:string):Promise<void>{
+    if(this.#savingFollowthrough)return;
+    if(this.#state.followthroughCaseId!==caseId)this.#publish(this.#resetFollowthrough(caseId));
+    const query=++this.#followRead,scope=this.#scope,selection=this.#read;
+    const patientId=this.#state.patient?.patient_id;
+    this.#publish({followthrough:null,followthroughPhase:'idle',followthroughMessage:'Checking current follow-up access…'});
+    // Temporary metadata loss neither authorizes another read nor discards an
+    // uncertain write captured for this same patient and case.
+    const intent=this.#state.followthroughIntent;
+    if(this.#token&&patientId&&this.#state.phase==='ready'&&this.#state.cases===null&&
+       intent?.patient_id===patientId&&intent.case_id===caseId&&this.#state.followthroughWritePhase==='unknown'){
+      this.#publish({followthroughPhase:'error',followthroughMessage:
+        'Recheck authorized cases before refreshing recorded work. The exact earlier write remains saved.'});return;
+    }
+    if(!this.#token||!patientId||this.#state.phase!=='ready'||this.#uploading||
+       !/^CASE-[A-Z0-9-]{1,35}$/.test(caseId)||
+       !this.#state.cases?.some(item=>item.case_id===caseId&&item.status==='active')){
+      this.#publish({...this.#resetFollowthrough(),followthroughPhase:'error',
+        followthroughMessage:'Open an authorized patient and active case before reading recorded work.'});return;
+    }
+    const current=()=>query===this.#followRead&&scope===this.#scope&&selection===this.#read&&
+      this.#state.patient?.patient_id===patientId&&this.#state.followthroughCaseId===caseId;
+    const control=new AbortController();this.#controllers.add(control);
+    const timeout=setTimeout(()=>control.abort(),10000);
+    this.#publish({followthroughPhase:'loading',followthroughMessage:'Checking separate task, question and source permissions…'});
+    try{
+      const url='/v1/patients/'+encodeURIComponent(patientId)+'/cases/'+encodeURIComponent(caseId)+'/followthrough';
+      const res=await this.transport(url,this.#init(control));
+      if(!current())return;
+      if(res.status===401){this.#httpError(401);return;}
+      if(res.status!==200){
+        this.#publish({...([403,404].includes(res.status)?this.#resetFollowthrough():{}),followthrough:null,
+          followthroughPhase:'error',followthroughMessage:'Recorded work is unavailable under current permissions. Prior task content is cleared.'});return;
+      }
+      if(control.signal.aborted)throw Error('task timeout');
+      const value=decodeFollowthrough(await json(res,4194304),patientId,caseId);
+      if(!current())return;if(control.signal.aborted)throw Error('task timeout');
+      this.#publish({followthrough:value,followthroughPhase:'ready',followthroughMessage:value.tasks.length?
+        'Recorded work and attributed history, checked at this read. Source changes do not approve a new conclusion.':
+        'No follow-up tasks are visible for this case.'});
+    }catch(_){if(current())this.#publish({followthrough:null,followthroughPhase:'error',
+      followthroughMessage:'The task response could not be verified. Earlier task content and controls are unavailable.'});}
+    finally{clearTimeout(timeout);this.#controllers.delete(control);}
+  }
+
+  #followthroughBlocked():boolean{
+    if(this.#savingFollowthrough)return true;
+    if(this.#state.followthroughWritePhase==='unknown'){
+      this.#publish({followthroughWriteMessage:'Resolve the uncertain write using Retry exact write or explicitly abandon recovery before editing or recording different work.'});
+      return true;
+    }
+    return false;
+  }
+
+  async createFollowthrough(questionId:string,draft:FollowthroughDraft):Promise<void>{
+    if(this.#followthroughBlocked())return;
+    const patientId=this.#state.patient?.patient_id,model=this.#state.worldModel;
+    const question=this.#state.questions?.find(item=>item.question_id===questionId);
+    if(!patientId||!this.#token||this.#state.phase!=='ready'||this.#uploading||
+       this.#state.worldPhase!=='ready'||this.#state.questionListPhase!=='ready'||
+       !model||!question||this.#state.questionsCaseId!==model.case_id||
+       !canCreateFollowthrough(question,model)||!validFollowthroughDraft(draft)||
+       !this.#state.cases?.some(row=>row.case_id===model.case_id&&row.status==='active')){
+      this.#publish({followthroughWritePhase:'error',followthroughReceipt:null,followthroughWriteMessage:
+        'Use a current saved question, a 3–160 character title, a 3–600 character reason, and a valid due date or review trigger.'});return;
+    }
+    const body=Object.freeze({synthetic:true as const,request_key:crypto.randomUUID(),title:draft.title,
+      detail:draft.detail,owner_label:draft.owner_label,due_date:draft.due_date,review_trigger:draft.review_trigger,
+      reason:draft.reason,source_snapshot_contract:'oi.pg-source-world-model/1' as const,
+      expected_source_snapshot_sha256:question.source_snapshot_sha256,expected_preflight_sha256:question.preflight_sha256});
+    await this.#writeFollowthrough(Object.freeze({kind:'create',patient_id:patientId,case_id:model.case_id,question_id:questionId,body}));
+  }
+
+  async transitionFollowthrough(taskId:string,draft:FollowthroughTransition):Promise<void>{
+    if(this.#followthroughBlocked())return;
+    const patientId=this.#state.patient?.patient_id,list=this.#state.followthrough;
+    const task=list?.tasks.find(item=>item.task_id===taskId);
+    if(!patientId||!this.#token||this.#state.phase!=='ready'||this.#uploading||
+       this.#state.followthroughPhase!=='ready'||!list||list.patient_id!==patientId||!task||
+       !validFollowthroughTransition(task,draft)||
+       !this.#state.cases?.some(row=>row.case_id===list.case_id&&row.status==='active')){
+      this.#publish({followthroughWritePhase:'error',followthroughReceipt:null,followthroughWriteMessage:
+        'Refresh recorded work and choose a legal next status with a reason. Assignment requires an owner; completion requires acknowledgment.'});return;
+    }
+    const body=Object.freeze({synthetic:true as const,request_key:crypto.randomUUID(),expected_revision:task.revision,
+      status:draft.status,owner_label:draft.status==='assigned'?draft.owner_label:'',reason:draft.reason});
+    await this.#writeFollowthrough(Object.freeze({kind:'transition',patient_id:patientId,case_id:list.case_id,
+      question_id:task.question_id,task_id:taskId,body}));
+  }
+
+  async retryFollowthroughWrite():Promise<void>{
+    const intent=this.#state.followthroughIntent;
+    if(this.#savingFollowthrough||this.#state.followthroughWritePhase!=='unknown'||!intent)return;
+    await this.#writeFollowthrough(intent,true);
+  }
+
+  abandonFollowthroughWrite=()=>{
+    if(this.#state.followthroughWritePhase!=='unknown'||this.#savingFollowthrough)return;
+    this.#followWrite++;
+    this.#publish({followthroughIntent:null,followthroughReceipt:null,followthroughWritePhase:'idle',
+      followthroughWriteMessage:'Recovery abandoned. This does not cancel or undo a write that may have committed. Check current task history before recording new work.'});
+  };
+
+  async #writeFollowthrough(intent:FollowthroughIntent,recovering=false):Promise<void>{
+    if(!this.#token||this.#state.patient?.patient_id!==intent.patient_id||this.#state.phase!=='ready'||this.#uploading||
+       !this.#state.cases?.some(row=>row.case_id===intent.case_id&&row.status==='active'))return;
+    const query=++this.#followWrite,scope=this.#scope,selection=this.#read;
+    this.#followRead++;this.#savingFollowthrough=true;
+    const current=()=>query===this.#followWrite&&scope===this.#scope&&selection===this.#read&&
+      this.#state.patient?.patient_id===intent.patient_id&&this.#state.followthroughIntent===intent&&
+      this.#state.followthroughCaseId===intent.case_id;
+    const uncertain=()=>this.#publish({followthrough:null,followthroughReceipt:null,followthroughPhase:'idle',
+      followthroughWritePhase:'unknown',followthroughWriteMessage:
+        'Write outcome uncertain. Retry the exact recorded intent to recover its receipt without creating another request. Edits are blocked until recovery or explicit abandonment.'});
+    const control=new AbortController();this.#controllers.add(control);
+    const timeout=setTimeout(()=>control.abort(),10000);
+    this.#publish({followthrough:null,followthroughCaseId:intent.case_id,followthroughPhase:'idle',
+      followthroughReceipt:null,followthroughIntent:intent,followthroughWritePhase:'saving',
+      followthroughWriteMessage:recovering?'Recovering the exact earlier write under current permissions…':
+        'Checking independent write permission and exact source context or task revision…'});
+    try{
+      const base='/v1/patients/'+encodeURIComponent(intent.patient_id)+'/cases/'+encodeURIComponent(intent.case_id);
+      const url=base+(intent.kind==='create'?'/questions/'+encodeURIComponent(intent.question_id)+'/followthrough':
+        '/followthrough/'+encodeURIComponent(intent.task_id)+'/transitions');
+      const res=await this.transport(url,this.#init(control,JSON.stringify(intent.body)));
+      if(!current())return;
+      if(res.status===401){this.#httpError(401);return;}
+      if([400,403,404,409,413,422].includes(res.status)){
+        this.#publish({...this.#resetFollowthrough(),followthroughCaseId:intent.case_id,followthroughWritePhase:'error',followthroughWriteMessage:res.status===409?
+          'The saved source context, task revision or request intent changed. Refresh the case and recorded work before a new action.':
+          'This write was refused by the current grant or input contract. No successful action is assumed.'});return;
+      }
+      if(![200,201].includes(res.status)||control.signal.aborted){uncertain();return;}
+      const saved=decodeFollowthroughReceipt(await json(res),intent);
+      if(!current())return;if(control.signal.aborted){uncertain();return;}
+      if((res.status===200)!==saved.duplicate)throw Error('task receipt status');
+      this.#publish({followthroughReceipt:saved,followthroughIntent:null,followthroughWritePhase:'saved',followthroughWriteMessage:saved.duplicate?
+        'Original task receipt recovered. The same request was not recorded twice.':
+        'Follow-up work recorded. No clinical approval, order or external notification was created.'});
+      this.#savingFollowthrough=false;
+      await this.loadFollowthrough(intent.case_id);
+    }catch(_){if(current())uncertain();}
+    finally{clearTimeout(timeout);this.#controllers.delete(control);
+      if(query===this.#followWrite&&scope===this.#scope)this.#savingFollowthrough=false;}
   }
 
   /** Fresh export of one persisted source question; no model, evidence synthesis or review. */
@@ -864,7 +1040,7 @@ export class RegistrySession {
       if(res.status===401){this.#httpError(401);return;}
       if([403,404,409,413,422].includes(res.status)){
         this.#publish({cases:null,sourceIndex:null,original:null,recordsPhase:'error',importOutcome:'rejected',
-          ...([403,404].includes(res.status)?this.#resetReview():{}),
+          ...([403,404].includes(res.status)?{...this.#resetReview(),...this.#resetFollowthrough()}:{}),
           importMessage:'The server rejected this import. Reload current case permissions; no success is claimed.'});return;
       }
       if(![200,201].includes(res.status))throw Error('unconfirmed');
