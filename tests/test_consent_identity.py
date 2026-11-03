@@ -8,7 +8,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from open_intelligence import CaseStore, InvalidInput
-from open_intelligence.__main__ import Handler, seed
+from open_intelligence.__main__ import FICTIONAL_ACTOR_HEADER, Handler, seed
 
 ROOT = Path(__file__).resolve().parents[1]
 SAMPLE = ROOT / "examples" / "synthetic"
@@ -225,7 +225,7 @@ class ConsentIdentityHttpTests(unittest.TestCase):
         cls.tmp.cleanup()
 
     def call(self, path, data=None):
-        headers = {}
+        headers = {FICTIONAL_ACTOR_HEADER: "FICTIONAL-NAVIGATOR-A"}
         body = None
         if data is not None:
             headers["Content-Type"] = "application/json"
