@@ -87,7 +87,15 @@ def load(j: Journey, *, failures: int = 0, mode: str = 'http', route: str = 'inc
       window.fetch=async (input,init) => {
         const path=new URL(typeof input==='string' ? input : input.url, location.href).pathname;
         const method=(init?.method || input?.method || 'GET').toUpperCase();
-        if(path==='/api/cases' && method==='POST') probe.posts++;
+        if(path==='/api/cases' && method==='POST') {
+          probe.posts++;
+          const response=await original(input,init);
+          if(probe.holdPost) {
+            await response.clone().text();probe.postHeld=true;
+            await new Promise(resolve=>{probe.releasePost=resolve;});
+          }
+          return response;
+        }
         const state=path.match(/^\/api\/cases\/([^/]+)\/state$/);
         const roster=path==='/api/cases' && method==='GET';
         if(!roster && !(state && method==='GET')) return original(input,init);
@@ -107,6 +115,15 @@ def load(j: Journey, *, failures: int = 0, mode: str = 'http', route: str = 'inc
           if(state && probe.failCanonical && state[1]==='CASE-ALPHA' && number===2)
             return new Response(JSON.stringify({error:'controlled initial chart failure'}),
               {status:503,headers:{'Content-Type':'application/json'}});
+          if(state && state[1]==='CASE-GAMMA' && number===2 && probe.gammaMode) {
+            if(probe.gammaMode==='fail')
+              return new Response(JSON.stringify({error:'controlled created chart failure'}),
+                {status:503,headers:{'Content-Type':'application/json'}});
+            const response=await original(input,init);
+            await response.clone().text();probe.gammaHeld=true;
+            await new Promise(resolve=>{probe.releaseGamma=resolve;});
+            return response;
+          }
           if(roster && probe.remaining>0) {
             probe.remaining--;probe.failures++;
             if(probe.mode==='network') throw Error('PRIVATE-STARTUP-DETAIL');
@@ -141,8 +158,23 @@ def recovery_action(j: Journey, *, keyboard: bool = False) -> None:
             'An unavailable or empty startup has an actionable global recovery control', state)
     j.check(not state['retryInForm'], 'Startup recovery cannot submit an existing form')
     if keyboard:
-        j.cd.evaluate("document.querySelector('#workspace-startup-retry').focus()")
-        j.key('Enter', 13)
+        j.cd.evaluate("""(() => {
+          window.__startupActivation=[];
+          const button=document.querySelector('#workspace-startup-retry');
+          for(const type of ['keydown','keypress','keyup','click'])
+            button.addEventListener(type,event=>window.__startupActivation.push({type,trusted:event.isTrusted}));
+          button.focus();
+        })()""")
+        # Include the Enter character so Chromium emits its native keypress
+        # default action for a button, not only keydown/keyup notifications.
+        j.cd.command('Input.dispatchKeyEvent', {'type': 'keyDown', 'key': 'Enter', 'code': 'Enter',
+                     'windowsVirtualKeyCode': 13, 'text': '\r', 'unmodifiedText': '\r'})
+        j.cd.command('Input.dispatchKeyEvent', {'type': 'keyUp', 'key': 'Enter', 'code': 'Enter',
+                     'windowsVirtualKeyCode': 13})
+        events = j.cd.evaluate('window.__startupActivation')
+        j.report.setdefault('keyboard_events', []).append(events)
+        j.check({'type': 'click', 'trusted': True} in events,
+                'Native Enter activates startup retry with a trusted button click', events)
     else:
         j.click('#workspace-startup-retry', 'Retry or refresh startup through its visible control')
 
@@ -404,6 +436,91 @@ def initial_chart_failure(j: Journey) -> None:
     j.capture('initial-chart-recovered')
 
 
+def hold_creation_across_startup(j: Journey) -> None:
+    load(j, mode='hold-success')
+    j.cd.evaluate('window.__startupProbe.holdPost=true')
+    create(j)
+    j.cd.wait('window.__startupProbe.postHeld', 'successful creation response held')
+    j.check(any(case['case_id'] == 'CASE-GAMMA' for case in j.read('api/cases')),
+            'The held creation response follows a real durable POST')
+    j.cd.evaluate('window.__startupProbe.release()')
+    ready(j)
+
+
+def creation_crosses_initial_selection(j: Journey, *, chart_failure: bool = False) -> None:
+    hold_creation_across_startup(j)
+    j.cd.evaluate("window.__startupProbe.gammaMode='fail'" if chart_failure else 'window.__startupProbe.remaining=1')
+    j.cd.evaluate('window.__startupProbe.releasePost()')
+    j.cd.wait("!document.querySelector('#case-create-submit').disabled", 'saved creation feedback settled')
+    drain_reads(j)
+    state = observe(j)
+    j.check('created' in state['creation'].lower() and 'saved' in state['creation'].lower() and
+            'retry' in state['creation'].lower(),
+            'Creation begun during startup remains truthfully saved when later activation fails', state)
+    j.check(creation_fields(j) == {'alias': '', 'code': '', 'confirmed': False},
+            'A saved creation does not leave a populated form encouraging a duplicate POST')
+    j.check(state['route'] == 'workspace-start' and not state['regionVisible'],
+            'A saved but unavailable creation does not announce or navigate to ready intake', state)
+    j.go('incoming-board')
+    if chart_failure:
+        j.check(state['caseId'] == 'CASE-GAMMA' and state['active'] is None,
+                'Created-chart failure remains with the existing unavailable chart owner', state)
+        j.click('#incoming-list [data-case-id="CASE-GAMMA"] button', 'Retry the saved created chart through Open')
+    else:
+        j.check(state['caseId'] == state['active'] == 'CASE-ALPHA',
+                'A failed creation roster refresh preserves the already ready chart', state)
+        j.click('#worklist-refresh', 'Recover saved creation through the existing Refresh list action')
+    ready(j, 'CASE-GAMMA')
+    j.cd.wait("document.body.dataset.view === 'source-intake'", 'saved creation activation after established startup')
+    after = observe(j)
+    j.check(after['probe']['posts'] == 1 and 'retry' not in after['creation'].lower(),
+            'Read-only recovery finishes saved creation once and clears its obsolete guidance', after)
+    j.capture('creation-handoff-recovered')
+
+
+def native_previous_case(j: Journey, *, direction: str, expected: str) -> None:
+    j.go('overview')
+    j.cd.evaluate("""(() => {
+      window.__startupLaterSelection=null;
+      const picker=document.querySelector('#case-picker');
+      picker.addEventListener('change',event=>{
+        window.__startupLaterSelection={trusted:event.isTrusted,value:picker.value};
+      },{once:true});picker.focus();
+    })()""")
+    j.key(direction, 38 if direction == 'ArrowUp' else 40)
+    j.key('Enter', 13)
+    ready(j, expected)
+    j.check(j.cd.evaluate('window.__startupLaterSelection') == {'trusted': True, 'value': expected},
+            'A later explicit case selection uses the native trusted picker')
+
+
+def creation_cancelled_by_selection(j: Journey, *, during_post: bool = False) -> None:
+    hold_creation_across_startup(j)
+    if during_post:
+        native_previous_case(j, direction='ArrowDown', expected='CASE-BETA')
+        j.cd.evaluate('window.__startupProbe.releasePost()')
+        j.cd.wait("!document.querySelector('#case-create-submit').disabled", 'saved creation after explicit selection')
+    else:
+        j.cd.evaluate("window.__startupProbe.gammaMode='hold';window.__startupProbe.releasePost()")
+        j.cd.wait('window.__startupProbe.gammaHeld', 'created chart held pending')
+        j.cd.wait("!document.querySelector('#case-create-submit').disabled", 'pending chart creation status')
+        state = observe(j)
+        j.check('saved' in state['creation'].lower() and 'retry' in state['creation'].lower(),
+                'A delayed created chart does not produce a false readiness announcement', state)
+        native_previous_case(j, direction='ArrowUp', expected='CASE-BETA')
+        j.cd.evaluate('window.__startupProbe.releaseGamma()')
+    drain_reads(j)
+    state = observe(j)
+    j.check(state['caseId'] == state['active'] == state['selected'] == 'CASE-BETA' and state['route'] == 'overview',
+            'A later accepted case selection cancels creation navigation across delayed completion', state)
+    j.go('incoming-board')
+    j.click('#worklist-refresh', 'Refresh after deliberately selecting another case')
+    drain_reads(j)
+    j.check(observe(j)['caseId'] == 'CASE-BETA' and j.cd.evaluate('window.__startupProbe.posts') == 1,
+            'A subsequent worklist refresh cannot revive canceled creation activation')
+    j.capture('creation-selection-preserved')
+
+
 def main() -> None:
     output = Path(os.environ.get('OI_STARTUP_ARTIFACT_DIR', ROOT / '.ui-artifacts' / 'startup')).resolve()
     output.mkdir(parents=True, exist_ok=True)
@@ -431,6 +548,10 @@ def main() -> None:
         ('saved-creation-failed-load', saved_creation_failed_load, False, True),
         ('notice-and-ready-owner', unrelated_notice_and_ready_guard, False, True),
         ('initial-chart-failure', initial_chart_failure, False, True),
+        ('creation-crosses-startup-roster-failure', creation_crosses_initial_selection, False, True),
+        ('created-chart-failure', lambda j: creation_crosses_initial_selection(j, chart_failure=True), False, True),
+        ('selection-during-created-chart', creation_cancelled_by_selection, False, True),
+        ('selection-during-creation-post', lambda j: creation_cancelled_by_selection(j, during_post=True), False, True),
     ]
     requested = os.environ.get('OI_STARTUP_SCENARIOS')
     if requested:

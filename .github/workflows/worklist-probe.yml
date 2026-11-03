@@ -11,6 +11,7 @@ jobs:
     env:
       PYTHONPATH: src
       OI_STARTUP_ARTIFACT_DIR: ui-artifacts/startup
+      OI_STARTUP_SCENARIOS: initial-failure-connected,creation-crosses-startup-roster-failure,created-chart-failure,selection-during-created-chart,selection-during-creation-post
     steps:
       - uses: actions/checkout@v4
         with:
