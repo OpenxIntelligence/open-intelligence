@@ -1,0 +1,6 @@
+OI-SYNTHETIC-EVIDENCE/1
+Evidence: FIG-EVID-CERTAINTY
+Title: Fictional tiredness background note
+Issued-At: 2026-05-20
+Rights: original-synthetic
+Statement: This fictional note lists everyday causes of tiredness for background only; it draws no conclusion about any person.

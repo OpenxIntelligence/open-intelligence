@@ -14,7 +14,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from open_intelligence import CaseStore, InvalidInput
-from open_intelligence.__main__ import Handler, seed
+from open_intelligence.__main__ import FICTIONAL_ACTOR_HEADER, Handler, seed
 from open_intelligence.patient_attention import NO_DATE, case_patient_attention
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -382,7 +382,9 @@ class PatientAttentionHttpTests(unittest.TestCase):
         cls.tmp.cleanup()
 
     def request(self, path: str, data: dict | None = None):
-        headers = {"Content-Type": "application/json"} if data is not None else {}
+        headers = {FICTIONAL_ACTOR_HEADER: "FICTIONAL-NAVIGATOR-A"}
+        if data is not None:
+            headers["Content-Type"] = "application/json"
         body = None if data is None else json.dumps(data).encode()
         req = Request(f"http://127.0.0.1:{self.port}{path}",
                       data=body, headers=headers)
@@ -407,6 +409,9 @@ class PatientAttentionHttpTests(unittest.TestCase):
         status, created = self.request(
             "/api/cases", {"case_id": "CASE-HTTP-Q", "label": "Fictional HTTP case"})
         self.assertEqual(status, 201)
+        CaseStore(self.path).create_grant(
+            "FICTIONAL-NAVIGATOR-A", "CASE-HTTP-Q", "individual-access",
+            "2020-01-01", "2999-12-31")
         status, question = self.request(
             "/api/cases/CASE-HTTP-Q/questions",
             {"question": "What does this fictional HTTP case still need?"})
@@ -426,6 +431,10 @@ class PatientAttentionHttpTests(unittest.TestCase):
                      {"case_id": "CASE-HTTP-A", "label": "Fictional HTTP A"})
         self.request("/api/cases",
                      {"case_id": "CASE-HTTP-B", "label": "Fictional HTTP B"})
+        for fresh in ("CASE-HTTP-A", "CASE-HTTP-B"):
+            CaseStore(self.path).create_grant(
+                "FICTIONAL-NAVIGATOR-A", fresh, "individual-access",
+                "2020-01-01", "2999-12-31")
         self.request("/api/cases/CASE-HTTP-A/questions",
                      {"question": "What is the Alpha-only fictional HTTP question?"})
         status_a, payload_a = self.request("/api/cases/CASE-HTTP-A/patient-attention")
