@@ -23,16 +23,16 @@
   const LAYOUT = {
     careteam: [
       ['board', 'Incoming board', ['incoming-board']],
-      ['overview', 'Overview', ['overview', 'workspace-start', 'source-intake', 'metrics', 'view-glance', 'view-next', 'patient-mission']],
+      ['overview', 'Overview', ['overview', 'workspace-start', 'source-intake', 'metrics', 'view-glance', 'view-next']],
       ['records', 'Records & timeline', ['timeline', 'sources', 'biological-assets', 'import']],
       ['investigations', 'Investigations', ['investigations']],
       ['research', 'Evidence & research', ['evidence', 'bibliography']],
-      ['review', 'Review & changes', ['changes-since-review', 'activity']],
+      ['review', 'Review & changes', ['changes-since-review', 'patient-mission', 'activity']],
       ['options', 'Options & tasks', ['options']],
     ],
     patient: [
       ['home', 'Overview', ['pt-home']],
-      ['reports', 'My reports', ['patient-view', 'timeline', 'sources']],
+      ['reports', 'My reports', ['timeline', 'sources', 'patient-view']],
       ['research', 'Research', ['pt-research', 'bibliography']],
       ['questions', 'My questions', ['pt-questions']],
     ],
@@ -294,8 +294,8 @@
     if (!state) return;
     const linked = new Set((state.evidence_assessments || []).map(a => Number(a.evidence_version_id)));
     const items = (state.evidence || []).filter(item => item.state === 'current');
-    body.append(make('p', 'Fictional research examples connected to this workspace. Use the literature search below to look up publications yourself.', 'muted'));
-    if (!items.length) { body.append(make('p', 'No research is connected yet.', 'muted')); return; }
+    body.append(make('p', 'Research your care team connected to this workspace. You can also look up publications yourself with the search below.', 'muted'));
+    if (!items.length) { body.append(make('p', 'Your care team hasn’t connected any research yet.', 'muted')); return; }
     const list = make('ul', null, 'view-list');
     for (const item of items) {
       const row = make('li');

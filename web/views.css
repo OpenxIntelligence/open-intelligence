@@ -34,6 +34,8 @@ h1, h2 { letter-spacing: -0.015em; }
 /* One demo banner in the header; repeated in-panel copies are visual noise. */
 .panel-head .pill-warn { display: none; }
 .rail .side-bottom { display: none; }
+/* Navigation now does the guide box's job ("inspect chronology", "browse documents"). */
+.glance-review .glance-guide { display: none; }
 
 /* Role switch (development control). */
 .view-role { display: flex; align-items: center; gap: var(--space-2); }
