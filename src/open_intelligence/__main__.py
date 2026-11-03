@@ -24,13 +24,26 @@ from .investigation import (
     validate_output,
 )
 from .mission import build_patient_mission
+from .owned_questions import question_gap_rollup
 from .store import CaseStore, InvalidInput, MAX_SOURCE_BYTES
+from .synthetic_metrics import fixture_run
 from .timeline import case_timeline
 
 ROOT = Path(__file__).resolve().parents[2]
 WEB = ROOT / "web"
 SYNTHETIC = ROOT / "examples" / "synthetic"
 ID_PART = r"([A-Z][A-Z0-9-]{1,39})"
+
+# B-01 fictional-actor grants: workflow governance for the synthetic case
+# workspace. The header carries a FICTIONAL actor id only — this is not
+# identity proofing, not credential verification, and not a
+# production-security control. Every case route requires purpose
+# "individual-access" (the only purpose patient_access.py accepts); grants
+# with any other stated purpose authorize no case route in this slice.
+FICTIONAL_ACTOR_HEADER = "X-Fictional-Actor"
+FICTIONAL_ACTOR_PURPOSE = "individual-access"
+DEMO_ACTOR = "FICTIONAL-NAVIGATOR-A"
+GRANT_DENIAL_MESSAGE = "Access denied: no active fictional-actor grant for this case"
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -72,7 +85,9 @@ class Handler(BaseHTTPRequestHandler):
             n = int(self.headers.get("Content-Length", "0"))
         except ValueError:
             raise InvalidInput("Invalid Content-Length") from None
-        if not 0 < n <= MAX_SOURCE_BYTES + 8192:
+        if n <= 0:
+            raise InvalidInput("Request body is required")
+        if n > MAX_SOURCE_BYTES + 8192:
             raise InvalidInput("Request body exceeds local-demo limit")
         try:
             data = json.loads(self.rfile.read(n))
@@ -94,6 +109,68 @@ class Handler(BaseHTTPRequestHandler):
         # A foreign webpage may omit Origin in some requests. Modern browser
         # metadata provides an additional barrier; this is NOT authentication.
         return self.headers.get("Sec-Fetch-Site", "none") in {"none", "same-origin"}
+
+    def _fictional_actor(self) -> str | None:
+        """Presented fictional actor id, or None when missing/unparseable.
+
+        Any non-None value matches the synthetic-id alphabet; the grant
+        lookup decides authorization. Malformed values are unknown actors,
+        not 422s: behavior item 1 denies them with 403."""
+        raw = self.headers.get(FICTIONAL_ACTOR_HEADER)
+        if raw is None:
+            return None
+        actor = raw.strip()
+        if not re.fullmatch(ID_PART, actor):
+            return None
+        return actor
+
+    def _actor_label(self) -> str:
+        """Access-log actor field: the presented value, or "missing"."""
+        raw = self.headers.get(FICTIONAL_ACTOR_HEADER)
+        if raw is None or not raw.strip():
+            return "missing"
+        return raw.strip()[:128]
+
+    @staticmethod
+    def _case_route_id(path: str) -> str | None:
+        """Well-formed /api/cases/{ID}/... case id, else None.
+
+        Only well-formed ids are gated here; malformed segments fall through
+        to the existing 404 contract, and /api/cases itself is the global
+        list route with its own item-7 filtering."""
+        parts = path.split("/")
+        if len(parts) >= 5 and parts[1] == "api" and parts[2] == "cases" \
+                and parts[4] != "" and re.fullmatch(ID_PART, parts[3]):
+            return parts[3]
+        return None
+
+    def _grant_denial(self) -> None:
+        # One fixed shape with zero case-content fields, identical for
+        # missing/unknown actors, cross-case reads, and expired, revoked,
+        # or wrong-purpose grants.
+        return self._json(403, {"error": GRANT_DENIAL_MESSAGE})
+
+    def _require_case_grant(self, store: CaseStore, case_id: str, path: str) -> bool:
+        """Gate one case-scoped route. Returns True when allowed (and the
+        decision is logged); otherwise sends the denial and returns False.
+
+        Unknown case ids raise InvalidInput (422 "Unknown case") BEFORE the
+        grant check, preserving the existing contract with no new existence
+        oracle beyond what /api/cases already lists on this demo."""
+        label = self._actor_label()
+        route = path[:256]
+        try:
+            store.require_case(case_id)
+        except InvalidInput:
+            store.record_access(label, case_id, route, "denied")
+            raise
+        actor = self._fictional_actor()
+        if actor is None or not store.has_active_grant(actor, case_id, FICTIONAL_ACTOR_PURPOSE):
+            store.record_access(label, case_id, route, "denied")
+            self._grant_denial()
+            return False
+        store.record_access(actor, case_id, route, "allowed")
+        return True
 
     def do_GET(self) -> None:  # noqa: N802
         if not self._host_allowed():
@@ -131,7 +208,13 @@ class Handler(BaseHTTPRequestHandler):
         store = CaseStore(self.db_path)
         try:
             if path == "/api/cases":
-                return self._json(200, store.cases())
+                actor = self._fictional_actor()
+                if actor is None:
+                    return self._grant_denial()
+                return self._json(200, store.granted_cases(actor, FICTIONAL_ACTOR_PURPOSE))
+            gated_case = self._case_route_id(path)
+            if gated_case is not None and not self._require_case_grant(store, gated_case, path):
+                return None
             if path == "/api/discovery":
                 return self._json(200, store.list_discovery())
             discovery_links = re.fullmatch(rf"/api/cases/{ID_PART}/discovery", path)
@@ -149,6 +232,8 @@ class Handler(BaseHTTPRequestHandler):
             if case_options:
                 query = parse_qs(urlsplit(self.path).query)
                 snapshot_raw = query.get("snapshot_id", [None])[0]
+                if snapshot_raw is not None and not snapshot_raw.isdigit():
+                    raise InvalidInput("snapshot_id must be a positive integer")
                 snapshot_id = int(snapshot_raw) if snapshot_raw is not None else None
                 return self._json(200, store.option_view(case_options[1], snapshot_id))
             case_mission = re.fullmatch(rf"/api/cases/{ID_PART}/mission", path)
@@ -172,6 +257,9 @@ class Handler(BaseHTTPRequestHandler):
             inv_one = re.fullmatch(rf"/api/cases/{ID_PART}/investigations/([0-9]+)", path)
             if inv_one:
                 return self._json(200, store.get_investigation(inv_one[1], int(inv_one[2])))
+            question_rollup = re.fullmatch(rf"/api/cases/{ID_PART}/questions/([0-9]+)/rollup", path)
+            if question_rollup:
+                return self._json(200, question_gap_rollup(store, question_rollup[1], int(question_rollup[2])))
             if path == "/api/investigations/templates":
                 return self._json(200, {"templates": [
                     {"id": template_id, "description": text[:160]}
@@ -183,6 +271,35 @@ class Handler(BaseHTTPRequestHandler):
             if exported:
                 contents = store.export_markdown(exported[1], int(exported[2])).encode("utf-8")
                 return self._send(200, contents, "text/markdown; charset=utf-8")
+            question_synthesis = re.fullmatch(rf"/api/cases/{ID_PART}/questions/([0-9]+)/synthesis", path)
+            if question_synthesis:
+                return self._json(200, store.question_synthesis(question_synthesis[1], int(question_synthesis[2])))
+            snapshot_synthesis = re.fullmatch(rf"/api/cases/{ID_PART}/snapshots/([0-9]+)/synthesis", path)
+            if snapshot_synthesis:
+                return self._json(200, store.snapshot_synthesis(snapshot_synthesis[1], int(snapshot_synthesis[2])))
+            synthesis_report = re.fullmatch(rf"/api/cases/{ID_PART}/snapshots/([0-9]+)/synthesis-report", path)
+            if synthesis_report:
+                contents = store.synthesis_report(synthesis_report[1], int(synthesis_report[2])).encode("utf-8")
+                return self._send(200, contents, "text/markdown; charset=utf-8")
+            synthesis_patient = re.fullmatch(rf"/api/cases/{ID_PART}/snapshots/([0-9]+)/synthesis-report-patient", path)
+            if synthesis_patient:
+                contents = store.synthesis_patient_report(synthesis_patient[1], int(synthesis_patient[2])).encode("utf-8")
+                return self._send(200, contents, "text/markdown; charset=utf-8")
+            metrics = re.fullmatch(r"/api/metrics/synthetic", path)
+            if metrics:
+                query = parse_qs(urlsplit(self.path).query)
+
+                def _manifest(values: list[str] | None) -> list[str]:
+                    names: list[str] = []
+                    for value in values or []:
+                        names.extend(part.strip() for part in value.split(","))
+                    return [name for name in names if name]
+
+                return self._json(200, fixture_run(
+                    store, _manifest(query.get("dev")), _manifest(query.get("held_out"))))
+            re_review_list = re.fullmatch(rf"/api/cases/{ID_PART}/re-review-tasks", path)
+            if re_review_list:
+                return self._json(200, store.list_re_review_tasks(re_review_list[1]))
             return self._json(404, {"error": "Route not found"})
         except InvalidInput as error:
             return self._json(422, {"error": str(error)})
@@ -195,7 +312,14 @@ class Handler(BaseHTTPRequestHandler):
         if not self._origin_allowed():
             return self._json(403, {"error": "Cross-origin writes prohibited"})
         path = urlsplit(self.path).path
+        store = CaseStore(self.db_path)
         try:
+            # The grant gate runs before body validation: a missing or
+            # unknown actor on a case route is denied (403) even when the
+            # body is malformed, and unknown cases stay 422 either way.
+            gated_case = self._case_route_id(path)
+            if gated_case is not None and not self._require_case_grant(store, gated_case, path):
+                return None
             data = self._body()
             if path == "/api/bibliography/lookup":
                 if not self.allow_crossref_live:
@@ -214,7 +338,6 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(200, record)
                 finally:
                     self.metadata_request_lock.release()
-            store = CaseStore(self.db_path)
             try:
                 if path == "/api/cases":
                     store.add_case(data.get("case_id"), data.get("label"))
@@ -234,9 +357,32 @@ class Handler(BaseHTTPRequestHandler):
                     if not isinstance(raw, str):
                         raise InvalidInput("Report text required")
                     return self._json(200, store.import_report(imports[1], raw.encode("utf-8")))
+                correction = re.fullmatch(rf"/api/cases/{ID_PART}/quarantine/([0-9]+)/correct", path)
+                if correction:
+                    return self._json(200, store.correct_quarantined_delivery(
+                        correction[1], int(correction[2]),
+                        data.get("destination_case_id"), data.get("actor_label")))
                 questions = re.fullmatch(rf"/api/cases/{ID_PART}/questions", path)
                 if questions:
-                    return self._json(201, {"question_id": store.add_question(questions[1], data.get("question"))})
+                    owner = data.get("owner_label")
+                    if isinstance(owner, str) and not owner.strip():
+                        owner = None
+                    return self._json(201, {"question_id": store.add_question(
+                        questions[1], data.get("question"), owner)})
+                question_owner = re.fullmatch(rf"/api/cases/{ID_PART}/questions/([0-9]+)/owner", path)
+                if question_owner:
+                    history_id = store.assign_question_owner(
+                        question_owner[1], int(question_owner[2]), data.get("owner_label"))
+                    return self._json(200, {"history_id": history_id})
+                question_triage = re.fullmatch(rf"/api/cases/{ID_PART}/questions/([0-9]+)/triage", path)
+                if question_triage:
+                    store.set_question_triage(question_triage[1], int(question_triage[2]), data.get("triage"))
+                    return self._json(200, {"result": "triage_updated"})
+                question_note = re.fullmatch(rf"/api/cases/{ID_PART}/questions/([0-9]+)/evidence-notes", path)
+                if question_note:
+                    note_id = store.add_question_evidence_note(
+                        question_note[1], int(question_note[2]), data.get("note"))
+                    return self._json(201, {"note_id": note_id})
                 evidence_assessment = re.fullmatch(rf"/api/cases/{ID_PART}/evidence-assessments", path)
                 if evidence_assessment:
                     return self._json(201, {"assessment_id": store.assess_synthetic_evidence(
@@ -280,6 +426,13 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(200, store.review_broker_link(
                         broker_review[1], int(broker_review[2]), data.get("relation"),
                         data.get("applicability"), data.get("rationale")))
+                limitation_note = re.fullmatch(rf"/api/cases/{ID_PART}/limitation-notes", path)
+                if limitation_note:
+                    return self._json(201, {"note_id": store.add_limitation_note(
+                        limitation_note[1], data.get("question_id"),
+                        assessment_id=data.get("assessment_id"),
+                        broker_link_id=data.get("broker_link_id"),
+                        note=data.get("note"), author_label=data.get("author_label"))})
                 bio_assets = re.fullmatch(rf"/api/cases/{ID_PART}/biological-assets", path)
                 if bio_assets:
                     return self._json(201, {"biological_asset_id": store.add_biological_asset(
@@ -306,6 +459,26 @@ class Handler(BaseHTTPRequestHandler):
                 if review:
                     store.acknowledge_demo_review(review[1], int(review[2]), data.get("reviewer_label"))
                     return self._json(200, {"result": "acknowledged_in_demo"})
+                scoped_decision = re.fullmatch(rf"/api/cases/{ID_PART}/snapshots/([0-9]+)/scoped-decisions", path)
+                if scoped_decision:
+                    return self._json(201, store.record_scoped_decision(
+                        scoped_decision[1], int(scoped_decision[2]), data.get("reviewer_label"),
+                        data.get("scope"), data.get("note")))
+                scoped_dissent = re.fullmatch(rf"/api/cases/{ID_PART}/snapshots/([0-9]+)/scoped-dissents", path)
+                if scoped_dissent:
+                    return self._json(201, store.record_scoped_dissent(
+                        scoped_dissent[1], int(scoped_dissent[2]), data.get("reviewer_label"),
+                        data.get("claim_ref"), data.get("rationale")))
+                scoped_handoff = re.fullmatch(rf"/api/cases/{ID_PART}/snapshots/([0-9]+)/scoped-handoffs", path)
+                if scoped_handoff:
+                    return self._json(201, store.record_scoped_handoff(
+                        scoped_handoff[1], int(scoped_handoff[2]), data.get("from_reviewer"),
+                        data.get("to_reviewer")))
+                re_review_close = re.fullmatch(rf"/api/cases/{ID_PART}/re-review-tasks/([0-9]+)/close", path)
+                if re_review_close:
+                    return self._json(200, store.close_re_review_task(
+                        re_review_close[1], int(re_review_close[2]),
+                        data.get("closing_snapshot_id"), data.get("no_change_note")))
                 option_create = re.fullmatch(rf"/api/cases/{ID_PART}/options", path)
                 if option_create:
                     option_id = store.create_option(
@@ -333,8 +506,14 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(201, {"task_id": task_id})
                 task_status = re.fullmatch(rf"/api/cases/{ID_PART}/tasks/([0-9]+)/status", path)
                 if task_status:
-                    store.set_preparation_task_status(task_status[1], int(task_status[2]), data.get("status"))
-                    return self._json(200, {"result": "task_status_updated"})
+                    # B-09: acting label is optional and recorded only on done.
+                    outcome = store.set_preparation_task_status(
+                        task_status[1], int(task_status[2]), data.get("status"),
+                        acting_label=data.get("acting_label"))
+                    payload: dict = {"result": "task_status_updated"}
+                    if outcome is not None:
+                        payload["receipt_id"] = outcome["receipt_id"]
+                    return self._json(200, payload)
                 option_threat = re.fullmatch(rf"/api/cases/{ID_PART}/options/([0-9]+)/threats", path)
                 if option_threat:
                     threat_id = store.add_optionality_threat(
@@ -411,6 +590,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(status, {"error": str(error)})
         except (OverflowError, UnicodeEncodeError):
             return self._json(422, {"error": "Invalid text or identifier"})
+        finally:
+            # The gate and bibliography branches return before the inner
+            # try/finally; sqlite close() is idempotent, so closing here as
+            # well keeps every path clean without touching route code.
+            store.close()
 
 
 def seed(db_path: str) -> None:
@@ -425,6 +609,13 @@ def seed(db_path: str) -> None:
             for file in files:
                 outcome = store.import_report(case_id, (SYNTHETIC / file).read_bytes())
                 print(case_id, file, outcome["result"])
+            # B-01: the demo actor holds a fictional grant on each seeded demo
+            # case, so the deny-by-default gate leaves the local demo usable.
+            # Re-seeding never duplicates a live grant; seed is an explicit
+            # operator action, so it grants anew when no live grant exists.
+            if not store.has_active_grant(DEMO_ACTOR, case_id, FICTIONAL_ACTOR_PURPOSE):
+                store.create_grant(DEMO_ACTOR, case_id, FICTIONAL_ACTOR_PURPOSE,
+                                   "2020-01-01", "2999-12-31")
     finally:
         store.close()
 
