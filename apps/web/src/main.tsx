@@ -97,7 +97,7 @@ function App(){
        <p>{state.original.state} · SHA-256 <code>{state.original.sha256}</code></p>
        <p>Verified against the selected version metadata. Clinical review: not established. Access was checked for this read.</p>
        <button data-testid="close-original" onClick={closeOriginal}>Close original</button>
-       <pre className="original-text" data-testid="server-original">{state.original.original_text}</pre>
+       <pre className="original-text" data-testid="server-original" tabIndex={0} role="region" aria-label="Original document text">{state.original.original_text}</pre>
       </section>}
       {state.cases!==null&&<section aria-labelledby="case-list-heading" data-testid="records-cases">
        <h3 id="case-list-heading">Case mappings</h3>

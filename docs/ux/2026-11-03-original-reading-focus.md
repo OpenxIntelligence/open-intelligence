@@ -22,3 +22,10 @@ The repeated question buttons and version-only original buttons were ambiguous w
 Alternatives: longer visible labels increase repetition in each source card; descriptions alone may not distinguish controls in a button list. Scoped accessible names keep the existing visual layout while supplying exact source context. This follows [W3C Label in Name guidance](https://www.w3.org/WAI/WCAG22/Understanding/label-in-name.html), reviewed 3 November 2026. This is not a full WCAG conformance claim or a screen-reader user study.
 
 Acceptance reads Chromium's computed accessibility tree over actual API-loaded records, checks both original versions and each current quotation against its displayed source context, and retains the native keyboard/focus, question-entry, filtering and authorization journeys. Exact final-head results and evidence are recorded in draft PR #353 and the existing research documents. Backend, permissions, validation, session behavior and dependencies remain unchanged.
+
+
+## Follow-up: keyboard access to overflowed originals
+
+The original text has a fixed maximum reading height. Give its scroll area an explicit tab stop, region name and visible focus outline so keyboard users can reach and scroll long originals across browser implementations. Keep the close control immediately before it. No text bytes, hashes, fetching or permission logic change.
+
+Browser acceptance uses the actual verified historical original at 390px, enlarges its text to create overflow, presses PageDown to prove internal scrolling, and uses Shift+Tab to return to Close original before checking the exact source-button return. Desktop also checks the new tab stop. The enlarged-text screenshot is a stress condition, not a new default style. Cross-browser and screen-reader participant validation remain open; hosted Chromium evidence belongs in the PR receipt.

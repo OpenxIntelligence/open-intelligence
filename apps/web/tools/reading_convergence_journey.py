@@ -62,6 +62,19 @@ def exercise(cd, credentials, write_grants):
             (out/f'original-focus-{width}.png').write_bytes(base64.b64decode(cd.command('Page.captureScreenshot', {'format':'png'})['data']))
             key('Tab',9)
             assert cd.evaluate("document.activeElement===document.querySelector('[data-testid=close-original]')"), 'Tab from original heading reaches its close action'
+            key('Tab',9)
+            assert cd.evaluate("document.activeElement===document.querySelector('[data-testid=server-original]')"), 'Tab reaches the bounded original text'
+            if width == 390:
+                # Text enlargement creates real overflow using the actual verified original.
+                cd.evaluate("document.querySelector('[data-testid=server-original]').style.fontSize='32px'")
+                assert cd.evaluate("document.activeElement.scrollHeight>document.activeElement.clientHeight"), 'Enlarged original must exercise internal scrolling'
+                key('PageDown',34)
+                cd.wait("document.querySelector('[data-testid=server-original]').scrollTop>0", 'keyboard scrolls enlarged original text')
+                (out/'original-keyboard-scroll-390.png').write_bytes(base64.b64decode(cd.command('Page.captureScreenshot', {'format':'png'})['data']))
+                cd.evaluate("document.querySelector('[data-testid=server-original]').style.removeProperty('font-size')")
+            cd.command('Input.dispatchKeyEvent', {'type':'rawKeyDown','key':'Tab','code':'Tab','windowsVirtualKeyCode':9,'modifiers':8})
+            cd.command('Input.dispatchKeyEvent', {'type':'keyUp','key':'Tab','code':'Tab','windowsVirtualKeyCode':9,'modifiers':8})
+            assert cd.evaluate("document.activeElement===document.querySelector('[data-testid=close-original]')"), 'Shift+Tab returns to Close original without trapping focus'
             key('Enter',13)
             cd.wait("!document.querySelector('[data-testid=opened-original]')&&document.activeElement===window.__originalOpener", 'close returns to exact source-version button')
         # If a local filter removes the opener, return to the source heading, not a detached node.
@@ -84,6 +97,7 @@ def exercise(cd, credentials, write_grants):
         cd.wait("document.activeElement===document.querySelector('#sources-heading')", 'navigation discards stale return target')
         cd.evaluate('delete window.__originalOpener')
         cd.command('Emulation.setDeviceMetricsOverride', {'width':1280,'height':1000,'deviceScaleFactor':1,'mobile':False})
+        print('PASS ORIGINAL KEYBOARD SCROLL: native Tab reaches original text; PageDown scrolls enlarged mobile text; Shift+Tab exits to Close original.')
         print('PASS ORIGINAL FOCUS: actual current/historical original read focuses visible heading; native keyboard close restores exact opener; filtered-out opener falls back without clearing filters; navigation does not replay old focus.')
     finally:
         credentials[0]['actions'] = previous_original_actions
