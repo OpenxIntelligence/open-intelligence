@@ -56,3 +56,13 @@
 .question-status.reassessment{background:#f2e7d9;color:#764b21}
 .question-receipt{padding:12px;background:#edf5ee;border-left:3px solid #638673}
 @media(max-width:600px){.question-history{padding:12px}.question-history-heading button{width:100%}.question-status-title{flex-direction:column;gap:8px}}
+
+/* Explicit fictional source-question drafting; no autonomous action controls. */
+.question-draft{margin:15px 0 20px;padding:18px;border:1px solid #c6d8c9;border-radius:9px;background:#f9fcf7;min-width:0}
+.question-draft h3{margin:7px 0 12px}
+.question-draft label{display:block;font-size:13px;font-weight:600;margin:14px 0 7px}
+.question-draft textarea{display:block;width:100%;box-sizing:border-box;min-width:0;padding:12px;border:1px solid #8fa99b;border-radius:6px;font:inherit;font-size:14px;line-height:1.5;resize:vertical;color:#1a3328;background:white}
+.question-draft textarea:focus-visible{outline:3px solid #92af9b;outline-offset:2px}
+.question-draft .actions{margin:12px 0}
+.question-draft code{overflow-wrap:anywhere;word-break:break-word}
+@media(max-width:600px){.question-draft{padding:12px}.question-draft .actions button{width:100%}}
