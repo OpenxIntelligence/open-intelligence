@@ -46,7 +46,7 @@ const caseList=()=>({
 });
 const sourceIndex=()=>({
   contract:'oi.synthetic-original-sources/1',
-  patient_id:'PAT-EXAMPLE-001',case_id:'CASE-ALPHA',
+  patient_id:'PAT-EXAMPLE-001',case_id:'CASE-ALPHA',access_receipt_id:'ACCESS-'+'A'.repeat(32),
   sources:[sourceRecord()],source_reported_assertions:[{
     source_id:sourceId,finding_key:'marker',reported_state:'not-reported',
     source_statement:'Fictional café <script>literal</script>.',source_line:8,
