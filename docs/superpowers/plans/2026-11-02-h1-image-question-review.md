@@ -37,10 +37,10 @@ Files: `apps/api/src/oi_api/{access,contracts,patients}.py`, existing API workfl
 the owner Compose helpers. Preserve all imported #262 frontend files.
 
 - [x] Verify exact #263 tree and baseline API/settings contracts (10 pass).
-- [ ] Merge #262 without replacing image grants or completed response callbacks.
-- [ ] First demonstrate the missing single combined migration head in a graph test.
-- [ ] Add explicit merge and populated parent-upgrade/rollback acceptance.
-- [ ] Align current-readiness expectations and standalone recovery helpers only;
+- [x] Merge #262 without replacing image grants or completed response callbacks.
+- [x] First demonstrate the missing single combined migration head in a graph test.
+- [x] Add explicit merge and populated parent-upgrade/rollback acceptance.
+- [x] Align current-readiness expectations and standalone recovery helpers only;
       retain historical revision expectations where they describe old states.
 
 ## Task 2: Prove one image/question/verification-return lifecycle
@@ -51,28 +51,29 @@ Files: new `apps/api/tests/test_image_review_integration.py` and existing
 Interfaces: existing source preflight/question APIs, image import/read APIs,
 `GET /review-queue`, `POST /questions/{id}/return-for-verification`.
 
-- [ ] Exercise a current image/report question, return receipt and independent grants.
-- [ ] Assert image changes/reads preserve source/question/queue hashes.
-- [ ] Amend source, retain historical anchors/receipts, explicitly relink image,
+- [x] Add acceptance for a current image/report question, return receipt and independent grants.
+- [x] Assert image changes/reads preserve source/question/queue hashes.
+- [x] Add acceptance for source amendment, historical anchors/receipts and explicit image relinking,
       retry original return, create a new question and new return.
-- [ ] Exercise the same history through restart and an API attached to a restored DB.
+- [x] Extend the recovery probe through restart and an API attached to a restored DB.
+      Actual execution remains part of Task 4.
 
 ## Task 3: Retain review authority through actual JSON encoding
 
 Files: new `apps/api/tests/test_review_disclosure_authority.py`, review route
 callbacks in `apps/api/src/oi_api/patients.py`.
 
-- [ ] Add real-serializer authority/failure/locking/commit tests covering queue,
+- [x] Add real-serializer authority/failure/locking/commit tests covering queue,
       new return, duplicate and post-amendment retry; observe both baseline
       Pydantic and prepared JSONResponse paths rather than assuming the encoder.
-- [ ] Publish bounded tests-first draft checkpoint and inspect actual PG failures.
-- [ ] Construct the complete validated JSONResponse in existing prepare callbacks;
+- [x] Publish bounded tests-first draft checkpoint and inspect actual PG failures.
+- [x] Construct the complete validated JSONResponse in existing prepare callbacks;
       keep final authorization/audit/commit ordering and 200/201 semantics.
 - [ ] Re-run exact-head hosted tests, resolving only concrete failures.
 
 ## Task 4: Review and publish evidence
 
-- [ ] Independent whole-change code/migration review; address material findings.
+- [x] Independent whole-change code/migration review; address material findings.
 - [ ] Full API/PG16, reference, browser, dependency and recovery workflows pass.
 - [ ] Compare submitted source tree to local candidate and browser artifact.
 - [ ] Update draft PR, existing Notion engineering and Drive engineering receipts.
@@ -85,3 +86,26 @@ callbacks in `apps/api/src/oi_api/patients.py`.
   not a product failure.
 - User continuation and canonical records authorize this bounded implementation;
   no new architecture, dependency, merge or deployment decision is requested.
+- Independent review reproduced an inherited client defect: a same-case source
+  import erased an uncertain verification-return intent. Two new regression tests
+  failed with idle instead of unknown; retaining the matching case in the existing
+  reset helper repairs both an already uncertain and still in-flight return. A
+  third regression preserves clearing on import authority denial. All 98 client
+  tests pass after this focused repair; no automatic retry is introduced.
+- Follow-up review reproduced a successful import followed by source GET 503,
+  missing case metadata and a case refresh erasing the same uncertain intent.
+  The exact regression failed before repair. Missing metadata now keeps recovery
+  unknown while requiring case recheck; successful recheck retains the same key
+  only for an active mapping, and denied/removed/revoked contexts clear it. Seven
+  new recovery and authority-boundary tests pass, including a late case response
+  after patient change. The final local client suite is 105 passed, zero skipped;
+  the final delta was independently reviewed without a material finding.
+- Hosted tests-first head `05c6ef38dc8beddee064f97959035498751dad3e`,
+  [API run 41576685948](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41576685948),
+  ran all 314 tests with zero skips. Exactly 32 subcases in the four new review
+  disclosure methods failed: 20 late authority changes, four encoder failures,
+  four premature visibility/lock checks and four deferred-commit ordering checks.
+  There were no test errors. All combined migration and image/review lifecycle
+  tests passed. The same-head React/browser workflow passed its original 95 client
+  tests and real PostgreSQL/FastAPI/built-React journey. Complete final-head results
+  belong in PR #278 and the canonical engineering records after execution.

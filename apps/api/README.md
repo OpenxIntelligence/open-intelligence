@@ -16,11 +16,12 @@ owner). Both published `0008` histories remain intact under the explicit
 independent. An amendment preserves historical question anchors, image bytes and
 return receipts while requiring reassessment and explicit image relinking.
 Image response preparation, including actual JSON encoding for metadata and import
-receipts, precedes final authority and commit. Complete review response encoding is
-being checked separately against the actual serializer before its repair is claimed.
+receipts, precedes final authority and commit. Review queue and return callbacks now
+also validate their existing models and prepare the complete JSONResponse before
+that boundary; new returns remain 201 and exact retries remain 200.
 
 See [the combined design and acceptance scope](../../docs/superpowers/specs/2026-11-02-h1-image-question-review-design.md)
-and [the preserved image/question contract](../../docs/engineering/H1_IMAGE_QUESTION_CONVERGENCE.md).
+and [the combined engineering contract](../../docs/engineering/H1_IMAGE_QUESTION_REVIEW_CONVERGENCE.md).
 The domain sections below retain their incremental history; statements that
 source persistence, received records or image custody are still unavailable
 describe earlier slices, not this combined candidate. The existing fictional

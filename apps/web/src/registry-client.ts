@@ -187,23 +187,27 @@ export class RegistrySession {
       this.#publish({...emptyRecords(),...this.#resetInvestigation(),recordsPhase:'error',recordMessage:'Open an authorized fictional patient in Overview first.',...emptyIntake()});
       return;
     }
+    const retainedCase=this.#state.reviewReturnIntent?.case_id;
     const scope=this.#scope,read=this.#read,request=++this.#records;
     const current=()=>scope===this.#scope && read===this.#read &&
       request===this.#records && this.#state.patient?.patient_id===patientId;
     const control=new AbortController();this.#controllers.add(control);
     const timeout=setTimeout(()=>control.abort(),10000);
-    this.#publish({...emptyIntake(),...emptyWorld(),...this.#resetInvestigation(),cases:null,sourceIndex:null,recordsPhase:'loading-cases',recordMessage:'Checking current case mapping permissions…'});
+    this.#publish({...emptyIntake(),...emptyWorld(),...this.#resetInvestigation(retainedCase),cases:null,sourceIndex:null,recordsPhase:'loading-cases',recordMessage:'Checking current case mapping permissions…'});
     try{
       const res=await this.transport('/v1/patients/'+encodeURIComponent(patientId)+'/case-bindings',this.#init(control));
       if(!current())return;
       if(res.status===401){this.#httpError(401);return;}
       if(res.status!==200){
-        this.#publish({cases:null,sourceIndex:null,recordsPhase:'error',recordMessage:'Case mappings unavailable or permission changed. No records are shown.'});
+        this.#publish({cases:null,sourceIndex:null,recordsPhase:'error',
+          ...([403,404].includes(res.status)?this.#resetReview():{}),
+          recordMessage:'Case mappings unavailable or permission changed. No records are shown.'});
         return;
       }
       const mappings=parseCaseBindingList(await json(res),patientId);
       if(!current())return;
       this.#publish({cases:mappings,sourceIndex:null,recordsPhase:'ready',
+        ...(retainedCase&&!mappings.some(item=>item.case_id===retainedCase&&item.status==='active')?this.#resetReview():{}),
         recordMessage:mappings.length===0?'No permitted fictional case mappings were returned.':'Select an active case to check its original source metadata.'});
     }catch(_){
       if(current())this.#publish({cases:null,sourceIndex:null,recordsPhase:'error',
@@ -304,6 +308,11 @@ export class RegistrySession {
     }
     const queue=this.#state.reviewQueue,caseId=recovering?previous.case_id:queue?.case_id;
     const item=queue?.items.find(row=>row.question_id===questionId);
+    if(recovering&&patientId===previous.patient_id&&this.#token&&this.#state.phase==='ready'&&
+       this.#state.cases===null){
+      this.#publish({reviewReturnMessage:'Recheck authorized cases before retrying this exact return. Its original request remains saved.'});
+      return;
+    }
     if(!patientId||!caseId||!this.#token||this.#state.phase!=='ready'||!validReturnReason(reason)||
        !this.#state.cases?.some(row=>row.case_id===caseId&&row.status==='active')||
        (recovering?previous.patient_id!==patientId:
@@ -617,7 +626,7 @@ export class RegistrySession {
       this.#state.patient?.patient_id===patientId&&this.#state.sourceIndex?.case_id===caseId;
     const control=new AbortController();this.#controllers.add(control);this.#uploading=true;
     const timeout=setTimeout(()=>control.abort(),10000);
-    this.#publish({...emptyWorld(),...this.#resetInvestigation(),original:null,importOutcome:'sending',importReceipt:null,importMessage:'Sending this original once. Do not switch context until its receipt returns.'});
+    this.#publish({...emptyWorld(),...this.#resetInvestigation(caseId),original:null,importOutcome:'sending',importReceipt:null,importMessage:'Sending this original once. Do not switch context until its receipt returns.'});
     try{
       const res=await this.transport('/v1/patients/'+encodeURIComponent(patientId)+'/cases/'+encodeURIComponent(caseId)+'/sources',
         this.#init(control,JSON.stringify({synthetic:true,original_text:text})));
@@ -625,6 +634,7 @@ export class RegistrySession {
       if(res.status===401){this.#httpError(401);return;}
       if([403,404,409,413,422].includes(res.status)){
         this.#publish({cases:null,sourceIndex:null,original:null,recordsPhase:'error',importOutcome:'rejected',
+          ...([403,404].includes(res.status)?this.#resetReview():{}),
           importMessage:'The server rejected this import. Reload current case permissions; no success is claimed.'});return;
       }
       if(![200,201].includes(res.status))throw Error('unconfirmed');

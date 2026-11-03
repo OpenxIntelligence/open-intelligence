@@ -42,8 +42,8 @@ const world=(id=caseId)=>({contract:canonical,patient_id:patientId,case_id:id,ac
  research_review_invalidation_integrated:false,composer_execution_authorized:false,snapshot_fingerprint:'f'.repeat(64),
  as_of_received_at:null,summary:{current_sources:0,historical_sources:0,current_observations:0,unresolved_observations:0,source_disagreements:0},
  current_sources:[],history:[],observations:[],unresolved_refs:[],conflicts:[],limitations:['Independently fictional source context only.']});
-function session(transport){return new RegistrySession(async(url,init)=>{
- if(url.endsWith('/case-bindings'))return response(cases());
+function session(transport,readCases=()=>response(cases())){return new RegistrySession(async(url,init)=>{
+ if(url.endsWith('/case-bindings'))return readCases();
  if(url==='/v1/patients/'+patientId)return response(patient());
  return transport(url,init);
 });}
@@ -226,4 +226,128 @@ test('late inbox response cannot restore after source refresh, patient switch or
   delayed.resolve(response(queue()));await pending;
   assert.equal(s.snapshot().reviewQueue,null);assert.notEqual(s.snapshot().reviewPhase,'loading');
  }
+});
+
+const amendedSource=`OI-SYNTHETIC-REPORT/1\nPatient: ${caseId}\nDocument: REVIEW-INTAKE\nType: pathology\nEvent-Date: 2026-01-01\nIssued-At: 2026-01-03\nSpecimen: REVIEW-SPEC\nFinding: marker|indeterminate|Independently fictional amended statement.\n`;
+const sourceIndex=()=>({contract:'oi.synthetic-original-sources/1',patient_id:patientId,case_id:caseId,
+ access_receipt_id:'ACCESS-'+'F'.repeat(32),sources:[],source_reported_assertions:[],synthetic:true,
+ clinical_interpretation:false,research_review_invalidation_integrated:false});
+for(const phase of ['unknown','saving'])test(phase+' return keeps exact retry intent through same-case source import',async()=>{
+ const first=deferred(),bodies=[];let imports=0;
+ const s=session(async(url,init)=>{
+  if(url===queuePath)return response(queue());
+  if(url.endsWith('/sources')){
+   if(init.method==='GET')return response(sourceIndex());
+   imports++;assert.deepEqual(JSON.parse(init.body),{synthetic:true,original_text:amendedSource});
+   return response({result:'imported',duplicate:false,source_id:sourceId,version:2},201);
+  }
+  assert.equal(url,returnPath);bodies.push(JSON.parse(init.body));
+  if(bodies.length===1)return phase==='saving'?first.promise:response({},503);
+  return response(saved(true));
+ });
+ await opened(s);await s.loadSources(caseId);await s.loadReviewQueue(caseId);
+ const pending=s.returnReviewQuestion(questionId,fingerprint,reason);
+ if(phase==='unknown')await pending;
+ await s.importSource(caseId,amendedSource,true);
+ if(phase==='saving'){first.resolve(response(saved(),201));await pending;}
+ assert.equal(imports,1);assert.equal(s.snapshot().importOutcome,'confirmed');
+ assert.equal(s.snapshot().reviewQueue,null);assert.equal(s.snapshot().reviewReturn,null);
+ assert.equal(s.snapshot().reviewReturnPhase,'unknown');
+ assert.deepEqual(s.snapshot().reviewReturnIntent,{patient_id:patientId,case_id:caseId,
+  question_id:questionId,queue_fingerprint:fingerprint,reason});
+ assert.equal(bodies.length,1,'Source import must not automatically retry a return');
+ await s.retryReviewReturn();assert.equal(bodies.length,2);assert.deepEqual(bodies[1],bodies[0]);
+ assert.deepEqual(s.snapshot().reviewReturn,saved(true));
+});
+test('source import authority denial clears the retained verification-return intent',async()=>{
+ for(const status of [403,404]){
+  const bodies=[];const s=session(async(url,init)=>{
+   if(url===queuePath)return response(queue());
+   if(url.endsWith('/sources'))return init.method==='GET'?response(sourceIndex()):response({},status);
+   bodies.push(JSON.parse(init.body));return response({},503);
+  });
+  await opened(s);await s.loadSources(caseId);await s.loadReviewQueue(caseId);
+  await s.returnReviewQuestion(questionId,fingerprint,reason);
+  assert.equal(s.snapshot().reviewReturnPhase,'unknown');
+  await s.importSource(caseId,amendedSource,true);
+  assert.equal(s.snapshot().importOutcome,'rejected');assert.equal(s.snapshot().sourceIndex,null);
+  assert.equal(s.snapshot().reviewQueue,null);assert.equal(s.snapshot().reviewReturnIntent,null);
+  assert.ok(!JSON.stringify(s.snapshot()).includes(reason));
+  await s.retryReviewReturn();assert.equal(bodies.length,1);
+ }
+});
+
+test('temporary source refresh failure after amendment preserves an exact return through case recheck',async()=>{
+ const bodies=[];let amended=false,caseUnavailable=false;
+ const s=session(async(url,init)=>{
+  if(url===queuePath)return response(queue());
+  if(url.endsWith('/sources')){
+   if(init.method==='GET')return amended?response({},503):response(sourceIndex());
+   amended=true;return response({result:'imported',duplicate:false,source_id:sourceId,version:2},201);
+  }
+  assert.equal(url,returnPath);bodies.push(JSON.parse(init.body));
+  return bodies.length===1?response({},503):response(saved(true));
+ },()=>caseUnavailable?response({},503):response(cases()));
+ await opened(s);await s.loadSources(caseId);await s.loadReviewQueue(caseId);
+ await s.returnReviewQuestion(questionId,fingerprint,reason);
+ assert.equal(s.snapshot().reviewReturnPhase,'unknown');
+ await s.importSource(caseId,amendedSource,true);
+ assert.equal(s.snapshot().importOutcome,'confirmed');
+ assert.equal(s.snapshot().sourceIndex,null);assert.equal(s.snapshot().cases,null);
+ assert.equal(s.snapshot().reviewReturnPhase,'unknown');
+ await s.retryReviewReturn();
+ assert.equal(bodies.length,1,'Missing case metadata must not authorize an automatic or fresh return');
+ assert.equal(s.snapshot().reviewReturnPhase,'unknown','A temporary metadata failure must not discard exact recovery');
+ caseUnavailable=true;await s.loadCases();
+ assert.equal(s.snapshot().cases,null);assert.equal(s.snapshot().reviewReturnPhase,'unknown');
+ assert.equal(bodies.length,1);
+ caseUnavailable=false;
+ await s.loadCases();
+ assert.equal(s.snapshot().reviewQueue,null);
+ assert.deepEqual(s.snapshot().reviewReturnIntent,{patient_id:patientId,case_id:caseId,
+  question_id:questionId,queue_fingerprint:fingerprint,reason});
+ assert.equal(s.snapshot().reviewReturnPhase,'unknown');
+ assert.equal(bodies.length,1,'Refreshing case authority must not submit the retained return');
+ await s.retryReviewReturn();
+ assert.equal(bodies.length,2);assert.deepEqual(bodies[1],bodies[0]);
+ assert.deepEqual(s.snapshot().reviewReturn,saved(true));
+});
+
+for(const outcome of [401,403,404,'missing','revoked'])test('case recheck '+outcome+' clears the retained exact return',async()=>{
+ const bodies=[];let changed=false;
+ const s=session(async(url,init)=>{
+  if(url===queuePath)return response(queue());
+  assert.equal(url,returnPath);bodies.push(JSON.parse(init.body));return response({},503);
+ },()=>{
+  if(!changed)return response(cases());
+  if(typeof outcome==='number')return response({},outcome);
+  const value=cases();
+  if(outcome==='missing')value.mappings=value.mappings.filter(item=>item.case_id!==caseId);
+  else value.mappings=value.mappings.map(item=>item.case_id===caseId?
+   {...item,status:'revoked',revision:2,revoked_at:'2026-11-03T10:10:00Z'}:item);
+  return response(value);
+ });
+ await opened(s);await s.returnReviewQuestion(questionId,fingerprint,reason);
+ assert.equal(s.snapshot().reviewReturnPhase,'unknown');
+ changed=true;await s.loadCases();
+ assert.equal(s.snapshot().reviewQueue,null);assert.equal(s.snapshot().reviewReturnIntent,null);
+ assert.ok(!JSON.stringify(s.snapshot()).includes(reason));
+ await s.retryReviewReturn();assert.equal(bodies.length,1);
+});
+
+test('late case recheck cannot restore a retained return after patient change',async()=>{
+ const pending=deferred(),bodies=[];let refreshing=false;
+ const s=session(async(url,init)=>{
+  if(url===queuePath)return response(queue());
+  if(url==='/v1/patients/PAT-OTHER-001')return response(patient('PAT-OTHER-001'));
+  assert.equal(url,returnPath);bodies.push(JSON.parse(init.body));return response({},503);
+ },()=>refreshing?pending.promise:response(cases()));
+ await opened(s);await s.returnReviewQuestion(questionId,fingerprint,reason);
+ refreshing=true;const reload=s.loadCases();
+ await s.read('PAT-OTHER-001');
+ pending.resolve(response(cases()));await reload;
+ assert.equal(s.snapshot().patient.patient_id,'PAT-OTHER-001');
+ assert.equal(s.snapshot().cases,null);assert.equal(s.snapshot().reviewReturnIntent,null);
+ assert.equal(s.snapshot().reviewQueue,null);assert.ok(!JSON.stringify(s.snapshot()).includes(reason));
+ await s.retryReviewReturn();assert.equal(bodies.length,1);
 });
