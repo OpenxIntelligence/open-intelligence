@@ -15,7 +15,7 @@ import signal
 import subprocess
 import sys
 import tempfile
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 ROOT=Path(__file__).resolve().parents[3]
 sys.path.insert(0,str(ROOT/'tests'))
 from browser_journey import ChromeSession,free_port,wait_for
@@ -73,6 +73,123 @@ def main():
             assert cd.evaluate("document.querySelector('[data-testid=patient-card]').textContent").count(pid)==1
             assert cd.evaluate('localStorage.length===0 && sessionStorage.length===0')
             assert tokens[0] not in cd.evaluate('document.documentElement.outerHTML')
+
+            # Construct a real fictional request, original source, and
+            # receipt directly through the existing H1 PostgreSQL owner.
+            # Browser records must never be mocks or a second record store.
+            credentials[0]['actions'].extend([
+                'record_request_create', 'record_request_read',
+                'record_request_receive', 'case_binding_create',
+                'case_binding_revoke', 'source_import', 'source_read',
+                'source_original_read'])
+            write_grants()
+            def post(path,payload):
+                req=Request('http://127.0.0.1:8000'+path,
+                    data=json.dumps(payload).encode('utf-8'),
+                    headers={'Authorization':'Bearer '+tokens[0],
+                             'Content-Type':'application/json'},
+                    method='POST')
+                with urlopen(req,timeout=10) as response:
+                    return response.status,json.load(response)
+            root='/v1/patients/'+pid
+            status,bound=post(root+'/case-bindings',{
+                'synthetic':True,'case_id':'CASE-ALPHA',
+                'source_organization':'FICT-INSTITUTION',
+                'source_system':'FICT-REPORTS',
+                'source_subject_ref':'FICT-SUBJECT-ALPHA',
+                'review_ref':'FICT-OPERATOR-REVIEW'})
+            assert status==201 and bound['patient_id']==pid
+            status,requested=post(root+'/record-requests',{
+                'synthetic':True,'request_key':'REQUEST-FICTION-ONE',
+                'kind':'pathology','record_label':'Fictional pathology report',
+                'source_organization':'Unverified fictional institution'})
+            assert status==201
+            raw=('OI-SYNTHETIC-REPORT/1\\nPatient: CASE-ALPHA\\n'
+                 'Document: DOC-ONE\\nType: pathology\\nEvent-Date: 2026-01-10\\n'
+                 'Issued-At: 2026-01-11\\nSpecimen: SPECIMEN-ONE\\n'
+                 'Finding: marker|not-reported|Independently fictional browser source.\\n')
+            status,imported=post(root+'/cases/CASE-ALPHA/sources',{
+                'synthetic':True,'original_text':raw})
+            assert status==201 and imported['source_id'].startswith('SRC-')
+            sid=imported['source_id']
+            status,received=post(root+'/record-requests/'+requested['request_id']+'/receive',{
+                'synthetic':True,'case_id':'CASE-ALPHA','source_id':sid})
+            assert status==201 and received['source_id']==sid
+
+            cd.evaluate("document.querySelector('[data-testid=records-nav]').click()")
+            cd.wait("Boolean(document.querySelector('[data-testid=load-records]'))",
+                'Records navigation preserves canonical selected patient')
+            assert cd.evaluate("!document.querySelector('[data-testid=original-report]')")
+            cd.evaluate("document.querySelector('[data-testid=load-records]').click()")
+            cd.wait("document.querySelector('[data-testid=record-requests]')?.textContent.includes('Fictional pathology report')",
+                'actual authorized PostgreSQL record receipt')
+            assert cd.evaluate("document.querySelector('[data-testid=record-requests]').textContent.includes('source_current_unreviewed')") is False
+            assert cd.evaluate("document.querySelector('[data-testid=record-requests]').textContent.includes('not clinically reviewed')")
+            assert sid in cd.evaluate("document.querySelector('[data-testid=record-requests]').textContent")
+            assert cd.evaluate("!document.querySelector('[data-testid=original-report]')")
+            cd.evaluate("document.querySelector('[data-testid=view-original]').click()")
+            cd.wait("document.querySelector('[data-testid=original-report]')?.textContent.includes('Independently fictional browser source.')",
+                'exact original requires explicit second authorization')
+            assert cd.evaluate("document.querySelector('[data-testid=original-report]').textContent.includes('not clinically verified')")
+            assert tokens[0] not in cd.evaluate('document.documentElement.outerHTML')
+            assert cd.evaluate('localStorage.length===0 && sessionStorage.length===0')
+
+            # Revoking source metadata rights must leave only the request
+            # status while erasing both its source reference and read original.
+            credentials[0]['actions'].remove('source_read');write_grants()
+            cd.evaluate("document.querySelector('[data-testid=load-records]').click()")
+            cd.wait("Boolean(document.querySelector('[data-testid=record-requests]')) && !document.querySelector('[data-testid=view-original]')",
+                'source_read withdrawal hides identifiers after refreshed grant')
+            assert cd.evaluate("!document.querySelector('[data-testid=original-report]')")
+            assert sid not in cd.evaluate('document.querySelector("[data-testid=record-requests]").textContent')
+            credentials[0]['actions'].append('source_read')
+            credentials[0]['actions'].remove('source_original_read');write_grants()
+            cd.evaluate("document.querySelector('[data-testid=load-records]').click()")
+            cd.wait("Boolean(document.querySelector('[data-testid=view-original]'))",
+                'receipt reference is independent from original-text right')
+            cd.evaluate("document.querySelector('[data-testid=view-original]').click()")
+            cd.wait("document.querySelector('[data-testid=original-status]').textContent.includes('Patient unavailable')",
+                'separate original-source grant denial')
+            assert cd.evaluate("!document.querySelector('[data-testid=original-report]')")
+            credentials[0]['actions'].append('source_original_read');write_grants()
+            cd.evaluate("document.querySelector('[data-testid=view-original]').click()")
+            cd.wait("Boolean(document.querySelector('[data-testid=original-report]'))",
+                'original text re-authorized after independent grant')
+            # Verify source-rich Records UI visually at standard and narrow width.
+            records_out=Path(os.environ.get('OI_WEB_ARTIFACT_DIR',ROOT/'apps/web/.evidence'))
+            records_out.mkdir(parents=True,exist_ok=True)
+            cd.command('Emulation.setDeviceMetricsOverride',
+                {'width':1440,'height':1100,'deviceScaleFactor':1,'mobile':False})
+            screen=cd.command('Page.captureScreenshot',{'format':'png'})
+            (records_out/'h1-records-desktop.png').write_bytes(base64.b64decode(screen['data']))
+            cd.command('Emulation.setDeviceMetricsOverride',
+                {'width':390,'height':844,'deviceScaleFactor':1,'mobile':False})
+            cd.wait('window.innerWidth===390','Records narrow width')
+            assert cd.evaluate('document.documentElement.scrollWidth<=window.innerWidth+1')
+            screen=cd.command('Page.captureScreenshot',{'format':'png'})
+            (records_out/'h1-records-mobile.png').write_bytes(base64.b64decode(screen['data']))
+            cd.command('Emulation.setDeviceMetricsOverride',
+                {'width':1440,'height':1100,'deviceScaleFactor':1,'mobile':False})
+
+            credentials[0]['actions'].remove('record_request_read');write_grants()
+            cd.evaluate("document.querySelector('[data-testid=load-records]').click()")
+            cd.wait("document.querySelector('[data-testid=records-status]').textContent.includes('Patient unavailable')",
+                'separate request-read grant denied')
+            assert cd.evaluate("!document.querySelector('[data-testid=record-requests]') && !document.querySelector('[data-testid=original-report]')")
+            credentials[0]['actions'].append('record_request_read');write_grants()
+            status,revoked=post(root+'/case-bindings/CASE-ALPHA/revoke',{
+                'synthetic':True,'reason':'Fictional identity mapping intentionally withdrawn'})
+            assert status==200 and revoked['case_id']=='CASE-ALPHA'
+            cd.evaluate("document.querySelector('[data-testid=load-records]').click()")
+            cd.wait("document.querySelector('[data-testid=record-requests]')?.textContent.includes('binding withdrawn')",
+                'revoked case binding hides original while retaining operational receipt history')
+            assert cd.evaluate("!document.querySelector('[data-testid=view-original]') && !document.querySelector('[data-testid=original-report]')")
+            assert sid not in cd.evaluate('document.querySelector("[data-testid=record-requests]").textContent')
+            cd.evaluate("document.querySelector('.rail nav button[aria-current=page]').textContent.includes('Records')")
+            cd.evaluate("document.querySelectorAll('.rail nav button')[0].click()")
+            cd.wait("Boolean(document.querySelector('#patient-id'))",
+                'return to Overview without changing selected patient')
+
             cd.command('Accessibility.enable');tree=cd.command('Accessibility.getFullAXTree')['nodes']
             assert any(n.get('role',{}).get('value')=='main' for n in tree)
             assert any(n.get('role',{}).get('value')=='navigation' for n in tree)
@@ -92,7 +209,7 @@ def main():
             cd.wait("document.querySelector('[data-testid=status]').textContent.includes('Patient unavailable')",'cross-organization read denied')
             cd.command('Page.reload');cd.wait("Boolean(document.querySelector('#credential'))",'reload forgets credential')
             assert cd.evaluate("document.querySelector('#credential').value==='' && document.querySelector('#patient-id').value==='' && localStorage.length===0 && sessionStorage.length===0")
-            print('PASS: React/Vite -> actual FastAPI/PostgreSQL 16; create/retry, separate read grant, revoked view clearing, expiry, cross-organization denial, memory-only credential, reload, accessibility landmarks and 390px layout. Fictional identities only; no clinical workflow or production identity claim.')
+            print('PASS: React/Vite -> actual FastAPI/PostgreSQL 16; create/retry, independent record/source/original reads, exact source/receipt, grant withdrawal, case-binding revocation, revoked view clearing, expiry, cross-organization denial, memory-only credential, reload, accessibility landmarks and 390px layout. Fictional records only; not clinical authorization.')
         finally:
             if cd:cd.close()
             for process in (browser,web,api):
