@@ -159,6 +159,27 @@ form label,
   margin-top: var(--space-2);
 }
 
+.rail .nav-group {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.rail .nav-group + .nav-group {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-rule);
+}
+
+.rail .nav-group-label {
+  display: block;
+  padding: var(--space-1) var(--space-3);
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.025em;
+}
+
 .rail nav a {
   display: flex;
   min-height: 44px;
