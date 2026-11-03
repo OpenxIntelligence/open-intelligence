@@ -196,4 +196,4 @@ h1:focus{outline:2px solid #174b48;outline-offset:5px}
 
 /* Explicit keyboard access to the bounded original-text reader. */
 .original-text:focus-visible{outline:3px solid #ba8639;outline-offset:3px}
-.original-panel .original-text{max-height:min(26rem,calc(100dvh - var(--workspace-offset,24px) - 48px))}
+:is(.original-panel,.intake-panel) .original-text{max-height:min(26rem,calc(100dvh - var(--workspace-offset,24px) - 48px))}

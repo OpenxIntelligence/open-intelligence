@@ -31,3 +31,10 @@ The original text has a fixed maximum reading height. Give its scroll area an ex
 Browser acceptance uses the actual verified historical original at 390px, enlarges its text to create overflow, presses PageDown to prove internal scrolling, and uses Shift+Tab to return to Close original before checking the exact source-button return. Desktop also checks the new tab stop. The enlarged-text screenshot is a stress condition, not a new default style. Cross-browser and screen-reader participant validation remain open; hosted Chromium evidence belongs in the PR receipt.
 
 Screenshot review of the first passing run exposed a partially offscreen focused reader. The final adjustment centers the reader on focus and bounds its height by the usable viewport; browser acceptance now requires the complete scroll area to remain below the sticky patient context and above the viewport bottom. The earlier passing run alone is not evidence for this final adjustment.
+
+
+## Follow-up: inspect the local file before committing import
+
+Apply the same explicit tab stop, named region, focus centering and viewport height bound to the existing local file preview. Its accessible name states that the selected text is not imported. File reading, validation, confirmation, submission and discard logic remain untouched.
+
+The browser journey selects the actual authored disk fixture, tabs from the file control into the enlarged 390px preview, scrolls with PageDown, checks full viewport containment, then tabs to an unchecked confirmation. It checks the exact text, disabled import button and unchanged server source count before the existing explicit import/duplicate/amendment/quarantine journeys continue. This advances OI-009/010; it does not validate clinical use or complete assistive-technology support.
