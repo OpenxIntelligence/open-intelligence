@@ -1,5 +1,4 @@
 import type {RegistrySession,ViewState} from './registry-client';
-import {DEFAULT_SOURCE_QUESTION} from './composer-preflight-view';
 import {SourceQuestionPanel} from './source-question-panel';
 
 type Props={
