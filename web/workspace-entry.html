@@ -19,12 +19,13 @@
       <details class="panel" id="source-intake" aria-labelledby="source-intake-title">
         <summary id="source-intake-title">Add original records</summary>
         <p class="pill" id="source-intake-case">No workspace selected</p>
-        <p class="muted">Choose an original UTF-8 .txt report with LF line endings using the OI-SYNTHETIC-REPORT/1 format (maximum 64 KiB). Inspect it before import. This version does not extract PDFs, scans or medical findings automatically.</p>
+        <p class="muted">Choose 1–20 original UTF-8 .txt reports with LF line endings using the OI-SYNTHETIC-REPORT/1 format (64 KiB each, 1 MiB total). Inspect every file before submitting. Imports are sequential and have separate receipts; a network failure may leave earlier imports saved. This version does not extract PDFs, scans or medical findings automatically.</p>
         <form id="source-upload-form">
-          <label for="source-file">Original fictional report</label><input id="source-file" type="file" accept=".txt,text/plain" aria-describedby="source-upload-status">
+          <label for="source-file">Original fictional reports</label><input id="source-file" type="file" multiple accept=".txt,text/plain" aria-describedby="source-upload-status">
           <p id="source-upload-status" role="status" aria-live="polite" class="muted">Nothing is uploaded automatically.</p>
-          <details id="source-preview-details" hidden><summary>Inspect exact original text</summary><pre id="source-upload-preview" class="intake-preview"></pre></details>
+          <details id="source-preview-details" hidden><summary>Inspect every original, exact text</summary><pre id="source-upload-preview" class="intake-preview"></pre></details>
           <label class="intake-confirm"><input id="source-upload-confirm" type="checkbox" required>This source is independently authored fictional text, not an actual or disguised patient record.</label>
-          <button class="button" id="source-upload-submit" type="submit" disabled>Import original source</button>
+          <button class="button" id="source-upload-submit" type="submit" disabled>Import inspected originals</button>
+          <ol id="source-import-receipts" class="intake-receipts" aria-label="Per-file import receipts" aria-live="polite"></ol>
         </form>
       </details>
