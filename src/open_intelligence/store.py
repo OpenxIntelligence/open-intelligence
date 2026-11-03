@@ -299,6 +299,30 @@ CREATE TABLE IF NOT EXISTS quarantine (
   declared_patient_id TEXT NOT NULL, sha256 TEXT NOT NULL, raw BLOB NOT NULL,
   reason TEXT NOT NULL, received_at TEXT NOT NULL
 );
+-- B-05 explicit subject binding. One row per imported source version,
+-- recording the declared subject id and the declared-ID-equality match
+-- decision. Append-only: no update path exists, so a recorded decision is
+-- never changed in place. source_version_id is UNIQUE so one source
+-- version can never bind to two cases (no silent merges).
+CREATE TABLE IF NOT EXISTS subject_links (
+  id INTEGER PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(case_id),
+  source_version_id INTEGER NOT NULL UNIQUE REFERENCES source_versions(id),
+  declared_subject_id TEXT NOT NULL,
+  decision TEXT NOT NULL CHECK(decision='bound_by_declared_id_equality'),
+  decided_at TEXT NOT NULL, actor_label TEXT NOT NULL
+);
+-- B-05 reversible-correction dispositions for quarantined deliveries.
+-- Append-only: at most one row per quarantine id; the quarantine row
+-- itself is never deleted or edited and keeps the original bytes.
+CREATE TABLE IF NOT EXISTS quarantine_corrections (
+  quarantine_id INTEGER PRIMARY KEY REFERENCES quarantine(id),
+  source_case_id TEXT NOT NULL REFERENCES cases(case_id),
+  destination_case_id TEXT NOT NULL REFERENCES cases(case_id),
+  destination_source_id INTEGER NOT NULL REFERENCES source_versions(id),
+  corrected_at TEXT NOT NULL, actor_label TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_subject_links_case ON subject_links(case_id, source_version_id);
+CREATE INDEX IF NOT EXISTS idx_quarantine_corrections_dest ON quarantine_corrections(destination_case_id);
 CREATE TABLE IF NOT EXISTS events (
   id INTEGER PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(case_id),
   kind TEXT NOT NULL, details TEXT NOT NULL, occurred_at TEXT NOT NULL
@@ -832,6 +856,15 @@ class CaseStore:
                     marks = ",".join("?" for _ in invalidated_inventory)
                     self.db.execute(f"UPDATE biological_inventory_assertions SET state='stale' WHERE id IN ({marks})",
                                     invalidated_inventory)
+            # B-05: record the explicit match decision that bound these bytes
+            # to this case. Duplicates return before this point, so the
+            # original link is never duplicated either.
+            self.db.execute(
+                """INSERT INTO subject_links
+                (case_id,source_version_id,declared_subject_id,decision,decided_at,actor_label)
+                VALUES (?,?,?,?,?,?)""",
+                (case_id, source_id, report.patient_id,
+                 self.SUBJECT_LINK_DECISION, now_utc(), self.SUBJECT_LINK_ACTOR))
             event_id = self._event(case_id, "source_imported", document_id=report.document_id,
                         version=version, source_id=source_id, amends_id=previous["id"] if previous else None,
                         invalidated_snapshots=invalidated, invalidated_options=invalidated_options,
@@ -846,6 +879,122 @@ class CaseStore:
             return {"result": "imported", "source_id": source_id, "version": version,
                     "invalidated_snapshots": invalidated, "invalidated_options": invalidated_options,
                     "invalidated_inventory_assertions": invalidated_inventory}
+
+    # ---- B-05: explicit subject binding + reversible quarantine correction ----
+    SUBJECT_LINK_DECISION = "bound_by_declared_id_equality"
+    SUBJECT_LINK_ACTOR = "declared-id-equality"
+
+    def list_subject_links(self, case_id: str) -> list[dict]:
+        """Every recorded match decision binding a source version to this case.
+
+        Read-only projection over the append-only subject_links ledger. A
+        source version appears at most once across ALL cases (UNIQUE
+        source_version_id), so disjoint per-case listings also prove no
+        source version is bound to two cases.
+        """
+        self._case(case_id)
+        return self._dicts(self.db.execute(
+            """SELECT l.id,l.case_id,l.source_version_id,v.document_id,v.version,
+            l.declared_subject_id,l.decision,l.decided_at,l.actor_label
+            FROM subject_links l JOIN source_versions v ON v.id=l.source_version_id
+            WHERE l.case_id=? ORDER BY l.id""", (case_id,)).fetchall())
+
+    def correct_quarantined_delivery(self, source_case_id: str, quarantine_id: int,
+                                     destination_case_id: str,
+                                     actor_label: str | None = None) -> dict:
+        """Move quarantined bytes into the right case via the import path.
+
+        This is the ONLY path that binds quarantined bytes to a case: the
+        original bytes are imported into the destination via import_report
+        (same validation, versions, anchors, invalidation), a disposition
+        row records quarantine_id -> destination source, and receipt events
+        land on both cases (quarantine_resolved_out on the source case;
+        the normal source_imported plus quarantine_resolved_in on the
+        destination). The quarantine row is never deleted or edited and
+        keeps the original bytes. Declared-identifier equality only: the
+        destination must equal the report's declared subject id, no fuzzy
+        matching, no silent merges. A repeat correction returns the
+        original disposition with duplicate=True and emits nothing new.
+        """
+        self._case(source_case_id)
+        self._case(destination_case_id)
+        if type(quarantine_id) is not int or quarantine_id < 1:
+            raise InvalidInput("Invalid quarantine ID")
+        if actor_label is None:
+            actor = "unlabeled-correction"
+        elif isinstance(actor_label, str) and 2 <= len(actor_label.strip()) <= 80:
+            actor = actor_label.strip()
+        else:
+            raise InvalidInput("Correction actor label must have 2–80 characters")
+        row = self.db.execute(
+            "SELECT * FROM quarantine WHERE id=? AND target_case_id=?",
+            (quarantine_id, source_case_id)).fetchone()
+        if not row:
+            raise InvalidInput("Quarantined delivery not in this case")
+        existing = self.db.execute(
+            "SELECT * FROM quarantine_corrections WHERE quarantine_id=?",
+            (quarantine_id,)).fetchone()
+        if existing:
+            return {"result": "corrected", "quarantine_id": quarantine_id,
+                    "source_case_id": existing["source_case_id"],
+                    "destination_case_id": existing["destination_case_id"],
+                    "destination_source_id": existing["destination_source_id"],
+                    "duplicate": True}
+        raw = bytes(row["raw"])
+        parsed = parse_report(raw)
+        if parsed.patient_id != destination_case_id:
+            raise InvalidInput("Correction destination must equal the quarantined report's declared subject id")
+        outcome = self.import_report(destination_case_id, raw)
+        if outcome["result"] == "quarantined":
+            # Unreachable after the equality check above; a correction must
+            # never mint a second quarantine row in the destination.
+            raise InvalidInput("Correction destination quarantined the bytes again")
+        try:
+            with self.db:
+                self.db.execute("BEGIN IMMEDIATE")
+                again = self.db.execute(
+                    "SELECT * FROM quarantine_corrections WHERE quarantine_id=?",
+                    (quarantine_id,)).fetchone()
+                if again:
+                    return {"result": "corrected", "quarantine_id": quarantine_id,
+                            "source_case_id": again["source_case_id"],
+                            "destination_case_id": again["destination_case_id"],
+                            "destination_source_id": again["destination_source_id"],
+                            "duplicate": True}
+                self.db.execute(
+                    """INSERT INTO quarantine_corrections
+                    (quarantine_id,source_case_id,destination_case_id,destination_source_id,corrected_at,actor_label)
+                    VALUES (?,?,?,?,?,?)""",
+                    (quarantine_id, source_case_id, destination_case_id,
+                     outcome["source_id"], now_utc(), actor))
+                self._event(source_case_id, "quarantine_resolved_out",
+                            quarantine_id=quarantine_id,
+                            destination_case_id=destination_case_id,
+                            destination_source_id=outcome["source_id"],
+                            actor_label=actor)
+                self._event(destination_case_id, "quarantine_resolved_in",
+                            quarantine_id=quarantine_id,
+                            source_case_id=source_case_id,
+                            destination_source_id=outcome["source_id"],
+                            actor_label=actor)
+        except sqlite3.IntegrityError:
+            # A concurrent correction won the disposition insert; surface
+            # the original disposition instead of a second receipt.
+            final = self.db.execute(
+                "SELECT * FROM quarantine_corrections WHERE quarantine_id=?",
+                (quarantine_id,)).fetchone()
+            if final:
+                return {"result": "corrected", "quarantine_id": quarantine_id,
+                        "source_case_id": final["source_case_id"],
+                        "destination_case_id": final["destination_case_id"],
+                        "destination_source_id": final["destination_source_id"],
+                        "duplicate": True}
+            raise
+        return {"result": "corrected", "quarantine_id": quarantine_id,
+                "source_case_id": source_case_id,
+                "destination_case_id": destination_case_id,
+                "destination_source_id": outcome["source_id"],
+                "version": outcome["version"], "import_result": outcome["result"]}
 
 
     # ---- OI-021: reviewed option/dependency view (derived projection) ----
@@ -3029,9 +3178,20 @@ class CaseStore:
                 # OI-021 derived projection: same ledger, no second state.
                 "options": option_projection["options"],
                 "option_disclaimer": option_projection["disclaimer"],
+                "subject_links": self._dicts(self.db.execute(
+                    """SELECT l.id,l.case_id,l.source_version_id,v.document_id,v.version,
+                    l.declared_subject_id,l.decision,l.decided_at,l.actor_label
+                    FROM subject_links l JOIN source_versions v ON v.id=l.source_version_id
+                    WHERE l.case_id=? ORDER BY l.id""", (case_id,)).fetchall()),
                 "option_receipt_disclaimer": option_projection["receipt_disclaimer"],
                 "quarantines": self._dicts(self.db.execute(
-                    "SELECT id,declared_patient_id,sha256,reason,received_at FROM quarantine WHERE target_case_id=? ORDER BY id DESC",
+                    """SELECT q.id,q.declared_patient_id,q.sha256,q.reason,q.received_at,
+                    qc.destination_case_id AS resolved_destination_case_id,
+                    qc.destination_source_id AS resolved_destination_source_id,
+                    qc.corrected_at AS resolved_at,
+                    qc.actor_label AS correction_actor_label
+                    FROM quarantine q LEFT JOIN quarantine_corrections qc
+                    ON qc.quarantine_id=q.id WHERE q.target_case_id=? ORDER BY q.id DESC""",
                     (case_id,)).fetchall()),
                 "events": self._dicts(self.db.execute(
                     "SELECT id,kind,details,occurred_at FROM events WHERE case_id=? ORDER BY id DESC LIMIT 40",

@@ -270,6 +270,11 @@ class Handler(BaseHTTPRequestHandler):
                     if not isinstance(raw, str):
                         raise InvalidInput("Report text required")
                     return self._json(200, store.import_report(imports[1], raw.encode("utf-8")))
+                correction = re.fullmatch(rf"/api/cases/{ID_PART}/quarantine/([0-9]+)/correct", path)
+                if correction:
+                    return self._json(200, store.correct_quarantined_delivery(
+                        correction[1], int(correction[2]),
+                        data.get("destination_case_id"), data.get("actor_label")))
                 questions = re.fullmatch(rf"/api/cases/{ID_PART}/questions", path)
                 if questions:
                     owner = data.get("owner_label")
