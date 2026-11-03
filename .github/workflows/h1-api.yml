@@ -110,6 +110,8 @@ jobs:
           python tests/patient_mission_browser_journey.py
       - name: Verify actual patient HTTP, restart, backup restore and access revocation
         run: python apps/api/tools/verify_registry_compose.py
+      - name: Verify source HTTP, fresh authority, source receipts and restored originals
+        run: python apps/api/tools/verify_sources_compose.py
       - name: Record resolved container identities and application packages
         run: |
           docker image inspect postgres:16.15-bookworm oi-h1-api:synthetic --format '{{.Id}} {{json .RepoDigests}}'
