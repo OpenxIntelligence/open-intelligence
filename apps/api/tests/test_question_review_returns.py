@@ -296,5 +296,107 @@ class QuestionReviewReturnHTTPTests(QuestionFixture):
                 )).scalar_one(),1)
 
 
+    def test_midflight_review_queue_revoke_clears_reply_after_source_projection(self):
+        from oi_api.question_review_returns import PostgresQuestionReviewReturns
+        with running_server(create_app(self.settings)) as base:
+            patient=self.setup_case(base)
+            qid,_=self.prepared_question(base,patient)
+            original=PostgresQuestionReviewReturns._read_locked
+            observed=[]
+            def revoked(subject,*args,**kwargs):
+                result=original(subject,*args,**kwargs)
+                observed.append(len(result[0]))
+                self.creds[0]["actions"].remove("review_queue_read")
+                self.write()
+                return result
+            with patch.object(PostgresQuestionReviewReturns,"_read_locked",revoked):
+                status,body,_=self.inbox(base,patient)
+            self.assertEqual(observed,[1])
+            self.assertEqual(status,404)
+            self.assertNotIn(qid,str(body))
+            self.creds[0]["actions"].append("review_queue_read")
+            self.write()
+            self.assertEqual(self.inbox(base,patient)[0],200)
+
+    def test_midflight_review_return_revoke_refuses_receipt_and_event(self):
+        from oi_api.question_review_returns import PostgresQuestionReviewReturns
+        with running_server(create_app(self.settings)) as base:
+            patient=self.setup_case(base)
+            qid,_=self.prepared_question(base,patient)
+            fp=self.inbox(base,patient)[1]["items"][0]["queue_fingerprint"]
+            original=PostgresQuestionReviewReturns._read_locked
+            def revoked(subject,*args,**kwargs):
+                result=original(subject,*args,**kwargs)
+                self.creds[0]["actions"].remove("review_return")
+                self.write()
+                return result
+            with patch.object(PostgresQuestionReviewReturns,"_read_locked",revoked):
+                status,body,_=self.returning(base,patient,qid,fp)
+            self.assertEqual(status,404)
+            self.assertNotIn(qid,str(body))
+            with self.engine.connect() as db:
+                self.assertEqual(db.execute(text(
+                    "SELECT count(*) FROM investigation.question_review_receipts"
+                )).scalar_one(),0)
+                self.assertEqual(db.execute(text(
+                    "SELECT count(*) FROM identity.identity_domain_events "
+                    "WHERE event_type='investigation.review.returned_for_verification'"
+                )).scalar_one(),0)
+            self.creds[0]["actions"].append("review_return")
+            self.write()
+            self.assertEqual(self.returning(base,patient,qid,fp)[0],201)
+
+    def test_midflight_review_return_revoke_after_event_rolls_back(self):
+        with running_server(create_app(self.settings)) as base:
+            patient=self.setup_case(base)
+            qid,_=self.prepared_question(base,patient)
+            fp=self.inbox(base,patient)[1]["items"][0]["queue_fingerprint"]
+            original=PostgresPatientRegistry.append_event
+            def changed_after_event(subject,pid,kind,**details):
+                result=original(subject,pid,kind,**details)
+                if kind=="investigation.review.returned_for_verification":
+                    self.creds[0]["actions"].remove("review_return")
+                    self.write()
+                return result
+            with patch.object(PostgresPatientRegistry,"append_event",changed_after_event):
+                status,body,_=self.returning(base,patient,qid,fp,
+                    request_key="RETURN-AFTER-EVENT")
+            self.assertEqual(status,404)
+            self.assertNotIn(qid,str(body))
+            with self.engine.connect() as db:
+                self.assertEqual(db.execute(text(
+                    "SELECT count(*) FROM investigation.question_review_receipts"
+                )).scalar_one(),0)
+                self.assertEqual(db.execute(text(
+                    "SELECT count(*) FROM identity.identity_domain_events "
+                    "WHERE event_type='investigation.review.returned_for_verification'"
+                )).scalar_one(),0)
+            self.creds[0]["actions"].append("review_return")
+            self.write()
+            self.assertEqual(self.returning(base,patient,qid,fp,
+                request_key="RETURN-AFTER-EVENT")[0],201)
+
+    def test_midflight_review_return_duplicate_actor_swap_denied(self):
+        from oi_api.question_review_returns import PostgresQuestionReviewReturns
+        with running_server(create_app(self.settings)) as base:
+            patient=self.setup_case(base)
+            qid,_=self.prepared_question(base,patient)
+            fp=self.inbox(base,patient)[1]["items"][0]["queue_fingerprint"]
+            receipt=self.returning(base,patient,qid,fp)[1]["receipt_id"]
+            original=PostgresQuestionReviewReturns._read_locked
+            def changed_actor(subject,*args,**kwargs):
+                result=original(subject,*args,**kwargs)
+                self.creds[0]["actor"]="ACTOR-SWAPPED"
+                self.write()
+                return result
+            with patch.object(PostgresQuestionReviewReturns,"_read_locked",changed_actor):
+                status,body,_=self.returning(base,patient,qid,fp)
+            self.assertEqual(status,404)
+            self.assertNotIn(receipt,str(body))
+            self.creds[0]["actor"]="ACTOR-ALPHA"
+            self.write()
+            self.assertEqual(self.returning(base,patient,qid,fp)[1]["receipt_id"],receipt)
+
+
 if __name__=="__main__":
     unittest.main()

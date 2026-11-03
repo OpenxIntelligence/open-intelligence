@@ -11,6 +11,7 @@ import hashlib
 import hmac
 import uuid
 from datetime import datetime
+from collections.abc import Callable
 
 from open_intelligence.patient_registry import (
     PatientRegistryConflict, PatientRegistryDenied, PatientRegistryError,
@@ -53,7 +54,8 @@ class PostgresSourceQuestions:
                actor: str, purpose: str, request_key: str,
                source_id: str, source_line: int, question: str,
                expected_source_snapshot_sha256: str,
-               expected_preflight_sha256: str) -> dict:
+               expected_preflight_sha256: str,
+               recheck_authority: Callable[[], None]) -> dict:
         patient_id = _key(patient_id, "patient_id")
         case_id = _case_id(case_id)
         organization = _key(organization, "organization")
@@ -87,6 +89,9 @@ class PostgresSourceQuestions:
                 (patient_id, request_key),
             )
             if old is not None:
+                # A replay is a disclosure as well; it cannot use a grant
+                # withdrawn while the case lock was acquired.
+                recheck_authority()
                 if not hmac.compare_digest(old[1], intent):
                     raise PatientRegistryConflict("Question request key reused with changed intent")
                 return {"question_id": old[0], "duplicate": True}
@@ -110,6 +115,10 @@ class PostgresSourceQuestions:
             # Later clinical review identity/consent is a SEPARATE gate; this
             # independently granted source-question write is operational only.
             self.registry._allow(actor, patient_id, "question_create", purpose)
+            # The original source lock still prevents amendments/rebinding,
+            # but it cannot lock the external credential file. Reauthenticate
+            # directly before the durable insert and again before commit.
+            recheck_authority()
             source = prepared["selected_source"]
             question_id = "QUESTION-" + uuid.uuid4().hex.upper()
             created = self.registry._fetchone(
@@ -136,6 +145,7 @@ class PostgresSourceQuestions:
                 )
                 if winner is None or not hmac.compare_digest(winner[1], intent):
                     raise PatientRegistryConflict("Question request intent changed")
+                recheck_authority()
                 return {"question_id": winner[0], "duplicate": True}
             self.registry.append_event(
                 patient_id, "investigation.question.created",
@@ -144,9 +154,11 @@ class PostgresSourceQuestions:
                 source_snapshot_sha256=expected_source_snapshot_sha256,
                 actor=actor,
             )
+            recheck_authority()
             return {"question_id": question_id, "duplicate": False}
 
-    def list(self, patient_id: str, case_id: str, *, organization: str) -> list[dict]:
+    def list(self, patient_id: str, case_id: str, *, organization: str,
+             recheck_authority: Callable[[], None]) -> list[dict]:
         patient_id = _key(patient_id, "patient_id")
         case_id = _case_id(case_id)
         organization = _key(organization, "organization")
@@ -200,4 +212,7 @@ class PostgresSourceQuestions:
                     "clinical_approval": False,
                     "model_executed": False,
                 })
+            # A question/history read cannot return already-revoked grants
+            # using the authorization snapshot captured at request entry.
+            recheck_authority()
             return results
