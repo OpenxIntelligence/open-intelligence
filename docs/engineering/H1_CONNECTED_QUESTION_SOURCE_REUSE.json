@@ -1,0 +1,172 @@
+{
+  "parent_pr": 264,
+  "parent_sha": "e042f753eca85cca97e08fdbb3e07ea8263aae69",
+  "common_base_pr": 244,
+  "common_base_sha": "3b6c466950852c20f99d57a70dd196fd2862571a",
+  "donors": [
+    {
+      "pr": 266,
+      "sha": "f793e1e53949b39ee4560344e9d28ca4eac8e12d",
+      "tree": "d3148a4e0a095da1dc5623d05d660e74a263d9b8"
+    },
+    {
+      "pr": 268,
+      "sha": "503e1b89deecf11403dadcf3d8468a90d93abd33",
+      "tree": "5c12cce2fdca7c8c30acf95d38077c1aaf0c8b29"
+    }
+  ],
+  "exact_donor_files": [
+    {
+      "donor": 266,
+      "path": "apps/api/tests/test_question_source_review_packet.py",
+      "git_blob_sha": "28d2b5604719f173a8e5f7836affe0c42b8e8c03"
+    },
+    {
+      "donor": 266,
+      "path": "apps/api/src/oi_api/question_source_review_packet.py",
+      "git_blob_sha": "fd3b8029363892a5227e68a5043786781444d562"
+    },
+    {
+      "donor": 266,
+      "path": "apps/web/tests/source-questions-client.test.mjs",
+      "git_blob_sha": "8add9d0246fc04a4f2aeaa58cc66420b75b1917d"
+    },
+    {
+      "donor": 266,
+      "path": "apps/web/src/source-quote-review-packet.ts",
+      "git_blob_sha": "48d10bad07f84e49be055b3f887502cd495b4ad7"
+    },
+    {
+      "donor": 266,
+      "path": "docs/engineering/H1_QUESTION_SOURCE_REVIEW_PACKET.md",
+      "git_blob_sha": "a18763bf5492717366298f3290f48fafe9529e35"
+    },
+    {
+      "donor": 268,
+      "path": "apps/web/tests/user-authored-question.test.mjs",
+      "git_blob_sha": "eb05b525c8962cf8477e6b32816b04598c2ea94a"
+    },
+    {
+      "donor": 268,
+      "path": "apps/web/src/world-model-view.tsx",
+      "git_blob_sha": "2783335a9ecbca50decc944528d8eb4dec68c019"
+    }
+  ],
+  "preserved_owner_files": [
+    {
+      "path": "apps/api/migrations/env.py",
+      "sha256": "6f975ff226a6545adac6469e02fafd2d9ce940b3609fb617868cb2d09447cdb0"
+    },
+    {
+      "path": "apps/api/migrations/script.py.mako",
+      "sha256": "6a4bacaa2710f9478cc980b5485443b2b766756764b9e47a0bfa53fb279674ba"
+    },
+    {
+      "path": "apps/api/migrations/versions/0001_h1_shell.py",
+      "sha256": "6cfba9eb59bb6427ebd84642211aeed1f5f01dcce0762bbb77b6dc1895d80996"
+    },
+    {
+      "path": "apps/api/migrations/versions/0002_patient_registry.py",
+      "sha256": "50d1773fdad87051d8889650b8c82195657852c466de0229f65db870dc2fd4fe"
+    },
+    {
+      "path": "apps/api/migrations/versions/0003_record_acquisition.py",
+      "sha256": "7f2dca9cb0b7856a52806c41cddf34ca66525a464da014770f7a75fcb413b42e"
+    },
+    {
+      "path": "apps/api/migrations/versions/0004_case_binding.py",
+      "sha256": "95d633b5c4c5994790994d0089c3389cf476dadc8c3736c6c5046e6d52edaad5"
+    },
+    {
+      "path": "apps/api/migrations/versions/0005_source_versions.py",
+      "sha256": "2c440e4d4c0439b37413f2b4bf1e152cf4ae293590a5ad1ee5896573b84b9c0b"
+    },
+    {
+      "path": "apps/api/migrations/versions/0006_source_questions.py",
+      "sha256": "04d73f9d15a49d6c9fe3b79e2943dd7cb9173e462c92f38778c102cc1dd7c2da"
+    },
+    {
+      "path": "apps/api/migrations/versions/0007_question_snapshot_contract.py",
+      "sha256": "113786b800e90adf2e71c1033913af4ecc5613432d001a321055ea9e50edffb9"
+    },
+    {
+      "path": "apps/api/requirements.lock",
+      "sha256": "da3508cb7cfef028c510d24f9f0b225848c6816b54bd6ed985a92997f8c90ff6"
+    },
+    {
+      "path": "apps/api/dependency-license-inventory.json",
+      "sha256": "3a1647f0f77d1e9826ae7ff2df34aa621d43ddddc8ea494cb1ba05b024c1e81e"
+    },
+    {
+      "path": "apps/web/package.json",
+      "sha256": "e9579451e74f95fbb7ff03a7a96a2a45489e859bb3d4c33409992910d20e97fa"
+    },
+    {
+      "path": "apps/web/package-lock.json",
+      "sha256": "b8a6bbf057ec46eba267e921362484cec0d183f99a23217d63de1a29be5e8c3b"
+    },
+    {
+      "path": "apps/api/src/oi_api/source_questions.py",
+      "sha256": "2a79440d2397358020db29d2b514bf6aa6405784b2330067ee258c3973002bc1"
+    },
+    {
+      "path": "apps/api/src/oi_api/sources.py",
+      "sha256": "702e507da2c134ee701235e867b4b64c85e8c93beab7073afbc8e8c27239ba6f"
+    },
+    {
+      "path": "apps/api/src/oi_api/source_world_model.py",
+      "sha256": "f8efeb0502d774476f883a82ac7c45bf08acd6f64a64e75cfa94b5ea2ba30365"
+    },
+    {
+      "path": "apps/api/src/oi_api/source_brief.py",
+      "sha256": "48bffb7e2dc284d30385f514ff3a170e02b9df0bdfc85f98382cd11935ce558f"
+    },
+    {
+      "path": "apps/web/src/source-brief.ts",
+      "sha256": "3c4feda5c25f6870c17f0a5cf068fe0b021dd8a4b5650097e9dbd05b582c3b93"
+    },
+    {
+      "path": ".github/workflows/crossref-metadata.yml",
+      "sha256": "a87ae24ca0b1632ae727c1ef6ec4641ef5ecbeeb9b9c70de21b2d4bb16258fbf"
+    },
+    {
+      "path": ".github/workflows/h1-api.yml",
+      "sha256": "4195b28f92f25f8c38b0dee195059341b6d92948c08dd8b549bd1959e58f7a84"
+    },
+    {
+      "path": ".github/workflows/h1-web.yml",
+      "sha256": "318abb5870db81877ec14a7681015982a8cfbde921585dac819230cd59826d84"
+    },
+    {
+      "path": ".github/workflows/offline-scientific-safety.yml",
+      "sha256": "93824e210a79fa2119209feaee6103d3d04d1235596c4542ccbba30257ea6f86"
+    },
+    {
+      "path": ".github/workflows/public-research.yml",
+      "sha256": "c5ef26419d1730bcabaed9bd6b259761cc573b7e6cda91e6b8db1437a49dd74c"
+    },
+    {
+      "path": ".github/workflows/rna-analysis.yml",
+      "sha256": "5271c59b180c9fe569fb90a6160fefd70cf06a5002303915b9547353bc34c657"
+    },
+    {
+      "path": ".github/workflows/single-cell-analysis.yml",
+      "sha256": "aa2561797600c4a4e1de0867f5fc251b237004c7bd4a650c0887c1e75dd21224"
+    },
+    {
+      "path": ".github/workflows/synthetic-tests.yml",
+      "sha256": "e9c581592a2cd7276b04326eba460e98060f16943376c012eeb3805426e0c32b"
+    },
+    {
+      "path": ".github/workflows/ui-glance.yml",
+      "sha256": "596cc05bf3f0d9bf2a7e7e01495fbce689d256be857d34f4647a676dccea015f"
+    }
+  ],
+  "limitations": [
+    "Source-only fictional engineering",
+    "No donor/main branch changed",
+    "No clinical or distribution approval",
+    "Hosted acceptance must identify exact head",
+    "No independent code review claimed"
+  ]
+}

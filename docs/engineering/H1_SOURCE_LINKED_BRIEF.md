@@ -188,3 +188,76 @@ Only independently authored fictional records are used. No Sid medical data,
 real-patient-derived fixture, external publication, model weight or licensed
 guideline is acquired by this workflow. The candidate's offline data guard is
 separate from still-open repository-wide historical data/workflow cleanup.
+
+## Connected authored-question integration (2 November ET / 3 November 2026 UTC)
+
+This isolated candidate extends #264 at `e042f753eca85cca97e08fdbb3e07ea8263aae69`
+with #266's exact original-source quotation packet
+(`f793e1e53949b39ee4560344e9d28ca4eac8e12d`) and #268's custom-question editor
+(`503e1b89deecf11403dadcf3d8468a90d93abd33`). Three-way reconciliation uses their
+shared #244 source/question owner at `3b6c466950852c20f99d57a70dd196fd2862571a`.
+The old #216/#241 World Model is not imported. All original branches stay intact.
+
+A user can now deliberately author one source-linked question, prepare exact
+source context, save through the existing durable question API, inspect its
+literal current source quotation, and request a freshly authorized text download
+in the same React workspace. The independent `review_packet_read` and
+`source_brief_export` grants do not imply each other. These are source-context
+operations, not biomedical evidence appraisal or professional review.
+
+### Convergence defect and repair
+
+A naïve union of the siblings left two independent preview selections: a late
+quotation for question A could reappear beside question B's brief, or a late
+brief for A could become a download after switching to B's quote. Three new
+client assertions reproduced this on the combined tree. A single in-memory
+saved-question selection now invalidates both pending readers before switching;
+completed previews for the same question can coexist. Navigation clears both
+previews while retaining the original same-patient unsaved question draft.
+No new server record, identity, permission or persistence owner was created.
+
+### Observed local checks, before hosted acceptance
+
+- Test-first on unchanged #264: donor tests had 13 expected missing-method
+  failures, and all six new convergence tests failed. After importing the
+  owners, three convergence assertions exposed the mixed-question race.
+- After the repair, **104 client tests passed**, no skips/failures. Local
+  compilation uses globally installed TypeScript 5.8.3 and Node 22.16.0;
+  the locked TypeScript 5.9.3/React/Vite build still requires hosted acceptance.
+- **245 inherited reference tests passed** across 30 isolated test-module
+  subprocesses. A preceding one-process run exceeded the local 120-second
+  invocation deadline and is not counted as a full pass.
+- API discovery: **256 executions; 48 passed, 207 explicitly skipped for absent
+  PostgreSQL, one environment error because pg8000 is unavailable**. No local
+  PostgreSQL/API full-suite or browser pass is claimed.
+- Python compilation, current static CI patient-data-download guard and Git
+  whitespace checks passed. The guard is not an exhaustive historical-data audit.
+- The source/question/brief server owners, all migrations, dependency locks and
+  both existing CI workflow files remain byte-identical to #264. #266's added
+  focused workflow step is unnecessary here: the inherited full API discovery
+  executes the packet tests and the web journey exercises the actual endpoint.
+  No tests, fixture boundaries, permission assertions or inherited gates were removed.
+
+The actual browser journey now checks the literal custom third question through
+canonical persistence, current source inspection, exact downloaded UTF-8 bytes,
+independent packet/export revocation, historical quote withholding, original-file
+preservation and explicit saved-question selection. Controlled delayed-response
+races are client tests, not falsely attributed to that browser journey.
+
+### Required review and uncompleted boundaries
+
+Exact-head hosted API/PG16, locked build and Chromium checks are **pending at
+source publication**. Their results must be recorded separately; parent greens
+are not this candidate's acceptance. Inline implementation review is complete;
+there is no fresh-context reviewer tool in the authoring session, so independent
+source-owner/security review remains required before merge.
+
+The packet transport retains #266's typed-response preparation contract; unlike
+the brief, it does not establish a test of actual JSON serialization rollback
+inside the source transaction. #265 source-intake/received-receipt final-authority
+repairs, #262/#267 nonterminal return workflow, #271 header presentation and
+image-custody migration work remain separate and must be reconciled explicitly.
+No production identity, consent, professional review, live model, licensed
+scientific content, clinical validity, deployment or real-patient authorization
+is supplied. Hashes are content identifiers, not signatures; access receipts are
+not delivery proof and downloaded files cannot be recalled. Keep draft/unmerged.
