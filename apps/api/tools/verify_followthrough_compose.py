@@ -225,7 +225,7 @@ def main():
             business = [event for event in after['events']
                         if event['event_type'].startswith('coordination.followthrough.')]
             assert len(business) == 9, 'Replay duplicated a task business event'
-            assert after['revision'] == '0011_evidence_convergence'
+            assert after['revision'] == '0012_image_report_convergence'
             for row, raw in zip(after['sources'], (ORIGINAL, AMENDED)):
                 assert row['sha256'] == row['raw_sha256'] == hashlib.sha256(raw.encode('utf-8')).hexdigest()
             encoded = json.dumps(after['events'], ensure_ascii=False)

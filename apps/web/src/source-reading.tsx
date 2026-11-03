@@ -1,12 +1,16 @@
 import {useRef} from 'react';
 import type {SourceIndex} from './source-contracts';
+import type {SourceImagesState} from './source-images';
 
 export type ReadingView = 'patient' | 'clinical';
 export type SourceFilters = {query: string; versionState: string};
 export const emptySourceFilters: SourceFilters = {query: '', versionState: 'all'};
 
 /** Presentation of the existing response only; no retrieval or clinical state. */
-export function SourceReading({index, view, filters, onFiltersChange, busy, questionBusy, onOpenOriginal, onAskQuestion}: {
+export function SourceReading({index, view, filters, onFiltersChange, busy, questionBusy, onOpenOriginal, onAskQuestion,
+ sourceImages=null,sourceImagesSourceId=null,sourceImagesPhase='idle',sourceImagesMessage='',
+ sourceImageDownload=null,sourceImageDownloadPhase='idle',sourceImageDownloadMessage='',
+ onInspectImages,onDownloadImage,onDismissImages}: {
   index: SourceIndex;
   view: ReadingView;
   filters: SourceFilters;
@@ -15,8 +19,12 @@ export function SourceReading({index, view, filters, onFiltersChange, busy, ques
   questionBusy: boolean;
   onAskQuestion: (sourceId: string, line: number) => void;
   onOpenOriginal: (sourceId: string) => void;
-}) {
+  onInspectImages?: (sourceId: string) => void;
+  onDownloadImage?: (sourceId: string, imageId: string) => void;
+  onDismissImages?: () => void;
+}&Partial<SourceImagesState>) {
   const input = useRef<HTMLInputElement>(null);
+  const imageOpeners = useRef(new Map<string,HTMLButtonElement>());
   const search = filters.query.trim().toLowerCase();
   const sources = index.sources.filter(source =>
     (filters.versionState === 'all' || source.state === filters.versionState) &&
@@ -72,6 +80,36 @@ export function SourceReading({index, view, filters, onFiltersChange, busy, ques
             </dl>
           </details>
           <button data-testid="open-original" disabled={busy} onClick={() => onOpenOriginal(item.source_id)}>Inspect original v{item.version}</button>
+          {item.kind==='imaging'&&item.state==='current'&&<div className="source-image-section">
+            <button type="button" data-testid="source-images-open" disabled={busy}
+              ref={element=>{if(element)imageOpeners.current.set(item.source_id,element);else imageOpeners.current.delete(item.source_id);}}
+              onClick={()=>onInspectImages?.(item.source_id)}>Inspect linked original images</button>
+            {sourceImagesSourceId===item.source_id&&<section className="source-image-inspection"
+              data-testid="source-images-inspection" aria-label={'Original images linked to '+item.document_id+' version '+item.version}>
+              <div className="source-heading"><h5>Linked originals · v{item.version}</h5>
+                <button type="button" data-testid="source-images-close" onClick={()=>{onDismissImages?.();imageOpeners.current.get(item.source_id)?.focus();}}>Close image inspection</button></div>
+              <p role="status" aria-live="polite" data-testid="source-images-status">{sourceImagesMessage}</p>
+              <p className="muted small">Original custody only. No image viewing, clinical interpretation or verified patient identity is supplied by this screen.</p>
+              {sourceImagesPhase==='ready'&&sourceImages&&<>
+                <p className="small">Image metadata access receipt: <code data-testid="source-images-receipt">{sourceImages.access_receipt_id}</code></p>
+                {sourceImages.images.length===0?<p data-testid="source-images-empty">No originals are linked to this current report.</p>:
+                  <ul className="source-image-list">{sourceImages.images.map(image=><li key={image.image_id}
+                    data-testid="source-image-row" data-image-id={image.image_id}>
+                    <p><strong>{image.modality} original</strong> · <time dateTime={image.study_date}>{image.study_date}</time> · {image.byte_count.toLocaleString()} bytes</p>
+                    <details><summary>Original integrity and identifiers</summary><dl className="source-metadata">
+                      <div><dt>Image</dt><dd><code>{image.image_id}</code></dd></div>
+                      <div><dt>Source</dt><dd><code>{image.source_id}</code></dd></div>
+                      <div><dt>Original SHA-256</dt><dd><code>{image.sha256}</code></dd></div>
+                      <div><dt>Study / Series / SOP</dt><dd><code>{image.study_uid} / {image.series_uid} / {image.sop_uid}</code></dd></div>
+                    </dl></details>
+                    <button type="button" data-testid="source-image-download" disabled={busy||sourceImageDownloadPhase==='loading'}
+                      onClick={()=>onDownloadImage?.(item.source_id,image.image_id)}>Recheck and download original DICOM</button>
+                  </li>)}</ul>}
+              </>}
+              {sourceImageDownloadPhase!=='idle'&&<p role="status" aria-live="polite" data-testid="source-image-download-status">{sourceImageDownloadMessage}</p>}
+              {sourceImageDownload&&<p className="small" data-testid="source-image-download-receipt">Original read receipt: <code>{sourceImageDownload.access_receipt_id}</code></p>}
+            </section>}
+          </div>}
         </li>;
       })}</ol>}
   </div>;

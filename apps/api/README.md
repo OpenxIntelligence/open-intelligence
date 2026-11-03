@@ -5,12 +5,14 @@ It mounts the existing canonical patient registry and a small synthetic record-r
 The Python/SQLite prototype remains the evidence/investigation reference. This
 branch now connects canonical PostgreSQL sources, source questions and
 nonterminal verification-return receipts, and bounded fictional evidence
-metadata links. Evidence appraisal and report persistence remain separate
-integration work.
+metadata links, human-authored comparisons and immutable reports. The current
+draft #327 also connects source-bound original-image custody. All interpretations
+remain human-authored and clinically unreviewed; no model or live biomedical
+retrieval is enabled by this integration.
 
 ## Question-scoped fictional evidence metadata
 
-Apply the current migration head (`0011_evidence_convergence`) explicitly:
+Apply the current migration head (`0012_image_report_convergence`) explicitly:
 
 ```bash
 PYTHONPATH=apps/api/src:src python -m oi_api.migrate upgrade head
@@ -57,7 +59,8 @@ and verifies redacted metadata and restored patient-binding denial over HTTP.
 The synthetic task increment extends the existing saved-question/source owner
 with immutable task origins and append-only operational status history. See
 [the follow-through contract and verification ledger](../../docs/engineering/H1_QUESTION_FOLLOWTHROUGH.md).
-Apply migration `0009_question_followthrough` explicitly. The three versioned
+Task storage originated in `0009_question_followthrough`; apply `upgrade head`
+for the current combined application. The three versioned
 routes list tasks, create a task from an exact saved question and append a legal
 transition. Independent `followthrough_read`, `followthrough_create` and
 `followthrough_update` grants supplement patient, question and source access.
@@ -233,8 +236,9 @@ report **no clinical interpretation** and **no integrated research-review
 invalidation**; original-source amendments do not yet automatically reissue
 Composer or clinician review. Outside records requests are not sent to real
 institutions. A synthetic case-binding review label is **not verified identity,
-patient consent or rights to source content**. No PDF/DICOM ingestion or
-real-patient medical record is supported.
+patient consent or rights to source content**. This text-source contract does
+not accept PDFs or DICOM. The separate source-bound image API below accepts only
+its bounded independently fictional CT profile; real-patient records remain excluded.
 
 The received-record continuation above now links an existing exact original to
 its request through the same event owner. Source-derived questions and verification
@@ -309,18 +313,20 @@ Typed response preparation, final grant refresh, source-access receipt and the
 return/event write share the existing transaction. A failure rolls them back.
 See [ownership, provenance and verification](../../docs/engineering/H1_SOURCE_QUESTION_REVIEW_RETURN.md).
 
-### Concurrent image-owner boundary
+### Preserved image and evidence migration histories
 
-The separate [image/question convergence #260](https://github.com/OpenxIntelligence/open-intelligence/pull/260)
-is draft at `90dfe49fab082f3698fc82b3e8224cf7d30e5c4f`, with
-`0008_merge_image_questions`. Its image functionality and validation are not
-included in this review-return branch. A later combined owner must preserve
-both original 0008 histories, add an explicit merge of `0008_merge_image_questions`
-and `0008_review_convergence`, and require that new single head in readiness.
-Populated upgrades from both sides must retain image bytes/links, questions,
-receipts, source contracts and events. Image activity must leave review content
-fingerprints unchanged; report amendment must invalidate dependent work without
-relinking images silently reviving an old question.
+The current draft preserves the existing image/review merge history through
+`0011_image_evidence_merge` and the authored-evidence merge history through
+`0011_evidence_convergence`. One DDL-free `0012_image_report_convergence` joins
+those two heads. Every published migration retains its original bytes. Serving
+requires the exact new single head, while legitimate populated parent upgrades
+are tested before exposing current HTTP behavior.
+
+Image bytes and links keep the source owner's patient/case boundary. An image
+import or deliberate relink cannot make an old question/report current or confer
+metadata, authored-content, review, task or export authority. See the existing
+[convergence record](../../docs/engineering/H1_EVIDENCE_CONTINUITY.md) for exact
+candidate status, tests-first evidence and remaining acceptance.
 
 ### Authored evidence and comparison reports
 
@@ -483,14 +489,90 @@ Replace access.json atomically to change grants. Changes apply on the next
 request; an already authorized synchronous request may finish. This is not a
 distributed consent/revocation service.
 
+## Source-bound original images (0006_image_custody)
+
+This increment is based on PR #222 at `911b0767c671ae6f40caf20f204aedf1e9df2ab0`.
+The original source, canonical identity and event journal keep their existing
+owners. Images add immutable `clinical_source.dicom_objects` and
+`clinical_source.source_image_links` children. The source report is still the
+existing original text format; binary bytes do not enter that parser.
+
+All routes below use the prefix
+`/v1/patients/{patient_id}/cases/{case_id}/sources/{source_id}/images`.
+
+| Method / suffix | Additional action | Result |
+|---|---|---|
+| POST collection, exact `Content-Type: application/dicom` | image_import | 201 for new original or explicit new source link; 200 for identical retry; server-derived image ID, digest and identifiers. |
+| GET collection | image_read | Source-bound metadata index and committed access receipt. |
+| GET /{image_id} | image_original_read | Exact original bytes, application/dicom, no-store, generic download filename and X-OI-Access-Receipt. |
+
+Each also requires patient_read, the exact patient grant, the persisted
+organization, active case binding and matching purpose. They refresh the same
+credential before committing. Existing source_read/source_original_read grants
+do not disclose image metadata or bytes. Query parameters and content encoding
+are rejected; callers cannot override image UIDs, expected digest or backend URL.
+
+The parent must be a current imaging report whose original bytes, hash, case,
+type, dates and amendment edge pass the existing validator. `PatientID` must
+exactly equal its locked source binding's `source_subject_ref`,
+`IssuerOfPatientID` must equal `source_organization + "/" + source_system`,
+and StudyDate must equal the report event date. Both source keys forbid `/`,
+so equal subject/system strings from different source organizations remain
+distinct. A qualified issuer longer than 64 bytes is outside this profile. This development convention does not verify the authenticity of an
+external institution or a clinical patient; source_identity_verified stays false.
+
+Same case/SOP with changed bytes returns conflict. Report amendment immediately
+makes the old link unavailable to current-image routes. An explicit import of
+the same bytes against the amendment creates a new immutable link to the same
+image ID; original bytes are not duplicated or moved. Historical source text
+remains readable through its original endpoint. Stored original-image reads
+recompute the digest, reparse metadata and compare both to custody and binding.
+
+The bounded profile is one uncompressed Explicit VR Little Endian CT object,
+single frame, 16-bit MONOCHROME2. The parser validates file framing, lengths,
+unique ordered tags, file-meta identity, identifiers, date and pixel geometry
+before using the typed parser; it performs no pixel decoding or clinical
+interpretation. Unsupported syntax, sequences and malformed input fail closed.
+Maximum input is 2 MiB, with 256 originals/64 MiB per case and no archives.
+These are development limits, not a claim of general CT-study ingestion.
+
+Read receipts contain opaque IDs, hashes and counts, not raw image identifiers,
+originals or tokens. The whole buffered response is withheld until final access
+checks and event commit succeed. The case lock serializes local reads and
+amendment/revocation; a receipt records a grant for prepared disclosure, not
+client delivery or distributed revocation atomicity. No separate PACS endpoint
+is deployed or protected by this change.
+
+Run the combined question/image restart/restore acceptance with Docker available:
+
+    python apps/api/tools/verify_images_compose.py
+
+It creates two independently authored originals and canonical source-linked
+questions, checks exact bytes and independent grants, restarts API/PostgreSQL,
+amends the report and explicitly relinks the same images. The v1 question keeps
+its original anchor and requires reassessment; a fresh v2 question remains
+separate. Active and revoked snapshots undergo actual pg_dump/pg_restore. The
+same API image is pointed at each restored database to check reopened question
+history, same-key retries, exact image bytes and denied revoked access. A fresh
+receipt in the restored database, absent from the original database, confirms
+which database served the restored HTTP response.
+The API/database cases also cover final credential changes during real image
+response preparation and JSON encoding, encoder failure, and deferred database
+commit failure in test_image_disclosure_authority.py. JSON responses validate the
+existing model and encode inside the source transaction, keeping duplicate
+imports at 200 and new objects/links at 201. The existing image
+custody, migration, bounded parser and HTTP ingress tests remain separate.
+See the [implementation record](../../docs/superpowers/plans/2026-11-03-h1-image-custody.md)
+for scope, alternatives and remaining boundaries.
+
 ## Run without containers
 
 Use Python 3.12 on the reviewed platform. Download is an explicit build step:
 
     python3.12 -m venv /tmp/oi-h1-api-venv
-    /tmp/oi-h1-api-venv/bin/python -m pip download --require-hashes --only-binary=:all: --dest /tmp/oi-h1-wheels -r apps/api/requirements.lock
+    /tmp/oi-h1-api-venv/bin/python apps/api/tools/prepare_dependencies.py --wheel-dir /tmp/oi-h1-wheels
     python3.12 apps/api/tools/check_dependencies.py --wheel-dir /tmp/oi-h1-wheels --sbom /tmp/oi-h1-sbom.json
-    /tmp/oi-h1-api-venv/bin/python -m pip install --no-index --find-links /tmp/oi-h1-wheels --require-hashes -r apps/api/requirements.lock
+    /tmp/oi-h1-api-venv/bin/python -m pip install --no-deps --no-index --find-links /tmp/oi-h1-wheels --require-hashes -r apps/api/requirements.lock
     /tmp/oi-h1-api-venv/bin/python -m pip check
     PYTHONPATH=apps/api/src:src /tmp/oi-h1-api-venv/bin/python -m oi_api
 
@@ -514,7 +596,7 @@ URLs, SQL, source text and rejected validation inputs.
 | Route | Behavior |
 |---|---|
 | GET /health | Process liveness; 200 even if the database is unavailable. |
-| GET /health/ready | 200 only for PostgreSQL major 16 at revision 0011_evidence_convergence; bounded 503 otherwise. |
+| GET /health/ready | 200 only for PostgreSQL major 16 at revision 0012_image_report_convergence; bounded 503 otherwise. |
 | GET /v1 | Reports synthetic_patient_registry stage, implemented synthetic capabilities and the configured authentication mode. |
 | GET /v1/openapi.json | Local typed contract, including bearer security; no CDN documentation UI. |
 | POST /v1/patients | Authenticated synthetic creation; trusted actor/org/purpose; 201 for new identity or 200 for identical retry. |
@@ -526,7 +608,7 @@ capability. Authentication is deny_all, synthetic_fixture or trusted_provider.
 All responses use Cache-Control: no-store. External or ambiguous Host headers
 are rejected. Ordinary POST bodies are bounded to 16 KiB; original source imports to 72,000
 bytes and authored evidence imports to 210,000 JSON bytes (decoded originals stay
-limited to 32 KiB). Chunked bodies have the same bounds and a five-second deadline. Malformed/duplicate credentials are rejected.
+limited to 32 KiB); source-bound binary image inputs are limited to 2 MiB. Chunked bodies have the same bounds and a five-second deadline. Malformed/duplicate credentials are rejected.
 Conflict is 409, invalid input 422, oversized body 413, read timeout 408, and
 unavailable authority/database 503.
 
@@ -609,11 +691,11 @@ API restart, database restart and backup/restore. Docker and Chromium are absent
 in this local session. Hosted results must be attached to the exact PR head;
 this description or passing local tests alone does not prove those operations.
 
-**Current continuation:** [draft #307](../../docs/engineering/H1_EVIDENCE_CONTINUITY.md)
+**Earlier verified evidence continuation:** [draft #307](../../docs/engineering/H1_EVIDENCE_CONTINUITY.md)
 converges the existing metadata/citation, authored-content/report and follow-through
 owners without copying PostgreSQL state into a competing SQLite chart. Its
 DDL-free `0011_evidence_convergence` joins the two published `0010` lineages;
-serving requires that exact single head. Original migration files and receipt
+that runtime required that exact single head. Original migration files and receipt
 meanings remain unchanged. Citation identity grants no content/assessment rights.
 Actual combined acceptance, populated upgrades and restored HTTP are recorded
 with the exact candidate head in that bounded receipt. Live permitted biomedical

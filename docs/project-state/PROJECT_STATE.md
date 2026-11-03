@@ -1,8 +1,51 @@
 # Open Intelligence — current project state
 
+## Current image/evidence integration — draft #327
+
+Draft [#327](https://github.com/OpenxIntelligence/open-intelligence/pull/327)
+starts from verified #319 `2475d924fddef6792076bdf9039fad5be7312b7a`, preserving
+source reading/import disclosure while joining #313 image custody and #322/#316
+report-download/status behavior. The new source-bound image inspector and
+DDL-free `0012_image_report_convergence` are being verified together.
+[The existing integration record](../engineering/H1_EVIDENCE_CONTINUITY.md#source-bound-images-in-the-same-investigation--draft-327)
+records exact donors, rights scope, tests-first failures and acceptance limits.
+Tests-first #327 web execution passed all 274 inherited checks and failed the 17
+new image checks as intended; this is not completed integration acceptance.
+No source owner is merged, closed or rewritten. All records are independently
+fictional. Model execution, qualified clinical review, real-patient authority,
+archive transport and production release remain separate gates. Earlier
+assessments below retain their dated scopes and are not present-state overrides.
+
+
 Assessment date: 3 November 2026. Initial assessment recorded before this branch's product changes.
 
-## Current-truth reconciliation — 3 November 2026
+## Latest verified continuation — draft #307
+
+[PR #307](https://github.com/OpenxIntelligence/open-intelligence/pull/307) joins the
+existing #298 metadata/follow-through and #300 authored-evidence/Overview owners,
+with #302 restored HTTP, #303 timestamp and #304 original-source corrections.
+Runtime `477f24826a8a102c7437c993d69877c1f250b951`, tree
+`cd8d909ad2844e7fbd37ae30a9a10b9123374666`, passed **414 API/PostgreSQL tests**,
+**287 reference tests**, **266 React client tests**, actual browser acceptance and
+**all five recovery probes**. Published migrations remain unchanged; one no-DDL
+merge revision preserves both populated evidence lineages. One canonical question
+retains its citation, immutable report and follow-through after actual restore,
+with independent rights and revoked-binding denial.
+
+[The bounded receipt](../engineering/H1_EVIDENCE_CONTINUITY.md) preserves exact
+inputs, tests-first failures, review fixes, source/archive checksums and the
+limitations. Main remains `24519839aa8ac1ea3aff88a956349ba72798a72a`; this increment
+is draft, unmerged and undeployed. No new dependency, model, real biomedical
+retrieval, professional signoff or commercial clearance is claimed.
+
+The next bounded implementation is to reconcile the existing #305/#308/#309/#310
+source-reading/return owners with this same question/evidence path, after live
+head review. The earlier plan to create an authored-evidence PostgreSQL adapter
+is superseded by #300 and this integration. Real source activation, production
+identity/consent, clinical/PDF parity and scientific validation remain separately
+open. Historical assessments below retain their dated scope.
+
+## Historical #293/#298 current-truth reconciliation — 3 November 2026
 
 This later audit updates the selected implementation baseline and next work. The initial assessment, former plans and verification receipts below remain historical evidence; their earlier use of "planned" or "selected baseline" does not describe the newer #293/#298 checkpoints.
 
@@ -48,7 +91,7 @@ H is the recorded product/mandate and catalog owner in [OI-16](https://app.notio
 
 Continue the existing patient-centered platform. Preserve the canonical patient, source, question, review and event owners. Use the accepted H1 FastAPI/PostgreSQL and React/Vite/TypeScript implementation for further convergence. The Python/SQLite application and its richer scientific/PDF workflows remain behavioral references and explicit migration inputs. This assessment is a source-linked index into the existing project, not a replacement roadmap.
 
-At the initial #276 assessment, the next bounded implementation was planned to join [#280](https://github.com/OpenxIntelligence/open-intelligence/pull/280)'s user-authored questions and exact-source inspection to canonical verification-return history, source-linked brief and final intake-authority checks, while bringing packet JSON encoding inside the existing source transaction. That historical plan is superseded by the #287/#293 baseline and verified #298 continuation above. The next executable task is now the permitted-source and investigation/report persistence adapter described in [the current continuation](../engineering/H1_QUESTION_EVIDENCE.md#exact-continuation).
+At the initial #276 assessment, the next bounded implementation was planned to join [#280](https://github.com/OpenxIntelligence/open-intelligence/pull/280)'s user-authored questions and exact-source inspection to canonical verification-return history, source-linked brief and final intake-authority checks, while bringing packet JSON encoding inside the existing source transaction. That historical plan is superseded by the #287/#293 baseline and verified #298 continuation above. At the #298 checkpoint, the next executable task was the permitted-source and investigation/report persistence adapter described in [that continuation](../engineering/H1_QUESTION_EVIDENCE.md#exact-continuation). #300 and the latest #307 convergence above now supersede that next-work statement; retain the older receipt as historical evidence.
 
 ## What was actually inspected
 

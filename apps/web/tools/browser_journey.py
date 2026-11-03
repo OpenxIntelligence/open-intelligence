@@ -272,6 +272,8 @@ def main():
             exercise(cd,pid,directory,tokens[0],credentials,write_grants,out)
             exercise_case_switch(cd,pid,case,'CASE-WEB-INTAKE',credentials,write_grants,out,
                 current_question_id=connected_question['question_id'])
+            from image_evidence_journey import exercise as exercise_image_evidence
+            exercise_image_evidence(cd,pid,tokens[0],credentials,write_grants,directory,out,restart_api)
             credentials[0]['patient_ids']=[];write_grants();read()
             cd.wait("!document.querySelector('[data-testid=patient-card]') && document.querySelector('[data-testid=status]').textContent.includes('Patient unavailable')",'revoked read removes prior view')
             credentials[0]['expires_at']=(datetime.now(timezone.utc)-timedelta(seconds=1)).isoformat();write_grants();read()

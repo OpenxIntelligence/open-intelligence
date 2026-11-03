@@ -112,6 +112,42 @@ for(const transition of ['patient','case','source-refresh','dismiss']){
  });
 }
 
+test('an image index response delivered after the ten-second cancellation cannot restore metadata',async()=>{
+ const waiting=deferred();let signal;
+ const s=new RegistrySession(transportForImages((url,init)=>{if(url.endsWith('/images')){signal=init.signal;return waiting.promise;}}));
+ await readyImages(s);
+ const savedTimer=globalThis.setTimeout;let expire,budget;
+ globalThis.setTimeout=(callback,milliseconds)=>{expire=callback;budget=milliseconds;return 0;};
+ try{
+  const loading=s.loadSourceImages(sourceId);assert.equal(budget,10000);
+  expire();assert.equal(signal.aborted,true);
+  waiting.resolve(response(images()));await loading;
+  assert.equal(s.snapshot().sourceImages,null,'a cancelled response cannot republish authorized metadata');
+  assert.equal(s.snapshot().sourceImagesPhase,'error','timeout must have a terminal visible state');
+  assert.match(s.snapshot().sourceImagesMessage,/timed out/i);
+ }finally{globalThis.setTimeout=savedTimer;waiting.resolve(response(images()));}
+});
+
+test('cancellation while original-image hashing is pending prevents Blob creation and records timeout',async()=>{
+ const entered=deferred(),release=deferred();let signal;
+ const s=new RegistrySession(transportForImages((url,init)=>{if(url.endsWith('/images/'+imageId)){signal=init.signal;return binary();}}));
+ await readyImages(s);await s.loadSourceImages(sourceId);
+ const savedTimer=globalThis.setTimeout,savedDigest=crypto.subtle.digest;let expire,budget;
+ globalThis.setTimeout=(callback,milliseconds)=>{expire=callback;budget=milliseconds;return 0;};
+ crypto.subtle.digest=async function(...args){const result=await savedDigest.apply(this,args);entered.resolve();await release.promise;return result;};
+ try{
+  const {blobs,links}=await captureDownload(async()=>{
+   const downloading=s.downloadSourceImage(sourceId,imageId);await entered.promise;
+   assert.equal(budget,10000);expire();assert.equal(signal.aborted,true);
+   release.resolve();await downloading;
+  });
+  assert.equal(blobs.length,0,'a timed-out digest cannot lead to an original-byte download');
+  assert.equal(links.length,0);assert.equal(s.snapshot().sourceImageDownload,null);
+  assert.equal(s.snapshot().sourceImageDownloadPhase,'error');
+  assert.match(s.snapshot().sourceImageDownloadMessage,/timed out/i);
+ }finally{globalThis.setTimeout=savedTimer;crypto.subtle.digest=savedDigest;release.resolve();}
+});
+
 for(const transition of ['patient','case','source-refresh','dismiss']){
  test(`late original image after ${transition} change creates no download`,async()=>{
   const waiting=deferred();const s=new RegistrySession(transportForImages(url=>url.endsWith('/images/'+imageId)?waiting.promise:undefined));

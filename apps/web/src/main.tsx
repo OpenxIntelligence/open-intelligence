@@ -52,7 +52,7 @@ function App(){
  useEffect(()=>{if(!state.connected){setPatientId('');setConfirmed(false)}},[state.connected]);
  useEffect(()=>{const clear=()=>session.disconnect();window.addEventListener('pagehide',clear);return()=>window.removeEventListener('pagehide',clear)},[]);
   const busy=state.phase==='creating'||state.phase==='reading'||state.importOutcome==='sending'||state.questionSavePhase==='saving'||state.reviewReturnPhase==='saving'||state.evidenceWritePhase==='saving';
- function navigate(nextSection:string){session.dismissSourceQuotePacket();session.dismissSourceBrief();session.dismissEvidenceMetadata();session.dismissQuestionEvidence();if(nextSection===section){heading.current?.focus();return}moveFocus.current=true;setSection(nextSection);}
+ function navigate(nextSection:string){session.dismissSourceQuotePacket();session.dismissSourceBrief();session.dismissEvidenceMetadata();session.dismissQuestionEvidence();session.dismissSourceImages();if(nextSection===section){heading.current?.focus();return}moveFocus.current=true;setSection(nextSection);}
  function disconnect(){session.disconnect();setToken('');setPatientId('');setConfirmed(false);setSection('Overview');}
  return <div className="app">
   <a className="skip" href="#main">Skip to workspace</a>
@@ -103,6 +103,13 @@ function App(){
         onFiltersChange={next=>setSourceFilters({scope:state.sourceIndex,...next})}
         busy={busy||state.recordsPhase.startsWith('loading')}
         questionBusy={state.worldPhase==='loading'}
+        sourceImages={state.sourceImages} sourceImagesSourceId={state.sourceImagesSourceId}
+        sourceImagesPhase={state.sourceImagesPhase} sourceImagesMessage={state.sourceImagesMessage}
+        sourceImageDownload={state.sourceImageDownload} sourceImageDownloadPhase={state.sourceImageDownloadPhase}
+        sourceImageDownloadMessage={state.sourceImageDownloadMessage}
+        onInspectImages={sourceId=>void session.loadSourceImages(sourceId)}
+        onDownloadImage={(sourceId,imageId)=>void session.downloadSourceImage(sourceId,imageId)}
+        onDismissImages={session.dismissSourceImages}
         onOpenOriginal={sourceId=>void session.loadOriginal(sourceId)}
         onAskQuestion={(sourceId,line)=>{const caseId=state.sourceIndex!.case_id;
           navigate('Investigations');
