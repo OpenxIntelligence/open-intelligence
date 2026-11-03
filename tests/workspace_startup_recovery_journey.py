@@ -479,7 +479,13 @@ def creation_crosses_initial_selection(j: Journey, *, chart_failure: bool = Fals
 
 
 def native_previous_case(j: Journey, *, direction: str, expected: str) -> None:
-    j.go('overview')
+    # The pending Gamma record is intentionally unavailable. Navigate to its
+    # usable header/picker without waiting for the held case content to render.
+    j.cd.evaluate("location.hash='#overview'")
+    j.cd.wait("document.body.dataset.view === 'overview' && !document.querySelector('#case-picker').disabled",
+              'chart header available for a later selection')
+    settle(j)
+    j.check(j.visible('#case-picker'), 'The original case picker stays usable while a created chart is pending')
     j.cd.evaluate("""(() => {
       window.__startupLaterSelection=null;
       const picker=document.querySelector('#case-picker');
@@ -490,6 +496,7 @@ def native_previous_case(j: Journey, *, direction: str, expected: str) -> None:
     j.key(direction, 38 if direction == 'ArrowUp' else 40)
     j.key('Enter', 13)
     ready(j, expected)
+    j.view('overview')
     j.check(j.cd.evaluate('window.__startupLaterSelection') == {'trusted': True, 'value': expected},
             'A later explicit case selection uses the native trusted picker')
 

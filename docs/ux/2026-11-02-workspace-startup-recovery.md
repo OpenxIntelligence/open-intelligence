@@ -15,7 +15,7 @@ Keep the existing initializer as the only owner that establishes initial selecti
 
 Bind the existing picker handler once. New initialization generations supersede older roster and board work before they can change options, selection, errors or startup status. Preserve a newly created case as the intended initial selection. Build the worklist before enabling the initial chart, retaining the existing accepted-response projection guarantee.
 
-The connected creation callback reports whether its successful POST was followed by activation. If loading fails, the creation status states that the workspace was saved and directs the user to retry. Retain that activation intent and complete the original source-intake navigation after a successful retry, without resubmitting creation. A later accepted selection cancels obsolete activation intent.
+The connected creation callback distinguishes ready, saved-but-unavailable and saved-with-canceled-activation outcomes. If loading fails, the creation status states that the workspace was saved and directs the user to retry. Retain that activation intent and complete the original source-intake navigation after a successful retry, without resubmitting creation. Capture the accepted-selection revision before the POST; a later accepted selection cancels obsolete activation intent, including a creation response delayed until after startup finishes. After initial selection, accepted worklist completion can resume the retained intent through the original picker handler. Only canonical chart readiness permits intake navigation.
 
 ### Alternatives considered
 
@@ -40,7 +40,7 @@ These are implementation decisions within the user's authorized continuation of 
 
 ## Verification plan
 
-Use real Chromium and the existing connected/standard launchers. Intercept only selected startup GET responses before a fresh page load to produce controlled HTTP/network/malformed/delayed outcomes; all successful reads and writes use the real application and server. Read persisted state independently over HTTP. Exercise initial failure/retry, repeated failure, delayed loading, patient deep links, empty creation/discovery, creation/read races, saved creation followed by a failed read, unrelated notices, one native selection listener and retained unfinished work.
+Use real Chromium and the existing connected/standard launchers. Control selected GET outcomes before a fresh page load to produce HTTP/network/malformed/delayed reads; handoff tests also delay delivery of an actual successful creation POST response. All successful reads and writes use the real application and server. Read persisted state independently over HTTP. Exercise initial failure/retry, repeated failure, delayed loading, patient deep links, empty creation/discovery, creation/read races, saved creation followed by a failed read, unrelated notices, one native selection listener and retained unfinished work. Test a later trusted selection both during a creation POST and during the created chart read, then drain late responses and refresh the list to prove canceled intent stays canceled.
 
 Record an actual failing baseline before changing runtime code. Run the complete existing Python, JavaScript and browser gates, including navigation, case continuity, scope recovery and worklist currentness. Preserve actual failures, fingerprints and exact-source hosted evidence. The final published run is recorded in #183 after the source snapshot is committed.
 
