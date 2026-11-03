@@ -191,5 +191,122 @@ class RecordReconciliationTests(SourceVersionFixture):
             self.assertEqual(self.reconcile(base, pid, rid, sid, aid)[0], 201)
 
 
+    def test_history_and_list_recheck_source_grant_after_json_encoding(self):
+        with running_server(create_app(self.settings)) as base:
+            pid, rid, sid, aid = self.prepared(base)
+            self.assertEqual(self.reconcile(base, pid, rid, sid, aid)[0], 201)
+            history_path = self.root(pid) + f'/{rid}/receipt-history'
+            for path, key in ((history_path, 'receipts'), (self.root(pid), 'requests')):
+                with self.subTest(path=path):
+                    with self.engine.connect() as connection:
+                        before = connection.execute(text(
+                            "SELECT count(*) FROM identity.identity_domain_events")).scalar_one()
+                    render = JSONResponse.render
+                    encoded = []
+                    def withdraw(response, content):
+                        raw = render(response, content)
+                        if isinstance(content, dict) and key in content:
+                            encoded.append(True)
+                            self.creds[0]['actions'].remove('source_read'); self.write()
+                        return raw
+                    with patch.object(JSONResponse, 'render', withdraw):
+                        status, body, _ = request(base, path, token=TOKEN_A)
+                    self.assertEqual(encoded, [True])
+                    self.assertEqual(status, 404)
+                    self.assertNotIn(key, body)
+                    with self.engine.connect() as connection:
+                        self.assertEqual(connection.execute(text(
+                            "SELECT count(*) FROM identity.identity_domain_events")).scalar_one(), before)
+                    self.creds[0]['actions'].append('source_read'); self.write()
+            self.assertEqual(request(base, history_path, token=TOKEN_A)[0], 200)
+            self.creds[0]['actions'].remove('record_request_read'); self.write()
+            self.assertEqual(request(base, history_path, token=TOKEN_A)[0], 404)
+
+    def test_revocation_after_event_append_rolls_back_and_historical_retry_rechecks(self):
+        with running_server(create_app(self.settings)) as base:
+            pid, rid, sid, aid = self.prepared(base)
+            append = PostgresPatientRegistry.append_event
+            def withdraw(registry, patient, event_type, **values):
+                append(registry, patient, event_type, **values)
+                if event_type == 'record.request.reconciled':
+                    self.creds[0]['actions'].remove('record_request_receive'); self.write()
+            with patch.object(PostgresPatientRegistry, 'append_event', withdraw):
+                self.assertEqual(self.reconcile(base, pid, rid, sid, aid)[0], 404)
+            self.assertEqual(len(self.events(pid)), 1)
+            self.creds[0]['actions'].append('record_request_receive'); self.write()
+            self.assertEqual(self.reconcile(base, pid, rid, sid, aid)[0], 201)
+            render = JSONResponse.render
+            def deny_retry(response, content):
+                raw = render(response, content)
+                if isinstance(content, dict) and content.get('duplicate') and 'reconciliation_id' in content:
+                    self.creds[0]['actions'].remove('source_read'); self.write()
+                return raw
+            with patch.object(JSONResponse, 'render', deny_retry):
+                self.assertEqual(self.reconcile(base, pid, rid, sid, aid)[0], 404)
+            self.assertEqual(len(self.events(pid)), 2)
+
+    def test_competing_reconciliation_keys_and_changed_actor_cannot_retarget_history(self):
+        with running_server(create_app(self.settings)) as base:
+            pid, rid, sid, aid = self.prepared(base)
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                results = list(pool.map(
+                    lambda key: self.reconcile(base, pid, rid, sid, aid, key),
+                    ('INTENT-ONE', 'INTENT-TWO')))
+            self.assertEqual(sorted(r[0] for r in results), [201, 409])
+            key = 'INTENT-ONE' if results[0][0] == 201 else 'INTENT-TWO'
+            self.creds[0]['actor'] = 'ACTOR-CHANGED'; self.write()
+            self.assertEqual(self.reconcile(base, pid, rid, sid, aid, key)[0], 409)
+            self.assertEqual(len(self.events(pid)), 2)
+
+    def test_unreceived_cancelled_and_other_patient_requests_cannot_be_reconciled(self):
+        with running_server(create_app(self.settings)) as base:
+            pid, rid, sid, aid = self.prepared(base)
+            status, waiting, _ = request(base, self.root(pid), token=TOKEN_A, body={
+                'synthetic': True, 'request_key': 'REQ-WAITING', 'kind': 'pathology',
+                'record_label': 'Fictional pending report', 'source_organization': 'Fictional lab'})
+            self.assertEqual(status, 201)
+            waiting_id = waiting['request_id']
+            self.assertEqual(self.reconcile(base, pid, waiting_id, sid, aid)[0], 409)
+            self.assertEqual(request(base, self.root(pid) + f'/{waiting_id}/receipt-history',
+                                     token=TOKEN_A)[1]['receipts'], [])
+            self.assertEqual(request(base, self.root(pid) + f'/{waiting_id}/cancel',
+                                     token=TOKEN_A, body={'synthetic': True, 'reason': 'Fictional cancellation'})[0], 200)
+            self.assertEqual(self.reconcile(base, pid, waiting_id, sid, aid)[0], 409)
+            other = self.setup_case(base, case='CASE-BETA', key='CREATE-BETA', source_subject='SUBJECT-BETA')
+            self.assertEqual(self.reconcile(base, other, rid, sid, aid, case_id='CASE-BETA')[0], 404)
+            path = self.root(pid) + f'/{rid}/receipt-history'
+            self.assertEqual(request(base, path, token=TOKEN_B)[0], 404)
+            self.assertEqual(len(self.events(pid)), 1)
+
+    def test_receive_and_reconcile_bodies_are_bounded_before_parsing(self):
+        with running_server(create_app(self.settings)) as base:
+            pid, rid, sid, aid = self.prepared(base)
+            for operation in ('receive', 'reconcile'):
+                response = request(base, self.root(pid) + f'/{rid}/{operation}', token=TOKEN_A,
+                                   body={'padding': 'x' * 17000})
+                self.assertEqual(response[0], 413)
+            self.assertEqual(len(self.events(pid)), 1)
+
+    def test_stored_forked_journal_is_withheld_instead_of_becoming_latest_receipt(self):
+        with running_server(create_app(self.settings)) as base:
+            pid, rid, sid, aid = self.prepared(base)
+            self.assertEqual(self.reconcile(base, pid, rid, sid, aid)[0], 201)
+            # Direct owner injection simulates a malformed stored event; normal
+            # HTTP writes cannot supply journal metadata.
+            values = dict(self.events(pid)[-1][1])
+            values['request_key'] = 'FORGED-FORK'
+            values['reconciliation_id'] = 'RECON-' + 'F' * 32
+            with self.engine.begin() as connection:
+                import json
+                connection.execute(text(
+                    "INSERT INTO identity.identity_domain_events (patient_id,event_type,metadata_json,occurred_at) "
+                    "VALUES (:p,'record.request.reconciled',CAST(:m AS jsonb),now())"),
+                    {'p': pid, 'm': json.dumps(values)})
+            for path in (self.root(pid), self.root(pid) + f'/{rid}/receipt-history'):
+                status, body, _ = request(base, path, token=TOKEN_A)
+                self.assertEqual((status, body), (503, {'detail': 'Patient registry unavailable'}))
+            self.assertEqual(self.reconcile(base, pid, rid, sid, aid)[0], 503)
+
+
 if __name__ == '__main__':
     unittest.main()
