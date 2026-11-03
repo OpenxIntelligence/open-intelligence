@@ -187,7 +187,13 @@ class PostgresSourceVersions:
 
     def original(self, patient_id: str, case_id: str, source_id: str, *,
                  organization: str, actor: str, purpose: str,
-                 recheck_authority: Callable[[], None]) -> dict:
+                 recheck_authority: Callable[[], None],
+                 prepare_response: Callable[[dict], PreparedResponse] | None = None) -> dict | PreparedResponse:
+        """Prepare the original under owner locks before authorizing disclosure.
+
+        The application-owned callback includes DTO validation and HTTP encoding.
+        Preparation failure withholds the original and rolls back its receipt.
+        """
         patient_id = _key(patient_id, "patient_id")
         case_id = _case_id(case_id)
         source_id = _source_id(source_id)
@@ -220,14 +226,16 @@ class PostgresSourceVersions:
                     "state": row[4], "sha256": row[1],
                     "original_text": raw.decode("utf-8"),
                     "synthetic": True, "clinical_review_state": "not_established"}
-            result["access_receipt_id"] = self._read_receipt(
+            result["access_receipt_id"] = "ACCESS-" + uuid.uuid4().hex.upper()
+            prepared = prepare_response(result) if prepare_response is not None else result
+            self._read_receipt(
                 patient_id, case_id, actor=actor, purpose=purpose,
                 binding_revision=binding_revision, event="source.original_read_authorized",
-                receipt_id="ACCESS-" + uuid.uuid4().hex.upper(),
+                receipt_id=result["access_receipt_id"],
                 recheck_authority=recheck_authority, source_id=source_id,
                 sha256=row[1], source_version=row[3], source_state=row[4],
             )
-            return result
+            return prepared
 
     def import_original(self, patient_id: str, case_id: str, original: bytes, *,
                         organization: str, actor: str, purpose: str,
