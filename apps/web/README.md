@@ -149,7 +149,27 @@ restore the cancelled context. An already completed World Model remains
 available across original open/close actions. This behavior does not add a
 background retry, model call, approval or new clinical state.
 
+### Connected source questions
+
+The current source-derived World Model also supplies the existing **Investigations**
+workspace. A user can prepare a source-only context for an exact current finding,
+save its question through the independent question grant, and refresh persistent
+question history. A source amendment flags the earlier question for reassessment
+while retaining its original source/version/line. The current UI uses a standard,
+visible provenance question; free-text browser drafting and clinical review are
+separate future work.
+
+Preflight and question-list `/2` decoders require explicit snapshot provenance
+and source-access receipts. Only the stable canonical content fingerprint enters
+preflight equality; fresh receipts do not invalidate an otherwise identical
+packet. An uncertain save retains its same-session request key for a deliberate
+retry. Case, source or permission changes invalidate pending consumer views.
+Legacy fingerprint rows remain visibly in need of reassessment. Nothing in this
+workspace executes a model, grants clinical approval or creates another patient
+or source store.
+
 ### Verification (exact branch head required)
+
 The existing reviewed H1 web workflow now targets this integration branch and
 runs the original unit suite with added contract/isolation cases, TypeScript
 compilation, locked dependency/rights checks, and actual Chromium over a

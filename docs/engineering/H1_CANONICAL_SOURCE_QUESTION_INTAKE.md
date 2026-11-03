@@ -37,13 +37,19 @@ Independent question/Composer grants are refreshed before disclosure or commit,
 including duplicate and post-event paths. Source read events are expected;
 exactly one `investigation.question.created` event accompanies a new question.
 
-**Tests-first checkpoint:** the cross-branch acceptance test first proves the
-existing canonical World Model's stable fingerprint and changing receipts,
-then exercises preflight, save/retry, amendment conflict and historical
-reassessment. It must fail against unchanged #234 before the consumer is wired.
-Implementation and final hosted verification are in progress at this checkpoint;
-upstream success does not verify this branch. Final evidence belongs in this
-branch's focused draft PR and the existing engineering progress records.
+**Tests-first evidence:** at `5f3925d9694911875e8c15662c22223de965db6c`,
+[hosted run 41569238470](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41569238470)
+ran 146 tests against PostgreSQL. The 145 inherited tests passed; the new
+cross-branch acceptance failed at its first preflight request with HTTP 404
+instead of 200, after successfully verifying the existing World Model's stable
+fingerprint and changing receipts. No setup errors occurred. The subsequent
+test steps cover save/retry, amendment conflict and historical reassessment.
+
+Final implementation evidence belongs in [draft PR #244](https://github.com/OpenxIntelligence/open-intelligence/pull/244)
+and the existing engineering progress records. Upstream success is not evidence
+for this branch. The separate migration test upgrades an actual legacy row,
+compares every original field, and requires reassessment even when its stored
+hash happens to equal the canonical fingerprint.
 
 Backlog coverage: OI-006 provenance, OI-007 persistent questions, OI-009
 reassessment and OI-013 authorization/recovery. This slice adds no model,
@@ -108,6 +114,10 @@ the original question ID, including after a later amendment, while
 changed-intent key reuse is rejected. On event write failure, the question
 insert rolls back.
 
+Idempotent retries apply to canonical-contract rows. A legacy row is retained as
+history, but cannot be silently reused as a canonical request; its existing
+request key conflicts and a newly prepared intent needs a new key.
+
 `GET /v1/patients/{patient_id}/cases/{case_id}/questions` separately
 requires `patient_read`, `source_read`, and `question_read`.
 Its current-versus-reassessment status is a *read-time projection* under
@@ -115,6 +125,11 @@ the same qualified source lock. It never promotes a stale source to current,
 does not show unreviewed source text from the question row, and does not
 assert that a reviewer has accepted work. The original question remains
 durable when its source is superseded.
+
+The current projection is conservative: any change to the complete current case
+snapshot requires reassessment, even when the selected anchor itself remains.
+Dependency-specific narrowing is not implemented. Other cases stay isolated.
+The bounded list refuses more than 250 rows; pagination is not yet provided.
 
 ## UI contract
 
@@ -127,9 +142,11 @@ confirm whether the original question was committed. No key/credential,
 patient data or question text is placed into browser storage.
 
 Saved question IDs and source-reassessment warnings remain visibly distinct
-from clinician approval. Changing patients, navigation, source generation,
-credentials or authorization clears cached question history and prepared
-content; the authoritative questions remain in PostgreSQL.
+from clinician approval. Changing patients, source generation, credentials or
+authorization clears cached question history and prepared content; the
+authoritative questions remain in PostgreSQL. Navigation between workspaces
+for the same patient retains that context and an in-flight save, so changing
+sections does not discard its idempotency key or manufacture a new intent.
 
 This initial UI offers the transparent standard source-provenance question.
 The typed API supports a bounded custom question, but editable browser

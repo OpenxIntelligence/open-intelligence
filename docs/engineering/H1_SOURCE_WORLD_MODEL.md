@@ -38,6 +38,8 @@ Tests are software evidence on independently authored OI-SYNTHETIC-REPORT/1 file
 
 ## Next gates
 
-Reconcile original EHR/LIS/clinical SourceStore data contracts with the canonical PG patient and source domain without copying their authority. Add real governed question/investigation persistence tied to the same case and current source fingerprint, then connect existing biomedical content-rights checks, Composer v2, human review, report and follow-through. Real PHI requires separate clinical, legal, security and operational release reviews.
+The [source-only preflight and question intake](H1_CANONICAL_SOURCE_QUESTION_INTAKE.md) consume this canonical fingerprint through the existing source transaction and separate grants. Their saved questions preserve exact original anchors and require reassessment when the current case snapshot changes. Legacy question fingerprints retain their explicit original contract; they are not silently promoted.
+
+Reconcile original EHR/LIS/clinical SourceStore contracts with this patient/source domain, then connect the existing biomedical content-rights checks, clinical Composer, human review, report and follow-through owners. The source-question slice is not that clinical workflow. Real PHI requires separate clinical, legal, security and operational release reviews.
 
 No Sid Sijbrandij patient data or derivative synthetic replicas are allowed. His publicly described methods remain product research inspiration only.

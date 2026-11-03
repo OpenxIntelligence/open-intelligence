@@ -1,10 +1,14 @@
 import type {RegistrySession,ViewState} from './registry-client';
+import {DEFAULT_SOURCE_QUESTION} from './composer-preflight-view';
+import {SourceQuestionPanel} from './source-question-panel';
 
 type Props={
   session:RegistrySession;
   state:ViewState;
   onOverview:()=>void;
   busy:boolean;
+  showQuestions?:boolean;
+  onInvestigations?:()=>void;
 };
 
 /** First-party PG read-only Patient World Model view.
@@ -12,12 +16,12 @@ type Props={
  * separate client-owned patient/source ledger. All clinical claims remain
  * attributed to the original fictional source and explicitly unreviewed.
  */
-export function WorldModelView({session,state,onOverview,busy}:Props){
+export function WorldModelView({session,state,onOverview,busy,showQuestions=false,onInvestigations}:Props){
   const loading=state.worldPhase==='loading'||state.recordsPhase.startsWith('loading');
   const model=state.worldModel;
-  return <section className="panel source-world" aria-labelledby="world-heading" data-testid="world-workspace">
+  return <section className="panel source-world" aria-labelledby="world-heading" data-testid="world-workspace" data-view={showQuestions?'investigations':'journey'}>
     <span className="step">SOURCE-LINKED PATIENT CONTEXT / SYNTHETIC ONLY</span>
-    <h2 id="world-heading">Patient World Model — source-only view</h2>
+    <h2 id="world-heading">{showQuestions?'Source-linked investigations':'Patient World Model — source-only view'}</h2>
     <p>This is a fresh read of the existing PostgreSQL original-source owner. It organizes reported observations, chronology, unresolved statements and source disagreements. It does not interpret cancer, authorize AI research, or replace clinician review.</p>
     {!state.patient?<div data-testid="world-no-patient">
       <p>Open an authorized fictional patient before inspecting the source-derived view.</p>
@@ -34,6 +38,7 @@ export function WorldModelView({session,state,onOverview,busy}:Props){
          </li>)}</ul>}
       </section>}
       <p role="status" aria-live="polite" className={'status '+(state.worldPhase==='error'?'error':'')} data-testid="world-status">{state.worldMessage}</p>
+      {showQuestions&&<SourceQuestionPanel session={session} state={state} busy={busy}/>}
       {model&&<div data-testid="world-projection">
         <p><strong>Case:</strong> <code>{model.case_id}</code> · Source statements unreviewed · Context checked at last read</p>
         <div className="world-summary" aria-label="Source context summary">
@@ -57,6 +62,11 @@ export function WorldModelView({session,state,onOverview,busy}:Props){
           <p><strong>{item.finding_key}</strong> · <span data-testid="world-reported-state">{item.reported_state}</span> · {item.event_date}</p>
           <blockquote data-testid="world-statement">{item.source_statement}</blockquote>
           <small>Not clinically established · <code>{item.source_id}</code> · line {item.source_line}</small>
+          <div className="source-context-action"><button type="button" data-testid="composer-preflight"
+            disabled={loading||busy||state.composerPhase==='loading'}
+            onClick={()=>{void session.prepareSourceContext(item.source_id,item.source_line,DEFAULT_SOURCE_QUESTION);onInvestigations?.();}}>
+            Prepare source-only question context
+          </button></div>
         </li>)}</ul>}
         {model.conflicts.length>0&&<section aria-labelledby="source-disagreements">
           <h3 id="source-disagreements">Unresolved source disagreements</h3>
