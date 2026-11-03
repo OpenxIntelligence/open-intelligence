@@ -129,70 +129,71 @@ async function renderIncomingBoard(cases) {
   }
 }
 
-const CERTAINTY_PLAIN = {
-  reported: 'reported', pending: 'still pending', indeterminate: 'not certain yet',
-  conflicting: 'different reports disagree', 'not-reported': 'not reported',
-  'not-assessed': 'not assessed',
-};
-function renderPatientView() {
-  clear('patient-timeline'); clear('patient-findings'); clear('patient-questions'); clear('patient-uncertainty');
-  if (!active) return;
-  const groups = groupedTimeline(active.sources).slice().reverse();
-  if (!groups.length) empty(el('patient-timeline'), 'No records yet in this fictional case.');
-  for (const group of groups) {
-    const item = node('div', null, 'question');
-    const amended = group.versions.length > 1;
-    item.append(node('p', 'On ' + group.eventDate + ', a ' + group.kind + ' report (' + group.documentId + ') was recorded.' +
-      (amended ? ' This report was later corrected; the latest version is the one shown in the workspace, and older versions are kept.' : '')));
-    el('patient-timeline').append(item);
-  }
-  if (!active.assertions.length) empty(el('patient-findings'), 'No reported findings yet in this fictional case.');
-  for (const assertion of active.assertions) {
-    const card = node('div', null, 'finding');
-    const manual = assertion.classification_origin === 'user_selected';
-    card.append(node('strong', 'Source says'), node('p', assertion.quote, 'quoted'),
-      node('span', (manual ? 'User-selected status: ' : 'How certain the source is: ') +
-        (CERTAINTY_PLAIN[assertion.certainty] || assertion.certainty) +
-        ' · Exact source version #' + assertion.source_version_id +
-        (assertion.text_origin === 'pdf_extraction'
-          ? ', page ' + assertion.source_page + ', extracted line ' + assertion.page_line
-          : ', line ' + assertion.source_line), 'ref'));
-    if (manual) card.append(node('p', 'Passage manually selected. Clinical review not performed.', 'muted tiny'));
-    el('patient-findings').append(card);
-  }
-  const open = active.questions.filter(q => q.state === 'open');
-  if (!open.length) empty(el('patient-questions'), 'No open questions in this fictional case.');
-  for (const question of open) {
-    const row = node('div', null, 'question');
-    row.append(node('p', question.question));
-    el('patient-questions').append(row);
-  }
-  const stale = active.snapshots.filter(s => s.state === 'stale').length;
-  const superseded = active.sources.filter(s => s.state !== 'current').length;
-  const notes = [];
-  if (stale) notes.push(stale + ' earlier draft(s) need another look because a report changed since they were written.');
-  if (superseded) notes.push(superseded + ' older report version(s) have been replaced by a newer version; the older versions are still kept and can be inspected.');
-  if (!notes.length) notes.push('Nothing in this fictional case is currently flagged as changed or needing another look.');
-  for (const text of notes) {
-    const row = node('div', null, 'question');
-    row.append(node('p', text));
-    el('patient-uncertainty').append(row);
-  }
+const patientRecord = OpenIntelligencePatientRecord.create({
+  elements: {
+    root: el('patient-view'), status: el('patient-record-status'),
+    timeline: el('patient-timeline'), findings: el('patient-findings'),
+    questions: el('patient-questions'), uncertainty: el('patient-uncertainty'),
+  },
+  fetchModel: requested => api('/api/cases/' + requested + '/world-model'),
+  onOpenSource: (id, line) => openSource({id}, line),
+  onOpenQuestion: focusPatientQuestion,
+  onRefresh: refresh,
+});
+function focusPatientQuestion(questionId) {
+  try {
+    readyCase();
+    if (!Number.isInteger(questionId) || !active.questions.some(q =>
+      q.id === questionId && q.state === 'open'))
+      throw Error('This question is no longer open in the selected case. Refresh the record.');
+    const target = String(questionId);
+    const narrativePending = ['draft-observations', 'draft-summary', 'draft-assumptions']
+      .some(id => el(id).value.trim());
+    if ((narrativePending && el('question-choice').value !== target) ||
+        (el('evidence-rationale').value.trim() && el('evidence-question-choice').value !== target))
+      throw Error('Save or clear the unfinished draft for the other question before switching investigations.');
+    for (const id of ['question-choice', 'evidence-question-choice', 'model-investigation-question']) {
+      if (![...el(id).options].some(option => option.value === target))
+        throw Error('The investigation workspace is still loading this question. Try again after it finishes.');
+    }
+    if (el('question-choice').value !== target) {
+      el('question-choice').value = target;
+      el('question-choice').dispatchEvent(new Event('change'));
+    }
+    el('evidence-question-choice').value = target;
+    el('model-investigation-question').value = target;
+    // Composer owns its source context and must invalidate the earlier question's
+    // fingerprint when this handoff changes the selected durable question.
+    el('model-investigation-question').dispatchEvent(new Event('change'));
+    window.location.hash = 'investigations';
+    el('model-investigation-question').focus();
+    notice('Question Q' + questionId + ' selected for evidence investigation. No investigation has run yet.');
+  } catch (err) { notice(err.message, true); }
 }
 
 async function refresh() {
   const requestedCase = caseId;
   const sequence = ++refreshSequence;
+  patientRecord.clear('Loading the selected case…', true);
+  clear('model-investigation-list');
+  empty(el('model-investigation-list'), 'Loading investigations for the selected case…');
   try {
     const response = await api('/api/cases/' + requestedCase + '/state');
     // The user can switch cases while a response is in flight. Never render
     // the previous case underneath the newly selected case or its actions.
     if (sequence !== refreshSequence || caseId !== requestedCase) return;
+    if (response?.case?.case_id !== requestedCase)
+      throw Error('The returned record does not match the selected case. Refresh to try again.');
     active = response;
     el('case-heading').textContent = active.case.label;
     render();
+    await patientRecord.load(response);
   } catch (err) {
-    if (sequence === refreshSequence && requestedCase === caseId) notice(err.message, true);
+    if (sequence === refreshSequence && requestedCase === caseId) {
+      active = null;
+      patientRecord.clear('The selected record could not be loaded. Refresh to try again.');
+      notice(err.message, true);
+    }
   }
 }
 function readyCase() {
@@ -371,6 +372,7 @@ function render() {
   documentIntake.syncCase(caseId);
   const sameCase = renderedCaseId === caseId;
   const priorQuestion = sameCase ? el('question-choice').value : null;
+  const priorModelQuestion = sameCase ? el('model-investigation-question').value : null;
   const priorInputs = sameCase ? [...el('source-choice').querySelectorAll('input')] : [];
   const priorSourceIds = new Set(priorInputs.filter(x => x.checked).map(x => Number(x.value)));
   const preserveSources = priorInputs.length > 0;
@@ -580,6 +582,8 @@ function render() {
     const opt = node('option', question.question);
     opt.value = question.id; el('model-investigation-question').append(opt);
   }
+  if (priorModelQuestion && [...el('model-investigation-question').options].some(x => x.value === priorModelQuestion))
+    el('model-investigation-question').value = priorModelQuestion;
   loadModelInvestigations();
   loadChangesSinceReview();
   clear('quarantine-list');
@@ -591,7 +595,6 @@ function render() {
     const card = node('div', event.kind.replaceAll('_', ' '), 'event');
     card.append(node('small', event.occurred_at)); el('event-list').append(card);
   }
-  renderPatientView();
   renderOptions();
   renderedCaseId = caseId;
 }
@@ -1155,19 +1158,21 @@ async function loadModelTemplates() {
 let modelInvestigationLoadSequence = 0;
 async function loadModelInvestigations() {
   const sequence = ++modelInvestigationLoadSequence;
+  const caseSequence = refreshSequence;
   const requested = caseId;
-  const stillCurrent = () => requested === caseId && sequence === modelInvestigationLoadSequence;
+  const stillCurrent = () => requested === caseId && sequence === modelInvestigationLoadSequence &&
+    caseSequence === refreshSequence && active?.case.case_id === requested && renderedCaseId === requested;
   // A refresh can represent a rights withdrawal. Clear already displayed text
   // immediately, and do not let an older same-case response put it back.
   clear('model-investigation-list');
   try {
-    const data = await api('/api/cases/' + caseId + '/investigations');
+    const data = await api('/api/cases/' + requested + '/investigations');
     if (!stillCurrent()) return;
     clear('model-investigation-list');
     const items = data.investigations || [];
     if (!items.length) { empty(el('model-investigation-list'), 'No model investigations yet.'); return; }
     for (const item of items) {
-      const detail = await api('/api/cases/' + caseId + '/investigations/' + item.id);
+      const detail = await api('/api/cases/' + requested + '/investigations/' + item.id);
       if (!stillCurrent()) return;
       const box = node('div', null, 'snapshot');
       const top = node('div', null, 'topline');

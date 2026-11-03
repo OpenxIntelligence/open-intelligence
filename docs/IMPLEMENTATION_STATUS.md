@@ -1,5 +1,16 @@
 # Implementation slice 01 — source and investigation ledger
 
+## Source intake to patient record integration — 3 November 2026 UTC
+
+Implementation and verification in progress on the #189 PDF intake baseline.
+The existing #161 source-derived World Model and patient-record presentation are
+being reconciled with manual passage provenance, physical PDF pages, current
+Composer question handoff and report/reassessment history. No second ledger,
+new dependency or migration is introduced. Final tests and CI results belong in
+[the maintained projection record](engineering/SYNTHETIC_WORLD_MODEL_PROJECTION.md).
+This heading does not extend earlier passing test counts to the new integration.
+The separate authorized report library and H1 target-stack migration remain open.
+
 ## Bounded PDF intake checkpoint — 3 November 2026 UTC
 
 This unmerged extension starts from reviewed text intake PR #173, implementation

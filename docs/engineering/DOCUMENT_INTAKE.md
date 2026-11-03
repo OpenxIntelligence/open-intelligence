@@ -272,3 +272,14 @@ specimen/amendment, and `manual_transcription_confirmed: true`. Findings are
 `{key, state, quote, line}`. Exact source evidence and user classification are
 retained separately. Preview/commit JSON fields are strict; unknown fields,
 duplicate keys, noncanonical base64 and over-limit requests fail closed.
+
+
+### Patient-record projection convergence — 3 November 2026 UTC
+
+The integration based on #189 reuses #161's read-only World Model and Patient
+view. It carries manual classification, frozen extraction identity and physical
+page anchors through current findings, unresolved observations and historical
+source references. Original bytes, document intake and snapshot/review storage
+remain unchanged. Verification for this integration is maintained in
+[SYNTHETIC_WORLD_MODEL_PROJECTION.md](SYNTHETIC_WORLD_MODEL_PROJECTION.md); the
+#189 test counts above belong to its own exact source tree.

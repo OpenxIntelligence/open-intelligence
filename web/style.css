@@ -1082,6 +1082,29 @@ dialog pre {
   #compare-dialog, .review-attention .button, .change-card button { display: none; }
   .top-right .pill-warn { border: 2px solid var(--color-ink); }
 }
+/* Read-only patient view uses the existing case ledger and source reader. */
+.patient-record-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(16rem, 1fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+.patient-record-grid > div { min-width: 0; }
+#patient-view h3 { margin: 1.4rem 0 .7rem; }
+#patient-record-status { margin: .75rem 0; color: var(--color-muted); }
+#patient-view[data-state="unavailable"] #patient-record-status {
+  border-left: 3px solid currentColor;
+  padding: .6rem .85rem;
+}
+#patient-timeline details { margin-top: .75rem; }
+#patient-timeline summary { cursor: pointer; font-weight: 600; padding: .5rem 0; }
+.patient-record-item { overflow-wrap: anywhere; }
+.patient-record-item .finding-head { flex-wrap: wrap; }
+.patient-record-item .pill, .patient-record-item .button { max-width: 100%; white-space: normal; }
+@media (max-width: 60rem) {
+  .patient-record-grid { grid-template-columns: minmax(0, 1fr); gap: .25rem; }
+}
+
 /* Clinician glance: source facts before authored interpretations. */
 .view-question {
   margin-bottom: var(--space-2);
