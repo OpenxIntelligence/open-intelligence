@@ -7,6 +7,7 @@ on:
       - integration/composer-rights-context-20261102
       - feat/reviewed-document-intake-20261102
       - feat/bounded-pdf-document-intake-20261103
+      - integration/pdf-patient-record-review-20261103
       - main
 
 permissions:
@@ -74,11 +75,15 @@ jobs:
         run: PYTHONPATH=src:tools/research python -m unittest test_restricted_research_entrypoints test_rna_expression_probe test_single_cell_probe test_public_case_intake -v 2>&1 | tee composer-broker-artifacts/offline-research-tests.txt
       - name: JavaScript contracts
         run: |
-          for suite in tests/test_source_dialogs.js tests/test_source_line_diff.js tests/test_text_changes.js tests/test_model_investigation_refresh.js tests/test_document_intake_ui.js tests/test_patient_record.js tests/test_model_investigation_freshness.js; do
+          for suite in tests/test_source_dialogs.js tests/test_source_line_diff.js tests/test_text_changes.js tests/test_model_investigation_refresh.js tests/test_document_intake_ui.js tests/test_patient_record.js tests/test_model_investigation_freshness.js tests/test_document_annotation_revisions_ui.js; do
             node "$suite" 2>&1 | tee -a composer-broker-artifacts/javascript-tests.txt
           done
       - name: Reviewed document intake browser journey
         run: python tests/document_intake_browser_journey.py 2>&1 | tee composer-broker-artifacts/document-intake-browser.txt
+      - name: Versioned passage correction browser journey
+        run: python tests/document_annotation_revisions_browser_journey.py 2>&1 | tee composer-broker-artifacts/annotation-revisions-browser.txt
+      - name: PDF passage correction and Patient World Model browser journey
+        run: python tests/pdf_annotation_revisions_browser_journey.py 2>&1 | tee composer-broker-artifacts/pdf-annotation-revisions-browser.txt
       - name: Composer browser journey
         run: python tests/composer_browser_journey.py 2>&1 | tee composer-broker-artifacts/composer-browser.txt
       - name: Composer lab browser journey
@@ -159,6 +164,12 @@ jobs:
             composer-broker-artifacts/document-intake-browser.txt
             composer-broker-artifacts/document-intake-receipt.json
             composer-broker-artifacts/document-intake-*.png
+            composer-broker-artifacts/annotation-revisions-browser.txt
+            composer-broker-artifacts/annotation-revisions-receipt.json
+            composer-broker-artifacts/annotation-revisions-*.png
+            composer-broker-artifacts/pdf-annotation-revisions-browser.txt
+            composer-broker-artifacts/pdf-annotation-revisions-receipt.json
+            composer-broker-artifacts/pdf-annotation-revisions-*.png
             composer-broker-artifacts/receipt.json
           if-no-files-found: error
           retention-days: 7

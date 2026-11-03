@@ -1,5 +1,24 @@
 # Implementation slice 01 — source and investigation ledger
 
+## PDF selection correction convergence — 2 November 2026 (America/New_York)
+
+The current follow-on combines #190's versioned passage corrections with #215's
+PDF intake, Patient World Model and question/report workflow, based on exact
+#215 head `3be1106b5cd34523c4746e2df6f123048beb5659`.
+Source bytes, source version and frozen extraction remain unchanged when a
+manual selection changes. Current patient understanding uses the new revision;
+older reports retain the revision and page anchors they captured. A correction
+invalidates dependent work and reopens its question. Unreviewed model attempts
+and manually transcribed numeric measurements retain #189's existing safeguards.
+
+Implementation is present. Local checks passed all 146 JavaScript cases and
+466 of 467 Python tests; an inherited PDF deadline failure passed alone on rerun.
+Hosted full regression and browser verification are pending. See [the maintained revision contract](engineering/ANNOTATION_REVISIONS.md).
+This is the synthetic behavioral reference, not a completed authenticated H1
+migration, full MVP, clinical approval or deployment. Earlier checkpoints below
+retain their original scope; their statements about absent annotation editing
+are superseded by this follow-on.
+
 ## Source intake to patient record integration — 3 November 2026 UTC
 
 Implemented and verified in [draft PR #215](https://github.com/OpenxIntelligence/open-intelligence/pull/215),

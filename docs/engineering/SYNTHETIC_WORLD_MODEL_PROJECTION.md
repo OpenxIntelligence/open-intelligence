@@ -1,6 +1,21 @@
 # Source-derived Patient World Model projection — synthetic engineering slice
 
-## PDF and manual-intake convergence — 3 November 2026 UTC
+## Saved selection revisions — 2 November 2026 (America/New_York)
+
+The next increment connects #190's append-only selection history to the exact
+#215 source/PDF projection. The current patient view carries the selection
+revision number and identity, initial and effective transcription-review hashes,
+and original/extraction/page identity. The server and browser require the same
+revision association in the source receipt, assertion and derived observation;
+missing or inconsistent provenance clears the view rather than presenting it
+as current. A correction reopens affected work while keeping older reports'
+captured selections and page anchors intact.
+
+The [annotation revision contract](ANNOTATION_REVISIONS.md) owns this increment's
+API, migration, verification and limitations. Full combined verification is in
+progress. The completed #215 checkpoint below is the inherited baseline.
+
+## Prior PDF and manual-intake convergence — 3 November 2026 UTC
 
 **Current stage: implemented and verified in [draft PR #215](https://github.com/OpenxIntelligence/open-intelligence/pull/215); unmerged, undeployed and synthetic-only.**
 This increment starts from #189 at `ed20a68664289c8e539db34d645aa1d2f0f7a0e5`
@@ -36,7 +51,7 @@ ledger, evidence ledger, model service or review owner is added.
 | Kind | Preserved source-owned fields |
 | --- | --- |
 | Every finding | Original source/version/hash, exact quote and global source line, finding key, reported or user-selected state, specimen, event/issue/receipt times |
-| Manual text/PDF | `classification_origin`, `annotation_method`, `clinical_review`, `transcription_review_sha256` |
+| Manual text/PDF | `classification_origin`, `annotation_method`, `clinical_review`, `transcription_review_sha256`; current convergence also requires `initial_transcription_review_sha256`, `annotation_revision_id`, `annotation_revision` |
 | PDF | `text_origin`, `extraction_sha256`, physical `source_page`, `page_line`, `page_text_sha256` |
 | Source/history reference | Original source fields plus manual classification and PDF extraction identity where present |
 | Unresolved/disagreement reference | Same source and manual/PDF provenance; neither competing statement is silently adjudicated |
@@ -56,7 +71,7 @@ media-aware paths.
 | --- | --- |
 | #189 bounded PDF intake and Composer v2 | Preserve as parent; do not replace `store.py`, intake, source reader, provider, rights or review owners with older copies |
 | #161 read-only projection and patient-record view | Integrate selectively; extend its validator and labels for manual/PDF provenance |
-| #190 annotation revisions | Separate sibling, not incorporated: its current text-only review path cannot be applied to PDF bytes; revision identity needs its own provenance/freshness integration |
+| #190 annotation revisions | Incorporated by the current follow-on: saved PDF validation uses immutable extraction, and revision identity participates in current projection, freshness and historical export; see ANNOTATION_REVISIONS.md |
 | #195 dependency closure regressions | Separate test-only contribution; existing targeted-amendment semantics remain in the source owner |
 | #175 authorized report libraries and #179/#185 synthetic browser host | Preserve as separate work; no unauthenticated adapter is presented as their permission boundary |
 | H1 FastAPI/PostgreSQL/React work | Accepted target remains; this verified behavioral reference is not a completed target-stack migration |

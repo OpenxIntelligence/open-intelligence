@@ -115,11 +115,15 @@ measurement contract. Manually transcribed text/PDF measurements are held with
 `manual_transcription_not_eligible`, preserving their manual/page/hash provenance;
 the parser does not expand that tool's authority or establish a lab result.
 
-Post-save annotation editing is not implemented. Saving without passages is an
-original-only organizational workflow; uploading the same bytes with different
-annotations is rejected. A future append-only annotation-review/correction
-contract must preserve the original and historical confirmations. Never alter
-original bytes merely to bypass this limit.
+The follow-on [annotation revision contract](ANNOTATION_REVISIONS.md) adds
+post-save text and PDF passage editing through a distinct append-only operation.
+PDF corrections validate both original and frozen-extraction hashes, reconstruct
+server-owned page anchors from saved page strings, and never reparse the original. It retains
+the original, initial confirmation and earlier selections, including the
+annotations captured with each report. Uploading identical bytes with different
+annotations remains rejected; use the revision operation. Never alter original
+bytes merely to bypass this boundary. The verification receipt below describes
+the original #173 intake feature; the revision contract records its own checks.
 
 The current local application remains synthetic-only and loopback-only. It has
 no real user authentication, production consent service or clinical validation.

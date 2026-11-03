@@ -209,6 +209,7 @@ function manualFixture(pdf = true) {
     classification_origin: 'user_selected',
     annotation_method: pdf ? 'manual-exact-extraction-line-selection' : 'manual-exact-line-selection',
     clinical_review: 'not_performed', transcription_review_sha256: 'd'.repeat(64),
+    initial_transcription_review_sha256: 'a'.repeat(64), annotation_revision_id: 12, annotation_revision: 2,
     ...(pdf ? {text_origin: 'pdf_extraction', extraction_sha256: 'e'.repeat(64)} : {}),
   };
   const receipt = {
@@ -217,6 +218,7 @@ function manualFixture(pdf = true) {
     extraction_method: pdf ? 'pypdf-text-v1' : 'utf8-plain-text-v1',
     annotation_method: provenance.annotation_method, manual_transcription_confirmed: true,
     clinical_review: 'not_performed', review_sha256: 'd'.repeat(64),
+    initial_review_sha256: 'a'.repeat(64), annotation_revision_id: 12, annotation_revision: 2,
     ...(pdf ? {extraction_sha256: 'e'.repeat(64)} : {}),
   };
   for (const source of input.state.sources.filter(row => row.id !== 3))
@@ -243,6 +245,7 @@ test('PDF selections keep manual status, physical page anchors and the original 
   const card = nodes(h.elements.findings, 'article')[0];
   assert.match(card.textContent, /User-selected status: Reported/);
   assert.match(card.textContent, /Clinical review not performed/);
+  assert.match(card.textContent, /Selection revision 2/i);
   assert.match(card.textContent, /page 2.*extraction line 5/i);
   const action = nodes(card, 'button')[0];
   assert.equal(action.attributes['data-source-id'], '2');
@@ -273,6 +276,10 @@ for (const [name, change] of [
   ['source manual origin omitted', m => { delete m.current_sources[0].classification_origin; }],
   ['source original receipt omitted', m => { delete m.current_sources[0].document_intake; }],
   ['source original receipt forged', m => { m.current_sources[0].document_intake.review_sha256 = '0'.repeat(64); }],
+  ['source revision omitted', m => { delete m.current_sources[0].annotation_revision; }],
+  ['source revision identity omitted', m => { delete m.current_sources[0].annotation_revision_id; }],
+  ['source revision changed', m => { m.current_sources[0].annotation_revision = 3; }],
+  ['historical source revision changed', m => { m.history[0].annotation_revision_id = 13; }],
   ['source extraction digest changed', m => { m.current_sources[0].extraction_sha256 = '0'.repeat(64); }],
   ['historical source downgraded', m => { delete m.history[0].clinical_review; }],
   ['authored source given invented manual origin', m => { m.current_sources[1].classification_origin = 'user_selected'; }],
@@ -280,6 +287,9 @@ for (const [name, change] of [
   ['observation method changed', m => { m.observations[0].annotation_method = 'automatic'; }],
   ['observation review falsely approved', m => { m.observations[0].clinical_review = 'approved'; }],
   ['observation original receipt changed', m => { m.observations[0].transcription_review_sha256 = '0'.repeat(64); }],
+  ['observation revision omitted', m => { delete m.observations[0].annotation_revision; }],
+  ['observation revision identity changed', m => { m.observations[0].annotation_revision_id = 13; }],
+  ['observation initial review changed', m => { m.observations[0].initial_transcription_review_sha256 = '0'.repeat(64); }],
   ['observation PDF origin downgraded', m => { m.observations[0].text_origin = 'original'; }],
   ['observation extraction digest omitted', m => { delete m.observations[0].extraction_sha256; }],
   ['observation page omitted', m => { delete m.observations[0].source_page; }],
@@ -290,6 +300,7 @@ for (const [name, change] of [
   ['unresolved payload downgraded', m => { m.unresolved = structuredClone(m.unresolved); delete m.unresolved[0].classification_origin; }],
   ['unresolved page forged', m => { m.unresolved = structuredClone(m.unresolved); m.unresolved[0].source_page = 1; }],
   ['conflict provenance omitted', m => { delete m.conflicts[0].observation_refs[0].annotation_method; }],
+  ['conflict revision changed', m => { m.conflicts[0].observation_refs[0].annotation_revision = 1; }],
   ['conflict original digest changed', m => { m.conflicts[0].observation_refs[0].source_sha256 = '0'.repeat(64); }],
   ['conflict page line changed', m => { m.conflicts[0].observation_refs[0].page_line = 88; }],
 ]) {
@@ -305,6 +316,27 @@ for (const [name, change] of [
     assert.equal(h.elements.questions.textContent, '');
     assert.equal(h.elements.root.dataset.state, 'unavailable');
     assert.equal(buttons(h).length, 1);
+  });
+}
+
+for (const field of ['annotation_revision_id', 'annotation_revision']) {
+  test(`a consistently copied invalid ${field} cannot make a manual record actionable`, async () => {
+    for (const invalid of [undefined, true, 0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+      const h = harness(), input = manualFixture();
+      for (const row of [...input.state.sources, ...input.state.assertions,
+        ...input.model.current_sources, ...input.model.history, ...input.model.observations,
+        ...input.model.conflicts.flatMap(item => item.observation_refs)]) {
+        if (row.classification_origin !== 'user_selected') continue;
+        if (invalid === undefined) delete row[field]; else row[field] = invalid;
+        if (row.document_intake) {
+          if (invalid === undefined) delete row.document_intake[field]; else row.document_intake[field] = invalid;
+        }
+      }
+      const pending = h.component.load(input.state); h.requests.at(-1).resolve(input.model);
+      assert.equal(await pending, false, String(invalid));
+      assert.equal(h.elements.findings.textContent, '');
+      assert.equal(h.elements.root.dataset.state, 'unavailable');
+    }
   });
 }
 

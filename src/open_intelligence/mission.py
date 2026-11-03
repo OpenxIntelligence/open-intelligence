@@ -46,7 +46,8 @@ def _known_statement(assertion: dict) -> dict:
     if assertion.get("classification_origin") == "user_selected":
         for key in ("classification_origin", "annotation_method", "clinical_review",
                     "transcription_review_sha256", "text_origin", "extraction_sha256",
-                    "source_page", "page_line", "page_text_sha256"):
+                    "source_page", "page_line", "page_text_sha256",
+                    "annotation_revision", "annotation_revision_id"):
             if key in assertion:
                 result[key] = assertion[key]
     return result
@@ -76,6 +77,16 @@ def _material_changes(events: list[dict]) -> list[dict]:
                 effect = "no dependent investigations were marked stale"
             change_kind = "source_amended"
             summary = f"{document_id}@{version} replaced source version #{amends_id}; {effect}."
+        elif kind == "document_annotations_revised":
+            source_id = details.get("source_id")
+            revision = details.get("annotation_revision")
+            if type(source_id) is not int or type(revision) is not int:
+                continue
+            invalidated = details.get("invalidated_snapshots", [])
+            ids = ", ".join(str(item) for item in invalidated if type(item) is int) or "none"
+            change_kind = "annotations_revised"
+            summary = (f"Selected passages for source #{source_id} changed to annotation revision {revision}; "
+                       f"original document unchanged. Dependent investigation IDs marked stale: {ids}.")
         elif kind == "evidence_invalidated":
             evidence_version_id = details.get("evidence_version_id")
             invalidated = details.get("invalidated_snapshots")
