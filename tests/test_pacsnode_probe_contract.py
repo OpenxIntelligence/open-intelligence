@@ -1,8 +1,10 @@
 """No-network validation of the real-backend evaluation harness."""
 import unittest
+from unittest.mock import patch
+import json
 from open_intelligence.store import InvalidInput
 from tools.imaging.pacsnode_live_probe import (
-    SOP_UIDS, IMAGE_STUDY_UID, _uid_value, loopback_origin,
+    SOP_UIDS, IMAGE_STUDY_UID, _uid_value, _qido_list, loopback_origin,
     multipart_body, multipart_dicom_parts,
 )
 
@@ -53,6 +55,22 @@ class RealBackendHarnessTests(unittest.TestCase):
         ):
             with self.subTest(row=row),self.assertRaises(InvalidInput):
                 _uid_value(row,"00080018")
+
+    def test_qido_mime_deviation_is_retained_not_silently_corrected(self):
+        payload = json.dumps([{"0020000D": {"vr": "UI", "Value": [IMAGE_STUDY_UID]}}]).encode()
+        for media in ("application/dicom+json", "application/json"):
+            with self.subTest(media=media), patch(
+                "tools.imaging.pacsnode_live_probe._request",
+                return_value=(200, media, payload)
+            ):
+                result, actual_mime = _qido_list("http://127.0.0.1:18042/wado/studies")
+                self.assertEqual(actual_mime, media)
+                self.assertEqual(_uid_value(result[0], "0020000D"), IMAGE_STUDY_UID)
+        with patch(
+            "tools.imaging.pacsnode_live_probe._request",
+            return_value=(200, "text/html", payload)
+        ), self.assertRaises(InvalidInput):
+            _qido_list("http://127.0.0.1:18042/wado/studies")
 
     def test_study_uid_scope_is_fixed_fictional(self):
         self.assertEqual(len(SOP_UIDS),2)
