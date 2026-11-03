@@ -114,6 +114,21 @@ def exercise(cd, patient_id, case_id, source_id, source_text,
         fresh_queue()
         assert cd.evaluate('document.querySelector(' + json.dumps(review.item()) + ').dataset.state') == 'awaiting_independent_verification'
         review.reason_value(question_id, reason)
+        # Inspecting the source before submitting must not silently replace the
+        # operator's unfinished reason with the fictional example text.
+        prior_history = cd.evaluate("document.querySelector('[data-testid=review-return-history]')?.textContent")
+        cd.evaluate("[...document.querySelectorAll('[data-testid=review-workspace] button')]"
+                    ".find(e=>e.textContent==='View source questions').click()")
+        cd.wait("Boolean(document.querySelector('[data-testid=source-question-panel]'))",
+                'contextual source inspection before return submission')
+        questions.navigate('Records')
+        questions.navigate('Overview')
+        review.navigate('Review')
+        assert cd.evaluate('document.querySelector(' + json.dumps(review.item())
+                           + ").querySelector('[data-testid=review-reason]').value") == reason, \
+            'Same-context navigation must preserve the exact unfinished verification reason'
+        assert cd.evaluate("document.querySelector('[data-testid=review-return-history]')?.textContent") == prior_history, \
+            'Navigation must not submit an unfinished verification return'
         prior_return = cd.evaluate("document.querySelector('[data-testid=review-return-id]')?.textContent")
         review.submit(question_id)
         cd.wait("document.querySelector('[data-testid=review-return-status]')?.dataset.phase==='saved'"
