@@ -13,8 +13,8 @@ class PatientRequestLimit:
         route = scope.get("path", "")
         bounded = route == "/v1/patients" or (
             route.startswith("/v1/patients/") and (
-                route.endswith("/record-requests") or
-                ("/record-requests/" in route and route.endswith("/cancel"))
+                route.endswith("/record-requests") or route.endswith("/case-bindings") or
+                (("/record-requests/" in route or "/case-bindings/" in route) and route.endswith("/cancel"))
             )
         )
         if scope["type"] != "http" or scope["method"] != "POST" or not bounded:
