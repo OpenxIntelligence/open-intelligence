@@ -160,7 +160,9 @@ def main():
                 assert cd.evaluate("document.querySelector('[data-testid=source-index]').textContent.includes('Amended fictional marker is reported negative.')")
                 assert cd.evaluate("document.querySelectorAll('[data-testid=source-statement]').length===1")
                 from reading_convergence_journey import exercise as exercise_reading
-                exercise_reading(cd)
+                assert cd.evaluate("Boolean(document.querySelector('[data-testid=reviewed-document-disclosure]')) && !document.querySelector('[data-testid=reviewed-document-disclosure]').open"), 'Reviewed originals start collapsed beside the structured import'
+                assert cd.evaluate("!document.querySelector('[data-testid=reviewed-file]').checkVisibility()"), 'Closed reviewed intake preserves the reading-first workspace'
+                exercise_reading(cd,credentials,write_grants)
                 # The new Records action must recheck the canonical source before
                 # offering a question draft; no implicit question save or Composer call.
                 cd.evaluate("""(() => {
