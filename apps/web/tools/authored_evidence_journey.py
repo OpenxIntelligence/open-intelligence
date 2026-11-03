@@ -146,14 +146,15 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
         return evidence
 
     def assess(evidence, relation, quote, rationale, *, lose_response=False):
+        post_count = len([r for r in responses() if r['method'] == 'POST'])
         click(f'[data-testid=evidence-version][data-evidence-id="{evidence["evidence_id"]}"] [data-testid=evidence-select]')
         value('[data-testid=evidence-quote]', quote)
         value('[data-testid=evidence-relation]', relation)
         value('[data-testid=evidence-applicability]', 'limited')
         value('[data-testid=evidence-rationale]', rationale)
+        assert len([r for r in responses() if r['method'] == 'POST']) == post_count
         # Editing is local. An unchanged fresh read must retain the exact draft,
         # and leaving the component must not silently discard it.
-        post_count = len([r for r in responses() if r['method'] == 'POST'])
         prior = len(responses())
         click('[data-testid=evidence-refresh]')
         cd.wait('window.__oiAuthoredEvidenceChecks.responses.length>' + str(prior)

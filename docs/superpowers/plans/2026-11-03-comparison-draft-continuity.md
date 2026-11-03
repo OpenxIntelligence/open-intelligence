@@ -17,8 +17,9 @@ No new patient/session/backend authority, schema, grant or dependency.
 - Preserve #307's common-authority denial clearing, independent metadata/task
   grants, exact uncertain writes, #316 status-bearing downloads and the later
   source-reading/follow-up/intake owners. The donor's old
-  `question_evidence_journey.py` now belongs to metadata discovery; transfer only
-  the draft checks into `authored_evidence_journey.py` and its separate observer.
+  `question_evidence_journey.py` has been split/renamed in the current base;
+  transfer the draft checks into `authored_evidence_journey.py` and its separate
+  observer, preserving the independent `question_metadata_journey.py` helper.
 
 ## Bounded implementation and acceptance
 
