@@ -1134,6 +1134,8 @@ dialog pre {
 @media print {
   .report-actions { display: none; }
   .report-section { break-inside: auto; }
+  .report-section-head { break-after: avoid; }
+  .report-section-head + p { break-before: avoid; }
   .report-item { break-inside: avoid; }
   #patient-report .pill-warn { color: #000; background: #fff; border: 2px solid #000; }
   body.printing-patient-report > :not(.layout),
