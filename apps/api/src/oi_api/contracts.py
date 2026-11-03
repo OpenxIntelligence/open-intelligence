@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-SCHEMA_REVISION = "0002_patient_registry"
+SCHEMA_REVISION = "0003_record_acquisition"
 POSTGRES_MAJOR = 16
 
 
@@ -19,7 +19,7 @@ class Liveness(Contract):
 class DatabaseStatus(Contract):
     status: Literal["unconfigured", "unavailable", "unsupported_version", "schema_mismatch", "ready"]
     required_postgres_major: Literal[16] = POSTGRES_MAJOR
-    required_revision: Literal["0002_patient_registry"] = SCHEMA_REVISION
+    required_revision: Literal["0003_record_acquisition"] = SCHEMA_REVISION
 
 
 class Readiness(Contract):
@@ -34,6 +34,6 @@ class VersionManifest(Contract):
     authentication: Literal["deny_all", "synthetic_fixture", "trusted_provider"] = "deny_all"
     patient_data_enabled: Literal[False] = False
     synthetic_registry_enabled: Literal[True] = True
-    capabilities: list[Literal["synthetic_patient_create", "synthetic_patient_read"]] = Field(
-        default_factory=lambda: ["synthetic_patient_create", "synthetic_patient_read"])
+    capabilities: list[Literal["synthetic_patient_create", "synthetic_patient_read", "synthetic_record_request_create", "synthetic_record_request_list", "synthetic_record_request_cancel"]] = Field(
+        default_factory=lambda: ["synthetic_patient_create", "synthetic_patient_read", "synthetic_record_request_create", "synthetic_record_request_list", "synthetic_record_request_cancel"])
     openapi: Literal["/v1/openapi.json"] = "/v1/openapi.json"
