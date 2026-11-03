@@ -1,3 +1,5 @@
+/** Source-scoped, read-only Overview projection; no extra patient ledger. */
+export {patientContinuity} from './patient-continuity.js';
 /** Transient UI state over the canonical patient API; never an authority or ledger. */
 import {parseCaseBindingList, parseSourceIndex} from './source-contracts.js';
 import {decodeQuestionSourcePacket} from './source-quote-review-packet.js';
