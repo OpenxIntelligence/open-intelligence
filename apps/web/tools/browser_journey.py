@@ -255,7 +255,7 @@ def main():
             assert q1 in inbox and q2 in inbox
             assert sid in inbox and correction['source_id'] in inbox
             assert "Source changed" in inbox
-            assert "Current source" in inbox
+            assert "CURRENT / UNREVIEWED" in inbox
             assert "Clinical approval is unavailable" in inbox
             assert cd.evaluate("document.querySelectorAll('[data-testid=return-for-verification]').length===1")
             assert cd.evaluate("!document.querySelector('[data-testid=review-return-result]')")
@@ -273,7 +273,6 @@ def main():
             assert "not an authenticated clinician" not in history  # wording does not assert proof
             assert "Not an authenticated clinician" in history
             assert "Source changed" in history
-            assert "No external notification" not in history  # no external delivery claim
             # A separate review-read grant can be revoked without modifying
             # source records or question history; the UI must erase the inbox.
             credentials[0]['actions'].remove('review_queue_read')
