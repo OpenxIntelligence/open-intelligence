@@ -4,9 +4,15 @@ This is the FastAPI/PostgreSQL 16 composition root for [issue #112](https://gith
 It mounts the existing canonical patient registry and a small synthetic record-request operational domain, with migrations and durable event receipts.
 The Python/SQLite prototype remains the evidence/investigation reference. This
 branch now connects canonical PostgreSQL sources, source questions and
-nonterminal verification-return receipts, and bounded fictional evidence
-metadata links. Evidence appraisal and report persistence remain separate
-integration work.
+nonterminal verification-return receipts, bounded fictional evidence metadata
+links, case-owned fictional evidence originals, human-authored comparisons,
+immutable evidence reports and question-linked follow-through. The latter
+owners are composed in the #307 → #322 → #328 lineage; see the
+[current checkpoint](../../docs/project-state/PROJECT_STATE.md) and
+[continuity evidence](../../docs/engineering/H1_EVIDENCE_CONTINUITY.md).
+Qualified biomedical retrieval, scientific/model appraisal and professional
+clinical approval remain separate work. Current source/evidence/report software
+does not establish those capabilities or a merged/clinical release.
 
 ## Question-scoped fictional evidence metadata
 

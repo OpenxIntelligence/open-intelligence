@@ -2,7 +2,45 @@
 
 Assessment date: 3 November 2026. Initial assessment recorded before this branch's product changes.
 
-## Current-truth reconciliation — 3 November 2026
+## Current publication follow-up — #355
+
+The selected publication base is [draft #355](https://github.com/OpenxIntelligence/open-intelligence/pull/355)
+at `6f836b451c2e8426e5c3b2be194408424f95c69f`. At the 3 November 2026
+19:03 UTC refresh, it already contained the approved local candidate's 13
+implementation/test/package/helper blobs byte-for-byte. This follow-up carries
+only shared-source CI trigger/boundary-scan coverage and documentation updates,
+preserving #355's backlog and plan. Its own published-head hosted verification
+is pending at this source checkpoint and belongs in the resulting PR receipt.
+The founder has authorized publication and hosted checks; merge and deployment
+remain separate. See [continuity evidence](../engineering/H1_EVIDENCE_CONTINUITY.md).
+
+## Historical local reconciliation — #328 and c1484ed
+
+Live GitHub and source audit on **3 November 2026** confirms main remains
+`24519839aa8ac1ea3aff88a956349ba72798a72a`. The selected connected H1 base is
+[draft #328](https://github.com/OpenxIntelligence/open-intelligence/pull/328) at
+`5a188d4e18e4d80bc2ba1d662c966abc3096301f`, directly parented by #322 at
+`19b75317701ae01fc93844077ac94c351fd982bd`. This is 168 commits and 262 changed
+paths ahead of main; a small child diff does not approve that parent chain.
+
+| Scope | Current evidence and remaining boundary |
+|---|---|
+| Implemented in #328 | Canonical PostgreSQL patient/case/source/question state; original-source reading and exact quotations; nonterminal verification returns; fictional metadata citations and evidence originals; human-authored comparisons; immutable status-bearing reports; question-owned follow-through and attention controls. These are synthetic engineering capabilities, not professional clinical review. |
+| Independently rechecked donor results | #322 API [41664891742](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41664891742) and web [41664891696](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41664891696) succeeded. #328 web [41666427184](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41666427184) succeeded. Their recorded submitted-review lists were empty at this audit. |
+| Current local candidate | #328 plus chronology #330 (`312ad9379311901f8a69a7c20d4ea09f98027481`), intake disclosure #335 (`9d173843f924b40becba3a7dffd71717c12afb5d`), and dependency-evidence gate #339 (`d694db4ca12206e815d6045b73baa9b6f7394290`). H1 web CI now watches imported shared source/test inputs and executes the existing synthetic-data boundary scan. |
+| Local execution | Pristine archived #328: 300 client tests passed. Donor regressions reproduced nine chronology and eight rights-evidence failures before fixes. Combined candidate: 310 client tests and 13 rights controls passed, no skips; production TypeScript/Vite build, installed dependency gate and synthetic boundary scan passed. Browser helpers compile. Exact commands and boundaries are in the existing continuity record. |
+| Still required | Hosted PostgreSQL/FastAPI/built-React/Chromium acceptance of this new combined head, fresh owner/parent-chain review, and publication approval. Parent API/restore success remains attributed to the parent's unchanged runtime; no new full backend/restore run is claimed. The candidate has not been pushed, merged or deployed. |
+| Complete product gap | Ordinary supported document extraction, typed clinical context, one permitted biomedical retrieval/investigation/review loop, real account/profile/caregiver authority, clinical sign-off and independent workflow evaluation remain unfinished. Read the full 15-step MVP acceptance crosswalk separately from the bounded H1 milestone. |
+
+The [30-domain research crosswalk](../research/PATIENT_JOURNEY_CAPABILITY_CROSSWALK_2026-11-03.md)
+maps the existing owners, while [current gaps](INCOMPLETE_FEATURES.md) and
+[requirements](PRODUCT_REQUIREMENTS.md) describe remaining behavior. All 28
+founding documentation responsibilities have existing owners or indexed source
+homes; expand their evidence rather than create competing documentation or
+task registries. Research, adopted decisions, implementation, verification,
+independent acceptance and release clearance remain separate statuses.
+
+## Historical #293/#298 current-truth checkpoint — 3 November 2026
 
 This later audit updates the selected implementation baseline and next work. The initial assessment, former plans and verification receipts below remain historical evidence; their earlier use of "planned" or "selected baseline" does not describe the newer #293/#298 checkpoints.
 
