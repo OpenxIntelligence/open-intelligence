@@ -132,6 +132,64 @@ def main():
    state=json.load(urlopen(url+'api/cases/'+CASE+'/state'))
    assert next(s for s in state['snapshots'] if s['id']==old['id'])['summary']==old['summary']
    assert next(s for s in state['snapshots'] if s['id']!=old['id'])['state']=='draft'
+   # The new patient case must never silently inherit unfinished content
+   # from the previous case, even when a source file has been inspected.
+   cd.evaluate("""(() => {
+    document.querySelector('#new-workspace-button').click();
+    document.querySelector('#case-create-code').value='CASE-OTHER';
+    document.querySelector('#case-create-alias').value='Other';
+    document.querySelector('#case-create-confirm').click();
+    document.querySelector('#case-create-form').requestSubmit();
+   })()""")
+   cd.wait("document.querySelector('#case-heading').textContent==='Fictional case Other' && document.body.dataset.workspaceState==='ready'",
+           'second separate fictional case created in real UI')
+   cd.evaluate("""(() => {
+    const picker=document.querySelector('#case-picker');
+    picker.value='CASE-START';picker.dispatchEvent(new Event('change'));
+   })()""")
+   cd.wait("document.querySelector('#case-heading').textContent==='Fictional case Start' && document.body.dataset.workspaceState==='ready'",
+           'first fictional case reselected')
+   cd.evaluate("if(!document.querySelector('#source-intake').open) document.querySelector('#source-intake > summary').click()")
+   doc=cd.command('DOM.getDocument')
+   file_input=cd.command('DOM.querySelector',{'nodeId':doc['root']['nodeId'],'selector':'#source-file'})
+   cd.command('DOM.setFileInputFiles',{'files':[str(Path(tmp)/'original.txt')],'nodeId':file_input['nodeId']})
+   cd.wait("!document.querySelector('#source-preview-details').hidden",
+           'source bytes staged but not imported')
+   cd.evaluate("""(() => {
+    document.querySelector('#question-text').value='Unsubmitted fictional question for case Start';
+    document.querySelector('#report-text').value='Unsubmitted original fictional source text';
+    const picker=document.querySelector('#case-picker');
+    picker.value='CASE-OTHER';picker.dispatchEvent(new Event('change'));
+   })()""")
+   cd.wait("document.querySelector('#case-picker').value==='CASE-START' && document.querySelector('#notice').textContent.includes('Save or explicitly clear')",
+           'case switch veto preserves unfinished source and question')
+   assert cd.evaluate("document.querySelector('#question-text').value==='Unsubmitted fictional question for case Start'")
+   assert cd.evaluate("document.querySelector('#report-text').value==='Unsubmitted original fictional source text'")
+   assert cd.evaluate("document.querySelector('#source-file').files.length===1")
+   assert cd.evaluate("document.querySelector('#source-upload-preview').textContent") == ORIGINAL.decode('utf-8'), \
+    'veto must not erase the exact inspected source'
+   # Clearing all three drafts is an explicit user decision. The next switch
+   # must clear the file preview and must not attach any work to the other case.
+   cd.evaluate("""(() => {
+    document.querySelector('#question-text').value='';
+    document.querySelector('#report-text').value='';
+    document.querySelector('#source-file').value='';
+    const picker=document.querySelector('#case-picker');
+    picker.value='CASE-OTHER';picker.dispatchEvent(new Event('change'));
+   })()""")
+   cd.wait("document.querySelector('#case-heading').textContent==='Fictional case Other' && document.body.dataset.workspaceState==='ready'",
+           'explicitly cleared drafts permit next case')
+   cd.wait("document.querySelector('#source-preview-details').hidden && !document.querySelector('#source-file').files.length",
+           'source intake scope reset only after accepted case switch')
+   other=json.load(urlopen(url+'api/cases/CASE-OTHER/state'))
+   assert not other['sources'] and not other['questions'] and not other['snapshots'], \
+    'unfinished work leaked into another fictional case'
+   cd.evaluate("""(() => {
+    const picker=document.querySelector('#case-picker');
+    picker.value='CASE-START';picker.dispatchEvent(new Event('change'));
+   })()""")
+   cd.wait("document.querySelector('#case-heading').textContent==='Fictional case Start' && document.body.dataset.workspaceState==='ready'",
+           'original case history reselected after denied switch')
    cd.command('Emulation.setDeviceMetricsOverride',{'width':1440,'height':1000,'deviceScaleFactor':1,'mobile':False})
    artifacts=os.environ.get('OI_INTAKE_ARTIFACT_DIR')
    if artifacts:
