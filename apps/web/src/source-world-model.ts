@@ -73,7 +73,7 @@ function source(v:unknown):SourceVersion{
      s.supersedes_id!==null&&(!SOURCE.test(str(s.supersedes_id,36))))return error();
   str(s.document_id,128);pos(s.version);date(s.event_date);date(s.issued_at);stamp(s.received_at);
   if(s.specimen_id!==null)str(s.specimen_id,128);
-  return Object.freeze(s as SourceVersion);
+  return Object.freeze({...s} as SourceVersion);
 }
 function ref(v:unknown,currentIds:Set<string>):WorldRef{
   const r=shape(v,['source_id','source_line']);
@@ -94,7 +94,7 @@ function obs(v:unknown,current:Map<string,SourceVersion>):WorldObservation{
   const quote=x.source_statement;
   if(typeof quote!=='string'||!quote||quote.length>8192)return error();
   str(x.finding_key,128);pos(x.source_line);
-  return Object.freeze(x as WorldObservation);
+  return Object.freeze({...x} as WorldObservation);
 }
 export function parseSourceWorldModel(raw:unknown,expectedPatient:string,expectedCase:string):SourceWorldModel{
   if(!PID.test(expectedPatient)||!CASE.test(expectedCase))return error();
