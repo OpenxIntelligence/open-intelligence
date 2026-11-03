@@ -71,7 +71,7 @@ test('cross-patient, forged clinical authority, hash/source mismatch and count f
     m=>{m.observations[0].reported_state='negative';},
     m=>{m.conflicts=[{status:'unresolved_source_disagreement',
       specimen_id:'SPECIMEN-ONE',event_date:'2026-01-10',finding_key:'marker',
-      reported_states:['reported','negative'],source_refs:[{source_id,source_line:8}],
+      reported_states:['reported','negative'],source_refs:[{source_id:sourceId,source_line:8}],
       clinical_interpretation:'not_performed'}];},
   ]){
     const v=world();mutate(v);
@@ -86,7 +86,7 @@ test('known same-specimen same-date contradiction is never promoted to assessmen
     source_sha256:'d'.repeat(64),reported_state:'negative',source_statement:'Fictional negative'});
   w.conflicts=[{status:'unresolved_source_disagreement',specimen_id:'SPECIMEN-ONE',
     event_date:'2026-01-10',finding_key:'marker',reported_states:['negative','not-reported','reported'],
-    source_refs:[{source_id,source_line:8},{source_id:other,source_line:8}],
+    source_refs:[{source_id:sourceId,source_line:8},{source_id:other,source_line:8}],
     clinical_interpretation:'not_performed'}];
   w.summary={current_sources:2,historical_sources:0,current_observations:2,
     unresolved_observations:1,source_disagreements:1};
