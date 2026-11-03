@@ -61,7 +61,8 @@
       const entry = document.createElement('li');
       const button = el('button',
         anchor.document_id + '@' + anchor.version + ', line ' +
-        anchor.source_line + ' · ' + anchor.reported_state);
+        anchor.source_line + ' · ' +
+        (anchor.classification_origin === 'user_selected' ? 'User-selected: ' : '') + anchor.reported_state);
       button.type = 'button';
       button.className = 'button secondary';
       button.dataset.sourceId = String(anchor.source_version_id);
@@ -75,6 +76,8 @@
         }));
       });
       entry.append(button);
+      if (anchor.classification_origin === 'user_selected')
+        entry.append(el('p', 'Passage and status manually selected. Clinical review not performed.', 'tiny muted'));
       sourceList.append(entry);
     }
     const missing = section('Not available in this application yet',

@@ -3,6 +3,39 @@
 @import url("./tokens.css");
 @import url("./base.css");
 
+/* Document intake shares the existing source and review workspace. */
+.intake-fields {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-2);
+  margin: var(--space-3) 0;
+  padding: 0;
+  border: 0;
+}
+.intake-fields legend { padding: var(--space-3) 0 var(--space-2); font-weight: 700; }
+.intake-field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+.intake-field-grid > div { display: grid; gap: var(--space-1); min-width: 0; }
+.intake-original {
+  max-height: 320px;
+  overflow: auto;
+  margin-block: var(--space-3);
+  border: 1px solid var(--color-rule);
+  background: var(--color-paper-2);
+}
+.intake-source-line { display: grid; grid-template-columns: 44px minmax(0, 1fr); align-items: start; }
+.intake-source-line > span { padding: var(--space-2); white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--font-mono, monospace); font-size: var(--text-sm); }
+.intake-line-select { min-height: 44px; border: 0; border-right: 1px solid var(--color-rule); border-bottom: 1px solid var(--color-rule); color: var(--color-ink-2); background: var(--color-paper); cursor: pointer; }
+.intake-line-select:hover, .intake-line-select:focus-visible { background: var(--color-paper-2); color: var(--color-accent-ink); }
+.intake-passage { display: grid; gap: var(--space-2); border-left: 3px solid var(--color-rule); padding: var(--space-3); overflow-wrap: anywhere; }
+.intake-confirmation { display: flex; gap: var(--space-2); align-items: start; }
+.intake-confirmation input { flex: 0 0 auto; width: auto; margin-top: 0.4em; }
+.intake-provenance, .intake-legacy { margin-block: var(--space-3); }
+.intake-provenance p { overflow-wrap: anywhere; }
+.intake-legacy > summary { cursor: pointer; color: var(--color-muted); }
+#intake-success-actions { flex-wrap: wrap; }
+#intake-file { max-width: 100%; }
+@media (max-width: 600px) { .intake-field-grid { grid-template-columns: 1fr; } }
+
 :root {
   color-scheme: light;
   font-family: var(--font-body);

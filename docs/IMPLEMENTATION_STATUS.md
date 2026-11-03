@@ -1,5 +1,34 @@
 # Implementation slice 01 — source and investigation ledger
 
+## Document intake checkpoint — 2 November 2026
+
+The current feature adds ordinary UTF-8 `.txt` file upload, read-only preview,
+manual exact-line passage selection, confirmed metadata, original-byte download,
+and the existing timeline/question/Composer/report path. It extends the original
+source/version/assertion/event owner; it does not create another patient or
+record store. See [the intake contract](engineering/DOCUMENT_INTAKE.md).
+
+Manual statuses retain `classification_origin=user_selected` and
+`clinical_review=not_performed` in the patient views, Patient Mission, timeline,
+change review, investigation prompt, Composer preview/fingerprint, and snapshot
+export. The selected quote remains distinct from the operator's classification.
+An amendment uses the existing atomic invalidation and review mechanism.
+
+At this checkpoint, 349 Python/domain/HTTP tests passed locally, including 19
+intake domain tests and 14 intake HTTP tests. Six direct JavaScript intake cases
+passed. A subsequent 43-test projection-specific regression run verifies manual
+origin in Patient Mission, timeline and change review. Exact-head hosted browser
+acceptance remains pending until a run is recorded on the feature PR. Local
+Chrome/Chromium is unavailable; a test file's presence is not browser evidence.
+
+The feature is stacked on verified PR #140. It is unmerged synthetic-only code,
+not an authenticated clinical release. Limits include no PDF/OCR, no trusted
+patient identity/session, no clinical interpretation, and no post-save annotation
+editing. Original-only uploads are allowed, but their passages cannot be added
+later through this version. No new third-party dependency is introduced.
+
+The earlier checkpoints below describe their respective source trees.
+
 ## Current additive checkpoint — 2 November 2026
 
 The platform mandate is now explicit in `AGENTS.md`: build a complete first-party cancer-care ecosystem incrementally, with a useful integrated MVP before advanced custom models. Public patient narratives inform workflow discovery only; Sid's patient data is excluded from development, training, evaluation, testing and synthetic derivation.

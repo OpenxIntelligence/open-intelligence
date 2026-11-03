@@ -151,6 +151,10 @@ def case_timeline(store: CaseStore, case_id: str) -> dict:
                 (source_id,)).fetchall()]
 
         current = sorted((row for row in rows if row["state"] == "current"), key=_order_key)
+        from .document_intake import classification_provenance
+        intake_receipts = store._document_intake_receipts(case_id)
+        def provenance(source_id: int) -> dict:
+            return classification_provenance(intake_receipts[source_id]) if source_id in intake_receipts else {}
         entries = [{
             "source_id": row["id"],
             "document_id": row["document_id"],
@@ -164,7 +168,8 @@ def case_timeline(store: CaseStore, case_id: str) -> dict:
             "state": "current",
             "supersedes_source_id": row["supersedes_id"],
             "reported_findings": [
-                {"finding_key": item["finding_key"], "reported_state": item["certainty"]}
+                {"finding_key": item["finding_key"], "reported_state": item["certainty"],
+                 **provenance(row["id"])}
                 for item in findings_for(row["id"])
             ],
         } for row in current]
