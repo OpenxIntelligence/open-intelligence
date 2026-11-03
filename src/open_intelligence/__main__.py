@@ -254,6 +254,12 @@ class Handler(BaseHTTPRequestHandler):
                         discovery_link[1], data.get("question_id"), data.get("discovery_id"),
                         data.get("applicability"), data.get("rationale"),
                         data.get("broker_link_ids"))})
+                discovery_reattach = re.fullmatch(
+                    rf"/api/cases/{ID_PART}/discovery-reattachments", path)
+                if discovery_reattach:
+                    return self._json(200, store.reattach_discovery_item(
+                        discovery_reattach[1], data.get("discovery_id"),
+                        data.get("new_rights_source_id"), data.get("reason")))
                 rights_register = path == "/api/rights/sources"
                 if rights_register:
                     return self._json(201, store.register_rights_source(
