@@ -14,6 +14,7 @@ from urllib.parse import parse_qs, urlsplit
 from tools.crossref_metadata import MetadataInputError, fetch_public_doi, project_work
 
 from .changes import changes_since_review
+from .home import build_case_home
 from .investigation import (
     TEMPLATES,
     InvestigationError,
@@ -154,6 +155,9 @@ class Handler(BaseHTTPRequestHandler):
             case_mission = re.fullmatch(rf"/api/cases/{ID_PART}/mission", path)
             if case_mission:
                 return self._json(200, build_patient_mission(store.state(case_mission[1])))
+            case_home = re.fullmatch(rf"/api/cases/{ID_PART}/home", path)
+            if case_home:
+                return self._json(200, build_case_home(store, case_home[1]))
             changes = re.fullmatch(rf"/api/cases/{ID_PART}/changes-since-review", path)
             if changes:
                 raw_since = parse_qs(urlsplit(self.path).query).get("since_event_id", [None])[0]

@@ -637,12 +637,16 @@ class CaseStore:
                     (case_id, source_id, finding.key, finding.state, finding.quote, finding.line))
             invalidated = []
             invalidated_options = []
+            invalidated_investigations: list[int] = []
             if previous:
                 invalidated = [row[0] for row in self.db.execute(
                     """SELECT snapshots.id FROM snapshots JOIN snapshot_sources
                     ON snapshots.id=snapshot_sources.snapshot_id
                     WHERE snapshots.case_id=? AND snapshot_sources.source_version_id=? AND snapshots.state!='stale'""",
                     (case_id, previous["id"])).fetchall()]
+                fresh_investigations = [row[0] for row in self.db.execute(
+                    "SELECT id FROM investigations WHERE case_id=? AND stale=0 ORDER BY id",
+                    (case_id,)).fetchall()]
                 if invalidated:
                     marks = ",".join("?" for _ in invalidated)
                     self.db.execute(f"UPDATE snapshots SET state='stale' WHERE id IN ({marks})", invalidated)
@@ -652,6 +656,24 @@ class CaseStore:
                     # they cite the superseded source's facts, so mark them stale
                     # rather than silently leaving them current.
                     self.db.execute("UPDATE investigations SET stale=1 WHERE case_id=? AND stale=0", (case_id,))
+                # Propagation audit (core): the documented contract is that a
+                # source amendment marks the case's investigations stale, but
+                # the update above runs only when a snapshot cited the
+                # superseded version. Investigations cite current assertions
+                # generally, so any amendment refreshes them: mark whatever is
+                # still fresh. Purely additive — when snapshots were
+                # invalidated, the update above already marked everything and
+                # the select below finds nothing left.
+                still_fresh = [row[0] for row in self.db.execute(
+                    "SELECT id FROM investigations WHERE case_id=? AND stale=0 ORDER BY id",
+                    (case_id,)).fetchall()]
+                if still_fresh:
+                    marks = ",".join("?" for _ in still_fresh)
+                    self.db.execute(f"UPDATE investigations SET stale=1 WHERE id IN ({marks})",
+                                    still_fresh)
+                invalidated_investigations = fresh_investigations
+                if invalidated_investigations:
+                    self._reopen_questions_for_stale_investigations(invalidated_investigations)
                 # OI-021, same transaction: only options in THIS case that
                 # cite the superseded version or a stale snapshot reopen.
                 invalidated_options = self._invalidate_options(
@@ -681,10 +703,12 @@ class CaseStore:
             self._event(case_id, "source_imported", document_id=report.document_id,
                         version=version, source_id=source_id, amends_id=previous["id"] if previous else None,
                         invalidated_snapshots=invalidated, invalidated_options=invalidated_options,
-                        invalidated_inventory_assertions=invalidated_inventory)
+                        invalidated_inventory_assertions=invalidated_inventory,
+                        invalidated_investigations=invalidated_investigations)
             return {"result": "imported", "source_id": source_id, "version": version,
                     "invalidated_snapshots": invalidated, "invalidated_options": invalidated_options,
-                    "invalidated_inventory_assertions": invalidated_inventory}
+                    "invalidated_inventory_assertions": invalidated_inventory,
+                    "invalidated_investigations": invalidated_investigations}
 
 
     # ---- OI-021: reviewed option/dependency view (derived projection) ----
@@ -1301,11 +1325,71 @@ class CaseStore:
             "options": options,
         }
 
-    def _invalidate_evidence_version(self, evidence_version_id: int, *, reason: str) -> tuple[list[int], list[int]]:
+    def _reopen_questions_for_stale_investigations(self, investigation_ids: list[int]) -> list[int]:
+        """Reopen questions left with no fresh support. Caller owns a write txn.
+
+        A question reopens only when it has no non-stale snapshot AND no
+        remaining fresh investigation: marking investigations stale must never
+        reopen a question that still has a current draft or a fresh model
+        output. Returns the reopened question ids. History is preserved;
+        only the question state flips, exactly like snapshot invalidation.
+        """
+        reopened: list[int] = []
+        for investigation_id in investigation_ids:
+            row = self.db.execute(
+                "SELECT case_id, question_id FROM investigations WHERE id=?",
+                (investigation_id,)).fetchone()
+            if not row:
+                continue
+            fresh_snapshot = self.db.execute(
+                "SELECT 1 FROM snapshots WHERE case_id=? AND question_id=? AND state!='stale' LIMIT 1",
+                (row["case_id"], row["question_id"])).fetchone()
+            fresh_investigation = self.db.execute(
+                "SELECT 1 FROM investigations WHERE case_id=? AND question_id=? AND stale=0 LIMIT 1",
+                (row["case_id"], row["question_id"])).fetchone()
+            if fresh_snapshot or fresh_investigation:
+                continue
+            self.db.execute("UPDATE questions SET state='open' WHERE id=? AND case_id=?",
+                            (row["question_id"], row["case_id"]))
+            reopened.append(int(row["question_id"]))
+        return reopened
+
+    @staticmethod
+    def _assessment_citations(claims_json: str) -> set[int]:
+        """Assessment ids cited by stored claims; unparseable rows cite nothing.
+
+        A damaged claims payload must never break an evidence import, and must
+        never cause a blind invalidation either: it is skipped, and the row
+        keeps whatever freshness it had. Stored claims are JSON arrays of
+        objects with a citations list; anything else is not a citation.
+        """
+        try:
+            claims = json.loads(claims_json)
+        except (json.JSONDecodeError, TypeError):
+            return set()
+        if not isinstance(claims, list):
+            return set()
+        cited: set[int] = set()
+        for claim in claims:
+            if not isinstance(claim, dict):
+                continue
+            citations = claim.get("citations")
+            if not isinstance(citations, list):
+                continue
+            for cite in citations:
+                if (isinstance(cite, dict) and cite.get("type") == "assessment"
+                        and type(cite.get("id")) is int):
+                    cited.add(int(cite["id"]))
+        return cited
+
+    def _invalidate_evidence_version(
+            self, evidence_version_id: int, *, reason: str) -> tuple[list[int], list[int], list[int]]:
         """Invalidate dependent snapshots across ALL synthetic cases, retaining history.
 
         Caller must own a write transaction. Only snapshots citing this exact
-        immutable evidence version are affected.
+        immutable evidence version are affected. Model investigations citing
+        an assessment of this exact version go stale the same way, including
+        in cases the snapshot fan-out misses; unrelated rows stay fresh.
         """
         rows = self.db.execute("""SELECT DISTINCT s.id,s.case_id,s.question_id
             FROM snapshots s JOIN snapshot_evidence se ON se.snapshot_id=s.id
@@ -1313,6 +1397,27 @@ class CaseStore:
             WHERE a.evidence_version_id=? AND s.state!='stale'""",
             (evidence_version_id,)).fetchall()
         invalidated = [int(row["id"]) for row in rows]
+        # Propagation audit (core): citation-exact investigation fan-out,
+        # computed before the per-case events so one event carries both
+        # lists. Evidence versions are shared globally, so coarse marking
+        # would stale unrelated cases; only claims citing an assessment of
+        # THIS version are affected.
+        bound_assessments = {int(row[0]) for row in self.db.execute(
+            "SELECT id FROM evidence_assessments WHERE evidence_version_id=?",
+            (evidence_version_id,)).fetchall()}
+        invalidated_investigations: list[int] = []
+        inv_by_case: dict[str, list[int]] = {}
+        if bound_assessments:
+            for inv in self.db.execute(
+                    "SELECT id, case_id, claims_json FROM investigations WHERE stale=0 ORDER BY id").fetchall():
+                if self._assessment_citations(str(inv["claims_json"])) & bound_assessments:
+                    invalidated_investigations.append(int(inv["id"]))
+                    inv_by_case.setdefault(str(inv["case_id"]), []).append(int(inv["id"]))
+        if invalidated_investigations:
+            ids = ",".join("?" for _ in invalidated_investigations)
+            self.db.execute(f"UPDATE investigations SET stale=1 WHERE id IN ({ids})",
+                            invalidated_investigations)
+            self._reopen_questions_for_stale_investigations(invalidated_investigations)
         if invalidated:
             ids = ",".join("?" for _ in invalidated)
             self.db.execute(f"UPDATE snapshots SET state='stale' WHERE id IN ({ids})", invalidated)
@@ -1323,10 +1428,17 @@ class CaseStore:
                 changed = [int(row["id"]) for row in rows if row["case_id"] == case_id]
                 self._event(case_id, "evidence_invalidated",
                             evidence_version_id=evidence_version_id,
-                            reason=reason, invalidated_snapshots=changed)
+                            reason=reason, invalidated_snapshots=changed,
+                            invalidated_investigations=inv_by_case.get(case_id, []))
+        for case_id in sorted(set(inv_by_case) - {str(row["case_id"]) for row in rows}):
+            self._event(case_id, "evidence_invalidated",
+                        evidence_version_id=evidence_version_id,
+                        reason=reason, invalidated_snapshots=[],
+                        invalidated_investigations=inv_by_case[case_id])
         # OI-021: same transaction, dependent options only. Evidence versions
         # are shared, so this fan-out is global exactly like the snapshot
-        # fan-out above; case/source amendments stay case-scoped.
+        # and investigation fan-outs above; case/source amendments stay
+        # case-scoped.
         invalidated_options = self._invalidate_options(
             snapshot_ids=set(invalidated), source_version_ids=set(),
             evidence_version_ids={evidence_version_id})
@@ -1340,7 +1452,7 @@ class CaseStore:
                 self._event(case_id, "option_review_reopened",
                             evidence_version_id=evidence_version_id, reason=reason,
                             invalidated_options=per_case)
-        return invalidated, invalidated_options
+        return invalidated, invalidated_options, invalidated_investigations
 
     def import_synthetic_evidence(self, raw: bytes) -> dict:
         """Version original fictional research text; no live article import is supported."""
@@ -1367,11 +1479,13 @@ class CaseStore:
             version = previous["version"] + 1 if previous else 1
             invalidated: list[int] = []
             invalidated_options: list[int] = []
+            invalidated_investigations: list[int] = []
             if previous:
                 self.db.execute("UPDATE evidence_versions SET state='superseded' WHERE id=?", (previous["id"],))
                 self.db.execute("INSERT INTO evidence_changes (evidence_version_id,kind,reason,recorded_at) VALUES (?,'amended',?,?)",
                                 (previous["id"], "Explicit synthetic source version replacement", now_utc()))
-                invalidated, invalidated_options = self._invalidate_evidence_version(previous["id"], reason="amendment")
+                invalidated, invalidated_options, invalidated_investigations = self._invalidate_evidence_version(
+                    previous["id"], reason="amendment")
             cur = self.db.execute("""INSERT INTO evidence_versions
                 (evidence_key,version,sha256,raw,title,issued_at,received_at,
                  statement,statement_line,rights,state,previous_id)
@@ -1381,7 +1495,8 @@ class CaseStore:
                  previous["id"] if previous else None))
             return {"result": "imported", "evidence_version_id": int(cur.lastrowid),
                     "version": version, "invalidated_snapshots": invalidated,
-                    "invalidated_options": invalidated_options}
+                    "invalidated_options": invalidated_options,
+                    "invalidated_investigations": invalidated_investigations}
 
     def withdraw_synthetic_evidence(self, evidence_version_id: int, reason: str) -> dict:
         """Withdraw a CURRENT fictional item; invalidate related drafts everywhere."""
@@ -1399,9 +1514,11 @@ class CaseStore:
                             (evidence_version_id,))
             self.db.execute("INSERT INTO evidence_changes (evidence_version_id,kind,reason,recorded_at) VALUES (?,'withdrawn',?,?)",
                             (evidence_version_id, reason.strip(), now_utc()))
-            affected, affected_options = self._invalidate_evidence_version(evidence_version_id, reason="withdrawal")
+            affected, affected_options, affected_investigations = self._invalidate_evidence_version(
+                evidence_version_id, reason="withdrawal")
             return {"result": "withdrawn", "invalidated_snapshots": affected,
-                    "invalidated_options": affected_options}
+                    "invalidated_options": affected_options,
+                    "invalidated_investigations": affected_investigations}
 
     def assess_synthetic_evidence(self, case_id: str, question_id: int,
                                   evidence_version_id: int, relation: str,
@@ -1899,16 +2016,31 @@ class CaseStore:
                 FROM snapshots s JOIN snapshot_broker_links sbl ON sbl.snapshot_id=s.id
                 WHERE sbl.broker_link_id=? AND s.state!='stale'""", (broker_link_id,)).fetchall()
             invalidated = [int(r["id"]) for r in rows]
+            # Propagation audit (core): a re-review changes what the cited
+            # link means, so valid discovery links citing it are flagged for
+            # re-review through the event ledger and the return value. Their
+            # rows stay valid: a re-review changes interpretation, not
+            # permission, and the stored invalidation causes remain exactly
+            # revocation and correction.
+            affected_discovery_links = [row[0] for row in self.db.execute(
+                """SELECT DISTINCT dlbl.discovery_link_id
+                FROM discovery_link_broker_links dlbl
+                JOIN discovery_links l ON l.id=dlbl.discovery_link_id
+                WHERE dlbl.broker_link_id=? AND l.case_id=? AND l.state='valid'
+                ORDER BY 1""", (broker_link_id, case_id)).fetchall()]
             if invalidated:
                 ids = ",".join("?" for _ in invalidated)
                 self.db.execute(f"UPDATE snapshots SET state='stale' WHERE id IN ({ids})", invalidated)
                 self.db.execute(f"""UPDATE questions SET state='open' WHERE id IN
                     (SELECT DISTINCT question_id FROM snapshots WHERE id IN ({ids}))""", invalidated)
+            if invalidated or affected_discovery_links:
                 self._event(case_id, "broker_invalidated",
                             broker_link_id=broker_link_id,
-                            reason="review", invalidated_snapshots=invalidated)
+                            reason="review", invalidated_snapshots=invalidated,
+                            affected_discovery_links=affected_discovery_links)
             return {"result": "reviewed", "broker_link_id": broker_link_id,
-                    "invalidated_snapshots": invalidated}
+                    "invalidated_snapshots": invalidated,
+                    "affected_discovery_links": affected_discovery_links}
 
     def rights_sources(self) -> list[dict]:
         """All rights manifests with their permission maps, for inspection."""
