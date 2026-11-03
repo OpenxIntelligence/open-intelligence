@@ -256,3 +256,66 @@ changes. Source owners and main remain unchanged; only a draft child is prepared
 Next: converge owner-reviewed candidates and exercise the same connected workflow
 with reviewed document intake and the separately governed DOI connector. These
 are separate pending branches, not capabilities delivered by this increment.
+
+## Verified #322 / #328 integration review — 3 November 2026
+
+This checkpoint records live GitHub reads, immutable source review and retained
+artifact verification. It supersedes the earlier pending-run wording for these
+exact heads; it does not approve the wider parent chain or a future merge.
+
+### Exact dependency and ownership
+
+- #322 head: `19b75317701ae01fc93844077ac94c351fd982bd`; sole parent
+  #318 `0db90a45ec256d380c01d503162e31ac8ee419b5`.
+- #328 head: `5a188d4e18e4d80bc2ba1d662c966abc3096301f`; sole parent
+  is the #322 head above. Its tree is
+  `269ce69e54fa1338dbfa87ae6e043b36f11d6ba6`.
+- #299 is a selectively reused donor, not an ancestor. All four intended
+  production/test/browser blobs match donor
+  `b47cc6ddde922bb53aa399b7d05adaee2d07620c` exactly.
+- The two changes together touch 12 paths relative to #318. The 397 files
+  unchanged by #328 retain their #322 Git blob IDs and modes. The #328 document appends
+  to the complete #322 document without replacing its existing content.
+
+### Directly checked hosted evidence
+
+| Exact head | Run | Observed coverage |
+| --- | --- | --- |
+| #322 `19b7531` | [41664891696](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41664891696) | 278 client tests; build; actual PostgreSQL/FastAPI/React browser journey |
+| #322 `19b7531` | [41664891742](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41664891742) | 416 API tests without skips; 287 prototype tests; HTTP, restart and backup/restore acceptance |
+| #328 `5a188d4` | [41666427184](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41666427184) | 300 client tests without skips; build; complete connected browser journey, including follow-through attention |
+
+All three runs completed successfully on attempt 1. Checkout logs identify the
+exact PR heads above, rather than GitHub's synthetic merge commits.
+Artifact `13246611987` has SHA-256
+`a954037043d7fbf8321e2641530d30d9ce6cd9d27ea93660392dbbee984f825f`.
+Its commit record and all 403 source files match the #328 tree; executable
+file modes were also checked. This audit did not repeat the full test suites.
+
+The separate full API workflow did not run on #328. Its path filters exclude
+#328's frontend/documentation-only delta. Parent backend acceptance is retained
+as parent evidence, not relabelled as a child run. The current #328 merge-preview
+commit has the same tree as its head, but was not the checkout used in the run.
+
+### Review and remaining gates
+
+Separate automated reviews found no material defect in the bounded evidence
+contract/export or follow-through changes. Canonical patient, source, question,
+evidence, report, task and authorization owners are retained. These reviews are
+not submitted GitHub approvals or human, legal or clinical acceptance.
+
+Both PRs remain open drafts with no submitted review. #322 targets the #318
+branch; #328 targets the #322 branch. Neither targets main. Relative to main
+`24519839aa8ac1ea3aff88a956349ba72798a72a`, #328 is 168 commits ahead,
+zero behind, with 262 changed paths. A review of this two-commit delta does not
+approve that full inherited change set.
+
+Before merge: identify the destination and parent-chain review scope; obtain
+the appropriate human owner acceptance; run both existing H1 workflows on the
+actual approved candidate; record its commit, tree, checkout identities and
+results. A later documentation or code commit is a new candidate. Do not merge
+the child into an obsolete parent branch without an explicit retargeting plan.
+
+No source change, merge, deployment, branch-protection change, real-patient
+use or clinical approval is authorized by this evidence record.
+
