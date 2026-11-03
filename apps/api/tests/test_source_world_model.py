@@ -145,7 +145,8 @@ class SourceWorldModelHTTPTests(SourceFixture):
     def test_inconsistent_source_refs_and_fake_review_status_are_not_projected(self):
         sample = {
             "contract":"oi.synthetic-original-sources/1",
-            "patient_id":"PAT-SYNTH", "case_id":"CASE-ALPHA", "synthetic":True,
+            "patient_id":"PAT-SYNTH", "case_id":"CASE-ALPHA",
+            "access_receipt_id":"ACCESS-"+"A"*32, "synthetic":True,
             "clinical_interpretation":False, "research_review_invalidation_integrated":False,
             "sources":[{
                 "source_id":"SRC-"+"A"*32, "document_id":"DOC-ONE", "version":1,
