@@ -49,7 +49,7 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p ../../verification-web
-          node tools/license-gate.mjs
+          npm run rights 2>&1 | tee ../../verification-web/rights-gate-tests.txt
           npm audit --omit=optional --audit-level=high --json | tee ../../verification-web/audit.json
       - name: Compile client and build actual React UI
         working-directory: apps/web
@@ -86,3 +86,4 @@ jobs:
           path: verification-web/
           if-no-files-found: error
           retention-days: 7
+
