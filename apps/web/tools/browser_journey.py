@@ -146,6 +146,15 @@ def main():
             assert cd.evaluate("!document.querySelector('[data-testid=source-verify]').open")
             assert cd.evaluate("document.querySelector('[data-testid=source-index]').textContent").find(original_id)>=0
             assert cd.evaluate("document.querySelector('[data-testid=source-statement]').textContent.includes('<script>literal</script>')")
+            assert cd.evaluate("document.querySelectorAll('[data-testid=finding-provenance]').length===1")
+            assert cd.evaluate("!document.querySelector('[data-testid=finding-provenance]').open")
+            assert cd.evaluate("document.querySelector('[data-testid=source-finding]').textContent.includes('clinical review not established')")
+            cd.evaluate("document.querySelector('[data-testid=finding-provenance] summary').click()")
+            assert cd.evaluate("document.querySelector('[data-testid=finding-provenance]').open")
+            assert original_id in cd.evaluate("document.querySelector('[data-testid=finding-provenance]').textContent")
+            assert cd.evaluate("document.querySelector('[data-testid=finding-provenance]').textContent.includes('Original line')")
+            cd.evaluate("document.querySelector('[data-testid=finding-provenance] summary').click()")
+            assert cd.evaluate("!document.querySelector('[data-testid=finding-provenance]').open")
             assert cd.evaluate("document.querySelectorAll('[data-testid=source-statement] script').length===0")
             assert cd.evaluate("document.querySelector('[data-testid=source-index]').textContent.includes('not established')")
             # Read the real PG source-derived World Model, no generated clinical facts.
@@ -186,6 +195,7 @@ def main():
                 assert cd.evaluate("document.querySelector('[data-testid=source-index]').textContent.includes('superseded')")
                 assert cd.evaluate("document.querySelector('[data-testid=source-index]').textContent.includes('Amended fictional marker is reported negative.')")
                 assert cd.evaluate("document.querySelectorAll('[data-testid=source-statement]').length===1")
+                assert cd.evaluate("document.querySelectorAll('[data-testid=finding-provenance]').length===1")
                 cd.evaluate("Array.from(document.querySelectorAll('nav[aria-label=\"Patient workspace\"] button')).find(b=>b.textContent.includes('Journey')).click()")
                 cd.evaluate("document.querySelector('[data-testid=world-load]').click()")
                 cd.wait("document.querySelector('[data-testid=world-history-count]')?.textContent==='1'",'world model retains superseded source')
