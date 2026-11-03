@@ -1101,6 +1101,7 @@ dialog pre {
 .patient-record-item { overflow-wrap: anywhere; }
 .patient-record-item .finding-head { flex-wrap: wrap; }
 .patient-record-item .pill, .patient-record-item .button { max-width: 100%; white-space: normal; }
+#patient-view a[href="#patient-report"] { max-width: 100%; white-space: normal; }
 @media (max-width: 60rem) {
   .patient-record-grid { grid-template-columns: minmax(0, 1fr); gap: .25rem; }
 }
