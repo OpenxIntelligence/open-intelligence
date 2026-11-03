@@ -25,7 +25,7 @@ _FIELDS: dict[str, tuple[str, ...]] = {
     ),
     "source_observation": (
         "source_id", "source_line", "finding_key", "reported_state",
-        "clinical_review_state", "specimen_id", "event_date",
+        "review_state", "specimen_id", "event_date",
     ),
     "source_disagreement": (
         "specimen_id", "event_date", "finding_key", "status",
