@@ -19,7 +19,8 @@ SOURCES = {
     'pdf': ('3be1106b5cd34523c4746e2df6f123048beb5659', 'b03dc8a5d14f2bf7ca4c99a4c8b72491812015ee'),
 }
 INITIAL = 'ef8119f646e7f21db5f1e991dab0b015e5698c2c4e36efca510f500f006d9d0e'
-FINAL = '680fb9e8ec33d124bc3dfee05be89650151d868bc531c601dc9a0f7d382cdade'
+REVIEWED = '680fb9e8ec33d124bc3dfee05be89650151d868bc531c601dc9a0f7d382cdade'
+FINAL = '00496db2a2cdf554b62cef9c92c779948cefb1f8a96d25ab89d3ef99661b7950'
 PATCH_SHA = '2a736a6d0c6966da1da90ba4d1db93552ee88836c25718c063fd3764ba60744a'
 WHOLE = {'tests/test_source_dialogs.js', 'src/open_intelligence/world_model.py', 'tests/test_model_investigation_freshness.js', 'tools/research/test_rna_expression_probe.py', 'tests/test_patient_record.js', 'tools/research/public_case_intake.py', 'docs/EXECUTION_BACKLOG.csv', '.github/workflows/single-cell-analysis.yml', 'src/open_intelligence/composer.py', 'tools/research/single_cell_probe.py', 'web/patient-record.js', 'docs/engineering/SYNTHETIC_WORLD_MODEL_PROJECTION.md', 'tools/research/rna_expression_probe.py', '.github/workflows/rna-analysis.yml', '.github/workflows/public-research.yml', 'tools/research/test_single_cell_probe.py'}
 CONFLICTS = {'.github/workflows/public-research.yml': 3, '.github/workflows/rna-analysis.yml': 1, '.github/workflows/single-cell-analysis.yml': 1, 'docs/EXECUTION_BACKLOG.csv': 1, 'docs/engineering/SYNTHETIC_WORLD_MODEL_PROJECTION.md': 1, 'src/open_intelligence/__main__.py': 2, 'src/open_intelligence/composer.py': 8, 'src/open_intelligence/composer_lab.py': 1, 'src/open_intelligence/investigation.py': 2, 'src/open_intelligence/lab_trends.py': 4, 'src/open_intelligence/store.py': 8, 'src/open_intelligence/world_model.py': 15, 'tests/test_investigation_question_lifecycle.py': 2, 'tests/test_model_investigation_freshness.js': 2, 'tests/test_patient_record.js': 1, 'tests/test_source_dialogs.js': 1, 'tools/research/public_case_intake.py': 1, 'tools/research/rna_expression_probe.py': 1, 'tools/research/single_cell_probe.py': 1, 'tools/research/test_rna_expression_probe.py': 1, 'tools/research/test_single_cell_probe.py': 1, 'web/app.js': 7, 'web/composer.js': 9, 'web/index.html': 4, 'web/patient-record.js': 10}
@@ -154,8 +155,20 @@ def apply_reviewed(result, patch):
         for path in PATCH_PATHS:
             target = stage / path
             result[path] = ('100755' if target.stat().st_mode & 0o111 else '100644', target.read_bytes())
+    if digest(result) != REVIEWED:
+        raise ValueError('Reviewed application differs from inspected source')
+    # Run 41569288063 caught the report handoff link inheriting nowrap outside
+    # the patient finding cards. Preserve the original browser containment gate.
+    path = 'web/style.css'
+    mode, data = result[path]
+    old = '.patient-record-item .pill, .patient-record-item .button { max-width: 100%; white-space: normal; }\n'
+    new = '.patient-record-item .pill, .patient-record-item .button { max-width: 100%; white-space: normal; }\n/* The report handoff is outside the finding cards and must wrap independently. */\n#patient-view > p > .button { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }\n'
+    text = data.decode('utf-8')
+    if text.count(old) != 1 or new in text:
+        raise ValueError('Unexpected report-handoff layout anchor')
+    result[path] = (mode, text.replace(old, new).encode('utf-8'))
     if digest(result) != FINAL:
-        raise ValueError('Final application differs from inspected source')
+        raise ValueError('Final application differs from inspected layout correction')
     return result
 
 
