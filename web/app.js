@@ -4,6 +4,10 @@ let caseId = null;
 let active = null;
 let refreshSequence = 0;
 let renderedCaseId = null;
+// Worklist generations describe rendered summaries, never chart readiness.
+let incomingBoardSequence = 0;
+let incomingRowRevision = 0;
+let incomingRosterUnavailable = false;
 const el = (id) => document.getElementById(id);
 function node(tag, text, className = '') {
   const item = document.createElement(tag);
@@ -91,57 +95,146 @@ async function initialize() {
       refresh();
     });
     caseId = cases[0].case_id;
+    el('worklist-refresh').disabled = false;
     document.dispatchEvent(new Event('oi:case-selection-changed'));
     await refresh();
   } catch (err) { notice(err.message, true); }
 }
-async function renderIncomingBoard(cases) {
-  const list = el('incoming-list');
-  clear('incoming-list');
-  if (!cases.length) { empty(list, 'No fictional cases in this demo.'); return; }
-  empty(list, 'Loading available cases…');
-  const summaries = [];
-  for (const entry of cases) {
-    try {
-      const state = await api('/api/cases/' + entry.case_id + '/state');
-      const latestEvent = state.sources.reduce((max, s) =>
-        s.event_date > max ? s.event_date : max, '');
-      summaries.push({
-        label: entry.label, caseId: entry.case_id, latestEvent,
-        currentSources: state.sources.filter(s => s.state === 'current').length,
-        openQuestions: state.questions.filter(q => q.state === 'open').length,
-        stale: state.snapshots.filter(s => s.state === 'stale').length,
-      });
-    } catch (err) {
-      summaries.push({ label: entry.label, caseId: entry.case_id, latestEvent: '', error: err.message });
-    }
-  }
-  // Most recent source event first. No urgency is inferred: the demo data
-  // has no triage field, so sorting is by recency of the record only.
-  summaries.sort((a, b) => b.latestEvent.localeCompare(a.latestEvent));
-  list.replaceChildren();
-  for (const summary of summaries) {
-    const row = node('div', null, 'question');
-    row.dataset.caseSearch = summary.label + ' ' + summary.caseId;
-    const text = node('div');
-    text.append(node('p', summary.label + ' · ' + summary.caseId));
-    if (summary.error) text.append(node('p', 'Could not load this case summary: ' + summary.error, 'muted'));
-    else text.append(node('p', 'Most recent source event: ' + (summary.latestEvent || 'none recorded') +
-      ' · Current source documents: ' + summary.currentSources +
-      ' · Open questions: ' + summary.openQuestions +
-      ' · Historical drafts tied to changed sources: ' + summary.stale, 'muted'));
-    const open = node('button', 'Open this case', 'button secondary minor');
-    open.type = 'button';
-    open.addEventListener('click', () => {
-      el('case-picker').value = summary.caseId;
-      el('case-picker').dispatchEvent(new Event('change'));
-      if (caseId === summary.caseId && el('case-picker').value === summary.caseId)
-        workspacePresentation.navigate('overview');
-    });
-    row.append(text, open);
-    list.append(row);
+function incomingRows() {
+  return [...el('incoming-list').children].filter(row => row.dataset.caseId);
+}
+function incomingRow(id) { return incomingRows().find(row => row.dataset.caseId === id); }
+function incomingSummary(entry, state) {
+  if (state?.case?.case_id !== entry.case_id) throw Error('Case summary identity mismatch.');
+  return {
+    label: entry.label, caseId: entry.case_id,
+    latestEvent: state.sources.reduce((max, source) => source.event_date > max ? source.event_date : max, ''),
+    currentSources: state.sources.filter(source => source.state === 'current').length,
+    openQuestions: state.questions.filter(question => question.state === 'open').length,
+    stale: state.snapshots.filter(snapshot => snapshot.state === 'stale').length,
+  };
+}
+function newIncomingRow(id) {
+  const row = node('div', null, 'question');
+  row.dataset.caseId = id;
+  const open = node('button', 'Open this case', 'button secondary minor');
+  open.type = 'button';
+  open.addEventListener('click', () => {
+    el('case-picker').value = id;
+    el('case-picker').dispatchEvent(new Event('change'));
+    if (caseId === id && el('case-picker').value === id) workspacePresentation.navigate('overview');
+  });
+  row.append(node('div'), open);
+  return row;
+}
+function writeIncomingRow(row, summary) {
+  row.dataset.caseLabel = summary.label;
+  row.dataset.caseSearch = summary.label + ' ' + summary.caseId;
+  row.dataset.latestEvent = summary.latestEvent || '';
+  row.dataset.summaryState = summary.error ? 'unavailable' : 'ready';
+  row.dataset.worklistRevision = String(++incomingRowRevision);
+  const description = summary.error ? 'Case summary unavailable. Refresh list to try again.' :
+    'Most recent source event: ' + (summary.latestEvent || 'none recorded') +
+    ' · Current source documents: ' + summary.currentSources +
+    ' · Open questions: ' + summary.openQuestions +
+    ' · Historical drafts marked stale: ' + summary.stale;
+  // Preserve the actual Open button, including its focus and listener.
+  row.firstElementChild.replaceChildren(node('p', summary.label + ' · ' + summary.caseId),
+    node('p', description, 'muted'));
+}
+function orderIncomingRows(rows = incomingRows()) {
+  // Source event recency is not receipt time, amendment issue time or urgency.
+  rows.sort((a, b) => b.dataset.latestEvent.localeCompare(a.dataset.latestEvent) ||
+    Number(a.dataset.rosterOrder) - Number(b.dataset.rosterOrder));
+  const list = el('incoming-list'), previous = [...list.children], focused = document.activeElement;
+  if (previous.length !== rows.length || previous.some((row, index) => row !== rows[index])) {
+    list.replaceChildren(...rows);
+    if (focused?.isConnected && rows.some(row => row.contains(focused))) focused.focus({ preventScroll: true });
   }
 }
+function incomingStatus() {
+  if (el('incoming-list').getAttribute('aria-busy') === 'true') return;
+  const unavailable = incomingRows().filter(row => row.dataset.summaryState === 'unavailable').length;
+  el('worklist-status').textContent = incomingRosterUnavailable
+    ? 'Could not refresh the case list. Refresh list to try again.'
+    : unavailable ? unavailable + (unavailable === 1 ? ' case summary is' : ' case summaries are') +
+      ' unavailable. Refresh list to try again.' : 'Case summaries updated.';
+}
+function projectIncomingCase(state) {
+  const row = incomingRow(state.case.case_id);
+  if (!row) return; // Membership still comes from the existing roster owner.
+  writeIncomingRow(row, incomingSummary(state.case, state));
+  orderIncomingRows();
+  incomingStatus();
+}
+async function renderIncomingBoard(cases) {
+  const sequence = ++incomingBoardSequence, list = el('incoming-list');
+  const button = el('worklist-refresh'), restoreButtonFocus = document.activeElement === button;
+  const previousRevisions = new Map(incomingRows().map(row => [row.dataset.caseId, row.dataset.worklistRevision]));
+  list.setAttribute('aria-busy', 'true');
+  button.disabled = true;
+  el('worklist-status').textContent = 'Updating case summaries…';
+  try {
+    if (cases === undefined) cases = await api('/api/cases');
+    if (sequence !== incomingBoardSequence) return;
+    if (!Array.isArray(cases)) throw Error('Case list unavailable.');
+    incomingRosterUnavailable = false;
+    const summaries = [];
+    for (const entry of cases) {
+      const revision = incomingRow(entry.case_id)?.dataset.worklistRevision;
+      let summary;
+      try {
+        summary = incomingSummary(entry, await api('/api/cases/' + entry.case_id + '/state'));
+      } catch (_) {
+        summary = { label: entry.label, caseId: entry.case_id, latestEvent: '', error: true };
+      }
+      if (sequence !== incomingBoardSequence) return;
+      summaries.push({ summary, revision });
+    }
+    const rows = summaries.map(({ summary, revision }, index) => {
+      let row = incomingRow(summary.caseId);
+      if (!row) {
+        row = newIncomingRow(summary.caseId);
+        writeIncomingRow(row, summary);
+      } else if (row.dataset.worklistRevision === revision) writeIncomingRow(row, summary);
+      // A newer canonical projection wins over this read, including its error.
+      row.dataset.rosterOrder = String(index);
+      return row;
+    });
+    const picker = el('case-picker'), selected = picker.value;
+    for (const entry of cases) {
+      if (![...picker.options].some(option => option.value === entry.case_id)) {
+        const option = node('option', entry.label.replace(/^Fictional case /, '') + ', ' + entry.case_id);
+        option.value = entry.case_id; picker.append(option);
+      }
+    }
+    if (selected) picker.value = selected;
+    orderIncomingRows(rows);
+    if (!rows.length) empty(list, 'No fictional cases in this demo.');
+  } catch (_) {
+    if (sequence !== incomingBoardSequence) return;
+    incomingRosterUnavailable = true;
+    for (const row of incomingRows()) {
+      if (row.dataset.worklistRevision === previousRevisions.get(row.dataset.caseId)) {
+        writeIncomingRow(row, { label: row.dataset.caseLabel, caseId: row.dataset.caseId, error: true });
+      }
+    }
+    orderIncomingRows();
+    if (!incomingRows().length) {
+      list.replaceChildren();
+      empty(list, 'Case list unavailable. Refresh list to try again.');
+    }
+  } finally {
+    if (sequence === incomingBoardSequence) {
+      list.setAttribute('aria-busy', 'false');
+      button.disabled = !caseId;
+      incomingStatus();
+      if (restoreButtonFocus && document.activeElement === document.body && !button.disabled)
+        button.focus({ preventScroll: true });
+    }
+  }
+}
+el('worklist-refresh').addEventListener('click', () => renderIncomingBoard());
 
 const CERTAINTY_PLAIN = {
   reported: 'reported', pending: 'still pending', indeterminate: 'not certain yet',
@@ -205,6 +298,7 @@ async function refresh() {
     active = response;
     el('case-heading').textContent = active.case.label;
     render();
+    projectIncomingCase(response);
   } catch (err) {
     if (sequence === refreshSequence && requestedCase === caseId) notice(err.message, true);
   }
@@ -869,6 +963,7 @@ el('evidence-import-form').addEventListener('submit', async event => {
     notice('Fictional evidence: ' + outcome.result +
       (outcome.invalidated_snapshots?.length ? ', ' + outcome.invalidated_snapshots.length + ' draft(s) stale' : ''));
     el('evidence-text').value = ''; await refresh();
+    await renderIncomingBoard(); // Shared evidence can invalidate more than the selected case.
   } catch (err) { notice(err.message, true); }
 });
 el('evidence-assessment-form').addEventListener('submit', async event => {
@@ -896,6 +991,7 @@ el('evidence-withdraw-form').addEventListener('submit', async event => {
     if (requestedCase !== caseId) return;
     notice('Synthetic evidence withdrawn, ' + outcome.invalidated_snapshots.length + ' dependent draft(s) stale.');
     el('evidence-withdraw-reason').value = ''; await refresh();
+    await renderIncomingBoard();
   } catch (err) { notice(err.message, true); }
 });
 el('option-form').addEventListener('submit', async event => {
