@@ -61,8 +61,7 @@ jobs:
           grep -Eq 'license[[:space:]]*=[[:space:]]*"MIT"' "$RUNNER_TEMP/oi-pacsnode-source/Cargo.toml"
           test -f "$RUNNER_TEMP/oi-pacsnode-source/Cargo.lock"
           printf "%s\n" "$PACS_SOURCE_COMMIT" > verification-artifacts/pacsnode-upstream-commit.txt
-          sha256sum "$RUNNER_TEMP/oi-pacsnode-source/Cargo.lock" >
-            verification-artifacts/pacsnode-cargo-lock-sha256.txt
+          sha256sum "$RUNNER_TEMP/oi-pacsnode-source/Cargo.lock" > verification-artifacts/pacsnode-cargo-lock-sha256.txt
           # Do not run the default Docker Compose. That deployment's
           # MinIO and image assets require a SEPARATE rights gate.
           echo "MIT declared in NOTICE/Cargo.toml; no adoption or legal clearance."
