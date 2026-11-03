@@ -134,6 +134,28 @@ def main():
             assert tokens[0] not in cd.evaluate('document.documentElement.outerHTML')
             assert cd.evaluate('localStorage.length===0 && sessionStorage.length===0')
 
+            # A correction after receipt must never silently replace the
+            # previously pinned original or describe it as current.
+            amended=('OI-SYNTHETIC-REPORT/1\nPatient: CASE-ALPHA\n'
+                     'Document: DOC-ONE\nType: pathology\n'
+                     'Event-Date: 2026-01-10\nIssued-At: 2026-01-12\n'
+                     'Specimen: SPECIMEN-ONE\nAmends: DOC-ONE@1\n'
+                     'Finding: marker|negative|Amended fictional marker is negative.\n')
+            status,correction=post(root+'/cases/CASE-ALPHA/sources',{
+                'synthetic':True,'original_text':amended})
+            assert status==201 and correction['version']==2 and correction['source_id']!=sid
+            cd.evaluate("document.querySelector('[data-testid=load-records]').click()")
+            cd.wait("document.querySelector('[data-testid=record-requests]')?.textContent.includes('Historical source')",
+                'source amendment reopens operational reconciliation')
+            assert sid in cd.evaluate('document.querySelector("[data-testid=record-requests]").textContent')
+            assert correction['source_id'] not in cd.evaluate('document.querySelector("[data-testid=record-requests]").textContent')
+            assert cd.evaluate("!document.querySelector('[data-testid=original-report]')")
+            cd.evaluate("document.querySelector('[data-testid=view-original]').click()")
+            cd.wait("document.querySelector('[data-testid=original-report]')?.textContent.includes('Historical / superseded')",
+                'historical exact source remains accessible but flagged')
+            assert cd.evaluate("document.querySelector('[data-testid=original-report]').textContent.includes('Independently fictional browser source.')")
+            assert not cd.evaluate("document.querySelector('[data-testid=original-report]').textContent.includes('Amended fictional marker')")
+
             # Revoking source metadata rights must leave only the request
             # status while erasing both its source reference and read original.
             credentials[0]['actions'].remove('source_read');write_grants()
