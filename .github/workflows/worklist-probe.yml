@@ -1,0 +1,38 @@
+name: Synthetic worklist regression probe
+on:
+  push:
+    branches: [verification/worklist-currentness-20261102]
+permissions:
+  contents: read
+jobs:
+  worklist:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PYTHONPATH: src
+      OI_WORKLIST_ARTIFACT_DIR: ui-artifacts/worklist
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Actual worklist workflow regression
+        run: python tests/workspace_worklist_journey.py
+      - name: Record source under test
+        if: always()
+        run: |
+          mkdir -p ui-artifacts
+          git rev-parse HEAD | tee ui-artifacts/commit.txt
+          git rev-parse 'HEAD^{tree}' | tee ui-artifacts/tree.txt
+          sha256sum web/app.js web/index.html web/workspace-entry.js | tee ui-artifacts/runtime-sha256.txt
+          git archive --format=zip --output=ui-artifacts/source-under-test.zip HEAD
+      - name: Preserve synthetic regression evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: worklist-probe-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ui-artifacts/
+          if-no-files-found: error
+          retention-days: 7
