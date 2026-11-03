@@ -20,6 +20,7 @@ from .database import Database
 from .record_requests import PostgresRecordRequests
 from .case_bindings import CanonicalCaseBindings
 from .sources import PostgresSourceVersions
+from .source_world_model import project_source_world_model
 
 TOKEN = re.compile(r"[A-Za-z0-9._~-]{32,256}\Z")
 
@@ -269,6 +270,67 @@ class OriginalSource(Contract):
     clinical_review_state: Literal["not_established"]
 
 
+
+class WorldSourceRef(Contract):
+    source_id: str
+    source_line: int = Field(ge=1)
+
+
+class WorldObservation(Contract):
+    source_id: str
+    document_id: str
+    document_version: int = Field(ge=1)
+    source_sha256: str
+    source_kind: Literal["clinical", "pathology", "laboratory", "imaging", "molecular", "other"]
+    finding_key: str
+    reported_state: str
+    source_statement: str
+    source_line: int = Field(ge=1)
+    specimen_id: str | None
+    event_date: str
+    issued_at: str
+    review_state: Literal["not_established"]
+    clinical_meaning: None
+
+
+class WorldConflict(Contract):
+    specimen_id: str
+    event_date: str
+    finding_key: str
+    status: Literal["unresolved_source_disagreement"]
+    reported_states: list[str]
+    source_refs: list[WorldSourceRef]
+    clinical_interpretation: Literal["not_performed"]
+
+
+class WorldSummary(Contract):
+    current_sources: int = Field(ge=0)
+    historical_sources: int = Field(ge=0)
+    current_observations: int = Field(ge=0)
+    unresolved_observations: int = Field(ge=0)
+    source_disagreements: int = Field(ge=0)
+
+
+class SourceWorldModel(Contract):
+    contract: Literal["oi.pg-source-world-model/1"]
+    patient_id: str
+    case_id: str
+    synthetic: Literal[True]
+    authority: Literal["source_report_only_unreviewed"]
+    clinical_interpretation: Literal[False]
+    research_review_invalidation_integrated: Literal[False]
+    composer_execution_authorized: Literal[False]
+    snapshot_fingerprint: str
+    as_of_received_at: datetime | None
+    summary: WorldSummary
+    current_sources: list[SourceVersion]
+    history: list[SourceVersion]
+    observations: list[WorldObservation]
+    unresolved_refs: list[WorldSourceRef]
+    conflicts: list[WorldConflict]
+    limitations: list[str]
+
+
 def patient_router(database: Database, authentication: Authentication) -> APIRouter:
     router = APIRouter(prefix="/v1/patients", tags=["Synthetic patient registry"])
     bearer = HTTPBearer(auto_error=False, scheme_name="SyntheticFixture",
@@ -499,6 +561,25 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
                 result = PostgresSourceVersions(patients).list(
                     patient_id, case_id, organization=context.organization)
                 return OriginalSourceIndex(**result)
+        except PatientRegistryDenied:
+            raise HTTPException(404, "Source unavailable") from None
+
+    @router.get("/{patient_id}/cases/{case_id}/world-model",
+                response_model=SourceWorldModel, responses=errors,
+                operation_id="read_source_world_model_v1")
+    def source_world_model(patient_id: str, case_id: str,
+                           context: Principal = Depends(principal)):
+        """Derived from the one existing source owner, no new write authority.
+
+        Deliberately only source-reported observations; not the full original
+        SQLite clinical World Model, literature/AI, or review workflow.
+        """
+        try:
+            with registry(context) as patients:
+                records_authorized(patients, context, patient_id, "source_read")
+                index = PostgresSourceVersions(patients).list(
+                    patient_id, case_id, organization=context.organization)
+                return SourceWorldModel(**project_source_world_model(index))
         except PatientRegistryDenied:
             raise HTTPException(404, "Source unavailable") from None
 
