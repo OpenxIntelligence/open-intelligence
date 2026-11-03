@@ -31,6 +31,9 @@ class SemanticContractProbeTests(unittest.TestCase):
         self.assertFalse(a["clinical_ontology_authoritative"])
         self.assertNotIn("patient_id", str(a))
         self.assertNotIn("source_statement", str(a))
+        observation = next(c for c in a["concepts"] if c["concept"] == "source_observation")
+        self.assertIn("review_state", observation["fields"])
+        self.assertNotIn("clinical_review_state", observation["fields"])
 
     def test_valid_proposal_is_never_approved(self):
         result = mod.validate_mapping_candidate(self.candidate)
