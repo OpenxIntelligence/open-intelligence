@@ -5,10 +5,12 @@ on:
     branches:
       - experiment/pacsnode-dicomweb-eval-20261102
       - test/pacsnode-source-bound-wado-20261102
+      - test/pacsnode-direct-access-observation-20261102
     paths:
       - 'tools/imaging/**'
       - 'tests/test_pacsnode_probe_contract.py'
       - 'tests/test_source_bound_wado.py'
+      - 'tests/test_pacsnode_direct_access_gate.py'
       - '.github/workflows/pacsnode-standalone-evaluation.yml'
   workflow_dispatch:
 
@@ -48,6 +50,8 @@ jobs:
             tee verification-artifacts/pacsnode-harness-tests.txt
           python -m unittest discover -s tests -p 'test_source_bound_wado.py' -v 2>&1 |
             tee verification-artifacts/pacsnode-source-bound-wado-tests.txt
+          python -m unittest discover -s tests -p 'test_pacsnode_direct_access_gate.py' -v 2>&1 |
+            tee verification-artifacts/pacsnode-direct-access-tests.txt
       - name: Install only hash-pinned pydicom core for synthetic fixture generation
         shell: bash
         run: |
@@ -155,6 +159,12 @@ jobs:
           python -m tools.imaging.pacsnode_live_probe \
             --base-url http://127.0.0.1:18042 \
             --output verification-artifacts/pacsnode-real-dicomweb.json
+          # Observation is deliberately AFTER OI source-amendment denial.
+          # It measures direct anonymous PACS exposure, not OI authorization.
+          python -m tools.imaging.pacsnode_direct_access_gate \
+            --base-url http://127.0.0.1:18042 \
+            --prior-receipt verification-artifacts/pacsnode-real-dicomweb.json \
+            --output verification-artifacts/pacsnode-anonymous-access.json
       - name: Preserve only source and numerical receipts, no image objects
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -164,12 +174,14 @@ jobs:
             verification-artifacts/oi-evaluator-commit.txt
             verification-artifacts/pacsnode-harness-tests.txt
             verification-artifacts/pacsnode-source-bound-wado-tests.txt
+            verification-artifacts/pacsnode-direct-access-tests.txt
             verification-artifacts/pacsnode-dicom-regression-tests.txt
             verification-artifacts/pacsnode-upstream-commit.txt
             verification-artifacts/pacsnode-cargo-lock-sha256.txt
             verification-artifacts/rustc-version.txt
             verification-artifacts/cargo-license-snapshot.json
             verification-artifacts/pacsnode-real-dicomweb.json
+            verification-artifacts/pacsnode-anonymous-access.json
             verification-artifacts/pacsnode-test-storage-transfer-syntax.txt
             verification-artifacts/pacsnode-stdout.txt
           if-no-files-found: warn
