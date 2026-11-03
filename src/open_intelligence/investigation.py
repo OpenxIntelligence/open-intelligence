@@ -89,6 +89,8 @@ def _assertion_line(item: dict) -> str:
                 f"annotation_method={item.get('annotation_method')} "
                 f"clinical_review={item.get('clinical_review')} "
                 f"transcription_review_sha256={item.get('transcription_review_sha256')} "
+                f"annotation_revision={item.get('annotation_revision')} "
+                f"annotation_revision_id={item.get('annotation_revision_id')} "
                 f"quote={item.get('quote')!r}")
     return (f"- source_version_id={item.get('source_version_id')} "
             f"finding={item.get('finding_key')} certainty={item.get('certainty')} "

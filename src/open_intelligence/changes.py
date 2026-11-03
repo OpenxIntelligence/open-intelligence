@@ -84,6 +84,7 @@ def changes_since_review(store: CaseStore, case_id: str, since_event_id: int | N
 
         new_sources: list[dict] = []
         amendments: list[dict] = []
+        annotation_revisions: list[dict] = []
         stale_causes: list[dict] = []
         for event in after:
             details = json.loads(event["details"])
@@ -139,6 +140,28 @@ def changes_since_review(store: CaseStore, case_id: str, since_event_id: int | N
                             "cause": "source_amendment",
                             "snapshot_id": snapshot_id,
                         })
+            elif event["kind"] == "document_annotations_revised":
+                row = source_row(details["source_id"])
+                if row is None:
+                    continue
+                annotation_revisions.append({
+                    "event_id": event["id"], "occurred_at": event["occurred_at"],
+                    "source_id": row["id"], "document_id": row["document_id"],
+                    "version": row["version"],
+                    "annotation_revision": details["annotation_revision"],
+                    "previous_annotation_revision": details["previous_annotation_revision"],
+                    "annotation_revision_id": details["annotation_revision_id"],
+                    "reason": details["reason"],
+                    "classification_origin": "user_selected", "clinical_review": "not_performed",
+                    "invalidated_snapshot_ids": details.get("invalidated_snapshots", []),
+                })
+                for snapshot_id in details.get("invalidated_snapshots", []):
+                    stale_causes.append({
+                        "event_id": event["id"], "occurred_at": event["occurred_at"],
+                        "cause": "annotation_revision", "source_id": row["id"],
+                        "annotation_revision": details["annotation_revision"],
+                        "snapshot_id": snapshot_id,
+                    })
             elif event["kind"] == "evidence_invalidated":
                 for snapshot_id in details.get("invalidated_snapshots", []):
                     stale_causes.append({
@@ -204,6 +227,7 @@ def changes_since_review(store: CaseStore, case_id: str, since_event_id: int | N
             },
             "new_sources": new_sources,
             "amendments": amendments,
+            "annotation_revisions": annotation_revisions,
             "stale_investigations": stale_investigations,
             "new_questions": new_questions,
         }

@@ -40,10 +40,23 @@ exports. They are not inferred or verified clinical facts. The existing
 structured fixture importer is retained under **Structured development fixtures**.
 
 This increment supports text up to 64 KiB, 512 lines and 30 selected single-line
-passages within a 128 KiB request. PDF/OCR and post-save annotation editing are
-not implemented. Saving an original with no passages does not allow adding
-passages afterward in this version. See the [intake contract and verification
+passages within a 128 KiB request. PDF/OCR is not implemented. See the [intake contract and verification
 record](docs/engineering/DOCUMENT_INTAKE.md) for API, source ownership and limits.
+
+### Add or correct passages after saving
+
+In **Records**, choose **Edit selected passages** on a current text record.
+Inspect its original and prior selections, remove an incorrect selection or
+select another exact passage, then enter a reason and confirm **Save passage
+revision**. A record saved without passages supports the same workflow.
+The original file, document dates and document version stay unchanged.
+
+Every confirmed revision remains inspectable. Earlier reports export the
+selections they captured, and affected investigations reopen for review.
+If passages change while an investigation narrative is open, review the new
+selections and explicitly uncheck/reselect its source before saving the draft.
+Competing edits are rejected with the unfinished edit retained. Superseded
+originals have read-only passage history. See the [revision contract](docs/engineering/ANNOTATION_REVISIONS.md).
 
 **Scope and warnings:** this is local-only software with no authentication, no access controls suitable for PHI, no clinical inference, no live literature or trials, and no clinical review. Never insert real patient data. The supported structured test format is `OI-SYNTHETIC-REPORT/1`, not a general-purpose clinical document parser. Source statements are author-supplied within report bytes. There is no treatment recommender, trial matching, or AI agent. The demo reviewer acknowledgment cannot attest professional credentials. The engineering controls are not evidence of medical safety or regulatory status.
 
