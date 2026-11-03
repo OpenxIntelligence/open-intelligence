@@ -438,6 +438,57 @@ export class RegistrySession {
       if(query===this.#reviewWrite&&scope===this.#scope)this.#savingReview=false;}
   }
 
+  /** Recheck an exact original quotation before starting a question from Records.
+   *
+   * The cached source index only supplies an anchor, never permission or
+   * an executable clinical context. The canonical World Model is fetched again.
+   * A changed/amended source cannot silently become a new question's source.
+   */
+  async beginQuestionFromSourceReading(caseId:string,sourceId:string,sourceLine:number):Promise<boolean>{
+    if(this.#savingQuestion||this.#state.questionSavePhase==='saving'||
+       this.#state.questionSaveMessage.startsWith('Save outcome unknown.')){
+      this.#publish({worldMessage:'Resolve the earlier uncertain question save in Investigations before changing its source.'});
+      return false;
+    }
+    if(this.#state.questionDraft&&this.#state.questionSavePhase!=='saved'){
+      this.#publish({worldMessage:'An unfinished question draft exists. Finish or discard it in Investigations before starting a different one.'});
+      return false;
+    }
+    const index=this.#state.sourceIndex,patientId=this.#state.patient?.patient_id;
+    const source=index?.sources.find(s=>s.source_id===sourceId&&s.state==='current');
+    const finding=index?.source_reported_assertions.find(f=>f.source_id===sourceId&&f.source_line===sourceLine);
+    if(!index||index.case_id!==caseId||!patientId||this.#state.phase!=='ready'||
+       this.#state.recordsPhase!=='ready'||this.#state.worldPhase==='loading'||
+       !source||!finding||!this.#state.cases?.some(c=>c.case_id===caseId&&c.status==='active')){
+      this.#publish({worldMessage:'This statement is not a current, authorized source anchor. Recheck Records before asking a question.'});
+      return false;
+    }
+    const scope=this.#scope,priorWorldRead=this.#worldRead;
+    await this.loadWorldModel(caseId);
+    const model=this.#state.worldModel;
+    // A concurrent patient/case/source refresh invalidates this user intent.
+    if(scope!==this.#scope||priorWorldRead+1!==this.#worldRead||
+       this.#state.patient?.patient_id!==patientId||this.#state.sourceIndex!==index||
+       this.#state.worldPhase!=='ready'||!model||model.case_id!==caseId)return false;
+    const currentSource=model.current_sources.find(s=>s.source_id===sourceId);
+    const quotation=model.observations.filter(o=>o.source_id===sourceId&&o.source_line===sourceLine);
+    if(!currentSource||currentSource.sha256!==source.sha256||
+       currentSource.version!==source.version||quotation.length!==1||
+       quotation[0].document_id!==source.document_id||
+       quotation[0].document_version!==source.version||
+       quotation[0].source_sha256!==source.sha256||
+       quotation[0].source_statement!==finding.source_statement||
+       quotation[0].finding_key!==finding.finding_key||
+       quotation[0].reported_state!==finding.reported_state){
+      this.#resetWorld(caseId);
+      this.#publish({worldPhase:'error',worldMessage:'The source quotation or version changed during the handoff. No question draft was created. Recheck Records.'});
+      return false;
+    }
+    this.chooseQuestionDraft(sourceId,sourceLine);
+    return this.#state.questionDraft?.source_id===sourceId&&
+      this.#state.questionDraft.source_line===sourceLine;
+  }
+
   /** Source-only context is a read, never an authorization to execute Composer.
    * Request generation prevents responses from earlier patients/cases/credentials
    * or amended source views from repopulating the UI.
