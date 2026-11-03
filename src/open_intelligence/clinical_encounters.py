@@ -24,6 +24,7 @@ import json
 import re
 import sqlite3
 from collections.abc import Callable
+from contextlib import contextmanager
 from datetime import datetime
 from typing import Any, Protocol
 
@@ -186,6 +187,20 @@ class ClinicalEncounters:
         # production host must use a migration system, not call this at runtime.
         self.host.db.executescript(SCHEMA)
 
+    def _execute(self, statement: str, parameters: tuple = ()):
+        """Persistence hook; statements are internal parameterized SQL only."""
+        return self.host.db.execute(statement, parameters)
+
+    def _insert_id(self, statement: str, parameters: tuple) -> int:
+        return self._execute(statement, parameters).lastrowid
+
+    @contextmanager
+    def _command_transaction(self, patient_id: str, actor: str,
+                             action: str, purpose: str):
+        with self.host.db:
+            self.host.db.execute("BEGIN IMMEDIATE")
+            yield
+
     def _allow(self, actor: str, patient_id: str, action: str, purpose: str) -> None:
         _opaque(patient_id, "patient_id", PATIENT_RE)
         _opaque(actor, "actor", ACTOR_RE)
@@ -203,14 +218,14 @@ class ClinicalEncounters:
     def _encounter(self, patient_id: str, encounter_id: int):
         if type(encounter_id) is not int or encounter_id < 1:
             raise InvalidInput("Encounter id required")
-        row = self.host.db.execute("SELECT * FROM clinical_encounters WHERE patient_id=? AND id=?",
+        row = self._execute("SELECT * FROM clinical_encounters WHERE patient_id=? AND id=?",
                                     (patient_id, encounter_id)).fetchone()
         if row is None:
             raise InvalidInput("Encounter not found in this patient")
         return row
 
     def _note(self, encounter_id: int, note_key: str):
-        row = self.host.db.execute("""SELECT n.*,v.id AS version_id,v.status,v.body,v.sha256,
+        row = self._execute("""SELECT n.*,v.id AS version_id,v.status,v.body,v.sha256,
                               v.amendment_reason FROM clinical_note_headers n
                               JOIN clinical_note_versions v ON v.note_id=n.id AND v.version=n.latest_version
                               WHERE n.encounter_id=? AND n.note_key=?""",
@@ -238,9 +253,8 @@ class ClinicalEncounters:
         self._allow(actor, patient_id, action, purpose)
         request_key = _opaque(request_key, "request_key")
         digest = _fingerprint(action, actor, purpose, data)
-        with self.host.db:
-            self.host.db.execute("BEGIN IMMEDIATE")
-            previous = self.host.db.execute(
+        with self._command_transaction(patient_id, actor, action, purpose):
+            previous = self._execute(
                 "SELECT operation,request_hash,result_json FROM clinical_encounter_commands "
                 "WHERE patient_id=? AND request_key=?", (patient_id, request_key)).fetchone()
             if previous:
@@ -258,7 +272,7 @@ class ClinicalEncounters:
             # This does not replace production authorization or make a grant
             # change outside this database atomically observable.
             self._allow(actor, patient_id, action, purpose)
-            self.host.db.execute("""INSERT INTO clinical_encounter_commands
+            self._execute("""INSERT INTO clinical_encounter_commands
                (patient_id,request_key,operation,request_hash,result_json,occurred_at)
                VALUES(?,?,?,?,?,?)""", (patient_id, request_key, action, digest,
                                             json.dumps(result, sort_keys=True), now_utc()))
@@ -273,16 +287,16 @@ class ClinicalEncounters:
         service_date = _timestamp_date(service_date)
         def mutate():
             now = now_utc()
-            if self.host.db.execute("SELECT 1 FROM clinical_encounters WHERE patient_id=? AND external_key=?",
+            if self._execute("SELECT 1 FROM clinical_encounters WHERE patient_id=? AND external_key=?",
                                      (patient_id, external_key)).fetchone():
                 raise ClinicalConflict("Encounter key already exists")
-            cursor = self.host.db.execute("""INSERT INTO clinical_encounters
+            encounter_id = self._insert_id("""INSERT INTO clinical_encounters
               (patient_id,external_key,kind,service_date,status,revision,created_at,updated_at)
               VALUES(?,?,?,?,?,?,?,?)""", (patient_id, external_key, kind, service_date,
                                                "scheduled", 1, now, now))
             self.host.append_event(patient_id, "clinical_encounter_scheduled",
-                              encounter_id=cursor.lastrowid, revision=1, actor=actor, purpose=purpose, request_key=request_key)
-            return {"encounter_id": cursor.lastrowid, "status": "scheduled", "revision": 1}
+                              encounter_id=encounter_id, revision=1, actor=actor, purpose=purpose, request_key=request_key)
+            return {"encounter_id": encounter_id, "status": "scheduled", "revision": 1}
         return self._command(patient_id, actor, purpose, "encounter.schedule", request_key,
                              {"external_key": external_key, "kind": kind,
                               "service_date": service_date}, mutate)
@@ -301,7 +315,7 @@ class ClinicalEncounters:
             if target not in TRANSITIONS[row["status"]]:
                 raise ClinicalConflict("Illegal encounter state transition")
             new_rev = row["revision"] + 1
-            self.host.db.execute("UPDATE clinical_encounters SET status=?,revision=?,updated_at=? WHERE id=?",
+            self._execute("UPDATE clinical_encounters SET status=?,revision=?,updated_at=? WHERE id=?",
                                   (target, new_rev, now_utc(), encounter_id))
             self.host.append_event(patient_id, "clinical_encounter_state_changed",
                               encounter_id=encounter_id, from_status=row["status"],
@@ -328,10 +342,10 @@ class ClinicalEncounters:
             if prior is None:
                 if expected_version != 0 or correction_reason is not None:
                     raise ClinicalConflict("New notes require expected_version=0 and no correction")
-                cursor = self.host.db.execute(
+                note_id = self._insert_id(
                     "INSERT INTO clinical_note_headers(encounter_id,note_key,latest_version) VALUES(?,?,1)",
                     (encounter_id, note_key))
-                note_id, prior_version_id, version, state = cursor.lastrowid, None, 1, "draft"
+                prior_version_id, version, state = None, 1, "draft"
             else:
                 if prior["latest_version"] != expected_version:
                     raise ClinicalConflict("Note version changed; reload before writing")
@@ -344,10 +358,10 @@ class ClinicalEncounters:
                 prior_version_id = prior["version_id"]
                 version = expected_version + 1
                 state = "draft_correction" if was_attested else prior["status"]
-                self.host.db.execute("UPDATE clinical_note_headers SET latest_version=? WHERE id=?",
+                self._execute("UPDATE clinical_note_headers SET latest_version=? WHERE id=?",
                                       (version, note_id))
             digest = hashlib.sha256(body.encode("utf-8")).hexdigest()
-            self.host.db.execute("""INSERT INTO clinical_note_versions
+            self._execute("""INSERT INTO clinical_note_versions
               (note_id,version,status,body,sha256,authored_by,created_at,supersedes_id,amendment_reason)
               VALUES(?,?,?,?,?,?,?,?,?)""", (note_id, version, state, body, digest,
                                                actor, now_utc(), prior_version_id,
@@ -381,9 +395,9 @@ class ClinicalEncounters:
                 raise ClinicalConflict("Only draft note versions can be attested")
             version = expected_version + 1
             state = "attested_correction" if prior["status"] == "draft_correction" else "attested"
-            self.host.db.execute("UPDATE clinical_note_headers SET latest_version=? WHERE id=?",
+            self._execute("UPDATE clinical_note_headers SET latest_version=? WHERE id=?",
                                   (version, prior["id"]))
-            self.host.db.execute("""INSERT INTO clinical_note_versions
+            self._execute("""INSERT INTO clinical_note_versions
               (note_id,version,status,body,sha256,authored_by,created_at,supersedes_id,amendment_reason)
               VALUES(?,?,?,?,?,?,?,?,?)""", (prior["id"], version, state, prior["body"],
                                                prior["sha256"], actor, now_utc(),
@@ -399,7 +413,7 @@ class ClinicalEncounters:
 
     def list_encounters(self, patient_id: str, *, actor: str, purpose: str) -> list[dict]:
         self._allow(actor, patient_id, "encounter.read", purpose)
-        rows = [dict(row) for row in self.host.db.execute(
+        rows = [dict(row) for row in self._execute(
             "SELECT * FROM clinical_encounters WHERE patient_id=? ORDER BY service_date,id",
             (patient_id,)).fetchall()]
         # Bound disclosure to the current host policy, not only the initial
@@ -412,7 +426,7 @@ class ClinicalEncounters:
         self._allow(actor, patient_id, "note.read", purpose)
         self._encounter(patient_id, encounter_id)
         note_key = valid_id(note_key)
-        rows = [dict(row) for row in self.host.db.execute("""
+        rows = [dict(row) for row in self._execute("""
           SELECT v.id,v.version,v.status,v.body,v.sha256,v.authored_by,v.created_at,
                  v.supersedes_id,v.amendment_reason
           FROM clinical_note_headers n JOIN clinical_note_versions v ON v.note_id=n.id
