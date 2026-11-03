@@ -151,6 +151,35 @@ class QuestionManualPassagesHTTPTests(EvidenceFixture):
                 self.assertEqual(code,404,body)
                 self.assertEqual(self.counts(),before)
 
+    def test_original_read_is_required_only_when_manual_text_is_disclosed(self):
+        with running_server(create_app(self.settings)) as base:
+            p,q,_,_,path,_,command=self.setup_manual(base)
+            code,evidence,_=self.imported(base,p,q);self.assertEqual(code,201,evidence)
+            packet=self.packet(base,p,q)
+            code,assessment,_=self.assessed(base,p,q,self.assessment_body(packet,evidence['evidence_id']))
+            self.assertEqual(code,201,assessment)
+
+            # Freeze a legacy report before any manual context exists.
+            legacy_body=self.report_body(self.packet(base,p,q),[assessment['assessment_id']],key='LEGACY-NO-MANUAL')
+            code,legacy,_=self.reported(base,p,q,legacy_body);self.assertEqual(code,201,legacy)
+            _,manual=self.save(base,path,command)
+
+            # Removing original-read authority must not hide unrelated evidence
+            # metadata or a legacy report that contains no manual quotation.
+            self.creds[0]['actions'].remove('source_original_read');self.write()
+            packet=self.packet(base,p,q)
+            code,old,_=self.read_report(base,p,q,legacy['report_id'])
+            self.assertEqual(code,200,old)
+            self.assertEqual(old['state'],'historical_reassessment_required')
+            self.assertNotIn('manual_passages',old['snapshot'])
+
+            # Direct manual disclosure and creation of a new report that would
+            # freeze that text still fail closed under the independent grant.
+            self.assertEqual(request(base,path,token=TOKEN_A)[0],404)
+            new_body=self.report_body(packet,[assessment['assessment_id']],key='MANUAL-WITHOUT-ORIGINAL')
+            new_body['expected_manual_context_sha256']=manual['context_sha256']
+            self.assertEqual(self.reported(base,p,q,new_body)[0],404)
+
     def test_report_freezes_manual_context_and_correction_invalidates_without_rewriting(self):
         with running_server(create_app(self.settings)) as base:
             p,q,payload,doc,path,selection,command=self.setup_manual(base)
