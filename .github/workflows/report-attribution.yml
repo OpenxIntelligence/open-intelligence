@@ -1,0 +1,38 @@
+name: Patient report attribution and export verification
+on:
+  pull_request:
+    paths:
+      - 'src/open_intelligence/patient_report.py'
+      - 'tests/test_patient_report*.py'
+      - 'web/report.js'
+      - 'tests/patient_report_followthrough_browser_journey.py'
+      - '.github/workflows/report-attribution.yml'
+permissions:
+  contents: read
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PYTHONPATH: src
+    steps:
+      - name: Checkout exact pull request head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Python compile
+        run: python -m compileall -q src tests
+      - name: Patient report and HTTP regression tests
+        run: python -m unittest discover -s tests -p 'test_patient_report*.py' -v
+      - name: Async report-client tests
+        run: node --test tests/test_patient_report_client.js
+      - name: Real browser report and follow-through journey
+        run: python tests/patient_report_followthrough_browser_journey.py
+      - name: Record tested commit
+        if: always()
+        run: git rev-parse HEAD
