@@ -64,6 +64,14 @@ def main() -> None:
             assert visible('#assertions') and not visible('#investigations'), 'Overview tab shows facts, hides authoring'
             cd.evaluate("document.querySelector('#view-nav a[data-tab=investigations]').click()")
             cd.wait("!document.querySelector('#view-investigations').hidden && document.querySelector('#view-overview').hidden", 'Investigations tab')
+            assert cd.evaluate("!!document.querySelector('#view-review #view-mission #patient-mission') && !document.querySelector('#view-mission').open"), \
+                'Patient Mission kept, collapsed, in Review & changes'
+            cd.evaluate("document.querySelector('#view-nav a[data-tab=board]').click()")
+            cd.wait("!document.querySelector('#view-board').hidden && document.querySelectorAll('#incoming-list button').length === 2", 'Incoming board')
+            cd.evaluate("[...document.querySelectorAll('#incoming-list .question')].find(r => r.textContent.includes('CASE-BETA')).querySelector('button').click()")
+            cd.wait("document.querySelector('#case-heading').textContent === 'Fictional case Beta' && !document.querySelector('#view-overview').hidden", 'Open this case lands on its Overview')
+            cd.evaluate("document.querySelector('#case-picker').value='CASE-ALPHA';document.querySelector('#case-picker').dispatchEvent(new Event('change'))")
+            cd.wait("document.querySelector('#case-heading').textContent === 'Fictional case Alpha' && document.querySelectorAll('#assertion-list .finding').length === 5", 'back to Alpha')
             order = cd.evaluate("[...document.querySelector('#investigations').children].map(n => n.id || n.className)")
             assert order.index('model-investigation') < order.index('investigation-history') < order.index('view-manual-draft'), order
             assert cd.evaluate("!!document.querySelector('#view-manual-draft #draft-form') && !document.querySelector('#view-manual-draft').open"), \

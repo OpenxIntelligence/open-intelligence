@@ -27,7 +27,7 @@
       ['records', 'Records & timeline', ['timeline', 'sources', 'biological-assets', 'import']],
       ['investigations', 'Investigations', ['investigations']],
       ['research', 'Evidence & research', ['evidence', 'bibliography']],
-      ['review', 'Review & changes', ['changes-since-review', 'patient-mission', 'activity']],
+      ['review', 'Review & changes', ['changes-since-review', 'activity', 'view-mission']],
       ['options', 'Options & tasks', ['options']],
     ],
     patient: [
@@ -51,6 +51,14 @@
     console.error('Open Intelligence views: owner template changed; missing ' + missing.join(', '));
     return;
   }
+
+  // Patient Mission repeats every finding as a workflow projection; keep it,
+  // collapsed, at the end of Review & changes.
+  const mission = make('details', null, 'panel view-disclosure view-mission');
+  mission.id = 'view-mission';
+  mission.append(make('summary', 'Patient Mission · workflow projection'), blocks['patient-mission']);
+  blocks['view-mission'] = mission;
+  delete blocks['patient-mission'];
 
   // Investigations: put the main path first (question -> run -> saved drafts)
   // and tuck the hand-written draft form into a disclosure. Same elements and
@@ -193,6 +201,13 @@
     }
   }
   addEventListener('hashchange', route);
+  // The board's "Open this case" scrolls to #overview, which sits in another
+  // tab here. After the owner's handler switches the case, show that tab.
+  $('incoming-list').addEventListener('click', event => {
+    if (!event.target.closest('button')) return;
+    show(DEFAULT_TAB[arrangedRole]);
+    requestAnimationFrame(() => scrollTo(0, 0));
+  });
 
   function setRole(next) {
     if (!(next in ROLES) || next === role) return;
