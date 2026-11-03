@@ -140,7 +140,10 @@ export function decodeSourceWorldModel(value:unknown,patientId:string,caseId:str
       !c.reported_states.includes('reported')||!c.reported_states.includes('negative')||
       !Array.isArray(c.observation_refs)||c.observation_refs.length<2)throw Error('contract');
    for(const ref of c.observation_refs){
-     if(!obj(ref,['assertion_id','source_version_id','source_line']))throw Error('contract');
+     if(!obj(ref,['assertion_id','source_version_id','source_line'])||
+        !integer(ref.assertion_id)||ref.assertion_id<1||
+        typeof ref.source_version_id!=='string'||!SOURCE.test(ref.source_version_id)||
+        !integer(ref.source_line)||ref.source_line<1)throw Error('contract');
      const observation=byAssertion.get(ref.assertion_id);
      if(!observation||observation.source_version_id!==ref.source_version_id||
        observation.source_line!==ref.source_line||observation.specimen_id!==c.specimen_id||
