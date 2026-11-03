@@ -120,6 +120,17 @@ class ReviewedDocumentTests(SourceVersionFixture):
             second=self.prepared(base,p,RAW+b'Fictional amendment.\r\n',1)
             status,b,_=request(base,self.basepath(p),token=TOKEN_A,body=second)
             self.assertEqual(status,201,b);self.assertEqual(b['version'],2)
+            current_path = self.basepath(p) + "/" + b["source_id"]
+            status, current, _ = request(base, current_path, token=TOKEN_A)
+            self.assertEqual(status, 200, current)
+            self.assertEqual((current["version"], current["state"]), (2, "current"))
+            self.assertEqual(current["preview"]["text"], (RAW + b"Fictional amendment.\r\n").decode())
+            req = Request(base + current_path + "/original",
+                          headers={"Authorization": "Bearer " + TOKEN_A})
+            with build_opener(ProxyHandler({})).open(req) as response:
+                self.assertEqual(response.read(), RAW + b"Fictional amendment.\r\n")
+            status, retry, _ = request(base, self.basepath(p), token=TOKEN_A, body=second)
+            self.assertEqual((status, retry), (200, {**b, "duplicate": True}))
             old=request(base,self.basepath(p)+'/'+a['source_id'],token=TOKEN_A)[1]
             self.assertEqual(old['state'],'superseded');self.assertEqual(old['preview']['text'],RAW.decode())
             self.assertEqual(request(base,self.basepath(p),token=TOKEN_A,body=first)[0],200)

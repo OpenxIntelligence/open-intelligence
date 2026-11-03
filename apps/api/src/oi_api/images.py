@@ -52,6 +52,10 @@ class PostgresSourceImages:
         _source_id(source_id)
         _key(organization, "organization")
         revision = self.sources._binding(patient_id, case_id, organization, purpose)
+        # A manually reviewed document is a different source owner, even when
+        # its kind says imaging or a legacy image link names this source ID.
+        if self.sources._is_reviewed(source_id):
+            raise PatientRegistryDenied("Current imaging source unavailable")
         source, _ = self.sources._validated_original(case_id, source_id)
         if source["kind"] != "imaging" or source["state"] != "current":
             raise PatientRegistryDenied("Current imaging source unavailable")

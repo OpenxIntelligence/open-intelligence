@@ -39,3 +39,11 @@ Independently authored synthetic cases only. Next.js, real patient data, live PA
 ## Bounded input additions
 
 Include the separately verified #378 report-freshness, #379 unsent follow-up draft, #380 Review chronology and #382 source-reading keyboard corrections at the frozen revisions in the execution ledger. Preserve their full existing regression assertions when composing the same session and browser harness. Donor passes remain historical evidence until this candidate completes its own acceptance.
+
+## Reviewed repair and ready-owner refinement
+
+The observed boundary baseline requires post-audit authority rechecking, explicit reviewed-document rejection by image scope, and normalization of the database predecessor sequence while preserving all provenance checks. Reuse #389's exact repair blobs and retain the tests-first 8+5 boundary reproductions plus the three separately diagnosed current-v2 failures.
+
+Adopt finished #379 status drafts at `61339216147154c2c3555933e6e1c7281f3c0460`, #383 Overview at `3c2f92faa3e4ec01a403286754e6e23eaf9b7260` and #385 source-selection reference at `7494fa983a44b95a770f2ec48544d4fcd8bab613`. Their exact hashes, review rulings and historical results are in the execution ledger. This supersedes only the initial #383 deferral, not the pinned-main boundary.
+
+A manual selection reference exposes its exact source original, extraction, annotation revision, selected actor/time/key/state/quote and physical page, with freshness outside the immutable anchor hash. It must survive actual restored HTTP unchanged and retain independent patient/source/original authority. It does not create a canonical investigation question or report claim. All existing document/image browser, recovery and rights assertions remain required together.

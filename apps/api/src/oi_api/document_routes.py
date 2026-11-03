@@ -53,6 +53,13 @@ def register_document_routes(router, *, principal, registry, records_authorized,
         return execute(request,context,patient_id,case_id,("source_read","source_original_read"),
             lambda owner,kwargs:owner.read(patient_id,case_id,source_id,**kwargs,prepare_response=lambda result,raw:JSONResponse(result)))
 
+    @router.get(prefix+"/{source_id}/selections/{revision_id}/{selection_key}")
+    def selection(request:Request,patient_id:str,case_id:str,source_id:str,revision_id:str,
+                  selection_key:str,context:Principal=Depends(principal)):
+        return execute(request,context,patient_id,case_id,("source_read","source_original_read"),
+            lambda owner,kwargs:owner.read_selection(patient_id,case_id,source_id,revision_id,
+                selection_key,**kwargs,prepare_response=JSONResponse))
+
     @router.get(prefix+"/{source_id}/original")
     def original(request:Request,patient_id:str,case_id:str,source_id:str,context:Principal=Depends(principal)):
         def prepare(result,raw):
