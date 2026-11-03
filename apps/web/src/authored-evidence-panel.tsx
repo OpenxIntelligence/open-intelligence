@@ -152,7 +152,10 @@ export function AuthoredEvidencePanel({session,state,busy}:{session:RegistrySess
       <details><summary>Comparison references</summary><p>Evidence <code>{a.evidence_id}</code> · character offset {a.quote_start??'withheld'}</p><p>Assessment <code>{a.assessment_id}</code></p><p>Recorded {a.created_at} by unverified fixture label <code>{a.actor_label}</code>.</p></details>
       <label className="evidence-check"><input type="checkbox" data-testid="evidence-report-select" checked={chosen.includes(a.assessment_id)} disabled={locked||!current||a.state!=='current_unreviewed'} onChange={e=>setChosen(ids=>e.target.checked?[...ids,a.assessment_id]:ids.filter(id=>id!==a.assessment_id))}/><span>Include this current proposal in a report</span></label>
      </li>)}</ul>}
-     <button type="button" className="primary" data-testid="evidence-report-prepare" disabled={locked||!current||chosen.length<1||chosen.length>20||!inspectedManual||inspectedManual.state!=='current_unreviewed'} onClick={()=>void session.prepareEvidenceReport(q.question_id,chosen,inspectedManual?.revision_id?inspectedManual.context_sha256:undefined)}>Prepare selected comparison report ({chosen.length})</button>
+     {/* No saved manual set is a valid legacy report path. If a set exists but has not
+         been freshly inspected, omitting its fingerprint fails closed at the server CAS.
+         A freshly inspected stale set is blocked here before any write. */}
+     <button type="button" className="primary" data-testid="evidence-report-prepare" disabled={locked||!current||chosen.length<1||chosen.length>20||inspectedManual?.state==='reassessment_required'} onClick={()=>void session.prepareEvidenceReport(q.question_id,chosen,inspectedManual?.revision_id?inspectedManual.context_sha256:undefined)}>Prepare selected comparison report ({chosen.length})</button>
      <p className="muted">Selection is explicit and limited to 20 current proposals. Excluded or missing counterevidence is not evidence of absence.</p>
     </section>
     <section aria-labelledby="evidence-reports-heading"><h4 id="evidence-reports-heading">Saved report preparations ({packet.reports.length})</h4>
