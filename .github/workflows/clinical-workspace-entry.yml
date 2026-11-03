@@ -1,0 +1,114 @@
+name: Fictional patient intake over governed clinical review
+on:
+  push:
+    branches: [integration/clinical-workspace-entry-20261102]
+  pull_request:
+    branches: [integration/pwm-v2-report-review-20261102, integration/clinical-workspace-entry-20261102, integration/clinical-multifile-intake-20261102]
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: bash
+env:
+  OI_TEST_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+  PYTHONUNBUFFERED: '1'
+jobs:
+  workspace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.13'
+      - name: Record exact source under test
+        run: |
+          mkdir -p verification
+          python - <<'PYCODE'
+          import hashlib, json, os, subprocess
+          from pathlib import Path
+          def git(*args):
+              return subprocess.check_output(['git', *args], text=True).strip()
+          head = git('rev-parse', 'HEAD')
+          if head != os.environ['OI_TEST_HEAD']:
+              raise SystemExit('Checkout is not the proposed head')
+          paths = subprocess.check_output(['git', 'ls-files', '-z']).decode().split('\0')
+          receipt = {
+              'checkout_sha': head,
+              'tree_sha': git('rev-parse', 'HEAD^{tree}'),
+              'checkout_kind': 'exact_feature_head',
+              'base_merge_tested': False,
+              'source_sha256': {p: hashlib.sha256(Path(p).read_bytes()).hexdigest()
+                                for p in paths if p and Path(p).is_file()},
+              'scope': 'independently authored synthetic fixtures only',
+              'clinical_validation': False,
+          }
+          Path('verification/source-receipt.json').write_text(json.dumps(receipt, indent=2) + '\n')
+          print(head, receipt['tree_sha'])
+          PYCODE
+      - name: Compile source and tests
+        run: PYTHONPATH=src python -m compileall -q src tests
+      - name: Workspace HTTP entry and original file intake checks
+        run: PYTHONPATH=src:tests:. python -m unittest discover -s tests -p 'test_workspace_start_http.py' -v
+      - name: Original intake JavaScript contract
+        run: node --test tests/test_intake.js
+      - name: Unified clinical evidence and report receipt contracts
+        run: |
+          PYTHONPATH=src:tests:. python -m unittest discover -s tests -p 'test_pwm_v2_report_receipt_integration.py' -v
+          PYTHONPATH=src:tests:. python -m unittest discover -s tests -p 'test_report_review_handoff.py' -v
+      - name: Exact content-class rights and governed report contracts
+        run: |
+          PYTHONPATH=src:tests:. python -m unittest discover -s tests -p 'test_rights_content_types.py' -v 2>&1 | tee verification/content-gate.txt
+          PYTHONPATH=src:tests:. python -m unittest discover -s tests -p 'test_governed_report_content_items.py' -v 2>&1 | tee verification/governed-report.txt
+      - name: Full existing Python and HTTP suite
+        run: PYTHONPATH=src:tests:. python -m unittest discover -s tests -v 2>&1 | tee verification/full-python.txt
+      - name: Preserve exact-head verification receipt
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: governed-content-unit-${{ github.run_id }}-${{ github.run_attempt }}
+          path: verification/
+          if-no-files-found: error
+          retention-days: 7
+  browser:
+    # Browser runs on a fresh runner after the CPU- and socket-heavy application
+    # suite, avoiding the original shared-runner Chrome startup race.
+    needs: workspace
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.13'
+      - name: Record browser runner capability
+        run: |
+          mkdir -p verification
+          test "$(git rev-parse HEAD)" = "$OI_TEST_HEAD"
+          git rev-parse HEAD HEAD^{tree} > verification/browser-source.txt
+          command -v google-chrome || command -v chromium || exit 1
+          google-chrome --version || chromium --version
+      - name: Real empty-workspace v2 source, review, amendment and case-switch journey
+        run: PYTHONPATH=src:tests:. python tests/clinical_workspace_browser_journey.py 2>&1 | tee verification/workspace-browser.txt
+      - name: Inherited source and Patient Mission journeys
+        run: |
+          PYTHONPATH=src:tests:. python tests/browser_journey.py 2>&1 | tee verification/source-browser.txt
+          PYTHONPATH=src:tests:. python tests/patient_mission_browser_journey.py 2>&1 | tee verification/mission-browser.txt
+      - name: Preserve original workflow browser evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: governed-content-browser-${{ github.run_id }}-${{ github.run_attempt }}
+          path: verification/
+          if-no-files-found: error
+          retention-days: 7
