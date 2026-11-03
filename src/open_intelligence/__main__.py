@@ -13,6 +13,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from tools.crossref_metadata import MetadataInputError, fetch_public_doi, project_work
 
+from .case_search import list_cases
 from .changes import changes_since_review
 from .investigation import (
     TEMPLATES,
@@ -106,6 +107,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._static("app.js", "text/javascript; charset=utf-8")
             if path == "/mission.js":
                 return self._static("mission.js", "text/javascript; charset=utf-8")
+            if path == "/case_search.js":
+                return self._static("case_search.js", "text/javascript; charset=utf-8")
             if path == "/style.css":
                 return self._static("style.css", "text/css; charset=utf-8")
             if path == "/tokens.css":
@@ -131,7 +134,12 @@ class Handler(BaseHTTPRequestHandler):
         store = CaseStore(self.db_path)
         try:
             if path == "/api/cases":
-                return self._json(200, store.cases())
+                query = parse_qs(urlsplit(self.path).query)
+                if "search" not in query and "sort" not in query:
+                    return self._json(200, store.cases())
+                search = query.get("search", [""])[0]
+                sort = query.get("sort", ["id"])[0]
+                return self._json(200, list_cases(store, search=search, sort=sort))
             if path == "/api/discovery":
                 return self._json(200, store.list_discovery())
             discovery_links = re.fullmatch(rf"/api/cases/{ID_PART}/discovery", path)
