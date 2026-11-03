@@ -2,7 +2,8 @@
 
 Imported by the existing Chromium journey. Operator grants use its independently
 fictional patient; all questions, tasks, receipts and lists come from the actual
-application. Fault injection discards or delays a real HTTP response only.
+application. Fault injection discards, delays or explicitly corrupts a copy of
+a real HTTP response; original responses and injected values remain distinct.
 """
 import base64
 from contextlib import contextmanager
@@ -22,7 +23,7 @@ TITLE_DEFERRED = 'Arrange a later fictional records discussion'
 _OBSERVE = r"""() => {
   if(window.__oiFollowthroughChecks) throw Error('Task observer already installed');
   const actualFetch=window.fetch;
-  const state={writes:[],reads:[],dropNextWrite:false,holdNextRead:false,
+  const state={writes:[],reads:[],timestampFaults:[],corruptNextTimestamp:null,dropNextWrite:false,holdNextRead:false,
     held:false,released:0,release:null};
   state.restore=()=>{state.release?.();window.fetch=actualFetch;delete window.__oiFollowthroughChecks;};
   window.fetch=async(input,init)=>{
@@ -41,6 +42,17 @@ _OBSERVE = r"""() => {
       }
     }else if(method==='GET'){
       state.reads.push({path,status:response.status,payload});
+      if(state.corruptNextTimestamp&&response.status===200){
+        const {field,value}=state.corruptNextTimestamp;
+        state.corruptNextTimestamp=null;
+        const changed=structuredClone(payload),task=changed.tasks[0];
+        if(!task)throw Error('Timestamp control requires an actual saved task');
+        const target=field==='created_at'?task:task.history.at(-1);
+        const original=target[field];target[field]=value;
+        state.timestampFaults.push({field,original,injected:value,task_id:task.task_id,
+          access_receipt_id:payload.access_receipt_id,original_status:response.status});
+        return new Response(JSON.stringify(changed),{status:response.status,headers:{'Content-Type':'application/json'}});
+      }
       if(state.holdNextRead){
         state.holdNextRead=false;state.held=true;
         await new Promise(resolve=>{state.release=resolve;});
@@ -341,10 +353,36 @@ class FollowthroughChecks:
         assert self.cd.evaluate("document.activeElement.dataset.testid") == 'followthrough-filter-recheck'
         print('PASS FOLLOWTHROUGH ATTENTION: actual source-amended task flags; overlapping counts; exact historical rows; no filter HTTP calls; preserved transition drafts; new-receipt reset; keyboard activation.')
 
+    def assert_timestamp_rejection(self):
+        """A corrupted copy of a real read cannot retain actionable task history."""
+        original_tasks = self.projection()['tasks']
+        writes = self.cd.evaluate('window.__oiFollowthroughChecks.writes.length')
+        for field, value in (('created_at', '2026-02-30T10:00:00Z'),
+                             ('recorded_at', '2026-11-03T24:00:00Z'),
+                             ('recorded_at', '2026-11-03T10:00:00.1234567Z')):
+            self.cd.evaluate('window.__oiFollowthroughChecks.corruptNextTimestamp='
+                             + json.dumps({'field': field, 'value': value}))
+            click(self.cd, '[data-testid=followthrough-refresh]')
+            self.cd.wait("document.querySelector('[data-testid=followthrough-status]')?.dataset.phase==='error'",
+                         'invalid timestamp removes actionable task history')
+            assert self.cd.evaluate("!document.querySelector('[data-testid=followthrough-task]')")
+            assert self.cd.evaluate("!document.querySelector('[data-testid=followthrough-attention]')")
+            assert self.cd.evaluate("!document.querySelector('[data-testid=followthrough-history]')")
+            assert self.cd.evaluate("!document.querySelector('[data-testid=followthrough-transition-reason]')")
+            assert self.cd.evaluate('window.__oiFollowthroughChecks.writes.length') == writes
+            assert self.projection()['tasks'] == original_tasks
+            restored = self.refresh()
+            assert restored['tasks'] == original_tasks
+            assert self.cd.evaluate('window.__oiFollowthroughChecks.writes.length') == writes
+        print('PASS FOLLOWTHROUGH TIMESTAMPS: three explicitly corrupted copies of real authorized reads '
+              'withhold task history, counts and transition controls; fresh valid reads restore exact '
+              'original tasks and timestamps without writes or grant changes.')
+
     def finish(self, replacement_source_id, credentials, write_grants, screenshots):
         navigate(self.cd, 'Investigations')
         value = self.assert_amendment(replacement_source_id)
         self.assert_attention_filters()
+        self.assert_timestamp_rejection()
         # A failed fresh read must remove old task text and transition controls.
         credentials[0]['actions'].remove('followthrough_read')
         write_grants()
@@ -375,6 +413,7 @@ class FollowthroughChecks:
         (screenshots / 'h1-followthrough-receipts.json').write_text(json.dumps({
             'patient_id': self.patient_id, 'case_id': self.case_id, 'question_id': self.question_id,
             'first_create_receipt': self.first_write['payload'],
+            'timestamp_fault_injection': self.cd.evaluate('window.__oiFollowthroughChecks.timestampFaults'),
             'task_summary': [{'task_id': row['task_id'], 'status': row['status'], 'revision': row['revision'],
                               'source_id': row['source_id'], 'needs_recheck': row['needs_recheck'],
                               'history_events': [event['event_id'] for event in row['history']]} for row in value['tasks']],
