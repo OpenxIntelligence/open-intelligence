@@ -1,5 +1,49 @@
 # H1 saved-question follow-through
 
+## Overview continuation — 3 November 2026
+
+The Overview now composes the existing case-owned follow-through read into its
+care-preparation card. It shows the five established operational counts and up
+to three open tasks, including recorded owner and revisit basis, in server order.
+The server evaluation date and preview coverage remain explicit. These counts
+do not rank clinical urgency, establish complete care coverage or confer authority.
+
+The card reuses `projectFollowthroughAttention` and additionally requires its
+case to match Overview's successfully loaded World Model. A first read, a read
+in progress and an unavailable read remain distinct from a verified empty list.
+Independently readable question context survives a task-read denial. Refresh
+uses the existing separately authorized GET; navigation returns to Investigations.
+Saving and uncertain task writes disable refresh, and an uncertain write links
+back to its existing exact-intent recovery controls.
+
+This continuation starts from PR #375 at
+`1bdc44ac8507ec3a05398c3965bed5fcae0d59eb`. It adds no dependencies, schema,
+routes or persisted state. Unsent-task draft navigation (#379), report disclosure
+(#378) and source keyboard focus (#353) remain separate changes. The bounded
+design and acceptance plan is
+`docs/superpowers/plans/2026-11-03-overview-followup-work.md`.
+
+Local verification for this continuation: **408 client tests passed with zero
+failures or skips**, TypeScript/Vite production build passed, 13 installed-package
+rights controls passed, and npm audit reported zero vulnerabilities. The existing
+gate inspected 18 installed packages and retains two omitted optional packages as
+uninspected. The browser helpers compile and the inherited synthetic-data boundary
+check passed. No dependencies or license determinations were expanded.
+
+The focused test-first run had 18 executions: seven existing tests passed and
+11 new assertions failed because the projection/card did not exist. After the
+implementation, all 18 focused tests and the complete client suite passed.
+
+Local PostgreSQL and Chromium are unavailable in this workspace. Exact-head
+hosted browser acceptance, screenshots and independent review are pending at
+this checkpoint. The existing browser journey now covers real tasks from two
+saved questions, empty/loading/denied reads, read-only refresh, unknown-write
+recovery, case switching and desktop/mobile layout. Separate backend/restore
+suites are not claimed as rerun for this UI-only change.
+
+The historical checkpoint below belongs to its original commit and is not
+evidence for the new combined head.
+
 ## Verified implementation checkpoint — 3 November 2026
 
 The implementation in [draft PR #293](https://github.com/OpenxIntelligence/open-intelligence/pull/293)
