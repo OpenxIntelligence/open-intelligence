@@ -164,6 +164,113 @@ Remaining proof step: a live-server run against the real API with
 the operator key set, before the demo. The API completion itself
 was verified separately on 2026-10-31.
 
+## Case search and triage list (read-only)
+
+Find fictional cases and see work counts at a glance, without leaking
+one case's contents into another view. This slice adds no tables, no
+writes, no clinical urgency, and no treatment logic.
+
+```text
+GET /api/cases?search=<substring>&sort=recent|id
+```
+
+- `GET /api/cases` without a query still returns the existing
+  id-ordered `[{case_id, label, synthetic}]` rows unchanged.
+- With `search` or `sort` present, each item returns only:
+  `case_id`, `label`, `created_at`, `last_activity_at`,
+  `last_activity_event_id`, `synthetic`, and
+  `counts: {sources, open_questions, pending_reviews,
+  overdue_follow_ups}`. No source text, finding quotes, question
+  text, draft summaries, or notes appear in the list payload.
+- Search matches case id and display label substrings only,
+  case-insensitive. Empty search returns all cases. A term matching
+  nothing returns `[]`, never an error.
+- `sort=id` orders by case id (existing order). `sort=recent`
+  orders by latest recorded activity (latest event id per case).
+  Any other sort returns the existing `422` boundary.
+- Counts derive from the same tables and state filters the case
+  views use: current sources (`state='current'`), open questions
+  (`state='open'`), drafts awaiting demo review
+  (`snapshots.state='draft'`). Stale snapshots are preserved
+  history; their rework signal is the reopened open question.
+  `overdue_follow_ups` is always `0` because the demo ledger
+  contains no follow-up due dates, urgency, or priority — none is
+  shown or inferred. This is not a clinical triage list.
+
+The `#case-search` panel provides a search box and sort control,
+plain-language counts, a `FICTIONAL` label on every item, an honest
+empty state, and an `Open this case` action that reuses the existing
+case-picker change path (including its unfinished-draft guard) and
+loads the unchanged case view. Rendering uses `textContent` only,
+reuses existing CSS classes, clears the list on every response, and
+discards stale responses by sequence. The search box and sort are
+global list controls, not per-case drafts, so a case switch does not
+clear them; the list refreshes after workspace changes via the
+existing event list.
+
+Files: `src/open_intelligence/case_search.py` (new read-only
+projection), `web/case_search.js` (new renderer),
+`tests/test_case_search.py` (store + HTTP + UI-contract),
+`src/open_intelligence/__main__.py` (query handling and static
+route only), `web/index.html` (new section, nav link, script tag
+only). No existing behavior, contract, or test was changed.
+
+Reviewer to run (not run here; shell execution is blocked in this
+authoring session):
+
+```bash
+PYTHONPATH=src python -m compileall -q src
+node --check web/case_search.js
+PYTHONPATH=src python -m unittest tests.test_case_search -v
+PYTHONPATH=src python -m unittest discover -s tests
+```
+
+Limitations: no pagination, no follow-up ledger, no urgency model,
+and no cross-case clinical comparison. The list shows workflow
+counts only and must not be described as clinical triage.
+## Investigation workspace slice
+
+Durable investigation questions that survive amendments and stay linked to
+their evidence. All records below are fictional demo data; nothing here is
+clinically reviewed and nothing selects a treatment.
+
+- New append-only tables: `workspace_questions` (question text, status,
+  created timestamp plus derived created date), `workspace_question_history`
+  (every status change with its reason and preserved answer), and
+  `workspace_question_links` (question-to-source-version records).
+  Statuses are restricted to `open`, `in_progress`, `answered`,
+  `needs_review` in both SQL checks and Python validation.
+- Routes (case-scoped; unknown case returns 422 as elsewhere):
+  `POST /api/cases/{case}/workspace-questions` creates a question;
+  `GET .../workspace-questions` lists questions with links and history;
+  `POST .../workspace-questions/{id}/links` links a current source version;
+  `POST .../workspace-questions/{id}/links/{link}/unlink` supersedes a link
+  (the row is kept, never deleted);
+  `POST .../workspace-questions/{id}/status` records a human status change
+  with a required reason. Answer text is only accepted when marking a
+  question `answered`.
+- Questions are never auto-answered: only the explicit status route moves a
+  question to `answered`. When a linked source version is amended, every
+  `answered` question with an active link to the superseded version reopens
+  to `needs_review` in the same import transaction; its prior answer is
+  preserved in history and its current answer reads back empty. Unlinked or
+  unanswered questions are untouched, as is every other case.
+- UI: an "Investigations" panel (`#workspace-investigations`) in the case
+  view lists each question with its status pill, linked sources as
+  `DOCUMENT@VERSION` with source and link states, and per-question history.
+  Every item carries a FICTIONAL label; answers render only for `answered`
+  questions while history keeps earlier recorded answers for review.
+  Rendering uses existing CSS classes and text-only DOM updates, follows
+  the case-switch guards, and discards stale responses after a case change.
+- Tests: `tests/test_investigations.py` covers the store
+  (create → link → answer → amend → `needs_review` with history intact,
+  reason/answer rules, append-only links, case isolation), the HTTP routes
+  (including 422 for unknown cases and cross-case links), and the UI/server
+  contract (panel markup, case-scoped text-only renderer, route presence).
+
+Limitations: no authentication or real-patient support; amendment reopening
+applies only to source-version amendments, not to evidence or rights changes;
+the demo reviewer label is unverified and is not clinical sign-off.
 ## Source provenance and amendment history
 
 A read-only projection over existing sources, snapshots, and events.

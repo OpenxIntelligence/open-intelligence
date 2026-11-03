@@ -13,6 +13,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from tools.crossref_metadata import MetadataInputError, fetch_public_doi, project_work
 
+from .case_search import list_cases
 from .changes import changes_since_review
 from .followthrough import followthrough_view
 from .investigation import (
@@ -187,6 +188,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._static("app.js", "text/javascript; charset=utf-8")
             if path == "/mission.js":
                 return self._static("mission.js", "text/javascript; charset=utf-8")
+            if path == "/case_search.js":
+                return self._static("case_search.js", "text/javascript; charset=utf-8")
             if path == "/provenance.js":
                 return self._static("provenance.js", "text/javascript; charset=utf-8")
             if path == "/consent.js":
@@ -223,7 +226,15 @@ class Handler(BaseHTTPRequestHandler):
                 actor = self._fictional_actor()
                 if actor is None:
                     return self._grant_denial()
-                return self._json(200, store.granted_cases(actor, FICTIONAL_ACTOR_PURPOSE))
+                query = parse_qs(urlsplit(self.path).query)
+                if "search" not in query and "sort" not in query:
+                    return self._json(200, store.granted_cases(actor, FICTIONAL_ACTOR_PURPOSE))
+                granted = store.granted_cases(actor, FICTIONAL_ACTOR_PURPOSE)
+                search = query.get("search", [""])[0]
+                sort = query.get("sort", ["id"])[0]
+                return self._json(200, list_cases(
+                    store, search=search, sort=sort,
+                    allowed_ids={c["case_id"] for c in granted}))
             gated_case = self._case_route_id(path)
             if gated_case is not None and not self._require_case_grant(store, gated_case, path):
                 return None
@@ -294,6 +305,9 @@ class Handler(BaseHTTPRequestHandler):
             inv_one = re.fullmatch(rf"/api/cases/{ID_PART}/investigations/([0-9]+)", path)
             if inv_one:
                 return self._json(200, store.get_investigation(inv_one[1], int(inv_one[2])))
+            workspace_list = re.fullmatch(rf"/api/cases/{ID_PART}/workspace-questions", path)
+            if workspace_list:
+                return self._json(200, {"workspace_questions": store.list_workspace_questions(workspace_list[1])})
             question_rollup = re.fullmatch(rf"/api/cases/{ID_PART}/questions/([0-9]+)/rollup", path)
             if question_rollup:
                 return self._json(200, question_gap_rollup(store, question_rollup[1], int(question_rollup[2])))
@@ -412,6 +426,25 @@ class Handler(BaseHTTPRequestHandler):
                         owner = None
                     return self._json(201, {"question_id": store.add_question(
                         questions[1], data.get("question"), owner)})
+                workspace_create = re.fullmatch(rf"/api/cases/{ID_PART}/workspace-questions", path)
+                if workspace_create:
+                    return self._json(201, {"workspace_question_id": store.create_workspace_question(
+                        workspace_create[1], data.get("question"))})
+                workspace_link = re.fullmatch(rf"/api/cases/{ID_PART}/workspace-questions/([0-9]+)/links", path)
+                if workspace_link:
+                    return self._json(201, {"link_id": store.link_workspace_source(
+                        workspace_link[1], int(workspace_link[2]),
+                        data.get("source_version_id"), data.get("reason"))})
+                workspace_unlink = re.fullmatch(rf"/api/cases/{ID_PART}/workspace-questions/([0-9]+)/links/([0-9]+)/unlink", path)
+                if workspace_unlink:
+                    return self._json(200, store.unlink_workspace_source(
+                        workspace_unlink[1], int(workspace_unlink[2]),
+                        int(workspace_unlink[3]), data.get("reason")))
+                workspace_status = re.fullmatch(rf"/api/cases/{ID_PART}/workspace-questions/([0-9]+)/status", path)
+                if workspace_status:
+                    return self._json(200, store.set_workspace_question_status(
+                        workspace_status[1], int(workspace_status[2]),
+                        data.get("status"), data.get("reason"), data.get("answer")))
                 followthrough_create = re.fullmatch(rf"/api/cases/{ID_PART}/followthrough-tasks", path)
                 if followthrough_create:
                     task_id = store.create_followthrough_task(

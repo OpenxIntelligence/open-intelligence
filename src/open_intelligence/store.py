@@ -605,6 +605,38 @@ CREATE TABLE IF NOT EXISTS biological_inventory_assertions (
 CREATE INDEX IF NOT EXISTS idx_biological_assets_case ON biological_assets(case_id, asset_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_assertions_asset ON biological_inventory_assertions(asset_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_assertions_source ON biological_inventory_assertions(source_version_id);
+-- Investigation workspace: durable questions that survive amendments and stay
+-- linked to exact source versions. Questions are never auto-answered: only an
+-- explicit recorded status change moves them, and an amendment only reopens an
+-- answered question to needs_review. Links are append-only records; unlinking
+-- supersedes a link row, never deletes it. History rows are never updated.
+CREATE TABLE IF NOT EXISTS workspace_questions (
+  id INTEGER PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(case_id),
+  question TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('open','in_progress','answered','needs_review')),
+  answer TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS workspace_question_history (
+  id INTEGER PRIMARY KEY,
+  question_id INTEGER NOT NULL REFERENCES workspace_questions(id),
+  case_id TEXT NOT NULL REFERENCES cases(case_id),
+  previous_status TEXT CHECK(previous_status IN ('open','in_progress','answered','needs_review')),
+  new_status TEXT NOT NULL CHECK(new_status IN ('open','in_progress','answered','needs_review')),
+  reason TEXT NOT NULL, answer TEXT, recorded_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS workspace_question_links (
+  id INTEGER PRIMARY KEY,
+  question_id INTEGER NOT NULL REFERENCES workspace_questions(id),
+  case_id TEXT NOT NULL REFERENCES cases(case_id),
+  source_version_id INTEGER NOT NULL REFERENCES source_versions(id),
+  state TEXT NOT NULL CHECK(state IN ('active','superseded')),
+  reason TEXT NOT NULL, created_at TEXT NOT NULL,
+  superseded_at TEXT, superseded_reason TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_workspace_questions_case ON workspace_questions(case_id, id);
+CREATE INDEX IF NOT EXISTS idx_workspace_history_question ON workspace_question_history(question_id, id);
+CREATE INDEX IF NOT EXISTS idx_workspace_links_question ON workspace_question_links(question_id, id);
+CREATE INDEX IF NOT EXISTS idx_workspace_links_source ON workspace_question_links(source_version_id);
 -- Consent & identity slice: display and history only. No identity
 -- resolution, matching, or cross-case logic. Consent versions are
 -- append-only; withdrawal adds a withdrawn version and updates only the
@@ -1306,6 +1338,7 @@ class CaseStore:
                     (case_id, source_id, finding.key, finding.state, finding.quote, finding.line))
             invalidated = []
             invalidated_options = []
+            invalidated_workspace = []
             if previous:
                 invalidated = [row[0] for row in self.db.execute(
                     """SELECT snapshots.id FROM snapshots JOIN snapshot_sources
@@ -1330,6 +1363,13 @@ class CaseStore:
                     self._event(case_id, "option_review_reopened",
                                 source_version_id=previous["id"],
                                 invalidated_options=invalidated_options)
+                # Investigation workspace, same transaction: only ANSWERED
+                # questions in THIS case with an ACTIVE link to the superseded
+                # version reopen to needs_review. The system never answers a
+                # question; it only asks for another human review, preserving
+                # the prior answer in history.
+                invalidated_workspace = self._reopen_workspace_questions(
+                    case_id, previous["id"], report.document_id, version)
             invalidated_inventory = []
             if previous:
                 # Anchor-exact, like snapshots: only assertions citing the
@@ -1391,7 +1431,8 @@ class CaseStore:
                         invalidated_bio_explanations=invalidated_bio_explanations,
                         invalidated_bio_assay_observations=invalidated_bio_assays,
                         invalidated_second_opinions=invalidated_second_opinions,
-                        invalidated_survivorship_items=invalidated_survivorship)
+                        invalidated_survivorship_items=invalidated_survivorship,
+                        invalidated_workspace_questions=invalidated_workspace)
             if previous is not None and invalidated:
                 self._create_re_review_tasks(
                     case_id=case_id, snapshot_ids=invalidated, cause="source_amendment",
@@ -1405,7 +1446,8 @@ class CaseStore:
                     "invalidated_bio_explanations": invalidated_bio_explanations,
                     "invalidated_bio_assay_observations": invalidated_bio_assays,
                     "invalidated_second_opinions": invalidated_second_opinions,
-                    "invalidated_survivorship_items": invalidated_survivorship}
+                    "invalidated_survivorship_items": invalidated_survivorship,
+                    "invalidated_workspace_questions": invalidated_workspace}
 
     # ---- B-05: explicit subject binding + reversible quarantine correction ----
     SUBJECT_LINK_DECISION = "bound_by_declared_id_equality"
@@ -4681,6 +4723,215 @@ class CaseStore:
                  timestamp))
             self._event(case_id, "demo_review_acknowledged", snapshot_id=snapshot_id)
 
+    # ---- Investigation workspace: durable questions linked to source versions ----
+    WORKSPACE_STATUSES = frozenset({"open", "in_progress", "answered", "needs_review"})
+
+    def _workspace_question(self, case_id: str, question_id: int) -> sqlite3.Row:
+        if type(question_id) is not int or question_id < 1:
+            raise InvalidInput("Invalid investigation question ID")
+        row = self.db.execute("SELECT * FROM workspace_questions WHERE id=? AND case_id=?",
+                              (question_id, case_id)).fetchone()
+        if not row:
+            raise InvalidInput("Investigation question not in this case")
+        return row
+
+    @staticmethod
+    def _workspace_reason(reason: object) -> str:
+        if not isinstance(reason, str) or not 5 <= len(reason.strip()) <= 600:
+            raise InvalidInput("A status change requires a recorded reason of 5–600 characters")
+        return reason.strip()
+
+    @staticmethod
+    def _workspace_answer(answer: object) -> str:
+        if not isinstance(answer, str) or not 10 <= len(answer.strip()) <= 3000:
+            raise InvalidInput("A recorded answer must have 10–3000 characters")
+        return answer.strip()
+
+    def create_workspace_question(self, case_id: str, question: str) -> int:
+        """Record one durable investigation question, starting open with no answer."""
+        self._case(case_id)
+        if not isinstance(question, str) or not 5 <= len(question.strip()) <= 500:
+            raise InvalidInput("Question must have 5–500 characters")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            stamp = now_utc()
+            cur = self.db.execute("""INSERT INTO workspace_questions
+                (case_id,question,status,answer,created_at,updated_at) VALUES (?,?,?,NULL,?,?)""",
+                (case_id, question.strip(), "open", stamp, stamp))
+            question_id = int(cur.lastrowid)
+            self.db.execute("""INSERT INTO workspace_question_history
+                (question_id,case_id,previous_status,new_status,reason,answer,recorded_at)
+                VALUES (?,?,NULL,?,?,NULL,?)""",
+                (question_id, case_id, "open", "Question recorded", stamp))
+            self._event(case_id, "workspace_question_created", workspace_question_id=question_id)
+            return question_id
+
+    def link_workspace_source(self, case_id: str, question_id: int,
+                              source_version_id: int, reason: object = None) -> int:
+        """Link one current source version to one question in the same case.
+
+        Links are append-only records. Only one ACTIVE link per
+        (question, source version) may exist; unlinking supersedes the old
+        row so the same version can be linked again as a new record.
+        """
+        self._case(case_id)
+        if type(source_version_id) is not int or source_version_id < 1:
+            raise InvalidInput("Source version ID must be a positive integer")
+        link_reason = ""
+        if reason is not None:
+            if not isinstance(reason, str) or not reason.strip() or len(reason.strip()) > 600:
+                raise InvalidInput("Link reason must have 1–600 characters")
+            link_reason = reason.strip()
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            self._workspace_question(case_id, question_id)
+            source = self.db.execute("SELECT state FROM source_versions WHERE id=? AND case_id=?",
+                                     (source_version_id, case_id)).fetchone()
+            if not source:
+                raise InvalidInput("Source version not in this case")
+            if source["state"] != "current":
+                raise InvalidInput("Only a current source version can be newly linked")
+            existing = self.db.execute("""SELECT id FROM workspace_question_links
+                WHERE question_id=? AND source_version_id=? AND state='active'""",
+                (question_id, source_version_id)).fetchone()
+            if existing:
+                raise InvalidInput("This source version is already linked to the question")
+            cur = self.db.execute("""INSERT INTO workspace_question_links
+                (question_id,case_id,source_version_id,state,reason,created_at)
+                VALUES (?,?,?,?,?,?)""",
+                (question_id, case_id, source_version_id, "active", link_reason, now_utc()))
+            self._event(case_id, "workspace_question_linked",
+                        workspace_question_id=question_id, link_id=cur.lastrowid,
+                        source_version_id=source_version_id)
+            return int(cur.lastrowid)
+
+    def unlink_workspace_source(self, case_id: str, question_id: int,
+                                link_id: int, reason: object = None) -> dict:
+        """Supersede one active link. The row is kept as history, never deleted."""
+        self._case(case_id)
+        if type(link_id) is not int or link_id < 1:
+            raise InvalidInput("Invalid link ID")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            self._workspace_question(case_id, question_id)
+            link = self.db.execute("""SELECT state FROM workspace_question_links
+                WHERE id=? AND question_id=? AND case_id=?""",
+                (link_id, question_id, case_id)).fetchone()
+            if not link:
+                raise InvalidInput("Link not found for this question")
+            if link["state"] != "active":
+                raise InvalidInput("This link is already superseded")
+            superseded_reason = None
+            if reason is not None:
+                if not isinstance(reason, str) or not reason.strip() or len(reason.strip()) > 600:
+                    raise InvalidInput("Unlink reason must have 1–600 characters")
+                superseded_reason = reason.strip()
+            self.db.execute("""UPDATE workspace_question_links
+                SET state='superseded', superseded_at=?, superseded_reason=? WHERE id=?""",
+                (now_utc(), superseded_reason, link_id))
+            self._event(case_id, "workspace_question_unlinked",
+                        workspace_question_id=question_id, link_id=link_id)
+            return {"result": "unlinked", "link_id": link_id}
+
+    def set_workspace_question_status(self, case_id: str, question_id: int,
+                                      status: str, reason: str, answer: object = None) -> dict:
+        """Record one HUMAN status change. Nothing in this module moves a
+        question to 'answered' on its own: the system never auto-answers."""
+        self._case(case_id)
+        if not isinstance(status, str) or status not in self.WORKSPACE_STATUSES:
+            raise InvalidInput("Unknown investigation question status")
+        clean_reason = self._workspace_reason(reason)
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            current = self._workspace_question(case_id, question_id)
+            previous = current["status"]
+            if status == "answered":
+                clean_answer = self._workspace_answer(answer)
+                if previous == "answered" and current["answer"] == clean_answer:
+                    raise InvalidInput("Question already has this status and answer")
+            else:
+                if answer is not None:
+                    raise InvalidInput("Answer text is only accepted when marking a question answered")
+                clean_answer = None
+                if previous == status:
+                    raise InvalidInput("Question already has this status")
+            preserved = current["answer"] if previous == "answered" else None
+            history_answer = clean_answer if status == "answered" else preserved
+            stamp = now_utc()
+            self.db.execute("UPDATE workspace_questions SET status=?, answer=?, updated_at=? WHERE id=?",
+                            (status, clean_answer, stamp, question_id))
+            self.db.execute("""INSERT INTO workspace_question_history
+                (question_id,case_id,previous_status,new_status,reason,answer,recorded_at)
+                VALUES (?,?,?,?,?,?,?)""",
+                (question_id, case_id, previous, status, clean_reason, history_answer, stamp))
+            self._event(case_id, "workspace_question_status_changed",
+                        workspace_question_id=question_id,
+                        previous_status=previous, status=status)
+            return {"result": "status_recorded", "workspace_question_id": question_id,
+                    "previous_status": previous, "status": status}
+
+    def _reopen_workspace_questions(self, case_id: str, superseded_source_id: int,
+                                    document_id: str, new_version: int) -> list[int]:
+        """Reopen ANSWERED questions with an ACTIVE link to a superseded version.
+
+        Caller must own a write transaction. Only the given case is touched.
+        The prior answer is preserved in history; the question itself keeps no
+        current answer until a human records a new one.
+        """
+        rows = self.db.execute("""SELECT DISTINCT q.id,q.answer FROM workspace_questions q
+            JOIN workspace_question_links l ON l.question_id=q.id
+            WHERE q.case_id=? AND l.case_id=? AND l.source_version_id=?
+            AND l.state='active' AND q.status='answered' ORDER BY q.id""",
+            (case_id, case_id, superseded_source_id)).fetchall()
+        reopened = []
+        for row in rows:
+            stamp = now_utc()
+            self.db.execute("UPDATE workspace_questions SET status='needs_review', answer=NULL, updated_at=? WHERE id=?",
+                            (stamp, row["id"]))
+            self.db.execute("""INSERT INTO workspace_question_history
+                (question_id,case_id,previous_status,new_status,reason,answer,recorded_at)
+                VALUES (?,?, 'answered','needs_review',?,?,?)""",
+                (row["id"], case_id,
+                 f"Linked source {document_id} was amended to version {new_version}; "
+                 "the recorded answer needs human review.",
+                 row["answer"], stamp))
+            reopened.append(int(row["id"]))
+        if reopened:
+            self._event(case_id, "workspace_question_reopened",
+                        source_version_id=superseded_source_id, reopened_questions=reopened)
+        return reopened
+
+    def list_workspace_questions(self, case_id: str) -> list[dict]:
+        """Durable questions with their links and full status history.
+
+        The current answer is exposed ONLY while the status is answered;
+        unanswered questions always read back answer None even though prior
+        answers remain visible inside their own history entries.
+        """
+        self._case(case_id)
+        out = []
+        for row in self.db.execute("SELECT * FROM workspace_questions WHERE case_id=? ORDER BY id",
+                                   (case_id,)).fetchall():
+            question_id = int(row["id"])
+            links = []
+            for link in self.db.execute("""SELECT l.*,
+                v.document_id, v.version, v.state AS source_state
+                FROM workspace_question_links l
+                JOIN source_versions v ON v.id=l.source_version_id
+                WHERE l.question_id=? ORDER BY l.id""", (question_id,)).fetchall():
+                links.append({**dict(link),
+                              "source_anchor": f"{link['document_id']}@{link['version']}"})
+            history = self._dicts(self.db.execute(
+                "SELECT * FROM workspace_question_history WHERE question_id=? ORDER BY id",
+                (question_id,)).fetchall())
+            data = dict(row)
+            data["created_date"] = data["created_at"][:10]
+            if data["status"] != "answered":
+                data["answer"] = None
+            data["links"] = links
+            data["history"] = history
+            out.append(data)
+        return out
     # ---- Clinician review queue + sign-off receipts ----
     # The queue is a derived projection over the existing ledger: human
     # investigation drafts, model investigations, amended source versions,
