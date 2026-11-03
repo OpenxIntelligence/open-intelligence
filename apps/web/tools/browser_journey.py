@@ -146,7 +146,7 @@ def main():
             assert cd.evaluate("document.querySelector('[data-testid=world-unresolved-count]').textContent==='0'")
             assert cd.evaluate("document.querySelector('[data-testid=world-reported-state]').textContent==='negative'")
             assert cd.evaluate("document.querySelector('[data-testid=world-fingerprint]').textContent") != initial_world_fingerprint
-            assert cd.evaluate("document.querySelector('[data-testid=world-projection]').textContent.includes(original_id)")
+            assert cd.evaluate(f"document.querySelector('[data-testid=world-projection]').textContent.includes({json.dumps(original_id)})")
             # Current source metadata access is independent from the historical original bytes.
             # World Model recheck must clear the old view after source-read grant withdrawal.
             credentials[0]['actions'].remove('source_read');write_grants()
