@@ -74,7 +74,7 @@ class HTTPContractTests(unittest.TestCase):
             self.assertEqual(body["authentication"], "deny_all")
             self.assertFalse(body["patient_data_enabled"])
             self.assertTrue(body["synthetic_registry_enabled"])
-            self.assertEqual(body["capabilities"], ["synthetic_patient_create", "synthetic_patient_read", "synthetic_record_request_create", "synthetic_record_request_list", "synthetic_record_request_cancel", "synthetic_record_request_receive", "synthetic_case_binding_create", "synthetic_case_binding_list", "synthetic_case_binding_revoke", "synthetic_source_import", "synthetic_source_list", "synthetic_source_original_read"])
+            self.assertEqual(body["capabilities"], ["synthetic_patient_create", "synthetic_patient_read", "synthetic_record_request_create", "synthetic_record_request_list", "synthetic_record_request_cancel", "synthetic_record_request_receive", "synthetic_case_binding_create", "synthetic_case_binding_list", "synthetic_case_binding_revoke", "synthetic_source_import", "synthetic_source_list", "synthetic_source_original_read", "synthetic_source_world_model_read"])
 
     def test_missing_database_is_unready_not_a_fake_pass(self):
         with running_server(create_app(Settings.from_env({}))) as base:
