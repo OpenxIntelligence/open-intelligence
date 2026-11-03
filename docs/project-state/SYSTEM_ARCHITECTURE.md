@@ -67,3 +67,16 @@ The separate [#278 image/question/review integration](https://github.com/OpenxIn
 ## Design choices retained
 
 Preserve modular ownership, one canonical patient/source history, explicit immutable provenance, independent grants and typed failure states. Reuse the existing CSS/component conventions rather than add unrelated design-system packages. Preserve the full future standalone scope while making source acquisition, understanding, questions and coordination useful incrementally. See [architecture decisions](ARCHITECTURE_DECISIONS.md) for conflicts, candidate screening and remaining gates.
+
+
+## Subsequent task-schema continuation
+
+[PR #293](../engineering/H1_QUESTION_FOLLOWTHROUGH.md) extends the selected
+question-workflow baseline with `0009_question_followthrough`, leaving revisions
+0001–0008 unchanged. `coordination.question_followthrough_tasks` owns immutable
+operational task origin and question/source anchors;
+`coordination.question_followthrough_events` owns append-only revisions. The
+canonical patient, binding, source, question and domain-event owners are reused.
+Patient SHARE, binding UPDATE and task UPDATE locks preserve the established
+order; response encoding, final authority, audit and commit stay inside that
+transaction. No new service, identity store, model or dependency is introduced.

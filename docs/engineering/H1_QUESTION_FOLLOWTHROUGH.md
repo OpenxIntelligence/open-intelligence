@@ -1,5 +1,35 @@
 # H1 saved-question follow-through
 
+## Verified implementation checkpoint — 3 November 2026
+
+The implementation in [draft PR #293](https://github.com/OpenxIntelligence/open-intelligence/pull/293)
+is verified at commit `635f357048eb27e52e6ec5c3d7b6714215070127`, tree
+`74c4a2ab65bf54a0908246199bb67c300ae2662b`. This evidence-only follow-up changes
+documentation, not runtime, tests, dependencies, migrations or workflow behavior.
+
+| Gate | Observed result | Evidence |
+|---|---|---|
+| API and actual PostgreSQL 16 | 326 executions passed; zero failures, errors or skips. Concurrent create/transition retries, competing revisions, final authority, serialization rollback, SQL history guards and migrations executed. | [Run 41633216511](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41633216511) verified the proposed commit. |
+| Original reference | All 245 tests and both inherited Chromium journeys passed. These do not imply H1 biomedical-evidence integration. | Same API run. |
+| Restart and recovery | Existing patient/source/review probes passed. Three tasks and nine task events survived API/DB restart and actual pg_dump/pg_restore; the restored DB served real HTTP reads and the same retry receipts, then denied revoked bindings. | Same API run, follow-through Compose step. |
+| Client and built React | 195 client tests passed, zero failures/skips; production build passed. Actual question → task → attributed lifecycle → amendment → case-switch journey passed alongside inherited intake, quotation, review and brief flows. | [Run 41633216590](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41633216590). |
+| UI glance | Existing synthetic UI gate passed. | [Run 41633216653](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41633216653). |
+| Dependency checks | Existing wheel/component and installed frontend rights profiles passed; npm audit reported zero vulnerabilities. No dependency was added. Production/distribution clearance remains separate. | API and React gates. |
+| Artifact integrity and visual review | Exact commit, all 334 source blobs and archive SHA-256 verified. Desktop and 390px mobile task captures inspected; layout remains contained. | [Artifact 13228693741](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41633216590/artifacts/13228693741), expires 10 November 2026. |
+
+Artifact SHA-256: `7cd60c8a39520b883553cea7f84b67c4f861f149118e785fd9db9b471aafb869`.
+
+Independent review found the actor-length mismatch and unrelated-draft loss;
+actual PostgreSQL exposed the lock-upgrade deadlock. All were repaired, reviewed
+and exercised successfully on the verified implementation. The historical RED
+and fixture corrections below remain part of the evidence trail.
+
+Status: implemented and tested within the independently authored synthetic
+contract; draft, unmerged and undeployed. Issue #81 and OI-008/010 remain open.
+Next integration is the existing evidence/report owners through explicit H1
+persistence and permission contracts. This task continuation does not perform
+scientific evidence appraisal, professional review or external coordination.
+
 ## Purpose and current basis
 
 Give a patient or authorized coordinator a durable place to record the next
