@@ -10,12 +10,14 @@ methods. Encoding and deferred-commit regressions also preserve the completed
 #253 response boundary across the combined owner's image import paths.
 """
 import copy
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 import json
 from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import ProxyHandler, Request, build_opener
 
+from fastapi import routing as fastapi_routing
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
@@ -145,6 +147,43 @@ class ImageDisclosureAuthorityTests(SourceVersionFixture):
             return prepared
         return patch.object(routes, name, side_effect=prepare)
 
+    @contextmanager
+    def observe_json_encoding(self, effect):
+        """Observe actual encoded bytes on both existing framework paths.
+
+        The unfixed typed-DTO route uses FastAPI's Pydantic dump_json fast path
+        and skips JSONResponse.render. The prepared-response fix uses the real
+        JSONResponse constructor and skips framework response serialization.
+        Both wrappers run the original encoder first; error envelopes and
+        intermediate dictionaries do not trigger the injected effect.
+        """
+        original_render = JSONResponse.render
+        original_serialize = fastapi_routing.serialize_response
+
+        def observe(encoded):
+            if not isinstance(encoded, (bytes, str)):
+                return
+            envelope = json.loads(encoded)
+            if isinstance(envelope, dict) and (
+                    "images" in envelope or
+                    {"image_id", "result"} <= envelope.keys()):
+                effect(encoded)
+
+        async def serialize(*args, **kwargs):
+            encoded = await original_serialize(*args, **kwargs)
+            if kwargs.get("dump_json") is True:
+                observe(encoded)
+            return encoded
+
+        def render(response, content):
+            encoded = original_render(response, content)
+            observe(encoded)
+            return encoded
+
+        with patch.object(fastapi_routing, "serialize_response", serialize), \
+                patch.object(JSONResponse, "render", render):
+            yield
+
     def test_late_grant_or_identity_change_withholds_prepared_index_and_binary(self):
         with running_server(create_app(self.settings)) as base:
             patient, path, image_id, raw = self.prepare(base)
@@ -236,10 +275,8 @@ class ImageDisclosureAuthorityTests(SourceVersionFixture):
             self.write()
 
     def test_json_encoding_finishes_before_authority_recheck(self):
-        # Patch the actual response class, not a route-module alias that the
-        # unfixed owner does not yet have. This observes real JSON encoding on
-        # both implementations, so red evidence is disclosure/rollback failure.
-        original_render = JSONResponse.render
+        # Observe both the unfixed Pydantic fast path and the prepared response,
+        # so red evidence is disclosure/rollback failure after real encoding.
         with running_server(create_app(self.settings)) as base:
             for mode, status in (("WITHDRAW", 404), ("FAIL", 503)):
                 operations = self.prepare_encoding_operations(base, mode)
@@ -250,20 +287,15 @@ class ImageDisclosureAuthorityTests(SourceVersionFixture):
                         reads_before = self.read_events()
                         rendered = []
 
-                        def after_encoding(response, content):
-                            encoded = original_render(response, content)
-                            if isinstance(content, dict) and (
-                                    "images" in content or
-                                    {"image_id", "result"} <= content.keys()):
-                                rendered.append(encoded)
-                                if mode == "FAIL":
-                                    raise RuntimeError("PRIVATE-IMAGE-PREPARE")
-                                self.creds[0]["actions"].remove(action)
-                                self.write()
-                            return encoded
+                        def after_encoding(encoded):
+                            rendered.append(encoded)
+                            if mode == "FAIL":
+                                raise RuntimeError("PRIVATE-IMAGE-PREPARE")
+                            self.creds[0]["actions"].remove(action)
+                            self.write()
 
                         try:
-                            with patch.object(JSONResponse, "render", after_encoding):
+                            with self.observe_json_encoding(after_encoding):
                                 result = read_image_route(base, path, raw=raw)
                         finally:
                             self.creds = copy.deepcopy(initial)
@@ -303,16 +335,8 @@ class ImageDisclosureAuthorityTests(SourceVersionFixture):
                         before = self.custody_state()
                         reads_before = self.read_events()
                         prepared = []
-                        original_render = JSONResponse.render
-
-                        def observe_encoding(response, content):
-                            encoded = original_render(response, content)
-                            if isinstance(content, dict) and "images" in content:
-                                prepared.append(encoded)
-                            return encoded
-
                         observer = (
-                            patch.object(JSONResponse, "render", observe_encoding)
+                            self.observe_json_encoding(prepared.append)
                             if kind == "index" else
                             self.observe_preparation(kind, lambda: prepared.append(True))
                         )
