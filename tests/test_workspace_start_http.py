@@ -63,8 +63,8 @@ class WorkspaceStartHttpTests(unittest.TestCase):
   self.assertEqual(context['context_kind'],'synthetic_source_bound_read_only')
   self.assertEqual(context['case_id'],'CASE-START')
   self.assertEqual(context['question_id'],qid)
-  self.assertRegex(context['fingerprint'],r'^[a-f0-9]{64}
-)
+  self.assertEqual(len(context['fingerprint']),64)
+  self.assertTrue(all(letter in '0123456789abcdef' for letter in context['fingerprint']))
   self.assertEqual(context['source_count'],1)
   self.assertEqual(context['source_anchors'][0]['source_version_id'],imported['source_id'])
   self.assertEqual(context['source_anchors'][0]['reported_state'],'reported')
