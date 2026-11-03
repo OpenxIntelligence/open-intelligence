@@ -86,6 +86,10 @@ class PostgresSourceVersions:
             actor=_key(actor, "actor"), purpose=purpose,
             binding_revision=binding_revision, **references,
         )
+        # The event append can perform SQL I/O while the external grant changes.
+        # Reauthenticate after persistence and before the transaction commits;
+        # denial rolls back the event and withholds the prepared source/document.
+        recheck_authority()
         return receipt_id
 
     def _sources(self, case_id: str) -> list[dict]:
