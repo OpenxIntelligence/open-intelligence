@@ -1,0 +1,89 @@
+name: Synthetic semantic metadata evaluation (offline)
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/semantic_contract_probe.py'
+      - 'tools/semantic_benchmark.py'
+      - 'tests/test_semantic_contract_probe.py'
+      - 'tests/test_semantic_benchmark.py'
+      - 'tests/fixtures/semantic_benchmark_cases_v1.json'
+      - '.github/workflows/semantic-metadata-pilot.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      LANGCHAIN_TRACING_V2: 'false'
+      LANGSMITH_TRACING: 'false'
+      NVIDIA_API_KEY: ''
+      DEFAULT_MODELS_API_KEY: ''
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Python (stdlib only)
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.13'
+      - name: Static compile and safety tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p semantic-evidence
+          python -m compileall -q tools/semantic_contract_probe.py tools/semantic_benchmark.py tests/test_semantic_contract_probe.py tests/test_semantic_benchmark.py
+          python -m unittest discover -s tests -p 'test_semantic*.py' -v 2>&1 | tee semantic-evidence/tests.txt
+      - name: Run frozen challenge set and enforce baseline contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/semantic_benchmark.py --cases tests/fixtures/semantic_benchmark_cases_v1.json --output semantic-evidence/baseline.json > /dev/null
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          x = json.loads(Path('semantic-evidence/baseline.json').read_text())
+          assert len(x['results']) == 1
+          a = x['results'][0]
+          assert (a['total'], a['positives'], a['negatives']) == (54, 30, 24)
+          assert (a['positive_correct'], a['positive_missed'], a['positive_wrong']) == (10, 20, 0)
+          assert (a['negative_abstained'], a['negative_false_mapping']) == (24, 0)
+          assert x['vendor_runtime_executed'] is False
+          assert x['patient_data_accessed'] is False
+          assert x['sql_executed'] is False
+          assert x['external_model_calls'] == 0
+          print('Offline semantic benchmark: PASS; NVIDIA runtime not executed')
+          PY
+      - name: Record evidence identity
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p semantic-evidence
+          python - <<'PY'
+          import hashlib,json,os,platform,subprocess
+          from pathlib import Path
+          paths=['tools/semantic_contract_probe.py','tools/semantic_benchmark.py','tests/test_semantic_contract_probe.py','tests/test_semantic_benchmark.py','tests/fixtures/semantic_benchmark_cases_v1.json','.github/workflows/semantic-metadata-pilot.yml']
+          receipt={'commit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
+                   'github_run_id':os.environ.get('GITHUB_RUN_ID'),
+                   'python':platform.python_version(),
+                   'source_sha256':{p:hashlib.sha256(Path(p).read_bytes()).hexdigest() for p in paths},
+                   'mode':'local_synthetic_metadata_only',
+                   'nvidia_runtime_tested':False,
+                   'patient_data':False,'network_credentials':False,
+                   'clinical_validation':False}
+          Path('semantic-evidence/receipt.json').write_text(json.dumps(receipt,indent=2,sort_keys=True)+'\n')
+          print(json.dumps(receipt,sort_keys=True))
+          PY
+      - name: Preserve offline evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: semantic-metadata-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: semantic-evidence/
+          if-no-files-found: warn
+          retention-days: 14
