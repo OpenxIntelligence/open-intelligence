@@ -135,6 +135,19 @@ def main():
                 compose.extend(['--file', str(override)])
             command(['up', '--no-deps', '--force-recreate', '--detach', 'api'])
             ready()
+            # A denial-only checkpoint cannot prove target identity by emitting
+            # an access event. Query through this API container's normal engine.
+            result = command(['exec', '-T', 'api', 'python', '-c',
+                'from oi_api.config import Settings\n'
+                'from oi_api.database import make_engine\n'
+                'from sqlalchemy import text\n'
+                'engine = make_engine(Settings.from_env())\n'
+                'try:\n'
+                '    with engine.connect() as connection:\n'
+                '        print(connection.execute(text("SELECT current_database()")).scalar_one())\n'
+                'finally:\n'
+                '    engine.dispose()\n'], capture_output=True, text=True)
+            assert result.stdout.strip() == database, 'Recreated API connected to the wrong database'
 
         def restore(source_database, restored_database):
             before = snapshot(source_database)
@@ -155,6 +168,15 @@ def main():
             assert snapshot() == before, 'Restored HTTP unexpectedly touched the original database'
             for table in before.keys() - {'identity.identity_domain_events', 'sequence_state'}:
                 assert after[table] == before[table], 'Restored read/retry changed ' + table
+            event_sequence = ('identity', 'identity_domain_events_id_seq')
+            for state in (before, after):
+                assert sum((s['schemaname'], s['sequencename']) == event_sequence
+                           for s in state['sequence_state']) == 1
+            def non_access_sequences(state):
+                return [s for s in state['sequence_state']
+                        if (s['schemaname'], s['sequencename']) != event_sequence]
+            assert non_access_sequences(after) == non_access_sequences(before), \
+                'Restored read/retry consumed a business-object sequence'
             old = {row['id']: row for row in before['identity.identity_domain_events']}
             current = {row['id']: row for row in after['identity.identity_domain_events']}
             assert all(current.get(key) == row for key, row in old.items()), 'Historical event changed'
@@ -325,6 +347,26 @@ def main():
                 assert status == 200 and withheld['state'] == 'content_withheld'
                 assert withheld['body'] is withheld['snapshot'] is None
                 assert withheld['body_sha256'] == prior['body_sha256']
+
+            # Test class-specific rights before any withdrawal can mask them.
+            rights_database = 'oi_api_test_evidence_rights_restore'
+            rights_before = restore('oi_api_synthetic', rights_database)
+            rights_receipts = []
+            status, latest_original = request(url + '/evidence/' + changed['evidence_id'] + '/original')
+            assert status == 200 and hashlib.sha256(latest_original['original_text'].encode()).hexdigest() == changed['sha256']
+            rights_receipts.append(latest_original['access_receipt_id'])
+            for prior in (first, second):
+                status, withheld = request(url + '/evidence-reports/' + prior['report_id'])
+                assert status == 200 and withheld['state'] == 'content_withheld'
+                assert withheld['body'] is withheld['snapshot'] is None
+                assert withheld['body_sha256'] == prior['body_sha256']
+                rights_receipts.append(withheld['access_receipt_id'])
+            denied_before = snapshot(rights_database)
+            assert request(url + '/evidence/' + support['evidence_id'] + '/original')[0] == 404
+            assert snapshot(rights_database) == denied_before
+            rights_access_count = assert_restored_reads(rights_before, rights_database, rights_receipts)
+            serve_database('oi_api_synthetic')
+            assert snapshot() == rights_before
             withdrawal = {'synthetic': True, 'request_key': 'WITHDRAW-SUPPORT',
                           'reason': 'Withdraw the independently fictional evidence family for verification.'}
             withdraw_url = url + '/evidence/' + changed['evidence_id'] + '/withdraw'
@@ -351,6 +393,9 @@ def main():
             withheld_receipts = []
             restored_packet = packet()
             assert restored_packet['question']['source_context_state'] == 'source_reassessment_required'
+            withdrawn_rows = [e for e in restored_packet['evidence'] if e['evidence_key'] == 'INK-SUPPORT']
+            assert len(withdrawn_rows) == 3
+            assert all(e['state'] == 'withdrawn' and e['title'] is e['statement'] is None for e in withdrawn_rows)
             withheld_receipts.append(restored_packet['access_receipt_id'])
             for prior in (first, second):
                 status, withheld = request(url + '/evidence-reports/' + prior['report_id'])
@@ -373,6 +418,9 @@ def main():
             # denied/stale requests cannot write receipts, events or new rows.
             denied_before = snapshot(restored)
             assert request(url + '/evidence/' + support['evidence_id'] + '/original')[0] == 404
+            # Latest api_output was readable at the rights-only checkpoint.
+            # Its denial here therefore requires the restored withdrawal.
+            assert request(url + '/evidence/' + changed['evidence_id'] + '/original')[0] == 404
             assert request(url + '/evidence-assessments', {**a2[1], 'request_key': 'RESTORED-STALE-ASSESSMENT'})[0] == 409
             assert snapshot(restored) == denied_before
             credential['actions'].remove('evidence_report_export'); save_access()
@@ -411,9 +459,13 @@ def main():
                        'complete_dump_restore_equal': True, 'rights_class_change_withholds_history': True,
                        'withdrawal_preserves_history': True, 'source_amendment_rejects_new_stale_assessment': True,
                        'restored_readable_http': True, 'restored_withheld_http': True,
+                       'restored_rights_class_change_withholds_history': True,
+                       'restored_withdrawal_denies_previously_readable_original': True,
+                       'api_database_target_verified': True, 'business_sequences_unchanged_on_retry': True,
                        'restored_exact_retry_identity': True, 'restored_independent_export_denial': True,
                        'restored_revoked_binding_denial': True, 'original_database_unchanged': True,
                        'restored_readable_access_events': readable_access_count,
+                       'restored_rights_access_events': rights_access_count,
                        'restored_withheld_access_events': withheld_access_count,
                        'clinical_approval': False, 'model_executed': False}
             if destination := os.environ.get('OI_EVIDENCE_ACCEPTANCE_FILE'):

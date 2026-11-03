@@ -13,7 +13,7 @@
 SQL equality alone is the existing baseline. Add actual restored HTTP, using a temporary Compose override to recreate the same API against a named restored database. Require fresh access events in that database and byte-identical original-database snapshots; this detects accidentally testing the original service. Preserve all existing assertions.
 
 1. Restore the readable report checkpoint. Reopen both originals and the report, recover exact assessment/report requests, verify immutable state and receipt locality, then reconnect the original database.
-2. Restore the later amended/withdrawn checkpoint. Recheck withheld report content and denied original access, recover old receipt IDs, reject a fresh stale assessment, and check missing independent export authority without writes.
+2. Restore a content-class amendment before withdrawal to isolate rights enforcement, then restore the later amended/withdrawn checkpoint. Recheck withheld report content and denied original access, recover old receipt IDs, reject a fresh stale assessment, and check missing independent export authority without writes.
 3. Revoke the binding through restored HTTP, back up that revoked copy, restore again and prove reads and retries remain denied without new effects.
 4. Run static checks and local reference tests, then the actual hosted API/PostgreSQL/Compose workflow. Local Docker is unavailable; local skips do not establish database success. Capture exact revision, run and artifact evidence.
 
