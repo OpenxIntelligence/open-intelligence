@@ -12,14 +12,15 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 COPY apps/api/requirements.lock apps/api/dependency-license-inventory.json apps/api/THIRD_PARTY_NOTICES.md ./
 COPY apps/api/tools/check_dependencies.py ./tools/check_dependencies.py
+COPY apps/api/tools/prepare_dependencies.py apps/api/tools/pydicom_runtime.py apps/api/tools/pydicom-runtime.json apps/api/tools/pydicom-upstream.lock ./tools/
 
 # The optional BuildKit secret supports managed development proxies without
 # copying their CA into an image layer or disabling certificate verification.
 RUN --mount=type=secret,id=proxy_ca \
     if [ -f /run/secrets/proxy_ca ]; then export PIP_CERT=/run/secrets/proxy_ca; fi; \
-    python -m pip download --no-cache-dir --require-hashes --only-binary=:all: --dest /tmp/oi-h1-wheels -r requirements.lock \
+    python tools/prepare_dependencies.py --wheel-dir /tmp/oi-h1-wheels \
     && python tools/check_dependencies.py --wheel-dir /tmp/oi-h1-wheels --sbom /app/dependency-sbom.json \
-    && python -m pip install --no-cache-dir --require-hashes --no-index --find-links /tmp/oi-h1-wheels -r requirements.lock \
+    && python -m pip install --no-cache-dir --force-reinstall --no-deps --require-hashes --no-index --find-links /tmp/oi-h1-wheels -r requirements.lock \
     && python -m pip check \
     && rm -rf /tmp/oi-h1-wheels
 

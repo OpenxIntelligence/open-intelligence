@@ -4,12 +4,13 @@
 
 These notices accompany the exact artifacts in `dependency-license-inventory.json`. The engineering compatibility decision is limited to **local synthetic H1 development and evaluation** with the pinned CPython 3.12 Linux x86_64 wheels and no extras. It is not a legal opinion, commercial distribution clearance, clinical approval or full deployment approval. No first-party project distribution license is chosen here.
 
-The audit inspected 24 Python wheels, the 99 Rust crates in pydantic-core's supplier all-target SBOM, and 13 additional embedded Rust runtime source-evidence entries. Exact artifact hashes and evidence hashes are in the inventory. The native source inventory is a conservative notice superset, not a verified Linux object-level link map.
+The audit inspected 25 runtime Python wheels (including the derived code-only pydicom artifact), the 99 Rust crates in pydantic-core's supplier all-target SBOM, and 13 additional embedded Rust runtime source-evidence entries. Exact artifact hashes and evidence hashes are in the inventory. The native source inventory is a conservative notice superset, not a verified Linux object-level link map.
 
 Retain these complete notices, the inventory and the notices bundled in the wheels. Full upstream text may mention alternative licenses that have not been elected; the inventory records each selected expression. Mandatory AND terms remain cumulative. An OR selection is not available when different incorporated portions have separate grants.
 
 ### Material decisions and remaining boundaries
 
+- pydicom 3.0.2 is installed only as the deterministic code-only `1oi1` wheel. MIT and the included GDCM-derived private-dictionary BSD-3-Clause obligations are cumulative; both complete grants are retained below. The official preparation input is hash-verified, then bundled sample datasets, example helpers, palettes, charset assets and other non-code package assets are excluded before installation. No excluded ZIP entry is opened or decompressed. This is a modified derived build: exactly the eager `import pydicom.examples` line is removed from `pydicom/__init__.py` to prevent example-path lookup and missing-file download fallback during core import. Before/after module hashes are pinned in the derivation manifest; all other retained Python modules and dictionaries are unchanged. WHEEL receives its build tag and RECORD is regenerated. The source and derived hashes and transform are pinned in `tools/pydicom-runtime.json` and the existing inventory. This local synthetic metadata-parsing use adds no extras or codecs and does not authorize source sample-data use, clinical analysis, production deployment or commercial distribution.
 - pg8000 1.31.6 is BSD-3-Clause; its selected Python chain uses scramp's MIT-0 grant, asn1crypto MIT, dateutil's applicable BSD grant and tzdata's separate Apache/package and public-domain data terms. This avoids introducing a libpq/psycopg artifact; the PostgreSQL server remains a separate component.
 - greenlet's MIT **and** PSF terms are retained. Click's inherited optparse attribution and typing_extensions' complete historical Python license are retained. MIT-0, PSF, Unicode, Zlib, Apache/LLVM, SunPro, NCSA and the exact IANA declaration have explicit policy determinations in the inventory.
 - Mako's MIT metadata does not erase its inherited Ronacher AST notice. The complete contemporaneous Python license is preserved under a conservative MIT AND Python-2.0 treatment. Original-source comparison supports this local-use determination. Upstream issue #172 remains open about the label; independent redistribution/provenance review is required before commercial distribution.
@@ -37,6 +38,7 @@ Retain these complete notices, the inventory and the notices bundled in the whee
 | pg8000 | 1.31.6 | BSD-3-Clause |
 | pydantic | 2.14.1 | MIT |
 | pydantic_core | 2.50.1 | MIT AND BSD-3-Clause AND NCSA AND SunPro AND Unicode-3.0 AND Unicode-DFS-2016 AND Zlib AND (Apache-2.0 WITH LLVM-exception) |
+| pydicom | 3.0.2 (build 1oi1, code-only) | MIT AND BSD-3-Clause |
 | python-dateutil | 4.0.0 | BSD-3-Clause |
 | scramp | 1.5.0 | MIT-0 |
 | SQLAlchemy | 2.0.55 | MIT |
@@ -22366,3 +22368,72 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
 IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```````
+
+
+## pydicom 3.0.2 — code-only build 1oi1
+
+Source inside both upstream and derived artifacts: `pydicom-3.0.2.dist-info/licenses/LICENSE`
+
+Official preparation wheel SHA-256: `abf971a5440f84dbaf42c4b6758e30e62480902584f8b270b9a5d146e278a07b`. Publishing source: <https://github.com/pydicom/pydicom/blob/20aa4b73aef76bffb6fbc46a8827588dfa9bb89d/LICENSE>. The metadata label MIT is supplemented by the private-dictionary BSD terms below. Bundled datasets are excluded; their permissions are not inferred from this code notice.
+
+```text
+License file for pydicom, a pure-python DICOM library
+
+Copyright (c) 2008-2020 Darcy Mason and pydicom contributors
+
+Except for portions outlined below, pydicom is released under an MIT license:
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+Portions of pydicom (private dictionary file(s)) were generated from the
+private dictionary of the GDCM library, released under the following license:
+
+  Program: GDCM (Grassroots DICOM). A DICOM library
+
+Copyright (c) 2006-2016 Mathieu Malaterre
+Copyright (c) 1993-2005 CREATIS
+(CREATIS = Centre de Recherche et d'Applications en Traitement de l'Image)
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+ * Redistributions of source code must retain the above copyright notice,
+   this list of conditions and the following disclaimer.
+
+ * Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+ * Neither name of Mathieu Malaterre, or CREATIS, nor the names of any
+   contributors (CNRS, INSERM, UCB, Universite Lyon I), may be used to
+   endorse or promote products derived from this software without specific
+   prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS ``AS IS''
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ARE DISCLAIMED. IN NO EVENT SHALL THE AUTHORS OR CONTRIBUTORS BE LIABLE FOR
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
