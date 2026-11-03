@@ -2,7 +2,36 @@
 
 Assessment date: 3 November 2026. Initial assessment recorded before this branch's product changes.
 
-## Latest verified continuation — draft #307
+## Latest verified continuation — draft #321
+
+[PR #321](https://github.com/OpenxIntelligence/open-intelligence/pull/321) extends
+the existing #307 question/evidence/report workspace with deliberate public DOI
+metadata lookup and explicit canonical citation attachment. It reuses the
+existing Crossref adapter, catalog, rights decisions and question-link owner.
+No second patient record, literature store, report owner or dependency was added.
+
+Runtime `a49530893f210609c1d203bd74a55fc683335149`, tree
+`6a3fcb4baff79ff5e45ae6bf0111e3791234c4ea`, passed **434 API/PostgreSQL tests**,
+**298 reference tests**, **276 client tests**, the actual built-browser journey
+and all five recovery probes. Tests used an independently authored provider
+protocol fixture; no live Crossref lookup was verified. The actual restored
+database preserved native DOI versions, exact citation retries and withdrawn
+metadata restrictions alongside the existing report and follow-through task.
+
+[The existing Crossref boundary](../CROSSREF_METADATA_BOUNDARY.md#verified-implementation--draft-321)
+records exact runs, artifacts, code, limits and research questions. The feature
+is **default off** and the canonical Rights register remains **HOLD** for its
+unapproved uses. This is draft, unmerged and undeployed. Bibliography is not
+article content, assessed scientific support, model execution or clinical
+approval. Source-reading and imaging integration owners remain separate.
+
+The next evidence step is explicit association of a citation with an
+independently permitted original using the existing evidence owner. DOI
+identity alone must not infer that association or its rights. Live source
+activation, provider deadlines/cancellation/shared quotas, correction/retraction
+handling and real-user qualification remain open in the existing backlog.
+
+## Predecessor verified continuation — draft #307
 
 [PR #307](https://github.com/OpenxIntelligence/open-intelligence/pull/307) joins the
 existing #298 metadata/follow-through and #300 authored-evidence/Overview owners,

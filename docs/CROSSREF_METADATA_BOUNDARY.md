@@ -23,7 +23,7 @@ Explicit operator-invoked single DOI lookup:
 python -m tools.crossref_metadata 10.1038/s41586-020-2649-2 --live
 ```
 
-The live mode sends **only the supplied public DOI** to the fixed Crossref HTTPS host. It does not accept free-text search queries, patient identifiers, genomic profiles or attachments. It rejects redirects, bounds response size and timeout, and does not automatically retry. The optional `--contact` parameter identifies an operator to Crossref's polite pool. It is not enabled by default.
+The live mode sends **only the supplied public DOI** to the fixed Crossref HTTPS host. It has no free-text search or attachment input and does not read or automatically append patient identifiers or genomic profiles. Only deliberately supplied public DOIs are permitted; DOI syntax validation cannot detect all identifying information in user input. It rejects redirects, bounds response size and timeout, and does not automatically retry. The optional `--contact` parameter identifies an operator to Crossref's polite pool. It is not enabled by default.
 
 Run tests:
 ```bash
@@ -33,7 +33,7 @@ python -m unittest discover -s tests -p 'test_crossref_metadata.py' -v
 ## Explicit limits
 
 - Synthetic fixture DOI is fictional and is not a real article citation.
-- No automatic content-rights clearance, article or abstract ingestion, clinical trial matching, evidence-grade estimation, treatment ranking, patient-data access, model training, or PHI egress.
+- No automatic content-rights clearance, article or abstract ingestion, clinical trial matching, evidence-grade estimation, treatment ranking, patient-record reading, model training, or automatic patient-context egress. The supplied DOI must itself be public and appropriate to disclose.
 - Bibliographic metadata is useful for discovery and attribution but **cannot support a clinical claim without independently retrieving and evaluating the source under appropriate rights**.
 - The repository distribution license is undecided; a successful technical check is not product release approval.
 
@@ -134,8 +134,8 @@ before activation and periodically thereafter; no expiry is invented.
    tests or deterministic provider fixtures as live-service evidence.
 
 The inherited provider's documented vendor JSON type and invalid timestamp
-handling were reproduced before repair. The extension's verification record is
-completed only after inspecting its own exact-head results.
+handling were reproduced before repair. The completed verification record below
+belongs to this extension's own runtime, not to its predecessor.
 
 ### Implemented candidate and practical limits
 
@@ -167,3 +167,72 @@ That factory is excluded from the product image and mounted only into the
 disposable verification container. It has no live-provider fallback. Its mode
 is persisted and displayed as `protocol_fixture`; these checks establish the
 application integration, not live Crossref availability or article validity.
+
+### Verified implementation — draft #321
+
+[PR #321](https://github.com/OpenxIntelligence/open-intelligence/pull/321) contains
+runtime `a49530893f210609c1d203bd74a55fc683335149`, tree
+`6a3fcb4baff79ff5e45ae6bf0111e3791234c4ea`, on preserved upstream documentation
+head `c35219dc5eb244874a7df6e9bf00cfbfda18251f`. The verification recorded here
+applies to that exact runtime; this receipt and research-register follow-up
+change documentation only. The contribution remains draft, unmerged and
+undeployed, with the production feature switch off by default.
+
+| Verification | Observed result |
+|---|---|
+| [API/PostgreSQL run 41664556129](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41664556129), job 126016287746 | **434 tests passed, zero skips**, including actual PostgreSQL, populated migration, authority races, metadata immutability and retry behavior. **298 reference tests passed, zero skips.** |
+| [React/browser run 41664556136](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41664556136), job 126016288044 | **276 client tests passed, zero skips**; TypeScript/Vite build, inherited browser workflow and the new DOI browser journey passed. |
+| [Reference UI run 41664556375](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41664556375) | Completed successfully. |
+| Actual container recovery in the API run | All five patient, source, review, follow-through and combined evidence/report recovery probes passed, including actual API/DB restarts, PostgreSQL dump/restore and restored HTTP. |
+| Dependency and source boundaries | No dependency added. Existing web rights inventory: 18 installed packages inspected, two optional packages uninstalled/uninspected, zero errors. Patient-data boundary gate passed. |
+
+The new built-browser journey entered and acknowledged the public DOI, rendered
+the protocol-fixture label and native bibliography, then explicitly saved it on
+the same canonical question. Dropping an actual successful citation response
+led to an exact retry of the same link, not a duplicate. An actual API restart
+retained the citation; removing the separate lookup grant denied lookup with
+404 while the independently permitted saved citation remained readable. The
+existing authored report stayed unchanged. Desktop and 390-pixel mobile
+screenshots were visually inspected.
+
+The complete evidence recovery receipt records revision `0012_crossref_metadata`,
+equal restored table/sequence state, one immutable Crossref projection, one
+retrieval receipt and two question citations beside the existing authored
+reports and task. Restored HTTP preserved exact retry identities, denied a
+revoked patient binding and withheld the withdrawn DOI title/URL. Refetch did
+not create a fresh metadata grant. The original database remained unchanged.
+The receipt explicitly records `protocol_fixture`, `live_crossref_verified:
+false`, `clinical_approval: false` and `model_executed: false`.
+
+The [web verification artifact](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41664556136/artifacts/13244367098)
+has SHA-256 `e8c0471400b468cde6a2ae2fdb30135634baf714f0bcbd5eb9ff41d199ec43b4`.
+Its recorded commit and all 406 source blobs were checked against the published
+runtime tree. The [complete recovery receipt artifact](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41664556129/artifacts/13245348190)
+has SHA-256 `eb1075c3d0390b380cb02506678d6eecd25190945e4700ed3a81e7e934ede654`;
+its downloaded receipt was inspected. Both artifacts expire on 10 November
+2026; their identities and outcomes remain recorded here. Local tests that
+skipped PostgreSQL were not used as database acceptance.
+
+Implementation owners are `src/open_intelligence/crossref_metadata.py`,
+`apps/api/src/oi_api/crossref_contract.py`, `crossref_evidence.py`, migration
+`0012_crossref_metadata.py`, and the existing `question-evidence-view.ts`,
+`question-evidence-panel.tsx` and `registry-client.ts`. Focused tests live in
+`tests/test_crossref_metadata.py`,
+`apps/api/tests/test_crossref_question_evidence.py`, the existing web test
+files, `apps/web/tools/crossref_citation_journey.py` and
+`apps/api/tools/verify_evidence_compose.py`. Independent review corrected
+acquisition-mode coercion, timestamp/UTC overflow and encoded DOI URL limits
+before these final runs. No source activation, article ingestion, scientific
+appraisal, model execution or professional signoff follows from these results.
+
+### Research register additions from this increment
+
+These are scoped additions to OI-004/008/012/013 and issue #117, not another
+roadmap or a change to the primary patient/clinical workflow.
+
+| Open question | Why it matters and current evidence | Options / research required | Review, dependencies and recommendation |
+|---|---|---|---|
+| What precise H1 DOI operation may be activated? | Official policy supports factual bibliography, while the canonical register still holds patient-context, clinical and commercial activation. No live-provider acceptance was performed here. | Keep disabled; or review the DOI-only external request plus separately authorized local citation attachment for a defined synthetic pilot. Verify applicable terms, intended use, retention and operational access. | Legal/privacy and clinical/intended-use reviewers; depends on the source-operation record and host egress policy. **Recommended:** remain disabled until that review is recorded. Founder approval applies to product/release scope or a commercial commitment, not this reversible engineering increment. |
+| How should a citation be associated with an independently permitted original? | #307 already owns authored passages/reports; a DOI identity alone proves neither quotation provenance nor article rights. | Explicit source-version/identifier association after verification, or a separately qualified open-content adapter. Inspect exact edition, quotation anchors, attribution and store/display/process/export permissions. Preserve #159's discovery ownership. | Evidence workflow owner, scientific reviewer and rights reviewer; depends on the canonical original/evidence/rights contracts. **Recommended:** explicit provenance association first; no inferred matching or automatic clinical support. Commercial licenses require the appropriate approval. |
+| What bounds will production provider execution enforce? | The inherited socket timeout and new process-local gate do not create an overall deadline, server cancellation or a shared quota. | Evaluate a supervised provider worker or an appropriately reviewed transport, explicit total deadlines, cancellation, cache policy and aggregate request limits. Test slow delivery and multiple workers before selecting an approach. | Platform/security owner; depends on the unresolved production hosting model and dependency review. **Unresolved:** no new infrastructure or dependency selected. Founder approval only if commercial/hosting commitments change. |
+| How will correction/retraction status affect an investigation? | The current factual projection records identity and citation fields, not a complete post-publication status history. Rights withdrawal and a scientific retraction are different events. | Inspect the existing provider's structured update metadata and independent retraction sources; define exact versions, monitoring, contradictory notices and reassessment rules before ingestion. | Evidence/scientific reviewer with rights owner; depends on operation clearance and investigation dependency events. **Unresolved:** a metadata citation remains unappraised and cannot represent a complete evidence assessment. |

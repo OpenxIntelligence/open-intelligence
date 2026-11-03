@@ -1,11 +1,31 @@
 # Integration inventory — current contracts and unfinished connections
 
 **Assessment:** 3 November 2026 (America/New_York).  
-**Baselines:** reference main `24519839aa8ac1ea3aff88a956349ba72798a72a`; initial H1 assessment [#276](https://github.com/OpenxIntelligence/open-intelligence/pull/276) at `c154bfbc5f99f76801d37903959943659c0b6a71`; current verified draft integration [#307](https://github.com/OpenxIntelligence/open-intelligence/pull/307) at `477f24826a8a102c7437c993d69877c1f250b951`, joining #298 and #300 with #302/#303/#304 corrections. Other drafts are named separately.
+**Baselines:** reference main `24519839aa8ac1ea3aff88a956349ba72798a72a`; initial H1 assessment [#276](https://github.com/OpenxIntelligence/open-intelligence/pull/276) at `c154bfbc5f99f76801d37903959943659c0b6a71`; current verified DOI continuation [#321](https://github.com/OpenxIntelligence/open-intelligence/pull/321) at `a49530893f210609c1d203bd74a55fc683335149`, preserving combined [#307](https://github.com/OpenxIntelligence/open-intelligence/pull/307) runtime `477f24826a8a102c7437c993d69877c1f250b951` and its documentation follow-up. Other drafts are named separately.
 
 **Status vocabulary:** the eight categories in [PRODUCT_REQUIREMENTS.md](PRODUCT_REQUIREMENTS.md) apply to bounded behavior, never to a whole clinical domain by implication.
 
-## Current #307 convergence checkpoint
+## Current #321 DOI continuation
+
+[Draft #321](https://github.com/OpenxIntelligence/open-intelligence/pull/321)
+at runtime `a49530893f210609c1d203bd74a55fc683335149` builds on preserved #307
+documentation head `c35219dc5eb244874a7df6e9bf00cfbfda18251f`.
+[The existing Crossref boundary](../CROSSREF_METADATA_BOUNDARY.md#verified-implementation--draft-321)
+records 434 API/PostgreSQL, 298 reference and 276 client tests, actual browser
+acceptance and all five recovery probes, all passing.
+
+| Connected capability | Preserved owner and actual result | Remaining boundary |
+|---|---|---|
+| Explicit public DOI to metadata | Existing merged #6 adapter, now shared in the domain package; explicit `evidence_lookup` authority and default-off H1 route | Provider transport verified with an independently authored fixture only; source activation remains HOLD. |
+| Metadata to saved question | Existing #298 catalog/rights/citation owner; immutable projection and acquisition receipts; explicit save and exact retry | No automatic support claim, report creation or article-content permission. |
+| Current authority after external wait | Close the patient transaction during the provider call; recheck current context/rights before prepared JSON and durable audit | Production identity, consent and external execution qualification remain open. |
+| Persistent citation and withdrawal | Migration 0012 and actual browser/API/DB restart plus complete restore; withdrawn metadata stays withheld | Each stored version retains its own rights; any restricted version blocks further family lookup, not a new blanket withdrawal policy. |
+
+No new package, patient store, evidence store, autonomous agent, professional
+approval or deployment is introduced. Citation-to-original provenance and
+provider execution limits remain in OI-004/008/012/013 and issue #117.
+
+## Predecessor #307 convergence checkpoint
 
 [The exact acceptance receipt](../engineering/H1_EVIDENCE_CONTINUITY.md) records
 runtime `477f24826a8a102c7437c993d69877c1f250b951`, tree
