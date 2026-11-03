@@ -75,3 +75,62 @@ This draft composes #261 with #253, including #234's source fidelity through
 #253. #238's sibling migration branch and other source/question writers remain
 separate. Independent review and final combined-main acceptance are pending.
 See `docs/superpowers/plans/2026-11-03-h1-archive-disclosure-convergence.md`.
+
+## Bounded pathname-socket reader — local continuation, 2026-11-03
+
+`oi_api.archive_socket.UnixSocketImageArchive` supplies the existing optional
+`read(study_uid, series_uid, sop_uid)` interface without changing application
+routes or the canonical custody owner. This continuation is an unpublished local
+patch against the exact #277 tree, not a newly verified hosted integration.
+
+The operator configures a Linux pathname socket and expected service UID.
+SO_PEERCRED must match before any stored identifiers are sent. The adapter opens
+only AF_UNIX sockets: it does not resolve DNS, honor proxy variables, accept URLs,
+forward caller authorization, follow redirects, retry or use local fallback.
+Each invocation has its own socket, a single monotonic total deadline (default
+5 seconds) and bounded headers/body. A peer that trickles headers or body bytes
+cannot restart that deadline. Failed reads close the socket and return a generic
+error without retaining an upstream exception chain.
+
+Supported responses are a bounded HTTP/1.1 200 with canonical Content-Length and
+raw application/dicom or one multipart/related application/dicom part. Multipart
+`type` must be quoted; boundary may be a quoted MIME boundary or an unquoted token.
+Only Content-Type, optional matching Content-Length and optional matching relative
+Content-Location are accepted on the part. No encoded/chunked responses, extra
+parts, preambles, epilogues or extra wire bytes. The instance ceiling is 2 MiB;
+headers and additional multipart envelope are separately limited to 16 KiB.
+The upstream must close the connection after the exact declared body. This small
+profile can reject valid general-purpose DICOMweb responses; it is not a full
+conformance implementation. Returned bytes still require the owner's exact-byte
+comparison and fresh source/authority checks.
+
+Example operator-owned composition, not an automatically enabled environment flag:
+
+```python
+from oi_api.app import create_app
+from oi_api.archive_socket import UnixSocketImageArchive
+
+# Choose the dedicated service UID and protected pathname in your own validated
+# synthetic environment. This example does not create or deploy that service.
+archive = UnixSocketImageArchive(
+    "/run/oi-archive/read.sock", expected_peer_uid=10001, timeout_seconds=5.0
+)
+app = create_app(image_archive=archive)
+```
+
+The new `test_archive_socket.py` runs real temporary local-socket exchanges with
+independently authored payloads and the existing fictional DICOM encoder. It
+also injects high unsigned UID credential bytes for one representation test;
+that test does not establish a real high-UID service. The separate five
+`test_archive_socket_custody.py` cases exercise intended actual PG/HTTP composition,
+but remain **unexecuted** in the local delivery environment: the exact pinned
+pydicom/pg8000, FastAPI version and PostgreSQL service are unavailable. Compilation
+is not their runtime acceptance. Exact-head H1 API/Compose/browser verification
+and independent review must follow publication. See the continuation plan/spec
+for actual local execution evidence and preserved red/green history.
+
+This is a real transport client, **not** the archive server/gateway or PACS
+integration. Protect its socket directory and dedicated service UID separately.
+Same-UID/root compromise, other backend listeners, distributed revocation,
+production consent, broader image profiles and clinical qualification remain
+outside this change. Per-request limits are not global concurrency control.
