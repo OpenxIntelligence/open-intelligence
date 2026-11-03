@@ -164,6 +164,15 @@ def exercise(cd, credentials, write_grants):
         (out/'reading-large-text-390.png').write_bytes(base64.b64decode(cd.command('Page.captureScreenshot', {'format':'png'})['data']))
         cd.evaluate("for(const [e] of window.__readingSizes){for(const p of ['font-size','line-height','letter-spacing','word-spacing'])e.style.removeProperty(p)};delete window.__readingSizes")
         print('PASS READING CONVERGENCE: actual source response; current/historical filter; source-adjacent quotations; retained reading state with no requests; refresh reset; keyboard provenance and focus recovery; 320/390/768/1280 layouts and doubled-text/short-height checks.')
+        # Current-run audit evidence: navigation availability after reading a long record.
+        navigation_observations = []
+        for width in (390, 1280):
+            cd.command('Emulation.setDeviceMetricsOverride', {'width':width,'height':900,'deviceScaleFactor':1,'mobile':False})
+            cd.evaluate("document.querySelector('footer').scrollIntoView({block:'end'})")
+            cd.evaluate("new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))")
+            navigation_observations.append(cd.evaluate("(()=>{const n=document.querySelector('nav[aria-label=\"Patient workspace\"]');const r=n.getBoundingClientRect();return {width:innerWidth,scroll:scrollY,navigationTop:r.top,navigationBottom:r.bottom,visible:r.bottom>0&&r.top<innerHeight,section:document.querySelector('h1').textContent}})()"))
+            (out/f'workspace-navigation-bottom-{width}.png').write_bytes(base64.b64decode(cd.command('Page.captureScreenshot', {'format':'png'})['data']))
+        (out/'workspace-navigation-observations.json').write_text(json.dumps(navigation_observations, indent=2))
     finally:
         cd.evaluate("if(window.__readingFetch){window.fetch=window.__readingFetch;delete window.__readingFetch;delete window.__readingRequests}")
         cd.command('Emulation.setDeviceMetricsOverride', {'width':1280,'height':1000,'deviceScaleFactor':1,'mobile':False})
