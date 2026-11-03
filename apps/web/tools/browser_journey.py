@@ -130,10 +130,13 @@ def main():
                 credentials=credentials,write_grants=write_grants)
             from source_questions_journey import exercise as exercise_source_questions
             from question_review_journey import exercise as exercise_question_review
+            from followthrough_journey import exercise as exercise_followthrough, exercise_case_switch
             from connected_question_review_journey import exercise as exercise_connected_question_review
             with exercise_source_questions(cd,original_id,credentials,write_grants) as questions, \
                  exercise_question_review(cd,pid,case,questions.original_question_id,original_id,
-                     credentials,write_grants) as reviews:
+                     credentials,write_grants) as reviews, \
+                 exercise_followthrough(cd,pid,case,questions.original_question_id,original_id,
+                     credentials,write_grants) as followthrough:
                 cd.evaluate("Array.from(document.querySelectorAll('nav[aria-label=\"Patient workspace\"] button')).find(b=>b.textContent.includes('Records')).click()")
                 amended=(
                     'OI-SYNTHETIC-REPORT/1\nPatient: CASE-ALPHA\nDocument: DOC-ONE\n'
@@ -146,6 +149,7 @@ def main():
                 assert status==201 and new_receipt['version']==2
                 questions.after_amendment(new_receipt['source_id'])
                 reviews.after_amendment()
+                followthrough.after_amendment(new_receipt['source_id'])
                 cd.evaluate("document.querySelector('[data-testid=load-sources]').click()")
                 cd.wait("document.querySelectorAll('[data-testid=source-version]').length===2",'versioned amendment history')
                 assert cd.evaluate("document.querySelector('[data-testid=source-index]').textContent.includes('superseded')")
@@ -180,8 +184,10 @@ def main():
                     Path(os.environ.get('OI_WEB_ARTIFACT_DIR',ROOT/'apps/web/.evidence')),
                     replacement_question_id=replacement_question_id,
                     authored_question_id=authored_question_id)
+                followthrough.finish(new_receipt['source_id'],credentials,write_grants,
+                    Path(os.environ.get('OI_WEB_ARTIFACT_DIR',ROOT/'apps/web/.evidence')))
                 # Add the fourth question only after both three-question checks.
-                exercise_connected_question_review(cd,pid,case,new_receipt['source_id'],amended,
+                connected_question = exercise_connected_question_review(cd,pid,case,new_receipt['source_id'],amended,
                     credentials,write_grants,questions)
             # Current source metadata access is independent from the historical original bytes.
             # World Model recheck must clear the old view after source-read grant withdrawal.
@@ -211,6 +217,8 @@ def main():
             image=cd.command('Page.captureScreenshot',{'format':'png'});(out/'h1-mobile.png').write_bytes(base64.b64decode(image['data']))
             from record_intake_journey import exercise
             exercise(cd,pid,directory,tokens[0],credentials,write_grants,out)
+            exercise_case_switch(cd,pid,case,'CASE-WEB-INTAKE',credentials,write_grants,out,
+                current_question_id=connected_question['question_id'])
             credentials[0]['patient_ids']=[];write_grants();read()
             cd.wait("!document.querySelector('[data-testid=patient-card]') && document.querySelector('[data-testid=status]').textContent.includes('Patient unavailable')",'revoked read removes prior view')
             credentials[0]['expires_at']=(datetime.now(timezone.utc)-timedelta(seconds=1)).isoformat();write_grants();read()

@@ -25,6 +25,22 @@ caregiver delegation, consent, live model, biomedical retrieval or deployment is
 introduced. Source inputs are independently authored fictional reports. The backend remains responsible for authorization. An authorized
 request can complete after a later grant change; this UI is not a consent service.
 
+## Saved-question follow-through
+
+The Investigations workspace can turn an existing saved question into an
+attributed follow-up task with an owner and revisit date or trigger. Tasks show
+their original source anchor, amendment/recheck state and append-only history.
+Assignment, acknowledgment, completion and deferral use the canonical API;
+status changes survive application restart. An uncertain write preserves its
+exact request for explicit recovery and blocks a different write until resolved
+or abandoned. Changing patient, case or credentials clears task content and
+rejects late responses.
+
+This builds on the authored-question, source-inspection, verification-return and
+source-only brief workflow from #287. [The task contract](../../docs/engineering/H1_QUESTION_FOLLOWTHROUGH.md)
+records exact acceptance evidence and limits. An owner label does not grant
+access, task completion is not clinical approval, and no notification is sent.
+
 ## Development setup
 
 The backend instructions and exact Python dependency gate remain in

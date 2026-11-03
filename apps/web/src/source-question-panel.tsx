@@ -1,5 +1,6 @@
 import type {RegistrySession,ViewState} from './registry-client';
 import {canPrepareSourceBrief,downloadSourceBrief} from './source-brief';
+import {FollowthroughCreate,FollowthroughPanel} from './followthrough-panel';
 
 /** Reuses the source-question intake panel from PR238 over the canonical World Model. */
 export function SourceQuestionPanel({state,session,busy,onReview}:{state:ViewState;session:RegistrySession;busy:boolean;onReview?:()=>void}){
@@ -115,6 +116,8 @@ export function SourceQuestionPanel({state,session,busy,onReview}:{state:ViewSta
             onClick={()=>void session.prepareSourceBrief(item.question_id)}>Prepare source brief</button>
           {!canPrepareSourceBrief(item,state.worldModel)&&<p className="muted">
             Prepare a new question from the current source context before exporting a brief.</p>}
+          <FollowthroughCreate key={item.question_id+':'+item.preflight_sha256}
+            question={item} state={state} session={session} busy={busy}/>
           <button type="button" data-testid="source-quote-packet-open"
            disabled={busy||state.sourceQuotePhase==='loading'}
            onClick={()=>void session.loadQuestionSourcePacket(item.question_id)}>
@@ -153,6 +156,8 @@ export function SourceQuestionPanel({state,session,busy,onReview}:{state:ViewSta
       <p className="muted">Every download requests a new brief from the server. An earlier preview is never used when access is denied or the source changes.</p>
     </section>}
    </section>
+   <FollowthroughPanel key={(state.patient?.patient_id??'')+':'+(state.worldModel?.case_id??state.followthroughCaseId??'')}
+    state={state} session={session} busy={busy}/>
    <p role="status" aria-live="polite" data-testid="source-quote-packet-status"
     className={'status '+(state.sourceQuotePhase==='error'?'error':'')}>
     {state.sourceQuoteMessage}</p>
