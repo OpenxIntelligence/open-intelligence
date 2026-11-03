@@ -164,6 +164,37 @@ Remaining proof step: a live-server run against the real API with
 the operator key set, before the demo. The API completion itself
 was verified separately on 2026-10-31.
 
+## Evidence quality and limitations panel
+
+Each fictional source version can carry zero or more human-authored
+quality notes. Notes are descriptive only — completeness note,
+limitations text, conflict note, assessor label, date recorded — and
+never a rating, score, or clinical judgment. A source with no note
+renders an explicit "not assessed" marker; no quality is inferred.
+
+Storage is append-only (`evidence_quality_assessments`, one row per
+note, never updated or deleted). Recording a note never changes the
+source itself or any review state. Amending a source leaves old notes
+attached to the superseded version; the replacement starts unassessed.
+
+```text
+GET  /api/cases/{CASE-ID}/evidence-quality
+POST /api/cases/{CASE-ID}/evidence-quality
+```
+
+GET returns one entry per current source version (source id, document
+id, citation anchor, assessments or `not_assessed`) plus superseded
+versions separately with their own assessments in recorded order.
+Unknown case ids return 422, as elsewhere. POST records one note for
+one exact source version in the same case and returns its id.
+
+The case view includes an "Evidence quality" panel with one block per
+source, FICTIONAL labels throughout, plain language, and text-only
+rendering. Containers clear and reload per selected case, so no case's
+notes appear in another case's view.
+
+Covered by `tests/test_evidence_quality.py` (store + HTTP +
+UI-contract). Fictional/demo data only; no clinical accuracy claim.
 ## Second-opinion and survivorship care records
 
 The case workspace includes a **Second opinion & survivorship** panel for

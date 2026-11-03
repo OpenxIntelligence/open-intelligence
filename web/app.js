@@ -902,6 +902,7 @@ function render() {
   }
   loadModelInvestigations();
   loadChangesSinceReview();
+  loadEvidenceQuality();
   loadReviewQueue();
   renderSynthesisChoices();
   loadSynthesis();
@@ -2677,6 +2678,56 @@ function renderChangesSinceReview(data) {
       node('p', 'Event #' + item.event_id + ' · State: ' + item.state + ' · Created ' + item.created_at, 'muted'));
     el('changes-questions').append(row);
   }
+}
+async function loadEvidenceQuality() {
+  const requested = caseId;
+  for (const id of ['evidence-quality-current', 'evidence-quality-superseded']) clear(id);
+  try {
+    const data = await api('/api/cases/' + requested + '/evidence-quality');
+    if (requested !== caseId || !active || active.case.case_id !== requested) return;
+    renderEvidenceQuality(data);
+  } catch (err) {
+    if (requested !== caseId) return;
+    empty(el('evidence-quality-current'), 'Evidence quality notes unavailable: ' + err.message);
+    empty(el('evidence-quality-superseded'), 'Evidence quality notes unavailable.');
+  }
+}
+function renderEvidenceQuality(data) {
+  // Descriptive notes only. A source with no note renders "not assessed";
+  // no rating, score, or quality is ever guessed. All text via textContent.
+  const renderList = (containerId, entries, emptyText) => {
+    const container = el(containerId);
+    clear(containerId);
+    if (!entries.length) { empty(container, emptyText); return; }
+    for (const entry of entries) {
+      const card = node('article', null, 'source-card');
+      const top = node('div', null, 'source-top');
+      top.append(node('span', entry.document_id + ' @' + entry.version, 'source-title'),
+        pill('FICTIONAL', 'pill-warn'));
+      card.append(top);
+      card.append(node('p', 'Citation anchor: ' + entry.citation_anchor, 'snapshot-meta'));
+      if (entry.assessment_status !== 'assessed' || !(entry.assessments || []).length) {
+        card.append(node('p', 'Not assessed — no quality note was recorded for this fictional source version. No quality is guessed.', 'muted'));
+      } else {
+        for (const note of entry.assessments) {
+          const box = node('div', null, 'finding');
+          const head = node('div', null, 'finding-head');
+          head.append(node('strong', 'FICTIONAL note #' + note.id + ' · ' + note.assessor_label),
+            pill('FICTIONAL note', 'pill-neutral'));
+          box.append(head);
+          box.append(node('p', 'Date recorded: ' + note.date_recorded, 'snapshot-meta'));
+          box.append(node('p', 'What is covered: ' + note.completeness_note));
+          box.append(node('p', 'Limits: ' + note.limitations_text, 'muted'));
+          box.append(node('p', 'Disagreements or conflicts: ' + note.conflict_note, 'muted'));
+          box.append(node('span', 'Source version #' + note.source_version_id + ' · recorded ' + note.created_at, 'ref'));
+          card.append(box);
+        }
+      }
+      container.append(card);
+    }
+  };
+  renderList('evidence-quality-current', data.current || [], 'No current fictional sources in this case.');
+  renderList('evidence-quality-superseded', data.superseded || [], 'No superseded fictional source versions.');
 }
 async function loadReReviewTasks() {
   const requested = caseId;

@@ -605,6 +605,23 @@ CREATE TABLE IF NOT EXISTS biological_inventory_assertions (
 CREATE INDEX IF NOT EXISTS idx_biological_assets_case ON biological_assets(case_id, asset_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_assertions_asset ON biological_inventory_assertions(asset_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_assertions_source ON biological_inventory_assertions(source_version_id);
+-- Evidence quality and limitations (append-only, descriptive only): one row
+-- per human-authored note about one exact source version. No rating, score,
+-- or inference is stored here; absence of a row means "not assessed", never
+-- a guessed quality. Rows are never updated or deleted; an amendment leaves
+-- old rows attached to the superseded version.
+CREATE TABLE IF NOT EXISTS evidence_quality_assessments (
+  id INTEGER PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(case_id),
+  source_version_id INTEGER NOT NULL REFERENCES source_versions(id),
+  assessor_label TEXT NOT NULL,
+  date_recorded TEXT NOT NULL,
+  completeness_note TEXT NOT NULL,
+  limitations_text TEXT NOT NULL,
+  conflict_note TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_eq_assessments_source ON evidence_quality_assessments(source_version_id);
+CREATE INDEX IF NOT EXISTS idx_eq_assessments_case ON evidence_quality_assessments(case_id, source_version_id);
 -- Second-opinion and survivorship care records: append-only, amendment-aware,
 -- descriptive-only. A second-opinion response is a separate record that never
 -- overwrites the original case conclusion; both stay visible side by side.
@@ -5262,6 +5279,103 @@ class CaseStore:
                           "- Amendments can make previous investigations stale; see the state above.", ""])
             return "\n".join(lines)
 
+    # ---- Evidence quality and limitations (descriptive only) ----
+    # Append-only human notes about one exact source version. Recording
+    # never updates source_versions, assertions, questions, snapshots, or
+    # any review state; it only inserts one row plus a ledger event.
+    # No rating or score exists: absence of rows means "not assessed".
+
+    @staticmethod
+    def _check_quality_note(value: object, field: str) -> str:
+        if not isinstance(value, str) or not 1 <= len(value.strip()) <= 1000:
+            raise InvalidInput(f"{field} must have 1-1000 characters")
+        return value.strip()
+
+    def record_evidence_quality(self, case_id: str, source_version_id: int,
+                                assessor_label: object, date_recorded: object,
+                                completeness_note: object, limitations_text: object,
+                                conflict_note: object) -> int:
+        """Append one descriptive quality note to one exact source version."""
+        case_id = self._case(case_id)
+        if type(source_version_id) is not int or source_version_id < 1:
+            raise InvalidInput("Invalid source version ID")
+        if not isinstance(assessor_label, str) or not 2 <= len(assessor_label.strip()) <= 80:
+            raise InvalidInput("Provide an assessor label")
+        recorded = valid_date(date_recorded) if isinstance(date_recorded, str) else None
+        if recorded is None:
+            raise InvalidInput("Dates must use YYYY-MM-DD")
+        completeness = self._check_quality_note(completeness_note, "Completeness note")
+        limitations = self._check_quality_note(limitations_text, "Limitations text")
+        conflict = self._check_quality_note(conflict_note, "Conflict note")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            source = self.db.execute(
+                "SELECT id FROM source_versions WHERE id=? AND case_id=?",
+                (source_version_id, case_id)).fetchone()
+            if not source:
+                raise InvalidInput("Source not in this case")
+            cur = self.db.execute("""INSERT INTO evidence_quality_assessments
+                (case_id,source_version_id,assessor_label,date_recorded,
+                 completeness_note,limitations_text,conflict_note,created_at)
+                VALUES (?,?,?,?,?,?,?,?)""",
+                (case_id, source_version_id, assessor_label.strip(), recorded,
+                 completeness, limitations, conflict, now_utc()))
+            self._event(case_id, "evidence_quality_recorded",
+                        assessment_id=int(cur.lastrowid),
+                        source_version_id=source_version_id)
+            return int(cur.lastrowid)
+
+    def evidence_quality(self, case_id: str) -> dict:
+        """One entry per source version in this case only, current first.
+
+        Each entry carries its source id, document id, citation anchor, and
+        its own assessments in recorded order. Entries with no assessments
+        carry assessment_status 'not_assessed' with an empty list; no
+        quality is ever inferred. Superseded versions appear separately
+        with their own assessments intact.
+        """
+        self._case(case_id)
+        with self.db:
+            self.db.execute("BEGIN")
+            current_rows = self._dicts(self.db.execute(
+                """SELECT id,document_id,version,state FROM source_versions
+                WHERE case_id=? AND state='current'
+                ORDER BY document_id,version,id""", (case_id,)).fetchall())
+            superseded_rows = self._dicts(self.db.execute(
+                """SELECT id,document_id,version,state FROM source_versions
+                WHERE case_id=? AND state='superseded'
+                ORDER BY document_id,version,id""", (case_id,)).fetchall())
+
+            def entry(row: dict) -> dict:
+                notes = self._dicts(self.db.execute(
+                    """SELECT id,source_version_id,assessor_label,date_recorded,
+                    completeness_note,limitations_text,conflict_note,created_at
+                    FROM evidence_quality_assessments
+                    WHERE case_id=? AND source_version_id=? ORDER BY id""",
+                    (case_id, row["id"])).fetchall())
+                return {
+                    "source_id": row["id"],
+                    "document_id": row["document_id"],
+                    "version": row["version"],
+                    "state": row["state"],
+                    "citation_anchor": (
+                        f"{row['document_id']}@{row['version']}, "
+                        f"source version #{row['id']}"
+                    ),
+                    "assessment_status": "assessed" if notes else "not_assessed",
+                    "assessments": notes,
+                }
+
+            return {
+                "case_id": case_id,
+                "synthetic": True,
+                "disclaimer": ("Fictional demo data only. Quality notes are "
+                               "human-authored descriptions, not ratings, scores, "
+                               "or clinical judgments. 'Not assessed' means no note "
+                               "was recorded; no quality is inferred."),
+                "current": [entry(row) for row in current_rows],
+                "superseded": [entry(row) for row in superseded_rows],
+            }
     # ---- Second-opinion and survivorship care records ----
     # Additive slice over the same ledger. A second-opinion response is a
     # separate record that never overwrites the original case conclusion;
