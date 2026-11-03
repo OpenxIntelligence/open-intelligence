@@ -61,7 +61,9 @@ async function initialize() {
     picker.addEventListener('change', () => {
       // An unfinished narrative must never silently become attached to another case.
       if ((['draft-observations', 'draft-summary', 'draft-assumptions', 'evidence-rationale',
-            'evidence-withdraw-reason', 'option-description'].some(id => el(id).value.trim()))) {
+            'evidence-withdraw-reason', 'option-description', 'visit-date', 'visit-type',
+            'visit-notes', 'visit-anchor', 'visit-amend-date', 'visit-amend-type',
+            'visit-amend-notes', 'visit-amend-anchor'].some(id => el(id).value.trim()))) {
         picker.value = caseId;
         notice('Save or explicitly clear the unfinished investigation draft before switching cases.', true);
         return;
@@ -70,7 +72,9 @@ async function initialize() {
       caseId = picker.value;
       active = null; // Reject writes while the next case is loading.
       for (const id of ['question-text', 'report-text', 'evidence-rationale', 'draft-observations',
-        'draft-summary', 'draft-assumptions']) el(id).value = '';
+        'draft-summary', 'draft-assumptions', 'visit-date', 'visit-type', 'visit-notes',
+        'visit-anchor', 'visit-amend-date', 'visit-amend-type', 'visit-amend-notes',
+        'visit-amend-anchor']) el(id).value = '';
       if (el('source-dialog').open) el('source-dialog').close();
       if (el('compare-dialog').open) el('compare-dialog').close();
       refresh();
@@ -355,6 +359,74 @@ function renderBiologicalAssets() {
     el('asset-list').append(card);
   }
 }
+async function loadVisits() {
+  const requested = caseId;
+  clear('visit-list');
+  try {
+    const data = await api('/api/cases/' + requested + '/visits');
+    if (requested !== caseId || !active || active.case.case_id !== requested) return;
+    renderVisits(data);
+  } catch (err) {
+    if (requested !== caseId) return;
+    empty(el('visit-list'), 'Visit history unavailable: ' + err.message);
+  }
+}
+function renderVisits(data) {
+  // Plain recorded history only. Every value is rendered with textContent;
+  // nothing here is a directive, a due date, or treatment guidance.
+  clear('visit-list');
+  const recordedLabel = data.recorded_date_label || 'recorded date — not a clinical due date';
+  const visits = data.visits || [];
+  const select = el('visit-amend-choice');
+  const prior = select.value;
+  clear('visit-amend-choice');
+  for (const visit of visits) {
+    const current = visit.current;
+    const opt = node('option', 'FICTIONAL visit #' + visit.visit_id +
+      (current ? ' · ' + current.visit_type + ' · ' + current.recorded_date : ''));
+    opt.value = visit.visit_id;
+    select.append(opt);
+  }
+  if (prior && [...select.options].some(x => x.value === prior)) select.value = prior;
+  if (!visits.length) {
+    empty(el('visit-list'), 'No fictional visits recorded for this case.');
+    return;
+  }
+  for (const visit of visits) {
+    const current = visit.current;
+    const box = node('div', null, 'snapshot');
+    const top = node('div', null, 'topline');
+    top.append(node('strong', 'FICTIONAL visit #' + visit.visit_id),
+      pill(current ? current.visit_type : 'no current version', 'pill-neutral'),
+      pill('FICTIONAL', 'pill-warn'));
+    box.append(top);
+    if (current) {
+      box.append(node('p', recordedLabel + ': ' + current.recorded_date, 'snapshot-meta'));
+      box.append(node('p', current.notes));
+      box.append(node('p', 'Source: ' + (current.source_anchor ? current.source_anchor : 'no source recorded'), 'muted'));
+      box.append(node('span', 'Review state: ' + current.review_state +
+        ' · Version ' + current.version + ' (' + current.state + ')', 'ref'));
+    }
+    const history = visit.history || [];
+    if (history.length > 1) {
+      box.append(node('p', 'History (' + history.length + ' versions, oldest first):', 'snapshot-meta'));
+      const list = document.createElement('ol');
+      for (const version of history) {
+        const item = document.createElement('li');
+        item.textContent = 'v' + version.version + ' · ' + recordedLabel + ': ' +
+          version.recorded_date + ' · ' + version.visit_type + ' · ' + version.notes +
+          ' · Source: ' + (version.source_anchor ? version.source_anchor : 'no source recorded') +
+          ' · ' + version.state;
+        list.append(item);
+      }
+      box.append(list);
+    } else {
+      box.append(node('p', 'History: 1 version (current).', 'snapshot-meta'));
+    }
+    box.append(node('p', 'FICTIONAL recorded history. Never a directive, never a due date, never treatment guidance.', 'muted tiny'));
+    el('visit-list').append(box);
+  }
+}
 function render() {
   const sameCase = renderedCaseId === caseId;
   const priorQuestion = sameCase ? el('question-choice').value : null;
@@ -553,6 +625,7 @@ function render() {
   }
   loadModelInvestigations();
   loadChangesSinceReview();
+  loadVisits();
   clear('quarantine-list');
   for (const entry of active.quarantines) {
     el('quarantine-list').append(node('div', 'Quarantined #' + entry.id + ': declared ' + entry.declared_patient_id + ', not ' + caseId + ', no assertions imported', 'quarantine'));
@@ -929,6 +1002,37 @@ el('option-review-form').addEventListener('submit', async event => {
     if (requestedCase !== caseId) return;
     el('review-scope').value = '';
     notice('Reviewer action recorded: ' + outcome.result + '.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('visit-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const created = await api('/api/cases/' + requestedCase + '/visits', {
+      recorded_date: el('visit-date').value,
+      visit_type: el('visit-type').value,
+      notes: el('visit-notes').value,
+      source_anchor: el('visit-anchor').value.trim() ? el('visit-anchor').value : null,
+    });
+    if (requestedCase !== caseId) return;
+    for (const id of ['visit-date', 'visit-type', 'visit-notes', 'visit-anchor']) el(id).value = '';
+    notice('FICTIONAL visit #' + created.visit_id + ' recorded as history.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('visit-amend-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const outcome = await api('/api/cases/' + requestedCase + '/visits/' +
+      Number(el('visit-amend-choice').value) + '/amend', {
+      recorded_date: el('visit-amend-date').value,
+      visit_type: el('visit-amend-type').value,
+      notes: el('visit-amend-notes').value,
+      source_anchor: el('visit-amend-anchor').value.trim() ? el('visit-amend-anchor').value : null,
+    });
+    if (requestedCase !== caseId) return;
+    for (const id of ['visit-amend-date', 'visit-amend-type', 'visit-amend-notes', 'visit-amend-anchor']) el(id).value = '';
+    notice('FICTIONAL visit amended; version ' + outcome.version + ' is current, history preserved.'); await refresh();
   } catch (err) { notice(err.message, true); }
 });
 
