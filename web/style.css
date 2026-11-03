@@ -1135,3 +1135,37 @@ dialog pre {
   .report-item { break-inside: avoid; }
   #patient-report .pill-warn { color: #000; background: #fff; border: 2px solid #000; }
 }
+/* Guided journey shell: six navigation-only steps over the same record. */
+.panel-journey {
+  margin-bottom: var(--space-5);
+  border-top: 3px solid var(--color-source);
+}
+.journey-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+.journey-step {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-2);
+  align-content: start;
+  padding: var(--space-4);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-control);
+  background: var(--color-paper-2);
+  overflow-wrap: anywhere;
+}
+.journey-step h3,
+.journey-step p {
+  margin: 0;
+}
+.journey-step .button {
+  justify-self: start;
+}
+@media (max-width: 60rem) {
+  .journey-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

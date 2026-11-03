@@ -8,7 +8,7 @@ from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from open_intelligence.__main__ import Handler, seed
+from open_intelligence.__main__ import FICTIONAL_ACTOR_HEADER, Handler, seed
 
 
 class PatientReportHttpTests(unittest.TestCase):
@@ -35,7 +35,8 @@ class PatientReportHttpTests(unittest.TestCase):
         cls.tmp.cleanup()
 
     def request(self, path: str):
-        request = Request(f"http://127.0.0.1:{self.port}{path}")
+        request = Request(f"http://127.0.0.1:{self.port}{path}",
+                          headers={FICTIONAL_ACTOR_HEADER: "FICTIONAL-NAVIGATOR-A"})
         try:
             with urlopen(request, timeout=5) as response:
                 return response.status, response.headers, response.read()

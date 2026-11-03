@@ -70,6 +70,36 @@ The UI can register an original fictional evidence item, attach a manually-autho
 
 The labels `supports`, `contradicts`, and `applicable` are human-entered **fictional engineering data**, not determinations of evidence quality, clinical benefit, trial eligibility, or clinical relevance. The prototype has no clinician identity verification or legal rights-verification service. Never use real patient records or copyrighted publication text. Run the unit/HTTP tests before reviewing the UI; browser execution requires a separate interactive verification.
 
+## Longitudinal biological explanation slice
+
+The case view links to a **Biological explanation** panel for human-authored, source-anchored context records: each explanation ties one question to a fictional episode, specimen, lesion, and clinical time point, and each assay observation ties one fictional assay to exactly one tissue block (or explicitly unknown), a matched-control state (`recorded`, `missing`, or `unknown`), and a reference kind (`patient_normal`, `external_population`, or `unknown`). Competing explanations for one question survive side by side; a recorded specimen that contradicts its anchored source is rejected rather than merged; and both tables go stale anchor-exactly on source amendment. Authored text rejects staging, grading, variant-interpretation, response/progression, eligibility, and treatment language. See `docs/BIOLOGICAL_EXPLANATION.md` and `tests/test_bio_explanation.py`. This slice states no clinical meaning for any variant, stage, grade, or response, and is not evidence of benefit or a basis for administering anything.
+## Counterevidence and safety-uncertainty surfacing (options)
+
+The options panel can record, per option, append-only **counterevidence**
+(`hold` or `invalidate`, with a plain-words reason and exactly one
+triggering source version or evidence assessment) and **safety uncertainty**
+flags (`expression_only`, `tracer_only`, `preclinical_only`,
+`cross_modal_gap`, `other`, each with a server-issued plain-language
+label). Both stay visible in the derived option view even after later
+amendments supersede their triggers, and both block promotion: a held,
+invalidated, or safety-flagged option cannot be approved or reconfirmed,
+and promotion scopes claiming established benefit/toxicity or a patient
+response/permission are refused. A new proposal on current inputs is the
+only path forward. Single-modality notes never read as established benefit
+or toxicity; preclinical notes always read as preclinical only, never as an
+observed patient response or permission to administer. Routes:
+
+```text
+POST /api/cases/{CASE-ID}/options/{ID}/counterevidence
+POST /api/cases/{CASE-ID}/options/{ID}/safety-flags
+```
+
+All records are fictional engineering data for clinician review; the
+platform surfaces uncertainty and never resolves it by itself. See
+`tests/test_counterevidence_safety.py`. Wording guards are narrow
+pattern checks, not classifiers, and human-authored descriptions outside
+these fields are not policed.
+
 ## Bibliographic metadata panel
 
 The public bibliography panel is **not linked to the selected synthetic patient**. It displays an authored Crossref-format test record using an offline local JSON fixture. The local demo server denies live lookups by default. To explicitly enable an operator-requested DOI-only Crossref lookup:
@@ -119,3 +149,33 @@ PYTHONPATH=src python -m open_intelligence serve
 Remaining proof step: a live-server run against the real API with
 the operator key set, before the demo. The API completion itself
 was verified separately on 2026-10-31.
+
+## Option portfolio surface (authored, awaiting reviewer verification)
+
+An evidence-backed portfolio over the existing option ledger. It adds
+append-only records only; no existing table, route, or review contract
+changed meaning:
+
+- `option_flags`: documented objections, deferrals, and reservations, each
+  with a reason, a recorder label, and at most one current same-case source
+  or evidence premise. An open flag holds the option: approval and
+  reconfirmation are refused until the reason is resolved, and resolving or
+  reopening the reason reopens review of the option and its followers. A
+  source amendment or evidence withdrawal also reopens options whose open
+  flags cite the changed premise.
+- `option_dimension_notes`: reviewable notes on the four portfolio
+  dimensions — scientific plausibility, technical feasibility, access,
+  clinical authorization. Each note carries an anchor, an optional premise,
+  and stays `pending` until a clinician acknowledges it. Acknowledgment is a
+  record of review, never a declaration of eligibility, benefit, or
+  authorization; author-controlled text making such claims is rejected.
+- `GET /api/cases/{case}/portfolio` (also embedded in case state) projects
+  every option ever proposed: prerequisites, objections, access notes,
+  readiness, lead-time uncertainty, and expiration/review triggers.
+  Deferred, rejected, and reserved entries stay visible with their reasons
+  and counts; nothing is silently dropped.
+- The case workspace renders this as an "Option portfolio" section linked
+  from the case navigation, in plain language with fictional labels.
+- Tests: `tests/test_option_portfolio.py` (store behavior plus HTTP route
+  coverage through the existing live-server pattern), including the held
+  reason-change review flow and rejected-entry preservation.
