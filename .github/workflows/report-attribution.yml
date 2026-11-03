@@ -25,6 +25,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.13'
+      - name: Install source-owned exact PDF runtime
+        run: python -m pip install --require-hashes --only-binary=:all: --no-deps -r requirements-pdf.lock
       - name: Python compile
         run: python -m compileall -q src tests
       - name: Patient report and HTTP regression tests

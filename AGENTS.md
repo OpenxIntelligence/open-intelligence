@@ -4,7 +4,17 @@
 
 Read `README.md`, `docs/FIRST_PRINCIPLES_PLAN.md`, and the relevant rows in `docs/EXECUTION_BACKLOG.csv`. Inspect the current repository before claiming that a capability, dependency, test, or decision already exists.
 
-The initial repository is a planning foundation. Implement bounded work against explicit acceptance criteria. Ordinary development and reversible fixes within the authorized task should proceed without repeated approval requests.
+The repository contains planning artifacts and working synthetic application slices; inspect the relevant branch before claiming integrated or deployed capability. Implement bounded work against explicit acceptance criteria. Ordinary development and reversible fixes within the authorized task should proceed without repeated approval requests.
+
+## Founding mandate: platform first, useful MVP first
+
+- Build a new, integrated cancer-care platform for many patients, caregivers and authorized professionals. The long-term scope includes first-party EHR, oncology, laboratory, pathology, imaging, genomics, scientific investigation, care coordination and patient support. A small initial workflow does not reduce that ambition.
+- First deliver a functioning end-to-end MVP: independently synthetic patient information → structured longitudinal record → permitted biomedical evidence → source-supported investigation → report → human review → updated understanding. Preserve one canonical patient/case identity, source ledger, evidence contract and review history.
+- Advanced models, image analysis, predictive algorithms and custom scientific pipelines are later capabilities, justified by a measured problem, baseline, validation method and expected benefit. They are not prerequisites for a useful integrated MVP. Existing suitable models and deterministic software are acceptable starting tools.
+- Sid Sijbrandij and other public patient narratives may inform research into methods, access barriers and workflows. Never acquire or use Sid's medical records, genomic data, pathology, imaging or other patient data for development, training, evaluation, testing, synthetic derivation, biological reconstruction or reproduction of treatment decisions. Public availability does not override this boundary. Use independently authored synthetic patients and specimens.
+- Research diverse journeys, including limited access, unsuccessful treatment, caregiver burden, pediatric care, survivorship and end-of-life needs. A published narrative is product-discovery evidence, not clinical efficacy evidence or a test fixture.
+- Extend the canonical Notion/Drive artifacts and existing GitHub work. Separate established decisions, recommendations, experiments, unresolved questions, founder approvals and clinical/legal/institutional approvals. Do not restart architecture selection or create duplicate implementations without a scoped justification.
+- Next.js is excluded from new product development.
 
 ## Project identity and complementary research
 
@@ -42,7 +52,7 @@ The initial repository is a planning foundation. Implement bounded work against 
 
 Prefer deterministic software for authorization, source identity, validation, versioning, job state, and publication state. Model outputs are inspectable proposals governed by typed task contracts and allowed tools.
 
-The backend, model provider, and detailed application stack remain undecided. Select them using the workflow requirements and a bounded comparison, rather than treating an earlier candidate as an approved dependency.
+The existing Python/SQLite/vanilla-JavaScript synthetic application remains the behavioral reference and fallback. The canonical decision register accepts Python 3.12/FastAPI/Pydantic 2/SQLAlchemy 2/Alembic/PostgreSQL 16 and React/Vite/TypeScript as the H1 working target; migration is not complete. This bounded engineering direction does not approve production tenancy, hosting, clinical use or every dependency. Preserve source contracts and tested behavior during migration, and document scoped adoption decisions rather than restarting stack selection. See the existing [decision register](https://www.notion.so/40a3866f77ef81e08a12fd4921e19629).
 
 ## Completion reports
 

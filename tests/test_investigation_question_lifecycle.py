@@ -13,6 +13,11 @@ from pathlib import Path
 from urllib.request import Request, urlopen
 
 from open_intelligence.__main__ import Handler
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
+
+from open_intelligence.__main__ import Handler
+from open_intelligence.composer import build_composer_context, composer_context_fingerprint
 from open_intelligence.investigation import ValidatedInvestigation, validate_output
 from open_intelligence.mission import build_patient_mission
 from open_intelligence.store import CaseStore, InvalidInput
@@ -100,6 +105,92 @@ class InvestigationQuestionLifecycleTests(unittest.TestCase):
                     for row in self.store.state("CASE-ALPHA")["questions"]
                 }
                 self.assertEqual(questions[question_id], "open")
+
+    def test_invalid_question_identifiers_fail_before_database_access(self):
+        # In particular, Python bools must not alias question 1, and integers
+        # outside SQLite's signed 64-bit range must not escape as OverflowError.
+        self.store.add_question("CASE-ALPHA", "Which fictional source needs review?")
+        validated = self.result()
+        invalid_ids = (True, False, None, "1", 1.0, [], {}, 0, -1,
+                       2**63, -(2**63) - 1, 10**100)
+        operations = {
+            "facts": lambda q: self.store.investigation_facts("CASE-ALPHA", q),
+            "save": lambda q: self.store.save_investigation(
+                "CASE-ALPHA", q, "evidence-summary", validated, "replay"),
+        }
+        before = self.store.state("CASE-ALPHA")
+        for operation, call in operations.items():
+            for question_id in invalid_ids:
+                with self.subTest(operation=operation, question_id=question_id):
+                    statements = []
+                    self.store.db.set_trace_callback(statements.append)
+                    error = None
+                    try:
+                        call(question_id)
+                    except Exception as exc:
+                        error = exc
+                    finally:
+                        self.store.db.set_trace_callback(None)
+                    self.assertIsInstance(error, InvalidInput)
+                    self.assertEqual(statements, [])
+        self.assertEqual(self.store.state("CASE-ALPHA"), before)
+        self.assertEqual(self.store.list_investigations("CASE-ALPHA"), [])
+
+    def test_facts_reject_foreign_and_absent_representable_question_ids(self):
+        other_question = self.store.add_question(
+            "CASE-BETA", "Why does this invented other case remain distinct?"
+        )
+        before_alpha = self.store.state("CASE-ALPHA")
+        before_beta = self.store.state("CASE-BETA")
+        for question_id in (other_question, 999999, 2**63 - 1):
+            with self.subTest(question_id=question_id):
+                with self.assertRaises(InvalidInput):
+                    self.store.investigation_facts("CASE-ALPHA", question_id)
+                with self.assertRaises(InvalidInput):
+                    self.store.save_investigation(
+                        "CASE-ALPHA", question_id, "evidence-summary", self.result(), "replay"
+                    )
+        self.assertEqual(self.store.state("CASE-ALPHA"), before_alpha)
+        self.assertEqual(self.store.state("CASE-BETA"), before_beta)
+        self.assertEqual(self.store.list_investigations("CASE-ALPHA"), [])
+
+    def test_composer_rejects_unrepresentable_question_ids(self):
+        for read in (build_composer_context, composer_context_fingerprint):
+            for question_id in (2**63, 10**100):
+                with self.subTest(reader=read.__name__, question_id=question_id):
+                    error = None
+                    try:
+                        read(self.store, "CASE-ALPHA", question_id)
+                    except Exception as exc:
+                        error = exc
+                    self.assertIsInstance(error, InvalidInput)
+
+    def test_http_rejects_huge_question_with_forged_context_fingerprint(self):
+        handler = type("BoundedQuestionHandler", (Handler,), {
+            "db_path": str(self.db_path),
+            "log_message": lambda self, *args: None,
+        })
+        before = self.store.state("CASE-ALPHA")
+        with ThreadingHTTPServer(("127.0.0.1", 0), handler) as server:
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            request = Request(
+                f"http://127.0.0.1:{server.server_port}/api/cases/CASE-ALPHA/investigations",
+                data=json.dumps({"question_id": 2**63, "template": "evidence-summary",
+                                 "mode": "replay", "context_fingerprint": "0" * 64}).encode(),
+                headers={"Content-Type": "application/json"},
+            )
+            try:
+                with self.assertRaises(HTTPError) as caught:
+                    urlopen(request, timeout=5)
+                self.assertEqual(caught.exception.code, 422)
+                with caught.exception as response:
+                    self.assertIn("error", json.loads(response.read()))
+            finally:
+                server.shutdown()
+                thread.join(timeout=5)
+        self.assertEqual(self.store.state("CASE-ALPHA"), before)
+        self.assertEqual(self.store.list_investigations("CASE-ALPHA"), [])
 
     def test_receipt_and_unresolved_mission_survive_restart(self):
         question_id = self.store.add_question(

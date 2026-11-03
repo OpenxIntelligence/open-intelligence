@@ -4,8 +4,41 @@
   const labels = Object.freeze({reported: 'Reported', negative: 'Negative', pending: 'Pending',
     indeterminate: 'Indeterminate', 'not-reported': 'Not reported', 'not-assessed': 'Not assessed', conflicting: 'Conflicting'});
   const unresolvedStates = new Set(['pending', 'indeterminate', 'not-reported', 'not-assessed', 'conflicting']);
+  const manualKeys = ['classification_origin', 'annotation_method', 'clinical_review', 'transcription_review_sha256'];
+  const extractionKeys = ['text_origin', 'extraction_sha256'];
+  const pageKeys = ['source_page', 'page_line', 'page_text_sha256'];
+  const provenanceKeys = [...manualKeys, ...extractionKeys, ...pageKeys];
   const positive = value => Number.isSafeInteger(value) && value > 0;
+  const digest = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
   function requireMatch(condition) { if (!condition) throw Error('Record response does not match the loaded case'); }
+  function sameFields(actual, expected, keys) {
+    for (const key of keys) requireMatch(Object.hasOwn(actual, key) === Object.hasOwn(expected, key) && actual[key] === expected[key]);
+  }
+  function sameRecord(actual, expected) {
+    requireMatch(actual && expected && typeof actual === 'object' && !Array.isArray(actual));
+    requireMatch(Object.keys(actual).length === Object.keys(expected).length);
+    sameFields(actual, expected, Object.keys(expected));
+  }
+  function validateSourceProvenance(source) {
+    const receipt = source.document_intake;
+    if (!Object.hasOwn(source, 'document_intake')) {
+      requireMatch(provenanceKeys.every(key => !Object.hasOwn(source, key)));
+      return;
+    }
+    requireMatch(receipt && !Array.isArray(receipt) && receipt.manual_transcription_confirmed === true &&
+      receipt.clinical_review === 'not_performed' && digest(receipt.review_sha256));
+    const pdf = receipt.media_type === 'application/pdf';
+    requireMatch(pdf || receipt.media_type === 'text/plain; charset=utf-8');
+    const method = pdf ? 'manual-exact-extraction-line-selection' : 'manual-exact-line-selection';
+    requireMatch(source.classification_origin === 'user_selected' && source.clinical_review === 'not_performed' &&
+      source.annotation_method === method && receipt.annotation_method === method &&
+      source.transcription_review_sha256 === receipt.review_sha256 &&
+      receipt.extraction_method === (pdf ? 'pypdf-text-v1' : 'utf8-plain-text-v1'));
+    requireMatch(pageKeys.every(key => !Object.hasOwn(source, key)));
+    if (pdf) requireMatch(source.text_origin === 'pdf_extraction' && digest(source.extraction_sha256) &&
+      source.extraction_sha256 === receipt.extraction_sha256);
+    else requireMatch(extractionKeys.every(key => !Object.hasOwn(source, key)) && !Object.hasOwn(receipt, 'extraction_sha256'));
+  }
   function sameIds(actual, expected) {
     requireMatch(Array.isArray(actual) && actual.every(positive) && new Set(actual).size === actual.length);
     requireMatch(actual.length === expected.length && actual.every(id => expected.includes(id)));
@@ -34,6 +67,10 @@
           item.supersedes_source_id === source.supersedes_id);
         for (const key of ['document_id', 'version', 'kind', 'specimen_id', 'event_date', 'issued_at', 'received_at'])
           requireMatch(item[key] === source[key]);
+        validateSourceProvenance(source);
+        sameFields(item, source, provenanceKeys);
+        requireMatch(Object.hasOwn(item, 'document_intake') === Object.hasOwn(source, 'document_intake'));
+        if (source.document_intake) sameRecord(item.document_intake, source.document_intake);
       }
     }
     requireMatch(seen.size === sources.size);
@@ -51,24 +88,51 @@
         item.document_version === source.version && item.source_kind === source.kind &&
         item.review_state === 'not_established' && item.clinical_meaning === null);
       for (const key of ['specimen_id', 'event_date', 'issued_at', 'received_at']) requireMatch(item[key] === source[key]);
+      sameFields(assertion, source, [...manualKeys, ...extractionKeys]);
+      if (source.text_origin === 'pdf_extraction') requireMatch(positive(assertion.source_page) && assertion.source_page <= 20 &&
+        positive(assertion.page_line) && assertion.page_line <= 512 && assertion.source_line <= 512 && digest(assertion.page_text_sha256));
+      else requireMatch(pageKeys.every(key => !Object.hasOwn(assertion, key)));
+      sameFields(item, assertion, provenanceKeys);
       observations.set(item.assertion_id, item);
     }
     requireMatch(observations.size === assertions.size);
     sameIds(model.unresolved.map(item => item.assertion_id), model.observations
       .filter(item => unresolvedStates.has(item.reported_state)).map(item => item.assertion_id));
+    for (const item of model.unresolved) sameRecord(item, observations.get(item.assertion_id));
+    const groupKey = item => JSON.stringify([item.specimen_id, item.event_date, item.finding_key]);
+    const groups = new Map();
+    for (const item of model.observations) {
+      if (item.specimen_id == null) continue;
+      const key = groupKey(item);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(item);
+    }
+    const expectedConflicts = new Map([...groups].filter(([, items]) =>
+      items.some(item => item.reported_state === 'reported') && items.some(item => item.reported_state === 'negative')));
+    const seenConflicts = new Set();
     for (const conflict of model.conflicts) {
       requireMatch(conflict.specimen_id != null && conflict.status === 'unresolved_source_disagreement' &&
         conflict.clinical_interpretation === 'not_performed' && Array.isArray(conflict.observation_refs));
+      const key = groupKey(conflict);
+      requireMatch(expectedConflicts.has(key) && !seenConflicts.has(key));
+      seenConflicts.add(key);
       const states = new Set();
       for (const ref of conflict.observation_refs) {
         const observation = observations.get(ref.assertion_id);
         requireMatch(observation && observation.source_version_id === ref.source_version_id && observation.source_line === ref.source_line &&
           observation.specimen_id === conflict.specimen_id && observation.event_date === conflict.event_date &&
           observation.finding_key === conflict.finding_key);
+        sameFields(ref, observation, provenanceKeys);
+        requireMatch(Object.hasOwn(ref, 'source_sha256') === (observation.classification_origin === 'user_selected'));
+        if (observation.classification_origin) requireMatch(ref.source_sha256 === observation.source_sha256);
         states.add(observation.reported_state);
       }
       requireMatch(states.has('reported') && states.has('negative'));
+      sameIds(conflict.observation_refs.map(ref => ref.assertion_id), expectedConflicts.get(key).map(item => item.assertion_id));
+      requireMatch(Array.isArray(conflict.reported_states) &&
+        [...conflict.reported_states].sort().join('|') === [...states].sort().join('|'));
     }
+    requireMatch(seenConflicts.size === expectedConflicts.size);
     requireMatch(model.review_needed);
     requireMatch(state.snapshots.every(snapshot => positive(snapshot.question_id) &&
       state.questions.some(question => question.id === snapshot.question_id)));
@@ -111,21 +175,26 @@
       item.addEventListener('click', () => { if (token === generation) action(); });
       return item;
     }
-    function sourceButton(source, line, token) {
-      const item = button(`Read ${source.document_id} · v${source.version}${line === null ? '' : ' · line ' + line}`,
+    function sourceButton(source, line, token, anchor = null) {
+      const location = line === null ? '' : anchor?.text_origin === 'pdf_extraction'
+        ? ` · page ${anchor.source_page} · extraction line ${line} (page line ${anchor.page_line})` : ' · line ' + line;
+      const item = button(`Read ${source.document_id} · v${source.version}${location}`,
         token, () => onOpenSource(source.id, line));
       item.setAttribute('data-source-id', source.id);
       if (line !== null) item.setAttribute('data-source-line', line);
+      if (anchor?.source_page) item.setAttribute('data-source-page', anchor.source_page);
       return item;
     }
     function finding(item, sources, token) {
       const card = node('article', undefined, 'finding patient-record-item');
       const head = node('div', undefined, 'finding-head');
-      head.append(node('strong', item.finding_key), node('span', labels[item.reported_state],
+      const manual = item.classification_origin === 'user_selected';
+      head.append(node('strong', item.finding_key), node('span', (manual ? 'User-selected status: ' : '') + labels[item.reported_state],
         'pill ' + (unresolvedStates.has(item.reported_state) ? 'pill-warn' : 'pill-neutral')));
       card.append(head, node('p', item.source_statement, 'quoted'),
-        node('p', `${item.event_date} · ${item.specimen_id ? 'Specimen ' + item.specimen_id : 'Specimen not recorded'}`, 'source-meta'),
-        sourceButton(sources.get(item.source_version_id), item.source_line, token));
+        node('p', `${item.event_date} · ${item.specimen_id ? 'Specimen ' + item.specimen_id : 'Specimen not recorded'}`, 'source-meta'));
+      if (manual) card.append(node('p', 'Clinical review not performed. A user selected this status for the quoted passage.', 'source-meta'));
+      card.append(sourceButton(sources.get(item.source_version_id), item.source_line, token, item));
       return card;
     }
     function sourceRow(source, token) {
@@ -134,11 +203,14 @@
         node('p', `${source.document_id} · version ${source.version} · ${source.state === 'current' ? 'Current' : 'Earlier version'}`, 'source-meta'),
         node('p', `Issued ${source.issued_at} · Received ${source.received_at}`, 'source-meta'),
         sourceButton(source, null, token));
+      if (source.classification_origin === 'user_selected') row.append(node('p',
+        (source.text_origin === 'pdf_extraction' ? 'PDF text extraction' : 'Plain-text record') +
+        ' · manually selected passages. Clinical review not performed.', 'source-meta'));
       return row;
     }
     function render(model, state, checked, token) {
       const {sources, observations} = checked;
-      status.textContent = `${model.current_sources.length} current records · ${model.observations.length} source findings. ` +
+      status.textContent = `${model.current_sources.length} current records · ${model.observations.length} recorded findings. ` +
         'Fictional case for development. These findings have not been clinically reviewed.';
       if (!model.current_sources.length) timeline.append(node('p', 'No current records have been added.', 'empty'));
       for (const item of model.current_sources) timeline.append(sourceRow(sources.get(item.source_version_id), token));
@@ -153,10 +225,12 @@
       for (const item of model.unresolved) uncertainty.append(finding(observations.get(item.assertion_id), sources, token));
       for (const conflict of model.conflicts) {
         const card = node('article', undefined, 'source-card patient-record-item');
-        card.append(node('strong', `Sources disagree: ${conflict.finding_key}`),
+        const manual = conflict.observation_refs.some(ref => ref.classification_origin === 'user_selected');
+        card.append(node('strong', `${manual ? 'Recorded or selected statuses differ' : 'Sources disagree'}: ${conflict.finding_key}`),
           node('p', `Specimen ${conflict.specimen_id} · ${conflict.event_date}`, 'source-meta'),
-          node('p', 'Not resolved. The differing source statements are preserved for review.'));
-        for (const ref of conflict.observation_refs) card.append(sourceButton(sources.get(ref.source_version_id), ref.source_line, token));
+          node('p', manual ? 'Not resolved. Source wording and user-selected classifications remain separate for review. Clinical review not performed.' :
+            'Not resolved. The differing source statements are preserved for review.'));
+        for (const ref of conflict.observation_refs) card.append(sourceButton(sources.get(ref.source_version_id), ref.source_line, token, ref));
         uncertainty.append(card);
       }
       if (!model.unresolved.length && !model.conflicts.length)

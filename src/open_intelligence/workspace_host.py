@@ -5,13 +5,9 @@ partial and scripts add UI onboarding only, with no new patient authority.
 """
 from __future__ import annotations
 from http.server import ThreadingHTTPServer
-from pathlib import Path
-import re
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import urlsplit
 
-from .__main__ import Handler, WEB, ID_PART
-from .composer import build_composer_context
-from .store import CaseStore, InvalidInput
+from .__main__ import Handler, WEB
 
 
 def workspace_html() -> str:
@@ -35,7 +31,10 @@ def workspace_html() -> str:
     late = next((script for script in late_scripts if html.count(script) == 1), None)
     if late is None:
         raise ValueError('Workspace script slot missing; reconcile owner template.')
-    edits[late] = (late + '\n  <script src="/composer.js" defer></script>'
+    composer_script = '<script src="/composer.js" defer></script>'
+    if html.count(composer_script) > 1:
+        raise ValueError('Duplicate Composer owner in workspace template.')
+    edits[late] = (late + ('' if composer_script in html else '\n  ' + composer_script)
                    + '\n  <script src="/workspace-entry.js" defer></script>')
     # The verified clinical parent lacks the optional old Composer UI. Reuse
     # the original fixed-template form, not a new AI prompt or chat surface.
@@ -48,7 +47,12 @@ def workspace_html() -> str:
         '<button class="button" id="model-investigation-run" type="submit" disabled>'
         'Run bounded investigation</button>'
     )
-    edits[button] = composer
+    if 'id="composer-context"' in html:
+        if any(html.count(f'id="{control}"') != 1 for control in (
+                'composer-context', 'composer-context-fingerprint', 'model-investigation-run')):
+            raise ValueError('Ambiguous existing Composer controls.')
+    else:
+        edits[button] = composer
     for old,new in edits.items():
         if html.count(old)!=1:
             raise ValueError('Workspace owner template changed; entry requires reconciliation.')
@@ -73,24 +77,6 @@ def workspace_handler(db_path: str) -> type[Handler]:
                 if not self._host_allowed():
                     return self._json(403,{'error':'Unexpected Host for loopback-only workspace'})
                 return self._static(*assets[path])
-            preview = re.fullmatch(rf"/api/cases/{ID_PART}/composer/context", path)
-            if preview:
-                if not self._host_allowed():
-                    return self._json(403, {'error':'Unexpected Host for loopback-only workspace'})
-                query = parse_qs(urlsplit(self.path).query)
-                raw = query.get('question_id', [])
-                if len(raw) != 1 or not raw[0].isdigit() or int(raw[0]) < 1:
-                    return self._json(422, {'error':'Composer requires one positive question_id'})
-                # This is the existing synthetic-only CaseStore and v2 Composer
-                # fingerprint; never a medical/PHI authorization or model call.
-                store = CaseStore(self.db_path)
-                try:
-                    return self._json(200, build_composer_context(
-                        store, preview[1], int(raw[0])))
-                except InvalidInput as error:
-                    return self._json(422, {'error':str(error)})
-                finally:
-                    store.close()
             return super().do_GET()
     WorkspaceHandler.db_path=db_path
     WorkspaceHandler.allow_crossref_live=False

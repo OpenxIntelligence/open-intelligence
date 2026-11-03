@@ -8,6 +8,8 @@ A literal quote does NOT establish scientific entailment or clinical validity.
 """
 from __future__ import annotations
 
+from .world_model import PROVENANCE_FIELDS
+
 import hashlib
 import hmac
 import json
@@ -95,6 +97,7 @@ class EvidenceReviewPacket:
                     "received_at": observation["received_at"],
                     "reported_state": observation["reported_state"],
                     "original_statement": observation["source_statement"],
+                    **{key: observation[key] for key in PROVENANCE_FIELDS if key in observation},
                 },
                 "external_reference": {
                     "knowledge_id": kid,

@@ -158,8 +158,19 @@ class EvidenceReviewReport:
                     f"  Reported event date: {_quoted(p['event_date'])}",
                     f"  Report issued: {_quoted(p['issued_at'])}",
                     f"  Workspace received: {_quoted(p['received_at'] or 'not recorded')}",
-                    f"  Source-reported state: {_quoted(p['reported_state'])}",
-                    f"  Original statement: {_quoted(p['original_statement'])}",
+                    (f"  User-selected classification: {_quoted(p['reported_state'])}; not clinically reviewed."
+                     if p.get("classification_origin") == "user_selected" else
+                     f"  Source-reported state: {_quoted(p['reported_state'])}"),
+                    *([f"  Transcription review SHA-256: {p['transcription_review_sha256']}",
+                       f"  Annotation method: {_quoted(p['annotation_method'])}"]
+                      if p.get("classification_origin") == "user_selected" else []),
+                    *([f"  Physical PDF page: {p['source_page']}; extraction line: {p['source_line']}; page line: {p['page_line']}",
+                       f"  Extraction SHA-256: {p['extraction_sha256']}",
+                       f"  Extracted page SHA-256: {p['page_text_sha256']}"]
+                      if p.get("text_origin") == "pdf_extraction" else []),
+                    (f"  Statement from frozen PDF extraction: {_quoted(p['original_statement'])}"
+                     if p.get("text_origin") == "pdf_extraction" else
+                     f"  Original statement: {_quoted(p['original_statement'])}"),
                     f"  Evidence ID: {_quoted(e['knowledge_id'])}",
                     f"  Evidence content item: {_quoted(e['content_item'])}",
                     f"  Content item basis: {_quoted(e['content_item_basis'])}",

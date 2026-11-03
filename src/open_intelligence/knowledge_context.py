@@ -15,6 +15,8 @@ import re
 from datetime import date
 from typing import Any, Mapping
 
+from .store import InvalidInput
+from .world_model import assertion_provenance
 from .rights import (RightsError, normalize_permissions, permitted,
                      validate_content_item)
 
@@ -172,6 +174,10 @@ def compile_context(case_id: str, case_state: Mapping[str, Any],
         if item["id"] in current_ids:
             raise KnowledgeContextError("duplicated assertion")
         current_ids.add(item["id"])
+        try:
+            provenance = assertion_provenance(parent, item)
+        except InvalidInput as exc:
+            raise KnowledgeContextError(str(exc)) from exc
         observed.append({
             "id": item["id"],
             "finding_key": item["finding_key"],
@@ -185,7 +191,9 @@ def compile_context(case_id: str, case_state: Mapping[str, Any],
             "issued_at": parent["issued_at"],
             "received_at": parent.get("received_at"),
             "source_statement": item["quote"],
-            "epistemic_kind": "reported_observation",
+            "epistemic_kind": ("manually_transcribed_observation" if provenance
+                               else "reported_observation"),
+            **provenance,
         })
     if not isinstance(knowledge_sources, list) or not isinstance(comparison_proposals or [], list):
         raise KnowledgeContextError("knowledge sources and links must be lists")

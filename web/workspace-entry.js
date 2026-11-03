@@ -81,20 +81,6 @@
       schedule();
     });
   });
-  document.addEventListener('oi:composer-open-source', event => {
-    // Reuse the chart's exact-source reader, not a second fetch or source cache.
-    // An old context button must not outlive its case/version/line membership.
-    try {
-      const selected=readyCase(), detail=event.detail;
-      if(pendingCaseWrites.size > 0 || !detail || detail.caseId!==selected ||
-         !Number.isSafeInteger(detail.sourceId) || detail.sourceId<1 ||
-         !Number.isSafeInteger(detail.line) || detail.line<1 ||
-         !active.sources.some(source=>source.id===detail.sourceId && source.state==='current') ||
-         !active.assertions.some(assertion=>assertion.source_version_id===detail.sourceId &&
-           assertion.source_line===detail.line)) return;
-      void openSource({id:detail.sourceId},detail.line);
-    } catch(error) { notice('Source context changed. Refresh the record before opening this source.',true); }
-  });
   $('new-workspace-button').addEventListener('click',()=>{
     $('workspace-start').open=true;$('new-case-panel').open=true;
     $('case-create-alias').focus();

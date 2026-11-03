@@ -58,7 +58,8 @@
     const head = element("div", "finding-head");
     head.append(
       element("strong", "", item.finding_key),
-      element("span", "pill pill-neutral", tokenLabel(item.state)),
+      element("span", "pill pill-neutral",
+        (item.classification_origin === "user_selected" ? "User-selected: " : "") + tokenLabel(item.state)),
     );
     card.append(
       head,
@@ -66,9 +67,13 @@
       element(
         "div",
         "ref",
-        `Source version #${item.source_version_id} · line ${item.source_line}`,
+        `Source version #${item.source_version_id}` + (item.text_origin === 'pdf_extraction'
+          ? ` · page ${item.source_page}, extracted line ${item.page_line}`
+          : ` · line ${item.source_line}`),
       ),
     );
+    if (item.classification_origin === "user_selected")
+      card.append(element("p", "tiny muted", "Passage and status manually selected. Clinical review not performed."));
     return card;
   }
 

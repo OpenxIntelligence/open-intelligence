@@ -1,5 +1,146 @@
 # Implementation slice 01 — source and investigation ledger
 
+## Source intake to patient record integration — 3 November 2026 UTC
+
+Implemented and verified in [draft PR #215](https://github.com/OpenxIntelligence/open-intelligence/pull/215),
+based on #189 at `ed20a68664289c8e539db34d645aa1d2f0f7a0e5` and selectively
+reusing #161's read-only projection/patient-record view. Manual passage origin,
+review hash, original/extraction identity and physical PDF page anchors now
+survive the Patient World Model and its source/question handoffs. Wrong-case
+state, incomplete provenance and omitted/duplicated disagreement groups fail
+closed. The existing source, evidence, Composer v2 and human review owners remain.
+
+Runtime head `284b9ac1be1e27ccc4863eaf60dfa7432e8d9d46` passed
+[exact-head integration 41562716040](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41562716040)
+and [UI 41562716468](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41562716468):
+**420 Python/HTTP, 123 JavaScript, 80 offline checks with 18 optional skips,
+all 5 integration Chromium journeys and all 4 UI journeys**. The PDF journey
+includes evidence comparison, labeled recorded replay, explicit human report,
+source amendment, real server restart and replacement review with preserved
+stale history. Four HTTP/provider-boundary tests additionally check constructed
+prompts and permission revocation, without a live model call.
+
+The initial UI run caught a real Unicode source-highlight mismatch; the original
+#161 renderer was restored with two red-to-green tests and the unchanged browser
+assertion passed. All 223 archived source files matched; artifact checksums and
+desktop/narrow screenshots were inspected. Five inherited SQLite resource warnings
+remain in the Python 3.13 UI log. Full receipt and limits are in
+[the maintained projection record](engineering/SYNTHETIC_WORLD_MODEL_PROJECTION.md).
+
+No new dependency, migration or ledger. Synthetic-only, unauthenticated loopback
+reference; draft/unmerged, not deployed or clinically validated. The separate
+#175 authorized report library and accepted H1 FastAPI/PostgreSQL/React migration
+remain open integration work. #190's text annotation revisions are not PDF
+revision support. This increment does not claim completion of the whole MVP.
+
+## Bounded PDF intake checkpoint — 3 November 2026 UTC
+
+This unmerged extension starts from reviewed text intake PR #173, implementation
+`fe8a6368245bb52944e6ebc7f3e6f5b43daf69d0`, and incorporates its documentation-only
+follow-up `243bfec0fb36121868714dd36c6dd591243114da` as the branch parent. It adds a constrained born-digital
+PDF adapter to the existing source owner, APIs, manual-review UI, Composer and
+report path. Original bytes remain in `source_versions`; the source-owned
+`source_text_renditions` child stores frozen per-page text, global extraction
+lines, extractor/configuration provenance and hashes in the same transaction.
+Preview and save bind both original and extraction identity. Reads and exports
+never rerun the parser. The existing amendment transaction preserves earlier
+originals and invalidates dependent work. Manual statuses remain explicit.
+
+The inherited model-attempt lifecycle defect is corrected: generating or
+abstaining from an unreviewed investigation does not address its question.
+Explicit demo review remains a separate state transition.
+
+PDF support uses the hash-pinned BSD-3-Clause pypdf 6.21.4 wheel, with its exact
+notice retained and no optional extras. Extraction is bounded to 64 KiB input,
+20 pages, 512 lines, 64 KiB extracted text, one concurrent worker, 5 CPU seconds,
+10 elapsed seconds and 512 MiB address space. These are prototype limits, not
+capacity benchmarks or production security certification. No OCR, automated
+clinical interpretation, post-save annotation correction, real patient data,
+trusted professional authority or clinical deployment is introduced.
+
+Verification is recorded in the maintained [intake contract](engineering/DOCUMENT_INTAKE.md).
+Combined local verification passed: **398 Python/domain/HTTP tests** in 112.609s,
+**64 JavaScript tests**, compilation/syntax, the no-patient-data workflow guard,
+and **80 offline research checks with 18 optional HDF5 checks skipped**.
+The clean environment used Python 3.12.14 and pypdf 6.21.4. The 398 include
+17 extractor, 12 PDF store, 8 PDF HTTP and 9 lifecycle tests.
+
+**Hosted acceptance passed for draft [PR #189](https://github.com/OpenxIntelligence/open-intelligence/pull/189)**
+at `afe89d390f665713acfca5cca58aae9d285ee1bb`:
+[exact-head run 41553904095](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41553904095)
+passed all 398 Python/HTTP, 64 JavaScript, 80 offline checks (18 optional skips)
+and five Chromium journeys. The new PDF journey verifies page 2 selection,
+source/Composer/report/review, amendment, preserved originals, 390 px layout,
+accessible labels and an actual server restart. Its report is human-authored;
+no live model is invoked. [UI run 41553903829](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41553903829)
+also passed the existing integrated, source-dialog race, keyboard and layout
+journeys on the generated merge. Artifact hashes were checked, PDF screenshots
+inspected, and all 213 archived source files matched before this receipt update.
+The initial invalid YAML failed before jobs; the block-scalar correction and
+successful rerun are documented in the intake contract. These are engineering
+results for an unmerged synthetic prototype, not deployment or clinical approval.
+
+The prior #173 baseline has now been verified: exact-head
+[run 41550282180](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41550282180)
+passed 349 Python/HTTP tests, 80 offline data-boundary checks with 18 optional
+dependency skips, 47 JavaScript tests,
+the reviewed-text intake browser journey and four Composer browser journeys.
+Its separate [UI run 41550282107](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41550282107)
+also passed. The older pending statements below describe earlier checkpoints.
+
+## Document intake checkpoint — 2 November 2026
+
+**Hosted verification update — 3 November 2026:** PR #173 implementation
+`fe8a6368245bb52944e6ebc7f3e6f5b43daf69d0` passed exact-head run 41550282180
+and generated-merge UI run 41550282107. The final documentation follow-up
+`243bfec0fb36121868714dd36c6dd591243114da` passed integration run 41550696219
+and UI run 41550696421. The initial 14 px mobile overflow was fixed without
+weakening the gate. Source/artifact receipts are retained in the intake contract.
+
+The current feature adds ordinary UTF-8 `.txt` file upload, read-only preview,
+manual exact-line passage selection, confirmed metadata, original-byte download,
+and the existing timeline/question/Composer/report path. It extends the original
+source/version/assertion/event owner; it does not create another patient or
+record store. See [the intake contract](engineering/DOCUMENT_INTAKE.md).
+
+Manual statuses retain `classification_origin=user_selected` and
+`clinical_review=not_performed` in the patient views, Patient Mission, timeline,
+change review, investigation prompt, Composer preview/fingerprint, and snapshot
+export. The selected quote remains distinct from the operator's classification.
+An amendment uses the existing atomic invalidation and review mechanism.
+
+At this checkpoint, 349 Python/domain/HTTP tests passed locally, including 19
+intake domain tests and 14 intake HTTP tests. Six direct JavaScript intake cases
+passed. A subsequent 43-test projection-specific regression run verifies manual
+origin in Patient Mission, timeline and change review. Local Chrome/Chromium is
+unavailable; hosted browser acceptance is established by the executed runs above.
+
+The feature is stacked on verified PR #140. It is unmerged synthetic-only code,
+not an authenticated clinical release. Limits include no PDF/OCR, no trusted
+patient identity/session, no clinical interpretation, and no post-save annotation
+editing. Original-only uploads are allowed, but their passages cannot be added
+later through this version. No new third-party dependency is introduced.
+
+The earlier checkpoints below describe their respective source trees.
+
+## Current additive checkpoint — 2 November 2026
+
+The platform mandate is now explicit in `AGENTS.md`: build a complete first-party cancer-care ecosystem incrementally, with a useful integrated MVP before advanced custom models. Public patient narratives inform workflow discovery only; Sid's patient data is excluded from development, training, evaluation, testing and synthetic derivation.
+
+The working change stacked on PR126 connects the existing persistent rights broker to Composer, bounded model input selection, broker citation validation and stored hypothesis receipts. It separates display and model-use permissions, includes supporting/contradicting evidence and applicability, captures server freshness even without a client token, and withholds all affected model-derived text after input or rights changes. The existing patient, source and evidence stores remain canonical.
+
+Local verification at this checkpoint: baseline 301 Python tests; extended 316 Python unit/HTTP tests passed. Four JavaScript test files pass, including a deliberately delayed same-case response test that failed before the UI generation-token fix and passed afterward. The workflow static guard passes. A new real-browser broker journey is present; local Chromium is unavailable, so hosted exact-head results are the browser acceptance gate and must be recorded separately. A read-only independent review found the same-case UI race and a premature browser wait; both have been corrected.
+
+Compatibility: `composer-context-v2` incorporates broker content, review and permissions into the hash. Old previews and queued work carrying v1 hashes require fresh context and may be rejected as stale. Existing investigation rows remain readable through additive receipt tables. Receipts preserve hashes and non-content provenance, not a full protected prompt archive. Recorded permissions are declarations rather than verified legal entitlements. Replay receipts describe a constructed prompt; they do not prove that a live model processed it.
+
+The five exact PR123 CI safety files are reused, and a dedicated pinned workflow checks the stacked PR head. The static guard does not enforce network isolation or retire every historical developer research entrypoint. No new dependency, external model call, clinical validation, production authorization, merge or deployment is established by this checkpoint.
+
+Follow-up: the first exact-head hosted run 41518643782 passed the 316 application/HTTP tests, JavaScript contracts and three existing Composer browser journeys, then exposed an import-path defect in the new browser test before its scenario started. The fixture now uses the existing seed CLI. The existing UI workflow 41518643336 passed. These initial results do not establish that the new browser scenario passed; its corrected head must be checked separately.
+
+The same follow-up reuses PR133's RNA/single-cell retirement work and main's catalog guard, with additional cleanup of residual historical sample/target fixture labels, a refusal before RNA CLI file IO, and a compatible invented-URL catalog refusal test. Pure offline parsers remain. Local offline verification discovered 98 tests: 80 passed and 18 optional HDF5 tests skipped because their optional dependencies were unavailable. No package was installed. This retires the known named-case catalog/RNA/single-cell acquisition commands, not all historical data artifacts or arbitrary network entrypoints in the repository; issue 122's broader audit remains open.
+
+Research evidence is maintained as additive audit appendices under `docs/research/`, linked from the existing canonical Notion/Drive workspaces. Earlier dated implementation statements below describe their particular commits and are not current blanket capability assertions.
+
 **Stage:** local experimental synthetic-only code. **Not released for clinical use.**
 
 **Backlog coverage:** Part of OI-003, OI-006, OI-007, OI-009 and OI-010. Does not complete the broader investigation/evidence stage (OI-008), identity/governance (OI-012–013), or clinical evaluation (OI-014 onward).

@@ -7,10 +7,12 @@
   <meta name="description" content="A synthetic case workspace for following source timelines and preparing evidence-linked, reviewable investigations.">
   <title>Open Intelligence: Case Workspace</title>
   <link rel="stylesheet" href="/style.css">
+  <script src="/document-intake.js" defer></script>
   <script src="/patient-record.js" defer></script>
   <script src="/app.js" defer></script>
   <script src="/mission.js" defer></script>
   <script src="/report.js" defer></script>
+  <script src="/composer.js" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main-content">Skip to case workspace</a>
@@ -43,7 +45,7 @@
           <a href="#sources">Sources and findings</a>
           <a href="#evidence">Evidence review</a>
           <a href="#bibliography">Bibliography</a>
-          <a href="#import">Updates</a>
+          <a href="#import">Add a record</a>
           <a href="#activity">Activity</a>
           <a href="#changes-since-review">What changed</a>
           <a href="#options">Options &amp; dependencies</a>
@@ -106,7 +108,7 @@
       </section>
       <section class="panel" id="patient-view" aria-labelledby="patient-view-heading" aria-busy="true">
         <div class="panel-head"><div><div class="eyebrow">PATIENT VIEW · SAME RECORD</div><h2 id="patient-view-heading">Your record and open questions</h2></div><span class="pill">Source-linked · fictional case</span></div>
-        <p class="muted">Explore what the records say, what remains uncertain, and the questions to investigate. Open any finding to inspect its original wording. These are source statements from independently authored fictional records; they have not been clinically reviewed.</p>
+        <p class="muted">Explore the records, inspect exact passages, and continue an open question in the investigation workspace. Uploaded passages retain their user-selected status; authored source findings are labelled separately. These independently fictional records and selections have not been clinically reviewed.</p>
         <p id="patient-record-status" role="status" aria-live="polite">Loading the selected case…</p>
         <div class="patient-record-grid">
           <div><h3>What the records say</h3><div id="patient-findings" class="findings"></div></div>
@@ -229,7 +231,11 @@
             <label for="model-investigation-question">Question</label><select id="model-investigation-question" required></select>
             <label for="model-investigation-template">Template</label><select id="model-investigation-template" required></select>
             <label for="model-investigation-mode">Mode</label><select id="model-investigation-mode"><option value="replay">Replay (recorded demonstration, works offline)</option><option value="live">Live (requires operator Meta API key)</option></select>
-            <button class="button" type="submit">Run bounded investigation</button>
+            <section id="composer-context" class="source-card" aria-label="Native Composer source context" aria-live="polite" aria-busy="true">
+              <p class="muted">Preparing exact source and evidence context for this fictional question…</p>
+            </section>
+            <input type="hidden" id="composer-context-fingerprint">
+            <button class="button" id="model-investigation-run" type="submit" disabled>Run bounded investigation</button>
           </form>
           <div id="model-investigation-list" class="snapshots"></div>
         </section>
@@ -371,16 +377,89 @@
           </section>
 
           <section class="panel" id="import">
-            <div class="panel-head"><h2>Import synthetic source</h2></div>
-            <p class="muted">Paste a structured synthetic report. The importer is deterministic and does not understand general clinical documents.</p>
-            <form id="import-form">
-              <label for="report-text">Original report bytes (UTF-8)</label>
-              <textarea id="report-text" rows="9" spellcheck="false" placeholder="OI-SYNTHETIC-REPORT/1&#10;Patient: CASE-ALPHA&#10;Document: …"></textarea>
-              <div class="actions">
-                <button type="button" class="button secondary" id="example-button">Load example amendment</button>
-                <button class="button" type="submit">Import report</button>
-              </div>
+            <div class="panel-head"><div><div class="eyebrow">RECORDS · INTAKE</div><h2>Add a record</h2></div></div>
+            <p class="muted">Upload a record, check its details, and choose the passages you want to track. The original stays available alongside your entries.</p>
+            <p class="muted tiny">Development workspace: independently fictional records only. UTF-8 .txt and text-based .pdf files up to 64 KiB. Scans, images and OCR are not supported.</p>
+            <form id="intake-upload-form">
+              <fieldset id="intake-upload-fields" class="intake-fields">
+                <label for="intake-file">Text or PDF record</label>
+                <input id="intake-file" type="file" accept=".txt,text/plain,.pdf,application/pdf" required aria-describedby="intake-upload-help">
+                <p id="intake-upload-help" class="muted tiny">Previewing a file does not add it to the case.</p>
+                <button id="intake-preview-button" class="button" type="submit">Preview record</button>
+              </fieldset>
             </form>
+            <div class="actions"><button id="intake-discard" type="button" class="button secondary minor">Discard this intake</button></div>
+            <p id="intake-message" class="muted" role="status" aria-live="polite"></p>
+            <div id="intake-success-actions" class="actions"></div>
+            <div id="intake-review" hidden>
+              <h3 id="intake-review-heading">Review the original</h3>
+              <p id="intake-file-summary" class="muted"></p>
+              <p id="intake-preview-help" class="muted tiny">Select a line number to choose a passage. You can shorten it to an exact excerpt of that line.</p>
+              <div id="intake-original-lines" class="intake-original" tabindex="0" role="region" aria-label="Uploaded original with selectable source lines"></div>
+              <details class="intake-provenance"><summary>File and text provenance</summary><p id="intake-source-hash" class="muted tiny"></p><p id="intake-extraction-details" class="muted tiny"></p></details>
+
+              <form id="intake-passage-form">
+                <fieldset id="intake-passage-fields" class="intake-fields">
+                  <legend>Passages to track (optional)</legend>
+                  <div class="intake-field-grid">
+                    <div><label id="intake-line-label" for="intake-line">Source line</label><input id="intake-line" type="number" min="1" max="512" required aria-describedby="intake-passage-location"></div>
+                    <div><label for="intake-key">Finding tag</label><input id="intake-key" type="text" pattern="[a-z][a-z0-9_-]{0,59}" maxlength="60" placeholder="marker-a" required aria-describedby="intake-tag-help"></div>
+                  </div>
+                  <p id="intake-passage-location" class="muted tiny" aria-live="polite"></p>
+                  <p id="intake-tag-help" class="muted tiny">Use the same tag when an amended record updates a finding.</p>
+                  <label id="intake-quote-label" for="intake-quote">Exact source passage</label><textarea id="intake-quote" rows="3" maxlength="1200" required spellcheck="false"></textarea>
+                  <label for="intake-status">Your classification of this passage</label>
+                  <select id="intake-status" required>
+                    <option value="">Choose a status</option><option value="reported">Reported observation</option>
+                    <option value="negative">Explicit negative result</option><option value="pending">Pending</option>
+                    <option value="indeterminate">Indeterminate</option><option value="not-reported">Not reported</option>
+                    <option value="not-assessed">Not assessed</option><option value="conflicting">Conflicting information</option>
+                  </select>
+                  <p class="muted tiny">The selected status is your entry. It does not establish a clinical finding or professional review.</p>
+                  <button id="intake-add-passage" class="button secondary" type="submit">Add passage to review</button>
+                  <p id="intake-passage-message" class="muted tiny" role="status" aria-live="polite"></p>
+                </fieldset>
+              </form>
+              <p id="intake-passage-count" class="muted tiny"></p>
+              <div id="intake-passages" class="cards"></div>
+              <p class="muted tiny">Check your selections before saving. This version keeps them immutable; adding or correcting passages after saving is not available yet.</p>
+
+              <form id="intake-metadata-form">
+                <fieldset id="intake-metadata-fields" class="intake-fields">
+                  <legend>Confirm record details</legend>
+                  <label for="intake-document-id">Document reference</label>
+                  <input id="intake-document-id" type="text" pattern="[A-Z][A-Z0-9-]{1,39}" maxlength="40" required aria-describedby="intake-document-help">
+                  <p id="intake-document-help" class="muted tiny">A reference is filled in for a new record. For a correction, use the earlier record's reference and version below.</p>
+                  <label for="intake-kind">Record type</label>
+                  <select id="intake-kind" required><option value="">Choose record type</option><option value="clinical">Clinical note</option><option value="pathology">Pathology</option><option value="laboratory">Laboratory</option><option value="molecular">Molecular findings</option><option value="imaging">Imaging report</option><option value="other">Other record</option></select>
+                  <div class="intake-field-grid">
+                    <div><label for="intake-event-date">Event or specimen date</label><input id="intake-event-date" type="date" required></div>
+                    <div><label for="intake-issued-date">Report issued</label><input id="intake-issued-date" type="date" required></div>
+                  </div>
+                  <p class="muted tiny">Copy dates from the record. Do not substitute today's date for an unknown date.</p>
+                  <details><summary>Specimen or amendment (if applicable)</summary>
+                    <label for="intake-specimen">Specimen reference</label><input id="intake-specimen" type="text" pattern="[A-Z][A-Z0-9-]{1,39}" maxlength="40">
+                    <label for="intake-amends">Latest version being corrected</label><input id="intake-amends" type="number" min="1" step="1" placeholder="Leave empty for a new document">
+                  </details>
+                  <label class="intake-confirmation" for="intake-confirm"><input id="intake-confirm" type="checkbox" required><span>I checked that this record belongs in <strong id="intake-case-label"></strong>, that the details match the record, and that the selected passages are exact.</span></label>
+                  <p class="muted tiny">This confirms transcription only. It does not establish clinical accuracy or professional approval.</p>
+                  <button id="intake-save" class="button" type="submit">Add record to this case</button>
+                </fieldset>
+              </form>
+            </div>
+
+            <details class="intake-legacy">
+              <summary>Structured development fixtures</summary>
+              <p class="muted tiny">Existing OI-SYNTHETIC-REPORT/1 fixtures and amendment checks remain available here.</p>
+              <form id="import-form">
+                <label for="report-text">Original structured report (UTF-8)</label>
+                <textarea id="report-text" rows="9" spellcheck="false" placeholder="OI-SYNTHETIC-REPORT/1&#10;Patient: CASE-ALPHA&#10;Document: …"></textarea>
+                <div class="actions">
+                  <button type="button" class="button secondary" id="example-button">Load example amendment</button>
+                  <button class="button" type="submit">Import report</button>
+                </div>
+              </form>
+            </details>
             <div id="quarantine-list" class="quarantine-list"></div>
           </section>
         </div>
@@ -456,7 +535,7 @@
         <div class="subhead">Completed tasks (history)</div><div id="ft-completed" class="snapshots" aria-live="polite"></div>
       </section>
 
-      <footer>Open Intelligence is an original, dependency-free reference implementation. No real patient information, patient login, credentialed clinical review, automated clinical inference, treatment recommendations, or regulatory clearance.</footer>
+      <footer>Open Intelligence is a local reference implementation for independently fictional records. PDF text extraction uses pypdf. No real patient information, patient login, credentialed clinical review, automated clinical inference, treatment recommendations, or regulatory clearance.</footer>
     </main>
   </div>
   <dialog id="source-dialog" aria-labelledby="dialog-title" aria-describedby="dialog-context">

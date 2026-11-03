@@ -57,3 +57,13 @@ New workspace creation and case switching preserve unfinished follow-through inp
 Composer source buttons use the same original-source inspector as the patient chart.
 See `docs/engineering/CONNECTED_PATIENT_WORKFLOW.md` for the exact source pins,
 verification, supported synthetic text format and remaining H1/real-data gates.
+
+## Reviewed text and bounded PDF records
+
+This connected candidate also mounts the existing ordinary-document source owner in **Add a record**. Structured batch import and reviewed-document intake are distinct adapters over one source ledger, not separate patient workspaces. Before previewing PDFs install the original optional runtime:
+
+```sh
+python -m pip install --require-hashes --only-binary=:all: --no-deps -r requirements-pdf.lock
+```
+
+Use independently authored fictional text/PDF files only. Inspect the frozen text, confirm the case and record metadata, and select exact passages manually. A classification remains user-selected and not clinically reviewed. Saved source-linked findings can feed the existing question/report/task workflow. PDFs retain exact originals and physical-page/extraction references; no OCR or general clinical extraction is provided. See `docs/engineering/CONNECTED_PATIENT_WORKFLOW.md` for source pins, boundaries and verification status.

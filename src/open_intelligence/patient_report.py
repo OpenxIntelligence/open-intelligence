@@ -19,6 +19,7 @@ import re
 import unicodedata
 
 from .followthrough import OPEN_STATUSES
+from .world_model import PROVENANCE_FIELDS, assertion_provenance, source_provenance
 
 FICTIONAL_BANNER = (
     "Fictional demo report. This is not a real patient file, "
@@ -181,18 +182,34 @@ def _overview(state: dict, current: list[dict], stale: list[dict]) -> dict:
             "nothing was imported from them."
         )
     items = []
+    by_id = {source["id"]: source for source in state.get("sources", [])}
     for assertion in state.get("assertions", []):
         certainty = assertion.get("certainty", "unknown")
         plain = CERTAINTY_PLAIN.get(certainty, "unknown")
+        source = by_id.get(assertion.get("source_version_id"))
+        # Existing normal projections keep their historical absence semantics.
+        # A manual/PDF assertion must never lose its receipt or origin silently.
+        provenance = (assertion_provenance(source or {}, assertion)
+                      if source is not None or any(k in assertion for k in PROVENANCE_FIELDS) else {})
+        detail = (f"Finding {_visible_record_text(assertion.get('finding_key'))}; "
+                  f"User-selected classification: {plain} ({certainty}); not clinically reviewed."
+                  if provenance else DETAIL_FINDING.format(
+                      finding_key=_visible_record_text(assertion.get("finding_key")),
+                      plain=plain, certainty=certainty))
+        citation = (f"Source version #{assertion.get('source_version_id')}, "
+                    f"line {assertion.get('source_line')}.")
+        if provenance:
+            citation += (f" Original SHA-256: {source['sha256']}; "
+                         f"transcription review SHA-256: {provenance['transcription_review_sha256']}.")
+        if provenance.get("text_origin") == "pdf_extraction":
+            citation += (f" Physical PDF page {provenance['source_page']}, "
+                         f"extraction line {assertion['source_line']}, page line {provenance['page_line']}; "
+                         f"extraction SHA-256: {provenance['extraction_sha256']}; "
+                         f"page text SHA-256: {provenance['page_text_sha256']}.")
         items.append({
             "text": _visible_record_text(assertion.get("quote", "")),
-            "detail": DETAIL_FINDING.format(
-                finding_key=_visible_record_text(assertion.get("finding_key")), plain=plain,
-                certainty=certainty),
-            "citation": (
-                f"Source version #{assertion.get('source_version_id')}, "
-                f"line {assertion.get('source_line')}."
-            ),
+            "detail": detail,
+            "citation": citation,
         })
     return _section(
         "overview",
@@ -400,6 +417,12 @@ def _followthrough(state: dict, projection: dict | None) -> dict:
             if source is None:
                 citations.append(f"Source version #{source_id} unavailable in this snapshot.")
             else:
+                provenance = source_provenance(source)
+                if provenance:
+                    citations.append(f"Transcription review SHA-256: {provenance['transcription_review_sha256']}.")
+                if provenance.get("text_origin") == "pdf_extraction":
+                    citations.append(f"Frozen PDF extraction SHA-256: {provenance['extraction_sha256']}. "
+                                     "This task is source-bound; no passage/page anchor is recorded.")
                 reference = _quoted_task_text(f"{source['document_id']}@{source['version']}")
                 citations.append(
                     f"Source version #{source_id} ({reference}); SHA-256: {source['sha256']}."

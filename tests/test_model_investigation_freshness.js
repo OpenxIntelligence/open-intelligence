@@ -11,7 +11,8 @@ const app = fs.readFileSync(path.join(__dirname, '../web/app.js'), 'utf8');
 const start = app.indexOf('async function loadModelInvestigations()');
 const end = app.indexOf('async function loadChangesSinceReview()', start);
 assert.ok(start >= 0 && end > start, 'Expected the actual investigation-list loader');
-const loader = app.slice(start, end);
+const declaration = app.indexOf('let modelInvestigationLoadSequence =');
+const loader = app.slice(declaration >= 0 ? declaration : start, end);
 
 function element(text = '') {
   return {
@@ -128,6 +129,15 @@ test('a detail completing while the case snapshot is unavailable cannot render',
   await pending;
   assert.equal(h.list.children.length, 0);
   assert.equal(h.notices.length, 0);
+});
+
+test('starting a newer case refresh invalidates an older detail before the new state arrives', async () => {
+  const h = harness(), pending = h.load();
+  await resolveList(h.requests[0], [7]);
+  h.refresh('CASE-A', false);
+  h.requests[1].resolve(detail(7, 'OLD CONTEXT WHILE STATE LOADS'));
+  await pending;
+  assert.doesNotMatch(h.list.textContent, /OLD CONTEXT WHILE STATE LOADS/);
 });
 
 test('a current failure remains visible so the race guard does not hide real errors', async () => {

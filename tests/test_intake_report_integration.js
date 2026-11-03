@@ -150,3 +150,15 @@ test('an unrelated unresolved write cannot be erased by intake settlement', asyn
   assert.equal(h.get('report-refresh').disabled, false); blocked(h);
   assert.deepEqual(h.events.filter(e => e.caseId === 'CASE-A').map(e => e.pendingWrites), [1,2,1,0]);
 });
+
+test('document preview is read-only, while reviewed document save invalidates report', async t => {
+  const h = await harness(t);
+  const preview = h.ctx.api('/api/cases/CASE-A/documents/preview', {fictional: true});
+  assert.equal(h.get('report-print').disabled, false);
+  assert.equal(h.events.length, 0, 'Read-only preview cannot emit a write lifetime');
+  await h.respond(1, {preview: true}); await preview;
+  const save = h.ctx.api('/api/cases/CASE-A/documents', {fictional: true});
+  blocked(h); assert.equal(h.get('report-refresh').disabled, true);
+  await h.respond(2, {result: 'imported', source_id: 2, version: 1}); await save;
+  blocked(h);
+});

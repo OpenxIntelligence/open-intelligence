@@ -1,6 +1,14 @@
 ## Running the first implementation locally
 
-This is an **original, dependency-free Python 3.11+** experimental implementation. No clinical backend, model, hosted API, third-party UI library, or professional license is required for the synthetic-only exercise.
+This is an **original Python/SQLite synthetic prototype**. The text-only path uses the standard library. Bounded PDF intake adds the optional, exact-pinned `pypdf==6.21.4` dependency on Python 3.12+ and POSIX resource controls. No clinical backend, hosted model, or third-party UI library is required for this exercise.
+
+For PDF intake and the complete test suite, first create a clean Python 3.12+ environment:
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install --require-hashes --only-binary=:all: --no-deps -r requirements-pdf.lock
+. .venv/bin/activate
+```
 
 ```bash
 PYTHONPATH=src python -m open_intelligence seed
@@ -23,9 +31,54 @@ The browser journeys require an installed Chrome or Chromium executable. GitHub 
 
 For the demonstration: create a question in `CASE-ALPHA`, save an investigation draft linked to the pathology document, acknowledge it in demo mode, load the example amendment, and import it. The prior investigation becomes `stale`, the question reopens, and the original source remains accessible. Draft a replacement against the amended document. `CASE-BETA` remains unaffected.
 
+### Add an ordinary text or born-digital PDF record
+
+The **Add a record** section accepts UTF-8 `.txt` files without a custom report
+header, and bounded `.pdf` files with extractable text. Use `examples/synthetic/plaintext-record.txt`, which is independently
+fictional. Preview the file, select exact source passages if needed, enter the
+record's document reference/type/dates, and confirm its case and transcription.
+The original bytes, including BOM and CRLF if present, remain unchanged. The
+saved source appears in the existing timeline, source reader, question/draft
+workspace and Composer. Download retrieves the original file, not generated
+text. An amendment uses the same document reference and latest version number.
+
+Selected passages and their statuses are explicitly labeled as manual entries,
+with clinical review not performed, throughout patient views, AI inputs and
+exports. They are not inferred or verified clinical facts. The existing
+structured fixture importer is retained under **Structured development fixtures**.
+
+The original file limit remains 64 KiB, with 512 lines and 30 selected single-line
+passages within a 128 KiB request. PDFs additionally permit at most 20 physical
+pages and 64 KiB of extracted UTF-8 text. The source reader distinguishes PDF
+extraction from original text, shows page/extraction-line anchors, and retains
+both the original-byte hash and extraction hash. A restricted worker parses
+outside the server and database transaction; historical reads use the persisted
+extraction without reparsing. Encrypted, unreadable, image-only, interactive-form
+and over-limit inputs fail explicitly. Compare selected passages with the
+original: reading order, tables, hidden text and visual completeness are not
+established by extraction. OCR and post-save annotation editing are not
+implemented. Saving an original with no passages does not allow adding
+passages afterward in this version. See the [intake contract and verification
+record](docs/engineering/DOCUMENT_INTAKE.md) for API, source ownership and limits.
+
 **Scope and warnings:** this is local-only software with no authentication, no access controls suitable for PHI, no clinical inference, no live literature or trials, and no clinical review. Never insert real patient data. The supported structured test format is `OI-SYNTHETIC-REPORT/1`, not a general-purpose clinical document parser. Source statements are author-supplied within report bytes. There is no treatment recommender, trial matching, or AI agent. The demo reviewer acknowledgment cannot attest professional credentials. The engineering controls are not evidence of medical safety or regulatory status.
 
 The project distribution license remains undecided. Public source visibility is not an open-source license grant. All test reports and UI code are independently authored for this repository.
+
+## Source-linked patient record
+
+The existing **Patient view** now has a read-only Patient World Model projection
+at `GET /api/cases/{CASE-ID}/world-model`. Current findings and earlier records
+link to the same original source owner. A PDF finding identifies its physical
+page and extracted line; its manually selected classification remains separate
+from the source quotation and from clinical review.
+
+Choose **Investigate question** to select an existing durable question across
+Composer, evidence review and the human-authored report controls. A source
+amendment preserves historical reports while making affected work require
+reassessment. An explicit demo acknowledgment is not professional approval.
+See [the projection contract and verification record](docs/engineering/SYNTHETIC_WORLD_MODEL_PROJECTION.md)
+for scope, receipts and the remaining trusted-authorization integration.
 
 ## Patient Mission workflow projection
 
