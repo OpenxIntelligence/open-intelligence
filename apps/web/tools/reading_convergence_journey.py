@@ -68,18 +68,19 @@ def exercise(cd):
             select('#reading-view', view)
             for width in (320,390,768,1280):
                 cd.command('Emulation.setDeviceMetricsOverride', {'width':width,'height':900,'deviceScaleFactor':1,'mobile':False})
-                cd.evaluate("document.querySelector('#source-filter').focus()")
+                cd.evaluate("new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))")
+                # Re-enter focus after resizing; focus() on the same focused input does not scroll.
+                cd.evaluate("document.querySelector('#source-state').focus({preventScroll:true});document.querySelector('#source-filter').focus()")
                 cd.wait('document.documentElement.scrollWidth<=innerWidth+1', 'source workspace reflows at ' + str(width))
-                cd.wait("(()=>{const h=document.querySelector('.topbar').getBoundingClientRect();const f=document.activeElement.getBoundingClientRect();return f.top>=h.bottom && f.bottom<=innerHeight})()", 'filter focus clears patient header')
+                cd.wait("(()=>{const h=document.querySelector('.topbar').getBoundingClientRect();const f=document.activeElement.getBoundingClientRect();return f.top>=h.bottom && f.bottom<=innerHeight})()", 'filter focus clears patient header at '+str(width))
                 (out/f'reading-{view}-{width}.png').write_bytes(base64.b64decode(cd.command('Page.captureScreenshot', {'format':'png'})['data']))
         cd.command('Emulation.setDeviceMetricsOverride', {'width':320,'height':256,'deviceScaleFactor':1,'mobile':False})
         cd.evaluate("document.querySelector('#source-filter').focus();document.querySelector('#source-filter').scrollIntoView({block:'center'})")
         cd.wait("(()=>{const h=document.querySelector('.topbar');const r=document.activeElement.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight&&(h.dataset.sticky==='false'||r.top>=h.getBoundingClientRect().bottom)})()", 'short viewport focus unobscured')
         select('#reading-view', 'patient')
         cd.command('Emulation.setDeviceMetricsOverride', {'width':390,'height':844,'deviceScaleFactor':1,'mobile':False})
-        cd.evaluate("const s=document.createElement('style');s.id='reading-large-text';s.textContent='body *{font-size:200%!important;line-height:1.5!important;letter-spacing:.12em!important;word-spacing:.16em!important}';document.head.append(s)")
         # Use inherited-size doubling, rather than compounding 200% at every nested element.
-        cd.evaluate("document.querySelector('#reading-large-text').remove();window.__readingSizes=[...document.body.querySelectorAll('*')].map(e=>[e,getComputedStyle(e).fontSize]);for(const [e,s] of window.__readingSizes){e.style.setProperty('font-size',(parseFloat(s)*2)+'px');e.style.setProperty('line-height','1.5');e.style.setProperty('letter-spacing','.12em');e.style.setProperty('word-spacing','.16em')}")
+        cd.evaluate("window.__readingSizes=[...document.body.querySelectorAll('*')].map(e=>[e,getComputedStyle(e).fontSize]);for(const [e,s] of window.__readingSizes){e.style.setProperty('font-size',(parseFloat(s)*2)+'px');e.style.setProperty('line-height','1.5');e.style.setProperty('letter-spacing','.12em');e.style.setProperty('word-spacing','.16em')}")
         cd.wait('document.documentElement.scrollWidth<=innerWidth+1', 'doubled text and spacing containment')
         (out/'reading-large-text-390.png').write_bytes(base64.b64decode(cd.command('Page.captureScreenshot', {'format':'png'})['data']))
         cd.evaluate("for(const [e] of window.__readingSizes){for(const p of ['font-size','line-height','letter-spacing','word-spacing'])e.style.removeProperty(p)};delete window.__readingSizes")
