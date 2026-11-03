@@ -1,0 +1,66 @@
+name: Imaging backend receipt safety gate (offline)
+
+on:
+  push:
+    branches:
+      - test/imaging-backend-release-gate-20261102
+    paths:
+      - 'tools/imaging/assess_pacsnode_receipt.py'
+      - 'tests/test_imaging_backend_release_gate.py'
+      - 'examples/synthetic/pacsnode_evidence_receipt_41555864030.json'
+      - '.github/workflows/imaging-backend-receipt-gate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Fetch evaluation and regression sources
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Use Python 3.13
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.13'
+      - name: Python compile verification
+        run: python -m compileall -q tools/imaging/assess_pacsnode_receipt.py tests/test_imaging_backend_release_gate.py
+      - name: Adversarial source, integrity and approval tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p verification-artifacts
+          PYTHONPATH=src python -m unittest discover -s tests -p test_imaging_backend_release_gate.py -v 2>&1 | tee verification-artifacts/imaging-release-gate-tests.txt
+      - name: Issue immutable HOLD assessment for observed third-party receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src python tools/imaging/assess_pacsnode_receipt.py \
+            examples/synthetic/pacsnode_evidence_receipt_41555864030.json \
+            --output verification-artifacts/imaging-release-hold-assessment.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.loads(Path('verification-artifacts/imaging-release-hold-assessment.json').read_text())
+          assert d['classification']=='HOLD_NOT_APPROVED'
+          assert d['approval_automatically_granted'] is False
+          assert d['technical_byte_roundtrip'] is True
+          assert d['qido_dicom_json_media_type'] is False
+          assert d['pacs_service_access_controls'] is False
+          assert d['upstream_rights_cleared'] is False
+          assert d['clinical_use_validated'] is False
+          PY
+      - name: Preserve synthetic engineering and hold evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: imaging-pacs-receipt-gate
+          path: |
+            verification-artifacts/imaging-release-gate-tests.txt
+            verification-artifacts/imaging-release-hold-assessment.json
+          if-no-files-found: warn
+          retention-days: 7
