@@ -188,7 +188,7 @@ test('new identity creation cannot retain old patient source versions',async()=>
 
 test('reviewed document transport accepts the complete bounded Unicode revision history',async()=>{
   const quote='é'.repeat(1200);
-  const document={patient_id:'PAT-EXAMPLE-001',case_id:'CASE-ALPHA',revisions:Array.from({length:64},(_,i)=>({revision:i+1,findings:Array.from({length:30},(_,j)=>({key:'finding-'+j,state:'unknown',line:1,quote}))}))};
+  const document={patient_id:'PAT-EXAMPLE-001',case_id:'CASE-ALPHA',revisions:Array.from({length:64},(_,i)=>({revision:i+1,findings:Array.from({length:30},(_,j)=>({key:'finding-'+j,state:'pending',line:1,quote}))}))};
   assert.ok(new TextEncoder().encode(JSON.stringify(document)).length>4_000_000);
   const s=new RegistrySession(async url=>response(url.endsWith('/documents/'+sourceId)?document:url.endsWith('/case-bindings')?caseList():url.endsWith('/sources')?sourceIndex():patient()));
   s.connect(token);await s.read('PAT-EXAMPLE-001');await s.loadCases();await s.loadSources('CASE-ALPHA');
