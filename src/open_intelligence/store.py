@@ -258,6 +258,22 @@ CREATE TRIGGER IF NOT EXISTS source_text_renditions_no_delete
 BEFORE DELETE ON source_text_renditions BEGIN
   SELECT RAISE(ABORT, 'Persisted source extraction is immutable');
 END;
+CREATE TABLE IF NOT EXISTS document_annotation_revisions (
+  id INTEGER PRIMARY KEY,
+  source_version_id INTEGER NOT NULL REFERENCES source_versions(id),
+  revision INTEGER NOT NULL CHECK(revision>0),
+  previous_revision_id INTEGER REFERENCES document_annotation_revisions(id),
+  findings_json TEXT NOT NULL, review_sha256 TEXT NOT NULL,
+  reason TEXT NOT NULL, confirmed_at TEXT NOT NULL,
+  origin TEXT NOT NULL CHECK(origin IN ('initial_intake','legacy_intake_migration','manual_revision')),
+  UNIQUE(source_version_id,revision)
+);
+CREATE TRIGGER IF NOT EXISTS annotation_revision_no_update
+BEFORE UPDATE ON document_annotation_revisions BEGIN
+  SELECT RAISE(ABORT, 'Annotation revision history is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS annotation_revision_no_delete
+BEFORE DELETE ON document_annotation_revisions BEGIN
+  SELECT RAISE(ABORT, 'Annotation revision history is immutable'); END;
 CREATE TABLE IF NOT EXISTS questions (
   id INTEGER PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(case_id),
   question TEXT NOT NULL, state TEXT NOT NULL CHECK(state IN ('open','addressed')),
@@ -274,6 +290,18 @@ CREATE TABLE IF NOT EXISTS snapshot_sources (
   source_version_id INTEGER NOT NULL REFERENCES source_versions(id),
   PRIMARY KEY(snapshot_id,source_version_id)
 );
+CREATE TABLE IF NOT EXISTS snapshot_annotation_revisions (
+  snapshot_id INTEGER NOT NULL REFERENCES snapshots(id),
+  source_version_id INTEGER NOT NULL REFERENCES source_versions(id),
+  annotation_revision_id INTEGER NOT NULL REFERENCES document_annotation_revisions(id),
+  PRIMARY KEY(snapshot_id,source_version_id)
+);
+CREATE TRIGGER IF NOT EXISTS snapshot_annotation_no_update
+BEFORE UPDATE ON snapshot_annotation_revisions BEGIN
+  SELECT RAISE(ABORT, 'Snapshot annotation bindings are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS snapshot_annotation_no_delete
+BEFORE DELETE ON snapshot_annotation_revisions BEGIN
+  SELECT RAISE(ABORT, 'Snapshot annotation bindings are immutable'); END;
 CREATE TABLE IF NOT EXISTS review_events (
   id INTEGER PRIMARY KEY, snapshot_id INTEGER NOT NULL REFERENCES snapshots(id),
   reviewer_label TEXT NOT NULL, action TEXT NOT NULL, noted_at TEXT NOT NULL
@@ -368,6 +396,16 @@ CREATE TABLE IF NOT EXISTS investigation_input_contexts (
   investigation_id INTEGER PRIMARY KEY REFERENCES investigations(id),
   context_fingerprint TEXT NOT NULL, prompt_sha256 TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS investigation_annotation_inputs (
+  investigation_id INTEGER PRIMARY KEY REFERENCES investigations(id),
+  receipt_json TEXT NOT NULL
+);
+CREATE TRIGGER IF NOT EXISTS investigation_annotation_no_update
+BEFORE UPDATE ON investigation_annotation_inputs BEGIN
+  SELECT RAISE(ABORT, 'Investigation annotation inputs are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS investigation_annotation_no_delete
+BEFORE DELETE ON investigation_annotation_inputs BEGIN
+  SELECT RAISE(ABORT, 'Investigation annotation inputs are immutable'); END;
 CREATE TABLE IF NOT EXISTS investigation_broker_inputs (
   investigation_id INTEGER NOT NULL REFERENCES investigations(id),
   broker_link_id INTEGER NOT NULL REFERENCES broker_links(id),
@@ -579,6 +617,59 @@ class CaseStore:
         self.db.execute("PRAGMA foreign_keys=ON")
         self.db.executescript(SCHEMA)
         self._migrate_discovery_rights()
+        self._migrate_document_annotations()
+
+    def _migrate_document_annotations(self) -> None:
+        """Preserve the known initial transcription on pre-revision databases.
+
+        Before this extension annotations could not change. Only sources
+        lacking revision history are migrated, and only their existing
+        snapshots can therefore be bound to the known initial revision.
+        Older model inputs were not captured; no mapping is invented for them.
+        """
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            missing = self.db.execute("""SELECT d.source_version_id,d.review_sha256,s.received_at
+                FROM document_intake_metadata d JOIN source_versions s ON s.id=d.source_version_id
+                WHERE NOT EXISTS (SELECT 1 FROM document_annotation_revisions r
+                                  WHERE r.source_version_id=d.source_version_id)""").fetchall()
+            for source in missing:
+                findings = [{"key": row["finding_key"], "state": row["certainty"],
+                             "quote": row["quote"], "line": row["source_line"]}
+                            for row in self.db.execute("""SELECT finding_key,certainty,quote,source_line
+                                FROM assertions WHERE source_version_id=? ORDER BY finding_key""",
+                                (source["source_version_id"],)).fetchall()]
+                revision_id = self._insert_annotation_revision(
+                    source["source_version_id"], 1, None, findings, source["review_sha256"],
+                    "Initial confirmed intake preserved from the pre-revision database.",
+                    source["received_at"], "legacy_intake_migration")
+                self.db.execute("""INSERT INTO snapshot_annotation_revisions
+                    (snapshot_id,source_version_id,annotation_revision_id)
+                    SELECT snapshot_id,source_version_id,? FROM snapshot_sources
+                    WHERE source_version_id=?""", (revision_id, source["source_version_id"]))
+
+    @staticmethod
+    def _findings_json(findings: list[dict]) -> str:
+        return json.dumps(findings, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+    def _insert_annotation_revision(self, source_id: int, revision: int,
+                                    previous_id: int | None, findings: list[dict],
+                                    review_sha256: str, reason: str, confirmed_at: str,
+                                    origin: str) -> int:
+        if not self.db.in_transaction:
+            raise InvalidInput("Annotation revisions require their owning write transaction")
+        cursor = self.db.execute("""INSERT INTO document_annotation_revisions
+            (source_version_id,revision,previous_revision_id,findings_json,review_sha256,
+             reason,confirmed_at,origin) VALUES (?,?,?,?,?,?,?,?)""",
+            (source_id, revision, previous_id, self._findings_json(findings), review_sha256,
+             reason, confirmed_at, origin))
+        return int(cursor.lastrowid)
+
+    @staticmethod
+    def _annotation_revision_data(row: sqlite3.Row | dict) -> dict:
+        result = dict(row)
+        result["findings"] = json.loads(result.pop("findings_json"))
+        return result
 
     def _migrate_discovery_rights(self) -> None:
         """Add rights-linkage columns to pre-existing discovery tables.
@@ -703,11 +794,22 @@ class CaseStore:
         return {"case_id": case_id, **preview_document(raw, filename)}
 
     def _document_intake_receipts(self, case_id: str) -> dict[int, dict]:
-        """Read existing source-linked receipts inside the caller snapshot."""
+        """Read effective manual annotation provenance in the caller snapshot.
+
+        The initial upload receipt remains immutable in its owning table.
+        Effective classification provenance includes the monotonic revision,
+        so reverting selections cannot revive an old Composer context.
+        """
         rows = self._dicts(self.db.execute(
-            """SELECT d.*,r.extraction_sha256 FROM document_intake_metadata d
+            """SELECT d.*,r.id AS annotation_revision_id,r.revision AS annotation_revision,
+                      r.review_sha256 AS annotation_review_sha256,t.extraction_sha256
+            FROM document_intake_metadata d
             JOIN source_versions s ON s.id=d.source_version_id
-            LEFT JOIN source_text_renditions r ON r.source_version_id=s.id WHERE s.case_id=?""",
+            LEFT JOIN source_text_renditions t ON t.source_version_id=s.id
+            LEFT JOIN document_annotation_revisions r ON r.source_version_id=s.id
+              AND r.revision=(SELECT MAX(r2.revision) FROM document_annotation_revisions r2
+                              WHERE r2.source_version_id=s.id)
+            WHERE s.case_id=?""",
             (case_id,)).fetchall())
         receipts = {}
         for row in rows:
@@ -715,6 +817,10 @@ class CaseStore:
             row["manual_transcription_confirmed"] = bool(row["manual_transcription_confirmed"])
             if row["extraction_sha256"] is None:
                 del row["extraction_sha256"]
+            row["initial_review_sha256"] = row["review_sha256"]
+            annotation_hash = row.pop("annotation_review_sha256")
+            if annotation_hash is not None:
+                row["review_sha256"] = annotation_hash
             receipts[source_id] = row
         return receipts
 
@@ -749,15 +855,141 @@ class CaseStore:
             assertion.update({"source_page": anchor["page"], "page_line": anchor["page_line"],
                               "page_text_sha256": pages[anchor["page"] - 1]["sha256"]})
 
+    def _manual_annotation_source(self, case_id: str, source_id: int) -> sqlite3.Row:
+        if type(source_id) is not int or not 1 <= source_id <= 9223372036854775807:
+            raise InvalidInput("Source ID must be a bounded positive integer")
+        source = self.db.execute("""SELECT s.*,d.filename,d.media_type,d.review_sha256 AS initial_review_sha256
+            FROM source_versions s JOIN document_intake_metadata d ON d.source_version_id=s.id
+            WHERE s.case_id=? AND s.id=?""", (case_id, source_id)).fetchone()
+        if source is None:
+            raise InvalidInput("Manual intake source not in this case")
+        return source
+
+    def document_annotations(self, case_id: str, source_id: int) -> dict:
+        """Read exact source lines and append-only manual selection history."""
+        from .document_intake import preview_saved_document
+        self._case(case_id)
+        with self.db:
+            self.db.execute("BEGIN")
+            source = self._manual_annotation_source(case_id, source_id)
+            history = [self._annotation_revision_data(row) for row in self.db.execute(
+                "SELECT * FROM document_annotation_revisions WHERE source_version_id=? ORDER BY revision",
+                (source_id,)).fetchall()]
+            if not history:
+                raise InvalidInput("Manual annotation history is unavailable")
+            frozen = self.source_view(case_id, source_id) if source["media_type"] == "application/pdf" else None
+            return {**preview_saved_document(bytes(source["raw"]), source["filename"], frozen),
+                    "case_id": case_id, "source_id": source_id,
+                    "document_id": source["document_id"], "version": source["version"],
+                    "state": source["state"], "writable": source["state"] == "current",
+                    "initial_review_sha256": source["initial_review_sha256"],
+                    "current_revision": history[-1], "history": history}
+
+    def revise_document_annotations(self, case_id: str, source_id: int,
+                                    findings: list[dict], expected_revision: int,
+                                    expected_sha256: str, confirmed_case_id: str,
+                                    manual_transcription_confirmed: bool,
+                                    reason: str,
+                                    expected_extraction_sha256: str | None = None) -> dict:
+        """Append a confirmed selection revision while preserving source bytes.
+
+        This corrects user-entered annotations, not a medical source record or
+        clinical decision. A retry is idempotent only for the immediately
+        preceding revision and identical selections and reason. A later edit
+        makes the earlier submission stale, even if content was reverted.
+        """
+        from .document_intake import review_saved_document, validate_revision_reason
+        case_id = self._case(case_id)
+        if type(expected_revision) is not int or not 1 <= expected_revision <= 2147483647:
+            raise InvalidInput("Expected annotation revision must be a bounded positive integer")
+        reason = validate_revision_reason(reason)
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            source = self._manual_annotation_source(case_id, source_id)
+            if source["state"] != "current":
+                raise InvalidInput("Only the current original source can receive annotation revisions")
+            metadata = {"document_id": source["document_id"], "kind": source["kind"],
+                        "event_date": source["event_date"], "issued_at": source["issued_at"],
+                        "specimen_id": source["specimen_id"],
+                        "manual_transcription_confirmed": manual_transcription_confirmed,
+                        "amends_version": source["version"] - 1 if source["supersedes_id"] else None}
+            frozen = self.source_view(case_id, source_id) if source["media_type"] == "application/pdf" else None
+            report, receipt = review_saved_document(
+                case_id, bytes(source["raw"]), source["filename"], metadata, findings,
+                expected_sha256, confirmed_case_id, expected_extraction_sha256,
+                frozen_rendition=frozen)
+            selected = [{"key": item.key, "state": item.state, "quote": item.quote, "line": item.line}
+                        for item in report.findings]
+            canonical = self._findings_json(selected)
+            current = self.db.execute("""SELECT * FROM document_annotation_revisions
+                WHERE source_version_id=? ORDER BY revision DESC LIMIT 1""", (source_id,)).fetchone()
+            if current is None:
+                raise InvalidInput("Manual annotation history is unavailable")
+            same_content = (canonical == current["findings_json"] and
+                            receipt["review_sha256"] == current["review_sha256"])
+
+            def result(kind: str, row: sqlite3.Row | dict) -> dict:
+                return {"result": kind, "source_id": source_id, "version": source["version"],
+                        "annotation_revision": row["revision"], "annotation_revision_id": row["id"],
+                        "review_sha256": row["review_sha256"], "invalidated_snapshots": [],
+                        "invalidated_options": [], "invalidated_model_investigation_ids": []}
+
+            if expected_revision != current["revision"]:
+                if (expected_revision == current["revision"] - 1 and same_content and
+                        reason == current["reason"] and current["origin"] == "manual_revision"):
+                    return result("duplicate", current)
+                raise InvalidInput("Annotation revision changed; refresh the saved selections before editing")
+            if same_content:
+                return result("unchanged", current)
+            next_revision = current["revision"] + 1
+            if next_revision > 2147483647:
+                raise InvalidInput("Annotation revision limit reached")
+            revision_id = self._insert_annotation_revision(
+                source_id, next_revision, current["id"], selected, receipt["review_sha256"],
+                reason, now_utc(), "manual_revision")
+            # This table is the existing current assertion projection. The
+            # complete initial and later selections live in immutable revision
+            # receipts; no original source row or original intake receipt moves.
+            self.db.execute("DELETE FROM assertions WHERE case_id=? AND source_version_id=?",
+                            (case_id, source_id))
+            for item in report.findings:
+                self.db.execute("""INSERT INTO assertions
+                    (case_id,source_version_id,finding_key,certainty,quote,source_line)
+                    VALUES (?,?,?,?,?,?)""", (case_id, source_id, item.key, item.state, item.quote, item.line))
+            invalidated = [row[0] for row in self.db.execute("""SELECT s.id FROM snapshots s
+                JOIN snapshot_sources ss ON ss.snapshot_id=s.id
+                WHERE s.case_id=? AND ss.source_version_id=? AND s.state!='stale' ORDER BY s.id""",
+                (case_id, source_id)).fetchall()]
+            if invalidated:
+                marks = ",".join("?" for _ in invalidated)
+                self.db.execute(f"UPDATE snapshots SET state='stale' WHERE id IN ({marks})", invalidated)
+                self.db.execute(f"""UPDATE questions SET state='open' WHERE case_id=? AND id IN
+                    (SELECT question_id FROM snapshots WHERE id IN ({marks}))""", [case_id, *invalidated])
+            options = self._invalidate_options(snapshot_ids=set(invalidated),
+                source_version_ids={source_id}, evidence_version_ids=set())
+            models = self._stale_model_investigations(case_id)
+            self._event(case_id, "document_annotations_revised", source_id=source_id,
+                document_id=source["document_id"], source_version=source["version"],
+                annotation_revision_id=revision_id, annotation_revision=next_revision,
+                previous_annotation_revision_id=current["id"], previous_annotation_revision=current["revision"],
+                review_sha256=receipt["review_sha256"], reason=reason,
+                invalidated_snapshots=invalidated, invalidated_options=options,
+                invalidated_model_investigation_ids=models)
+            return {**result("revised", {"id": revision_id, "revision": next_revision,
+                                         "review_sha256": receipt["review_sha256"]}),
+                    "invalidated_snapshots": invalidated, "invalidated_options": options,
+                    "invalidated_model_investigation_ids": models}
+
     def import_document(self, case_id: str, raw: bytes, filename: str,
                         metadata: dict, findings: list[dict],
                         expected_sha256: str, confirmed_case_id: str,
                         expected_extraction_sha256: str | None = None) -> dict:
         """Commit explicitly confirmed manual transcription to the original ledger.
 
-        The reviewed annotations are immutable for a given original. A filename
-        change is an idempotent retry, retaining the original upload filename.
-        All source, freshness, event and intake receipt writes share one lock.
+        The initial upload receipt is immutable. Later annotation corrections
+        use the separate append-only revision operation, never upload retries.
+        A filename change retains the original upload filename. All source,
+        freshness, event and intake receipt writes share one lock.
         """
         from .document_intake import review_document
         case_id = self._case(case_id)
@@ -797,6 +1029,11 @@ class CaseStore:
                  receipt["extraction_method"], receipt["annotation_method"],
                  int(receipt["manual_transcription_confirmed"]), receipt["clinical_review"],
                  receipt["review_sha256"]))
+            self._insert_annotation_revision(result["source_id"], 1, None,
+                [{"key": item.key, "state": item.state, "quote": item.quote, "line": item.line}
+                 for item in report.findings], receipt["review_sha256"],
+                "Initial manual transcription confirmed during document intake.",
+                now_utc(), "initial_intake")
             self._event(case_id, "document_transcription_confirmed",
                         source_id=result["source_id"], sha256=digest,
                         review_sha256=receipt["review_sha256"],
@@ -2642,7 +2879,8 @@ class CaseStore:
 
     def create_snapshot(self, case_id: str, question_id: int, summary: str, source_ids: list[int],
                         evidence_assessment_ids: list[int] | None = None,
-                        broker_link_ids: list[int] | None = None) -> int:
+                        broker_link_ids: list[int] | None = None,
+                        expected_annotation_revisions: dict[str, int] | None = None) -> int:
         self._case(case_id)
         if not isinstance(summary, str) or not 10 <= len(summary.strip()) <= MAX_SUMMARY:
             raise InvalidInput("Draft must have 10–3000 characters")
@@ -2650,6 +2888,14 @@ class CaseStore:
             raise InvalidInput("Select one or more current source versions")
         if len(source_ids) != len(set(source_ids)) or len(source_ids) > 50:
             raise InvalidInput("Source IDs must be unique; maximum 50")
+        if any(not 1 <= source_id <= 9223372036854775807 for source_id in source_ids):
+            raise InvalidInput("Source IDs must be bounded positive integers")
+        expected_annotations = {} if expected_annotation_revisions is None else expected_annotation_revisions
+        if (not isinstance(expected_annotations, dict) or len(expected_annotations) > 50 or
+                any(not isinstance(key, str) or not re.fullmatch(r"[1-9][0-9]{0,18}", key)
+                    or int(key) > 9223372036854775807 or type(value) is not int
+                    or not 1 <= value <= 2147483647 for key, value in expected_annotations.items())):
+            raise InvalidInput("Expected annotation revisions must map source IDs to positive revision numbers")
         evidence_assessment_ids = [] if evidence_assessment_ids is None else evidence_assessment_ids
         if (not isinstance(evidence_assessment_ids, list) or
             len(evidence_assessment_ids) != len(set(str(x) for x in evidence_assessment_ids)) or
@@ -2671,6 +2917,20 @@ class CaseStore:
                 if not self.db.execute("SELECT 1 FROM source_versions WHERE id=? AND case_id=? AND state='current'",
                                        (sid, case_id)).fetchone():
                     raise InvalidInput("Source is missing, superseded, or belongs to another case")
+            annotation_bindings = {}
+            for sid in source_ids:
+                revision = self.db.execute("""SELECT id,revision FROM document_annotation_revisions
+                    WHERE source_version_id=? ORDER BY revision DESC LIMIT 1""", (sid,)).fetchone()
+                if revision is not None:
+                    annotation_bindings[sid] = revision
+                    # Before any correction, implicit revision 1 preserves the
+                    # prior direct API contract. After the first correction,
+                    # stale clients must explicitly select a current revision.
+                    expected = expected_annotations.get(str(sid), 1)
+                    if expected != revision["revision"]:
+                        raise InvalidInput("Source annotations changed; reselect the current annotation revision")
+            if set(expected_annotations) - {str(sid) for sid in annotation_bindings}:
+                raise InvalidInput("Annotation revision map contains an unselected or non-manual source")
             for aid in evidence_assessment_ids:
                 linked = self.db.execute("""SELECT 1 FROM evidence_assessments a
                     JOIN evidence_versions v ON v.id=a.evidence_version_id
@@ -2684,6 +2944,9 @@ class CaseStore:
             snapshot_id = int(cur.lastrowid)
             for sid in source_ids:
                 self.db.execute("INSERT INTO snapshot_sources VALUES (?,?)", (snapshot_id, sid))
+            for sid, revision in annotation_bindings.items():
+                self.db.execute("INSERT INTO snapshot_annotation_revisions VALUES (?,?,?)",
+                                (snapshot_id, sid, revision["id"]))
             for aid in evidence_assessment_ids:
                 self.db.execute("INSERT INTO snapshot_evidence VALUES (?,?)", (snapshot_id, aid))
             for lid in broker_link_ids:
@@ -2936,7 +3199,7 @@ class CaseStore:
                 if key not in source:
                     continue
                 value = source[key]
-                if key in {"source_page", "page_line"}:
+                if key in {"source_page", "page_line", "annotation_revision_id", "annotation_revision"}:
                     valid = type(value) is int and 1 <= value <= 2**63 - 1
                 elif key.endswith("sha256"):
                     valid = isinstance(value, str) and re.fullmatch(r"[a-f0-9]{64}", value) is not None
@@ -3133,6 +3396,17 @@ class CaseStore:
                                       facts["assessments"], facts["external_evidence"])
                 self.db.execute("INSERT INTO investigation_input_contexts VALUES (?,?,?)",
                                 (investigation_id, context_fingerprint, hashlib.sha256(prompt.encode()).hexdigest()))
+                context_revisions = self._dicts(self.db.execute("""SELECT s.id AS source_id,
+                    s.sha256 AS source_sha256,r.id AS revision_id,r.revision,r.review_sha256
+                    FROM source_versions s JOIN document_annotation_revisions r ON r.source_version_id=s.id
+                    WHERE s.case_id=? AND s.state='current'
+                    AND r.revision=(SELECT MAX(r2.revision) FROM document_annotation_revisions r2
+                                    WHERE r2.source_version_id=s.id) ORDER BY s.id""", (case_id,)).fetchall())
+                annotation_inputs = {"capture_state": "recorded", "context_revisions": context_revisions,
+                    "prompt_assertions": [row for row in facts["assertions"]
+                                          if row.get("classification_origin") == "user_selected"]}
+                self.db.execute("INSERT INTO investigation_annotation_inputs VALUES (?,?)",
+                    (investigation_id, json.dumps(annotation_inputs, sort_keys=True, ensure_ascii=False)))
             for receipt in input_receipts or []:
                 self.db.execute("INSERT INTO investigation_broker_inputs VALUES (?,?,?,?)",
                                 (investigation_id, receipt["broker_link_id"], receipt["rights_source_id"],
@@ -3167,6 +3441,11 @@ class CaseStore:
         context = self.db.execute("SELECT context_fingerprint,prompt_sha256 FROM investigation_input_contexts WHERE investigation_id=?",
                                   (investigation_id,)).fetchone()
         data["input_context"] = dict(context) if context else None
+        annotation_inputs = self.db.execute(
+            "SELECT receipt_json FROM investigation_annotation_inputs WHERE investigation_id=?",
+            (investigation_id,)).fetchone()
+        data["input_annotations"] = (json.loads(annotation_inputs["receipt_json"]) if annotation_inputs else
+            {"capture_state": "not_recorded", "context_revisions": [], "prompt_assertions": []})
         data["output_withheld"] = False
         if data["input_receipts"]:
             current_items, current_receipts = self._broker_context_inputs(case_id, data["question_id"])
@@ -3224,6 +3503,11 @@ class CaseStore:
                 snapshot["source_ids"] = [r[0] for r in self.db.execute(
                     "SELECT source_version_id FROM snapshot_sources WHERE snapshot_id=? ORDER BY source_version_id",
                     (snapshot["id"],)).fetchall()]
+                snapshot["annotation_revisions"] = self._dicts(self.db.execute("""SELECT
+                    b.source_version_id AS source_id,r.id AS revision_id,r.revision,r.review_sha256
+                    FROM snapshot_annotation_revisions b JOIN document_annotation_revisions r
+                    ON r.id=b.annotation_revision_id WHERE b.snapshot_id=? ORDER BY b.source_version_id""",
+                    (snapshot["id"],)).fetchall())
             for snapshot in snapshot_rows:
                 snapshot["evidence_assessment_ids"] = [r[0] for r in self.db.execute(
                     "SELECT assessment_id FROM snapshot_evidence WHERE snapshot_id=? ORDER BY assessment_id",
@@ -3354,6 +3638,10 @@ class CaseStore:
             sources = self.db.execute("""SELECT v.* FROM source_versions v JOIN snapshot_sources ss ON ss.source_version_id=v.id
                 WHERE ss.snapshot_id=? ORDER BY v.document_id,v.version""", (snapshot_id,)).fetchall()
             intake_by_source = self._document_intake_receipts(case_id)
+            captured_annotations = {row["source_version_id"]: self._annotation_revision_data(row)
+                for row in self.db.execute("""SELECT r.* FROM snapshot_annotation_revisions b
+                    JOIN document_annotation_revisions r ON r.id=b.annotation_revision_id
+                    WHERE b.snapshot_id=?""", (snapshot_id,)).fetchall()}
             lines = ["# Open Intelligence — synthetic investigation", "",
                      "> Research demonstration only. No clinical review or patient-specific treatment recommendation.", "",
                      f"Case: `{case_id}` | Investigation: {snapshot_id} | State: **{snapshot['state']}**",
@@ -3370,13 +3658,40 @@ class CaseStore:
                               f"SHA-256: `{source['sha256']}` | Event: {source['event_date']} | Issued: {source['issued_at']}", ""])
                 if source["id"] in intake_by_source:
                     receipt = intake_by_source[source["id"]]
+                    captured = captured_annotations.get(source["id"])
                     lines.extend([
                         "Manual transcription provenance: `classification_origin=user_selected` | "
                         f"`annotation_method={receipt['annotation_method']}` | `clinical_review=not_performed`",
-                        f"Transcription review SHA-256: `{receipt['review_sha256']}`",
                         "The literal quote is primary; user-selected classifications are not source-authored "
                         "or clinically verified. Transcription confirmation is not clinical approval.", "",
                     ])
+                    if captured is None:
+                        lines.extend(["Annotation capture was not recorded for this historical report; "
+                                      "current selections have not been substituted.", ""])
+                    else:
+                        lines.extend([f"Annotation revision: {captured['revision']}",
+                            f"Transcription review SHA-256: `{captured['review_sha256']}`",
+                            "User-selected annotations captured with this report:", ""])
+                        if not captured["findings"]:
+                            lines.extend(["No manual selections were included in this revision.", ""])
+                        for finding in captured["findings"]:
+                            quote = finding["quote"]
+                            longest_quote = max((len(run) for run in re.findall(r"`+", quote)), default=0)
+                            quote_fence = "`" * max(3, longest_quote + 1)
+                            location = f"Original line: {finding['line']}"
+                            if view["text_origin"] == "pdf_extraction":
+                                if (type(finding["line"]) is not int or
+                                        not 1 <= finding["line"] <= len(view["lines"])):
+                                    raise InvalidInput("Captured PDF annotation anchor is unavailable")
+                                anchor = view["lines"][finding["line"] - 1]
+                                if quote not in anchor["text"]:
+                                    raise InvalidInput("Captured PDF annotation no longer matches its frozen passage")
+                                page = view["pages"][anchor["page"] - 1]
+                                location = (f"Extraction line: {finding['line']} | Physical page: {anchor['page']} "
+                                            f"| Page line: {anchor['page_line']} | Page text SHA-256: `{page['sha256']}`")
+                            lines.extend([f"- Finding: `{finding['key']}` | User-selected status: `{finding['state']}` "
+                                          f"| {location}", "",
+                                          quote_fence + "text", quote, quote_fence, ""])
                 if view["text_origin"] == "pdf_extraction":
                     lines.extend([
                         "PDF extracted text below is a derived rendition, not original PDF bytes or a visual transcription.",

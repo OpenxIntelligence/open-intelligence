@@ -165,6 +165,8 @@ class EvidenceReviewReport:
                         f"  Classification origin: {_quoted(p['classification_origin'])}",
                         f"  Annotation method: {_quoted(p['annotation_method'])}",
                         f"  Clinical review: {_quoted(p['clinical_review'])}",
+                        f"  Annotation revision: {p['annotation_revision']}; revision ID: {p['annotation_revision_id']}",
+                        f"  Initial transcription review SHA-256: {p['initial_transcription_review_sha256']}",
                         f"  Transcription review SHA-256: {p['transcription_review_sha256']}",
                     ] if "classification_origin" in p else []),
                     *([

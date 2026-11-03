@@ -1,5 +1,9 @@
 ## Running the first implementation locally
 
+## Corrected passage and report integration
+
+The current reference candidate composes #229’s saved text/PDF passage corrections with #235’s governed-report workflow. Corrections preserve original bytes, frozen PDF extraction and prior annotations; reports, note citations and review receipts identify the exact selected revision. Manual comparison/quotation callers must supply their captured `annotation_revision_id` and `annotation_revision`. Authored-source callers keep their existing contract. See [annotation revisions](docs/engineering/ANNOTATION_REVISIONS.md) and [connected verification](docs/engineering/CONNECTED_PATIENT_WORKFLOW.md) for behavior, scope and current evidence. This remains synthetic reference development, not authenticated H1 report transport or a clinical release.
+
 This is the existing **Python/SQLite browser reference implementation**, tested with Python 3.12 and 3.13. Bounded PDF extraction uses the inherited, exact pinned `pypdf` package; the dependency notice, wheel hash and limitations are recorded in [DOCUMENT_INTAKE.md](docs/engineering/DOCUMENT_INTAKE.md). The clinical/report domain services and local case workspace share the original source owner. The accepted FastAPI/PostgreSQL/React migration remains separate.
 
 ```bash

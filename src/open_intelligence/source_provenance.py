@@ -14,8 +14,9 @@ from .store import InvalidInput
 
 MAX_ID = 9223372036854775807
 _HASH = re.compile(r"[0-9a-f]{64}\Z")
+REVISION_FIELDS = ("annotation_revision_id", "annotation_revision")
 _MANUAL_FIELDS = ("classification_origin", "annotation_method", "clinical_review",
-                  "transcription_review_sha256")
+                  "transcription_review_sha256", "initial_transcription_review_sha256") + REVISION_FIELDS
 _PDF_IDENTITY = ("text_origin", "extraction_sha256")
 _PDF_ANCHORS = ("source_page", "page_line", "page_text_sha256")
 _PROVENANCE_FIELDS = _MANUAL_FIELDS + _PDF_IDENTITY + _PDF_ANCHORS
@@ -44,7 +45,8 @@ def source_provenance(source: dict) -> dict:
         return {}
     receipt = source["document_intake"]
     required = {"filename", "media_type", "extraction_method", "annotation_method",
-                "manual_transcription_confirmed", "clinical_review", "review_sha256"}
+                "manual_transcription_confirmed", "clinical_review", "review_sha256",
+                "initial_review_sha256", *REVISION_FIELDS}
     if not isinstance(receipt, dict) or not required <= receipt.keys():
         raise InvalidInput("Incomplete source intake provenance")
     filename = safe_filename(receipt["filename"])
@@ -64,7 +66,12 @@ def source_provenance(source: dict) -> dict:
         raise InvalidInput("Unsupported text source provenance")
     expected = {"classification_origin": "user_selected",
                 "annotation_method": receipt["annotation_method"],
-                "clinical_review": "not_performed", "transcription_review_sha256": reviewed}
+                "clinical_review": "not_performed", "transcription_review_sha256": reviewed,
+                "initial_transcription_review_sha256": _hash(
+                    receipt["initial_review_sha256"], "Initial transcription review")}
+    for field in REVISION_FIELDS:
+        expected[field] = _positive(receipt[field], field)
+        _positive(source.get(field), field)
     if is_pdf:
         expected.update({"text_origin": "pdf_extraction",
                          "extraction_sha256": _hash(receipt.get("extraction_sha256"), "PDF extraction")})
@@ -87,6 +94,8 @@ def assertion_provenance(assertion: dict, source_provenance: dict, line: int) ->
         if any(field in assertion for field in _PROVENANCE_FIELDS):
             raise InvalidInput("Finding provenance has no associated source receipt")
         return {}
+    for field in REVISION_FIELDS:
+        _positive(assertion.get(field), field)
     if any(assertion.get(field) != value for field, value in source_provenance.items()):
         raise InvalidInput("Finding provenance does not match its source receipt")
     result = dict(source_provenance)
