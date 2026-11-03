@@ -159,6 +159,14 @@ class PostgresSourceVersions:
                 "WHERE case_id=%s AND document_id=%s "
                 "ORDER BY version DESC LIMIT 1", (case_id, parsed.document_id),
             )
+            previously_seen = self.registry._fetchone(
+                "SELECT source_id,version FROM clinical_source.source_versions "
+                "WHERE case_id=%s AND document_id=%s AND sha256=%s",
+                (case_id, parsed.document_id, digest),
+            )
+            if previously_seen is not None:
+                return {"result": "duplicate", "duplicate": True,
+                        "source_id": previously_seen[0], "version": previously_seen[1]}
             if old is not None and old[2] == digest:
                 return {"result": "duplicate", "duplicate": True,
                         "source_id": old[0], "version": old[1]}
