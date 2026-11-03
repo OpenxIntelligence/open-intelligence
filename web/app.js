@@ -184,7 +184,8 @@ async function initialize() {
             'synthesis-note-author', 'owner-label-input', 'note-text',
             'scoped-decision-note', 'scoped-dissent-rationale',
             'counterevidence-reason', 'safety-detail',
-            'bio-mechanism', 'bio-result-note'].some(id => el(id).value.trim()))) {
+            'bio-mechanism', 'bio-result-note',
+            'flag-reason', 'dimension-note'].some(id => el(id).value.trim()))) {
         picker.value = caseId;
         notice('Save or explicitly clear the unfinished investigation draft before switching cases.', true);
         return;
@@ -198,7 +199,8 @@ async function initialize() {
         'report-text', 'evidence-rationale', 'draft-observations',
         'draft-summary', 'draft-assumptions', 'synthesis-note-text', 'synthesis-note-author',
         'counterevidence-reason', 'safety-detail',
-        'bio-mechanism', 'bio-result-note']) el(id).value = '';
+        'bio-mechanism', 'bio-result-note',
+        'flag-reason', 'dimension-note']) el(id).value = '';
       if (el('source-dialog').open) el('source-dialog').close();
       if (el('compare-dialog').open) el('compare-dialog').close();
       refresh();
@@ -903,6 +905,7 @@ function render() {
   }
   renderPatientView();
   renderOptions();
+  renderPortfolio();
   renderScopedReview();
   renderJourney();
   renderedCaseId = caseId;
@@ -1442,6 +1445,67 @@ el('option-review-form').addEventListener('submit', async event => {
     notice('Reviewer action recorded: ' + outcome.result + '.'); await refresh();
   } catch (err) { notice(err.message, true); }
 });
+el('portfolio-flag-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const pick = id => { const v = el(id).value; return v === '' ? null : Number(v); };
+    const created = await api('/api/cases/' + requestedCase + '/options/' +
+      Number(el('flag-option-choice').value) + '/flags', {
+      kind: el('flag-kind').value, label: el('flag-label').value,
+      reason: el('flag-reason').value, author_label: el('flag-author').value,
+      source_version_id: pick('flag-source-choice'),
+      evidence_assessment_id: pick('flag-assessment-choice'),
+    });
+    if (requestedCase !== caseId) return;
+    el('flag-label').value = ''; el('flag-reason').value = '';
+    notice('Flag #' + created.flag_id + ' recorded.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('portfolio-flag-resolve-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const outcome = await api('/api/cases/' + requestedCase + '/flags/' +
+      Number(el('flag-resolve-choice').value) + '/resolve', {
+      reviewer_label: el('flag-resolve-reviewer').value, action: el('flag-resolve-action').value,
+      scope: el('flag-resolve-scope').value,
+    });
+    if (requestedCase !== caseId) return;
+    el('flag-resolve-scope').value = '';
+    notice('Flag decision recorded: ' + outcome.result + '.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('portfolio-dimension-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const pick = id => { const v = el(id).value; return v === '' ? null : Number(v); };
+    const created = await api('/api/cases/' + requestedCase + '/options/' +
+      Number(el('dimension-option-choice').value) + '/dimension-notes', {
+      dimension: el('dimension-kind').value, note: el('dimension-note').value,
+      anchor: el('dimension-anchor').value, reviewer_label: el('dimension-recorder').value,
+      source_version_id: pick('dimension-source-choice'),
+      evidence_assessment_id: pick('dimension-assessment-choice'),
+    });
+    if (requestedCase !== caseId) return;
+    el('dimension-note').value = ''; el('dimension-anchor').value = '';
+    notice('Dimension note #' + created.dimension_note_id + ' recorded as pending.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('portfolio-dimension-ack-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    await api('/api/cases/' + requestedCase + '/dimension-notes/' +
+      Number(el('dimension-ack-choice').value) + '/acknowledge', {
+      reviewer_label: el('dimension-ack-reviewer').value, scope: el('dimension-ack-scope').value,
+    });
+    if (requestedCase !== caseId) return;
+    el('dimension-ack-scope').value = '';
+    notice('Dimension note acknowledged as seen; this is not authorization.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
 el('scoped-decision-form').addEventListener('submit', async event => {
   event.preventDefault();
   try {
@@ -1648,6 +1712,90 @@ function renderOptions() {
     investigationLink.textContent = 'View investigation #' + option.snapshot_id;
     box.append(investigationLink);
     el('option-list').append(box);
+  }
+}
+function renderPortfolio() {
+  const portfolio = active.portfolio || { options: [], disclaimer: '', counts: {} };
+  el('portfolio-disclaimer').textContent = portfolio.disclaimer || '';
+  const entries = portfolio.options || [];
+  const fill = (id, items, labelFn, allowEmpty = false) => {
+    const select = el(id);
+    const prior = select.value;
+    clear(id);
+    if (allowEmpty) { const blank = node('option', '—'); blank.value = ''; select.append(blank); }
+    for (const item of items) {
+      const opt = node('option', labelFn(item));
+      opt.value = item.id; select.append(opt);
+    }
+    if (prior && [...select.options].some(x => x.value === prior)) select.value = prior;
+  };
+  const entryLabel = o => 'Option #' + o.id + ' · ' + o.label + ' (' + o.portfolio_status + ')';
+  fill('flag-option-choice', entries, entryLabel);
+  fill('dimension-option-choice', entries, entryLabel);
+  fill('flag-source-choice', active.sources, s => s.document_id + '@' + s.version + ' · ' + s.state, true);
+  fill('dimension-source-choice', active.sources, s => s.document_id + '@' + s.version + ' · ' + s.state, true);
+  fill('flag-assessment-choice', active.evidence_assessments || [],
+    a => a.evidence_key + '@' + a.version + ' · ' + a.relation, true);
+  fill('dimension-assessment-choice', active.evidence_assessments || [],
+    a => a.evidence_key + '@' + a.version + ' · ' + a.relation, true);
+  const flags = entries.flatMap(o => [...o.objections.open, ...o.objections.resolved, ...o.holds, ...o.past_holds]
+    .map(f => ({ ...f, optionId: o.id })));
+  fill('flag-resolve-choice', flags,
+    f => 'Flag #' + f.id + ' · ' + f.kind + ' · ' + f.label + ' (' + f.state + ')');
+  const pendingNotes = entries.flatMap(o => Object.values(o.dimensions).flatMap(d => d.notes)
+    .map(n => ({ ...n, optionId: o.id }))).filter(n => n.state === 'pending');
+  fill('dimension-ack-choice', pendingNotes,
+    n => 'Note #' + n.id + ' · ' + n.dimension.replaceAll('_', ' ') + ' · Option #' + n.optionId);
+  clear('portfolio-list');
+  if (!entries.length) empty(el('portfolio-list'), 'No options proposed for this fictional case yet.');
+  const counts = portfolio.counts || {};
+  const summary = Object.keys(counts).sort().map(k => k + ': ' + counts[k]).join(' · ');
+  if (summary) el('portfolio-list').append(node('p', 'Preserved entries by status — ' + summary + '.', 'snapshot-meta'));
+  for (const entry of entries) {
+    const box = node('div', null, 'snapshot');
+    const top = node('div', null, 'topline');
+    top.append(node('strong', 'Option #' + entry.id + ' · ' + entry.label),
+      pill(entry.portfolio_status, ['held', 'rejected', 'deferred'].includes(entry.portfolio_status) ? 'pill-alert' : ''),
+      pill('review: ' + entry.review_state, entry.review_state === 'needs_review' ? 'pill-warn' : ''));
+    box.append(top, node('p', entry.description));
+    const dimLine = Object.values(entry.dimensions).map(d => d.label + ': ' + d.state.replaceAll('_', ' ')).join(' · ');
+    box.append(node('p', 'Reviewable dimensions — ' + dimLine +
+      '. Each note stays pending until a clinician acknowledges it.', 'snapshot-meta'));
+    if (entry.prerequisites.length) {
+      const deps = node('ul');
+      for (const dep of entry.prerequisites) {
+        deps.append(node('li', 'Needs: ' + dep.kind + ' — ' + dep.target +
+          (dep.deadline_date ? ' · date ' + dep.deadline_date + ' (' + dep.deadline_basis + ')' : ' · date unknown') +
+          (dep.lead_time_days !== null && dep.lead_time_days !== undefined ? ' · lead ' + dep.lead_time_days + 'd' : '')));
+      }
+      box.append(node('p', 'Prerequisites:', 'snapshot-meta'), deps);
+    } else {
+      box.append(node('p', 'Prerequisites: none recorded.', 'snapshot-meta'));
+    }
+    const openObjections = entry.objections.open;
+    box.append(node('p', openObjections.length
+      ? 'Objections: ' + openObjections.map(f => f.label + ' — ' + f.reason +
+        (f.premise ? ' (premise: ' + f.premise + ')' : '')).join(' ; ')
+      : 'Objections: none open.', 'snapshot-meta'));
+    const accessNotes = entry.dimensions.access.notes;
+    box.append(node('p', accessNotes.length
+      ? 'Access notes: ' + accessNotes.map(n => n.note + ' [' + n.state + '; anchor: ' + n.anchor +
+        (n.premise ? '; premise: ' + n.premise : '') + ']').join(' ; ')
+      : 'Access: nothing recorded; unknown.', 'snapshot-meta'));
+    const ready = node('ul');
+    for (const item of entry.readiness) ready.append(node('li', item));
+    box.append(node('p', 'Still missing or needed:', 'snapshot-meta'), ready);
+    box.append(node('p', entry.lead_time.label, 'snapshot-meta'));
+    if (entry.triggers.length) {
+      const trig = node('ul');
+      for (const text of entry.triggers) trig.append(node('li', text));
+      box.append(node('p', 'Expiration and review triggers:', 'snapshot-meta'), trig);
+    }
+    if (entry.review_events.length) {
+      box.append(node('p', 'Review history: ' + entry.review_events.map(e =>
+        e.action + ' by ' + e.reviewer_label + ' · scope: ' + e.scope).join(' ; '), 'snapshot-meta'));
+    }
+    el('portfolio-list').append(box);
   }
 }
 function renderScopedReview() {

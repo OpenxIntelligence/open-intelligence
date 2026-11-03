@@ -236,6 +236,9 @@ class Handler(BaseHTTPRequestHandler):
                     raise InvalidInput("snapshot_id must be a positive integer")
                 snapshot_id = int(snapshot_raw) if snapshot_raw is not None else None
                 return self._json(200, store.option_view(case_options[1], snapshot_id))
+            case_portfolio = re.fullmatch(rf"/api/cases/{ID_PART}/portfolio", path)
+            if case_portfolio:
+                return self._json(200, store.option_portfolio(case_portfolio[1]))
             case_mission = re.fullmatch(rf"/api/cases/{ID_PART}/mission", path)
             if case_mission:
                 return self._json(200, build_patient_mission(store.state(case_mission[1])))
@@ -564,6 +567,32 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(200, store.review_option(
                         option_review[1], int(option_review[2]), data.get("reviewer_label"),
                         data.get("action"), data.get("scope"), data.get("snapshot_id")))
+                option_flag = re.fullmatch(rf"/api/cases/{ID_PART}/options/([0-9]+)/flags", path)
+                if option_flag:
+                    flag_id = store.add_option_flag(
+                        option_flag[1], int(option_flag[2]), data.get("kind"),
+                        data.get("label"), data.get("reason"), data.get("author_label"),
+                        source_version_id=data.get("source_version_id"),
+                        evidence_assessment_id=data.get("evidence_assessment_id"))
+                    return self._json(201, {"flag_id": flag_id})
+                flag_resolve = re.fullmatch(rf"/api/cases/{ID_PART}/flags/([0-9]+)/resolve", path)
+                if flag_resolve:
+                    return self._json(200, store.resolve_option_flag(
+                        flag_resolve[1], int(flag_resolve[2]), data.get("reviewer_label"),
+                        data.get("action"), data.get("scope")))
+                option_dimension = re.fullmatch(rf"/api/cases/{ID_PART}/options/([0-9]+)/dimension-notes", path)
+                if option_dimension:
+                    note_id = store.add_option_dimension_note(
+                        option_dimension[1], int(option_dimension[2]), data.get("dimension"),
+                        data.get("note"), data.get("anchor"), data.get("reviewer_label"),
+                        source_version_id=data.get("source_version_id"),
+                        evidence_assessment_id=data.get("evidence_assessment_id"))
+                    return self._json(201, {"dimension_note_id": note_id})
+                dimension_ack = re.fullmatch(rf"/api/cases/{ID_PART}/dimension-notes/([0-9]+)/acknowledge", path)
+                if dimension_ack:
+                    return self._json(200, store.acknowledge_option_dimension_note(
+                        dimension_ack[1], int(dimension_ack[2]), data.get("reviewer_label"),
+                        data.get("scope")))
                 inv_create = re.fullmatch(rf"/api/cases/{ID_PART}/investigations", path)
                 if inv_create:
                     case_id = inv_create[1]

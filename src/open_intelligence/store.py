@@ -596,6 +596,51 @@ CREATE TABLE IF NOT EXISTS biological_inventory_assertions (
 CREATE INDEX IF NOT EXISTS idx_biological_assets_case ON biological_assets(case_id, asset_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_assertions_asset ON biological_inventory_assertions(asset_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_assertions_source ON biological_inventory_assertions(source_version_id);
+-- Option portfolio slice: append-only documented reasons (objections,
+-- deferrals, reservations) and four-dimension reviewable notes. A derived
+-- projection over the existing ledger like OI-021: no second canonical
+-- state, no recommendation, and no eligibility/benefit/authorization
+-- declaration. Rows are never deleted; open items change only through
+-- recorded resolve/reopen/acknowledge events, and terminal or held entries
+-- stay visible with their recorded reasons.
+CREATE TABLE IF NOT EXISTS option_flags (
+  id INTEGER PRIMARY KEY, option_id INTEGER NOT NULL REFERENCES options(id),
+  kind TEXT NOT NULL CHECK(kind IN ('objection','deferred','reserved')),
+  label TEXT NOT NULL, reason TEXT NOT NULL,
+  source_version_id INTEGER REFERENCES source_versions(id),
+  evidence_assessment_id INTEGER REFERENCES evidence_assessments(id),
+  state TEXT NOT NULL CHECK(state IN ('open','resolved')),
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS option_flag_events (
+  id INTEGER PRIMARY KEY, flag_id INTEGER NOT NULL REFERENCES option_flags(id),
+  reviewer_label TEXT NOT NULL,
+  action TEXT NOT NULL CHECK(action IN ('raise','resolve','reopen')),
+  scope TEXT NOT NULL, noted_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS option_dimension_notes (
+  id INTEGER PRIMARY KEY, option_id INTEGER NOT NULL REFERENCES options(id),
+  dimension TEXT NOT NULL CHECK(dimension IN
+    ('scientific_plausibility','technical_feasibility','access','clinical_authorization')),
+  note TEXT NOT NULL, anchor TEXT NOT NULL,
+  source_version_id INTEGER REFERENCES source_versions(id),
+  evidence_assessment_id INTEGER REFERENCES evidence_assessments(id),
+  reviewer_label TEXT NOT NULL,
+  state TEXT NOT NULL CHECK(state IN ('pending','acknowledged')),
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS option_dimension_events (
+  id INTEGER PRIMARY KEY, note_id INTEGER NOT NULL REFERENCES option_dimension_notes(id),
+  reviewer_label TEXT NOT NULL,
+  action TEXT NOT NULL CHECK(action IN ('record','acknowledge')),
+  scope TEXT NOT NULL, noted_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_option_flags_option ON option_flags(option_id);
+CREATE INDEX IF NOT EXISTS idx_option_flags_source ON option_flags(source_version_id);
+CREATE INDEX IF NOT EXISTS idx_option_flags_assessment ON option_flags(evidence_assessment_id);
+CREATE INDEX IF NOT EXISTS idx_option_flag_events_flag ON option_flag_events(flag_id);
+CREATE INDEX IF NOT EXISTS idx_option_dim_notes_option ON option_dimension_notes(option_id);
+CREATE INDEX IF NOT EXISTS idx_option_dim_events_note ON option_dimension_events(note_id);
 -- Longitudinal biological explanation: human-authored, source-anchored
 -- context records inside the existing case model, NOT a second ledger.
 -- Explanations are never auto-superseded: competing hypotheses for one
@@ -1284,6 +1329,24 @@ class CaseStore:
     OPTION_REVIEW_ACTIONS = frozenset({"approve", "reject", "abstain", "reconfirm", "withdraw", "expire"})
     TASK_STATUSES = frozenset({"not_started", "in_progress", "done", "blocked", "cancelled"})
     THREAT_KINDS = frozenset({"expiring_window", "dependency_loss", "evidence_withdrawal", "other"})
+    # Portfolio slice: documented reasons that hold an option, and the four
+    # reviewable dimensions. Display-only additions: options without flags or
+    # notes behave exactly as before.
+    OPTION_FLAG_KINDS = frozenset({"objection", "deferred", "reserved"})
+    OPTION_FLAG_RESOLVE_ACTIONS = frozenset({"resolve", "reopen"})
+    OPTION_DIMENSIONS = ("scientific_plausibility", "technical_feasibility",
+                         "access", "clinical_authorization")
+    OPTION_DIMENSION_LABELS = {
+        "scientific_plausibility": "Scientific plausibility",
+        "technical_feasibility": "Technical feasibility",
+        "access": "Access",
+        "clinical_authorization": "Clinical authorization",
+    }
+    PORTFOLIO_DISCLAIMER = (
+        "For discussion only. Every entry is a reviewable record for a clinician, with sources cited. "
+        "This surface states no eligibility, benefit, safety, next step, or authorization. "
+        "Deferred, rejected, and reserved entries are preserved history and are never silently dropped. "
+        "Fictional demo data only.")
     # Imperative clinical language is rejected at proposal time. This is a
     # narrow guard, not a clinical-language classifier: the disclaimer on
     # every view states what the view is not, and human review remains the
@@ -1303,6 +1366,19 @@ class CaseStore:
             raise InvalidInput(f"{field} must not state a clinical recommendation, order, or eligibility claim")
         return text.strip()
 
+    # Portfolio records must never declare eligibility, benefit, or
+    # authorization: they stay reviewable notes for a clinician.
+    _PORTFOLIO_CLAIM_LANGUAGE = re.compile(
+        r"\b(eligib\w*|authori[sz]\w*|benefit\w*)\b", re.IGNORECASE)
+
+    @staticmethod
+    def _check_no_portfolio_claim(text: str, field: str) -> str:
+        cleaned = CaseStore._check_no_clinical_language(text, field)
+        if CaseStore._PORTFOLIO_CLAIM_LANGUAGE.search(cleaned):
+            raise InvalidInput(
+                f"{field} must not declare eligibility, benefit, or authorization; "
+                "record a reviewable note instead")
+        return cleaned
     # ---- Counterevidence and safety-uncertainty surfacing ----
     # New evidence can hold or invalidate a promising option; the reason and
     # its triggering source or evidence assessment are recorded append-only.
@@ -1411,6 +1487,50 @@ class CaseStore:
             WHERE d.option_id=? AND a.relation='contradicts' LIMIT 1""", (option_id,)).fetchone()
         return row is not None
 
+    def _option_has_open_flag(self, option_id: int) -> bool:
+        row = self.db.execute(
+            "SELECT 1 FROM option_flags WHERE option_id=? AND state='open' LIMIT 1",
+            (option_id,)).fetchone()
+        return row is not None
+
+    def _check_portfolio_premise(self, case_id: str, source_version_id: int | None,
+                                 evidence_assessment_id: int | None) -> None:
+        """Zero or one current same-case premise. IDs are pre-checked as
+        positive integers or None by the caller; currency is checked inside
+        the caller's immediate transaction."""
+        if source_version_id is not None and evidence_assessment_id is not None:
+            raise InvalidInput("A portfolio record cites at most one source or evidence premise")
+        if source_version_id is not None:
+            row = self.db.execute("SELECT state FROM source_versions WHERE id=? AND case_id=?",
+                                  (source_version_id, case_id)).fetchone()
+            if not row:
+                raise InvalidInput("Source premise not in this case")
+            if row["state"] != "current":
+                raise InvalidInput("Source premise is not current")
+        if evidence_assessment_id is not None:
+            row = self.db.execute("""SELECT v.state FROM evidence_assessments a
+                JOIN evidence_versions v ON v.id=a.evidence_version_id
+                WHERE a.id=? AND a.case_id=?""",
+                (evidence_assessment_id, case_id)).fetchone()
+            if not row:
+                raise InvalidInput("Evidence premise not in this case")
+            if row["state"] != "current":
+                raise InvalidInput("Evidence premise is not current")
+
+    def _portfolio_premise_text(self, source_version_id: int | None,
+                                evidence_assessment_id: int | None) -> str | None:
+        if source_version_id is not None:
+            src = self.db.execute("SELECT document_id,version,state FROM source_versions WHERE id=?",
+                                  (source_version_id,)).fetchone()
+            return f"{src['document_id']}@{src['version']} ({src['state']})" if src else "missing source"
+        if evidence_assessment_id is not None:
+            asm = self.db.execute("""SELECT a.relation,v.evidence_key,v.version,v.state
+                FROM evidence_assessments a
+                JOIN evidence_versions v ON v.id=a.evidence_version_id WHERE a.id=?""",
+                (evidence_assessment_id,)).fetchone()
+            return (f"{asm['evidence_key']}@{asm['version']} ({asm['state']}) · {asm['relation']}"
+                    if asm else "missing assessment")
+        return None
     def _option_blocked_by_counterevidence(self, option_id: int) -> bool:
         """Any recorded hold or invalidation blocks promotion, permanently.
 
@@ -1480,12 +1600,23 @@ class CaseStore:
             seeded.update(r[0] for r in self.db.execute(
                 f"""SELECT DISTINCT option_id FROM option_dependencies
                 WHERE source_version_id IN ({marks})""", sorted(source_version_ids)).fetchall())
+            # Portfolio slice: an option held for a documented reason anchored
+            # to this source reopens when the reason's premise changes.
+            seeded.update(r[0] for r in self.db.execute(
+                f"""SELECT DISTINCT option_id FROM option_flags
+                WHERE state='open' AND source_version_id IN ({marks})""",
+                sorted(source_version_ids)).fetchall())
         if evidence_version_ids:
             marks = ",".join("?" for _ in evidence_version_ids)
             seeded.update(r[0] for r in self.db.execute(
                 f"""SELECT DISTINCT d.option_id FROM option_dependencies d
                 JOIN evidence_assessments a ON a.id=d.evidence_assessment_id
                 WHERE a.evidence_version_id IN ({marks})""", sorted(evidence_version_ids)).fetchall())
+            seeded.update(r[0] for r in self.db.execute(
+                f"""SELECT DISTINCT f.option_id FROM option_flags f
+                JOIN evidence_assessments a ON a.id=f.evidence_assessment_id
+                WHERE f.state='open' AND a.evidence_version_id IN ({marks})""",
+                sorted(evidence_version_ids)).fetchall())
         # Transitive closure over option->option dependencies.
         changed = set(seeded)
         frontier = set(seeded)
@@ -1569,6 +1700,7 @@ class CaseStore:
                     if (target["review_state"] != "current" or
                         target["operational_status"] in ("rejected", "withdrawn", "expired") or
                         self._option_contradicted(target["id"]) or
+                        self._option_has_open_flag(target["id"]) or
                         self._option_blocked_by_counterevidence(target["id"]) or
                         self._option_safety_block(target["id"]) is not None):
                         raise InvalidInput("Prerequisite option is not current or is held; review its basis first")
@@ -1662,6 +1794,7 @@ class CaseStore:
                 if target["operational_status"] in ("rejected", "withdrawn", "expired"):
                     raise InvalidInput("An option cannot depend on a rejected, withdrawn, or expired option")
                 if (target["review_state"] != "current" or self._option_contradicted(depends_on_option_id)
+                        or self._option_has_open_flag(depends_on_option_id)
                         or self._option_blocked_by_counterevidence(depends_on_option_id)
                         or self._option_safety_block(depends_on_option_id) is not None):
                     raise InvalidInput("Dependent option is not current or is held")
@@ -1956,6 +2089,9 @@ class CaseStore:
                     raise InvalidInput("Option review is not current; reconfirm it after amendment before approval")
                 if self._option_contradicted(option_id):
                     raise InvalidInput("A contradicted option cannot be approved; record a rejection or abstention")
+                if self._option_has_open_flag(option_id):
+                    raise InvalidInput("An option with an open objection, deferral, or reservation "
+                                       "cannot be approved; resolve the recorded reason first")
                 if self._option_blocked_by_counterevidence(option_id):
                     raise InvalidInput("Option is held by recorded counterevidence; create a new proposal instead")
                 safety_block = self._option_safety_block(option_id)
@@ -1985,6 +2121,9 @@ class CaseStore:
                     raise InvalidInput("Replacement snapshot is missing or stale")
                 if self._option_contradicted(option_id):
                     raise InvalidInput("A contradicted option cannot be reconfirmed; record a rejection or abstention")
+                if self._option_has_open_flag(option_id):
+                    raise InvalidInput("An option with an open objection, deferral, or reservation "
+                                       "cannot be reconfirmed; resolve the recorded reason first")
                 if self._option_blocked_by_counterevidence(option_id):
                     raise InvalidInput("Option is held by recorded counterevidence; create a new proposal instead")
                 safety_block = self._option_safety_block(option_id)
@@ -2046,6 +2185,12 @@ class CaseStore:
                 self._option_safety_block(current_id) is not None):
                 unresolved.add("prerequisite requires review or is unavailable")
                 return
+            if self._option_has_open_flag(current_id):
+                # The walk starts at the option itself (path empty), then
+                # follows prerequisites; an open hold abstains either way.
+                unresolved.add("option has an open objection, deferral, or reservation"
+                               if not path else "prerequisite requires review or is unavailable")
+                return
             path = path + [current_id]
             deps = self.db.execute("SELECT * FROM option_dependencies WHERE option_id=? ORDER BY id",
                                    (current_id,)).fetchall()
@@ -2105,6 +2250,10 @@ class CaseStore:
     def option_view(self, case_id: str, snapshot_id: int | None = None) -> dict:
         """Current state with preserved proposal/review associations.
 
+        Open portfolio flags (objections, deferrals, reservations) reframe the
+        display status of proposed/reviewed options as held/deferred/reserved;
+        terminal states are preserved verbatim. Options without flags behave
+        exactly as before.
         A snapshot filter includes original proposals and subsequent review
         associations, so reconfirmation cannot hide an option from its origin.
         This is NOT as-known-at replay: statuses, dependencies and tasks are
@@ -2163,9 +2312,29 @@ class CaseStore:
             held_by_counterevidence = self._option_blocked_by_counterevidence(option_id)
             safety_block = self._option_safety_block(option_id)
             derived_epistemic = "contradicted" if contradicted else option["epistemic_status"]
+            flags = []
+            for flag in self.db.execute("SELECT * FROM option_flags WHERE option_id=? ORDER BY id",
+                                        (option_id,)).fetchall():
+                flag_events = self._dicts(self.db.execute(
+                    "SELECT * FROM option_flag_events WHERE flag_id=? ORDER BY id",
+                    (flag["id"],)).fetchall())
+                flags.append({**dict(flag),
+                              "premise": self._portfolio_premise_text(
+                                  flag["source_version_id"], flag["evidence_assessment_id"]),
+                              "events": flag_events})
+            open_kinds = {item["kind"] for item in flags if item["state"] == "open"}
             display_operational = option["operational_status"]
-            if (contradicted or held_by_counterevidence) and display_operational in ("proposed", "reviewed"):
-                display_operational = "held"
+            # Terminal states are preserved verbatim; holds only reframe
+            # proposed/reviewed options, and only when flags exist.
+            # Counterevidence holds join the hold sources at the same
+            # precedence: deferred, then reserved, then any hold.
+            if display_operational in ("proposed", "reviewed"):
+                if "deferred" in open_kinds:
+                    display_operational = "deferred"
+                elif "reserved" in open_kinds:
+                    display_operational = "reserved"
+                elif contradicted or held_by_counterevidence or "objection" in open_kinds:
+                    display_operational = "held"
             counterevidence = []
             for row in self.db.execute(
                     "SELECT * FROM option_counterevidence WHERE option_id=? ORDER BY id",
@@ -2197,6 +2366,7 @@ class CaseStore:
                 "held_by_counterevidence": held_by_counterevidence,
                 "safety_block": safety_block,
                 "dependencies": deps,
+                "flags": flags,
                 "dependency_loss": task_receipts.derive_dependency_loss(self.db, case_id, option_id),
                 "preparation_tasks": task_rows,
                 "open_task_ids": task_receipt_summary["open_task_ids"],
@@ -2226,6 +2396,308 @@ class CaseStore:
             "receipt_disclaimer": task_receipts.RECEIPT_DISCLAIMER,
             "options": options,
         }
+
+    # ---- Option portfolio: flags, dimension notes, derived view ----
+    def add_option_flag(self, case_id: str, option_id: int, kind: str, label: str,
+                        reason: str, author_label: str,
+                        source_version_id: int | None = None,
+                        evidence_assessment_id: int | None = None) -> int:
+        """Record a documented objection, deferral, or reservation.
+
+        Append-only: the flag and its raise event stay in history; only the
+        open/resolved state changes, through recorded resolve/reopen events.
+        An open flag holds the option: it cannot be approved or reconfirmed
+        until the recorded reason is resolved, and resolving the reason
+        reopens review of the option and its followers.
+        """
+        self._case(case_id)
+        if kind not in self.OPTION_FLAG_KINDS:
+            raise InvalidInput("Invalid option flag kind")
+        label = self._check_no_portfolio_claim(label, "Flag label")
+        if not 1 <= len(label) <= 120:
+            raise InvalidInput("Flag label must have 1–120 characters")
+        reason = self._check_no_portfolio_claim(reason, "Flag reason")
+        if not 10 <= len(reason) <= 500:
+            raise InvalidInput("Flag reason must have 10–500 characters")
+        if not isinstance(author_label, str) or not 2 <= len(author_label.strip()) <= 80:
+            raise InvalidInput("Provide the recorder label for this flag")
+        for value, name in ((source_version_id, "Source premise"),
+                            (evidence_assessment_id, "Evidence premise")):
+            if value is not None and (type(value) is not int or value < 1):
+                raise InvalidInput(f"{name} must be a positive integer")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            option = self._option_row(case_id, option_id)
+            if option["operational_status"] in ("rejected", "withdrawn", "expired"):
+                raise InvalidInput("Preserve the terminal option; record new reasons on a new proposal")
+            if kind in ("deferred", "reserved"):
+                existing = self.db.execute(
+                    """SELECT 1 FROM option_flags WHERE option_id=?
+                    AND kind IN ('deferred','reserved') AND state='open' LIMIT 1""",
+                    (option_id,)).fetchone()
+                if existing:
+                    raise InvalidInput("Resolve the open deferral or reservation before recording another")
+            self._check_portfolio_premise(case_id, source_version_id, evidence_assessment_id)
+            timestamp = now_utc()
+            cur = self.db.execute("""INSERT INTO option_flags
+                (option_id,kind,label,reason,source_version_id,evidence_assessment_id,state,created_at)
+                VALUES (?,?,?,?,?,?,'open',?)""",
+                (option_id, kind, label, reason, source_version_id,
+                 evidence_assessment_id, timestamp))
+            self.db.execute("""INSERT INTO option_flag_events
+                (flag_id,reviewer_label,action,scope,noted_at) VALUES (?,?,?,?,?)""",
+                (cur.lastrowid, author_label.strip(), "raise", reason, timestamp))
+            self._event(case_id, "option_flag_added", option_id=option_id,
+                        flag_id=cur.lastrowid, flag_kind=kind)
+            self._reopen_option_dependents(case_id, option_id, "flag_added")
+            return int(cur.lastrowid)
+
+    def resolve_option_flag(self, case_id: str, flag_id: int, reviewer_label: str,
+                            action: str, scope: str) -> dict:
+        """Resolve or reopen a documented flag. Either way the underlying
+        reason changed, so the option and its followers need re-review.
+        History is preserved: the flag row and every event stay inspectable.
+        """
+        self._case(case_id)
+        if action not in self.OPTION_FLAG_RESOLVE_ACTIONS:
+            raise InvalidInput("Flag action must be resolve or reopen")
+        if not isinstance(reviewer_label, str) or not 2 <= len(reviewer_label.strip()) <= 80:
+            raise InvalidInput("Provide a reviewer label")
+        scope = self._check_no_portfolio_claim(scope, "Flag review scope")
+        if not 10 <= len(scope) <= 300:
+            raise InvalidInput("Flag review scope must have 10–300 characters")
+        if type(flag_id) is not int or flag_id < 1:
+            raise InvalidInput("Invalid flag ID")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            flag = self.db.execute("""SELECT f.*,o.case_id AS option_case FROM option_flags f
+                JOIN options o ON o.id=f.option_id WHERE f.id=?""", (flag_id,)).fetchone()
+            if not flag or flag["option_case"] != case_id:
+                raise InvalidInput("Flag not in this case")
+            if action == "resolve":
+                if flag["state"] != "open":
+                    raise InvalidInput("Flag is already resolved")
+                new_state = "resolved"
+            elif flag["state"] != "resolved":
+                raise InvalidInput("Only a resolved flag can be reopened")
+            else:
+                new_state = "open"
+            self.db.execute("UPDATE option_flags SET state=? WHERE id=?", (new_state, flag_id))
+            cur = self.db.execute("""INSERT INTO option_flag_events
+                (flag_id,reviewer_label,action,scope,noted_at) VALUES (?,?,?,?,?)""",
+                (flag_id, reviewer_label.strip(), action, scope, now_utc()))
+            changed = self._invalidate_options(snapshot_ids=set(), source_version_ids=set(),
+                                               evidence_version_ids=set(),
+                                               option_ids={int(flag["option_id"])})
+            self._event(case_id, "option_flag_" + action, flag_id=flag_id,
+                        option_id=int(flag["option_id"]), invalidated_options=changed)
+            if changed:
+                self._event(case_id, "option_review_reopened", flag_id=flag_id,
+                            reason="flag_" + action, invalidated_options=changed)
+            return {"result": action, "flag_event_id": int(cur.lastrowid),
+                    "invalidated_options": changed}
+
+    def add_option_dimension_note(self, case_id: str, option_id: int, dimension: str,
+                                  note: str, anchor: str, reviewer_label: str,
+                                  source_version_id: int | None = None,
+                                  evidence_assessment_id: int | None = None) -> int:
+        """Record a reviewable note on one of the four portfolio dimensions.
+
+        The note stays pending until a clinician acknowledges it, and an
+        acknowledgment is a record of review — never a declaration of
+        eligibility, benefit, or authorization.
+        """
+        self._case(case_id)
+        if dimension not in self.OPTION_DIMENSIONS:
+            raise InvalidInput("Invalid option dimension")
+        note = self._check_no_portfolio_claim(note, "Dimension note")
+        if not 10 <= len(note) <= 800:
+            raise InvalidInput("Dimension note must have 10–800 characters")
+        anchor = self._check_no_portfolio_claim(anchor, "Dimension anchor")
+        if not 10 <= len(anchor) <= 300:
+            raise InvalidInput("Dimension anchor must have 10–300 characters")
+        if not isinstance(reviewer_label, str) or not 2 <= len(reviewer_label.strip()) <= 80:
+            raise InvalidInput("Provide the recorder label for this note")
+        for value, name in ((source_version_id, "Source premise"),
+                            (evidence_assessment_id, "Evidence premise")):
+            if value is not None and (type(value) is not int or value < 1):
+                raise InvalidInput(f"{name} must be a positive integer")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            option = self._option_row(case_id, option_id)
+            if option["operational_status"] in ("rejected", "withdrawn", "expired"):
+                raise InvalidInput("Preserve the terminal option; record new notes on a new proposal")
+            self._check_portfolio_premise(case_id, source_version_id, evidence_assessment_id)
+            timestamp = now_utc()
+            cur = self.db.execute("""INSERT INTO option_dimension_notes
+                (option_id,dimension,note,anchor,source_version_id,evidence_assessment_id,
+                 reviewer_label,state,created_at)
+                VALUES (?,?,?,?,?,?,?, 'pending',?)""",
+                (option_id, dimension, note, anchor, source_version_id,
+                 evidence_assessment_id, reviewer_label.strip(), timestamp))
+            self.db.execute("""INSERT INTO option_dimension_events
+                (note_id,reviewer_label,action,scope,noted_at) VALUES (?,?,?,?,?)""",
+                (cur.lastrowid, reviewer_label.strip(), "record", anchor, timestamp))
+            self._event(case_id, "option_dimension_recorded", option_id=option_id,
+                        note_id=cur.lastrowid, dimension=dimension)
+            self._reopen_option_dependents(case_id, option_id, "dimension_note_added")
+            return int(cur.lastrowid)
+
+    def acknowledge_option_dimension_note(self, case_id: str, note_id: int,
+                                          reviewer_label: str, scope: str) -> dict:
+        """Acknowledge a dimension note as seen. This records that a reviewer
+        acted; it states no eligibility, benefit, or authorization, and it
+        does not itself review the option."""
+        self._case(case_id)
+        if not isinstance(reviewer_label, str) or not 2 <= len(reviewer_label.strip()) <= 80:
+            raise InvalidInput("Provide a reviewer label")
+        scope = self._check_no_portfolio_claim(scope, "Acknowledgment scope")
+        if not 10 <= len(scope) <= 300:
+            raise InvalidInput("Acknowledgment scope must have 10–300 characters")
+        if type(note_id) is not int or note_id < 1:
+            raise InvalidInput("Invalid dimension note ID")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            note = self.db.execute("""SELECT n.*,o.case_id AS option_case FROM option_dimension_notes n
+                JOIN options o ON o.id=n.option_id WHERE n.id=?""", (note_id,)).fetchone()
+            if not note or note["option_case"] != case_id:
+                raise InvalidInput("Dimension note not in this case")
+            if note["state"] != "pending":
+                raise InvalidInput("Dimension note is already acknowledged")
+            self.db.execute("UPDATE option_dimension_notes SET state='acknowledged' WHERE id=?",
+                            (note_id,))
+            cur = self.db.execute("""INSERT INTO option_dimension_events
+                (note_id,reviewer_label,action,scope,noted_at) VALUES (?,?,?,?,?)""",
+                (note_id, reviewer_label.strip(), "acknowledge", scope, now_utc()))
+            self._event(case_id, "option_dimension_acknowledged",
+                        note_id=note_id, option_id=int(note["option_id"]))
+            return {"result": "acknowledged", "dimension_event_id": int(cur.lastrowid)}
+
+    def _portfolio_readiness(self, option: dict, open_flags: list[dict],
+                             dimensions: dict) -> list[str]:
+        """Plain-language list of what is still missing. Never a declaration
+        of readiness, eligibility, benefit, or authorization."""
+        operational = option["operational_status"]
+        if operational in ("rejected", "withdrawn", "expired"):
+            return [f"Preserved as {operational}. No further review action is recorded."]
+        items = []
+        if option["review_state"] == "needs_review":
+            items.append("Needs another review: its basis changed since the last review.")
+        objections = [item for item in open_flags if item["kind"] == "objection"]
+        if objections:
+            items.append(f"{len(objections)} open objection(s) with a recorded reason.")
+        for item in open_flags:
+            if item["kind"] in ("deferred", "reserved"):
+                items.append(f"Marked {item['kind']}: {item['label']}.")
+        for dimension in self.OPTION_DIMENSIONS:
+            if dimensions[dimension]["state"] != "acknowledged":
+                items.append(f"No acknowledged note on "
+                             f"{self.OPTION_DIMENSION_LABELS[dimension].lower()}.")
+        unfinished = [task for task in option["preparation_tasks"] if task["status"] != "done"]
+        if unfinished:
+            items.append(f"{len(unfinished)} preparation step(s) not finished.")
+        if any(task["status"] != "done" and task["lead_time_days"] is None
+               for task in option["preparation_tasks"]):
+            items.append("Some preparation durations are unknown.")
+        if option["potential_discussion_deadline"]["date"] is None:
+            items.append("Potential discussion timing is unknown; this is not a clinical deadline.")
+        if not items:
+            items.append("No open items recorded. A clinician must still review this record; "
+                         "nothing here states eligibility, benefit, or authorization.")
+        return items
+
+    def _portfolio_triggers(self, option: dict, open_flags: list[dict]) -> list[str]:
+        triggers = []
+        if option["review_state"] == "needs_review":
+            triggers.append("Re-review trigger: the basis changed; record a new review.")
+        if option["snapshot_state"] == "stale":
+            triggers.append("Based on a stale investigation; a new proposal may be needed.")
+        for item in open_flags:
+            triggers.append(f"Open {item['kind']}: {item['label']}.")
+        for threat in option["threats"]:
+            if threat["threat_date"]:
+                triggers.append(f"Threat ({threat['kind']}): {threat['description']} — "
+                                f"{threat['threat_date']} ({threat['threat_basis']}).")
+            else:
+                triggers.append(f"Threat ({threat['kind']}): {threat['description']} — date unknown.")
+        return triggers
+
+    def option_portfolio(self, case_id: str) -> dict:
+        """Derived per-case option portfolio: every option ever proposed, with
+        prerequisites, objections, access notes, readiness, timing, and
+        expiration/review triggers. Read-only projection over the existing
+        ledger plus portfolio records; terminal and held entries stay visible
+        with their recorded reasons, never silently dropped."""
+        self._case(case_id)
+        view = self.option_view(case_id)
+        entries = []
+        for option in view["options"]:
+            option_id = int(option["id"])
+            notes = []
+            for row in self.db.execute(
+                    "SELECT * FROM option_dimension_notes WHERE option_id=? ORDER BY id",
+                    (option_id,)).fetchall():
+                events = self._dicts(self.db.execute(
+                    "SELECT * FROM option_dimension_events WHERE note_id=? ORDER BY id",
+                    (row["id"],)).fetchall())
+                notes.append({**dict(row),
+                              "premise": self._portfolio_premise_text(
+                                  row["source_version_id"], row["evidence_assessment_id"]),
+                              "events": events})
+            dimensions = {}
+            for dimension in self.OPTION_DIMENSIONS:
+                dimension_notes = [item for item in notes if item["dimension"] == dimension]
+                if any(item["state"] == "acknowledged" for item in dimension_notes):
+                    dimension_state = "acknowledged"
+                elif dimension_notes:
+                    dimension_state = "pending"
+                else:
+                    dimension_state = "not_recorded"
+                dimensions[dimension] = {
+                    "label": self.OPTION_DIMENSION_LABELS[dimension],
+                    "state": dimension_state, "notes": dimension_notes}
+            open_flags = [item for item in option["flags"] if item["state"] == "open"]
+            entries.append({
+                "id": option_id,
+                "label": option["label"],
+                "description": option["description"],
+                "portfolio_status": option["display_operational_status"],
+                "operational_status": option["operational_status"],
+                "epistemic_status": option["derived_epistemic_status"],
+                "review_state": option["review_state"],
+                "proposal_snapshot_id": option["proposal_snapshot_id"],
+                "current_snapshot_id": option["snapshot_id"],
+                "snapshot_state": option["snapshot_state"],
+                "prerequisites": [
+                    {"kind": dep["kind"], "target": dep["target"],
+                     "deadline_date": dep["deadline_date"],
+                     "deadline_basis": dep["deadline_basis"],
+                     "lead_time_days": dep["lead_time_days"]}
+                    for dep in option["dependencies"]],
+                "preparation_tasks": option["preparation_tasks"],
+                "objections": {
+                    "open": [item for item in open_flags if item["kind"] == "objection"],
+                    "resolved": [item for item in option["flags"]
+                                 if item["kind"] == "objection" and item["state"] == "resolved"]},
+                "holds": [item for item in open_flags if item["kind"] in ("deferred", "reserved")],
+                "past_holds": [item for item in option["flags"]
+                               if item["kind"] in ("deferred", "reserved")
+                               and item["state"] == "resolved"],
+                "dimensions": dimensions,
+                "readiness": self._portfolio_readiness(option, open_flags, dimensions),
+                "lead_time": option["potential_discussion_deadline"],
+                "triggers": self._portfolio_triggers(option, open_flags),
+                "review_events": option["review_events"],
+                "created_at": option["created_at"],
+            })
+        counts: dict[str, int] = {}
+        for entry in entries:
+            counts[entry["portfolio_status"]] = counts.get(entry["portfolio_status"], 0) + 1
+        return {"case_id": case_id,
+                "projection_mode": "current_state_with_review_history",
+                "disclaimer": self.PORTFOLIO_DISCLAIMER,
+                "counts": counts,
+                "options": entries}
 
     def _invalidate_evidence_version(self, evidence_version_id: int, *, reason: str,
                                      assignee_label: str | None = None,
@@ -3952,6 +4424,8 @@ class CaseStore:
                 # OI-021 derived projection: same ledger, no second state.
                 "options": option_projection["options"],
                 "option_disclaimer": option_projection["disclaimer"],
+                # Portfolio slice: same ledger plus portfolio records, read-only.
+                "portfolio": self.option_portfolio(case_id),
                 "subject_links": self._dicts(self.db.execute(
                     """SELECT l.id,l.case_id,l.source_version_id,v.document_id,v.version,
                     l.declared_subject_id,l.decision,l.decided_at,l.actor_label

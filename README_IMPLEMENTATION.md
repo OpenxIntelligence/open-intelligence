@@ -136,3 +136,33 @@ PYTHONPATH=src python -m open_intelligence serve
 Remaining proof step: a live-server run against the real API with
 the operator key set, before the demo. The API completion itself
 was verified separately on 2026-10-31.
+
+## Option portfolio surface (authored, awaiting reviewer verification)
+
+An evidence-backed portfolio over the existing option ledger. It adds
+append-only records only; no existing table, route, or review contract
+changed meaning:
+
+- `option_flags`: documented objections, deferrals, and reservations, each
+  with a reason, a recorder label, and at most one current same-case source
+  or evidence premise. An open flag holds the option: approval and
+  reconfirmation are refused until the reason is resolved, and resolving or
+  reopening the reason reopens review of the option and its followers. A
+  source amendment or evidence withdrawal also reopens options whose open
+  flags cite the changed premise.
+- `option_dimension_notes`: reviewable notes on the four portfolio
+  dimensions — scientific plausibility, technical feasibility, access,
+  clinical authorization. Each note carries an anchor, an optional premise,
+  and stays `pending` until a clinician acknowledges it. Acknowledgment is a
+  record of review, never a declaration of eligibility, benefit, or
+  authorization; author-controlled text making such claims is rejected.
+- `GET /api/cases/{case}/portfolio` (also embedded in case state) projects
+  every option ever proposed: prerequisites, objections, access notes,
+  readiness, lead-time uncertainty, and expiration/review triggers.
+  Deferred, rejected, and reserved entries stay visible with their reasons
+  and counts; nothing is silently dropped.
+- The case workspace renders this as an "Option portfolio" section linked
+  from the case navigation, in plain language with fictional labels.
+- Tests: `tests/test_option_portfolio.py` (store behavior plus HTTP route
+  coverage through the existing live-server pattern), including the held
+  reason-change review flow and rejected-entry preservation.
