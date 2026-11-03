@@ -13,7 +13,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from open_intelligence import CaseStore, InvalidInput
-from open_intelligence.__main__ import Handler, seed
+from open_intelligence.__main__ import FICTIONAL_ACTOR_HEADER, Handler, seed
 from open_intelligence.mission import build_patient_mission
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -234,7 +234,9 @@ class PatientGoalsHttpTests(unittest.TestCase):
         cls.tmp.cleanup()
 
     def request(self, path, data=None):
-        headers = {"Content-Type": "application/json"} if data is not None else {}
+        headers = {FICTIONAL_ACTOR_HEADER: "FICTIONAL-NAVIGATOR-A"}
+        if data is not None:
+            headers["Content-Type"] = "application/json"
         req = Request(f"http://127.0.0.1:{self.port}{path}",
                       data=None if data is None else json.dumps(data).encode(),
                       headers=headers)

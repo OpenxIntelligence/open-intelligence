@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
   <script src="/mission.js" defer></script>
+  <script src="/report.js" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main-content">Skip to case workspace</a>
@@ -27,24 +28,38 @@
       <label for="case-picker">Case</label>
       <select id="case-picker" aria-label="Select synthetic case"></select>
       <p class="muted tiny">Fictional case data stays on this local machine. There is no identity verification or patient login.</p>
+      <div class="actor-block">
+        <label for="actor-input">Fictional actor</label>
+        <input id="actor-input" type="text" value="FICTIONAL-NAVIGATOR-A" maxlength="40" spellcheck="false" autocomplete="off">
+        <button id="actor-apply" type="button" class="button secondary minor">Apply actor</button>
+        <p id="actor-status" class="muted tiny">Acting as FICTIONAL-NAVIGATOR-A (fictional grant only — not identity verification).</p>
+      </div>
       <details class="section-menu" open>
         <summary>Navigate</summary>
         <nav id="workspace-nav" aria-label="Workspace sections">
           <a href="#overview">Case overview</a>
+          <a href="#journey">Guided journey</a>
           <a href="#incoming-board">Incoming board</a>
           <a href="#patient-view">Patient view</a>
           <a href="#patient-mission">Patient Mission</a>
           <a href="#patient-goals">Patient goals</a>
+          <a href="#patient-report">Plain-language report</a>
           <a href="#assertions">Reported findings</a>
           <a href="#timeline">Timeline</a>
           <a href="#investigations">Investigation</a>
+          <a href="#synthesis">Claim synthesis</a>
+          <a href="#scoped-review">Scoped review</a>
           <a href="#sources">Sources and findings</a>
+          <a href="#biological-explanation">Biological explanation</a>
           <a href="#evidence">Evidence review</a>
           <a href="#bibliography">Bibliography</a>
           <a href="#import">Updates</a>
           <a href="#activity">Activity</a>
           <a href="#changes-since-review">What changed</a>
+          <a href="#re-review-tasks">Re-review tasks</a>
           <a href="#options">Options &amp; dependencies</a>
+          <a href="#portfolio">Option portfolio</a>
+          <a href="#synthetic-metrics">Fixture metrics</a>
         </nav>
       </details>
       <div class="side-bottom">
@@ -95,6 +110,63 @@
           </section>
         </aside>
       </div>
+      <section class="panel panel-journey" id="journey" aria-labelledby="journey-heading">
+        <div class="panel-head">
+          <div><div class="eyebrow">GUIDED JOURNEY · SIX STEPS OVER ONE SHARED RECORD</div><h2 id="journey-heading">Follow the case from first record to follow-through</h2></div>
+          <span class="pill pill-warn">FICTIONAL DEMO DATA — not a real patient</span>
+        </div>
+        <p class="muted">These six steps link the existing parts of this workspace in the sequence a fictional case usually passes through. Each step opens a part that already exists below — nothing here is a second copy, and an empty step means nothing has been entered yet, not that the case is complete. Keeping records here is descriptive only: it is not medical advice and not clinical software.</p>
+        <div class="journey-grid">
+          <article class="journey-step">
+            <div class="eyebrow">STEP 1 OF 6 · INTAKE</div>
+            <h3>Add records</h3>
+            <p class="muted">This step is where new fictional reports arrive in the case. It is not a check on whether the reports are complete or correct.</p>
+            <p class="muted tiny"><span id="journey-intake-pill" class="pill pill-neutral">Loading…</span></p>
+            <p id="journey-intake-status" class="muted" role="status">Loading fictional counts…</p>
+            <a class="button secondary" href="#import">Open intake</a>
+          </article>
+          <article class="journey-step">
+            <div class="eyebrow">STEP 2 OF 6 · SOURCES</div>
+            <h3>Read what the reports say</h3>
+            <p class="muted">This step is the shelf of recorded reports, read version by version. It is not a summary, and it holds no reading of what the reports mean.</p>
+            <p class="muted tiny"><span id="journey-sources-pill" class="pill pill-neutral">Loading…</span></p>
+            <p id="journey-sources-status" class="muted" role="status">Loading fictional counts…</p>
+            <a class="button secondary" href="#sources">Open sources</a>
+          </article>
+          <article class="journey-step">
+            <div class="eyebrow">STEP 3 OF 6 · QUESTIONS</div>
+            <h3>List what stays unresolved</h3>
+            <p class="muted">This step is the shared list of what stays unresolved. It is not a set of answers, and it makes no care choices.</p>
+            <p class="muted tiny"><span id="journey-questions-pill" class="pill pill-neutral">Loading…</span></p>
+            <p id="journey-questions-status" class="muted" role="status">Loading fictional counts…</p>
+            <a class="button secondary" href="#investigations">Open questions</a>
+          </article>
+          <article class="journey-step">
+            <div class="eyebrow">STEP 4 OF 6 · REVIEW</div>
+            <h3>Re-check after changes</h3>
+            <p class="muted">This step is where changed sources flag the drafts that cited them, so a person can take another look. It is not clinical sign-off: a demo acknowledgment is not credentialed review.</p>
+            <p class="muted tiny"><span id="journey-review-pill" class="pill pill-neutral">Loading…</span></p>
+            <p id="journey-review-status" class="muted" role="status">Loading fictional counts…</p>
+            <a class="button secondary" href="#changes-since-review">Open review</a>
+          </article>
+          <article class="journey-step">
+            <div class="eyebrow">STEP 5 OF 6 · REPORT</div>
+            <h3>Keep dated drafts</h3>
+            <p class="muted">This step is the set of dated drafts, each pinned to the exact source versions it used. It is not a validated conclusion, and a draft can turn stale when a source changes.</p>
+            <p class="muted tiny"><span id="journey-report-pill" class="pill pill-neutral">Loading…</span></p>
+            <p id="journey-report-status" class="muted" role="status">Loading fictional counts…</p>
+            <a class="button secondary" href="#investigation-history-heading">Open drafts</a>
+          </article>
+          <article class="journey-step">
+            <div class="eyebrow">STEP 6 OF 6 · FOLLOW-THROUGH</div>
+            <h3>Track discussion items</h3>
+            <p class="muted">This step is the list of discussion items with named owners and dependencies. It is not a set of care instructions, and it places no clinical label on the case.</p>
+            <p class="muted tiny"><span id="journey-followthrough-pill" class="pill pill-neutral">Loading…</span></p>
+            <p id="journey-followthrough-status" class="muted" role="status">Loading fictional counts…</p>
+            <a class="button secondary" href="#options">Open discussion items</a>
+          </article>
+        </div>
+      </section>
       <div id="notice" role="status" aria-live="polite" class="notice" hidden></div>
       <section class="panel" id="incoming-board">
         <div class="panel-head"><div><div class="eyebrow">00 / WORKLIST</div><h2>Incoming board</h2></div><span class="pill pill-warn">FICTIONAL DEMO CASES ONLY</span></div>
@@ -108,6 +180,7 @@
         <div class="subhead">What the records say</div><div id="patient-findings" class="findings"></div>
         <div class="subhead">Questions still open</div><div id="patient-questions" class="questions"></div>
         <div class="subhead">What is not certain yet</div><div id="patient-uncertainty" class="questions"></div>
+        <p><a class="button secondary" href="#patient-report">Open the printable plain-language report</a></p>
       </section>
 
       <section class="panel" id="patient-mission" aria-labelledby="patient-mission-title">
@@ -193,6 +266,16 @@
           <input id="amend-note-noted-date" type="date" required>
           <button class="button secondary" type="submit">Save changed version (keeps the earlier wording)</button>
         </form>
+      <section class="panel" id="patient-report" aria-labelledby="patient-report-title">
+        <div class="panel-head"><div><div class="eyebrow">PATIENT REPORT · READ-ONLY · PRINTABLE</div><h2 id="patient-report-title">Plain-language case report</h2></div><span class="pill pill-warn">FICTIONAL DEMO — not a real patient</span></div>
+        <p class="muted"><strong>Fictional demo report. This is not a real patient file, not clinical advice, and not reviewed by a clinician.</strong> <span id="report-reading-note"></span></p>
+        <p id="report-meta" class="muted tiny" role="status" aria-live="polite">Loading the plain-language report…</p>
+        <div class="report-actions">
+          <button id="report-print" class="button secondary" type="button">Print this report</button>
+          <a id="report-text-link" class="button secondary" href="#">Download plain text</a>
+        </div>
+        <div id="report-sections" class="report-sections" aria-live="polite"></div>
+        <p class="muted tiny">Fictional demo report. This is not a real patient file, not clinical advice, and not reviewed by a clinician.</p>
       </section>
 
       <section class="panel panel-timeline" id="timeline">
@@ -234,9 +317,35 @@
             <form id="question-form">
               <label for="question-text">New question</label>
               <textarea id="question-text" rows="2" maxlength="500" required placeholder="Which findings need reconciliation before the next review?"></textarea>
+              <label for="question-owner">Owner label (optional, fictional attribution only)</label>
+              <input id="question-owner" type="text" maxlength="80" placeholder="FICTIONAL-NAVIGATOR-A">
               <button type="submit" class="button">Add question</button>
             </form>
             <div id="question-list" class="questions"></div>
+            <div class="subhead">Question ownership and follow-up</div>
+            <p class="muted tiny">Owner labels are fictional attribution, never authorization. Triage is a manual sorting marker; it never replaces the open/addressed state.</p>
+            <form id="question-owner-form">
+              <label for="owner-question-choice">Question</label><select id="owner-question-choice"></select>
+              <label for="owner-label-input">Owner label</label><input id="owner-label-input" type="text" maxlength="80" required placeholder="FICTIONAL-NAVIGATOR-A">
+              <button type="submit" class="button secondary">Assign owner</button>
+            </form>
+            <form id="question-triage-form">
+              <label for="triage-question-choice">Question</label><select id="triage-question-choice"></select>
+              <label for="triage-value">Follow-up marker</label>
+              <select id="triage-value"><option value="unsorted">Unsorted</option><option value="owned">Owned</option><option value="awaiting_evidence">Awaiting evidence</option><option value="ready_for_review">Ready for review</option></select>
+              <button type="submit" class="button secondary">Set marker</button>
+            </form>
+            <form id="question-note-form">
+              <label for="note-question-choice">Question</label><select id="note-question-choice"></select>
+              <label for="note-text">Needed-evidence note (human-authored, kept as versions)</label>
+              <textarea id="note-text" rows="2" minlength="15" maxlength="800" required placeholder="Describe what evidence is still needed for this question."></textarea>
+              <button type="submit" class="button secondary">Append note</button>
+            </form>
+            <div class="subhead">Per-question gap rollup</div>
+            <p class="muted tiny">Read-only listing of unresolved source items with anchors, bound snapshots, notes, and owner history. Order is mechanical, never a ranking.</p>
+            <label for="rollup-question-choice">Question</label><select id="rollup-question-choice"></select>
+            <button id="rollup-button" type="button" class="button secondary">Show rollup</button>
+            <div id="question-rollup" class="questions"></div>
           </section>
 
           <section class="investigation-pane draft-pane" aria-labelledby="draft-pane-heading">
@@ -279,6 +388,62 @@
         </section>
       </section>
 
+      <section class="panel" id="synthesis" aria-labelledby="synthesis-heading">
+        <div class="panel-head"><div><div class="eyebrow">SYNTHESIS · SUPPORT AND CONTRADICT SIDE BY SIDE</div><h2 id="synthesis-heading">Claim synthesis and bounded reports</h2></div><span class="pill pill-warn">FICTIONAL DEMO DATA — not a real patient</span></div>
+        <p class="muted">Each question's human-entered assessments and rights-gated links are grouped by their relation label: supporting, contradicting, context, and unknown or limited. Supporting and contradicting items stay side by side and are never merged into one verdict. Limitation notes are human-entered; this surface computes no quality number. A report whose basis changed is marked REVIEW-PENDING and reads as history.</p>
+        <div class="subhead">Per-question synthesis</div>
+        <label for="synthesis-question-choice">Question</label><select id="synthesis-question-choice"></select>
+        <div id="synthesis-groups" class="snapshots" aria-live="polite"></div>
+        <div class="subhead">Bounded source-linked report</div>
+        <label for="synthesis-snapshot-choice">Investigation snapshot</label><select id="synthesis-snapshot-choice"></select>
+        <div class="actions">
+          <button type="button" id="synthesis-report-button" class="button secondary">View workspace report</button>
+          <button type="button" id="synthesis-patient-report-button" class="button secondary">View plain-words report</button>
+        </div>
+        <div id="synthesis-report-meta" class="questions" aria-live="polite"></div>
+        <div class="subhead">Add a human-entered limitation note</div>
+        <form id="synthesis-note-form">
+          <label for="synthesis-note-question">Question</label><select id="synthesis-note-question" required></select>
+          <label for="synthesis-note-target-kind">Note target</label><select id="synthesis-note-target-kind"><option value="assessment">Evidence assessment</option><option value="broker_link">Rights-gated link</option></select>
+          <label for="synthesis-note-target">Target record</label><select id="synthesis-note-target" required></select>
+          <label for="synthesis-note-text">Limitation note (human-authored, 15–800 characters)</label><textarea id="synthesis-note-text" rows="2" minlength="15" maxlength="800" required placeholder="Record what limits this item, in plain descriptive words."></textarea>
+          <label for="synthesis-note-author">Author label</label><input id="synthesis-note-author" type="text" maxlength="80" required placeholder="Synthetic reviewer (unverified)">
+          <button class="button" type="submit">Record limitation note</button>
+        </form>
+      </section>
+      <section class="panel" id="scoped-review" aria-labelledby="scoped-review-heading">
+        <div class="panel-head">
+          <div><div class="eyebrow">SCOPED REVIEW · RECORD-STATE NOTES</div><h2 id="scoped-review-heading">Scoped review: what was looked at</h2></div>
+          <span class="pill pill-neutral">FICTIONAL REVIEWERS ONLY</span>
+        </div>
+        <p class="muted">Extraction notes (the source says what is recorded) stay separate from interpretation notes (a stated reading was noted). Notes describe record states only — not credential verification, not a clinical sign-off, and not a treatment decision. Disagreements stay visible beside the noted view; handoffs carry history forward without rewriting it.</p>
+        <div class="subhead">Review scope per investigation</div><div id="scoped-review-list" class="snapshots" aria-live="polite"></div>
+        <div class="subhead">Record a scope note</div>
+        <form id="scoped-decision-form">
+          <label for="scoped-decision-snapshot">Investigation</label><select id="scoped-decision-snapshot" required></select>
+          <label for="scoped-decision-reviewer">Reviewer label (fictional, unverified)</label><input id="scoped-decision-reviewer" type="text" maxlength="80" required placeholder="FICTIONAL-REVIEWER-B">
+          <label for="scoped-decision-scope">Scope</label>
+          <select id="scoped-decision-scope"><option value="extraction_accepted">Extraction recorded as matching the source</option><option value="interpretation_endorsed">Interpretation noted (a stated reading)</option><option value="left_open">Left open (explicitly unresolved)</option></select>
+          <label for="scoped-decision-note">Note (10–600 characters)</label><textarea id="scoped-decision-note" rows="2" minlength="10" maxlength="600" required placeholder="What was checked against which source version."></textarea>
+          <button class="button" type="submit">Record scope note</button>
+        </form>
+        <div class="subhead">Record a disagreement on one finding</div>
+        <form id="scoped-dissent-form">
+          <label for="scoped-dissent-snapshot">Investigation</label><select id="scoped-dissent-snapshot" required></select>
+          <label for="scoped-dissent-reviewer">Reviewer label (fictional, unverified)</label><input id="scoped-dissent-reviewer" type="text" maxlength="80" required placeholder="FICTIONAL-REVIEWER-C">
+          <label for="scoped-dissent-claim">Finding key (one claim from the investigation basis)</label><input id="scoped-dissent-claim" type="text" maxlength="60" required placeholder="marker-a">
+          <label for="scoped-dissent-rationale">Rationale (10–600 characters)</label><textarea id="scoped-dissent-rationale" rows="2" minlength="10" maxlength="600" required placeholder="What differs in this reading, and why."></textarea>
+          <button class="button" type="submit">Record disagreement</button>
+        </form>
+        <div class="subhead">Hand open items to another reviewer</div>
+        <form id="scoped-handoff-form">
+          <label for="scoped-handoff-snapshot">Investigation</label><select id="scoped-handoff-snapshot" required></select>
+          <label for="scoped-handoff-from">From reviewer label</label><input id="scoped-handoff-from" type="text" maxlength="80" required placeholder="FICTIONAL-REVIEWER-B">
+          <label for="scoped-handoff-to">To reviewer label</label><input id="scoped-handoff-to" type="text" maxlength="80" required placeholder="FICTIONAL-REVIEWER-C">
+          <button class="button" type="submit">Record handoff</button>
+        </form>
+      </section>
+
       <div class="workspace">
         <div class="content-left">
           <section class="panel" id="sources">
@@ -288,6 +453,45 @@
           <section class="panel" id="biological-assets">
             <div class="panel-head"><div><div class="eyebrow">03 / BIOLOGICAL ASSETS</div><h2>Biological-asset provenance</h2></div><span class="muted tiny">Synthetic only · no files stored · no release or shipment</span></div>
             <div id="asset-list" class="findings"></div>
+          </section>
+          <section class="panel" id="biological-explanation">
+            <div class="panel-head"><div><div class="eyebrow">03b / BIOLOGICAL EXPLANATION</div><h2>Biological explanation</h2></div><span class="pill pill-warn">FICTIONAL CONTEXT ONLY</span></div>
+            <p class="muted">Human-authored context records linking one question to a fictional episode, specimen, lesion, assay, reference, and time point — not a mutation list. Competing explanations stay side by side. Nothing here states staging, grading, variant meaning, or response; this fictional demo is not clinical software and supports no treatment decision.</p>
+            <div id="bio-explanation-list" class="findings"></div>
+            <h3 class="subhead">Propose an explanation</h3>
+            <form id="bio-explanation-form">
+              <label for="bio-question-choice">Question</label><select id="bio-question-choice" required></select>
+              <label for="bio-label">Label (plain words, fictional)</label><input id="bio-label" type="text" maxlength="120" required placeholder="Fictional mechanism A">
+              <label for="bio-mechanism">Mechanism outline (plain words; no staging, grading, or response claims)</label><textarea id="bio-mechanism" rows="3" minlength="10" maxlength="1000" required placeholder="Fictional outline of what the cells might show; no interpretation."></textarea>
+              <label for="bio-episode">Episode ID</label><input id="bio-episode" type="text" maxlength="40" required placeholder="EPISODE-A">
+              <label for="bio-specimen-state">Specimen</label>
+              <select id="bio-specimen-state"><option value="unknown">Unknown (explicit — not absent)</option><option value="recorded">Recorded specimen below</option></select>
+              <label for="bio-specimen-id">Specimen ID (only when recorded)</label><input id="bio-specimen-id" type="text" maxlength="40" placeholder="BIOPSY-ALPHA">
+              <label for="bio-lesion-state">Lesion</label>
+              <select id="bio-lesion-state"><option value="unknown">Unknown (explicit — not absent)</option><option value="recorded">Recorded lesion below</option></select>
+              <label for="bio-lesion-id">Lesion ID (only when recorded)</label><input id="bio-lesion-id" type="text" maxlength="40" placeholder="LESION-A">
+              <label for="bio-clinical-state">Clinical time point</label>
+              <select id="bio-clinical-state"><option value="unknown">Unknown (explicit — not absent)</option><option value="known">Known label below</option></select>
+              <label for="bio-clinical-value">Time-point label (only when known)</label><input id="bio-clinical-value" type="text" maxlength="120" placeholder="Fictional baseline time point T0">
+              <label for="bio-source-choice">Anchored source version</label><select id="bio-source-choice" required></select>
+              <button class="button" type="submit">Propose explanation</button>
+            </form>
+            <h3 class="subhead">Record an assay observation</h3>
+            <form id="bio-assay-form">
+              <label for="bio-assay-explanation-choice">Explanation</label><select id="bio-assay-explanation-choice" required></select>
+              <label for="bio-method">Assay method (fictional name)</label><input id="bio-method" type="text" maxlength="120" required placeholder="Fictional Assay Panel FAP-7">
+              <label for="bio-result-note">Result note (plain words; no interpretation)</label><textarea id="bio-result-note" rows="2" minlength="10" maxlength="500" required placeholder="Fictional signal pattern noted; no interpretation recorded."></textarea>
+              <label for="bio-assay-source-choice">Anchored source version</label><select id="bio-assay-source-choice" required></select>
+              <label for="bio-block-state">Tissue block</label>
+              <select id="bio-block-state"><option value="unknown">Unknown (explicit — never pooled)</option><option value="recorded">Recorded block below (exactly one)</option></select>
+              <label for="bio-block-choice">Tissue block (physical blocks only; same episode required)</label><select id="bio-block-choice"></select>
+              <label for="bio-control-state">Matched control</label>
+              <select id="bio-control-state"><option value="unknown">Unknown (explicit — not absent)</option><option value="recorded">Recorded specimen below</option><option value="missing">Missing — identified as missing</option></select>
+              <label for="bio-control-specimen">Matched-control specimen (only when recorded)</label><input id="bio-control-specimen" type="text" maxlength="40" placeholder="NORMAL-ALPHA">
+              <label for="bio-reference-kind">Reference kind</label>
+              <select id="bio-reference-kind"><option value="unknown">Unknown (explicit — not absent)</option><option value="patient_normal">Patient's own normal tissue</option><option value="external_population">External reference population (not this patient)</option></select>
+              <button class="button" type="submit">Record assay observation</button>
+            </form>
           </section>
           <section class="panel" id="activity">
             <div class="panel-head"><h2>Recent activity</h2></div>
@@ -388,6 +592,32 @@
               <label for="threat-anchor">Anchor for a sourced threat date (10–300 characters)</label><textarea id="threat-anchor" rows="2" maxlength="300"></textarea>
               <button class="button" type="submit">Add threat</button>
             </form>
+            <div class="subhead">Record counterevidence (hold or invalidate)</div>
+            <p class="muted tiny">Fictional demo only. When new evidence arrives, record here whether it holds or invalidates an option. The reason and its triggering source or evidence note are kept as history. A held or invalidated option cannot be promoted; a new proposal is the only path forward.</p>
+            <form id="option-counterevidence-form">
+              <label for="counterevidence-option-choice">Option</label><select id="counterevidence-option-choice" required></select>
+              <label for="counterevidence-effect">Effect</label>
+              <select id="counterevidence-effect"><option value="hold">Hold — new evidence argues against this option</option><option value="invalidate">Invalidate — new evidence reopens review of this option</option></select>
+              <label for="counterevidence-reason">Reason in plain words (10–600 characters)</label><textarea id="counterevidence-reason" rows="2" minlength="10" maxlength="600" required placeholder="What the new fictional evidence shows, and why this option is held or invalidated."></textarea>
+              <label for="counterevidence-trigger-kind">Triggering evidence kind</label>
+              <select id="counterevidence-trigger-kind"><option value="source">Source version</option><option value="evidence_assessment">Evidence assessment</option></select>
+              <label for="counterevidence-source-choice">Triggering source version</label><select id="counterevidence-source-choice"></select>
+              <label for="counterevidence-assessment-choice">Triggering evidence assessment</label><select id="counterevidence-assessment-choice"></select>
+              <button class="button" type="submit">Record counterevidence</button>
+            </form>
+            <div class="subhead">Record safety uncertainty</div>
+            <p class="muted tiny">Fictional demo only. Safety uncertainty stays visible before any option is promoted. Tumor expression alone or tracer uptake alone never establishes benefit or toxicity. Preclinical notes are labeled preclinical only — never an observed patient response and never permission to administer.</p>
+            <form id="option-safety-form">
+              <label for="safety-option-choice">Option</label><select id="safety-option-choice" required></select>
+              <label for="safety-category">Uncertainty kind</label>
+              <select id="safety-category"><option value="expression_only">Tumor expression alone (does not establish benefit or toxicity)</option><option value="tracer_only">Tracer uptake alone (does not establish benefit or toxicity)</option><option value="preclinical_only">Preclinical only (not a patient response; not permission to administer)</option><option value="cross_modal_gap">Cross-modal gap (safety question across sources)</option><option value="other">Other safety uncertainty</option></select>
+              <label for="safety-detail">Detail in plain words (10–600 characters)</label><textarea id="safety-detail" rows="2" minlength="10" maxlength="600" required placeholder="What is uncertain, in plain words. Do not state benefit, toxicity, patient response, permission, or dosing."></textarea>
+              <label for="safety-trigger-kind">Triggering evidence (optional)</label>
+              <select id="safety-trigger-kind"><option value="none">None — general uncertainty</option><option value="source">Source version</option><option value="evidence_assessment">Evidence assessment</option></select>
+              <label for="safety-source-choice">Triggering source version</label><select id="safety-source-choice"></select>
+              <label for="safety-assessment-choice">Triggering evidence assessment</label><select id="safety-assessment-choice"></select>
+              <button class="button" type="submit">Record safety uncertainty</button>
+            </form>
             <div class="subhead">Record a reviewer action</div>
             <form id="option-review-form">
               <label for="review-option-choice">Option</label><select id="review-option-choice" required></select>
@@ -430,6 +660,54 @@
         </div>
       </div>
 
+      <section class="panel" id="portfolio" aria-labelledby="portfolio-heading">
+        <div class="panel-head"><div><div class="eyebrow">PORTFOLIO · DERIVED VIEW</div><h2 id="portfolio-heading">Option portfolio</h2></div><span class="pill pill-warn">FICTIONAL DEMO DATA — not a real patient</span></div>
+        <p class="muted">Every option ever proposed for this fictional case, in plain words: what it needs, what stands against it, what is recorded about access, what is still missing, and what would trigger another review. Deferred, rejected, and reserved options stay visible here with their recorded reasons — they are never silently dropped.</p>
+        <p class="muted"><strong>Reviewable records for a clinician, with sources cited.</strong> This surface states no eligibility, benefit, safety, next step, or authorization. A hypothesis stays a hypothesis; a note stays pending until a clinician acts.</p>
+        <p class="muted tiny" id="portfolio-disclaimer"></p>
+        <div class="subhead">Portfolio entries</div><div id="portfolio-list" class="snapshots"></div>
+        <div class="subhead">Record an objection, deferral, or reservation</div>
+        <form id="portfolio-flag-form">
+          <label for="flag-option-choice">Option</label><select id="flag-option-choice" required></select>
+          <label for="flag-kind">Kind</label>
+          <select id="flag-kind"><option value="objection">Objection (a documented reason to hold)</option><option value="deferred">Deferred (set aside for now, with a reason)</option><option value="reserved">Reserved (kept in reserve, with a reason)</option></select>
+          <label for="flag-label">Short label</label><input id="flag-label" type="text" maxlength="120" required placeholder="Fictional reason label">
+          <label for="flag-reason">Documented reason (no eligibility, benefit, or authorization claims)</label><textarea id="flag-reason" rows="3" minlength="10" maxlength="500" required placeholder="Why this option is held, in plain words, with its uncertainty."></textarea>
+          <label for="flag-source-choice">Source premise (optional, at most one premise)</label><select id="flag-source-choice"></select>
+          <label for="flag-assessment-choice">Evidence premise (optional, at most one premise)</label><select id="flag-assessment-choice"></select>
+          <label for="flag-author">Recorder label</label><input id="flag-author" type="text" maxlength="80" required placeholder="Synthetic recorder (unverified)">
+          <button class="button" type="submit">Record flag</button>
+        </form>
+        <div class="subhead">Resolve or reopen a recorded flag</div>
+        <form id="portfolio-flag-resolve-form">
+          <label for="flag-resolve-choice">Flag</label><select id="flag-resolve-choice" required></select>
+          <label for="flag-resolve-reviewer">Reviewer label</label><input id="flag-resolve-reviewer" type="text" maxlength="80" required placeholder="Synthetic reviewer (unverified)">
+          <label for="flag-resolve-action">Action</label>
+          <select id="flag-resolve-action"><option value="resolve">Resolve (the reason changed; reopens review)</option><option value="reopen">Reopen (the reason applies again; reopens review)</option></select>
+          <label for="flag-resolve-scope">Scope</label><textarea id="flag-resolve-scope" rows="2" minlength="10" maxlength="300" required placeholder="What changed, in plain words."></textarea>
+          <button class="button" type="submit">Record flag decision</button>
+        </form>
+        <div class="subhead">Record a dimension note (stays pending until acknowledged)</div>
+        <form id="portfolio-dimension-form">
+          <label for="dimension-option-choice">Option</label><select id="dimension-option-choice" required></select>
+          <label for="dimension-kind">Dimension</label>
+          <select id="dimension-kind"><option value="scientific_plausibility">Scientific plausibility</option><option value="technical_feasibility">Technical feasibility</option><option value="access">Access</option><option value="clinical_authorization">Clinical authorization (record only — never granted here)</option></select>
+          <label for="dimension-note">Note (no eligibility, benefit, or authorization claims)</label><textarea id="dimension-note" rows="3" minlength="10" maxlength="800" required placeholder="What a reviewer recorded about this dimension, with its uncertainty."></textarea>
+          <label for="dimension-anchor">Anchor: which source says so, or why it is unknown</label><textarea id="dimension-anchor" rows="2" minlength="10" maxlength="300" required placeholder="Name the source version or evidence item, or state what is unknown."></textarea>
+          <label for="dimension-source-choice">Source premise (optional, at most one premise)</label><select id="dimension-source-choice"></select>
+          <label for="dimension-assessment-choice">Evidence premise (optional, at most one premise)</label><select id="dimension-assessment-choice"></select>
+          <label for="dimension-recorder">Recorder label</label><input id="dimension-recorder" type="text" maxlength="80" required placeholder="Synthetic recorder (unverified)">
+          <button class="button" type="submit">Record dimension note</button>
+        </form>
+        <div class="subhead">Acknowledge a dimension note (seen, not authorized)</div>
+        <form id="portfolio-dimension-ack-form">
+          <label for="dimension-ack-choice">Pending note</label><select id="dimension-ack-choice" required></select>
+          <label for="dimension-ack-reviewer">Reviewer label</label><input id="dimension-ack-reviewer" type="text" maxlength="80" required placeholder="Synthetic reviewer (unverified)">
+          <label for="dimension-ack-scope">Scope</label><textarea id="dimension-ack-scope" rows="2" minlength="10" maxlength="300" required placeholder="What this acknowledgment covers, in plain words."></textarea>
+          <button class="button" type="submit">Acknowledge note</button>
+        </form>
+      </section>
+
       <section class="panel" id="changes-since-review" aria-labelledby="changes-heading">
         <div class="panel-head"><div><div class="eyebrow">REVIEW · WHAT CHANGED</div><h2 id="changes-heading">What changed since last review</h2></div><span class="pill pill-warn">FICTIONAL DEMO DATA — not a real patient</span></div>
         <p class="muted">The anchor is the latest demo-review acknowledgment, or case creation when nothing has been acknowledged yet. Listed below are the ledger facts recorded after that anchor: new source documents, amended versions with a mechanical finding-key comparison, saved investigations marked stale with their recorded cause, and newly created questions. This listing reports ledger entries only and does not interpret clinical meaning, significance, or relevance.</p>
@@ -439,6 +717,29 @@
         <div class="subhead">Amendments since the anchor</div><div id="changes-amendments" class="cards" aria-live="polite"></div>
         <div class="subhead">Stale investigations with cause</div><div id="changes-stale" class="snapshots" aria-live="polite"></div>
         <div class="subhead">New questions since the anchor</div><div id="changes-questions" class="questions" aria-live="polite"></div>
+      </section>
+
+      <section class="panel" id="synthetic-metrics" aria-labelledby="metrics-heading">
+        <div class="panel-head"><div><div class="eyebrow">WORKFLOW COUNTS · SYNTHETIC FIXTURES</div><h2 id="metrics-heading">Synthetic fixture metrics</h2></div><span class="pill pill-warn">SYNTHETIC FIXTURES ONLY — NON-TRANSFERABLE</span></div>
+        <p class="muted">Descriptive counts computed from the fictional fixture ledger: corrections, stale-item lag, abstentions, guard drops, and invalidated-vs-untouched items. These counts describe the synthetic fixtures only and do not describe real-case or clinical performance. Name dev cases and held-out cases explicitly; the two sets are reported separately with no shared counts.</p>
+        <p class="muted tiny" id="metrics-disclaimer">Synthetic fixtures only. Non-transferable: success on fixtures does not imply real-case performance. Metric computation calls no model and writes no proposal or ledger row.</p>
+        <form id="metrics-form">
+          <label for="metrics-dev-input">Dev case ids (comma-separated)</label>
+          <input id="metrics-dev-input" type="text" spellcheck="false" placeholder="CASE-ALPHA">
+          <label for="metrics-heldout-input">Held-out case ids (comma-separated)</label>
+          <input id="metrics-heldout-input" type="text" spellcheck="false" placeholder="CASE-BETA">
+          <div class="actions">
+            <button class="button" type="submit">Compute fixture metrics</button>
+          </div>
+        </form>
+        <p id="metrics-status" class="muted" role="status" aria-live="polite">No fixture run computed yet.</p>
+        <div class="subhead">Dev aggregate</div><div id="metrics-dev" class="metrics" aria-live="polite"></div>
+        <div class="subhead">Held-out aggregate</div><div id="metrics-heldout" class="metrics" aria-live="polite"></div>
+        <div class="subhead">Run record</div><div id="metrics-run" class="cards" aria-live="polite"></div>
+      <section class="panel" id="re-review-tasks" aria-labelledby="re-review-heading">
+        <div class="panel-head"><div><div class="eyebrow">REVIEW · FOLLOW-UP OWNERSHIP</div><h2 id="re-review-heading">Re-review tasks</h2></div><span class="pill pill-warn">FICTIONAL DEMO DATA — not a real patient</span></div>
+        <p class="muted">Each task records one earlier draft that a source, evidence, or rights change marked stale, the fictional owner label recorded for follow-up, and what changed. A task closes only when a new draft on current sources is named or when a reviewer records that no change is needed. Rows appear in creation order; nothing here is ordered by importance.</p>
+        <div id="re-review-list" class="snapshots" aria-live="polite"></div>
       </section>
 
       <footer>Open Intelligence is an original, dependency-free reference implementation. No real patient information, patient login, credentialed clinical review, automated clinical inference, treatment recommendations, or regulatory clearance.</footer>
