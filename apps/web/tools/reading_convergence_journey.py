@@ -25,17 +25,8 @@ def exercise(cd, credentials, write_grants):
             cd.command('Input.dispatchKeyEvent', {'type': 'char', 'text': '\r', 'key': name, 'windowsVirtualKeyCode': code})
         cd.command('Input.dispatchKeyEvent', {'type': 'keyUp', 'key': name, 'code': name, 'windowsVirtualKeyCode': code})
 
-    # Current-run source-entry audit using the actual authorized response.
-    entry_observations = []
-    for width in (390, 1280):
-        cd.command('Emulation.setDeviceMetricsOverride', {'width':width,'height':900,'deviceScaleFactor':1,'mobile':False})
-        cd.evaluate("document.querySelector('[data-testid=load-sources]').focus()")
-        key('Enter', 13)
-        cd.wait("document.querySelectorAll('[data-testid=source-version]').length===2", 'source-entry authorized response')
-        cd.evaluate("new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))")
-        entry_observations.append(cd.evaluate("(()=>{const r=document.querySelector('#sources-heading').getBoundingClientRect();return {width:innerWidth,activeTag:document.activeElement.tagName,activeId:document.activeElement.id,activeText:document.activeElement.textContent.slice(0,100),headingTop:r.top,headingBottom:r.bottom,viewport:innerHeight}})()"))
-        (out/f'source-entry-{width}.png').write_bytes(base64.b64decode(cd.command('Page.captureScreenshot', {'format':'png'})['data']))
-    (out/'source-entry-observations.json').write_text(json.dumps(entry_observations, indent=2))
+    from source_entry_journey import exercise as exercise_source_entry
+    exercise_source_entry(cd, out)
 
     cd.command('Emulation.setDeviceMetricsOverride', {'width':1280,'height':1000,'deviceScaleFactor':1,'mobile':False})
     cd.evaluate("document.querySelector('#sources-heading').scrollIntoView()")
@@ -244,7 +235,7 @@ def exercise_session_reset(cd, patient_id, case_id, token, credentials, write_gr
     assert cd.evaluate("document.querySelector('#source-filter').value==='' && document.querySelector('#source-state').value==='all' && document.querySelectorAll('[data-testid=source-version]').length===2"), 'Reconnect must not restore a previous response filter'
     value('#source-filter', 'DOC-ONE')
     credentials[0]['actions'].remove('source_read');write_grants()
-    cd.evaluate("[...document.querySelectorAll('[data-testid=case-row]')].find(e=>e.textContent.includes("+json.dumps(case_id)+")).querySelector('[data-testid=load-sources]').click()")
+    cd.evaluate("(()=>{const e=[...document.querySelectorAll('[data-testid=case-row]')].find(e=>e.textContent.includes("+json.dumps(case_id)+")).querySelector('[data-testid=load-sources]');e.focus();e.click()})()")
     # Starting any read clears the source index. That loading state is not proof
     # of denial: wait for the actual non-success response before restoring grants.
     cd.wait("document.querySelector('[data-testid=records-status]')?.textContent==='Sources unavailable, denied or mapping revoked. Reload case permissions.' && !document.querySelector('[data-testid=load-cases]').disabled", 'completed denied source read')
@@ -253,6 +244,7 @@ def exercise_session_reset(cd, patient_id, case_id, token, credentials, write_gr
     credentials[0]['actions'].append('source_read');write_grants()
     open_sources()
     assert cd.evaluate("document.querySelector('#source-filter').value==='' && document.querySelector('#source-state').value==='all'"), 'Reauthorization must begin with the new response filters'
+    assert cd.evaluate("document.activeElement===document.querySelector('h1')"), 'Denied entry cannot replay focus after reauthorization without a new focused source action'
     nav('Overview')
     cd.evaluate("[...document.querySelectorAll('button')].find(e=>e.textContent==='Disconnect and clear').click()")
     print('PASS READING SESSION BOUNDARY: actual reconnect resets filters; denied source read removes quotations and provenance; reauthorization starts fresh; patient context clears on disconnect.')

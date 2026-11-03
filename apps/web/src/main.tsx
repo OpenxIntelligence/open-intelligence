@@ -43,7 +43,22 @@ function App(){
  useEffect(()=>{setSourceFilters({scope:state.sourceIndex,...emptySourceFilters})},[state.sourceIndex]);
  const heading=useRef<HTMLHeadingElement>(null),moveFocus=useRef(false);
  const originalHeading=useRef<HTMLHeadingElement>(null),sourcesHeading=useRef<HTMLHeadingElement>(null);
+ const sourceEntry=useRef<{patientId:string;caseId:string;trigger:HTMLButtonElement}|null>(null);
  const originalReturn=useRef<{sourceId:string;trigger:HTMLButtonElement;pending:boolean}|null>(null);
+ useEffect(()=>{
+  const requested=sourceEntry.current;if(!requested)return;
+  if(section!=='Records'||requested.patientId!==state.patient?.patient_id||
+     (state.recordsPhase!=='loading-sources'&&state.recordsPhase!=='ready')){sourceEntry.current=null;return;}
+  if(state.recordsPhase!=='ready')return;
+  sourceEntry.current=null;
+  if(state.sourceIndex?.case_id===requested.caseId&&
+     (document.activeElement===requested.trigger||document.activeElement===document.body))sourcesHeading.current?.focus();
+ },[state.sourceIndex,state.recordsPhase,state.patient?.patient_id,section]);
+ function inspectSources(caseId:string,trigger:HTMLButtonElement){
+  originalReturn.current=null;
+  sourceEntry.current=state.patient?{patientId:state.patient.patient_id,caseId,trigger}:null;
+  void session.loadSources(caseId);
+ }
  useEffect(()=>{originalReturn.current=null},[state.sourceIndex,state.patient?.patient_id]);
  useEffect(()=>{
   const requested=originalReturn.current;
@@ -70,9 +85,9 @@ function App(){
  useEffect(()=>{if(!state.connected){setPatientId('');setConfirmed(false)}},[state.connected]);
  useEffect(()=>{const clear=()=>session.disconnect();window.addEventListener('pagehide',clear);return()=>window.removeEventListener('pagehide',clear)},[]);
   const busy=state.phase==='creating'||state.phase==='reading'||state.importOutcome==='sending'||state.questionSavePhase==='saving'||state.reviewReturnPhase==='saving'||state.evidenceWritePhase==='saving';
- function navigate(nextSection:string){originalReturn.current=null;session.dismissSourceQuotePacket();session.dismissSourceBrief();session.dismissEvidenceMetadata();session.dismissQuestionEvidence();if(nextSection===section){heading.current?.focus();return}moveFocus.current=true;setSection(nextSection);}
- function disconnect(){session.disconnect();setToken('');setPatientId('');setConfirmed(false);setSection('Overview');}
- return <div className="app">
+ function navigate(nextSection:string){sourceEntry.current=null;originalReturn.current=null;session.dismissSourceQuotePacket();session.dismissSourceBrief();session.dismissEvidenceMetadata();session.dismissQuestionEvidence();if(nextSection===section){heading.current?.focus();return}moveFocus.current=true;setSection(nextSection);}
+ function disconnect(){sourceEntry.current=null;session.disconnect();setToken('');setPatientId('');setConfirmed(false);setSection('Overview');}
+ return <div className="app" onFocusCapture={()=>{if(sourceEntry.current&&document.activeElement!==sourceEntry.current.trigger)sourceEntry.current=null;}}>
   <a className="skip" href="#main">Skip to workspace</a>
   <aside className="rail" aria-label="Workspace navigation">
    <div className="brand"><span className="mark" aria-hidden="true">oi</span><span>Open<br/>Intelligence</span></div>
@@ -108,7 +123,7 @@ function App(){
          <div><strong><code>{item.case_id}</code></strong><span className="record-state"> {item.status}</span></div>
          <p>Origin: {item.source_organization} · System: {item.source_system} · Version {item.revision}</p>
          <p>Fictional identity verification: not established. Clinical sources automatically linked: no.</p>
-         <button data-testid="load-sources" disabled={item.status!=='active'||state.recordsPhase.startsWith('loading')||busy} onClick={()=>void session.loadSources(item.case_id)}>Inspect source versions</button>
+         <button data-testid="load-sources" disabled={item.status!=='active'||state.recordsPhase.startsWith('loading')||busy} onClick={event=>inspectSources(item.case_id,event.currentTarget)}>Inspect source versions</button>
         </li>)}</ul>}
       </section>}
       {state.sourceIndex&&<section className="records-detail" data-testid="source-index" aria-labelledby="sources-heading">

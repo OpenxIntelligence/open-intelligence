@@ -69,3 +69,70 @@ Final-candidate hosted checks and screenshot inspection are pending at this sour
 ## Boundaries and completion
 
 Preserve the existing five destinations, callbacks, session, response validation, source versions, manual-document distinction, permissions, drafts and exact-intent recovery. No speculative appointment, messaging, medication or professional-signoff workflows. No dependency or backend change. The full initiative still requires genuine role authority from separately scoped work, participant studies, broader accessibility evaluation and remaining branch reconciliation; this increment cannot declare the entire redesign complete.
+
+## Source-entry keyboard continuation — 3 November 2026
+
+Continues the same draft #386 and OI-010 after verified navigation head
+`752e5b2767203099a08b26b035f9be24e9e99b97`. Newer second-opinion and
+manual-provenance drafts remain separate; this is not their convergence.
+
+### Fresh observed baseline
+
+Capture-only head `bc069145411c16d193c82125143011d11ee005f5` passed
+[run 41739329494](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41739329494).
+Artifact `13280986919` SHA-256:
+`e79f440b6ab9e415deb4f1c1b2b24f71d8524af33de7d6718053a1e047f5e40c`.
+All 463 archived blobs and executable modes match the commit. Runtime files
+are identical to the preceding verified head.
+
+1. **Request source versions:** native Enter activates the actual case action.
+   Its real PostgreSQL-backed request succeeds at both 390 and 1280 pixels.
+2. **Enter the returned history:** focus has fallen to BODY when the trigger
+   was disabled. The history heading begins at y=831.5 and y=839.65625
+   respectively in 900-pixel viewports. Fresh screenshots were inspected.
+   The records are present, but the requested reading destination has no
+   focused entry point and sits near the bottom edge.
+3. **Continue reading:** the next controls remain in normal document order.
+   No claim is made that baseline records are inaccessible or that measured
+   task speed/usability improved.
+
+### Decision and acceptance
+
+Focus the existing source-history heading after an explicit source-version
+request succeeds for the same patient/case. Use its existing negative tabindex,
+focus outline and sticky-header scroll clearance. This adds no visible control,
+new destination, dependency or record request.
+
+Alternatives considered: retaining the current BODY fallback leaves the observed
+entry problem; adding another jump link needs another user action; making every
+source-index update move focus would also move users after imports and unrelated
+refreshes. The selected presentation-only intention is set exclusively by the
+existing Inspect source versions button.
+
+The intention is canceled on a different focus choice, section navigation,
+disconnect, changed patient, or unsuccessful/other record operation. A late
+response must not move focus away from a user's chosen control, including when
+they have left and returned to Records. It is consumed once; a fresh explicit
+action can still focus the returned history. Source loading, error handling,
+permission checks and response validation remain owned by unchanged RegistrySession.
+
+Fresh official [W3C focus-order guidance](https://www.w3.org/WAI/WCAG22/Understanding/focus-order)
+and [focus-not-obscured guidance](https://www.w3.org/WAI/WCAG22/Understanding/focus-not-obscured-minimum.html)
+were read on 3 November 2026. They support a logical, visible focus sequence;
+this particular handoff is a design inference, not a prescribed pattern or a
+claim that the baseline failed a specific WCAG criterion.
+
+The browser acceptance uses native Enter/Tab, actual authorized source responses,
+390/1280 widths and a 320×256 short viewport. It checks one GET/no writes, patient
+identity, existing fresh-response filter reset, heading visibility and next-control
+order. Delayed delivery retains each actual response/body/status and verifies
+focus-choice and section-change cancellation. The inherited actual denial and
+reauthorization path checks that failed entry cannot replay focus.
+
+Local inherited 415 client tests, build and 13 dependency controls passed before
+the change; the new behavior requires its own hosted result. Final acceptance
+and screenshot inspection are pending at this source checkpoint and will be
+recorded in the PR and canonical UX notes without claiming an unrun result.
+No separate full API/recovery suite, independent reviewer, assistive-technology
+participant study, full WCAG conformance or clinical validation is established.
+Draft, unmerged, undeployed; independently fictional inputs only.
