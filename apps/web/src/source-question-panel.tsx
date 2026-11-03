@@ -5,7 +5,8 @@ export function SourceQuestionPanel({state,session,busy}:{state:ViewState;sessio
  const caseId=state.worldModel?.case_id??'';
  const draft=state.questionDraft;
  const validDraft=!!draft&&draft.question.length>=8&&draft.question.length<=500&&
-   draft.question.trim()===draft.question&&!/[\\u0000-\\u001f\\u007f]/.test(draft.question);
+   draft.question.trim()===draft.question&&
+   !Array.from(draft.question).some(ch=>ch.charCodeAt(0)<32||ch.charCodeAt(0)===127);
  const unresolvedWrite=state.questionSaveMessage.startsWith('Save outcome unknown.');
  return <section data-testid="source-question-panel" aria-label="Source-linked question intake">
    {draft&&<section className="question-draft" data-testid="question-draft-editor"
