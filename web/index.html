@@ -38,6 +38,7 @@
           <a href="#assertions">Reported findings</a>
           <a href="#timeline">Timeline</a>
           <a href="#investigations">Investigation</a>
+          <a href="#synthesis">Claim synthesis</a>
           <a href="#scoped-review">Scoped review</a>
           <a href="#sources">Sources and findings</a>
           <a href="#evidence">Evidence review</a>
@@ -301,6 +302,29 @@
         </section>
       </section>
 
+      <section class="panel" id="synthesis" aria-labelledby="synthesis-heading">
+        <div class="panel-head"><div><div class="eyebrow">SYNTHESIS · SUPPORT AND CONTRADICT SIDE BY SIDE</div><h2 id="synthesis-heading">Claim synthesis and bounded reports</h2></div><span class="pill pill-warn">FICTIONAL DEMO DATA — not a real patient</span></div>
+        <p class="muted">Each question's human-entered assessments and rights-gated links are grouped by their relation label: supporting, contradicting, context, and unknown or limited. Supporting and contradicting items stay side by side and are never merged into one verdict. Limitation notes are human-entered; this surface computes no quality number. A report whose basis changed is marked REVIEW-PENDING and reads as history.</p>
+        <div class="subhead">Per-question synthesis</div>
+        <label for="synthesis-question-choice">Question</label><select id="synthesis-question-choice"></select>
+        <div id="synthesis-groups" class="snapshots" aria-live="polite"></div>
+        <div class="subhead">Bounded source-linked report</div>
+        <label for="synthesis-snapshot-choice">Investigation snapshot</label><select id="synthesis-snapshot-choice"></select>
+        <div class="actions">
+          <button type="button" id="synthesis-report-button" class="button secondary">View workspace report</button>
+          <button type="button" id="synthesis-patient-report-button" class="button secondary">View plain-words report</button>
+        </div>
+        <div id="synthesis-report-meta" class="questions" aria-live="polite"></div>
+        <div class="subhead">Add a human-entered limitation note</div>
+        <form id="synthesis-note-form">
+          <label for="synthesis-note-question">Question</label><select id="synthesis-note-question" required></select>
+          <label for="synthesis-note-target-kind">Note target</label><select id="synthesis-note-target-kind"><option value="assessment">Evidence assessment</option><option value="broker_link">Rights-gated link</option></select>
+          <label for="synthesis-note-target">Target record</label><select id="synthesis-note-target" required></select>
+          <label for="synthesis-note-text">Limitation note (human-authored, 15–800 characters)</label><textarea id="synthesis-note-text" rows="2" minlength="15" maxlength="800" required placeholder="Record what limits this item, in plain descriptive words."></textarea>
+          <label for="synthesis-note-author">Author label</label><input id="synthesis-note-author" type="text" maxlength="80" required placeholder="Synthetic reviewer (unverified)">
+          <button class="button" type="submit">Record limitation note</button>
+        </form>
+      </section>
       <section class="panel" id="scoped-review" aria-labelledby="scoped-review-heading">
         <div class="panel-head">
           <div><div class="eyebrow">SCOPED REVIEW · RECORD-STATE NOTES</div><h2 id="scoped-review-heading">Scoped review: what was looked at</h2></div>

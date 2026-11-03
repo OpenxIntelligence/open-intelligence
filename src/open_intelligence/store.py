@@ -502,6 +502,21 @@ CREATE TABLE IF NOT EXISTS biological_inventory_assertions (
 CREATE INDEX IF NOT EXISTS idx_biological_assets_case ON biological_assets(case_id, asset_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_assertions_asset ON biological_inventory_assertions(asset_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_assertions_source ON biological_inventory_assertions(source_version_id);
+-- B-08 contradiction synthesis: human-entered limitation notes on one
+-- evidence assessment or one broker link. Append-only: rows are never
+-- updated or deleted, so note history is preserved. Notes are descriptive
+-- text only; no quality number is computed anywhere in this slice.
+CREATE TABLE IF NOT EXISTS limitation_notes (
+  id INTEGER PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(case_id),
+  question_id INTEGER NOT NULL REFERENCES questions(id),
+  assessment_id INTEGER REFERENCES evidence_assessments(id),
+  broker_link_id INTEGER REFERENCES broker_links(id),
+  note TEXT NOT NULL, author_label TEXT NOT NULL, created_at TEXT NOT NULL,
+  CHECK ((assessment_id IS NOT NULL AND broker_link_id IS NULL)
+      OR (assessment_id IS NULL AND broker_link_id IS NOT NULL))
+);
+CREATE INDEX IF NOT EXISTS idx_limitation_notes_question ON limitation_notes(case_id, question_id);
+CREATE INDEX IF NOT EXISTS idx_limitation_notes_targets ON limitation_notes(assessment_id, broker_link_id);
 -- B-04 scoped human review: per-snapshot scope notes (extraction vs
 -- interpretation decided independently), per-claim dissent, and handoff.
 -- All three tables are append-only: rows are inserted, never updated or
@@ -3089,3 +3104,89 @@ class CaseStore:
                           "- An acknowledgment in this demo is not clinician credential verification or a clinical sign-off.",
                           "- Amendments can make previous investigations stale; see the state above.", ""])
             return "\n".join(lines)
+
+    # ---- B-08: contradiction synthesis + bounded reports (append-only) ----
+    # New ledger table (limitation_notes, see SCHEMA) plus thin read/write
+    # methods. Existing behavior — assess_synthetic_evidence,
+    # create_snapshot, export_markdown — is reused unchanged.
+
+    def add_limitation_note(self, case_id: str, question_id: int, *,
+                            assessment_id: int | None = None,
+                            broker_link_id: int | None = None,
+                            note: str = "", author_label: str = "") -> int:
+        """Append one HUMAN-entered limitation note; history is preserved.
+
+        Exactly one target (an assessment or a broker link in this case and
+        question) is required. Notes are never updated or deleted: there is
+        no update or delete path, only this append. No quality number is
+        computed from notes anywhere.
+        """
+        self._case(case_id)
+        if type(question_id) is not int:
+            raise InvalidInput("Question id must be an integer")
+        targets = [value for value in (assessment_id, broker_link_id) if value is not None]
+        if len(targets) != 1 or type(targets[0]) is not int or targets[0] < 1:
+            raise InvalidInput("A limitation note needs exactly one assessment or broker link target")
+        if not isinstance(note, str) or not 15 <= len(note.strip()) <= 800:
+            raise InvalidInput("Limitation note must have 15–800 characters")
+        if not isinstance(author_label, str) or not 2 <= len(author_label.strip()) <= 80:
+            raise InvalidInput("Provide a note author label")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            if not self.db.execute("SELECT 1 FROM questions WHERE id=? AND case_id=?",
+                                   (question_id, case_id)).fetchone():
+                raise InvalidInput("Question not in this case")
+            if assessment_id is not None:
+                target = self.db.execute("""SELECT 1 FROM evidence_assessments
+                    WHERE id=? AND case_id=? AND question_id=?""",
+                    (assessment_id, case_id, question_id)).fetchone()
+                if not target:
+                    raise InvalidInput("Evidence assessment not in this case and question")
+            else:
+                target = self.db.execute("""SELECT 1 FROM broker_links
+                    WHERE id=? AND case_id=? AND question_id=?""",
+                    (broker_link_id, case_id, question_id)).fetchone()
+                if not target:
+                    raise InvalidInput("Broker link not in this case and question")
+            cur = self.db.execute("""INSERT INTO limitation_notes
+                (case_id,question_id,assessment_id,broker_link_id,note,author_label,created_at)
+                VALUES (?,?,?,?,?,?,?)""",
+                (case_id, question_id, assessment_id, broker_link_id,
+                 note.strip(), author_label.strip(), now_utc()))
+            self._event(case_id, "limitation_noted", note_id=cur.lastrowid,
+                        question_id=question_id, assessment_id=assessment_id,
+                        broker_link_id=broker_link_id)
+            return int(cur.lastrowid)
+
+    def list_limitation_notes(self, case_id: str, question_id: int) -> list[dict]:
+        """List a question's limitation notes, earliest first. Reads only."""
+        self._case(case_id)
+        if type(question_id) is not int:
+            raise InvalidInput("Question id must be an integer")
+        if not self.db.execute("SELECT 1 FROM questions WHERE id=? AND case_id=?",
+                               (question_id, case_id)).fetchone():
+            raise InvalidInput("Question not in this case")
+        return self._dicts(self.db.execute(
+            """SELECT id,question_id,assessment_id,broker_link_id,note,author_label,created_at
+            FROM limitation_notes WHERE case_id=? AND question_id=? ORDER BY id""",
+            (case_id, question_id)).fetchall())
+
+    def question_synthesis(self, case_id: str, question_id: int) -> dict:
+        """Per-question support/contradict synthesis. Reads only; writes nothing."""
+        from .synthesis import question_synthesis as build
+        return build(self, case_id, question_id)
+
+    def snapshot_synthesis(self, case_id: str, snapshot_id: int) -> dict:
+        """Per-snapshot synthesis with cutoff and basis status. Reads only."""
+        from .synthesis import snapshot_synthesis as build
+        return build(self, case_id, snapshot_id)
+
+    def synthesis_report(self, case_id: str, snapshot_id: int) -> str:
+        """Bounded workspace report with cutoff and REVIEW-PENDING. Reads only."""
+        from .synthesis import render_bounded_report as render
+        return render(self, case_id, snapshot_id)
+
+    def synthesis_patient_report(self, case_id: str, snapshot_id: int) -> str:
+        """Plain-words bounded report over the same cutoff. Reads only."""
+        from .synthesis import render_patient_report as render
+        return render(self, case_id, snapshot_id)

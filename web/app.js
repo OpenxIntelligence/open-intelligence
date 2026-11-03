@@ -66,8 +66,8 @@ async function initialize() {
     picker.addEventListener('change', () => {
       // An unfinished narrative must never silently become attached to another case.
       if ((['draft-observations', 'draft-summary', 'draft-assumptions', 'evidence-rationale',
-            'evidence-withdraw-reason', 'option-description',
-            'owner-label-input', 'note-text',
+            'evidence-withdraw-reason', 'option-description', 'synthesis-note-text',
+            'synthesis-note-author', 'owner-label-input', 'note-text',
             'scoped-decision-note', 'scoped-dissent-rationale'].some(id => el(id).value.trim()))) {
         picker.value = caseId;
         notice('Save or explicitly clear the unfinished investigation draft before switching cases.', true);
@@ -80,7 +80,7 @@ async function initialize() {
       draftFilterCaseId = null;
       for (const id of ['question-text', 'question-owner', 'owner-label-input', 'note-text',
         'report-text', 'evidence-rationale', 'draft-observations',
-        'draft-summary', 'draft-assumptions']) el(id).value = '';
+        'draft-summary', 'draft-assumptions', 'synthesis-note-text', 'synthesis-note-author']) el(id).value = '';
       if (el('source-dialog').open) el('source-dialog').close();
       if (el('compare-dialog').open) el('compare-dialog').close();
       refresh();
@@ -657,6 +657,8 @@ function render() {
   }
   loadModelInvestigations();
   loadChangesSinceReview();
+  renderSynthesisChoices();
+  loadSynthesis();
   loadReReviewTasks();
   clear('quarantine-list');
   for (const entry of active.quarantines) {
@@ -1700,6 +1702,178 @@ el('model-investigation-form').addEventListener('submit', async event => {
     await refresh();
   } catch (err) { notice(err.message, true); }
 });
+// Begin contradiction synthesis (B-08): read-only grouping plus human notes.
+const SYNTHESIS_GROUPS = [
+  ['supporting', 'Supporting items'],
+  ['contradicting', 'Contradicting items'],
+  ['context', 'Context items'],
+  ['unknown_limited', 'Unknown or limited items'],
+];
+const SYNTHESIS_EMPTY = {
+  supporting: 'None included; no supporting item is linked at this cutoff.',
+  contradicting: 'None included; no contradicting item is linked at this cutoff.',
+  context: 'None included; no context item is linked at this cutoff.',
+  unknown_limited: 'None included; no unknown or limited item is linked at this cutoff.',
+};
+function fillSelect(id, options, keepValue) {
+  const select = el(id);
+  const prior = keepValue ? select.value : null;
+  clear(id);
+  for (const [value, label] of options) {
+    const opt = node('option', label);
+    opt.value = value;
+    select.append(opt);
+  }
+  if (prior && [...select.options].some(opt => opt.value === prior)) select.value = prior;
+}
+function renderSynthesisChoices() {
+  if (!active) return;
+  const sameCase = renderedCaseId === caseId;
+  const questionOptions = active.questions.map(q => [String(q.id), 'Q' + q.id + ': ' + q.question]);
+  const snapshotOptions = active.snapshots.map(s =>
+    [String(s.id), 'Snapshot #' + s.id + ' · Q' + s.question_id + ' · ' + s.state]);
+  fillSelect('synthesis-question-choice', questionOptions.length ? questionOptions : [['', 'No questions yet']], sameCase);
+  fillSelect('synthesis-snapshot-choice', snapshotOptions.length ? snapshotOptions : [['', 'No snapshots yet']], sameCase);
+  fillSelect('synthesis-note-question', questionOptions.length ? questionOptions : [['', 'No questions yet']], sameCase);
+  renderSynthesisNoteTargets();
+}
+function renderSynthesisNoteTargets() {
+  if (!active) return;
+  const qid = Number(el('synthesis-note-question').value);
+  const kind = el('synthesis-note-target-kind').value;
+  let options = [];
+  if (kind === 'assessment') {
+    options = (active.evidence_assessments || []).filter(a => a.question_id === qid)
+      .map(a => [String(a.id), 'Assessment #' + a.id + ' · ' + a.evidence_key + '@' + a.version + ' · ' + a.relation]);
+  } else {
+    options = (active.broker_links || []).filter(a => a.question_id === qid)
+      .map(a => [String(a.id), 'Link #' + a.id + ' · ' + a.source_key + ' ' + (a.version_label || '') + ' · ' + a.relation]);
+  }
+  fillSelect('synthesis-note-target', options.length ? options : [['', 'No records for this question yet']], false);
+}
+function synthesisItemLabel(item) {
+  const anchor = item.anchor || {};
+  if (item.kind === 'evidence_assessment') {
+    return 'Assessment #' + item.id + ' · ' + anchor.evidence_key + '@' + anchor.version +
+      ' · line ' + anchor.statement_line;
+  }
+  return 'Link #' + item.id + ' · ' + anchor.source_key + ' ' + (anchor.version_label || '') +
+    ' · ' + (anchor.mode || 'citation identity');
+}
+function renderSynthesisGroups(data) {
+  clear('synthesis-groups');
+  const counts = data.counts || {};
+  const head = node('div', null, 'question');
+  head.append(node('p', 'Linked items: ' + (counts.total || 0) +
+    ' (supporting ' + (counts.supporting || 0) +
+    ' · contradicting ' + (counts.contradicting || 0) +
+    ' · context ' + (counts.context || 0) +
+    ' · unknown/limited ' + (counts.unknown_limited || 0) + ')'));
+  const cutoff = data.cutoff || {};
+  head.append(node('p', 'Cutoff event #' + cutoff.event_id + ' at ' + (cutoff.occurred_at || 'unknown time') +
+    '. No quality number is computed here.', 'muted'));
+  el('synthesis-groups').append(head);
+  for (const [key, title] of SYNTHESIS_GROUPS) {
+    const items = (data.groups || {})[key] || [];
+    const box = node('div', null, 'snapshot');
+    const top = node('div', null, 'topline');
+    top.append(node('strong', title + ' (' + items.length + ')'),
+      pill(key === 'contradicting' && items.length ? 'dissent visible' : 'listed', 'pill-neutral'));
+    box.append(top);
+    if (!items.length) box.append(node('p', SYNTHESIS_EMPTY[key], 'muted'));
+    for (const item of items) {
+      box.append(node('p', synthesisItemLabel(item) + ' · ' + item.relation + ', ' + item.applicability +
+        ' · review state: ' + item.review_state));
+      box.append(node('p', 'Reviewer rationale: ' + item.rationale, 'muted'));
+      for (const note of item.limitation_notes || []) {
+        box.append(node('p', 'Limitation note by ' + note.author_label + ': ' + note.note, 'muted'));
+      }
+    }
+    el('synthesis-groups').append(box);
+  }
+}
+async function loadSynthesis() {
+  const requested = caseId;
+  clear('synthesis-groups');
+  clear('synthesis-report-meta');
+  const qid = Number(el('synthesis-question-choice').value);
+  const sid = Number(el('synthesis-snapshot-choice').value);
+  if (!qid) {
+    empty(el('synthesis-groups'), 'No question selected in this fictional case.');
+    return;
+  }
+  try {
+    const data = await api('/api/cases/' + requested + '/questions/' + qid + '/synthesis');
+    if (requested !== caseId || !active || active.case.case_id !== requested) return;
+    renderSynthesisGroups(data);
+    if (sid) {
+      const snapshotData = await api('/api/cases/' + requested + '/snapshots/' + sid + '/synthesis');
+      if (requested !== caseId || !active || active.case.case_id !== requested) return;
+      const basis = snapshotData.basis || {};
+      const meta = node('div', null, 'question');
+      meta.append(node('p', 'Snapshot #' + sid + ' · state: ' + (basis.snapshot_state || 'unknown') +
+        ' · cutoff event #' + ((snapshotData.cutoff || {}).event_id || '?')));
+      meta.append(node('p', basis.stale_basis
+        ? 'REVIEW-PENDING: the record changed after this snapshot. The bounded report reads as history.'
+        : 'No basis change is recorded at this cutoff. The bounded report still needs human review.', 'muted'));
+      el('synthesis-report-meta').append(meta);
+    } else {
+      empty(el('synthesis-report-meta'), 'No snapshot selected in this fictional case.');
+    }
+  } catch (err) {
+    if (requested !== caseId) return;
+    empty(el('synthesis-groups'), 'Synthesis unavailable: ' + err.message);
+    empty(el('synthesis-report-meta'), 'Report cutoff unavailable.');
+  }
+}
+async function openSynthesisReport(patient) {
+  let read;
+  try {
+    read = beginSourceRead();
+    const sid = Number(el('synthesis-snapshot-choice').value);
+    if (!sid) throw Error('Select an investigation snapshot first.');
+    const suffix = patient ? '/synthesis-report-patient' : '/synthesis-report';
+    const text = await api('/api/cases/' + read.caseId + '/snapshots/' + sid + suffix);
+    if (!sourceReadIsCurrent(read)) return;
+    if (typeof text !== 'string' || !text) throw Error('Bounded report text is unavailable.');
+    el('dialog-title').textContent = patient
+      ? 'Snapshot #' + sid + ', plain-words bounded report'
+      : 'Snapshot #' + sid + ', workspace bounded report';
+    renderOriginalSource(text, null);
+    el('dialog-context').textContent = 'FICTIONAL DEMO DATA. Bounded to its cutoff; a REVIEW-PENDING banner means the record changed after it.';
+    showSourceView('source-dialog');
+  } catch (err) {
+    if (!read || sourceReadIsCurrent(read)) notice(err.message, true);
+  }
+}
+el('synthesis-question-choice').addEventListener('change', () => { loadSynthesis(); });
+el('synthesis-snapshot-choice').addEventListener('change', () => { loadSynthesis(); });
+el('synthesis-note-question').addEventListener('change', () => { renderSynthesisNoteTargets(); });
+el('synthesis-note-target-kind').addEventListener('change', () => { renderSynthesisNoteTargets(); });
+el('synthesis-report-button').addEventListener('click', () => { openSynthesisReport(false); });
+el('synthesis-patient-report-button').addEventListener('click', () => { openSynthesisReport(true); });
+el('synthesis-note-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const kind = el('synthesis-note-target-kind').value;
+    const targetId = Number(el('synthesis-note-target').value);
+    if (!targetId) throw Error('Select a target record for this note.');
+    const payload = {
+      question_id: Number(el('synthesis-note-question').value),
+      note: el('synthesis-note-text').value,
+      author_label: el('synthesis-note-author').value,
+    };
+    if (kind === 'assessment') payload.assessment_id = targetId;
+    else payload.broker_link_id = targetId;
+    await api('/api/cases/' + requestedCase + '/limitation-notes', payload);
+    if (requestedCase !== caseId) return;
+    el('synthesis-note-text').value = '';
+    notice('Limitation note recorded. Notes stay in history and are never rewritten.');
+    await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+// End contradiction synthesis (B-08).
 function renderMetricsAggregate(containerId, block) {
   // Descriptive fixture counts only; every value arrives as a number or a
   // fixed label string, rendered via textContent-only node().
