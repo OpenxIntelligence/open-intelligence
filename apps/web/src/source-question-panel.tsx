@@ -3,7 +3,34 @@ import type {RegistrySession,ViewState} from './registry-client';
 /** Reuses the source-question intake panel from PR238 over the canonical World Model. */
 export function SourceQuestionPanel({state,session,busy}:{state:ViewState;session:RegistrySession;busy:boolean}){
  const caseId=state.worldModel?.case_id??'';
+ const draft=state.questionDraft;
+ const validDraft=!!draft&&draft.question.length>=8&&draft.question.length<=500&&
+   draft.question.trim()===draft.question&&!/[\\u0000-\\u001f\\u007f]/.test(draft.question);
+ const unresolvedWrite=state.questionSaveMessage.startsWith('Save outcome unknown.');
  return <section data-testid="source-question-panel" aria-label="Source-linked question intake">
+   {draft&&<section className="question-draft" data-testid="question-draft-editor"
+       aria-labelledby="question-draft-heading">
+     <span className="step">FICTIONAL QUESTION · IN-MEMORY DRAFT</span>
+     <h3 id="question-draft-heading">Write your own source-linked question</h3>
+     <p><strong>Selected original:</strong> <code>{draft.source_id}</code> · line {draft.source_line}.
+       The source and case are fixed for this draft. Changing the question requires a new, independently authorized preflight.</p>
+     <label htmlFor="source-question-text">Question to investigate</label>
+     <textarea id="source-question-text" data-testid="question-draft" rows={3}
+       maxLength={500} spellCheck={false} autoComplete="off" value={draft.question}
+       disabled={busy||unresolvedWrite}
+       onChange={e=>session.changeQuestionDraft(e.target.value)}/>
+     <p className="muted" data-testid="question-draft-count">{draft.question.length}/500 characters. One question, 8–500 characters, no surrounding spaces or control characters. No medical conclusion or AI execution.</p>
+     <div className="actions">
+       <button type="button" className="primary" data-testid="prepare-custom-question"
+         disabled={busy||!validDraft||unresolvedWrite||state.composerPhase==='loading'}
+         onClick={()=>void session.prepareDraftQuestion()}>
+         {state.composerPhase==='loading'?'Checking source context…':'Prepare this question against current source'}
+       </button>
+       <button type="button" data-testid="discard-question-draft" disabled={busy||unresolvedWrite}
+         onClick={()=>session.discardQuestionDraft()}>Discard unsaved draft</button>
+     </div>
+     {unresolvedWrite&&<p role="note">The save result is unknown. Retry the same prepared question before replacing or discarding this draft, so an uncertain write is not duplicated.</p>}
+   </section>}
    <p className={'status '+(state.composerPhase==='error'?'error':'')}
       data-testid="composer-status" role="status" aria-live="polite">{state.composerMessage}</p>
    {state.composerPreview&&<section className="composer-preview" data-testid="composer-context"
