@@ -69,6 +69,7 @@
           <a href="#changes-since-review">What changed</a>
           <a href="#re-review-tasks">Re-review tasks</a>
           <a href="#options">Options &amp; dependencies</a>
+          <a href="#visits">Visits</a>
           <a href="#second-survivorship">Second opinion &amp; survivorship</a>
           <a href="#followthrough">Follow-through</a>
           <a href="#portfolio">Option portfolio</a>
@@ -605,6 +606,28 @@
             <div class="panel-head"><div><div class="eyebrow">03 / BIOLOGICAL ASSETS</div><h2>Biological-asset provenance</h2></div><span class="muted tiny">Synthetic only · no files stored · no release or shipment</span></div>
             <div id="asset-list" class="findings"></div>
           </section>
+          <section class="panel" id="visits">
+            <div class="panel-head"><div><div class="eyebrow">03b / VISITS · RECORDED HISTORY</div><h2>Visits</h2></div><span class="pill pill-warn">FICTIONAL DEMO DATA — not a real patient</span></div>
+            <p class="muted">Plain recorded history — dates and notes only. Visits are never directives, never due dates, and never treatment guidance.</p>
+            <p class="muted tiny">FICTIONAL visit records. Every date below is a recorded date — not a clinical due date. An amendment preserves history; it never deletes an earlier version.</p>
+            <form id="visit-form">
+              <label for="visit-date">Recorded date — not a clinical due date</label><input id="visit-date" type="date" required>
+              <label for="visit-type">Visit type (free text, FICTIONAL)</label><input id="visit-type" type="text" maxlength="120" required placeholder="Fictional follow-up note">
+              <label for="visit-notes">Notes (descriptive history only, FICTIONAL)</label><textarea id="visit-notes" rows="3" maxlength="2000" required placeholder="Record only what happened. No directives, no due dates."></textarea>
+              <label for="visit-anchor">Source anchor (optional, FICTIONAL)</label><input id="visit-anchor" type="text" maxlength="300" placeholder="e.g. intake sheet p. 2, or leave blank for no source recorded">
+              <button class="button" type="submit">Record fictional visit</button>
+            </form>
+            <div class="subhead">Recorded visits</div><div id="visit-list" class="snapshots" aria-live="polite"></div>
+            <div class="subhead">Amend a visit (preserves history)</div>
+            <form id="visit-amend-form">
+              <label for="visit-amend-choice">Visit to amend</label><select id="visit-amend-choice" required></select>
+              <label for="visit-amend-date">Recorded date — not a clinical due date</label><input id="visit-amend-date" type="date" required>
+              <label for="visit-amend-type">Visit type (free text, FICTIONAL)</label><input id="visit-amend-type" type="text" maxlength="120" required>
+              <label for="visit-amend-notes">Notes (descriptive history only, FICTIONAL)</label><textarea id="visit-amend-notes" rows="3" maxlength="2000" required></textarea>
+              <label for="visit-amend-anchor">Source anchor (optional, FICTIONAL)</label><input id="visit-amend-anchor" type="text" maxlength="300" placeholder="e.g. intake sheet p. 2, or leave blank for no source recorded">
+              <button class="button secondary" type="submit">Amend fictional visit</button>
+            </form>
+      </section>
           <section class="panel" id="biological-explanation">
             <div class="panel-head"><div><div class="eyebrow">03b / BIOLOGICAL EXPLANATION</div><h2>Biological explanation</h2></div><span class="pill pill-warn">FICTIONAL CONTEXT ONLY</span></div>
             <p class="muted">Human-authored context records linking one question to a fictional episode, specimen, lesion, assay, reference, and time point — not a mutation list. Competing explanations stay side by side. Nothing here states staging, grading, variant meaning, or response; this fictional demo is not clinical software and supports no treatment decision.</p>

@@ -605,6 +605,33 @@ CREATE TABLE IF NOT EXISTS biological_inventory_assertions (
 CREATE INDEX IF NOT EXISTS idx_biological_assets_case ON biological_assets(case_id, asset_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_assertions_asset ON biological_inventory_assertions(asset_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_assertions_source ON biological_inventory_assertions(source_version_id);
+-- Visit records: plain recorded history, never directives or due dates.
+-- visits holds one logical record identity per case; visit_versions holds
+-- the append-only version chain. An amendment supersedes the old version
+-- and appends a new current version with a previous_id link; history rows
+-- are never updated or deleted. review_state is always 'recorded': visits
+-- are unreviewed history, never a clinical conclusion or instruction.
+CREATE TABLE IF NOT EXISTS visits (
+  id INTEGER PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(case_id),
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS visit_versions (
+  id INTEGER PRIMARY KEY, visit_id INTEGER NOT NULL REFERENCES visits(id),
+  case_id TEXT NOT NULL REFERENCES cases(case_id),
+  version INTEGER NOT NULL,
+  recorded_date TEXT NOT NULL,
+  visit_type TEXT NOT NULL,
+  notes TEXT NOT NULL,
+  source_anchor TEXT,
+  review_state TEXT NOT NULL CHECK(review_state IN ('recorded')),
+  state TEXT NOT NULL CHECK(state IN ('current','superseded')),
+  previous_id INTEGER REFERENCES visit_versions(id),
+  created_at TEXT NOT NULL,
+  UNIQUE(visit_id,version)
+);
+CREATE INDEX IF NOT EXISTS idx_visits_case ON visits(case_id, id);
+CREATE INDEX IF NOT EXISTS idx_visit_versions_visit ON visit_versions(visit_id, version);
+CREATE INDEX IF NOT EXISTS idx_visit_versions_case ON visit_versions(case_id, state);
 -- Investigation workspace: durable questions that survive amendments and stay
 -- linked to exact source versions. Questions are never auto-answered: only an
 -- explicit recorded status change moves them, and an amendment only reopens an
@@ -5756,6 +5783,176 @@ class CaseStore:
                           "- Amendments can make previous investigations stale; see the state above.", ""])
             return "\n".join(lines)
 
+    # ---- Visit records: plain recorded history, never directives ----
+    VISIT_RECORDED_DATE_LABEL = "recorded date — not a clinical due date"
+    VISIT_MISSING_SOURCE_LABEL = "no source recorded"
+    VISIT_DISCLAIMER = ("Fictional visit history only. Visits record what happened, "
+                        "never what should happen next. Dates are recorded dates, "
+                        "not clinical due dates. No directive, recommendation, "
+                        "or treatment guidance is stored here.")
+    # Descriptive-only guard, same class as the existing option/discovery
+    # clinical-language guards: directive and prescriptive wording is rejected
+    # at write time in every author-controlled text field. Base verb forms
+    # (order, start treatment) are rejected while past-tense history
+    # (ordered, started) stays writable, so a recorded event can still be
+    # described. This is a narrow guard, not a language classifier: human
+    # review remains the gate, and the disclaimer states what visits are not.
+    _VISIT_DIRECTIVE_LANGUAGE = re.compile(
+        r"\bshould\b"
+        r"|\bmust\b"
+        r"|\bneed\s+to\b|\bneeds?\b"
+        r"|\border\b"
+        r"|\bstart\s+(treatment|therapy|medication|drug|infusion)\b"
+        r"|\bstop\s+(treatment|therapy|medication|drug|infusion)\b"
+        r"|\bseek\b"
+        r"|\bwatch\s+for\b"
+        r"|\beffectiv\w*\b|\befficac\w*\b"
+        r"|\bproven\b|\bbenefit\w*\b"
+        r"|\brecommend\w*\b|\bprescri\w*\b|\beligib\w*\b"
+        r"|\bdos(e|age)\b"
+        r"|\bbest\s+(treatment|therapy|option|drug)\b", re.IGNORECASE)
+
+    @staticmethod
+    def _check_visit_text(text: object, field: str, low: int, high: int) -> str:
+        if not isinstance(text, str) or not low <= len(text.strip()) <= high:
+            raise InvalidInput(f"Visit {field} must have {low}–{high} characters")
+        if CaseStore._VISIT_DIRECTIVE_LANGUAGE.search(text):
+            raise InvalidInput(f"Visit {field} must be descriptive history only; "
+                               "directive or prescriptive wording is not accepted")
+        return text.strip()
+
+    @staticmethod
+    def _check_visit_anchor(anchor: object) -> str | None:
+        if anchor is None:
+            return None
+        if not isinstance(anchor, str):
+            raise InvalidInput("Visit source anchor must be text or absent")
+        if not anchor.strip():
+            return None
+        return CaseStore._check_visit_text(anchor, "source anchor", 1, 300)
+
+    @staticmethod
+    def _project_visit_version(row: dict) -> dict:
+        anchor = row["source_anchor"]
+        return {
+            "id": row["id"],
+            "visit_id": row["visit_id"],
+            "version": row["version"],
+            "recorded_date": row["recorded_date"],
+            "recorded_date_label": CaseStore.VISIT_RECORDED_DATE_LABEL,
+            "visit_type": row["visit_type"],
+            "notes": row["notes"],
+            "source_anchor": anchor,
+            "source_display": anchor if anchor else CaseStore.VISIT_MISSING_SOURCE_LABEL,
+            "review_state": row["review_state"],
+            "state": row["state"],
+            "previous_id": row["previous_id"],
+            "created_at": row["created_at"],
+        }
+
+    def record_visit(self, case_id: str, recorded_date: str, visit_type: str,
+                     notes: str, source_anchor: str | None = None) -> dict:
+        """Record one fictional visit as plain history (version 1, current).
+
+        A missing source anchor is allowed and stays NULL; readers render it
+        as 'no source recorded'. The recorded date is history only, never a
+        due date. Emits only a visit_recorded event; no other record changes.
+        """
+        case_id = self._case(case_id)
+        recorded_date = valid_date(recorded_date)
+        visit_type = self._check_visit_text(visit_type, "visit type", 1, 120)
+        notes = self._check_visit_text(notes, "notes", 1, 2000)
+        source_anchor = self._check_visit_anchor(source_anchor)
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            cur = self.db.execute("INSERT INTO visits (case_id,created_at) VALUES (?,?)",
+                                  (case_id, now_utc()))
+            visit_id = int(cur.lastrowid)
+            vcur = self.db.execute("""INSERT INTO visit_versions
+                (visit_id,case_id,version,recorded_date,visit_type,notes,source_anchor,
+                 review_state,state,previous_id,created_at)
+                VALUES (?,?,1,?,?,?,?,'recorded','current',NULL,?)""",
+                (visit_id, case_id, recorded_date, visit_type, notes,
+                 source_anchor, now_utc()))
+            version_id = int(vcur.lastrowid)
+            self._event(case_id, "visit_recorded", visit_id=visit_id,
+                        version_id=version_id, version=1)
+            return {"visit_id": visit_id, "version_id": version_id, "version": 1}
+
+    def amend_visit(self, case_id: str, visit_id: int, recorded_date: str,
+                    visit_type: str, notes: str,
+                    source_anchor: str | None = None) -> dict:
+        """Append a new current version; the old version is superseded.
+
+        History rows are never updated or deleted: only the single previous
+        current row flips to superseded, and only within this visit. No other
+        visit, source, question, or investigation is touched.
+        """
+        case_id = self._case(case_id)
+        if type(visit_id) is not int or visit_id < 1:
+            raise InvalidInput("Invalid visit ID")
+        recorded_date = valid_date(recorded_date)
+        visit_type = self._check_visit_text(visit_type, "visit type", 1, 120)
+        notes = self._check_visit_text(notes, "notes", 1, 2000)
+        source_anchor = self._check_visit_anchor(source_anchor)
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            if not self.db.execute("SELECT 1 FROM visits WHERE id=? AND case_id=?",
+                                   (visit_id, case_id)).fetchone():
+                raise InvalidInput("Visit not in this case")
+            current = self.db.execute("""SELECT * FROM visit_versions
+                WHERE visit_id=? AND case_id=? AND state='current'
+                ORDER BY version DESC LIMIT 1""", (visit_id, case_id)).fetchone()
+            if not current:
+                raise InvalidInput("Visit has no current version to amend")
+            new_version = int(current["version"]) + 1
+            vcur = self.db.execute("""INSERT INTO visit_versions
+                (visit_id,case_id,version,recorded_date,visit_type,notes,source_anchor,
+                 review_state,state,previous_id,created_at)
+                VALUES (?,?,?,?,?,?,?,'recorded','current',?,?)""",
+                (visit_id, case_id, new_version, recorded_date, visit_type,
+                 notes, source_anchor, current["id"], now_utc()))
+            self.db.execute("UPDATE visit_versions SET state='superseded' WHERE id=?",
+                            (current["id"],))
+            version_id = int(vcur.lastrowid)
+            self._event(case_id, "visit_amended", visit_id=visit_id,
+                        version_id=version_id, version=new_version,
+                        supersedes_id=current["id"])
+            return {"visit_id": visit_id, "version_id": version_id,
+                    "version": new_version, "supersedes_id": current["id"]}
+
+    def list_visits(self, case_id: str) -> dict:
+        """List this case's visits with full version history, oldest first.
+
+        Strictly case-scoped: only rows carrying this case_id are read.
+        History arrays are in version order; the current version is also
+        projected separately for convenient rendering.
+        """
+        self._case(case_id)
+        with self.db:
+            self.db.execute("BEGIN")
+            visits = self._dicts(self.db.execute(
+                "SELECT id,case_id,created_at FROM visits WHERE case_id=? ORDER BY id",
+                (case_id,)).fetchall())
+            out = []
+            for visit in visits:
+                versions = self._dicts(self.db.execute(
+                    "SELECT * FROM visit_versions WHERE visit_id=? AND case_id=? ORDER BY version",
+                    (visit["id"], case_id)).fetchall())
+                projected = [self._project_visit_version(v) for v in versions]
+                current = next((v for v in projected if v["state"] == "current"), None)
+                out.append({
+                    "visit_id": visit["id"],
+                    "created_at": visit["created_at"],
+                    "current": current,
+                    "history": projected,
+                })
+            return {
+                "visits": out,
+                "recorded_date_label": self.VISIT_RECORDED_DATE_LABEL,
+                "disclaimer": self.VISIT_DISCLAIMER,
+                "synthetic": True,
+            }
     # ---- Evidence quality and limitations (descriptive only) ----
     # Append-only human notes about one exact source version. Recording
     # never updates source_versions, assertions, questions, snapshots, or
