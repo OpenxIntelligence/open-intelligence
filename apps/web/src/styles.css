@@ -99,3 +99,9 @@
 .overview-actions button strong{font-size:15px}
 .overview-actions button span{font-size:12px;font-weight:400;color:#53685f;line-height:1.5}
 @media(max-width:900px){.overview-actions{grid-template-columns:1fr}.overview-actions button{min-height:72px}}
+
+/* UX-04: tasks before account administration for an already opened patient. */
+.overview-context{font-size:12px;color:#365a4b;margin:0 0 12px}
+.overview-access{margin-top:26px;border-top:1px solid #d7e0d8;padding-top:18px}
+.overview-access-heading{font-size:16px;font-family:inherit;letter-spacing:0;margin:0 0 14px;color:#435b50}
+.overview-access .panel{box-shadow:none}
