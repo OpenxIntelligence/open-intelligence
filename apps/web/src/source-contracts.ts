@@ -19,7 +19,7 @@ export type SourceFinding = Readonly<{
   source_statement:string; source_line:number; clinical_review_state:'not_established';
 }>;
 export type SourceIndex = Readonly<{
-  contract:'oi.synthetic-original-sources/1'; patient_id:string; case_id:string;
+  contract:'oi.synthetic-original-sources/1'; patient_id:string; case_id:string; access_receipt_id:string;
   sources:ReadonlyArray<SourceVersion>;
   source_reported_assertions:ReadonlyArray<SourceFinding>;
   synthetic:true; clinical_interpretation:false;
@@ -29,6 +29,7 @@ const PATIENT=/^[A-Za-z0-9][A-Za-z0-9_.:-]{2,127}$/;
 const CASE=/^CASE-[A-Z0-9-]{1,35}$/;
 const SOURCE=/^SRC-[0-9A-F]{32}$/;
 const SHA=/^[a-f0-9]{64}$/;
+const RECEIPT=/^ACCESS-[0-9A-F]{32}$/;
 function exact(v:unknown,keys:readonly string[]):v is Record<string,unknown>{
   return v!==null && typeof v==='object' && !Array.isArray(v) &&
     Object.keys(v).length===keys.length && keys.every(k=>Object.hasOwn(v,k));
@@ -75,10 +76,11 @@ export function parseCaseBindingList(v:unknown,expectedPatient:string):ReadonlyA
 }
 export function parseSourceIndex(v:unknown,expectedPatient:string,expectedCase:string):SourceIndex{
   if(!PATIENT.test(expectedPatient) || !CASE.test(expectedCase) ||
-    !exact(v,['contract','patient_id','case_id','sources','source_reported_assertions',
+    !exact(v,['contract','patient_id','case_id','access_receipt_id','sources','source_reported_assertions',
       'synthetic','clinical_interpretation','research_review_invalidation_integrated']) ||
     v.contract!=='oi.synthetic-original-sources/1' ||
     v.patient_id!==expectedPatient || v.case_id!==expectedCase ||
+    typeof v.access_receipt_id!=='string' || !RECEIPT.test(v.access_receipt_id) ||
     v.synthetic!==true || v.clinical_interpretation!==false ||
     v.research_review_invalidation_integrated!==false ||
     !Array.isArray(v.sources) || v.sources.length>256 ||
@@ -112,6 +114,7 @@ export function parseSourceIndex(v:unknown,expectedPatient:string,expectedCase:s
   }
   return Object.freeze({
     contract:'oi.synthetic-original-sources/1',patient_id:expectedPatient,case_id:expectedCase,
+    access_receipt_id:v.access_receipt_id as string,
     sources:Object.freeze(versions),source_reported_assertions:Object.freeze(findings),
     synthetic:true,clinical_interpretation:false,
     research_review_invalidation_integrated:false,
