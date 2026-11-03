@@ -111,6 +111,66 @@ class RecordRequests(Contract):
     source_receipts_enabled: Literal[False] = False
 
 
+
+class CreateCaseBinding(Contract):
+    synthetic: StrictBool
+    case_id: str = Field(min_length=6, max_length=40, pattern=r"^CASE-[A-Z0-9-]{1,35}$")
+    source_organization: str = Field(min_length=3, max_length=128)
+    source_system: str = Field(min_length=3, max_length=128)
+    source_subject_ref: str = Field(min_length=3, max_length=128)
+    review_ref: str = Field(min_length=3, max_length=128)
+
+    @field_validator("synthetic")
+    @classmethod
+    def fictional_only(cls, value):
+        if value is not True:
+            raise ValueError("Only independently fictional case mappings are allowed")
+        return value
+
+
+class RevokeCaseBinding(Contract):
+    synthetic: StrictBool
+    reason: str = Field(min_length=10, max_length=200)
+
+    @field_validator("synthetic")
+    @classmethod
+    def fictional_only(cls, value):
+        if value is not True:
+            raise ValueError("Only fictional case mappings are allowed")
+        return value
+
+
+class CaseBindingReceipt(Contract):
+    case_id: str
+    patient_id: str
+    duplicate: bool
+    source_identity_verified: Literal[False]
+
+
+class CaseBinding(Contract):
+    case_id: str
+    patient_id: str
+    source_organization: str
+    source_system: str
+    source_subject_ref: str
+    review_ref: str
+    status: Literal["active", "revoked"]
+    revision: int
+    created_at: datetime
+    revoked_at: datetime | None
+    source_identity_verified: Literal[False]
+    clinical_sources_linked: Literal[False]
+    clinical_conclusions: Literal[False]
+
+
+class CaseBindingList(Contract):
+    patient_id: str
+    mappings: list[CaseBinding]
+    synthetic: Literal[True] = True
+    source_identity_verified: Literal[False] = False
+    clinical_sources_linked: Literal[False] = False
+
+
 def patient_router(database: Database, authentication: Authentication) -> APIRouter:
     router = APIRouter(prefix="/v1/patients", tags=["Synthetic patient registry"])
     bearer = HTTPBearer(auto_error=False, scheme_name="SyntheticFixture",
@@ -252,5 +312,53 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
         except PatientRegistryDenied:
             raise HTTPException(404, "Patient unavailable") from None
         return RecordRequestReceipt(**result)
+
+
+    @router.get("/{patient_id}/case-bindings", response_model=CaseBindingList,
+                responses=errors, operation_id="list_case_bindings_v1")
+    def list_case_bindings(patient_id: str, context: Principal = Depends(principal)):
+        try:
+            with registry(context) as patients:
+                records_authorized(patients, context, patient_id, "case_binding_read")
+                rows = CanonicalCaseBindings(patients).list(
+                    patient_id, organization=context.organization)
+                return CaseBindingList(patient_id=patient_id, mappings=rows)
+        except PatientRegistryDenied:
+            raise HTTPException(404, "Patient unavailable") from None
+
+    @router.post("/{patient_id}/case-bindings", response_model=CaseBindingReceipt,
+                 status_code=201, responses={200: {"model": CaseBindingReceipt}, **errors},
+                 operation_id="create_case_binding_v1")
+    def create_case_binding(patient_id: str, payload: CreateCaseBinding,
+                            response: Response, context: Principal = Depends(principal)):
+        try:
+            with registry(context) as patients:
+                records_authorized(patients, context, patient_id, "case_binding_create")
+                result = CanonicalCaseBindings(patients).bind(
+                    patient_id, organization=context.organization,
+                    actor=context.actor, purpose=context.purpose,
+                    case_id=payload.case_id, source_organization=payload.source_organization,
+                    source_system=payload.source_system,
+                    source_subject_ref=payload.source_subject_ref,
+                    review_ref=payload.review_ref)
+        except PatientRegistryDenied:
+            raise HTTPException(404, "Patient unavailable") from None
+        response.status_code = 200 if result["duplicate"] else 201
+        return CaseBindingReceipt(**result)
+
+    @router.post("/{patient_id}/case-bindings/{case_id}/revoke",
+                 response_model=CaseBindingReceipt, responses=errors,
+                 operation_id="revoke_case_binding_v1")
+    def revoke_case_binding(patient_id: str, case_id: str,
+                            payload: RevokeCaseBinding, context: Principal = Depends(principal)):
+        try:
+            with registry(context) as patients:
+                records_authorized(patients, context, patient_id, "case_binding_revoke")
+                result = CanonicalCaseBindings(patients).revoke(
+                    patient_id, case_id, organization=context.organization,
+                    actor=context.actor, reason=payload.reason)
+        except PatientRegistryDenied:
+            raise HTTPException(404, "Patient unavailable") from None
+        return CaseBindingReceipt(**result)
 
     return router
