@@ -1119,3 +1119,53 @@ dialog pre {
   .glance-review .review-attention { margin-block: var(--space-3); }
   .dialog-fictional-label { color: #000; background: #fff; border: 2px solid #000; }
 }
+/* Plain-language patient report: read-only, printable, fictional labels. */
+.report-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-bottom: var(--space-4); }
+.report-actions .button { text-decoration: none; }
+.report-actions [aria-disabled="true"] { opacity: .55; cursor: not-allowed; }
+.report-sections { display: grid; gap: var(--space-5); }
+.report-section { border-top: 2px solid var(--color-rule); padding-top: var(--space-3); }
+.report-section-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin-bottom: var(--space-2); }
+.report-section-head h3 { font-size: var(--text-lg); }
+.report-items { list-style: none; display: grid; gap: var(--space-3); padding: 0; }
+.report-item .quoted { margin-bottom: var(--space-1); }
+.report-item .ref { margin-top: var(--space-1); }
+.report-item > p { white-space: pre-line; overflow-wrap: anywhere; }
+@media print {
+  .report-actions { display: none; }
+  /* Normal block flow lets page-break rules join headings to their summaries. */
+  .report-sections, .report-items { display: block; }
+  .report-section + .report-section { margin-top: var(--space-5); }
+  .report-item + .report-item { margin-top: var(--space-3); }
+  .report-section { break-inside: auto; }
+  .report-section-head { break-inside: avoid; break-after: avoid; }
+  .report-section-head + p { break-before: avoid; }
+  .report-item { break-inside: avoid; }
+  #patient-report .pill-warn { color: #000; background: #fff; border: 2px solid #000; }
+  body.printing-patient-report > :not(.layout),
+  body.printing-patient-report .layout > :not(.main),
+  body.printing-patient-report .main > :not(#patient-report) { display: none; }
+  body.printing-patient-report .layout { display: block; }
+  body.printing-patient-report .main { padding: 0; margin: 0; max-width: none; }
+  body.printing-patient-report #patient-report { padding: 0; margin: 0; border: 0; box-shadow: none; }
+}
+
+/* The patient view reuses the case ledger and existing source reader. */
+.patient-record-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(16rem, 1fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+#patient-view h3 { margin: 1.4rem 0 .7rem; }
+#patient-record-status { margin: .75rem 0; color: var(--color-muted); }
+#patient-view[data-state="unavailable"] #patient-record-status {
+  border-left: 3px solid currentColor;
+  padding: .6rem .85rem;
+}
+#patient-timeline details { margin-top: .75rem; }
+#patient-timeline summary { cursor: pointer; font-weight: 600; padding: .5rem 0; }
+.patient-record-item { overflow-wrap: anywhere; }
+@media (max-width: 60rem) {
+  .patient-record-grid { grid-template-columns: minmax(0, 1fr); gap: .25rem; }
+}

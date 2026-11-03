@@ -22,6 +22,9 @@ STATES = frozenset({"reported", "negative", "pending", "indeterminate", "not-rep
 TYPES = frozenset({"pathology", "molecular", "imaging", "laboratory", "clinical", "other"})
 MAX_SOURCE_BYTES = 65536
 MAX_SUMMARY = 3000
+# Sentinel for "argument absent" in follow-through updates, distinct from an
+# explicit null (which clears the field it names).
+_KEEP = object()
 
 
 class InvalidInput(ValueError):
@@ -518,6 +521,29 @@ CREATE TRIGGER IF NOT EXISTS review_receipts_immutable_delete
 BEFORE DELETE ON review_receipts BEGIN
   SELECT RAISE(ABORT, 'Review receipts are immutable');
 END;
+
+-- Follow-through: human-owned records of agreed case work. The task row
+-- holds CURRENT state only; every status change appends one event row
+-- with who/when/why, and event rows are never updated or deleted.
+-- Completed tasks stay readable as history. Nothing here performs an
+-- action: completion is only a recorded acknowledgment path.
+CREATE TABLE IF NOT EXISTS followthrough_tasks (
+  id INTEGER PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(case_id),
+  title TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '',
+  owner_label TEXT, due_date TEXT, review_trigger TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL CHECK(status IN ('created','assigned','acknowledged','completed','deferred')),
+  question_id INTEGER REFERENCES questions(id),
+  source_version_id INTEGER REFERENCES source_versions(id),
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS followthrough_task_events (
+  id INTEGER PRIMARY KEY, task_id INTEGER NOT NULL REFERENCES followthrough_tasks(id),
+  previous_status TEXT CHECK(previous_status IN ('created','assigned','acknowledged','completed','deferred')),
+  new_status TEXT NOT NULL CHECK(new_status IN ('created','assigned','acknowledged','completed','deferred')),
+  actor_label TEXT NOT NULL, reason TEXT NOT NULL, noted_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_followthrough_tasks_case ON followthrough_tasks(case_id);
+CREATE INDEX IF NOT EXISTS idx_followthrough_events_task ON followthrough_task_events(task_id);
 """
 
 
@@ -2365,6 +2391,123 @@ class CaseStore:
             self._event(case_id, "question_created", question_id=cur.lastrowid)
         return int(cur.lastrowid)
 
+    # ---- Follow-through: records of agreed human work, never actions ----
+    # Creation and every status change append one history row (who/when/why).
+    # History rows are never updated or deleted. Completion requires a prior
+    # recorded acknowledgment, so no path can claim human action was taken
+    # without one. Anchors (question/source) are immutable after creation.
+
+    def create_followthrough_task(self, case_id: str, title: str, *,
+                                 detail: str | None = None,
+                                 due_date: str | None = None,
+                                 review_trigger: str | None = None,
+                                 question_id: int | None = None,
+                                 source_version_id: int | None = None,
+                                 actor_label: str, reason: str | None = None) -> int:
+        from .followthrough import (FollowthroughInputError, check_actor,
+                                    check_due_date, check_optional_text,
+                                    check_task_text)
+        self._case(case_id)
+        try:
+            title_text = check_task_text(title, "Task title", min_len=1, max_len=120)
+            detail_text = check_optional_text(detail, "Task detail", max_len=1000)
+            trigger_text = check_optional_text(review_trigger, "Review trigger", max_len=300)
+            actor = check_actor(actor_label)
+            reason_text = check_optional_text(reason, "Creation note", max_len=600)
+            due = check_due_date(due_date)
+        except FollowthroughInputError as error:
+            raise InvalidInput(str(error)) from error
+        if question_id is not None and (type(question_id) is not int or question_id < 1):
+            raise InvalidInput("Question ID must be a positive integer")
+        if source_version_id is not None and (type(source_version_id) is not int or source_version_id < 1):
+            raise InvalidInput("Source version ID must be a positive integer")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            if question_id is not None and not self.db.execute(
+                    "SELECT 1 FROM questions WHERE id=? AND case_id=?",
+                    (question_id, case_id)).fetchone():
+                raise InvalidInput("Question not in this case")
+            if source_version_id is not None and not self.db.execute(
+                    "SELECT 1 FROM source_versions WHERE id=? AND case_id=? AND state='current'",
+                    (source_version_id, case_id)).fetchone():
+                raise InvalidInput("Source is missing, superseded, or belongs to another case")
+            timestamp = now_utc()
+            cur = self.db.execute("""INSERT INTO followthrough_tasks
+                (case_id,title,detail,owner_label,due_date,review_trigger,status,
+                 question_id,source_version_id,created_at)
+                VALUES (?,?,?,NULL,?,?, 'created',?,?,?)""",
+                (case_id, title_text, detail_text, due, trigger_text,
+                 question_id, source_version_id, timestamp))
+            task_id = int(cur.lastrowid)
+            self.db.execute("""INSERT INTO followthrough_task_events
+                (task_id,previous_status,new_status,actor_label,reason,noted_at)
+                VALUES (?,NULL,'created',?,?,?)""",
+                (task_id, actor, reason_text, timestamp))
+            self._event(case_id, "followthrough_task_created", task_id=task_id)
+            return task_id
+
+    def update_followthrough_task(self, case_id: str, task_id: int, new_status: str, *,
+                                 actor_label: str, reason: str,
+                                 owner_label: str | None = None,
+                                 due_date: object = _KEEP) -> dict:
+        from .followthrough import (FollowthroughInputError, STATUSES,
+                                    TRANSITIONS, check_actor, check_due_date,
+                                    check_task_text)
+        self._case(case_id)
+        if type(task_id) is not int or task_id < 1:
+            raise InvalidInput("Invalid follow-through task ID")
+        if not isinstance(new_status, str) or new_status not in STATUSES:
+            raise InvalidInput("Invalid follow-through status")
+        try:
+            actor = check_actor(actor_label)
+            reason_text = check_task_text(reason, "Change reason", min_len=10, max_len=600)
+        except FollowthroughInputError as error:
+            raise InvalidInput(str(error)) from error
+        owner_text: str | None = None
+        if new_status == "assigned":
+            try:
+                owner_text = check_task_text(owner_label, "Owner label", min_len=2, max_len=80)
+            except FollowthroughInputError as error:
+                raise InvalidInput(str(error)) from error
+        elif owner_label is not None:
+            raise InvalidInput("An owner is recorded only when a task is assigned")
+        due_provided = due_date is not _KEEP
+        try:
+            due_value = check_due_date(due_date) if due_provided else None
+        except FollowthroughInputError as error:
+            raise InvalidInput(str(error)) from error
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            row = self.db.execute("SELECT status FROM followthrough_tasks WHERE id=? AND case_id=?",
+                                  (task_id, case_id)).fetchone()
+            if not row:
+                raise InvalidInput("Follow-through task not in this case")
+            previous = row["status"]
+            if new_status not in TRANSITIONS[previous]:
+                if previous == "completed":
+                    raise InvalidInput("A completed task stays in history; record a new task for further work")
+                raise InvalidInput(
+                    f"Cannot move a task from {previous} to {new_status}; "
+                    "completion requires a recorded acknowledgment first")
+            timestamp = now_utc()
+            if new_status == "assigned":
+                self.db.execute("UPDATE followthrough_tasks SET status='assigned',owner_label=? WHERE id=?",
+                                (owner_text, task_id))
+            else:
+                self.db.execute("UPDATE followthrough_tasks SET status=? WHERE id=?",
+                                (new_status, task_id))
+            if due_provided:
+                self.db.execute("UPDATE followthrough_tasks SET due_date=? WHERE id=?",
+                                (due_value, task_id))
+            cur = self.db.execute("""INSERT INTO followthrough_task_events
+                (task_id,previous_status,new_status,actor_label,reason,noted_at)
+                VALUES (?,?,?,?,?,?)""",
+                (task_id, previous, new_status, actor, reason_text, timestamp))
+            self._event(case_id, "followthrough_task_status_changed",
+                        task_id=task_id, previous_status=previous, new_status=new_status)
+            return {"result": new_status, "task_id": task_id,
+                    "previous_status": previous, "event_id": int(cur.lastrowid)}
+
     def create_snapshot(self, case_id: str, question_id: int, summary: str, source_ids: list[int],
                         evidence_assessment_ids: list[int] | None = None,
                         broker_link_ids: list[int] | None = None) -> int:
@@ -2768,9 +2911,21 @@ class CaseStore:
                            validated, mode: str,
                            context_fingerprint: str | None = None,
                            input_receipts: list[dict] | None = None) -> int:
+        """Record an unreviewed attempt only for a question in this case.
+
+        An attempt, including a completed hypothesis, is not the explicit
+        snapshot acknowledgment performed by ``acknowledge_demo_review``.
+        """
         self._case(case_id)
+        if type(question_id) is not int or question_id < 1:
+            raise InvalidInput("Question id must be a positive integer")
         with self.db:
             self.db.execute("BEGIN IMMEDIATE")
+            if self.db.execute(
+                "SELECT 1 FROM questions WHERE id=? AND case_id=?",
+                (question_id, case_id),
+            ).fetchone() is None:
+                raise InvalidInput("Question not in this case")
             facts = self.investigation_facts(case_id, question_id)
             has_broker_citation = any(c.get("type") == "broker" for claim in validated.claims
                                      for c in claim.get("citations", []))
@@ -2930,7 +3085,10 @@ class CaseStore:
                 FROM evidence_assessments a JOIN evidence_versions v ON v.id=a.evidence_version_id
                 WHERE a.case_id=? ORDER BY a.id DESC""", (case_id,)).fetchall())
             option_projection = self.option_view(case_id)
+            from .followthrough import followthrough_view_in_transaction
+            followthrough_projection = followthrough_view_in_transaction(self, case_id)
             return {
+                "followthrough": followthrough_projection,
                 "broker_links": broker_rows,
                 "rights_sources": rights_rows,
                 "biological_assets": self._dicts(self.db.execute(
