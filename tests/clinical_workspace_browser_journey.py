@@ -90,21 +90,42 @@ def main():
    cd.wait("document.querySelector('#composer-context-fingerprint').value.length===64 && !document.querySelector('#model-investigation-run').disabled",'revised source preview')
    cd.evaluate("document.querySelector('#model-investigation-form').requestSubmit()")
    cd.wait("document.querySelectorAll('#model-investigation-list .snapshot').length===2",'new explicit reassessment')
+   current_id=next(item['id'] for item in state['sources'] if item['state']=='current')
+   superseded_id=next(item['id'] for item in state['sources'] if item['state']!='current')
+   cd.wait("""(() => {
+    const inputs=[...document.querySelectorAll('#source-choice input')];
+    const prior=inputs.find(input=>input.value==='""" + str(superseded_id) + """');
+    const fresh=inputs.find(input=>input.value==='""" + str(current_id) + """');
+    return !!prior && prior.checked && !!fresh && !fresh.checked;
+   })()""",'superseded source remains explicitly selected after amendment')
    cd.evaluate("""(() => {
-    // Clinical branch has no automatic model-to-report promotion. A person
-    // must author observations and explicitly select the current source.
-    const inputs = [...document.querySelectorAll('#source-choice input')];
-    if (!inputs.length) throw new Error('No current original source to cite');
-    inputs.forEach(input => { input.checked = true; });
+    // Try the superseded selection first. It must not be silently promoted.
     document.querySelector('#draft-observations').value =
       'Original fictional pathology source requires human interpretation.';
     document.querySelector('#draft-summary').value =
       'Human-authored discussion draft, not an AI treatment recommendation.';
     document.querySelector('#draft-assumptions').value =
-      'Recorded replay is an unreviewed hypothesis; interpretation remains uncertain.';
+      'Recorded replay remains an unreviewed research hypothesis.';
     document.querySelector('#draft-form').requestSubmit();
    })()""")
-   cd.wait("document.querySelectorAll('#snapshot-list .snapshot').length===2",'new report; original history untouched')
+   cd.wait("document.querySelector('#notice').textContent.includes('Source is missing, superseded, or belongs to another case')",
+           'stale historical source rejected by canonical ledger')
+   denied=json.load(urlopen(url+'api/cases/'+CASE+'/state'))
+   assert len(denied['snapshots'])==1,'stale source acceptance created a second draft'
+   cd.evaluate("""(() => {
+    // User must explicitly reconcile the exact current version, not silently
+    // treat an old citation as the new document.
+    const inputs=[...document.querySelectorAll('#source-choice input')];
+    const selected=inputs.find(input=>input.value==='""" + str(current_id) + """');
+    if(!selected) throw new Error('Corrected source was not offered for review');
+    inputs.forEach(input=>{input.checked=(input===selected);});
+    document.querySelector('#draft-form').requestSubmit();
+   })()""")
+   cd.wait("document.querySelectorAll('#snapshot-list .snapshot').length===2",
+           'new human-authored report uses reconciled current source')
+   checked=json.load(urlopen(url+'api/cases/'+CASE+'/state'))
+   assert next(s for s in checked['snapshots'] if s['state']=='draft')['source_ids']==[current_id], \
+    'new report kept stale source rather than explicit current selection'
    cd.command('Page.reload')
    cd.wait("document.querySelectorAll('#snapshot-list .snapshot').length===2",'persistent case and reports after browser reload')
    assert len(json.load(urlopen(url+'api/cases')))==1
