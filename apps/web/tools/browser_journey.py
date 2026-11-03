@@ -134,6 +134,22 @@ def main():
             assert tokens[0] not in cd.evaluate('document.documentElement.outerHTML')
             assert cd.evaluate('localStorage.length===0 && sessionStorage.length===0')
 
+            # The real source-owned World Model is exposed through the
+            # existing patient selection and independent source_read grant.
+            cd.evaluate("document.querySelector('[data-testid=world-nav]').click()")
+            cd.wait("Boolean(document.querySelector('[data-testid=world-case-id]'))",
+                    'World Model navigation preserves selected patient')
+            assert cd.evaluate("document.querySelector('[data-testid=world-case-id]').value")=='CASE-ALPHA'
+            assert cd.evaluate("!document.querySelector('[data-testid=world-model-result]')")
+            cd.evaluate("document.querySelector('[data-testid=world-case-id]').form.requestSubmit()")
+            cd.wait("document.querySelector('[data-testid=world-model-result]')?.textContent.includes('Independently fictional browser source.')",
+                    'PG16 source World Model shows exact unreviewed quote')
+            original_view=cd.evaluate("document.querySelector('[data-testid=world-model-result]').textContent")
+            assert sid in original_view and "not-reported" in original_view.lower()
+            assert "LINE 8" in original_view
+            assert "Review not established" in original_view
+            assert "Clinical approval" not in original_view
+
             # A correction after receipt must never silently replace the
             # previously pinned original or describe it as current.
             amended=('OI-SYNTHETIC-REPORT/1\nPatient: CASE-ALPHA\n'
@@ -144,6 +160,18 @@ def main():
             status,correction=post(root+'/cases/CASE-ALPHA/sources',{
                 'synthetic':True,'original_text':amended})
             assert status==201 and correction['version']==2 and correction['source_id']!=sid
+            cd.evaluate("document.querySelector('[data-testid=world-refresh]').click()")
+            cd.wait("document.querySelector('[data-testid=world-model-result]')?.textContent.includes('Amended fictional marker is negative.')",
+                    'corrected PostgreSQL source replaces only current observations')
+            current_view=cd.evaluate("document.querySelector('[data-testid=world-model-result]').textContent")
+            assert correction['source_id'] in current_view
+            assert sid in current_view  # historical source retained
+            assert "Superseded source versions" in current_view
+            assert "Independently fictional browser source." not in current_view
+            assert "Clinical review is not connected" in current_view
+            cd.evaluate("document.querySelector('[data-testid=records-nav]').click()")
+            cd.wait("Boolean(document.querySelector('[data-testid=load-records]'))",
+                    'return to records without losing patient selection')
             cd.evaluate("document.querySelector('[data-testid=load-records]').click()")
             cd.wait("document.querySelector('[data-testid=record-requests]')?.textContent.includes('Historical source')",
                 'source amendment reopens operational reconciliation')
