@@ -185,3 +185,115 @@ test('new identity creation cannot retain old patient source versions',async()=>
   assert.equal(s.snapshot().patient,null);assert.equal(s.snapshot().sourceIndex,null);
   assert.equal(s.snapshot().cases,null);
 });
+
+const receiptId='RECORD-'+'A'.repeat(32);
+const requestIndex=()=>({
+  patient_id:'PAT-EXAMPLE-001',synthetic:true,external_request_sent:false,
+  source_receipts_enabled:true,requests:[{
+    request_id:receiptId,patient_id:'PAT-EXAMPLE-001',kind:'pathology',
+    record_label:'Fictional source <img onerror=alert(1)>',
+    source_organization:'Invented laboratory',status:'received',revision:2,
+    created_at:'2026-11-02T20:00:00Z',updated_at:'2026-11-02T20:01:00Z',
+    receipt_status:'source_current_unreviewed',
+    source_reference:{case_id:'CASE-ALPHA',source_id:sourceId,version:1,sha256:'b'.repeat(64)},
+    external_request_sent:false,
+  }]
+});
+test('record request read uses independent authorized GET and only server-supplied original reference',async()=>{
+ const calls=[];
+ const s=new RegistrySession(async(url,init)=>{
+  calls.push([url,init]);
+  return response(url.endsWith('/record-requests')?requestIndex():patient());
+ });
+ s.connect(token);await s.read('PAT-EXAMPLE-001');await s.loadRecordRequests();
+ const v=s.snapshot();
+ assert.equal(v.recordRequests.requests.length,1);
+ assert.equal(v.recordRequests.requests[0].source_reference.source_id,sourceId);
+ assert.equal(v.recordRequests.requests[0].external_request_sent,false);
+ assert.equal(v.recordRequests.requests[0].status,'received');
+ assert.equal(v.requestPhase,'ready');
+ assert.equal(calls[1][0],'/v1/patients/PAT-EXAMPLE-001/record-requests');
+ assert.equal(calls[1][1].method,'GET');
+ assert.equal(calls[1][1].credentials,'omit');
+ assert.equal(calls[1][1].redirect,'error');
+ assert.equal(calls[1][1].cache,'no-store');
+ assert.equal(calls[1][1].body,undefined);
+ assert.equal(JSON.stringify(v).includes(token),false);
+});
+test('request-read-only grant discloses receipt status but never fabricates source identifiers',async()=>{
+ const index=requestIndex();index.requests[0].source_reference=null;
+ const s=new RegistrySession(async url=>response(url.endsWith('/record-requests')?index:patient()));
+ s.connect(token);await s.read('PAT-EXAMPLE-001');await s.loadRecordRequests();
+ assert.equal(s.snapshot().recordRequests.requests[0].receipt_status,'source_current_unreviewed');
+ assert.equal(s.snapshot().recordRequests.requests[0].source_reference,null);
+ assert.ok(!JSON.stringify(s.snapshot()).includes(sourceId));
+});
+test('foreign patients, fabricated clinical authority, forged source or misleading receipts fail closed',async()=>{
+ for(const mutate of [
+  x=>{x.patient_id='PAT-OTHER';},
+  x=>{x.requests[0].patient_id='PAT-OTHER';},
+  x=>{x.requests[0].external_request_sent=true;},
+  x=>{x.external_request_sent=true;},
+  x=>{x.requests[0].source_reference.sha256='forged';},
+  x=>{x.requests[0].source_reference.source_id='SRC-FOREIGN';},
+  x=>{x.requests[0].source_reference.case_id='CASE-FOREIGN/../../';},
+  x=>{x.requests[0].receipt_status='clinically_approved';},
+  x=>{x.requests[0].status='cancelled';},
+  x=>{x.requests[0].receipt_status='binding_revoked_not_usable';},
+  x=>{x.requests.push({...x.requests[0]});},
+  x=>{x.secret='patient_name';},
+ ]) {
+  const index=requestIndex();mutate(index);
+  const s=new RegistrySession(async url=>response(url.endsWith('/record-requests')?index:patient()));
+  s.connect(token);await s.read('PAT-EXAMPLE-001');await s.loadRecordRequests();
+  assert.equal(s.snapshot().recordRequests,null);
+  assert.equal(s.snapshot().requestPhase,'error');
+  assert.equal(JSON.stringify(s.snapshot()).includes('patient_name'),false);
+ }
+});
+test('a revoked request grant erases prior receipt and never shows private backend details',async()=>{
+ let count=0;const s=new RegistrySession(async url=>{
+  if(url.endsWith('/record-requests'))return ++count===1?response(requestIndex()):
+    response({detail:'SECRET SOURCE REFERENCE '+sourceId},404);
+  return response(patient());
+ });
+ s.connect(token);await s.read('PAT-EXAMPLE-001');
+ await s.loadRecordRequests();assert.ok(s.snapshot().recordRequests);
+ await s.loadRecordRequests();
+ assert.equal(s.snapshot().recordRequests,null);
+ assert.equal(s.snapshot().requestPhase,'error');
+ assert.equal(JSON.stringify(s.snapshot()).includes('SECRET'),false);
+ assert.equal(JSON.stringify(s.snapshot()).includes(sourceId),false);
+});
+test('late record receipt after a patient change or disconnect cannot restore earlier patient sources',async()=>{
+ const delay=deferred();const s=new RegistrySession(async url=>{
+  if(url.endsWith('/record-requests'))return delay.promise;
+  return response(patient(url.endsWith('/PAT-OTHER')?'PAT-OTHER':'PAT-EXAMPLE-001'));
+ });
+ s.connect(token);await s.read('PAT-EXAMPLE-001');
+ const inFlight=s.loadRecordRequests();
+ await s.read('PAT-OTHER');
+ delay.resolve(response(requestIndex()));await inFlight;
+ assert.equal(s.snapshot().recordRequests,null);
+ assert.equal(s.snapshot().patient.patient_id,'PAT-OTHER');
+ s.disconnect();assert.equal(s.snapshot().recordRequests,null);
+});
+test('receipt source access is discarded on a new source/case check and on expired credential',async()=>{
+ const s=new RegistrySession(async url=>{
+  if(url.endsWith('/record-requests'))return response(requestIndex());
+  if(url.endsWith('/case-bindings'))return response(caseList());
+  if(url.endsWith('/sources'))return response(sourceIndex());
+  return response(patient());
+ });
+ s.connect(token);await s.read('PAT-EXAMPLE-001');
+ await s.loadRecordRequests();assert.ok(s.snapshot().recordRequests);
+ await s.loadCases();assert.equal(s.snapshot().recordRequests,null);
+ await s.loadRecordRequests();await s.loadSources('CASE-ALPHA');
+ assert.equal(s.snapshot().recordRequests,null);
+ const expired=new RegistrySession(async url=>url.endsWith('/record-requests')
+   ?response({},401):response(patient()));
+ expired.connect(token);await expired.read('PAT-EXAMPLE-001');
+ await expired.loadRecordRequests();
+ assert.equal(expired.snapshot().connected,false);
+ assert.equal(expired.snapshot().recordRequests,null);
+});

@@ -99,6 +99,19 @@ def main():
                 'synthetic':True,'original_text':original})
             assert status==201 and receipt['result']=='imported'
             original_id=receipt['source_id']
+            # The operator creates a fictional operational request through the
+            # original API, not by inventing local UI state or contacting a lab.
+            credentials[0]['actions'].extend([
+                'record_request_create','record_request_read','record_request_receive'
+            ])
+            write_grants()
+            status,request_receipt=add_synthetic(root+'/record-requests',{
+                'synthetic':True,'request_key':'RECORD-WEB-001',
+                'kind':'pathology','record_label':'Fictional pathology report <b>literal</b>',
+                'source_organization':'Invented organization',
+            })
+            assert status==201
+            record_request_id=request_receipt['request_id']
             cd.evaluate("Array.from(document.querySelectorAll('nav[aria-label=\"Patient workspace\"] button')).find(b=>b.textContent.includes('Records')).click()")
             cd.wait("Boolean(document.querySelector('[data-testid=records-workspace]'))",'actual read-only Records screen')
             assert pid in cd.evaluate("document.querySelector('[data-testid=records-patient]').textContent")
@@ -110,6 +123,22 @@ def main():
             assert cd.evaluate("document.querySelector('[data-testid=source-statement]').textContent.includes('<script>literal</script>')")
             assert cd.evaluate("document.querySelectorAll('[data-testid=source-statement] script').length===0")
             assert cd.evaluate("document.querySelector('[data-testid=source-index]').textContent.includes('not established')")
+            cd.evaluate("document.querySelector('[data-testid=load-record-requests]').click()")
+            cd.wait("document.querySelectorAll('[data-testid=record-request-item]').length===1",
+                    'canonical unreceived request displayed in React')
+            assert cd.evaluate("document.querySelector('[data-testid=record-request-item]').textContent.includes('not received')")
+            assert not cd.evaluate("document.querySelector('[data-testid=request-source-reference]')")
+            assert cd.evaluate("document.querySelector('[data-testid=record-requests-workspace]').textContent.includes('do not contact an institution')")
+            assert cd.evaluate("document.querySelectorAll('[data-testid=record-request-item] b').length===0"),'hostile label inserted as HTML'
+            status,received=add_synthetic(root+'/record-requests/'+record_request_id+'/receive',{
+                'synthetic':True,'case_id':case,'source_id':original_id,
+            })
+            assert status==201 and received['source_id']==original_id
+            cd.evaluate("document.querySelector('[data-testid=load-record-requests]').click()")
+            cd.wait("Boolean(document.querySelector('[data-testid=request-source-reference]'))",
+                    'separately source-authorized immutable receipt')
+            assert original_id in cd.evaluate("document.querySelector('[data-testid=request-source-reference]').textContent")
+
             amended=(
                 'OI-SYNTHETIC-REPORT/1\nPatient: CASE-ALPHA\nDocument: DOC-ONE\n'
                 'Type: pathology\nEvent-Date: 2026-01-10\nIssued-At: 2026-01-12\n'
@@ -124,12 +153,28 @@ def main():
             assert cd.evaluate("document.querySelector('[data-testid=source-index]').textContent.includes('superseded')")
             assert cd.evaluate("document.querySelector('[data-testid=source-index]').textContent.includes('Amended fictional marker is reported negative.')")
             assert cd.evaluate("document.querySelectorAll('[data-testid=source-statement]').length===1")
+            cd.evaluate("document.querySelector('[data-testid=load-record-requests]').click()")
+            cd.wait("Boolean(document.querySelector('[data-testid=request-reconcile]'))",
+                    'amended source requires explicit receipt reconciliation')
+            assert original_id in cd.evaluate("document.querySelector('[data-testid=request-source-reference]').textContent"),'received source was silently retargeted'
+
             # Read rights must be checked afresh; a denied refresh discards earlier findings.
             credentials[0]['actions'].remove('source_read');write_grants()
+            cd.evaluate("document.querySelector('[data-testid=load-record-requests]').click()")
+            cd.wait("Boolean(document.querySelector('[data-testid=request-source-withheld]'))",
+                    'separate source permission withheld pinned original ID')
+            assert not cd.evaluate("document.querySelector('[data-testid=request-source-reference]')")
+            assert not cd.evaluate("document.querySelector('[data-testid=source-index]')")
             cd.evaluate("document.querySelector('[data-testid=load-sources]').click()")
+
             cd.wait("document.querySelector('[data-testid=records-status]').textContent.includes('Sources unavailable')",'revoked source permission erases stale view')
             assert cd.evaluate("!document.querySelector('[data-testid=source-index]')")
             credentials[0]['actions'].append('source_read');write_grants()
+            credentials[0]['actions'].remove('record_request_read');write_grants()
+            cd.evaluate("document.querySelector('[data-testid=load-record-requests]').click()")
+            cd.wait("document.querySelector('[data-testid=request-status]').textContent.includes('unavailable')",
+                    'record-request read revocation wipes previous receipts')
+            assert not cd.evaluate("document.querySelector('[data-testid=record-request-list]')")
             cd.evaluate("Array.from(document.querySelectorAll('nav[aria-label=\"Patient workspace\"] button')).find(b=>b.textContent.includes('Overview')).click()")
             cd.wait("Boolean(document.querySelector('[data-testid=patient-card]'))",'return to patient identity after governed records inspection')
             cd.command('Accessibility.enable');tree=cd.command('Accessibility.getFullAXTree')['nodes']
