@@ -21,7 +21,7 @@ export type WorldSummary=Readonly<{
   unresolved_observations:number;source_disagreements:number;
 }>;
 export type SourceWorldModel=Readonly<{
-  contract:'oi.pg-source-world-model/1';patient_id:string;case_id:string;synthetic:true;
+  contract:'oi.pg-source-world-model/1';patient_id:string;case_id:string;access_receipt_id:string;synthetic:true;
   authority:'source_report_only_unreviewed';clinical_interpretation:false;
   research_review_invalidation_integrated:false;composer_execution_authorized:false;
   snapshot_fingerprint:string;as_of_received_at:string|null;summary:WorldSummary;
@@ -33,6 +33,7 @@ const PID=/^[A-Za-z0-9][A-Za-z0-9_.:-]{2,127}$/;
 const CASE=/^CASE-[A-Z0-9-]{1,35}$/;
 const SOURCE=/^SRC-[0-9A-F]{32}$/;
 const SHA=/^[a-f0-9]{64}$/;
+const RECEIPT=/^ACCESS-[0-9A-F]{32}$/;
 const DAY=/^\d{4}-\d{2}-\d{2}$/;
 const TYPES=new Set(['clinical','pathology','laboratory','imaging','molecular','other']);
 const STATES=new Set(['reported','negative','pending','indeterminate','not-reported','not-assessed','conflicting']);
@@ -98,12 +99,13 @@ function obs(v:unknown,current:Map<string,SourceVersion>):WorldObservation{
 }
 export function parseSourceWorldModel(raw:unknown,expectedPatient:string,expectedCase:string):SourceWorldModel{
   if(!PID.test(expectedPatient)||!CASE.test(expectedCase))return error();
-  const v=shape(raw,['contract','patient_id','case_id','synthetic','authority',
+  const v=shape(raw,['contract','patient_id','case_id','access_receipt_id','synthetic','authority',
     'clinical_interpretation','research_review_invalidation_integrated',
     'composer_execution_authorized','snapshot_fingerprint','as_of_received_at',
     'summary','current_sources','history','observations','unresolved_refs','conflicts','limitations']);
   if(v.contract!=='oi.pg-source-world-model/1'||v.patient_id!==expectedPatient||
      v.case_id!==expectedCase||v.synthetic!==true||
+     typeof v.access_receipt_id!=='string'||!RECEIPT.test(v.access_receipt_id)||
      v.authority!=='source_report_only_unreviewed'||
      v.clinical_interpretation!==false||
      v.research_review_invalidation_integrated!==false||
@@ -163,7 +165,8 @@ export function parseSourceWorldModel(raw:unknown,expectedPatient:string,expecte
   }
   if(v.limitations.some(x=>typeof x!=='string'||!x||x.length>512))return error();
   return Object.freeze({
-    contract:'oi.pg-source-world-model/1',patient_id:expectedPatient,case_id:expectedCase,synthetic:true,
+    contract:'oi.pg-source-world-model/1',patient_id:expectedPatient,case_id:expectedCase,
+    access_receipt_id:v.access_receipt_id as string,synthetic:true,
     authority:'source_report_only_unreviewed',clinical_interpretation:false,
     research_review_invalidation_integrated:false,composer_execution_authorized:false,
     snapshot_fingerprint:v.snapshot_fingerprint as string,
