@@ -39,7 +39,6 @@
     imported:async id => {
       if(current()!==id)return;
       await refresh();
-      await renderIncomingBoard(await api('/api/cases'));
       schedule();
     },
   });

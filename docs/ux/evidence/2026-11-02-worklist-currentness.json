@@ -1,0 +1,68 @@
+{
+  "baseline_commit": "725b7f78b77ac247b97a0c0df71caf5575ac0b5c",
+  "runtime_sha256": {
+    "web/app.js": "8d8a722627e00ee752fb4d5dec9e7a02882c41757868d8b81a0384c67e6a2276",
+    "web/index.html": "4276e61ab9d6d2e9711d916c1efd5b7d4f0cdcb0bb4e67507341f9fe1f39c0ae",
+    "web/workspace-entry.js": "994146971f530c0737fd51f9de08e87268bbff450c3c918ca7ff001fc98122fc"
+  },
+  "red": {
+    "run_id": 41565780861,
+    "probe_commit": "7db252d72624c6d44551dabf65da263bdeed2493",
+    "summary": {
+      "scenarios": 1,
+      "checks": 12,
+      "passed": 11,
+      "failed": 1
+    },
+    "artifact_sha256": "c42edc7cdf814ab035bdb40ae814eb92ced60675b519fd2c8b23df306ed7e995"
+  },
+  "focused_green": {
+    "run_id": 41566509936,
+    "probe_commit": "a988ffdd4de777eb2c49fcb0c8a12a7d9f11fb40",
+    "summary": {
+      "scenarios": 13,
+      "checks": 387,
+      "passed": 387,
+      "failed": 0
+    },
+    "scenario_names": [
+      "question-count",
+      "review-amendment-history",
+      "pasted-source-recency",
+      "file-intake-parity",
+      "manual-refresh-recovery",
+      "outside-session-refresh",
+      "late-board-success",
+      "late-board-failure",
+      "newer-full-list",
+      "initial-summary-recovery",
+      "shared-evidence-withdrawal",
+      "shared-evidence-amendment",
+      "question-count-standard"
+    ],
+    "browser_errors": 0,
+    "screenshots": 13,
+    "artifact_sha256": "f3b16c7dd6d087f0a3b9b6fdafdbe53a83319ac9a6384bf1dd1fca664656b820"
+  },
+  "local_regression": {
+    "python_tests_passed": 347,
+    "python_seconds": 72.601,
+    "named_javascript_tests_passed": 80,
+    "javascript_files": 8,
+    "original_form_contracts": 16
+  },
+  "independent_review": "No material blocker found; read-only, no browser execution by reviewer.",
+  "local_browser_limit": "Chrome socket() operation denied before application loading; sandbox escalation automatically rejected. Hosted runner used without local bypass.",
+  "final_published_verification": "See PR #183 for the exact published head, source tree and complete hosted UI workflow.",
+  "unchanged": [
+    "backend",
+    "schema",
+    "API payloads",
+    "authentication",
+    "authorization",
+    "processing/review rules",
+    "model behavior",
+    "production dependencies",
+    "existing fictional fixtures"
+  ]
+}

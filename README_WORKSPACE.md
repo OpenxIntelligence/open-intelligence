@@ -21,6 +21,14 @@ Open **http://127.0.0.1:8765**. Python 3.10 or newer is required. The default da
 
 The same existing workspace contains patient-oriented wording, source history, research/evidence assessment, bibliography, timeline, worklist and review history. Availability of a control is not evidence that hospital integration or clinical reasoning is implemented.
 
+## Patients worklist
+
+The Patients list updates a case's summary when its chart successfully reloads after saved work. It shows current original documents, open questions, the most recent source event and the number of historical drafts marked stale. Reviewing a replacement report does not remove earlier stale history. An amendment's issue date does not change the source-event ordering.
+
+Use **Refresh list** to check the latest saved changes, including changes made in another tab and newly created cases. Search, the selected chart, unfinished questions and selected local files are retained. A failed summary is shown as unavailable; retry the action to recover it. Shared evidence amendments and withdrawals also refresh summaries across the listed cases.
+
+These summaries reflect successful reads, not continuous synchronization. If a write finishes after its original case was left, refresh the list or reopen that chart to check it. [Implementation and verification](docs/ux/2026-11-02-worklist-currentness.md) records the precise guarantee and failure cases.
+
 ## Boundaries
 
 Use **independently authored fictional data only**, not actual, public or disguised patient records. File intake currently accepts UTF-8 `.txt` files with LF line endings and the existing `OI-SYNTHETIC-REPORT/1` contract, maximum 64 KiB. CRLF, BOM, invalid UTF-8 and unsupported formats are rejected rather than silently normalized. There is no normal PDF/OCR extraction or clinical inference here. Source statements are authored annotations, not model discoveries. A checkbox cannot prove consent, identity or data rights.
@@ -31,7 +39,7 @@ The accepted H1 target remains FastAPI/PostgreSQL and React/Vite/TypeScript. Thi
 
 ## Implementation ownership
 
-The original `app.js`, `index.html`, HTTP handler, source parser, CaseStore, model workflow and review engine remain unchanged. `workspace_host.py` composes a trusted first-party HTML partial and serves three extra static assets; all application APIs are inherited. `workspace-entry.js` is the thin adapter to existing browser selection/render functions, not a second store. Missing template anchors fail explicitly, requiring reconciliation with the owner.
+The frontend redesign updates the existing `app.js`, `index.html` and connected adapters. The HTTP handler, source parser, CaseStore, model workflow and review engine retain their existing contracts. `workspace_host.py` composes a trusted first-party HTML partial and serves three extra static assets; all application APIs are inherited. `workspace-entry.js` adapts the existing browser selection/render functions without a second store. Missing template anchors fail explicitly, requiring reconciliation with the owner.
 
 ```sh
 PYTHONPATH=src python -m unittest discover -s tests -p test_workspace_start_http.py -v
