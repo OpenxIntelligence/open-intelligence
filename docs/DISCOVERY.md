@@ -75,6 +75,11 @@ Invalidation behavior:
   link `invalid`, with `invalidated_cause` (`revocation`/`correction`),
   the rights row id, and a timestamp. A link depends on the row when its
   item is bound to it or when it cites a broker link that is.
+  Broker-link re-review likewise marks every valid discovery link citing
+  that broker link `invalid` with cause `re-review`, the broker link id,
+  the rights row id, and a timestamp; non-citing links stay valid and
+  unchanged, and `review_broker_link` responses list
+  `invalidated_discovery_links` alongside `invalidated_snapshots`.
 - Links are never deleted: rationale, applicability, broker bindings, and
   the item stay readable as history, the item stays in
   `GET /api/discovery`, and a per-case `discovery_invalidated` event is
@@ -82,8 +87,15 @@ Invalidation behavior:
   `invalidated_discovery_links` alongside `invalidated_snapshots`.
 - After a correction the item's binding still points at the superseded
   row as provenance, so new links fail closed rather than silently
-  carrying the item forward under new terms; explicit re-attachment is
-  out of scope for this slice.
+  carrying the item forward under new terms. An explicit human
+  re-attachment (`POST /api/cases/<CASE>/discovery-reattachments` with
+  `discovery_id`, `new_rights_source_id`, and a 10–600 character reason)
+  migrates one item to the successor row when the new row is active and
+  descends from the bound row's source-key lineage; the migration is
+  logged in the acting case's event ledger and in `rights_events`
+  (kind `reattached`), and the prior binding stays visible as
+  `previous_rights_source_id` plus the append-only re-attachment log.
+  Nothing re-attaches automatically on correction, import, or read.
 - A permission record is explicitly NOT proof of permission: the broker
   language in `docs/RIGHTS_BROKER.md` governs. The gate enforces what
   the record says and fails closed; it never verifies legal truth. No
@@ -96,6 +108,16 @@ Invalidation behavior:
   backlog row mapping is recorded here instead: OI-008, OI-017).
 - No Crossref live lookup in this slice; the existing bibliography path is
   the only live metadata route, and it stays operator opt-in.
-- Broker-link re-review does not invalidate discovery links citing that
-  broker link; only revocation and correction of a rights row do. Flag as
-  a follow-up if re-review semantics need to propagate to discovery.
+
+## Retrieval receipts
+
+Every broker attachment carries a retrieval receipt beside the
+excerpt-or-redaction in case state: source key, rights version label +
+row id, granted mode (`full`/`metadata_only`/`citation_only`), the
+permission cells relied upon (`full_text/store`, `full_text/display`,
+`metadata/store` with their values at retrieval), and retrieval time.
+After revocation or a permission downgrade, receipts keep provenance
+while content fields stay redacted under the existing
+`content_redacted` rule; receipts never restore content access. A
+receipt records what the record said at retrieval, not that it was
+true. Still no live fetching and no legal-truth verification.

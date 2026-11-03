@@ -322,7 +322,7 @@ CREATE TABLE IF NOT EXISTS snapshot_broker_links (
 );
 CREATE TABLE IF NOT EXISTS rights_events (
   id INTEGER PRIMARY KEY, rights_source_id INTEGER NOT NULL REFERENCES rights_sources(id),
-  kind TEXT NOT NULL CHECK(kind IN ('registered','revoked','superseded','link_created','link_reviewed')),
+  kind TEXT NOT NULL CHECK(kind IN ('registered','revoked','superseded','link_created','link_reviewed','reattached')),
   reason TEXT NOT NULL, recorded_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS investigations (
@@ -360,8 +360,9 @@ CREATE TABLE IF NOT EXISTS discovery_links (
   applicability TEXT NOT NULL CHECK(applicability IN ('applicable','limited','not_applicable','unknown')),
   rationale TEXT NOT NULL, created_at TEXT NOT NULL,
   state TEXT NOT NULL DEFAULT 'valid' CHECK(state IN ('valid','invalid')),
-  invalidated_cause TEXT CHECK(invalidated_cause IN ('revocation','correction')),
+  invalidated_cause TEXT CHECK(invalidated_cause IN ('revocation','correction','re-review')),
   invalidated_rights_source_id INTEGER REFERENCES rights_sources(id),
+  invalidated_broker_link_id INTEGER REFERENCES broker_links(id),
   invalidated_at TEXT,
   UNIQUE(case_id,question_id,discovery_id)
 );
@@ -370,6 +371,30 @@ CREATE TABLE IF NOT EXISTS discovery_link_broker_links (
   broker_link_id INTEGER NOT NULL REFERENCES broker_links(id),
   PRIMARY KEY(discovery_link_id, broker_link_id)
 );
+-- Rights-retrieval depth (B-03): retrieval receipts and re-attachment log.
+-- A receipt records what the rights record said at retrieval time — source
+-- identity, granted mode, and the permission cells relied upon. It never
+-- verifies legal truth and never restores content access. One row per broker
+-- link, written once at creation, never updated or deleted.
+-- A re-attachment row records one human-initiated migration of a discovery
+-- item from a superseded rights row to its successor. Append-only; the item's
+-- prior binding stays visible here as provenance.
+CREATE TABLE IF NOT EXISTS broker_retrieval_receipts (
+  broker_link_id INTEGER PRIMARY KEY REFERENCES broker_links(id),
+  source_key TEXT NOT NULL, version_label TEXT NOT NULL,
+  rights_source_id INTEGER NOT NULL REFERENCES rights_sources(id),
+  mode TEXT NOT NULL CHECK(mode IN ('full','metadata_only','citation_only')),
+  permissions_json TEXT NOT NULL, retrieved_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS discovery_rights_reattachments (
+  id INTEGER PRIMARY KEY,
+  discovery_id INTEGER NOT NULL REFERENCES discovery_items(id),
+  from_rights_source_id INTEGER NOT NULL REFERENCES rights_sources(id),
+  to_rights_source_id INTEGER NOT NULL REFERENCES rights_sources(id),
+  case_id TEXT NOT NULL REFERENCES cases(case_id),
+  reason TEXT NOT NULL, created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_reattachments_discovery ON discovery_rights_reattachments(discovery_id);
 CREATE INDEX IF NOT EXISTS idx_assessments_evidence ON evidence_assessments(evidence_version_id);
 CREATE INDEX IF NOT EXISTS idx_snapshot_evidence_assessment ON snapshot_evidence(assessment_id);
 CREATE INDEX IF NOT EXISTS idx_sources_case ON source_versions(case_id, document_id, version);
@@ -474,6 +499,9 @@ class CaseStore:
         self.db.execute("PRAGMA foreign_keys=ON")
         self.db.executescript(SCHEMA)
         self._migrate_discovery_rights()
+        self._migrate_discovery_rereview_cause()
+        self._migrate_rights_reattachment_kind()
+        self._backfill_broker_receipts()
 
     def _migrate_discovery_rights(self) -> None:
         """Add rights-linkage columns to pre-existing discovery tables.
@@ -489,9 +517,11 @@ class CaseStore:
             ("discovery_links", "state",
              "ALTER TABLE discovery_links ADD COLUMN state TEXT NOT NULL DEFAULT 'valid' CHECK(state IN ('valid','invalid'))"),
             ("discovery_links", "invalidated_cause",
-             "ALTER TABLE discovery_links ADD COLUMN invalidated_cause TEXT CHECK(invalidated_cause IN ('revocation','correction'))"),
+             "ALTER TABLE discovery_links ADD COLUMN invalidated_cause TEXT CHECK(invalidated_cause IN ('revocation','correction','re-review'))"),
             ("discovery_links", "invalidated_rights_source_id",
              "ALTER TABLE discovery_links ADD COLUMN invalidated_rights_source_id INTEGER REFERENCES rights_sources(id)"),
+            ("discovery_links", "invalidated_broker_link_id",
+             "ALTER TABLE discovery_links ADD COLUMN invalidated_broker_link_id INTEGER REFERENCES broker_links(id)"),
             ("discovery_links", "invalidated_at",
              "ALTER TABLE discovery_links ADD COLUMN invalidated_at TEXT"),
         )
@@ -508,6 +538,114 @@ class CaseStore:
                     if column not in names:
                         raise
         self.db.commit()
+
+    def _migrate_discovery_rereview_cause(self) -> None:
+        """Widen discovery_links.invalidated_cause to include 're-review'.
+
+        Fresh databases get the widened CHECK from SCHEMA, and legacy
+        databases migrated by _migrate_discovery_rights get it from the new
+        ADD COLUMN DDL. Only databases created with the older two-value
+        CHECK need this rebuild: every row is preserved, the new
+        invalidated_broker_link_id column is added as NULL, and history is
+        untouched. SQLite cannot alter a CHECK in place, so the table is
+        copied through a new table and renamed.
+        """
+        row = self.db.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='discovery_links'"
+        ).fetchone()
+        if not row or not row["sql"] or "re-review" in row["sql"]:
+            return
+        self.db.execute("PRAGMA foreign_keys=OFF")
+        try:
+            self.db.executescript("""
+                CREATE TABLE discovery_links_new (
+                  id INTEGER PRIMARY KEY,
+                  case_id TEXT NOT NULL REFERENCES cases(case_id),
+                  question_id INTEGER NOT NULL REFERENCES questions(id),
+                  discovery_id INTEGER NOT NULL REFERENCES discovery_items(id),
+                  applicability TEXT NOT NULL CHECK(applicability IN ('applicable','limited','not_applicable','unknown')),
+                  rationale TEXT NOT NULL, created_at TEXT NOT NULL,
+                  state TEXT NOT NULL DEFAULT 'valid' CHECK(state IN ('valid','invalid')),
+                  invalidated_cause TEXT CHECK(invalidated_cause IN ('revocation','correction','re-review')),
+                  invalidated_rights_source_id INTEGER REFERENCES rights_sources(id),
+                  invalidated_broker_link_id INTEGER REFERENCES broker_links(id),
+                  invalidated_at TEXT,
+                  UNIQUE(case_id,question_id,discovery_id)
+                );
+                INSERT INTO discovery_links_new
+                  (id,case_id,question_id,discovery_id,applicability,rationale,created_at,
+                   state,invalidated_cause,invalidated_rights_source_id,invalidated_at)
+                  SELECT id,case_id,question_id,discovery_id,applicability,rationale,created_at,
+                   state,invalidated_cause,invalidated_rights_source_id,invalidated_at
+                  FROM discovery_links;
+                DROP TABLE discovery_links;
+                ALTER TABLE discovery_links_new RENAME TO discovery_links;
+            """)
+            self.db.commit()
+        finally:
+            self.db.execute("PRAGMA foreign_keys=ON")
+
+    def _migrate_rights_reattachment_kind(self) -> None:
+        """Widen rights_events.kind to include 'reattached'.
+
+        Fresh databases get the widened CHECK from SCHEMA. Only databases
+        created with the older five-value CHECK need this rebuild; every
+        event row is preserved verbatim.
+        """
+        row = self.db.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='rights_events'"
+        ).fetchone()
+        if not row or not row["sql"] or "reattached" in row["sql"]:
+            return
+        self.db.execute("PRAGMA foreign_keys=OFF")
+        try:
+            self.db.executescript("""
+                CREATE TABLE rights_events_new (
+                  id INTEGER PRIMARY KEY,
+                  rights_source_id INTEGER NOT NULL REFERENCES rights_sources(id),
+                  kind TEXT NOT NULL CHECK(kind IN ('registered','revoked','superseded','link_created','link_reviewed','reattached')),
+                  reason TEXT NOT NULL, recorded_at TEXT NOT NULL
+                );
+                INSERT INTO rights_events_new (id,rights_source_id,kind,reason,recorded_at)
+                  SELECT id,rights_source_id,kind,reason,recorded_at FROM rights_events;
+                DROP TABLE rights_events;
+                ALTER TABLE rights_events_new RENAME TO rights_events;
+            """)
+            self.db.commit()
+        finally:
+            self.db.execute("PRAGMA foreign_keys=ON")
+
+    def _backfill_broker_receipts(self) -> None:
+        """Write receipts for broker links created before receipts existed.
+
+        The backfill is exact, not approximate: permission rows are never
+        updated in place, the link's stored mode is the granted mode, and
+        the link's creation time is the retrieval time. Links already
+        carrying a receipt are untouched.
+        """
+        missing = self.db.execute("""
+            SELECT bl.id AS link_id, bl.rights_source_id, bl.mode, bl.created_at,
+              rs.source_key, rs.version_label
+            FROM broker_links bl JOIN rights_sources rs ON rs.id=bl.rights_source_id
+            WHERE bl.id NOT IN (SELECT broker_link_id FROM broker_retrieval_receipts)
+            ORDER BY bl.id""").fetchall()
+        if not missing:
+            return
+        with self.db:
+            for link in missing:
+                permissions = self._rights_permissions(int(link["rights_source_id"]))
+                relied = {
+                    "full_text/store": permissions.get("full_text", {}).get("store", "unknown"),
+                    "full_text/display": permissions.get("full_text", {}).get("display", "unknown"),
+                    "metadata/store": permissions.get("metadata", {}).get("store", "unknown"),
+                }
+                self.db.execute("""INSERT INTO broker_retrieval_receipts
+                    (broker_link_id,source_key,version_label,rights_source_id,mode,
+                     permissions_json,retrieved_at)
+                    VALUES (?,?,?,?,?,?,?)""",
+                    (int(link["link_id"]), link["source_key"], link["version_label"],
+                     int(link["rights_source_id"]), link["mode"],
+                     json.dumps(relied, sort_keys=True), link["created_at"]))
 
     def close(self) -> None:
         self.db.close()
@@ -1487,6 +1625,14 @@ class CaseStore:
                  "original-synthetic", rights_source_id, raw, now_utc()))
             return {"result": "imported", "discovery_id": int(cur.lastrowid),
                     "rights_source_id": rights_source_id}
+    def _latest_reattachment_from(self, discovery_id: int) -> int | None:
+        """Most recent prior binding for one discovery item, if ever re-attached."""
+        row = self.db.execute(
+            """SELECT from_rights_source_id FROM discovery_rights_reattachments
+               WHERE discovery_id=? ORDER BY id DESC LIMIT 1""",
+            (discovery_id,)).fetchone()
+        return int(row["from_rights_source_id"]) if row else None
+
     def list_discovery(self) -> list[dict]:
         from .discovery import project_item
         rows = self.db.execute("""SELECT d.*, rs.state AS rights_state FROM discovery_items d
@@ -1499,6 +1645,7 @@ class CaseStore:
             projected["rights_source_id"] = row["rights_source_id"]
             projected["rights_state"] = row["rights_state"] \
                 if row["rights_source_id"] is not None else "unlinked"
+            projected["previous_rights_source_id"] = self._latest_reattachment_from(int(row["id"]))
             out.append(projected)
         return out
     def link_discovery(self, case_id: str, question_id: int, discovery_id: int,
@@ -1575,7 +1722,8 @@ class CaseStore:
         case_id = self._case(case_id)
         rows = self.db.execute("""SELECT l.id AS link_id, l.question_id, l.applicability,
             l.rationale, l.created_at AS link_created_at, l.state AS link_state,
-            l.invalidated_cause, l.invalidated_rights_source_id, l.invalidated_at,
+            l.invalidated_cause, l.invalidated_rights_source_id,
+            l.invalidated_broker_link_id, l.invalidated_at,
             d.*, rs.state AS rights_state FROM discovery_links l
             JOIN discovery_items d ON d.id=l.discovery_id
             LEFT JOIN rights_sources rs ON rs.id=d.rights_source_id
@@ -1589,6 +1737,7 @@ class CaseStore:
             item["rights_source_id"] = row["rights_source_id"]
             item["rights_state"] = row["rights_state"] \
                 if row["rights_source_id"] is not None else "unlinked"
+            item["previous_rights_source_id"] = self._latest_reattachment_from(int(row["id"]))
             broker_ids = [r[0] for r in self.db.execute(
                 "SELECT broker_link_id FROM discovery_link_broker_links"
                 " WHERE discovery_link_id=? ORDER BY broker_link_id",
@@ -1598,9 +1747,107 @@ class CaseStore:
                         "created_at": row["link_created_at"], "state": row["link_state"],
                         "invalidated_cause": row["invalidated_cause"],
                         "invalidated_rights_source_id": row["invalidated_rights_source_id"],
+                        "invalidated_broker_link_id": row["invalidated_broker_link_id"],
                         "invalidated_at": row["invalidated_at"],
                         "broker_link_ids": broker_ids, "item": item})
         return out
+    def reattach_discovery_item(self, case_id: str, discovery_id: int,
+                                  new_rights_source_id: int, reason: str) -> dict:
+        """Human-initiated migration of one discovery item to a successor rights row.
+
+        After a correction the item's binding still points at the superseded
+        row, so new links fail closed. This explicit action — one call, one
+        item, one new row — binds the item to the new row only when the new
+        row is active and descends from the bound row's source-key lineage.
+        The migration is logged in the acting case's event ledger and in
+        rights_events; the prior binding stays visible in the append-only
+        re-attachment log and in item projections. Nothing calls this
+        automatically: correction, import, and read paths never re-attach.
+        """
+        case_id = self._case(case_id)
+        if type(discovery_id) is not int or discovery_id < 1:
+            raise InvalidInput("Invalid discovery item ID")
+        if type(new_rights_source_id) is not int or new_rights_source_id < 1:
+            raise InvalidInput("Invalid rights source ID")
+        if not isinstance(reason, str) or not 10 <= len(reason.strip()) <= 600:
+            raise InvalidInput("Re-attachment requires a 10–600 character reason")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            item = self.db.execute(
+                "SELECT rights_source_id FROM discovery_items WHERE id=?",
+                (discovery_id,)).fetchone()
+            if not item:
+                raise InvalidInput("Discovery item not found")
+            old_id = item["rights_source_id"]
+            if old_id is None:
+                raise InvalidInput("Discovery item has no rights binding to re-attach")
+            old_id = int(old_id)
+            old = self.db.execute(
+                "SELECT source_key, state FROM rights_sources WHERE id=?", (old_id,)).fetchone()
+            if not old or old["state"] != "superseded":
+                raise InvalidInput(
+                    "Re-attachment applies only after correction; "
+                    "the bound rights row is not superseded")
+            new = self.db.execute(
+                "SELECT source_key, state, previous_id FROM rights_sources WHERE id=?",
+                (new_rights_source_id,)).fetchone()
+            if not new:
+                raise InvalidInput("Rights source not found")
+            if new["state"] != "active":
+                raise InvalidInput("New rights source is not active")
+            if new_rights_source_id == old_id:
+                raise InvalidInput("Discovery item is already bound to this rights row")
+            if new["source_key"] != old["source_key"]:
+                raise InvalidInput(
+                    "New rights row does not descend from the item's bound source lineage")
+            current: int | None = new_rights_source_id
+            seen: set[int] = set()
+            descended = False
+            while current is not None and current not in seen:
+                if current == old_id:
+                    descended = True
+                    break
+                seen.add(current)
+                parent = self.db.execute(
+                    "SELECT previous_id FROM rights_sources WHERE id=?", (current,)).fetchone()
+                current = int(parent["previous_id"]) if parent and parent["previous_id"] is not None else None
+            if not descended:
+                raise InvalidInput(
+                    "New rights row does not descend from the item's bound source lineage")
+            stamped = now_utc()
+            self.db.execute("UPDATE discovery_items SET rights_source_id=? WHERE id=?",
+                            (new_rights_source_id, discovery_id))
+            self.db.execute("""INSERT INTO discovery_rights_reattachments
+                (discovery_id,from_rights_source_id,to_rights_source_id,case_id,reason,created_at)
+                VALUES (?,?,?,?,?,?)""",
+                (discovery_id, old_id, new_rights_source_id, case_id,
+                 reason.strip(), stamped))
+            self.db.execute("""INSERT INTO rights_events
+                (rights_source_id,kind,reason,recorded_at) VALUES (?,'reattached',?,?)""",
+                (new_rights_source_id,
+                 f"Discovery item {discovery_id} re-attached from rights {old_id} "
+                 f"to {new_rights_source_id}: {reason.strip()}", stamped))
+            self._event(case_id, "discovery_reattached",
+                        discovery_id=discovery_id,
+                        from_rights_source_id=old_id,
+                        to_rights_source_id=new_rights_source_id)
+            return {"result": "reattached", "discovery_id": discovery_id,
+                    "from_rights_source_id": old_id,
+                    "to_rights_source_id": new_rights_source_id}
+
+    def discovery_reattachment_history(self, discovery_id: int) -> list[dict]:
+        """Append-only re-attachment log for one discovery item, oldest first."""
+        if type(discovery_id) is not int or discovery_id < 1:
+            raise InvalidInput("Invalid discovery item ID")
+        if not self.db.execute("SELECT 1 FROM discovery_items WHERE id=?",
+                               (discovery_id,)).fetchone():
+            raise InvalidInput("Discovery item not found")
+        return self._dicts(self.db.execute(
+            """SELECT id,discovery_id,from_rights_source_id,to_rights_source_id,
+                      case_id,reason,created_at
+               FROM discovery_rights_reattachments WHERE discovery_id=? ORDER BY id""",
+            (discovery_id,)).fetchall())
+
     # ---- Rights-qualified external evidence broker (issue #2) ----
     # A broker link never fetches external content and never verifies that
     # a rights record is legally true. It only enforces, deterministically,
@@ -1692,6 +1939,41 @@ class CaseStore:
                 changed = [int(row["id"]) for row in rows if row["case_id"] == case_id]
                 self._event(case_id, "discovery_invalidated",
                             rights_source_id=rights_source_id,
+                            reason=reason, invalidated_discovery_links=changed)
+        return invalidated
+
+    def _invalidate_discovery_broker_link(self, broker_link_id: int, *, reason: str = "re-review") -> list[int]:
+        """Invalidate valid discovery links citing one re-reviewed broker link.
+
+        Caller must own a write transaction. Only links that cite this
+        broker link are touched; all other links stay valid and unchanged.
+        Links are marked invalid with their cause — never deleted — so the
+        rationale, applicability, broker bindings, and item stay readable
+        as history, following the _invalidate_discovery_source pattern.
+        """
+        link = self.db.execute("SELECT rights_source_id FROM broker_links WHERE id=?",
+                               (broker_link_id,)).fetchone()
+        rights_source_id = int(link["rights_source_id"]) if link else None
+        rows = self.db.execute("""SELECT DISTINCT l.id,l.case_id
+            FROM discovery_links l
+            JOIN discovery_link_broker_links dlbl ON dlbl.discovery_link_id=l.id
+            WHERE l.state='valid' AND dlbl.broker_link_id=?""",
+            (broker_link_id,)).fetchall()
+        invalidated = [int(row["id"]) for row in rows]
+        if invalidated:
+            stamped = now_utc()
+            ids = ",".join("?" for _ in invalidated)
+            self.db.execute(f"""UPDATE discovery_links SET state='invalid',
+                invalidated_cause=?, invalidated_rights_source_id=?,
+                invalidated_broker_link_id=?, invalidated_at=?
+                WHERE id IN ({ids})""",
+                [reason, rights_source_id, broker_link_id, stamped, *invalidated])
+            affected = {str(row["case_id"]) for row in rows}
+            for case_id in sorted(affected):
+                changed = [int(row["id"]) for row in rows if row["case_id"] == case_id]
+                self._event(case_id, "discovery_invalidated",
+                            rights_source_id=rights_source_id,
+                            broker_link_id=broker_link_id,
                             reason=reason, invalidated_discovery_links=changed)
         return invalidated
 
@@ -1822,7 +2104,10 @@ class CaseStore:
         excerpt only in full mode, a title only with metadata (or full)
         permission, otherwise citation identity alone. The link carries a
         human-entered review (relation/applicability), never a model
-        verdict; unknown states are first-class, not errors.
+        verdict; unknown states are first-class, not errors. A retrieval
+        receipt is written in the same transaction, recording what the
+        rights record said at retrieval — never a verification of legal
+        truth, and never a path back to redacted content.
         """
         self._case(case_id)
         if type(question_id) is not int or type(rights_source_id) is not int:
@@ -1851,13 +2136,25 @@ class CaseStore:
                 mode = check_link_content(permissions, citation_title=title, excerpt=excerpt)
             except RightsError as error:
                 raise InvalidInput(str(error)) from error
+            stamped = now_utc()
             cur = self.db.execute("""INSERT INTO broker_links
                 (case_id,question_id,rights_source_id,relation,applicability,rationale,
                  citation_title,excerpt,mode,created_at)
                 VALUES (?,?,?,?,?,?,?,?,?,?)""",
                 (case_id, question_id, rights_source_id, relation, applicability,
-                 rationale.strip(), title, excerpt, mode, now_utc()))
+                 rationale.strip(), title, excerpt, mode, stamped))
             link_id = int(cur.lastrowid)
+            relied = {
+                "full_text/store": permissions.get("full_text", {}).get("store", "unknown"),
+                "full_text/display": permissions.get("full_text", {}).get("display", "unknown"),
+                "metadata/store": permissions.get("metadata", {}).get("store", "unknown"),
+            }
+            self.db.execute("""INSERT INTO broker_retrieval_receipts
+                (broker_link_id,source_key,version_label,rights_source_id,mode,
+                 permissions_json,retrieved_at)
+                VALUES (?,?,?,?,?,?,?)""",
+                (link_id, row["source_key"], row["version_label"],
+                 rights_source_id, mode, json.dumps(relied, sort_keys=True), stamped))
             self.db.execute("""INSERT INTO rights_events
                 (rights_source_id,kind,reason,recorded_at) VALUES (?,'link_created',?,?)""",
                 (rights_source_id, f"Broker link {link_id} for case {case_id}", now_utc()))
@@ -1872,6 +2169,9 @@ class CaseStore:
         Revoked sources cannot be re-blessed. A re-review changes what
         the link means, so drafts already citing it go stale rather than
         silently changing meaning — the same rule as an amendment.
+        Discovery links citing this broker link are likewise marked
+        invalid with cause 're-review', preserving their history; links
+        that do not cite it are untouched.
         """
         self._case(case_id)
         if type(broker_link_id) is not int or broker_link_id < 1:
@@ -1907,8 +2207,11 @@ class CaseStore:
                 self._event(case_id, "broker_invalidated",
                             broker_link_id=broker_link_id,
                             reason="review", invalidated_snapshots=invalidated)
+            invalidated_discovery = self._invalidate_discovery_broker_link(
+                broker_link_id, reason="re-review")
             return {"result": "reviewed", "broker_link_id": broker_link_id,
-                    "invalidated_snapshots": invalidated}
+                    "invalidated_snapshots": invalidated,
+                    "invalidated_discovery_links": invalidated_discovery}
 
     def rights_sources(self) -> list[dict]:
         """All rights manifests with their permission maps, for inspection."""
@@ -2260,7 +2563,10 @@ class CaseStore:
                 WHERE bl.case_id=? ORDER BY bl.id DESC""", (case_id,)).fetchall())
             # Provenance is retained, but revoked/superseded content is not
             # served: the link and its mode stay visible, the stored title
-            # and excerpt do not.
+            # and excerpt do not. Every link carries its retrieval receipt
+            # beside the excerpt-or-redaction: what the record said at
+            # retrieval, never a verification of legal truth, and never a
+            # path back to redacted content.
             for broker_row in broker_rows:
                 if broker_row["rights_state"] != "active":
                     broker_row["citation_title"] = None
@@ -2268,6 +2574,24 @@ class CaseStore:
                     broker_row["content_redacted"] = True
                 else:
                     broker_row["content_redacted"] = False
+                receipt = self.db.execute(
+                    "SELECT * FROM broker_retrieval_receipts WHERE broker_link_id=?",
+                    (broker_row["id"],)).fetchone()
+                if receipt is None:
+                    broker_row["receipt"] = None
+                else:
+                    broker_row["receipt"] = {
+                        "source_key": receipt["source_key"],
+                        "version_label": receipt["version_label"],
+                        "rights_source_id": int(receipt["rights_source_id"]),
+                        "mode": receipt["mode"],
+                        "permissions_relied_upon": json.loads(receipt["permissions_json"]),
+                        "retrieved_at": receipt["retrieved_at"],
+                        "disclaimer": (
+                            "Receipt records what the rights record stated at "
+                            "retrieval; not verification of legal truth. "
+                            "No live fetching."),
+                    }
             rights_rows = self._dicts(self.db.execute(
                 "SELECT * FROM rights_sources ORDER BY source_key, id").fetchall())
             for rights_row in rights_rows:
