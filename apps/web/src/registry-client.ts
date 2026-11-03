@@ -14,6 +14,8 @@ export type Patient = Readonly<{
   status: 'active' | 'suspended'; revision: number;
 }>;
 export type CreatedPatient = Readonly<{patient_id: string; duplicate: boolean}>;
+export type QuestionDraft = Readonly<{case_id:string;source_id:string;source_line:number;
+  snapshot_fingerprint:string;question:string}>;
 export type ViewState = Readonly<{
   connected: boolean; phase: 'disconnected' | 'idle' | 'reading' | 'creating' | 'ready' | 'error';
   patient: Patient | null; created: CreatedPatient | null; message: string;
@@ -25,6 +27,7 @@ export type ViewState = Readonly<{
   worldModel:SourceWorldModel|null;
   worldPhase:'idle'|'loading'|'ready'|'error';
   worldMessage:string;
+  questionDraft:QuestionDraft|null;
   composerPreview:ComposerPreflight|null;
   composerPhase:'idle'|'loading'|'ready'|'error';composerMessage:string;
   savedQuestion:SavedQuestion|null;questionSavePhase:'idle'|'saving'|'saved'|'error';questionSaveMessage:string;
@@ -46,7 +49,7 @@ const messages: Record<number,string> = {
 };
 const emptyIntake=()=>({original:null,importReceipt:null,importOutcome:'idle' as const,importMessage:''});
 const emptyWorld=()=>({worldModel:null,worldPhase:'idle' as const,worldMessage:'Choose an authorized active fictional case to inspect its source-derived World Model.'});
-const emptyInvestigation=()=>({composerPreview:null,composerPhase:'idle' as const,
+const emptyInvestigation=()=>({questionDraft:null,composerPreview:null,composerPhase:'idle' as const,
   composerMessage:'Select an exact current source observation to prepare a non-executing context.',
   savedQuestion:null,questionSavePhase:'idle' as const,
   questionSaveMessage:'Save a verified preflight to create one unreviewed source-linked question.',
@@ -263,6 +266,74 @@ export class RegistrySession {
       if(current())this.#publish({...emptyWorld(),worldPhase:'error',
         worldMessage:'World Model response failed validation or transport. Previous snapshot cleared.'});
     }finally{clearTimeout(timeout);this.#controllers.delete(control);}
+  }
+
+  /** A question draft belongs to one current source and World Model snapshot.
+   * Never persist editable text, credentials or preflight data outside memory.
+   */
+  chooseQuestionDraft(sourceId:string,sourceLine:number):void{
+    if(this.#savingQuestion||this.#state.questionSaveMessage.startsWith('Save outcome unknown.')){
+      this.#publish({composerMessage:'Resolve the uncertain question save with the same request key before changing its source.'});
+      return;
+    }
+    const model=this.#state.worldModel;
+    if(!model||this.#state.worldPhase!=='ready'||!this.#token||
+       !model.observations.some(o=>o.source_id===sourceId&&o.source_line===sourceLine)){
+      this.#publish({composerMessage:'Choose a currently authorized source statement before writing.'});
+      return;
+    }
+    const existing=this.#state.questionDraft;
+    if(existing?.case_id===model.case_id&&existing.source_id===sourceId&&
+       existing.source_line===sourceLine&&existing.snapshot_fingerprint===model.snapshot_fingerprint)return;
+    this.#composerRead++;this.#questionWrite++;
+    this.#questionKey='';this.#questionFingerprint='';
+    this.#publish({
+      questionDraft:Object.freeze({case_id:model.case_id,source_id:sourceId,
+        source_line:sourceLine,snapshot_fingerprint:model.snapshot_fingerprint,
+        question:DEFAULT_SOURCE_QUESTION}),
+      composerPreview:null,composerPhase:'idle',
+      composerMessage:'Edit the authored fictional question, then explicitly prepare source context.',
+      savedQuestion:null,questionSavePhase:'idle',
+      questionSaveMessage:'The question is a draft. It has not been saved or clinically reviewed.',
+    });
+  }
+
+  changeQuestionDraft(text:string):void{
+    const draft=this.#state.questionDraft;
+    if(!draft||this.#savingQuestion||this.#state.questionSaveMessage.startsWith('Save outcome unknown.')||
+       typeof text!=='string'||text.length>500||draft.question===text)return;
+    // A changed character makes an earlier preflight response and save key
+    // invalid. The previous saved question, if any, remains on the server.
+    this.#composerRead++;this.#questionWrite++;
+    this.#questionKey='';this.#questionFingerprint='';
+    this.#publish({questionDraft:Object.freeze({...draft,question:text}),
+      composerPreview:null,composerPhase:'idle',
+      composerMessage:'Draft changed. Re-prepare this exact question before saving.',
+      savedQuestion:null,questionSavePhase:'idle',
+      questionSaveMessage:'No save attempted for the edited draft.'});
+  }
+
+  discardQuestionDraft():void{
+    if(this.#savingQuestion||this.#state.questionSaveMessage.startsWith('Save outcome unknown.')){
+      this.#publish({composerMessage:'Save outcome is unknown. Retry with the existing request key before discarding.'});
+      return;
+    }
+    this.#composerRead++;this.#questionWrite++;
+    this.#questionKey='';this.#questionFingerprint='';
+    this.#publish({questionDraft:null,composerPreview:null,composerPhase:'idle',
+      composerMessage:'Unsaved question draft discarded. No server write was made by this action.',
+      savedQuestion:null,questionSavePhase:'idle',
+      questionSaveMessage:'Select another source statement to prepare a new question.'});
+  }
+
+  async prepareDraftQuestion():Promise<void>{
+    const draft=this.#state.questionDraft,model=this.#state.worldModel;
+    if(!draft||!model||draft.case_id!==model.case_id||
+       draft.snapshot_fingerprint!==model.snapshot_fingerprint){
+      this.#publish({composerPhase:'error',composerMessage:'This draft no longer matches the current case/source snapshot. Refresh the case.'});
+      return;
+    }
+    await this.prepareSourceContext(draft.source_id,draft.source_line,draft.question);
   }
 
   async prepareSourceContext(sourceId:string,sourceLine:number,
