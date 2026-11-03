@@ -6,7 +6,7 @@ This extends the existing application, not a second patient record or replacemen
 python3 run_open_intelligence.py
 ```
 
-Open **http://127.0.0.1:8765**. Python 3.10 or newer is required. The default database is `.local/workspace.sqlite`. Another port or path can be selected with `--port` and `--db`. `--with-examples` explicitly imports the existing fictional Alpha/Beta examples; the default starts empty.
+Open **http://127.0.0.1:8765**. Python 3.11 or newer is required. The default database is `.local/workspace.sqlite`. Another port or path can be selected with `--port` and `--db`. `--with-examples` explicitly imports the existing fictional Alpha/Beta examples; the default starts empty.
 
 ## Complete development journey
 
@@ -39,7 +39,7 @@ PYTHONPATH=src python tests/role_views_browser_journey.py
 
 Use **independently authored fictional data only**, not actual, public or disguised patient records. File intake currently accepts UTF-8 `.txt` files with LF line endings and the existing `OI-SYNTHETIC-REPORT/1` contract, maximum 64 KiB. CRLF, BOM, invalid UTF-8 and unsupported formats are rejected rather than silently normalized. There is no normal PDF/OCR extraction or clinical inference here. Source statements are authored annotations, not model discoveries. A checkbox cannot prove consent, identity or data rights.
 
-The launcher binds only to loopback, does not enable live literature/Crossref, and clears inherited supported model-API credentials for this process. This is not production authentication, a PHI environment or a deployed clinical service. Actual identities, patient/proxy permissions, clinician approval, licensed scientific evidence, clinical evaluation and production operations remain separate integration gates.
+The launcher binds only to loopback, does not enable live literature/Crossref, and clears inherited supported model-API credentials for this process. To show a live Meta Model API investigation (fictional data only), set `META_API_KEY` in your own shell and pass `--enable-meta-live`; only that key is kept, and Replay stays available. The key is never stored in the repository. This is not production authentication, a PHI environment or a deployed clinical service. Actual identities, patient/proxy permissions, clinician approval, licensed scientific evidence, clinical evaluation and production operations remain separate integration gates.
 
 The accepted H1 target remains FastAPI/PostgreSQL and React/Vite/TypeScript. This increment makes the existing stdlib/SQLite reference application operable end to end while preserving its canonical contracts; it does not claim that migration is complete. No project distribution license or third-party clearance is selected.
 
