@@ -1218,6 +1218,52 @@ class CaseStore:
             "SELECT id,actor,case_id,route,result,occurred_at FROM access_log "
             "WHERE case_id=? ORDER BY id", (case_id,)).fetchall())
 
+    def _invalidate_investigations_for_source(self, case_id: str,
+                                              source_version_id: int) -> list[int]:
+        """Stale only investigations whose durable claims cite one source version.
+
+        Investigation freshness must not depend on whether a human snapshot was
+        also created. Stored claim citations are the durable dependency boundary
+        available in this reference ledger; malformed legacy claim payloads fail
+        closed because they cannot prove independence from the amended source.
+        """
+        affected: list[int] = []
+        question_ids: set[int] = set()
+        rows = self.db.execute(
+            """SELECT id,question_id,claims_json FROM investigations
+            WHERE case_id=? AND stale=0 ORDER BY id""", (case_id,)).fetchall()
+        for row in rows:
+            try:
+                claims = json.loads(row["claims_json"])
+            except (TypeError, json.JSONDecodeError):
+                claims = None
+            if not isinstance(claims, list):
+                depends_on_source = True
+            else:
+                depends_on_source = any(
+                    isinstance(claim, dict)
+                    and isinstance(claim.get("citations"), list)
+                    and any(
+                        isinstance(citation, dict)
+                        and citation.get("type") == "source"
+                        and type(citation.get("id")) is int
+                        and citation["id"] == source_version_id
+                        for citation in claim["citations"]
+                    )
+                    for claim in claims
+                )
+            if depends_on_source:
+                affected.append(int(row["id"]))
+                question_ids.add(int(row["question_id"]))
+        if affected:
+            marks = ",".join("?" for _ in affected)
+            self.db.execute(f"UPDATE investigations SET stale=1 WHERE id IN ({marks})", affected)
+            qmarks = ",".join("?" for _ in question_ids)
+            self.db.execute(
+                f"UPDATE questions SET state='open' WHERE case_id=? AND id IN ({qmarks})",
+                [case_id, *sorted(question_ids)])
+        return affected
+
     def import_report(self, case_id: str, raw: bytes, *,
                       assignee_label: str | None = None, due_date: str | None = None) -> dict:
         """Durably ingest bytes. An explicit amendment is required for changed text.
@@ -1282,15 +1328,15 @@ class CaseStore:
                     ON snapshots.id=snapshot_sources.snapshot_id
                     WHERE snapshots.case_id=? AND snapshot_sources.source_version_id=? AND snapshots.state!='stale'""",
                     (case_id, previous["id"])).fetchall()]
+                # Investigation invalidation is independent of snapshot existence
+                # and exact to the stored source citations. This avoids both the
+                # no-snapshot freshness gap and blanket same-case invalidation.
+                self._invalidate_investigations_for_source(case_id, previous["id"])
                 if invalidated:
                     marks = ",".join("?" for _ in invalidated)
                     self.db.execute(f"UPDATE snapshots SET state='stale' WHERE id IN ({marks})", invalidated)
                     self.db.execute(f"""UPDATE questions SET state='open' WHERE case_id=? AND id IN
                         (SELECT question_id FROM snapshots WHERE id IN ({marks}))""", [case_id, *invalidated])
-                    # An amendment changes freshness for investigations too:
-                    # they cite the superseded source's facts, so mark them stale
-                    # rather than silently leaving them current.
-                    self.db.execute("UPDATE investigations SET stale=1 WHERE case_id=? AND stale=0", (case_id,))
                 # OI-021, same transaction: only options in THIS case that
                 # cite the superseded version or a stale snapshot reopen.
                 invalidated_options = self._invalidate_options(
