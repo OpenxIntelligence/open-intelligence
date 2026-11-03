@@ -1,5 +1,16 @@
 # Incomplete features and qualification gaps
 
+## Connected DOI continuation — 3 November 2026
+
+DOI citation owner #321 is now composed locally with #335's reading, intake,
+evidence-report and follow-up workspace. Local checks and remaining hosted gates
+are recorded in the [existing boundary](../CROSSREF_METADATA_BOUNDARY.md#connected-reading-and-follow-up-continuation--3-november-2026).
+The default-off lookup, explicit public-DOI acknowledgment, separate grant and
+separate citation save remain required. Live provider acceptance, scientific
+appraisal, permitted-original association and clinical approval remain open.
+Reviewed-document convergence (#349), comparison drafts (#348) and rights-gate
+hardening (#339) are separate candidates; their results are not combined proof.
+
 Assessment checkpoint: **3 November 2026, America/New_York**. This assessment maps the existing [execution backlog](../EXECUTION_BACKLOG.csv); it does not create another backlog or replace source-owner specifications.
 
 ## Evidence boundary

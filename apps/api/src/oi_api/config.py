@@ -19,8 +19,11 @@ class Settings:
     environment: str = "synthetic"
     connect_timeout_seconds: float = 2.0
     access_file: str | None = field(default=None, repr=False)
+    crossref_enabled: bool = False
 
     def __post_init__(self):
+        if type(self.crossref_enabled) is not bool:
+            raise ConfigurationError("Crossref enablement must be an exact boolean")
         if self.environment != "synthetic":
             raise ConfigurationError("Only the synthetic environment is enabled")
         if not math.isfinite(self.connect_timeout_seconds) or not 0.1 <= self.connect_timeout_seconds <= 10:
@@ -45,9 +48,13 @@ class Settings:
             timeout = float(values.get("OI_API_CONNECT_TIMEOUT_SECONDS", "2"))
         except (ValueError, TypeError):
             raise ConfigurationError("Database timeout must be numeric") from None
+        crossref = values.get("OI_API_CROSSREF_ENABLED", "false")
+        if crossref not in {"true", "false"}:
+            raise ConfigurationError("Crossref enablement must be true or false")
         return cls(
             database_url=values.get("OI_API_DATABASE_URL"),
             environment=values.get("OI_API_ENVIRONMENT", "synthetic"),
             connect_timeout_seconds=timeout,
             access_file=values.get("OI_API_ACCESS_FILE"),
+            crossref_enabled=crossref == "true",
         )

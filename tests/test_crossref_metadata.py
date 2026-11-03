@@ -2,6 +2,7 @@ import json
 import subprocess
 import sys
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 from urllib.error import HTTPError
 
@@ -18,8 +19,9 @@ def fixture():
 
 
 class _FakeResponse:
-    def __init__(self, body, content_type="application/json"):
+    def __init__(self, body, content_type="application/json", status=200):
         self.headers = {"Content-Type": content_type}
+        self.status = status
         self.body = body
         self.pos = 0
     def read(self, size):
@@ -40,6 +42,16 @@ class _CaptureTransport:
 
 
 class CrossrefMetadataTests(unittest.TestCase):
+    def setUp(self):
+        # Each protocol example has its own elapsed clock; no network is used.
+        times = iter(range(1000, 100000, 10))
+        for patcher in (
+            patch("open_intelligence.crossref_metadata.monotonic", side_effect=lambda: next(times), create=True),
+            patch("open_intelligence.crossref_metadata._next_request_at", 0.0, create=True),
+        ):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
     def test_fixture_keeps_only_auditable_bibliographic_fields(self):
         record = project_work(fixture(), DOI, retrieved_at="2026-10-31T16:00:00+00:00")
         self.assertEqual(record["kind"], "bibliographic_metadata_only")
@@ -108,6 +120,51 @@ class CrossrefMetadataTests(unittest.TestCase):
         output = json.loads(process.stdout)
         self.assertEqual(output["doi"], DOI)
         self.assertNotIn("COPYRIGHTED ABSTRACT", process.stdout)
+
+    def test_official_vendor_json_media_type_is_supported(self):
+        class VendorJSON:
+            def open(self, request, timeout):
+                return _FakeResponse(json.dumps(fixture()).encode(),
+                                     "application/vnd.crossref-api-message+json; charset=utf-8")
+        try:
+            record = fetch_public_doi(DOI, opener=VendorJSON())
+        except MetadataInputError as exc:
+            self.fail(f"Official Crossref JSON media type was rejected: {exc}")
+        self.assertEqual(record["doi"], DOI)
+
+    def test_mime_substrings_and_non_200_success_are_not_metadata(self):
+        for mime, status in (("text/application/json", 200),
+                             ("application/json-untrusted", 200),
+                             ("application/json", 201),
+                             ("application/json", 206),
+                             ("application/json", True),
+                             ("application/json", None)):
+            class WrongResponse:
+                def open(self, request, timeout):
+                    return _FakeResponse(json.dumps(fixture()).encode(), mime, status)
+            with self.subTest(mime=mime, status=status):
+                with self.assertRaises(MetadataInputError):
+                    fetch_public_doi(DOI, opener=WrongResponse())
+
+    def test_retrieval_timestamp_is_a_real_aware_rfc3339_instant(self):
+        for timestamp in ("not-a-date", "2026-11-03", "2026-11-03T10:00:00",
+                          "2026-02-30T10:00:00Z", "2026-11-03T10:00:00+15:00",
+                          "2026-11-03T10:00:00+14:01", "2026-11-03T10:00:00Z\n", ""):
+            with self.subTest(timestamp=timestamp):
+                with self.assertRaisesRegex(MetadataInputError, "timestamp"):
+                    project_work(fixture(), DOI, retrieved_at=timestamp)
+        for timestamp in ("2026-11-03T10:00:00Z", "2026-11-03T10:00:00.123456+05:30"):
+            self.assertEqual(project_work(fixture(), DOI, retrieved_at=timestamp)
+                             ["source"]["retrieved_at"], timestamp)
+
+    def test_malformed_unicode_and_control_text_are_rejected(self):
+        for text in ("bad\ud800title", "bad\x7ftitle", "bad\x85title", "bad\u202etitle",
+                     "bad\u2028title", "bad\u2029title"):
+            changed = fixture()
+            changed["message"]["title"] = [text]
+            with self.subTest(text=ascii(text)):
+                with self.assertRaises(MetadataInputError):
+                    project_work(changed, DOI)
 
 
 if __name__ == "__main__":

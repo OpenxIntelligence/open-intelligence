@@ -648,7 +648,8 @@ class QuestionSourceReviewPacket(Contract):
     source_access_receipt_id: str = Field(pattern=r"^ACCESS-[0-9A-F]{32}$")
 
 
-def patient_router(database: Database, authentication: Authentication) -> APIRouter:
+def patient_router(database: Database, authentication: Authentication, *, crossref_enabled=False,
+                   crossref_fetcher=None, crossref_acquisition_mode="provider_lookup") -> APIRouter:
     router = APIRouter(prefix="/v1/patients", tags=["Synthetic patient registry"])
     bearer = HTTPBearer(auto_error=False, scheme_name="SyntheticFixture",
                         description="Local synthetic fixture credential. Not a patient account or clinical consent.")
@@ -665,7 +666,7 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
                         return False
                     if action == "patient_create":
                         return subject == context.organization
-                    if action not in {"patient_read", "record_request_create", "record_request_read", "record_request_cancel", "record_request_receive", "case_binding_create", "case_binding_read", "case_binding_revoke", "source_import", "source_read", "source_original_read", "composer_context_read", "question_create", "question_read", "review_queue_read", "review_return", "source_brief_export", "review_packet_read", "followthrough_read", "followthrough_create", "followthrough_update", "evidence_read", "evidence_link", "authored_evidence_read", "authored_evidence_import", "authored_evidence_assess", "authored_evidence_withdraw", "authored_evidence_original_read", "evidence_report_export"} or subject not in context.patient_ids:
+                    if action not in {"patient_read", "record_request_create", "record_request_read", "record_request_cancel", "record_request_receive", "case_binding_create", "case_binding_read", "case_binding_revoke", "source_import", "source_read", "source_original_read", "composer_context_read", "question_create", "question_read", "review_queue_read", "review_return", "source_brief_export", "review_packet_read", "followthrough_read", "followthrough_create", "followthrough_update", "evidence_read", "evidence_link", "evidence_lookup", "authored_evidence_read", "authored_evidence_import", "authored_evidence_assess", "authored_evidence_withdraw", "authored_evidence_original_read", "evidence_report_export"} or subject not in context.patient_ids:
                         return False
                     cursor = connection.cursor()
                     try:
@@ -1170,6 +1171,8 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
         router, principal=principal, registry=registry,
         records_authorized=records_authorized,
         final_question_authority=final_question_authority, errors=errors,
+        crossref_enabled=crossref_enabled, crossref_fetcher=crossref_fetcher,
+        crossref_acquisition_mode=crossref_acquisition_mode,
     )
     from .authored_evidence_routes import register_evidence_routes as register_authored_evidence_routes
     register_authored_evidence_routes(router, principal=principal, registry=registry,

@@ -1,5 +1,16 @@
 # Integration inventory — current contracts and unfinished connections
 
+## Connected DOI continuation — 3 November 2026
+
+The current candidate joins #321's canonical DOI catalog/citation owner with
+#335's source-reading/intake and follow-up attention path. It preserves strict
+citation timestamps, status-bearing downloads and earlier migration bytes; no
+new dependency, alternate patient owner or live source activation is introduced.
+See the [composition contract and local evidence](../CROSSREF_METADATA_BOUNDARY.md#connected-reading-and-follow-up-continuation--3-november-2026).
+Independent review and exact-head PostgreSQL/browser/recovery verification are
+pending at this committed checkpoint and will be recorded on the continuation
+PR. Reviewed-document migration convergence remains separately in #349.
+
 **Assessment:** 3 November 2026 (America/New_York).  
 **Baselines:** reference main `24519839aa8ac1ea3aff88a956349ba72798a72a`; initial H1 assessment [#276](https://github.com/OpenxIntelligence/open-intelligence/pull/276) at `c154bfbc5f99f76801d37903959943659c0b6a71`; current verified draft integration [#298](https://github.com/OpenxIntelligence/open-intelligence/pull/298) at `f4750327537a5febf764d25f43873be50ac7265a`, based on #293. Other drafts are named separately.
 

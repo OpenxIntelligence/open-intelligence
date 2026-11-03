@@ -22,7 +22,7 @@ test('a canonical saved question exposes both citation discovery and authored co
  const s=new RegistrySession(transportFor(()=>response(packet())));await ready(s);
  const html=renderToStaticMarkup(createElement(SourceQuestionPanel,{state:s.snapshot(),session:s,busy:false}));
  assert.ok(html.includes(questionId));
- assert.match(html,/Find fictional evidence for this question/,'existing metadata discovery remains reachable');
+ assert.match(html,/Find evidence citations for this question/,'source-qualified metadata discovery remains reachable');
  assert.match(html,/Inspect evidence and human comparisons/,'the same question must also open authored evidence and preserved reports');
  assert.match(html,/data-testid="followthrough-open-create"/,'existing question-owned follow-up remains reachable');
  const ids=Array.from(html.matchAll(/data-testid="([^"]+)"/g),match=>match[1]);

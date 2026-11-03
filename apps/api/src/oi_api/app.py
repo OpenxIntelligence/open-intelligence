@@ -30,8 +30,17 @@ def _loopback_host(host: str) -> bool:
         return False
 
 
-def create_app(settings: Settings | None = None, *, authentication: Authentication | None = None) -> FastAPI:
+def create_app(settings: Settings | None = None, *, authentication: Authentication | None = None,
+               crossref_fetcher=None, crossref_acquisition_mode: str | None = None) -> FastAPI:
     settings = settings if settings is not None else Settings.from_env()
+    mode = crossref_acquisition_mode or ("protocol_fixture" if crossref_fetcher is not None else "provider_lookup")
+    if mode not in {"provider_lookup", "protocol_fixture"} or (mode == "protocol_fixture" and crossref_fetcher is None):
+        raise ValueError("Invalid trusted Crossref acquisition mode")
+    if crossref_fetcher is not None and mode != "protocol_fixture":
+        raise ValueError("Injected Crossref transports must identify protocol fixtures")
+    if crossref_fetcher is None:
+        from open_intelligence.crossref_metadata import fetch_public_doi
+        crossref_fetcher = fetch_public_doi
     database = Database(settings)
     authentication_kind = "trusted_provider" if authentication is not None else (
         "synthetic_fixture" if settings.access_file else "deny_all")
@@ -89,6 +98,7 @@ def create_app(settings: Settings | None = None, *, authentication: Authenticati
         return JSONResponse(status_code=422, content={"detail": "Invalid request"},
                             headers={"Cache-Control": "no-store"})
 
-    app.include_router(patient_router(database, authentication))
+    app.include_router(patient_router(database, authentication, crossref_enabled=settings.crossref_enabled,
+        crossref_fetcher=crossref_fetcher, crossref_acquisition_mode=mode))
 
     return app
