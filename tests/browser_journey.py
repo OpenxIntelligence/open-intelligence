@@ -21,9 +21,23 @@ import sys
 import tempfile
 import time
 from urllib.parse import urlsplit
-from urllib.request import urlopen
+from urllib.request import Request, urlopen as _plain_urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
+
+# B-01: case routes require a fictional actor, and seed() grants this demo
+# actor on the demo cases. This module-local wrapper presents the actor on
+# case-API calls and passes everything else (root wait, DevTools endpoint)
+# through untouched, so the journey below reads unchanged.
+DEMO_ACTOR_HEADERS = {"X-Fictional-Actor": "FICTIONAL-NAVIGATOR-A"}
+
+
+def urlopen(url, *args, **kwargs):
+    target = url.full_url if isinstance(url, Request) else url
+    if isinstance(target, str) and "/api/cases/" in target:
+        return _plain_urlopen(
+            Request(target, headers=DEMO_ACTOR_HEADERS), *args, **kwargs)
+    return _plain_urlopen(url, *args, **kwargs)
 
 
 def free_port() -> int:
@@ -44,6 +58,30 @@ def wait_for(callback, label: str, timeout: float = 12):
             last_error = error
         time.sleep(0.15)
     raise AssertionError(f"Timed out waiting for {label}; last error: {last_error}")
+
+
+def wait_for_browser(browser, stderr_path: Path, debug_port: int, timeout: float = 12):
+    """Keep startup failures actionable without relaxing the browser gate."""
+    def targets():
+        if browser.poll() is not None:
+            raise AssertionError("Chrome exited before exposing a DevTools target")
+        return json.load(urlopen(f"http://127.0.0.1:{debug_port}/json/list", timeout=1))
+
+    try:
+        return wait_for(targets, "Chrome DevTools target", timeout=timeout)
+    except AssertionError as error:
+        try:
+            with stderr_path.open("rb") as stream:
+                stream.seek(0, os.SEEK_END)
+                stream.seek(max(0, stream.tell() - 4096))
+                tail = stream.read(4096).decode("utf-8", errors="replace")
+        except OSError:
+            tail = "<startup stderr unavailable>"
+        # Escape newlines/control characters so diagnostic bytes cannot become
+        # terminal controls or separate CI workflow-command lines.
+        raise AssertionError(
+            f"{error}; Chrome exit={browser.poll()}; stderr_tail={json.dumps(tail, ensure_ascii=True)}"
+        ) from error
 
 
 class ChromeSession:
@@ -154,7 +192,8 @@ def main() -> None:
         raise AssertionError("No Chrome/Chromium executable on the runner; browser journey NOT verified")
 
     env = dict(os.environ, PYTHONPATH=str(ROOT / "src"))
-    with tempfile.TemporaryDirectory(prefix="oi-browser-") as directory:
+    with tempfile.TemporaryDirectory(prefix="oi-browser-") as directory, \
+            (Path(directory) / "chrome-stderr.log").open("wb") as chrome_stderr:
         db = str(Path(directory) / "test.sqlite")
         subprocess.run([sys.executable, "-m", "open_intelligence", "seed", "--db", db],
                        cwd=ROOT, env=env, check=True, stdout=subprocess.DEVNULL)
@@ -174,11 +213,9 @@ def main() -> None:
                 "--disable-extensions", "--no-default-browser-check",
                 "--remote-allow-origins=*", f"--remote-debugging-port={debug_port}",
                 f"--user-data-dir={directory}/chrome", "about:blank",
-            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            ], stdout=subprocess.DEVNULL, stderr=chrome_stderr,
               start_new_session=True)
-            targets = wait_for(
-                lambda: json.load(urlopen(f"http://127.0.0.1:{debug_port}/json/list", timeout=1)),
-                "Chrome DevTools target")
+            targets = wait_for_browser(browser, Path(chrome_stderr.name), debug_port)
             pages = [x for x in targets if x.get("type") == "page"]
             if not pages:
                 raise AssertionError("Chrome did not expose a page target")
@@ -654,7 +691,8 @@ def main() -> None:
             original_id = next(x["id"] for x in state_before["sources"]
                                if x["document_id"] == "PATH-ALPHA" and x["version"] == 1)
             cd.evaluate("""(async (sourceId) => {
-              const text = (await (await fetch('/api/cases/CASE-ALPHA/sources/' + sourceId)).json()).text;
+              const text = (await (await fetch('/api/cases/CASE-ALPHA/sources/' + sourceId,
+                {headers: {'X-Fictional-Actor': 'FICTIONAL-NAVIGATOR-A'}})).json()).text;
               document.querySelector('#report-text').value = text;
               document.querySelector('#import-form').requestSubmit();
             })(""" + str(original_id) + ")")
@@ -737,3 +775,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+

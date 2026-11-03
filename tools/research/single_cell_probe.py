@@ -175,7 +175,8 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 def acquire(url,path,limit):
-    """Fixed endpoints only; no user-selected URL, credentials or model egress."""
+    """Historical adapter retained for code traceability; live patient file acquisition forbidden."""
+    raise PermissionError('Sid patient dataset access is disabled: Open Intelligence studies public narratives and uses independent synthetic fixtures, not these records.')
     allowed={H5_URL,CATALOG_URL}
     if url not in allowed:raise ValueError('source outside declared scope')
     opener=urllib.request.build_opener(NoRedirect)
