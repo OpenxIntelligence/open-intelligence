@@ -11,7 +11,7 @@ Initial input: #349 at `51cdc6fd6281d0361c371a25cb00cef0167b880f`.
 Reused donor: #339 at `d694db4ca12206e815d6045b73baa9b6f7394290`.
 The API, database, migrations and source owners are unchanged by this rights
 increment. After the initial web pass, #349 advanced to
-`03ccca85026c5d437a288f62c5b48f4a74054bfa`. That parent's eight changed files were
+`03ccca85026c5d437a288f62c5b48f4a74054bfa`. That parent's seven changed files were
 merged byte-for-byte: document denial/reauthorization and file-discard behavior,
 associated tests/browser acceptance, the reference-UI YAML repair and receipts.
 These are parent-owned corrections, not another implementation. The final PR
