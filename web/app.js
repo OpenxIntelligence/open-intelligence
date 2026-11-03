@@ -64,7 +64,7 @@ async function initialize() {
             'evidence-rationale', 'evidence-withdraw-reason', 'option-description']
             .some(id => el(id).value.trim()))) {
         picker.value = caseId;
-        notice('Save or explicitly clear the unfinished question or investigation draft before switching cases.', true);
+        notice('Save or explicitly clear the unfinished investigation draft or question before switching cases.', true);
         return;
       }
       cancelSourceRead();
