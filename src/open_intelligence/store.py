@@ -137,6 +137,12 @@ def parse_report(raw: bytes) -> ParsedReport:
 EVIDENCE_RELATIONS = frozenset({"supports", "contradicts", "context", "unknown"})
 EVIDENCE_APPLICABILITY = frozenset({"applicable", "limited", "not_applicable", "unknown"})
 
+# B-06: orthogonal workflow marker on questions. This never replaces the
+# open/addressed lifecycle and carries no clinical meaning: it records only
+# whether a fictional owner label has been attached and how a human sorted
+# the question for follow-up.
+QUESTION_TRIAGE = frozenset({"unsorted", "owned", "awaiting_evidence", "ready_for_review"})
+
 # OI-020: one minimal BiologicalAsset abstraction. Originals have no parent;
 # derivatives require a same-case, same-episode parent of an allowed kind.
 # Kind and parent are immutable after creation, so lineage can never be
@@ -236,8 +242,30 @@ CREATE TABLE IF NOT EXISTS assertions (
 CREATE TABLE IF NOT EXISTS questions (
   id INTEGER PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(case_id),
   question TEXT NOT NULL, state TEXT NOT NULL CHECK(state IN ('open','addressed')),
+  owner_label TEXT,
+  triage TEXT NOT NULL DEFAULT 'unsorted'
+    CHECK(triage IN ('unsorted','owned','awaiting_evidence','ready_for_review')),
   created_at TEXT NOT NULL
 );
+-- B-06 owned scientific questions: owner labels are fictional attribution,
+-- never authorization. Owner history and needed-evidence notes are
+-- append-only: rows are inserted, never updated or deleted. The triage
+-- column is an orthogonal workflow marker; the open/addressed lifecycle
+-- (investigation/review -> addressed, amendment/evidence invalidation ->
+-- open) is unchanged and triage is never silently reinterpreted as state.
+CREATE TABLE IF NOT EXISTS question_owner_history (
+  id INTEGER PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(case_id),
+  question_id INTEGER NOT NULL REFERENCES questions(id),
+  owner_label TEXT NOT NULL, assigned_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS question_evidence_notes (
+  id INTEGER PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(case_id),
+  question_id INTEGER NOT NULL REFERENCES questions(id),
+  version INTEGER NOT NULL, note TEXT NOT NULL, created_at TEXT NOT NULL,
+  UNIQUE(question_id, version)
+);
+CREATE INDEX IF NOT EXISTS idx_question_owner_history_question ON question_owner_history(question_id);
+CREATE INDEX IF NOT EXISTS idx_question_evidence_notes_question ON question_evidence_notes(question_id);
 CREATE TABLE IF NOT EXISTS snapshots (
   id INTEGER PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(case_id),
   question_id INTEGER NOT NULL REFERENCES questions(id),
@@ -474,6 +502,7 @@ class CaseStore:
         self.db.execute("PRAGMA foreign_keys=ON")
         self.db.executescript(SCHEMA)
         self._migrate_discovery_rights()
+        self._migrate_owned_questions()
 
     def _migrate_discovery_rights(self) -> None:
         """Add rights-linkage columns to pre-existing discovery tables.
@@ -494,6 +523,35 @@ class CaseStore:
              "ALTER TABLE discovery_links ADD COLUMN invalidated_rights_source_id INTEGER REFERENCES rights_sources(id)"),
             ("discovery_links", "invalidated_at",
              "ALTER TABLE discovery_links ADD COLUMN invalidated_at TEXT"),
+        )
+        for table, column, ddl in migrations:
+            names = {row["name"] for row in self.db.execute(f"PRAGMA table_info({table})").fetchall()}
+            if column not in names:
+                try:
+                    self.db.execute(ddl)
+                except sqlite3.OperationalError:
+                    # A concurrent first open may have added the column;
+                    # re-check rather than masking a real failure.
+                    names = {row["name"] for row in self.db.execute(
+                        f"PRAGMA table_info({table})").fetchall()}
+                    if column not in names:
+                        raise
+        self.db.commit()
+
+    def _migrate_owned_questions(self) -> None:
+        """Add B-06 owner/triage columns to pre-existing questions tables.
+
+        Fresh databases get the columns from SCHEMA. Databases created by
+        earlier slices keep every row; old questions surface with no owner
+        and triage 'unsorted'. This migrates only the questions table;
+        the new history/note tables arrive via CREATE TABLE IF NOT EXISTS.
+        """
+        migrations = (
+            ("questions", "owner_label",
+             "ALTER TABLE questions ADD COLUMN owner_label TEXT"),
+            ("questions", "triage",
+             "ALTER TABLE questions ADD COLUMN triage TEXT NOT NULL DEFAULT 'unsorted' "
+             "CHECK(triage IN ('unsorted','owned','awaiting_evidence','ready_for_review'))"),
         )
         for table, column, ddl in migrations:
             names = {row["name"] for row in self.db.execute(f"PRAGMA table_info({table})").fetchall()}
@@ -2062,15 +2120,112 @@ class CaseStore:
                         source_version_id=source_version_id)
             return int(cur.lastrowid)
 
-    def add_question(self, case_id: str, question: str) -> int:
+    def add_question(self, case_id: str, question: str, owner_label: str | None = None) -> int:
         self._case(case_id)
         if not isinstance(question, str) or not 5 <= len(question.strip()) <= 500:
             raise InvalidInput("Question must have 5–500 characters")
+        owner = self._check_owner_label(owner_label) if owner_label is not None else None
+        triage = "owned" if owner else "unsorted"
         with self.db:
-            cur = self.db.execute("INSERT INTO questions (case_id,question,state,created_at) VALUES (?,?,?,?)",
-                                  (case_id, question.strip(), "open", now_utc()))
-            self._event(case_id, "question_created", question_id=cur.lastrowid)
-        return int(cur.lastrowid)
+            cur = self.db.execute(
+                "INSERT INTO questions (case_id,question,state,owner_label,triage,created_at) VALUES (?,?,?,?,?,?)",
+                (case_id, question.strip(), "open", owner, triage, now_utc()))
+            question_id = int(cur.lastrowid)
+            self._event(case_id, "question_created", question_id=question_id)
+            if owner:
+                self.db.execute(
+                    "INSERT INTO question_owner_history (case_id,question_id,owner_label,assigned_at) VALUES (?,?,?,?)",
+                    (case_id, question_id, owner, now_utc()))
+                self._event(case_id, "question_owner_assigned", question_id=question_id)
+        return question_id
+
+    @staticmethod
+    def _check_owner_label(owner_label: object) -> str:
+        """Validate a fictional owner label. Attribution only, never authorization."""
+        if not isinstance(owner_label, str) or not 2 <= len(owner_label.strip()) <= 80:
+            raise InvalidInput("Question owner label must have 2–80 characters")
+        return owner_label.strip()
+
+    def _question_row(self, case_id: str, question_id: int) -> sqlite3.Row:
+        if type(question_id) is not int:
+            raise InvalidInput("Question id must be an integer")
+        row = self.db.execute("SELECT * FROM questions WHERE id=? AND case_id=?",
+                              (question_id, case_id)).fetchone()
+        if not row:
+            raise InvalidInput("Question not in this case")
+        return row
+
+    def assign_question_owner(self, case_id: str, question_id: int, owner_label: str) -> int:
+        """Attach a fictional owner label; every assignment appends history.
+
+        The questions row keeps only the current label; the full sequence of
+        assignments is preserved in question_owner_history, which is never
+        updated or deleted. Owner labels are attribution, not authorization.
+        """
+        self._case(case_id)
+        owner = self._check_owner_label(owner_label)
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            row = self._question_row(case_id, question_id)
+            self.db.execute("UPDATE questions SET owner_label=? WHERE id=?", (owner, question_id))
+            if row["triage"] == "unsorted":
+                self.db.execute("UPDATE questions SET triage='owned' WHERE id=?", (question_id,))
+            cur = self.db.execute(
+                "INSERT INTO question_owner_history (case_id,question_id,owner_label,assigned_at) VALUES (?,?,?,?)",
+                (case_id, question_id, owner, now_utc()))
+            self._event(case_id, "question_owner_assigned", question_id=question_id,
+                        history_id=cur.lastrowid)
+            return int(cur.lastrowid)
+
+    def set_question_triage(self, case_id: str, question_id: int, triage: str) -> None:
+        """Set the orthogonal workflow marker; the open/addressed state is untouched."""
+        self._case(case_id)
+        if not isinstance(triage, str) or triage not in QUESTION_TRIAGE:
+            raise InvalidInput("Invalid question triage value")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            row = self._question_row(case_id, question_id)
+            if row["triage"] == triage:
+                return
+            self.db.execute("UPDATE questions SET triage=? WHERE id=?", (triage, question_id))
+            self._event(case_id, "question_triage_changed", question_id=question_id,
+                        previous_triage=row["triage"], triage=triage)
+
+    def add_question_evidence_note(self, case_id: str, question_id: int, note: str) -> int:
+        """Append a versioned human-authored needed-evidence note. Append-only."""
+        self._case(case_id)
+        if not isinstance(note, str) or not 15 <= len(note.strip()) <= 800:
+            raise InvalidInput("Needed-evidence note must have 15–800 characters")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            self._question_row(case_id, question_id)
+            current = self.db.execute(
+                "SELECT COALESCE(MAX(version),0) AS top FROM question_evidence_notes WHERE question_id=?",
+                (question_id,)).fetchone()
+            version = int(current["top"]) + 1
+            cur = self.db.execute(
+                """INSERT INTO question_evidence_notes
+                (case_id,question_id,version,note,created_at) VALUES (?,?,?,?,?)""",
+                (case_id, question_id, version, note.strip(), now_utc()))
+            self._event(case_id, "question_evidence_note_added", question_id=question_id,
+                        note_id=cur.lastrowid, version=version)
+            return int(cur.lastrowid)
+
+    def list_question_owner_history(self, case_id: str, question_id: int) -> list[dict]:
+        self._case(case_id)
+        self._question_row(case_id, question_id)
+        return self._dicts(self.db.execute(
+            """SELECT id,owner_label,assigned_at FROM question_owner_history
+            WHERE case_id=? AND question_id=? ORDER BY id""",
+            (case_id, question_id)).fetchall())
+
+    def list_question_evidence_notes(self, case_id: str, question_id: int) -> list[dict]:
+        self._case(case_id)
+        self._question_row(case_id, question_id)
+        return self._dicts(self.db.execute(
+            """SELECT id,version,note,created_at FROM question_evidence_notes
+            WHERE case_id=? AND question_id=? ORDER BY version""",
+            (case_id, question_id)).fetchall())
 
     def create_snapshot(self, case_id: str, question_id: int, summary: str, source_ids: list[int],
                         evidence_assessment_ids: list[int] | None = None,
@@ -2296,6 +2451,12 @@ class CaseStore:
                 "sources": source_rows,
                 "assertions": assert_rows,
                 "questions": self._dicts(self.db.execute("SELECT * FROM questions WHERE case_id=? ORDER BY id DESC", (case_id,)).fetchall()),
+                "question_owner_history": self._dicts(self.db.execute(
+                    """SELECT id,question_id,owner_label,assigned_at FROM question_owner_history
+                    WHERE case_id=? ORDER BY id""", (case_id,)).fetchall()),
+                "question_evidence_notes": self._dicts(self.db.execute(
+                    """SELECT id,question_id,version,note,created_at FROM question_evidence_notes
+                    WHERE case_id=? ORDER BY question_id,version""", (case_id,)).fetchall()),
                 "snapshots": snapshot_rows,
                 # OI-021 derived projection: same ledger, no second state.
                 "options": option_projection["options"],

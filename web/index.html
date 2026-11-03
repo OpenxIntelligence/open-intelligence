@@ -169,9 +169,35 @@
             <form id="question-form">
               <label for="question-text">New question</label>
               <textarea id="question-text" rows="2" maxlength="500" required placeholder="Which findings need reconciliation before the next review?"></textarea>
+              <label for="question-owner">Owner label (optional, fictional attribution only)</label>
+              <input id="question-owner" type="text" maxlength="80" placeholder="FICTIONAL-NAVIGATOR-A">
               <button type="submit" class="button">Add question</button>
             </form>
             <div id="question-list" class="questions"></div>
+            <div class="subhead">Question ownership and follow-up</div>
+            <p class="muted tiny">Owner labels are fictional attribution, never authorization. Triage is a manual sorting marker; it never replaces the open/addressed state.</p>
+            <form id="question-owner-form">
+              <label for="owner-question-choice">Question</label><select id="owner-question-choice"></select>
+              <label for="owner-label-input">Owner label</label><input id="owner-label-input" type="text" maxlength="80" required placeholder="FICTIONAL-NAVIGATOR-A">
+              <button type="submit" class="button secondary">Assign owner</button>
+            </form>
+            <form id="question-triage-form">
+              <label for="triage-question-choice">Question</label><select id="triage-question-choice"></select>
+              <label for="triage-value">Follow-up marker</label>
+              <select id="triage-value"><option value="unsorted">Unsorted</option><option value="owned">Owned</option><option value="awaiting_evidence">Awaiting evidence</option><option value="ready_for_review">Ready for review</option></select>
+              <button type="submit" class="button secondary">Set marker</button>
+            </form>
+            <form id="question-note-form">
+              <label for="note-question-choice">Question</label><select id="note-question-choice"></select>
+              <label for="note-text">Needed-evidence note (human-authored, kept as versions)</label>
+              <textarea id="note-text" rows="2" minlength="15" maxlength="800" required placeholder="Describe what evidence is still needed for this question."></textarea>
+              <button type="submit" class="button secondary">Append note</button>
+            </form>
+            <div class="subhead">Per-question gap rollup</div>
+            <p class="muted tiny">Read-only listing of unresolved source items with anchors, bound snapshots, notes, and owner history. Order is mechanical, never a ranking.</p>
+            <label for="rollup-question-choice">Question</label><select id="rollup-question-choice"></select>
+            <button id="rollup-button" type="button" class="button secondary">Show rollup</button>
+            <div id="question-rollup" class="questions"></div>
           </section>
 
           <section class="investigation-pane draft-pane" aria-labelledby="draft-pane-heading">
