@@ -45,6 +45,8 @@ an unmerged engineering candidate, with no clinical approval or deployment claim
 
 **Connected document candidate:** [draft #349](https://github.com/OpenxIntelligence/open-intelligence/pull/349) composes #323 with #335's source reading, evidence reports and follow-up. Text/PDF originals have a separate, initially collapsed Records control that retains local selections while collapsed. The [continuity record](docs/engineering/H1_EVIDENCE_CONTINUITY.md) and PR distinguish the tests-first failure, combined verification and remaining boundaries. Manual selections remain separately attributed and excluded from structured-source investigation snapshots.
 
+**Document/comparison continuation:** [draft #354](https://github.com/OpenxIntelligence/open-intelligence/pull/354) combines that document workspace with #348/#359's recoverable in-memory comparison drafts and #339's dependency identity checks. Drafts resume only after fresh matching access; uncertain submissions retain their exact retry intent. [Composition and verification](docs/engineering/H1_CONNECTED_RIGHTS_CONVERGENCE.md) distinguish the combined checks from parent backend evidence and remaining manual-document provenance work.
+
 ## Start here
 
 | Document | Purpose |
