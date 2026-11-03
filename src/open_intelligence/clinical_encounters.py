@@ -229,6 +229,10 @@ class ClinicalEncounters:
             if previous:
                 if previous["operation"] != action or previous["request_hash"] != digest:
                     raise ClinicalConflict("Idempotency key reused for a different command")
+                # A successful old command is not a standing permission to
+                # receive its result after an access grant changes. A retry
+                # must be authorized at the disclosure boundary as well.
+                self._allow(actor, patient_id, action, purpose)
                 return json.loads(previous["result_json"])
             result = mutate()
             # The host policy may be revoked while a command is assembling its
@@ -378,18 +382,26 @@ class ClinicalEncounters:
 
     def list_encounters(self, patient_id: str, *, actor: str, purpose: str) -> list[dict]:
         self._allow(actor, patient_id, "encounter.read", purpose)
-        return [dict(row) for row in self.host.db.execute(
+        rows = [dict(row) for row in self.host.db.execute(
             "SELECT * FROM clinical_encounters WHERE patient_id=? ORDER BY service_date,id",
             (patient_id,)).fetchall()]
+        # Bound disclosure to the current host policy, not only the initial
+        # read permission. This cannot guarantee an atomic external IdP view.
+        self._allow(actor, patient_id, "encounter.read", purpose)
+        return rows
 
     def note_history(self, patient_id: str, encounter_id: int, note_key: str, *,
                      actor: str, purpose: str) -> list[dict]:
         self._allow(actor, patient_id, "note.read", purpose)
         self._encounter(patient_id, encounter_id)
         note_key = valid_id(note_key)
-        return [dict(row) for row in self.host.db.execute("""
+        rows = [dict(row) for row in self.host.db.execute("""
           SELECT v.id,v.version,v.status,v.body,v.sha256,v.authored_by,v.created_at,
                  v.supersedes_id,v.amendment_reason
           FROM clinical_note_headers n JOIN clinical_note_versions v ON v.note_id=n.id
           WHERE n.encounter_id=? AND n.note_key=? ORDER BY v.version
           """, (encounter_id, note_key)).fetchall()]
+        # A grant changed while retrieving notes must withhold the entire
+        # response, including historical versions, not only new writes.
+        self._allow(actor, patient_id, "note.read", purpose)
+        return rows
