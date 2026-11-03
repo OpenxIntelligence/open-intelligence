@@ -35,6 +35,10 @@ def project_source_world_model(index: dict) -> dict:
         raise PatientRegistryError("Unsupported original-source index for projection")
     patient_id = index.get("patient_id")
     case_id = index.get("case_id")
+    receipt_id = index.get("access_receipt_id")
+    if (type(receipt_id) is not str or not receipt_id.startswith("ACCESS-")
+            or len(receipt_id) != 39):
+        raise PatientRegistryError("Source read access receipt required")
     sources = index.get("sources")
     findings = index.get("source_reported_assertions")
     if (not isinstance(patient_id, str) or not patient_id
@@ -148,6 +152,7 @@ def project_source_world_model(index: dict) -> dict:
         "contract": "oi.pg-source-world-model/1",
         "patient_id": patient_id,
         "case_id": case_id,
+        "access_receipt_id": receipt_id,
         "synthetic": True,
         "authority": "source_report_only_unreviewed",
         "clinical_interpretation": False,
