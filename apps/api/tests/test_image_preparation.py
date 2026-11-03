@@ -111,7 +111,7 @@ class ImagePreparationTests(unittest.TestCase):
         self.assertRegex(result["access_receipt_id"], r"^ACCESS-[0-9A-F]{32}$")
         self.assertEqual(self.registry.committed[0][1]["receipt_id"],
                          result["access_receipt_id"])
-        self.assertEqual(self.order, ["begin", "authority", "event", "commit"])
+        self.assertEqual(self.order, ["begin", "authority", "event", "authority", "commit"])
 
     def test_response_is_prepared_before_final_authority_and_event_commit(self):
         for operation in ("import", "index", "original"):
@@ -128,7 +128,7 @@ class ImagePreparationTests(unittest.TestCase):
                     return marker
 
                 self.assertIs(self.call(operation, prepare), marker)
-                self.assertEqual(self.order, ["begin", "prepare", "authority", "event", "commit"])
+                self.assertEqual(self.order, ["begin", "prepare", "authority", "event", "authority", "commit"])
 
     def test_failed_preparation_withholds_response_and_new_receipt(self):
         for operation in ("import", "index", "original"):
