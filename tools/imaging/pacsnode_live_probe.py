@@ -52,6 +52,14 @@ class RejectRedirect(HTTPRedirectHandler):
 OPENER = build_opener(RejectRedirect(), ProxyHandler({}))
 
 
+class BackendHTTPError(InvalidInput):
+    """Bounded status only: an upstream error body is never an error message."""
+
+    def __init__(self, status: int):
+        self.status = status
+        super().__init__(f"Backend returned HTTP {status}")
+
+
 def loopback_origin(base_url: str) -> str:
     """Require a single non-credentialed HTTP loopback origin."""
     if not isinstance(base_url, str):
@@ -187,8 +195,9 @@ def _request(url: str, *, method="GET", content=None, accept=None, content_type=
                 raise InvalidInput("Response exceeds bounded synthetic limit")
             return response.status, response.headers.get("Content-Type", ""), data
     except HTTPError as exc:
-        data = exc.read(500)
-        raise InvalidInput(f"Backend returned HTTP {exc.code}: {data[:120]!r}") from None
+        status = exc.code
+        exc.close()
+        raise BackendHTTPError(status) from None
 
 
 def _uid_value(row: dict, tag: str) -> str:

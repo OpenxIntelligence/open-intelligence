@@ -1,6 +1,7 @@
 # Isolated research fixture-generation dependency only — NOT application dependencies.
 # pydicom 3.0.2 wheel SHA-256 obtained from official PyPI JSON on 2026-11-02.
-# Core is MIT-licensed per upstream; optional compressed-codec extras (including
+# Installed LICENSE: MIT except generated private dictionaries under included
+# GDCM BSD conditions. Optional compressed-codec extras (including
 # GPL-licensed options) are explicitly excluded. This does not clear packages,
 # codecs, medical image rights, or clinical intended use for product release.
 pydicom==3.0.2 --hash=sha256:abf971a5440f84dbaf42c4b6758e30e62480902584f8b270b9a5d146e278a07b

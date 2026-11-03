@@ -1,0 +1,60 @@
+{
+  "source_commit": "e9b4334477a66967d290add9e0b9afa068f59dc0",
+  "evaluation_status": "technical_roundtrip_observed_with_standards_hold",
+  "synthetic_only": true,
+  "real_patient_data_used": false,
+  "dicom_count": 2,
+  "study_count": 1,
+  "series_count": 1,
+  "stow_http_status": 200,
+  "sop_original_sha256": {
+    "2.25.110026110201000000000000000003": "d56d410837e07a69269b31791245763ad6df0cc45d5f4e4baf6dd93338698c4c",
+    "2.25.110026110201000000000000000004": "fabb62845c7c4ed1c14b6fa59cec39564551b97d379bf9bd4eac4cdaf9f966f5"
+  },
+  "sop_returned_sha256": {
+    "2.25.110026110201000000000000000003": "d56d410837e07a69269b31791245763ad6df0cc45d5f4e4baf6dd93338698c4c",
+    "2.25.110026110201000000000000000004": "fabb62845c7c4ed1c14b6fa59cec39564551b97d379bf9bd4eac4cdaf9f966f5"
+  },
+  "sop_pixel_sha256": {
+    "2.25.110026110201000000000000000003": "ea99f710d9d0b8ba192295c969a63ed7ce8fc5743da20d2057fa2b6d2c404bfb",
+    "2.25.110026110201000000000000000004": "4af5ad632250bc5d41621b7b0575ddbe86df85c89a213455b542439ad194f6c8"
+  },
+  "pixel_diagnostics": {
+    "2.25.110026110201000000000000000003": {
+      "source_pixel_sha256": "ea99f710d9d0b8ba192295c969a63ed7ce8fc5743da20d2057fa2b6d2c404bfb",
+      "retrieved_pixel_sha256": "ea99f710d9d0b8ba192295c969a63ed7ce8fc5743da20d2057fa2b6d2c404bfb",
+      "source_transfer_syntax": "1.2.840.10008.1.2.1",
+      "retrieved_transfer_syntax": "1.2.840.10008.1.2.1",
+      "retrieval_is_expected_uncompressed_encoding": true,
+      "encoded_pixel_bytes_equal": true
+    },
+    "2.25.110026110201000000000000000004": {
+      "source_pixel_sha256": "4af5ad632250bc5d41621b7b0575ddbe86df85c89a213455b542439ad194f6c8",
+      "retrieved_pixel_sha256": "4af5ad632250bc5d41621b7b0575ddbe86df85c89a213455b542439ad194f6c8",
+      "source_transfer_syntax": "1.2.840.10008.1.2.1",
+      "retrieved_transfer_syntax": "1.2.840.10008.1.2.1",
+      "retrieval_is_expected_uncompressed_encoding": true,
+      "encoded_pixel_bytes_equal": true
+    }
+  },
+  "source_and_retrieved_objects_byte_identical": true,
+  "uncompressed_pixel_integrity_passed": true,
+  "exact_original_object_preserved": {
+    "2.25.110026110201000000000000000003": true,
+    "2.25.110026110201000000000000000004": true
+  },
+  "first_party_wrong_case_rejected": true,
+  "first_party_amendment_rejected": true,
+  "qido_media_types": {
+    "study": "application/json",
+    "instance": "application/json"
+  },
+  "qido_media_type_conformant": false,
+  "backend_listener_isolation_verified": false,
+  "pacs_authentication_verified": false,
+  "pacs_tenant_isolation_verified": false,
+  "upstream_license_approved": false,
+  "clinical_validation": false,
+  "standards_conformance_verified": false,
+  "_source_receipt_note": "Extracted from GitHub Actions real-world synthetic PACSNode run 41555864030, artifact 13193868150. This contains only technical receipt fields; no image pixels or personal health information."
+}

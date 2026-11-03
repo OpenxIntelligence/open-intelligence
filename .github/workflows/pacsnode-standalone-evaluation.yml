@@ -10,6 +10,13 @@ on:
       - 'tests/test_pacsnode_probe_contract.py'
       - 'tests/test_source_bound_wado.py'
       - '.github/workflows/pacsnode-standalone-evaluation.yml'
+  pull_request:
+    paths:
+      - "tools/imaging/**"
+      - "tests/test_*imaging*.py"
+      - "tests/test_*pacsnode*.py"
+      - "tests/test_source_bound_wado.py"
+      - ".github/workflows/pacsnode-standalone-evaluation.yml"
   workflow_dispatch:
 
 permissions:
@@ -34,6 +41,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Python 3.13
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
@@ -46,8 +54,13 @@ jobs:
           git rev-parse HEAD > verification-artifacts/oi-evaluator-commit.txt
           python -m unittest discover -s tests -p 'test_pacsnode_probe_contract.py' -v 2>&1 |
             tee verification-artifacts/pacsnode-harness-tests.txt
+          python tools/audit_ci_data_boundaries.py
           python -m unittest discover -s tests -p 'test_source_bound_wado.py' -v 2>&1 |
             tee verification-artifacts/pacsnode-source-bound-wado-tests.txt
+          python -m unittest discover -s tests -p 'test_imaging_*.py' -v 2>&1 |
+            tee verification-artifacts/pacsnode-network-and-gate-tests.txt
+          python -m unittest discover -s tests -p 'test_pacsnode_security_evaluation.py' -v 2>&1 |
+            tee verification-artifacts/pacsnode-direct-access-tests.txt
       - name: Install only hash-pinned pydicom core for synthetic fixture generation
         shell: bash
         run: |
@@ -111,50 +124,32 @@ jobs:
           cd "$RUNNER_TEMP/oi-pacsnode-source"
           cargo build --locked -p pacs-server --no-default-features --features standalone --bin pacsnode
           test -x target/debug/pacsnode
-      - name: Run real STOW QIDO WADO synthetic SOP evaluation
+      - name: Run actual PACS and probe in an isolated network namespace
         shell: bash
         run: |
           set -euo pipefail
-          # Persisted DB settings override bootstrap environment values upstream.
-          # Every evaluation therefore needs its own empty directory/database.
           pacs_run_directory=$(mktemp -d "$RUNNER_TEMP/oi-pacsnode-run.XXXXXX")
-          cd "$pacs_run_directory"
-          # Checked upstream binary source at the pinned commit: the
-          # command writes config.toml in cwd and does not take --output.
-          "$RUNNER_TEMP/oi-pacsnode-source/target/debug/pacsnode" generate-config standalone
-          test -f config.toml
-          export PACS_SERVER__HTTP_PORT=18042
-          # Upstream default storage is HTJ2K-lossless (1.2.840.10008.1.2.4.201).
-          # For a byte-for-byte raw pixel test use ExplicitVRLittleEndian
-          # instead of comparing compressed PixelData bytes to uncompressed.
-          export PACS_SERVER__STORAGE_TRANSFER_SYNTAX=1.2.840.10008.1.2.1
-          printf '%s\n' "$PACS_SERVER__STORAGE_TRANSFER_SYNTAX" > "$GITHUB_WORKSPACE/verification-artifacts/pacsnode-test-storage-transfer-syntax.txt"
-          "$RUNNER_TEMP/oi-pacsnode-source/target/debug/pacsnode" \
-            > "$GITHUB_WORKSPACE/verification-artifacts/pacsnode-stdout.txt" 2>&1 &
-          server_pid=$!
-          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
-          ready=0
-          for attempt in $(seq 1 90); do
-            if curl --silent --show-error --fail http://127.0.0.1:18042/health >/dev/null 2>&1; then
-              ready=1
-              break
-            fi
-            if ! kill -0 "$server_pid" 2>/dev/null; then
-              echo "Upstream PACS process ended before readiness" >&2
-              break
-            fi
-            sleep 1
-          done
-          if [ "$ready" -ne 1 ]; then
-            echo "Upstream PACS health check never succeeded" >&2
-            tail -n 30 "$GITHUB_WORKSPACE/verification-artifacts/pacsnode-stdout.txt" || true
-            exit 1
-          fi
-          cd "$GITHUB_WORKSPACE"
-          # Import via the package path so source_bound_wado is resolvable.
-          python -m tools.imaging.pacsnode_live_probe \
-            --base-url http://127.0.0.1:18042 \
-            --output verification-artifacts/pacsnode-real-dicomweb.json
+          parent_namespace=$(readlink /proc/self/ns/net)
+          # The pinned upstream hard-codes wildcard HTTP and DIMSE listeners.
+          # Keep its source unchanged; bring up only lo in a fresh namespace.
+          sudo unshare --net -- bash tools/imaging/run_confined_pacsnode.sh \
+            "$RUNNER_TEMP/oi-pacsnode-source/target/debug/pacsnode" \
+            "$GITHUB_WORKSPACE" "$pacs_run_directory" "$parent_namespace" \
+            "$(command -v python)"
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          for name in ('pacsnode-real-dicomweb.json', 'imaging-release-hold-assessment.json',
+                       'pacsnode-test-config-sha256.txt', 'pacsnode-test-storage-transfer-syntax.txt'):
+              assert (Path('verification-artifacts') / name).stat().st_size > 0, name
+          d=json.loads(Path('verification-artifacts/imaging-release-hold-assessment.json').read_text())
+          assert d['classification']=='HOLD_NOT_APPROVED'
+          assert d['approval_automatically_granted'] is False
+          assert d['first_party_source_bound_reads'] is True
+          assert d['evaluation_network_namespace_confined'] is True
+          assert d['direct_access_boundary_characterized'] is True
+          assert d['pacs_service_access_controls'] is False
+          PY
       - name: Preserve only source and numerical receipts, no image objects
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -164,12 +159,16 @@ jobs:
             verification-artifacts/oi-evaluator-commit.txt
             verification-artifacts/pacsnode-harness-tests.txt
             verification-artifacts/pacsnode-source-bound-wado-tests.txt
+            verification-artifacts/pacsnode-network-and-gate-tests.txt
+            verification-artifacts/pacsnode-direct-access-tests.txt
             verification-artifacts/pacsnode-dicom-regression-tests.txt
             verification-artifacts/pacsnode-upstream-commit.txt
             verification-artifacts/pacsnode-cargo-lock-sha256.txt
             verification-artifacts/rustc-version.txt
             verification-artifacts/cargo-license-snapshot.json
             verification-artifacts/pacsnode-real-dicomweb.json
+            verification-artifacts/imaging-release-hold-assessment.json
+            verification-artifacts/pacsnode-test-config-sha256.txt
             verification-artifacts/pacsnode-test-storage-transfer-syntax.txt
             verification-artifacts/pacsnode-stdout.txt
           if-no-files-found: warn
