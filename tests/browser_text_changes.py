@@ -38,6 +38,7 @@ def main():
             wait_for(lambda: urlopen(url, timeout=1).status == 200, 'local app')
             browser = subprocess.Popen([
                 chrome, '--headless=new', '--disable-gpu', '--disable-dev-shm-usage',
+                *(['--no-sandbox'] if hasattr(os, 'geteuid') and os.geteuid() == 0 else []),
                 '--disable-background-networking', '--no-first-run', '--disable-extensions',
                 '--remote-allow-origins=*', f'--remote-debugging-port={debug_port}',
                 f'--user-data-dir={tmp}/chrome', 'about:blank'],
@@ -53,6 +54,7 @@ def main():
             session.command('Page.navigate', {'url': url})
             session.wait("typeof active !== 'undefined' && active?.case.case_id === 'CASE-ALPHA' && renderedCaseId === caseId",
                          'Alpha ready')
+            session.navigate('import')
             session.evaluate("document.getElementById('example-button').click()")
             session.wait("document.getElementById('report-text').value.includes('Amends: PATH-ALPHA@1')",
                          'authored amendment loaded')
@@ -63,6 +65,7 @@ def main():
                          'source change available')
             versions = session.evaluate("active.sources.filter(s=>s.document_id==='PATH-ALPHA').sort((a,b)=>a.version-b.version).map(s=>s.id)")
             originals = [json.load(urlopen(f'{url}api/cases/CASE-ALPHA/sources/{sid}'))['text'] for sid in versions]
+            session.navigate('timeline')
             session.evaluate("document.querySelector('#source-change-list .change-card .actions button').click()")
             session.wait("document.getElementById('compare-dialog').open && document.querySelector('#compare-before mark') !== null",
                          'line highlights in actual comparison')
@@ -97,6 +100,7 @@ def main():
 
             session.evaluate("document.getElementById('compare-close').click()")
             session.wait("!document.getElementById('compare-dialog').open", 'comparison closed')
+            session.navigate('timeline')
             session.evaluate("document.querySelector('#source-change-list .change-card .actions button').click()")
             session.wait("document.getElementById('compare-dialog').open && document.querySelector('#compare-before mark') !== null",
                          'reopened original comparison')

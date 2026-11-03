@@ -1,17 +1,80 @@
 
-/* Entry uses the existing first-party design tokens; no remote assets. */
-.journey-steps {list-style:none;padding:0;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:var(--space-3);margin:var(--space-4) 0;}
-.journey-steps li {min-width:0;padding:var(--space-3);border:1px solid var(--color-rule);border-radius:var(--radius-control);background:var(--color-paper-2);}
-.journey-steps a,.journey-steps strong,.journey-steps span {display:block;overflow-wrap:anywhere;}
-.journey-steps a {font-weight:700;margin-bottom:var(--space-2);}
-.journey-steps span {font-size:var(--text-xs);color:var(--color-muted);margin-top:var(--space-2);}
-.intake-fields {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-4);}
-.intake-confirm {display:flex;align-items:flex-start;gap:var(--space-2);margin:var(--space-3) 0;}
-.intake-confirm input {width:auto;flex:none;min-height:24px;}
-.intake-preview {white-space:pre-wrap;overflow-wrap:anywhere;max-height:22rem;overflow:auto;padding:var(--space-3);border:1px solid var(--color-rule);font-size:var(--text-sm);}
-#source-file {max-width:100%;}
-#case-create-status[data-error="true"],#source-upload-status[data-error="true"] {font-weight:700;}
-body[data-workspace-state="empty"] .main > :not(#overview):not(#workspace-start):not(#notice) {display:none;}
-body[data-workspace-state="empty"] .section-menu,body[data-workspace-state="empty"] .hero-actions {display:none;}
-@media(max-width:70rem){.journey-steps{grid-template-columns:repeat(2,minmax(0,1fr));}}
-@media(max-width:40rem){.journey-steps,.intake-fields{grid-template-columns:minmax(0,1fr);}}
+/* Connected entry shares the existing tokens, controls and canonical state. */
+.workspace-start > summary,
+#source-intake > summary {
+  min-height: 44px;
+  padding-block: 8px;
+  color: var(--color-ink);
+  font-size: 1.125rem;
+  font-weight: 650;
+  line-height: 1.5;
+  cursor: pointer;
+}
+.workspace-start[open] > summary,
+#source-intake[open] > summary { margin-bottom: 16px; }
+.workspace-start > p,
+#source-intake > p { max-width: 90ch; font-size: .875rem; line-height: 1.65; }
+.journey-steps {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+  margin: 24px 0;
+  padding: 0;
+  list-style: none;
+}
+.journey-steps li {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--color-rule);
+  border-radius: 8px;
+  background: var(--color-paper-2);
+}
+.journey-steps a,
+.journey-steps strong,
+.journey-steps span { display: block; overflow-wrap: anywhere; }
+.journey-steps a { min-height: 44px; margin-bottom: 10px; color: var(--color-source-ink); font-size: .875rem; font-weight: 650; }
+.journey-steps strong { color: var(--color-ink); font-size: .8125rem; font-weight: 600; }
+.journey-steps span { margin-top: 8px; color: var(--color-muted); font-size: .75rem; line-height: 1.6; }
+.intake-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.intake-fields > div { min-width: 0; }
+.intake-fields label { display: block; margin-bottom: 8px; }
+.intake-fields p { margin-top: 7px; }
+.intake-confirm { display: flex; min-height: 44px; align-items: flex-start; gap: 10px; margin: 12px 0; padding-block: 8px; font-size: .875rem; line-height: 1.6; }
+.intake-confirm input { width: 20px; height: 20px; min-height: 20px; flex: 0 0 20px; margin: 2px 0 0; }
+.intake-preview { max-width: 100%; max-height: 22rem; margin-block: 14px; padding: 16px; overflow: auto; border: 1px solid var(--color-rule); border-radius: 7px; background: var(--color-paper-2); font-family: var(--font-outlier); font-size: .8125rem; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+#source-intake-case { margin-bottom: 12px; }
+#source-upload-form { margin-top: 22px; }
+#source-file { max-width: 100%; padding: 8px; font-size: .875rem; }
+#source-file::file-selector-button { min-height: 36px; margin-right: 12px; padding: 7px 12px; border: 1px solid var(--color-control-border); border-radius: 5px; background: var(--color-paper-2); color: var(--color-ink); font: inherit; font-weight: 600; cursor: pointer; }
+#source-file::file-selector-button:hover { border-color: var(--color-accent); background: var(--color-accent-soft); }
+#source-preview-details > summary { min-height: 44px; padding-block: 10px; color: var(--color-source-ink); font-size: .875rem; font-weight: 600; cursor: pointer; }
+#case-create-status,
+#source-upload-status { min-width: 0; font-size: .875rem; line-height: 1.65; overflow-wrap: anywhere; }
+#case-create-status[data-error="true"],
+#source-upload-status[data-error="true"] { color: var(--color-error); font-weight: 600; }
+
+/* Preserve the original no-router fallback; the routed shell owns visibility
+   after .ux-ready and must keep its setup wrapper/header/navigation available. */
+body[data-workspace-state="empty"]:not(.ux-ready) .main > :not(#overview):not(#workspace-start):not(#notice) { display: none; }
+body[data-workspace-state="empty"]:not(.ux-ready) .section-menu,
+body[data-workspace-state="empty"]:not(.ux-ready) .hero-actions { display: none; }
+body.ux-ready[data-workspace-state="empty"] .case-context,
+body.ux-ready[data-workspace-state="empty"] .chart-nav,
+body.ux-ready[data-workspace-state="empty"] .chart-section-select,
+body.ux-ready[data-workspace-state="empty"] .section-nav { display: none; }
+
+@media (max-width: 1180px) {
+  .journey-steps { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 960px) {
+  .journey-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .intake-fields { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 520px) {
+  .journey-steps { grid-template-columns: minmax(0, 1fr); gap: 10px; margin-block: 20px; }
+  .journey-steps li { padding: 14px 16px; }
+  .journey-steps a { min-height: 44px; margin-bottom: 2px; }
+  .journey-steps span { margin-top: 6px; }
+  #source-file { font-size: 1rem; }
+  #source-file::file-selector-button { max-width: 100%; margin-bottom: 4px; }
+}

@@ -4,6 +4,14 @@ let caseId = null;
 let active = null;
 let refreshSequence = 0;
 let renderedCaseId = null;
+// Worklist generations describe rendered summaries, never chart readiness.
+let incomingBoardSequence = 0;
+let incomingRowRevision = 0;
+let incomingRosterUnavailable = false;
+// Startup describes the first roster request, not chart state or readiness.
+let workspaceStartupPhase = 'loading';
+let workspaceStartupSequence = 0;
+let workspaceStartupPreferredCase = null;
 const el = (id) => document.getElementById(id);
 function node(tag, text, className = '') {
   const item = document.createElement(tag);
@@ -12,10 +20,12 @@ function node(tag, text, className = '') {
   return item;
 }
 function clear(id) { el(id).replaceChildren(); }
-function notice(message, error = false) {
+function notice(message, error = false, ownerCase = null) {
   const item = el('notice');
   item.textContent = message;
   item.className = error ? 'notice error' : 'notice';
+  if (ownerCase) item.dataset.caseId = ownerCase;
+  else delete item.dataset.caseId;
   item.hidden = false;
 }
 async function api(path, payload) {
@@ -34,94 +44,256 @@ function metric(number, label) {
   wrap.append(node('span', number, 'number'), node('span', label, 'name'));
   return wrap;
 }
-function focusOverviewFromCasePicker(event) {
-  if (event.key !== 'Tab' || event.shiftKey || event.defaultPrevented) return;
-  if (document.activeElement !== el('case-picker')) return;
-  const overviewLink = document.querySelector('.rail nav a[href="#overview"]');
-  if (!overviewLink) return;
-  event.preventDefault();
-  overviewLink.focus();
+function hasUnfinishedCaseWork() {
+  return Boolean(el('source-file')?.files?.length) ||
+    ['question-text', 'report-text', 'draft-observations', 'draft-summary',
+     'draft-assumptions', 'evidence-rationale', 'evidence-withdraw-reason',
+     'option-description'].some(id => el(id)?.value.trim());
 }
-async function initialize() {
+function presentWorkspaceStartup(phase) {
+  workspaceStartupPhase = phase;
+  const loading = phase === 'loading', region = el('workspace-startup');
+  region.hidden = phase === 'available';
+  region.className = phase === 'failed' ? 'notice error' : 'notice';
+  region.setAttribute('aria-busy', String(loading));
+  el('workspace-startup-message').textContent = loading ? 'Loading the case list…' : phase === 'failed'
+    ? 'The case list is unavailable. Retry loading to open your workspace.'
+    : phase === 'empty' ? 'No case workspaces are available yet. Create a workspace or refresh the list after a case is added.' : '';
+  el('workspace-startup-retry').textContent = loading ? 'Loading…' : phase === 'empty' ? 'Refresh list' : 'Retry loading';
+  el('workspace-startup-retry').disabled = loading;
+  el('case-picker').disabled = phase !== 'available';
+  el('worklist-refresh').disabled = loading;
+  if (phase !== 'available') {
+    el('incoming-list').setAttribute('aria-busy', String(loading));
+    el('worklist-status').textContent = loading ? 'Loading the case list…' : phase === 'failed'
+      ? 'The case list is unavailable. Retry loading to check for cases.' : 'No case workspaces are available yet.';
+  }
+  document.dispatchEvent(new Event('oi:workspace-startup-changed'));
+}
+async function initialize(preferredCaseId) {
+  // Once established, selection and retry belong to the existing chart owner.
+  if (caseId) return true;
+  if (preferredCaseId) workspaceStartupPreferredCase = preferredCaseId;
+  const sequence = ++workspaceStartupSequence;
+  const current = () => sequence === workspaceStartupSequence && !caseId;
+  // Creation may supersede an initializer already reading its board summaries.
+  ++incomingBoardSequence;
+  presentWorkspaceStartup('loading');
   try {
-    const cases = await api('/api/cases');
+    const response = await api('/api/cases');
+    if (!current()) return false;
+    if (!Array.isArray(response) || response.some(entry => !entry ||
+      typeof entry.case_id !== 'string' || !entry.case_id.trim() || typeof entry.label !== 'string'))
+      throw Error('Case list unavailable.');
+    const seen = new Set();
+    const cases = response.filter(entry => {
+      if (seen.has(entry.case_id)) return false;
+      seen.add(entry.case_id); return true;
+    });
+    if (workspaceStartupPreferredCase && !seen.has(workspaceStartupPreferredCase))
+      throw Error('Created workspace not available yet.');
     const picker = el('case-picker');
-    picker.addEventListener('keydown', focusOverviewFromCasePicker);
+    picker.replaceChildren();
     for (const entry of cases) {
       const option = node('option', entry.label.replace(/^Fictional case /, '') + ', ' + entry.case_id);
       option.value = entry.case_id;
       picker.append(option);
     }
+    // Keep the initial list ahead of canonical chart projection, as before.
+    await renderIncomingBoard(cases);
+    if (!current()) return false;
     if (!cases.length) {
       el('case-heading').textContent = 'No synthetic cases found';
-      notice('Run PYTHONPATH=src python -m open_intelligence seed before opening the demo.', true);
-      return;
+      presentWorkspaceStartup('empty');
+      return true;
     }
-    await renderIncomingBoard(cases);
-    picker.addEventListener('change', () => {
-      // An unfinished narrative must never silently become attached to another case.
-      if ((['draft-observations', 'draft-summary', 'draft-assumptions', 'evidence-rationale',
-            'evidence-withdraw-reason', 'option-description'].some(id => el(id).value.trim()))) {
-        picker.value = caseId;
-        notice('Save or explicitly clear the unfinished investigation draft before switching cases.', true);
-        return;
-      }
-      cancelSourceRead();
-      caseId = picker.value;
-      active = null; // Reject writes while the next case is loading.
-      for (const id of ['question-text', 'report-text', 'evidence-rationale', 'draft-observations',
-        'draft-summary', 'draft-assumptions']) el(id).value = '';
-      if (el('source-dialog').open) el('source-dialog').close();
-      if (el('compare-dialog').open) el('compare-dialog').close();
-      refresh();
-    });
-    caseId = cases[0].case_id;
+    caseId = workspaceStartupPreferredCase || cases[0].case_id;
+    workspaceStartupPreferredCase = null;
+    picker.value = caseId;
+    presentWorkspaceStartup('available');
+    document.dispatchEvent(new Event('oi:case-selection-changed'));
     await refresh();
-  } catch (err) { notice(err.message, true); }
+    return true;
+  } catch (_) {
+    if (current()) presentWorkspaceStartup('failed');
+    return false;
+  }
+}
+el('workspace-startup-retry').addEventListener('click', () => initialize());
+// Bind once, independently of how many initial roster requests are retried.
+el('case-picker').addEventListener('change', () => {
+  if (!caseId) return;
+  const picker = el('case-picker');
+  // Reopening a ready chart preserves drafts. Reopening an unavailable
+  // chart retries its existing state owner without resetting local inputs.
+  if (picker.value === caseId) {
+    try { readyCase(); } catch (_) { refresh(); }
+    return;
+  }
+  // A selected File is unfinished work even before its original bytes finish
+  // loading. Use this same guard for the connected workspace creation flow.
+  if (hasUnfinishedCaseWork()) {
+    picker.value = caseId;
+    notice('Save or explicitly clear the unfinished investigation draft, question or pasted record, or discard the selected source before switching cases.', true, caseId);
+    return;
+  }
+  cancelSourceRead();
+  // Saved-report actions and switch warnings belong to the original chart.
+  // Unrelated global notices keep their existing lifetime.
+  if (el('notice').dataset.caseId === caseId) {
+    el('notice').replaceChildren();
+    el('notice').hidden = true;
+    delete el('notice').dataset.caseId;
+  }
+  caseId = picker.value;
+  active = null; // Reject writes while the next case is loading.
+  for (const id of ['question-text', 'report-text', 'evidence-rationale', 'draft-observations',
+    'draft-summary', 'draft-assumptions']) el(id).value = '';
+  if (el('source-dialog').open) el('source-dialog').close();
+  if (el('compare-dialog').open) el('compare-dialog').close();
+  // Notify consumers only after the canonical selection has been accepted.
+  // Native select events can run microtasks between their individual listeners.
+  document.dispatchEvent(new Event('oi:case-selection-changed'));
+  refresh();
+});
+function incomingRows() {
+  return [...el('incoming-list').children].filter(row => row.dataset.caseId);
+}
+function incomingRow(id) { return incomingRows().find(row => row.dataset.caseId === id); }
+function incomingSummary(entry, state) {
+  if (state?.case?.case_id !== entry.case_id) throw Error('Case summary identity mismatch.');
+  return {
+    label: entry.label, caseId: entry.case_id,
+    latestEvent: state.sources.reduce((max, source) => source.event_date > max ? source.event_date : max, ''),
+    currentSources: state.sources.filter(source => source.state === 'current').length,
+    openQuestions: state.questions.filter(question => question.state === 'open').length,
+    stale: state.snapshots.filter(snapshot => snapshot.state === 'stale').length,
+  };
+}
+function newIncomingRow(id) {
+  const row = node('div', null, 'question');
+  row.dataset.caseId = id;
+  const open = node('button', 'Open this case', 'button secondary minor');
+  open.type = 'button';
+  open.addEventListener('click', () => {
+    el('case-picker').value = id;
+    el('case-picker').dispatchEvent(new Event('change'));
+    if (caseId === id && el('case-picker').value === id) workspacePresentation.navigate('overview');
+  });
+  row.append(node('div'), open);
+  return row;
+}
+function writeIncomingRow(row, summary) {
+  row.dataset.caseLabel = summary.label;
+  row.dataset.caseSearch = summary.label + ' ' + summary.caseId;
+  row.dataset.latestEvent = summary.latestEvent || '';
+  row.dataset.summaryState = summary.error ? 'unavailable' : 'ready';
+  row.dataset.worklistRevision = String(++incomingRowRevision);
+  const description = summary.error ? 'Case summary unavailable. Refresh list to try again.' :
+    'Most recent source event: ' + (summary.latestEvent || 'none recorded') +
+    ' · Current source documents: ' + summary.currentSources +
+    ' · Open questions: ' + summary.openQuestions +
+    ' · Historical drafts marked stale: ' + summary.stale;
+  // Preserve the actual Open button, including its focus and listener.
+  row.firstElementChild.replaceChildren(node('p', summary.label + ' · ' + summary.caseId),
+    node('p', description, 'muted'));
+}
+function orderIncomingRows(rows = incomingRows()) {
+  // Source event recency is not receipt time, amendment issue time or urgency.
+  rows.sort((a, b) => b.dataset.latestEvent.localeCompare(a.dataset.latestEvent) ||
+    Number(a.dataset.rosterOrder) - Number(b.dataset.rosterOrder));
+  const list = el('incoming-list'), previous = [...list.children], focused = document.activeElement;
+  if (previous.length !== rows.length || previous.some((row, index) => row !== rows[index])) {
+    list.replaceChildren(...rows);
+    if (focused?.isConnected && rows.some(row => row.contains(focused))) focused.focus({ preventScroll: true });
+  }
+}
+function incomingStatus() {
+  if (el('incoming-list').getAttribute('aria-busy') === 'true') return;
+  const unavailable = incomingRows().filter(row => row.dataset.summaryState === 'unavailable').length;
+  el('worklist-status').textContent = incomingRosterUnavailable
+    ? 'Could not refresh the case list. Refresh list to try again.'
+    : unavailable ? unavailable + (unavailable === 1 ? ' case summary is' : ' case summaries are') +
+      ' unavailable. Refresh list to try again.' : 'Case summaries updated.';
+}
+function projectIncomingCase(state) {
+  const row = incomingRow(state.case.case_id);
+  if (!row) return; // Membership still comes from the existing roster owner.
+  writeIncomingRow(row, incomingSummary(state.case, state));
+  orderIncomingRows();
+  incomingStatus();
 }
 async function renderIncomingBoard(cases) {
-  const list = el('incoming-list');
-  clear('incoming-list');
-  if (!cases.length) { empty(list, 'No fictional cases in this demo.'); return; }
-  const summaries = [];
-  for (const entry of cases) {
-    try {
-      const state = await api('/api/cases/' + entry.case_id + '/state');
-      const latestEvent = state.sources.reduce((max, s) =>
-        s.event_date > max ? s.event_date : max, '');
-      summaries.push({
-        label: entry.label, caseId: entry.case_id, latestEvent,
-        currentSources: state.sources.filter(s => s.state === 'current').length,
-        openQuestions: state.questions.filter(q => q.state === 'open').length,
-        stale: state.snapshots.filter(s => s.state === 'stale').length,
-      });
-    } catch (err) {
-      summaries.push({ label: entry.label, caseId: entry.case_id, latestEvent: '', error: err.message });
+  const sequence = ++incomingBoardSequence, list = el('incoming-list');
+  const button = el('worklist-refresh'), restoreButtonFocus = document.activeElement === button;
+  const previousRevisions = new Map(incomingRows().map(row => [row.dataset.caseId, row.dataset.worklistRevision]));
+  list.setAttribute('aria-busy', 'true');
+  button.disabled = true;
+  el('worklist-status').textContent = 'Updating case summaries…';
+  try {
+    if (cases === undefined) cases = await api('/api/cases');
+    if (sequence !== incomingBoardSequence) return;
+    if (!Array.isArray(cases)) throw Error('Case list unavailable.');
+    incomingRosterUnavailable = false;
+    const summaries = [];
+    for (const entry of cases) {
+      const revision = incomingRow(entry.case_id)?.dataset.worklistRevision;
+      let summary;
+      try {
+        summary = incomingSummary(entry, await api('/api/cases/' + entry.case_id + '/state'));
+      } catch (_) {
+        summary = { label: entry.label, caseId: entry.case_id, latestEvent: '', error: true };
+      }
+      if (sequence !== incomingBoardSequence) return;
+      summaries.push({ summary, revision });
+    }
+    const rows = summaries.map(({ summary, revision }, index) => {
+      let row = incomingRow(summary.caseId);
+      if (!row) {
+        row = newIncomingRow(summary.caseId);
+        writeIncomingRow(row, summary);
+      } else if (row.dataset.worklistRevision === revision) writeIncomingRow(row, summary);
+      // A newer canonical projection wins over this read, including its error.
+      row.dataset.rosterOrder = String(index);
+      return row;
+    });
+    const picker = el('case-picker'), selected = picker.value;
+    for (const entry of cases) {
+      if (![...picker.options].some(option => option.value === entry.case_id)) {
+        const option = node('option', entry.label.replace(/^Fictional case /, '') + ', ' + entry.case_id);
+        option.value = entry.case_id; picker.append(option);
+      }
+    }
+    if (selected) picker.value = selected;
+    orderIncomingRows(rows);
+    if (!rows.length) empty(list, 'No fictional cases in this demo.');
+    // Presentation consumers may finish a saved creation after this accepted
+    // roster read. Selection still goes through the existing picker owner.
+    document.dispatchEvent(new Event('oi:worklist-updated'));
+  } catch (_) {
+    if (sequence !== incomingBoardSequence) return;
+    incomingRosterUnavailable = true;
+    for (const row of incomingRows()) {
+      if (row.dataset.worklistRevision === previousRevisions.get(row.dataset.caseId)) {
+        writeIncomingRow(row, { label: row.dataset.caseLabel, caseId: row.dataset.caseId, error: true });
+      }
+    }
+    orderIncomingRows();
+    if (!incomingRows().length) {
+      list.replaceChildren();
+      empty(list, 'Case list unavailable. Refresh list to try again.');
+    }
+  } finally {
+    if (sequence === incomingBoardSequence) {
+      list.setAttribute('aria-busy', 'false');
+      button.disabled = !caseId && workspaceStartupPhase === 'loading';
+      incomingStatus();
+      if (restoreButtonFocus && document.activeElement === document.body && !button.disabled)
+        button.focus({ preventScroll: true });
     }
   }
-  // Most recent source event first. No urgency is inferred: the demo data
-  // has no triage field, so sorting is by recency of the record only.
-  summaries.sort((a, b) => b.latestEvent.localeCompare(a.latestEvent));
-  for (const summary of summaries) {
-    const row = node('div', null, 'question');
-    const text = node('div');
-    text.append(node('p', summary.label + ' · ' + summary.caseId));
-    if (summary.error) text.append(node('p', 'Could not load this case summary: ' + summary.error, 'muted'));
-    else text.append(node('p', 'Most recent source event: ' + (summary.latestEvent || 'none recorded') +
-      ' · Current source documents: ' + summary.currentSources +
-      ' · Open questions: ' + summary.openQuestions +
-      ' · Historical drafts tied to changed sources: ' + summary.stale, 'muted'));
-    const open = node('button', 'Open this case', 'button secondary minor');
-    open.type = 'button';
-    open.addEventListener('click', () => {
-      el('case-picker').value = summary.caseId;
-      el('case-picker').dispatchEvent(new Event('change'));
-      el('overview').scrollIntoView();
-    });
-    row.append(text, open);
-    list.append(row);
-  }
 }
+el('worklist-refresh').addEventListener('click', () => caseId ? renderIncomingBoard() : initialize());
 
 const CERTAINTY_PLAIN = {
   reported: 'reported', pending: 'still pending', indeterminate: 'not certain yet',
@@ -146,6 +318,12 @@ function renderPatientView() {
     card.append(node('strong', 'Source says'), node('p', assertion.quote, 'quoted'),
       node('span', 'How certain the source is: ' + (CERTAINTY_PLAIN[assertion.certainty] || assertion.certainty) +
         ' · Exact source version #' + assertion.source_version_id + ', line ' + assertion.source_line, 'ref'));
+    const source = active.sources.find(item => Number(item.id) === Number(assertion.source_version_id));
+    const inspect = node('button', source ? 'Read the original source' : 'Original source unavailable', 'button secondary minor source-jump');
+    inspect.type = 'button';
+    inspect.disabled = !source;
+    if (source) inspect.addEventListener('click', () => openSource(source, Number(assertion.source_line)));
+    card.append(inspect);
     el('patient-findings').append(card);
   }
   const open = active.questions.filter(q => q.state === 'open');
@@ -179,6 +357,7 @@ async function refresh() {
     active = response;
     el('case-heading').textContent = active.case.label;
     render();
+    projectIncomingCase(response);
   } catch (err) {
     if (sequence === refreshSequence && requestedCase === caseId) notice(err.message, true);
   }
@@ -539,6 +718,7 @@ function render() {
     exportButton.addEventListener('click', () => downloadSnapshot(snapshot.id)); actions.append(exportButton);
     if (snapshot.state === 'draft') {
       const button = node('button', 'Demo review acknowledgment', 'button minor'); button.type = 'button';
+      button.dataset.presentation = 'clinician';
       button.addEventListener('click', async () => {
         try {
           const requestedCase = readyCase();
@@ -802,7 +982,11 @@ el('draft-form').addEventListener('submit', async event => {
     });
     if (requestedCase !== caseId) return;
     for (const id of ['draft-observations', 'draft-summary', 'draft-assumptions']) el(id).value = '';
-    notice('Draft #' + created.snapshot_id + ' saved with exact source versions.'); await refresh();
+    notice('Draft #' + created.snapshot_id + ' saved with exact source versions.', false, requestedCase);
+    const reportLink = node('a', 'View saved report', 'notice-action');
+    reportLink.href = '#snapshot-' + created.snapshot_id;
+    el('notice').append(' ', reportLink);
+    await refresh();
   } catch (err) { notice(err.message, true); }
 });
 el('example-button').addEventListener('click', async () => {
@@ -838,6 +1022,7 @@ el('evidence-import-form').addEventListener('submit', async event => {
     notice('Fictional evidence: ' + outcome.result +
       (outcome.invalidated_snapshots?.length ? ', ' + outcome.invalidated_snapshots.length + ' draft(s) stale' : ''));
     el('evidence-text').value = ''; await refresh();
+    await renderIncomingBoard(); // Shared evidence can invalidate more than the selected case.
   } catch (err) { notice(err.message, true); }
 });
 el('evidence-assessment-form').addEventListener('submit', async event => {
@@ -865,6 +1050,7 @@ el('evidence-withdraw-form').addEventListener('submit', async event => {
     if (requestedCase !== caseId) return;
     notice('Synthetic evidence withdrawn, ' + outcome.invalidated_snapshots.length + ' dependent draft(s) stale.');
     el('evidence-withdraw-reason').value = ''; await refresh();
+    await renderIncomingBoard();
   } catch (err) { notice(err.message, true); }
 });
 el('option-form').addEventListener('submit', async event => {
@@ -1099,7 +1285,7 @@ async function prepareModelReviewDraft(detail, requestedCase, sequence, button) 
     const result = await api('/api/cases/' + requestedCase + '/investigations/' + detail.id + '/review-draft',
       {question_id: detail.question_id});
     if (!modelViewIsCurrent(requestedCase, sequence)) return;
-    notice('Review draft #' + result.snapshot_id + ' is available in Investigations. Human review remains a separate action.');
+    notice('Review draft #' + result.snapshot_id + ' is available in Reports. Human review remains a separate action.');
     await refresh();
   } catch (err) {
     if (modelViewIsCurrent(requestedCase, sequence)) notice(err.message, true);
@@ -1347,30 +1533,407 @@ el('model-investigation-form').addEventListener('submit', async event => {
     notice(err.message, true);
   }
 });
+// Begin workspace navigation model.
+// Presentation routes only. They never grant permissions or own case data.
+const WORKSPACE_ROUTES = {
+  'incoming-board': { title: 'Patients', group: 'patients', scope: 'global', clinical: true },
+  'patient-home': { title: 'Your health overview', group: 'home', scope: 'case' },
+  overview: { title: 'Patient overview', group: 'overview', scope: 'case', clinical: true },
+  'patient-view': { title: 'My record', group: 'record', scope: 'case' },
+  assertions: { title: 'Reported findings', group: 'record', scope: 'case' },
+  timeline: { title: 'Record timeline', group: 'record', scope: 'case' },
+  'patient-mission': { title: 'Record and review status', group: 'record', scope: 'case' },
+  'biological-assets': { title: 'Samples and provenance', group: 'record', scope: 'case' },
+  sources: { title: 'Documents', group: 'documents', scope: 'case' },
+  'source-intake': { title: 'Add original records', group: 'documents', scope: 'case', clinical: true },
+  import: { title: 'Structured import', group: 'documents', scope: 'case', clinical: true },
+  questions: { title: 'Questions', group: 'investigations', scope: 'case' },
+  investigations: { title: 'Prepare a draft', group: 'investigations', scope: 'case', clinical: true },
+  'model-investigation-heading': { title: 'Model investigation', group: 'investigations', scope: 'case', clinical: true },
+  reports: { title: 'Reports', group: 'investigations', scope: 'case' },
+  evidence: { title: 'Evidence review', group: 'evidence', scope: 'case', clinical: true },
+  options: { title: 'Options and dependencies', group: 'evidence', scope: 'case', clinical: true },
+  'changes-since-review': { title: 'Updates since review', group: 'review', scope: 'case' },
+  activity: { title: 'Recent activity', group: 'review', scope: 'case' },
+  bibliography: { title: 'Research library', group: 'research', scope: 'global' },
+  'workspace-start': { title: 'Workspace setup', group: 'setup', scope: 'global', clinical: true },
+};
+function resolveWorkspaceRoute(hash, audience) {
+  let mode = audience === 'patient' ? 'patient' : 'clinician';
+  const target = String(hash || '').replace(/^#/, '');
+  const aliases = { 'world-model-detail': 'patient-mission',
+    'investigation-history-heading': 'reports', 'question-pane-heading': 'questions',
+    'draft-pane-heading': 'investigations', 'new-case-panel': 'workspace-start' };
+  const alias = Object.hasOwn(aliases, target) ? aliases[target] : null;
+  let id = Object.hasOwn(WORKSPACE_ROUTES, target) ? target : alias;
+  if (/^snapshot-[1-9]\d*$/.test(target)) id = 'reports';
+  if (!id) id = mode === 'patient' ? 'patient-home' : 'incoming-board';
+  const route = WORKSPACE_ROUTES[id];
+  if (route.clinical) mode = 'clinician';
+  if (id === 'patient-home') mode = 'patient';
+  return { ...route, id, target: id === target || alias || /^snapshot-[1-9]\d*$/.test(target)
+    ? target : id, audience: mode };
+}
+// End workspace navigation model.
+
+const workspacePresentation = (() => {
+  const views = new Map();
+  const main = el('main-content');
+  const host = el('view-host');
+  const rail = el('workspace-rail');
+  const mobile = window.matchMedia('(max-width: 760px)');
+  const groups = [
+    ['overview', 'Overview', ['overview']],
+    ['record', 'Record', ['assertions', 'timeline', 'patient-view', 'patient-mission', 'biological-assets']],
+    ['documents', 'Documents', ['sources', 'source-intake', 'import']],
+    ['investigations', 'Investigations', ['questions', 'investigations', 'model-investigation-heading', 'reports']],
+    ['evidence', 'Evidence', ['evidence', 'options']],
+    ['review', 'Review', ['changes-since-review', 'activity']],
+  ];
+  const descriptions = {
+    'incoming-board': 'Find a case and open its dedicated chart. Listed by the most recent source event.',
+    'patient-home': 'Your records, open questions and recent updates, together in one place.',
+    overview: 'Start with the available source record and its review status.',
+    'patient-view': 'Read the original statements in plain language, with uncertainty kept visible.',
+    sources: 'Inspect original documents, exact source lines and earlier versions.',
+    questions: 'Keep a durable record of the questions you want to explore.',
+    reports: 'Read saved drafts, inspect their sources and export a dated copy.',
+    bibliography: 'Explore public citation metadata. This library is separate from every patient chart.',
+    'workspace-start': 'Create a fictional case and continue with its original records.',
+  };
+  let current;
+  let pendingTarget = null;
+  let syncQueued = false;
+  let navigationCase = null;
+
+  function register(id, content) {
+    if (!content) return;
+    const view = node('div', null, 'workspace-view');
+    view.dataset.workspaceView = id;
+    view.hidden = true;
+    view.append(content);
+    host.append(view);
+    views.set(id, view);
+  }
+  function link(id, label, className = '') {
+    const item = node('a', label || WORKSPACE_ROUTES[id].title, className);
+    item.href = '#' + id;
+    if (current?.id === id) item.setAttribute('aria-current', 'page');
+    return item;
+  }
+  function removeSubheadBefore(item) {
+    if (item.previousElementSibling?.classList.contains('subhead')) item.previousElementSibling.remove();
+  }
+
+  // Move the existing, live elements. Form listeners, values and observer targets
+  // survive navigation; there is still only one canonical record and workflow.
+  el('case-heading-slot').append(el('case-heading'));
+  const pickerLabel = document.querySelector('label[for="case-picker"]');
+  pickerLabel.textContent = 'Selected case';
+  el('case-select-slot').append(pickerLabel, el('case-picker'));
+  el('workspace-header').after(el('notice'));
+  const sectionMenu = document.querySelector('.section-menu');
+  sectionMenu.open = true;
+  const help = node('details', null, 'workspace-help');
+  help.append(node('summary', 'About this workspace'));
+  const originalNote = rail.querySelector(':scope > p.muted');
+  if (originalNote) help.append(originalNote);
+  const originalHelp = rail.querySelector('.side-bottom');
+  if (originalHelp) help.append(originalHelp);
+  rail.append(help);
+  if (el('new-workspace-button')) {
+    el('new-workspace-button').dataset.presentation = 'clinician';
+    el('workspace-primary-action').before(el('new-workspace-button'));
+  }
+
+  const questionPane = document.querySelector('.question-pane');
+  questionPane.classList.add('panel');
+  register('questions', questionPane);
+  const reportPane = document.querySelector('.investigation-history');
+  reportPane.classList.add('panel');
+  register('reports', reportPane);
+  const modelPane = document.querySelector('.model-investigation');
+  modelPane.classList.add('panel');
+  register('model-investigation-heading', modelPane);
+  for (const id of Object.keys(WORKSPACE_ROUTES)) {
+    if (!views.has(id)) register(id, el(id));
+  }
+  for (const [source, destination] of [
+    ['patient-questions', 'home-questions-slot'], ['patient-uncertainty', 'home-updates-slot'],
+  ]) {
+    removeSubheadBefore(el(source));
+    el(destination).append(el(source));
+  }
+  const patientHistory = node('details', null, 'input-disclosure patient-history');
+  patientHistory.append(node('summary', 'Previous record events'));
+  removeSubheadBefore(el('patient-timeline'));
+  patientHistory.append(el('patient-timeline'));
+  el('patient-view').append(patientHistory);
+
+  const overview = el('overview');
+  overview.querySelector('.hero-copy').remove();
+  const overviewMetrics = node('div', null, 'overview-metrics-slot');
+  overviewMetrics.append(el('metrics'));
+  overview.prepend(overviewMetrics);
+  const overviewRecord = node('div', null, 'overview-record-slot summary-preview');
+  overview.append(overviewRecord, link('assertions', 'View the complete source record', 'record-more'),
+    el('review-attention'), overview.querySelector('.hero-actions'));
+  const guide = document.querySelector('.glance-guide');
+  if (guide) overview.append(guide);
+  // Only empty legacy layout shells are removed; their live sections are above.
+  for (const shell of [...main.children].filter(item => item.matches('.glance-layout, .workspace'))) shell.remove();
+  for (const [id, title] of [
+    ['option-form', 'Propose an option for discussion'],
+    ['option-dependency-form', 'Add a dependency'],
+    ['option-task-form', 'Add a preparation task'],
+    ['option-threat-form', 'Add an optionality threat'],
+    ['option-review-form', 'Record a reviewer action'],
+    ['evidence-assessment-form', 'Record an evidence assessment'],
+  ]) {
+    const form = el(id);
+    removeSubheadBefore(form);
+    const disclosure = node('details', null, 'input-disclosure contextual-form');
+    disclosure.append(node('summary', title));
+    form.before(disclosure);
+    disclosure.append(form);
+  }
+
+  function setMenu(open, returnFocus = false) {
+    const expanded = mobile.matches && open;
+    rail.hidden = mobile.matches && !expanded;
+    document.body.dataset.navOpen = String(expanded);
+    el('menu-toggle').setAttribute('aria-expanded', String(expanded));
+    if (returnFocus && mobile.matches) el('menu-toggle').focus();
+  }
+  function renderNavigation() {
+    const patient = current.audience === 'patient';
+    const globalNav = el('workspace-nav');
+    globalNav.replaceChildren();
+    const primary = node('div', null, 'nav-section');
+    primary.append(node('p', patient ? 'MY HEALTH' : 'WORKSPACE', 'nav-section-label'));
+    const patientLinks = [['patient-home', 'Home'], ['patient-view', 'My record'],
+      ['sources', 'Documents'], ['questions', 'Questions & reports'], ['changes-since-review', 'Updates']];
+    for (const [id, label] of patient ? patientLinks : [['incoming-board', 'Patients'], ['bibliography', 'Research library']]) {
+      const item = link(id, label);
+      if (patient && ((id === 'patient-view' && current.group === 'record') ||
+        (id === 'questions' && current.group === 'investigations') ||
+        (id === 'changes-since-review' && current.group === 'review'))) item.setAttribute('aria-current', 'page');
+      primary.append(item);
+    }
+    globalNav.append(primary);
+    if (!patient && caseId) {
+      const context = node('div', null, 'nav-section');
+      context.append(node('p', 'SELECTED CASE', 'nav-section-label'));
+      const item = link('overview', 'Patient chart', 'nav-context-link');
+      if (current.scope === 'case') item.setAttribute('aria-current', 'page');
+      context.append(item);
+      globalNav.append(context);
+    }
+    if (patient || views.has('workspace-start')) {
+      const tools = node('div', null, 'nav-section');
+      tools.append(node('p', 'TOOLS', 'nav-section-label'));
+      if (patient) tools.append(link('bibliography', 'Research library'));
+      if (views.has('workspace-start')) tools.append(link('workspace-start', patient ? 'Clinical workspace setup' : 'Workspace setup'));
+      globalNav.append(tools);
+    }
+    el('rail-workspace-label').textContent = patient ? 'Patient experience' : 'Clinical workspace';
+    const brand = document.querySelector('.brand');
+    brand.href = patient ? '#patient-home' : '#incoming-board';
+    brand.setAttribute('aria-label', 'Open Intelligence ' + (patient ? 'home' : 'patients'));
+
+    const chart = el('chart-nav');
+    chart.replaceChildren();
+    chart.hidden = patient || current.scope !== 'case';
+    for (const [id, label, routes] of groups) {
+      const entry = link(routes.find(route => views.has(route)), label);
+      if (current.group === id) entry.setAttribute('aria-current', 'page');
+      chart.append(entry);
+    }
+    const section = el('section-nav');
+    section.replaceChildren();
+    let routes = groups.find(group => group[0] === current.group)?.[2] || [];
+    if (patient) routes = routes.filter(id => !WORKSPACE_ROUTES[id].clinical);
+    routes = routes.filter(id => views.has(id));
+    section.hidden = current.scope !== 'case' || routes.length < 2;
+    for (const id of routes) section.append(link(id));
+    const select = el('chart-section-picker');
+    select.replaceChildren();
+    el('chart-section-select').hidden = patient || current.scope !== 'case';
+    for (const [, label, ids] of groups) {
+      const group = node('optgroup'); group.label = label;
+      for (const id of ids.filter(id => views.has(id))) {
+        const option = node('option', WORKSPACE_ROUTES[id].title); option.value = id;
+        group.append(option);
+      }
+      select.append(group);
+    }
+    select.value = current.id;
+    const crumbs = el('workspace-breadcrumb');
+    crumbs.replaceChildren();
+    crumbs.append(link(patient ? 'patient-home' : 'incoming-board', patient ? 'Home' : 'Patients'));
+    if (current.scope === 'case' && !patient) crumbs.append(node('span', '/'), link('overview', 'Patient chart'));
+    if (!['patient-home', 'incoming-board'].includes(current.id)) crumbs.append(node('span', '/'), node('span', current.title));
+  }
+
+  function filterList(inputId, listId, selector, countId, emptyId, noun, searchData) {
+    const query = el(inputId).value.trim().toLocaleLowerCase();
+    const rows = [...el(listId).querySelectorAll(selector)];
+    let visible = 0;
+    for (const row of rows) {
+      row.hidden = !(searchData ? row.dataset[searchData] : row.textContent).toLocaleLowerCase().includes(query);
+      if (!row.hidden) visible++;
+    }
+    const text = visible + ' of ' + rows.length + ' ' + noun;
+    if (el(countId).textContent !== text) el(countId).textContent = text;
+    el(emptyId).hidden = !query || visible > 0 || !rows.length;
+  }
+  function filterCases() {
+    if (!caseId && !['empty', 'available'].includes(workspaceStartupPhase)) {
+      el('case-search-count').textContent = '';
+      el('case-search-empty').hidden = true;
+      return;
+    }
+    filterList('case-search', 'incoming-list', '[data-case-search]', 'case-search-count', 'case-search-empty', 'cases', 'caseSearch');
+  }
+  function filterDocuments() {
+    filterList('document-search', 'source-list', '.source-card', 'document-search-count', 'document-search-empty', 'documents');
+  }
+  function revealTarget() {
+    if (!pendingTarget || views.get(current.id).hidden) return;
+    const target = el(pendingTarget);
+    if (!target || !views.get(current.id).contains(target)) return;
+    for (let parent = target; parent && parent !== host; parent = parent.parentElement)
+      if (parent.tagName === 'DETAILS') parent.open = true;
+    target.scrollIntoView({ block: 'start' });
+    if (!target.hasAttribute('tabindex')) target.setAttribute('tabindex', '-1');
+    target.focus({ preventScroll: true });
+    pendingTarget = null;
+  }
+  function syncState() {
+    syncQueued = false;
+    if (!current) return;
+    let ready = false;
+    try { ready = Boolean(readyCase()); } catch (_) { /* Retain the original readiness guard. */ }
+    const emptyState = document.body.dataset.workspaceState === 'empty';
+    if (emptyState && views.has('workspace-start') && current.id !== 'workspace-start' && current.id !== 'bibliography') {
+      navigate('workspace-start', { replace: true, focus: false });
+      return;
+    }
+    const waiting = current.scope === 'case' && !ready;
+    if (navigationCase !== caseId) { navigationCase = caseId; renderNavigation(); }
+    el('case-context').hidden = current.scope !== 'case';
+    el('case-heading').hidden = !ready;
+    el('case-reference').textContent = ready ? 'Fictional record · ' + caseId : (caseId ? 'Loading selected case…' : 'No case selected');
+    el('workspace-loading').hidden = !waiting || !caseId;
+    el('workspace-loading').textContent = !el('notice').hidden && el('notice').classList.contains('error')
+      ? 'The selected record is unavailable. See the message above, or choose another case.'
+      : 'Loading the selected record…';
+    host.setAttribute('aria-busy', String(waiting && (Boolean(caseId) || workspaceStartupPhase === 'loading')));
+    for (const [id, view] of views) view.hidden = id !== current.id || waiting;
+    filterCases(); filterDocuments();
+    if (ready) revealTarget();
+  }
+  function scheduleSync() {
+    if (syncQueued) return;
+    syncQueued = true;
+    queueMicrotask(syncState);
+  }
+  function apply(route, focus) {
+    const previous = current;
+    current = route;
+    if (!views.has(current.id)) current = resolveWorkspaceRoute('', current.audience);
+    document.documentElement.dataset.audience = current.audience;
+    document.body.dataset.view = current.id;
+    el('presentation-view').value = current.audience;
+    el('workspace-title').textContent = current.title;
+    el('workspace-description').textContent = descriptions[current.id] || '';
+    el('workspace-description').hidden = !descriptions[current.id];
+    el('workspace-eyebrow').textContent = current.audience === 'patient' ? 'YOUR HEALTH' :
+      (current.scope === 'case' ? 'PATIENT CHART' : 'CLINICAL WORKSPACE');
+    el('case-context-label').textContent = current.audience === 'patient' ? 'YOUR SELECTED RECORD' : 'PATIENT CHART';
+    document.title = current.title + ' · Open Intelligence';
+    const primary = el('workspace-primary-action');
+    primary.hidden = true;
+    if (el('new-workspace-button')) el('new-workspace-button').hidden = current.id !== 'incoming-board';
+    // The original source statements are summarized here, then moved back to
+    // their complete view; a second set of record data is never generated.
+    (current.id === 'overview' ? overviewRecord : views.get('assertions')).append(el('assertions'));
+    (current.audience === 'patient' ? el('patient-metrics-slot') : overviewMetrics).append(el('metrics'));
+    if (current.id === 'workspace-start' || current.id === 'source-intake') el(current.id).open = true;
+    renderNavigation();
+    setMenu(false);
+    const targetsDetail = current.target !== current.id;
+    pendingTarget = targetsDetail ? current.target : null;
+    syncState();
+    if (focus) {
+      if (targetsDetail) revealTarget();
+      else {
+        window.scrollTo({ top: 0, behavior: 'instant' });
+        el('workspace-title').focus({ preventScroll: true });
+      }
+    } else if (!previous) window.scrollTo(0, 0);
+  }
+  function navigate(target, options = {}) {
+    const route = resolveWorkspaceRoute(target, options.audience || current?.audience);
+    const available = views.has(route.id) ? route : resolveWorkspaceRoute('', route.audience);
+    const hash = '#' + available.target;
+    const method = options.replace ? 'replaceState' : 'pushState';
+    if (window.location.hash !== hash || history.state?.presentation !== available.audience)
+      history[method]({ presentation: available.audience }, '', hash);
+    apply(available, options.focus !== false);
+  }
+
+  document.addEventListener('click', event => {
+    const anchor = event.target.closest('a[href^="#"]');
+    if (!anchor || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    const hash = anchor.getAttribute('href');
+    if (hash === '#main-content') {
+      event.preventDefault();
+      main.focus({ preventScroll: true });
+      main.scrollIntoView({ block: 'start' });
+      return;
+    }
+    const id = hash.slice(1);
+    // Preserve other in-panel anchors without treating arbitrary IDs as routes.
+    const destination = el(id)?.closest('[data-workspace-view]')?.dataset.workspaceView;
+    if (destination && !Object.hasOwn(WORKSPACE_ROUTES, id) && !/^snapshot-[1-9]\d*$/.test(id)) {
+      event.preventDefault();
+      navigate(destination);
+      pendingTarget = id; revealTarget();
+      return;
+    }
+    event.preventDefault(); navigate(hash);
+  });
+  window.addEventListener('hashchange', () => apply(resolveWorkspaceRoute(location.hash, current?.audience), true));
+  window.addEventListener('popstate', event => apply(resolveWorkspaceRoute(location.hash, event.state?.presentation || current?.audience), true));
+  el('presentation-view').addEventListener('change', event => {
+    const audience = event.target.value;
+    let id = current.id;
+    if (audience === 'patient' && (current.clinical || current.scope === 'global')) id = 'patient-home';
+    if (audience === 'clinician' && current.audience === 'patient') id = 'incoming-board';
+    navigate(id, { audience });
+  });
+  el('chart-section-picker').addEventListener('change', event => navigate(event.target.value));
+  el('menu-toggle').addEventListener('click', () => setMenu(rail.hidden));
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && mobile.matches && !rail.hidden && !document.querySelector('dialog[open]')) setMenu(false, true);
+  });
+  mobile.addEventListener('change', () => setMenu(false));
+  el('case-search').addEventListener('input', filterCases);
+  el('document-search').addEventListener('input', filterDocuments);
+  document.addEventListener('oi:case-selection-changed', scheduleSync);
+  document.addEventListener('oi:workspace-startup-changed', scheduleSync);
+  const observer = new MutationObserver(scheduleSync);
+  for (const id of ['case-heading', 'source-list', 'question-list', 'snapshot-list', 'incoming-list', 'notice'])
+    observer.observe(el(id), { childList: true, subtree: true });
+  new MutationObserver(scheduleSync).observe(document.body, { attributes: true, attributeFilter: ['data-workspace-state'] });
+  document.body.classList.add('ux-ready');
+  const initialRoute = resolveWorkspaceRoute(location.hash, history.state?.presentation || 'clinician');
+  history.replaceState({ presentation: initialRoute.audience }, '', location.hash || '#' + initialRoute.id);
+  apply(initialRoute, false);
+  return { navigate };
+})();
+
 initialize();
 initializeBibliography();
 loadModelTemplates();
-
-const sectionMenu = document.querySelector('.section-menu');
-const workspaceNav = document.querySelector('#workspace-nav');
-if (workspaceNav) {
-  const sectionLinks = [...workspaceNav.querySelectorAll('a[href^="#"]')];
-  const syncCurrentSection = () => {
-    const current = window.location.hash || '#overview';
-    sectionLinks.forEach(link => {
-      if (link.getAttribute('href') === current) link.setAttribute('aria-current', 'location');
-      else link.removeAttribute('aria-current');
-    });
-  };
-  syncCurrentSection();
-  window.addEventListener('hashchange', syncCurrentSection);
-  if (sectionMenu) {
-    const mobileSections = window.matchMedia('(max-width: 60rem)');
-    const syncSectionMenu = () => { sectionMenu.open = !mobileSections.matches; };
-    syncSectionMenu();
-    mobileSections.addEventListener('change', syncSectionMenu);
-    workspaceNav.addEventListener('click', event => {
-      if (mobileSections.matches && event.target.closest('a')) sectionMenu.open = false;
-    });
-  }
-}

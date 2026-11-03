@@ -18,6 +18,8 @@ The local prototype has **no real-patient authorization, verified clinician iden
 
 The accepted bounded H1 target is Python/FastAPI/PostgreSQL 16 and React/Vite/TypeScript. Current main still runs the stdlib/SQLite reference implementation. Next.js is excluded. Preserve the existing identity, source, evidence and authority contracts while moving the connected workflow to that target.
 
+**Draft reference-workspace continuation:** [PR #183](https://github.com/OpenxIntelligence/open-intelligence/pull/183), stacked on #166, now recovers a failed first case-list read and preserves a saved workspace across activation failures or later case selection. The [startup recovery report](docs/ux/2026-11-02-workspace-startup-recovery.md) records 18 focused Chromium scenarios and 295 passing assertions, preserved form contracts, reproduced failures and the exact-source verification procedure. This candidate changes frontend presentation and activation through the existing owners; it does not change the accepted H1 architecture or establish a merged or deployed capability.
+
 ## Start here
 
 | Document | Purpose |

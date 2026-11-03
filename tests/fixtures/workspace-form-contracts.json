@@ -1,0 +1,542 @@
+{
+  "case-create-form": {
+    "attributes": {},
+    "controls": {
+      "case-create-alias": {
+        "tag": "input",
+        "attributes": {
+          "type": "text",
+          "maxlength": "65",
+          "required": null
+        }
+      },
+      "case-create-code": {
+        "tag": "input",
+        "attributes": {
+          "type": "text",
+          "minlength": "2",
+          "maxlength": "40",
+          "pattern": "[A-Z][A-Z0-9\\-]{1,39}",
+          "required": null
+        }
+      },
+      "case-create-confirm": {
+        "tag": "input",
+        "attributes": {
+          "type": "checkbox",
+          "required": null
+        }
+      },
+      "case-create-submit": {
+        "tag": "button",
+        "attributes": {
+          "type": "submit"
+        }
+      }
+    }
+  },
+  "source-upload-form": {
+    "attributes": {},
+    "controls": {
+      "source-file": {
+        "tag": "input",
+        "attributes": {
+          "type": "file",
+          "accept": ".txt,text/plain"
+        }
+      },
+      "source-upload-confirm": {
+        "tag": "input",
+        "attributes": {
+          "type": "checkbox",
+          "required": null
+        }
+      },
+      "source-upload-submit": {
+        "tag": "button",
+        "attributes": {
+          "type": "submit"
+        }
+      }
+    }
+  },
+  "question-form": {
+    "attributes": {},
+    "controls": {
+      "question-text": {
+        "tag": "textarea",
+        "attributes": {
+          "maxlength": "500",
+          "required": null
+        }
+      }
+    }
+  },
+  "draft-form": {
+    "attributes": {},
+    "controls": {
+      "question-choice": {
+        "tag": "select",
+        "attributes": {
+          "required": null
+        },
+        "options": []
+      },
+      "draft-observations": {
+        "tag": "textarea",
+        "attributes": {
+          "minlength": "10",
+          "maxlength": "1200",
+          "required": null
+        }
+      },
+      "draft-summary": {
+        "tag": "textarea",
+        "attributes": {
+          "maxlength": "1000"
+        }
+      },
+      "draft-assumptions": {
+        "tag": "textarea",
+        "attributes": {
+          "maxlength": "600"
+        }
+      }
+    }
+  },
+  "model-investigation-form": {
+    "attributes": {},
+    "controls": {
+      "model-investigation-question": {
+        "tag": "select",
+        "attributes": {
+          "required": null
+        },
+        "options": []
+      },
+      "model-investigation-template": {
+        "tag": "select",
+        "attributes": {
+          "required": null
+        },
+        "options": []
+      },
+      "model-investigation-mode": {
+        "tag": "select",
+        "attributes": {},
+        "options": [
+          "replay",
+          "live"
+        ]
+      },
+      "composer-context-fingerprint": {
+        "tag": "input",
+        "attributes": {
+          "type": "hidden"
+        }
+      },
+      "model-investigation-run": {
+        "tag": "button",
+        "attributes": {
+          "type": "submit"
+        }
+      }
+    }
+  },
+  "evidence-import-form": {
+    "attributes": {},
+    "controls": {
+      "evidence-text": {
+        "tag": "textarea",
+        "attributes": {}
+      },
+      "example-evidence-button": {
+        "tag": "button",
+        "attributes": {
+          "type": "button"
+        }
+      }
+    }
+  },
+  "evidence-assessment-form": {
+    "attributes": {},
+    "controls": {
+      "evidence-question-choice": {
+        "tag": "select",
+        "attributes": {
+          "required": null
+        },
+        "options": []
+      },
+      "evidence-source-choice": {
+        "tag": "select",
+        "attributes": {
+          "required": null
+        },
+        "options": []
+      },
+      "evidence-relation": {
+        "tag": "select",
+        "attributes": {},
+        "options": [
+          "context",
+          "supports",
+          "contradicts",
+          "unknown"
+        ]
+      },
+      "evidence-applicability": {
+        "tag": "select",
+        "attributes": {},
+        "options": [
+          "unknown",
+          "limited",
+          "applicable",
+          "not_applicable"
+        ]
+      },
+      "evidence-rationale": {
+        "tag": "textarea",
+        "attributes": {
+          "minlength": "15",
+          "maxlength": "800",
+          "required": null
+        }
+      }
+    }
+  },
+  "evidence-withdraw-form": {
+    "attributes": {},
+    "controls": {
+      "evidence-withdraw-id": {
+        "tag": "select",
+        "attributes": {
+          "required": null
+        },
+        "options": []
+      },
+      "evidence-withdraw-reason": {
+        "tag": "textarea",
+        "attributes": {
+          "minlength": "10",
+          "maxlength": "600",
+          "required": null
+        }
+      }
+    }
+  },
+  "option-form": {
+    "attributes": {},
+    "controls": {
+      "option-snapshot-choice": {
+        "tag": "select",
+        "attributes": {
+          "required": null
+        },
+        "options": []
+      },
+      "option-label": {
+        "tag": "input",
+        "attributes": {
+          "type": "text",
+          "maxlength": "120",
+          "required": null
+        }
+      },
+      "option-description": {
+        "tag": "textarea",
+        "attributes": {
+          "minlength": "10",
+          "maxlength": "1000",
+          "required": null
+        }
+      },
+      "option-epistemic": {
+        "tag": "select",
+        "attributes": {},
+        "options": [
+          "unknown",
+          "supported",
+          "unsupported",
+          "contradicted"
+        ]
+      }
+    }
+  },
+  "option-dependency-form": {
+    "attributes": {},
+    "controls": {
+      "dependency-option-choice": {
+        "tag": "select",
+        "attributes": {
+          "required": null
+        },
+        "options": []
+      },
+      "dependency-kind": {
+        "tag": "select",
+        "attributes": {},
+        "options": [
+          "source",
+          "evidence_assessment",
+          "preparation_task",
+          "option"
+        ]
+      },
+      "dependency-source-choice": {
+        "tag": "select",
+        "attributes": {},
+        "options": []
+      },
+      "dependency-assessment-choice": {
+        "tag": "select",
+        "attributes": {},
+        "options": []
+      },
+      "dependency-task-choice": {
+        "tag": "select",
+        "attributes": {},
+        "options": []
+      },
+      "dependency-option-target-choice": {
+        "tag": "select",
+        "attributes": {},
+        "options": []
+      },
+      "dependency-lead": {
+        "tag": "input",
+        "attributes": {
+          "type": "number",
+          "min": "0",
+          "max": "3650"
+        }
+      },
+      "dependency-deadline": {
+        "tag": "input",
+        "attributes": {
+          "type": "date"
+        }
+      },
+      "dependency-basis": {
+        "tag": "select",
+        "attributes": {},
+        "options": [
+          "unknown",
+          "sourced"
+        ]
+      },
+      "dependency-anchor": {
+        "tag": "textarea",
+        "attributes": {
+          "maxlength": "300"
+        }
+      }
+    }
+  },
+  "option-task-form": {
+    "attributes": {},
+    "controls": {
+      "task-option-choice": {
+        "tag": "select",
+        "attributes": {
+          "required": null
+        },
+        "options": []
+      },
+      "task-label": {
+        "tag": "input",
+        "attributes": {
+          "type": "text",
+          "maxlength": "120",
+          "required": null
+        }
+      },
+      "task-owner": {
+        "tag": "input",
+        "attributes": {
+          "type": "text",
+          "maxlength": "80",
+          "required": null
+        }
+      },
+      "task-lead": {
+        "tag": "input",
+        "attributes": {
+          "type": "number",
+          "min": "0",
+          "max": "3650"
+        }
+      }
+    }
+  },
+  "option-threat-form": {
+    "attributes": {},
+    "controls": {
+      "threat-option-choice": {
+        "tag": "select",
+        "attributes": {
+          "required": null
+        },
+        "options": []
+      },
+      "threat-kind": {
+        "tag": "select",
+        "attributes": {},
+        "options": [
+          "expiring_window",
+          "dependency_loss",
+          "evidence_withdrawal",
+          "other"
+        ]
+      },
+      "threat-description": {
+        "tag": "textarea",
+        "attributes": {
+          "minlength": "10",
+          "maxlength": "500",
+          "required": null
+        }
+      },
+      "threat-date": {
+        "tag": "input",
+        "attributes": {
+          "type": "date"
+        }
+      },
+      "threat-basis": {
+        "tag": "select",
+        "attributes": {},
+        "options": [
+          "unknown",
+          "sourced"
+        ]
+      },
+      "threat-anchor": {
+        "tag": "textarea",
+        "attributes": {
+          "maxlength": "300"
+        }
+      }
+    }
+  },
+  "option-review-form": {
+    "attributes": {},
+    "controls": {
+      "review-option-choice": {
+        "tag": "select",
+        "attributes": {
+          "required": null
+        },
+        "options": []
+      },
+      "reviewer-label": {
+        "tag": "input",
+        "attributes": {
+          "type": "text",
+          "maxlength": "80",
+          "required": null
+        }
+      },
+      "review-action": {
+        "tag": "select",
+        "attributes": {},
+        "options": [
+          "approve",
+          "reject",
+          "abstain",
+          "reconfirm",
+          "withdraw",
+          "expire"
+        ]
+      },
+      "review-scope": {
+        "tag": "textarea",
+        "attributes": {
+          "minlength": "10",
+          "maxlength": "300",
+          "required": null
+        }
+      },
+      "review-snapshot-choice": {
+        "tag": "select",
+        "attributes": {},
+        "options": []
+      }
+    }
+  },
+  "bibliography-form": {
+    "attributes": {},
+    "controls": {
+      "bibliography-doi": {
+        "tag": "input",
+        "attributes": {
+          "type": "text",
+          "maxlength": "256",
+          "required": null
+        }
+      },
+      "bibliography-example-button": {
+        "tag": "button",
+        "attributes": {
+          "type": "button"
+        }
+      },
+      "bibliography-live-button": {
+        "tag": "button",
+        "attributes": {
+          "type": "submit"
+        }
+      }
+    }
+  },
+  "literature-search-form": {
+    "attributes": {
+      "method": "post",
+      "action": "/api/literature/search"
+    },
+    "controls": {
+      "literature-terms": {
+        "tag": "input",
+        "attributes": {
+          "type": "search",
+          "minlength": "3",
+          "maxlength": "240",
+          "required": null
+        }
+      },
+      "literature-public-attestation": {
+        "tag": "input",
+        "attributes": {
+          "type": "checkbox"
+        }
+      },
+      "literature-live-button": {
+        "tag": "button",
+        "attributes": {
+          "type": "submit"
+        }
+      },
+      "literature-clear-button": {
+        "tag": "button",
+        "attributes": {
+          "type": "button"
+        }
+      }
+    }
+  },
+  "import-form": {
+    "attributes": {},
+    "controls": {
+      "report-text": {
+        "tag": "textarea",
+        "attributes": {}
+      },
+      "example-button": {
+        "tag": "button",
+        "attributes": {
+          "type": "button"
+        }
+      }
+    }
+  }
+}

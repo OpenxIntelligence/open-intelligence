@@ -12,6 +12,7 @@ Open **http://127.0.0.1:8765**. Python 3.10 or newer is required. The default da
 
 1. Create a workspace using a fictional alias and an uppercase reference. For the supplied authored examples, use `CASE-START`.
 2. Add `examples/synthetic/workspace-start-original.txt` through **Add original records**. Inspect the unchanged source text and confirm it is fictional before import. Source identity, original bytes, timeline, findings and missingness use the existing ledger.
+   An unfinished question, pasted original, investigation draft or selected original blocks a change to another case. Use **Discard selected source** to clear only an unsubmitted local file and its preview; imported source versions and report history remain untouched. Opening the same selected chart preserves unfinished work.
 3. Add a question in **Investigate a question**, inspect its source-bound Composer context, and run **Replay**. Replay is a recorded demonstration, not a live model.
 4. Select **Prepare review draft** on the run. The existing backend creates a versioned report with its original source dependencies; generation does not constitute review.
 5. Inspect the report and use its explicit **Demo review acknowledgment**. This is not clinician credentialing or a clinical signature.
@@ -19,6 +20,14 @@ Open **http://127.0.0.1:8765**. Python 3.10 or newer is required. The default da
 7. Reload the page or restart the program using the same database. Case, sources, questions, report versions and review history persist.
 
 The same existing workspace contains patient-oriented wording, source history, research/evidence assessment, bibliography, timeline, worklist and review history. Availability of a control is not evidence that hospital integration or clinical reasoning is implemented.
+
+## Patients worklist
+
+The Patients list updates a case's summary when its chart successfully reloads after saved work. It shows current original documents, open questions, the most recent source event and the number of historical drafts marked stale. Reviewing a replacement report does not remove earlier stale history. An amendment's issue date does not change the source-event ordering.
+
+Use **Refresh list** to check the latest saved changes, including changes made in another tab and newly created cases. Search, the selected chart, unfinished questions and selected local files are retained. A failed summary is shown as unavailable; retry the action to recover it. Shared evidence amendments and withdrawals also refresh summaries across the listed cases.
+
+These summaries reflect successful reads, not continuous synchronization. If a write finishes after its original case was left, refresh the list or reopen that chart to check it. [Implementation and verification](docs/ux/2026-11-02-worklist-currentness.md) records the precise guarantee and failure cases.
 
 ## Boundaries
 
@@ -30,7 +39,7 @@ The accepted H1 target remains FastAPI/PostgreSQL and React/Vite/TypeScript. Thi
 
 ## Implementation ownership
 
-The original `app.js`, `index.html`, HTTP handler, source parser, CaseStore, model workflow and review engine remain unchanged. `workspace_host.py` composes a trusted first-party HTML partial and serves three extra static assets; all application APIs are inherited. `workspace-entry.js` is the thin adapter to existing browser selection/render functions, not a second store. Missing template anchors fail explicitly, requiring reconciliation with the owner.
+The frontend redesign updates the existing `app.js`, `index.html` and connected adapters. The HTTP handler, source parser, CaseStore, model workflow and review engine retain their existing contracts. `workspace_host.py` composes a trusted first-party HTML partial and serves three extra static assets; all application APIs are inherited. `workspace-entry.js` adapts the existing browser selection/render functions without a second store. Missing template anchors fail explicitly, requiring reconciliation with the owner.
 
 ```sh
 PYTHONPATH=src python -m unittest discover -s tests -p test_workspace_start_http.py -v

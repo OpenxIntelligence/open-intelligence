@@ -42,7 +42,10 @@
     if (!createForm || !fileForm) return null;
     let creating=false, importing=false, sequence=0, pending=null, shownCase=null, hadSources=false;
     const tell=(id,text,error=false)=>{const target=$(id);target.textContent=text;target.dataset.error=String(error);};
-    const updateImport=()=>{$('source-upload-submit').disabled=importing || !pending || !$('source-upload-confirm').checked || !options.getCase();};
+    const updateImport=()=>{
+      $('source-upload-submit').disabled=importing || !pending || !$('source-upload-confirm').checked || !options.getCase();
+      $('source-discard-button').disabled=importing || !$('source-file').files.length;
+    };
     function resetScope() {
       sequence++;pending=null;$('source-file').value='';$('source-upload-confirm').checked=false;
       $('source-upload-preview').textContent='';$('source-preview-details').hidden=true;
@@ -50,16 +53,26 @@
     }
     createForm.addEventListener('submit',async event=>{
       event.preventDefault();if(creating)return;
+      let saved=false;
+      const savedMessage='Workspace created and saved. Retry loading, or use Refresh list in Patients, to continue with its first original source.';
       try {
         if(!options.canSwitch())throw Error('Save or clear the current draft before creating another workspace.');
         const payload=casePayload($('case-create-code').value,$('case-create-alias').value,$('case-create-confirm').checked);
+        const selection=options.getCreationContext?.();
         creating=true;$('case-create-submit').disabled=true;
         tell('case-create-status','Creating the workspace in the existing local case ledger…');
         await options.api('/api/cases',payload);
-        await options.created(payload.case_id);
+        saved=true;
+        const activated=await options.created(payload.case_id,selection);
         createForm.reset();
-        tell('case-create-status','Workspace created. Import its first original source below.');
-      } catch(error) {tell('case-create-status',error.message,true);}
+        tell('case-create-status',activated==='cancelled'
+          ? 'Workspace created and saved. Open it from Patients when you are ready.'
+          : activated===false ? savedMessage
+          : 'Workspace created. Import its first original source below.');
+      } catch(error) {
+        if(saved) {createForm.reset();tell('case-create-status',savedMessage);}
+        else tell('case-create-status',error.message,true);
+      }
       finally {creating=false;$('case-create-submit').disabled=false;}
     });
     $('source-file').addEventListener('change',async()=>{
@@ -79,6 +92,13 @@
           (decoded.declaredCase!==caseId ? '. Different subject: the server will quarantine this, not attach its findings.' : '. Original text ready for inspection; not yet imported.'));
       } catch(error) {if(request===sequence)tell('source-upload-status',error.message,true);}
       updateImport();
+    });
+    $('source-discard-button').addEventListener('click',()=>{
+      // Only clear an unsubmitted local original. Imported versions and history
+      // remain in the existing ledger; an in-flight import cannot be discarded.
+      if(importing)return;
+      resetScope();
+      tell('source-upload-status','Selected original discarded locally. No record was imported.');
     });
     $('source-upload-confirm').addEventListener('change',updateImport);
     fileForm.addEventListener('submit',async event=>{

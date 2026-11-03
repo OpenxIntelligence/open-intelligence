@@ -46,6 +46,7 @@ def main():
                      "local fictional Composer server")
             browser = subprocess.Popen([
                 chrome, "--headless=new", "--disable-gpu",
+                *(['--no-sandbox'] if hasattr(os, 'geteuid') and os.geteuid() == 0 else []),
                 "--disable-dev-shm-usage", "--disable-background-networking",
                 "--no-first-run", "--disable-extensions",
                 "--no-default-browser-check", "--remote-allow-origins=*",
@@ -71,6 +72,7 @@ def main():
                 "document.querySelector('#model-investigation-run').disabled"), (
                 "Composer must be disabled until a question and source preview exist")
             session.wait("document.readyState === 'complete'", "source inspector script loaded")
+            session.navigate('patient-mission')
             session.evaluate("document.querySelector('#world-model-heading').click()")
             session.wait(
                 "document.querySelector('#world-model-detail')?.dataset.caseId === 'CASE-ALPHA' && " +
@@ -78,6 +80,7 @@ def main():
                 "expanded World Model reads the existing original source")
             assert session.evaluate(
                 "document.querySelector('#world-model-status').textContent.includes('no clinical interpretation')")
+            session.navigate('investigations')
             session.evaluate("""(() => {
               document.querySelector('#draft-summary').value = 'Unfinished fictional draft';
               const picker = document.querySelector('#case-picker');
@@ -93,6 +96,7 @@ def main():
                 "document.querySelector('#notice').textContent.includes('unfinished investigation draft')")
             session.evaluate("document.querySelector('#draft-summary').value = ''")
 
+            session.navigate('questions')
             session.evaluate("""(() => {
               document.querySelector('#question-text').value =
                 'Which fictional pathology statement requires source review?';
@@ -113,6 +117,7 @@ def main():
                 "!![...document.querySelectorAll('#composer-context button[data-source-id]')]" +
                 ".find(b => b.textContent.includes('PATH-ALPHA'))"), (
                 "Source preview must open original source by exact identity and line")
+            session.navigate('model-investigation-heading')
             session.evaluate(
                 "[...document.querySelectorAll('#composer-context button[data-source-id]')]" +
                 ".find(b => b.textContent.includes('PATH-ALPHA')).click()")
@@ -127,6 +132,7 @@ def main():
                 "document.querySelector('#source-dialog')?.open === false")
             assert session.evaluate(
                 "document.querySelector('#model-investigation-mode').value === 'replay'")
+            session.navigate('model-investigation-heading')
             session.evaluate(
                 "document.querySelector('#model-investigation-form').requestSubmit()")
             session.wait(
@@ -157,6 +163,7 @@ def main():
             session.wait(
                 "document.querySelector('#model-investigation-list').textContent.includes('Review draft #')",
                 "model run links to the existing report")
+            session.navigate('reports')
             session.evaluate("""[...document.querySelectorAll('#snapshot-list button')]
               .find(button => button.textContent === 'Demo review acknowledgment').click()""")
             session.wait(
@@ -193,6 +200,7 @@ def main():
                 assert resp.status == 200
             assert session.evaluate(
                 "document.querySelector('#composer-context-fingerprint').value") == alpha_hash
+            session.navigate('model-investigation-heading')
             session.evaluate(
                 "document.querySelector('#model-investigation-form').requestSubmit()")
             session.wait(
@@ -243,6 +251,7 @@ def main():
             assert not session.evaluate(
                 "document.querySelector('#composer-context').textContent.includes('PATH-ALPHA')"), (
                 "Alpha source leaked into Beta context")
+            session.navigate('questions')
             session.evaluate("""(() => {
               document.querySelector('#question-text').value =
                 'What can the Beta synthetic source actually establish?';
@@ -274,6 +283,7 @@ def main():
                 "document.querySelector('#composer-context').textContent.includes('PATH-ALPHA@2')")
             assert session.evaluate(
                 "document.querySelector('#composer-context-fingerprint').value") != alpha_hash
+            session.navigate('model-investigation-heading')
             session.evaluate(
                 "document.querySelector('#model-investigation-form').requestSubmit()")
             session.wait(
@@ -302,6 +312,7 @@ def main():
                 "document.querySelector('#world-model-history').textContent.includes(" +
                 json.dumps(f"Historical stale reports: {old_report['id']}.") + ")",
                 "reassessment adds a pending report alongside retained stale history")
+            session.navigate('reports')
             session.evaluate("""[...document.querySelectorAll('#snapshot-list button')]
               .find(button => button.textContent === 'Demo review acknowledgment').click()""")
             session.wait(
