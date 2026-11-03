@@ -60,7 +60,7 @@ def main():
             assert cd.evaluate("document.querySelector('#patient-id').disabled")
             connect()
             cd.evaluate("document.querySelector('.create-panel').open=true;document.querySelector('#synthetic-confirm').click();document.querySelector('#synthetic-confirm').form.requestSubmit()")
-            cd.wait("document.querySelector('[data-testid=created-id] code')",'actual persisted identity creation')
+            cd.wait("Boolean(document.querySelector('[data-testid=created-id] code'))",'actual persisted identity creation')
             pid=cd.evaluate("document.querySelector('[data-testid=created-id] code').textContent")
             assert pid.startswith('PAT-') and len(pid)==36
             assert cd.evaluate("!document.querySelector('[data-testid=patient-card]')")
@@ -69,7 +69,7 @@ def main():
             read();cd.wait("document.querySelector('[data-testid=status]').textContent.includes('Patient unavailable')",'creation confers no read grant')
             assert cd.evaluate("!document.querySelector('[data-testid=patient-card]')")
             credentials[0]['patient_ids']=[pid];write_grants();read()
-            cd.wait("document.querySelector('[data-testid=patient-card]')",'separate grant permits canonical patient read')
+            cd.wait("Boolean(document.querySelector('[data-testid=patient-card]'))",'separate grant permits canonical patient read')
             assert cd.evaluate("document.querySelector('[data-testid=patient-card]').textContent").count(pid)==1
             assert cd.evaluate('localStorage.length===0 && sessionStorage.length===0')
             assert tokens[0] not in cd.evaluate('document.documentElement.outerHTML')
@@ -87,10 +87,10 @@ def main():
             credentials[0]['patient_ids']=[];write_grants();read()
             cd.wait("!document.querySelector('[data-testid=patient-card]') && document.querySelector('[data-testid=status]').textContent.includes('Patient unavailable')",'revoked read removes prior view')
             credentials[0]['expires_at']=(datetime.now(timezone.utc)-timedelta(seconds=1)).isoformat();write_grants();read()
-            cd.wait("document.querySelector('#credential')",'expired credential clears session')
+            cd.wait("Boolean(document.querySelector('#credential'))",'expired credential clears session')
             credentials[1]['patient_ids']=[pid];write_grants();connect(1);value('#patient-id',pid);read()
             cd.wait("document.querySelector('[data-testid=status]').textContent.includes('Patient unavailable')",'cross-organization read denied')
-            cd.command('Page.reload');cd.wait("document.querySelector('#credential')",'reload forgets credential')
+            cd.command('Page.reload');cd.wait("Boolean(document.querySelector('#credential'))",'reload forgets credential')
             assert cd.evaluate("document.querySelector('#credential').value==='' && document.querySelector('#patient-id').value==='' && localStorage.length===0 && sessionStorage.length===0")
             print('PASS: React/Vite -> actual FastAPI/PostgreSQL 16; create/retry, separate read grant, revoked view clearing, expiry, cross-organization denial, memory-only credential, reload, accessibility landmarks and 390px layout. Fictional identities only; no clinical workflow or production identity claim.')
         finally:
