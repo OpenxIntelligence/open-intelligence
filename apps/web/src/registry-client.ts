@@ -241,7 +241,10 @@ export class RegistrySession {
   }
 
   /** Original is an independently permission-checked read; hash verification is not clinical validation. */
-  dismissOriginal=()=>{this.#records++;this.#publish({original:null,recordsPhase:'ready'});};
+  dismissOriginal=()=>{
+    this.#records++;
+    this.#publish({...(this.#state.worldPhase==='loading'?emptyWorld():{}),original:null,recordsPhase:'ready'});
+  };
   async loadOriginal(sourceId:string):Promise<void>{
     const patientId=this.#state.patient?.patient_id,index=this.#state.sourceIndex;
     const source=index?.sources.find(s=>s.source_id===sourceId);
@@ -252,7 +255,8 @@ export class RegistrySession {
       this.#state.patient?.patient_id===patientId&&this.#state.sourceIndex?.case_id===caseId;
     const control=new AbortController();this.#controllers.add(control);
     const timeout=setTimeout(()=>control.abort(),10000);
-    this.#publish({recordsPhase:'loading-original',recordMessage:'Checking original-document permission and exact source hash…'});
+    this.#publish({...(this.#state.worldPhase==='loading'?emptyWorld():{}),
+      recordsPhase:'loading-original',recordMessage:'Checking original-document permission and exact source hash…'});
     try{
       const res=await this.transport('/v1/patients/'+encodeURIComponent(patientId)+'/cases/'+encodeURIComponent(caseId)+'/sources/'+encodeURIComponent(sourceId),this.#init(control));
       if(!current())return;

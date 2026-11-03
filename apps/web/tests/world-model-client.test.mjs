@@ -1,5 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import {RegistrySession} from '../.test-dist/registry-client.js';
 import {parseSourceWorldModel} from '../.test-dist/source-world-model.js';
 
@@ -194,3 +195,64 @@ test('malformed and expired World Model response never retains prior context',as
   assert.equal(e.snapshot().connected,false);
   assert.equal(e.snapshot().worldModel,null);
 });
+
+for(const action of ['opening','closing']){
+  test(`${action} an original releases a pending World Model and allows an explicit retry`,async()=>{
+    const originalText=`OI-SYNTHETIC-REPORT/1\nPatient: ${caseId}\nDocument: DOC-ONE\nType: pathology\nEvent-Date: 2026-01-10\nIssued-At: 2026-01-11\nSpecimen: SPECIMEN-ONE\nFinding: marker|not-reported|Independently fictional original.\n`;
+    const hash=createHash('sha256').update(originalText).digest('hex');
+    const metadata={...source(),sha256:hash};
+    const index={contract:'oi.synthetic-original-sources/1',patient_id:patientId,
+      case_id:caseId,access_receipt_id:'ACCESS-'+'A'.repeat(32),sources:[metadata],
+      source_reported_assertions:[{source_id:sourceId,finding_key:'marker',reported_state:'not-reported',
+        source_statement:'Independently fictional original.',source_line:8,clinical_review_state:'not_established'}],
+      synthetic:true,clinical_interpretation:false,
+      research_review_invalidation_integrated:false};
+    const original={source_id:sourceId,case_id:caseId,access_receipt_id:'ACCESS-'+'B'.repeat(32),
+      document_id:metadata.document_id,version:metadata.version,state:metadata.state,
+      sha256:hash,original_text:originalText,synthetic:true,clinical_review_state:'not_established'};
+    const snapshot=world();
+    snapshot.current_sources[0].sha256=hash;
+    snapshot.observations[0].source_sha256=hash;
+    snapshot.observations[0].source_statement='Independently fictional original.';
+    let release,worldReads=0;
+    const slow=new Promise(resolve=>{release=resolve;});
+    const retryReceipt='ACCESS-'+'C'.repeat(32);
+    const s=new RegistrySession(async url=>{
+      if(url.endsWith('/case-bindings'))return response(caseList());
+      if(url.endsWith('/sources'))return response(index);
+      if(url.endsWith('/sources/'+sourceId))return response(original);
+      if(url.endsWith('/world-model'))return ++worldReads===1?slow:
+        response({...snapshot,access_receipt_id:retryReceipt});
+      return response(patient());
+    });
+    s.connect(token);await s.read(patientId);await s.loadCases();await s.loadSources(caseId);
+    if(action==='closing')await s.loadOriginal(sourceId);
+    const waiting=s.loadWorldModel(caseId);
+    try{
+      assert.equal(s.snapshot().worldPhase,'loading');
+      if(action==='opening')await s.loadOriginal(sourceId);else s.dismissOriginal();
+      assert.equal(s.snapshot().worldPhase,'idle');
+      assert.equal(s.snapshot().worldModel,null);
+      assert.equal(s.snapshot().recordsPhase,'ready');
+      assert.equal(s.snapshot().original?.original_text??null,action==='opening'?originalText:null);
+      assert.equal(worldReads,1,'Original actions must not retry World Model reads automatically');
+
+      release(response(snapshot));await waiting;
+      assert.equal(s.snapshot().worldPhase,'idle');
+      assert.equal(s.snapshot().worldModel,null,'The discarded response must not restore a snapshot');
+      await s.loadWorldModel(caseId);
+      assert.equal(worldReads,2);
+      assert.equal(s.snapshot().worldPhase,'ready');
+      assert.equal(s.snapshot().worldModel.access_receipt_id,retryReceipt);
+
+      const completed=s.snapshot().worldModel;
+      await s.loadOriginal(sourceId);
+      assert.equal(s.snapshot().worldModel,completed,'Opening an original preserves a completed World Model');
+      s.dismissOriginal();
+      assert.equal(s.snapshot().worldModel,completed,'Closing an original preserves a completed World Model');
+      assert.equal(s.snapshot().worldPhase,'ready');
+    }finally{
+      release(response(snapshot));await waiting;s.disconnect();
+    }
+  });
+}

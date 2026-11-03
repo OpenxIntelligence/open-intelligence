@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections import Counter, defaultdict
+from collections.abc import Mapping, Sequence
 from datetime import date
 import hashlib
 import re
@@ -12,6 +13,45 @@ from open_intelligence.store import MAX_SOURCE_BYTES, parse_report
 
 class SourceIntegrityError(RuntimeError):
     """Stored source corruption; deliberately contains no original or DB details."""
+
+
+def validate_snapshot(rows: Sequence[Mapping[str, object]], assertions: Sequence[tuple], *,
+                      requested_case_id: str) -> None:
+    """Verify complete current finding tuples against the original source history.
+
+    Reuses the source owner's parser and exact-original checks. Historical bytes
+    are checked too: an otherwise valid current amendment cannot hide corrupted
+    originals or an incomplete version chain. No repair, normalization or new
+    clinical assertion is performed here.
+    """
+    try:
+        by_id = {row["source_id"]: row for row in rows}
+        if len(by_id) != len(rows):
+            raise ValueError()
+        histories = defaultdict(list)
+        expected = []
+        for row in rows:
+            raw = validate_original(
+                row, requested_case_id=requested_case_id,
+                predecessor=by_id.get(row["supersedes_id"]),
+            )
+            histories[row["document_id"]].append(row)
+            if row["state"] == "current":
+                expected.extend((row["source_id"], finding.key, finding.state,
+                                 finding.quote, finding.line)
+                                for finding in parse_report(raw).findings)
+        for history in histories.values():
+            history.sort(key=lambda row: row["version"])
+            for version, row in enumerate(history, start=1):
+                if (row["version"] != version
+                        or row["state"] != ("current" if version == len(history) else "superseded")):
+                    raise ValueError()
+        # Counted equality catches missing/extra findings as well as changed
+        # keys, states, quotations and literal line anchors.
+        if Counter(expected) != Counter(tuple(assertion) for assertion in assertions):
+            raise ValueError()
+    except Exception:
+        raise SourceIntegrityError("Stored source snapshot integrity check failed") from None
 
 
 def validate_original(row: Mapping[str, object], *, requested_case_id: str,

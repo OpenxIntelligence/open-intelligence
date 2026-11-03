@@ -551,12 +551,12 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
         try:
             with registry(context) as patients:
                 records_authorized(patients, context, patient_id, "source_read")
-                result = PostgresSourceVersions(patients).list(
+                return PostgresSourceVersions(patients).list(
                     patient_id, case_id, organization=context.organization,
                     actor=context.actor, purpose=context.purpose,
+                    prepare_response=lambda index: OriginalSourceIndex(**index),
                     recheck_authority=lambda: refresh_source_authority(
                         request, context, patients, patient_id, "source_read"))
-                return OriginalSourceIndex(**result)
         except PatientRegistryDenied:
             raise HTTPException(404, "Source unavailable") from None
 
@@ -573,12 +573,12 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
         try:
             with registry(context) as patients:
                 records_authorized(patients, context, patient_id, "source_read")
-                index = PostgresSourceVersions(patients).list(
+                return PostgresSourceVersions(patients).list(
                     patient_id, case_id, organization=context.organization,
                     actor=context.actor, purpose=context.purpose,
+                    prepare_response=lambda index: SourceWorldModel(**project_source_world_model(index)),
                     recheck_authority=lambda: refresh_source_authority(
                         request, context, patients, patient_id, "source_read"))
-                return SourceWorldModel(**project_source_world_model(index))
         except PatientRegistryDenied:
             raise HTTPException(404, "Source unavailable") from None
 

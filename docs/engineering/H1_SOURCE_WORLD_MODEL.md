@@ -16,7 +16,7 @@ Typed API: apps/api/src/oi_api/patients.py
 Browser validator: apps/web/src/source-world-model.ts
 UI: existing React Journey via RegistrySession and WorldModelView.
 
-The handler invokes PostgresSourceVersions.list exactly once under the existing source transaction and binding check, then projects that source index. No second SQL truth is stored.
+The handler invokes PostgresSourceVersions.list exactly once. That owner verifies the raw source history and complete current assertion inventory, then prepares the projection and typed response under its existing patient/binding locks. The final authority refresh and read-receipt commit occur after preparation. No second SQL truth is stored. See the [bounded source-integrity continuation](H1_SOURCE_PROJECTION_INTEGRITY_2026-11-02.md) for its tests-first evidence and exact-head verification boundary.
 
 ## Invariants
 
@@ -27,6 +27,8 @@ The handler invokes PostgresSourceVersions.list exactly once under the existing 
 5. A deterministic SHA-256 snapshot_fingerprint over patient, case, current exact source versions and observations changes on amendment. It is not a signature, permission token, approval or execution authorization. Future Composer execution must re-read source ownership and validate context under current authority at write/execution time.
 6. Read permissions are server-enforced on every request, with patient/case/organization checks. The client rejects forged contract fields or mismatched anchors, clears stale projections on identity/source changes and drops out-of-order replies. Credentials remain in page memory, not URLs or storage.
 7. React Journey is read-only. No model call, alerts, clinical operation, patient export or signed review. The rights-qualified evidence/report/review libraries in #210 have not been exposed through this H1 API.
+8. The read receipt identifies authorized prepared source disclosure; it is not delivery confirmation or clinical approval. Integrity, preparation, final authority or audit failures withhold the view and commit no new read receipt. External authority is not transactionally locked with PostgreSQL or network delivery.
+9. Opening/closing an original cancels a concurrent pending World Model read without stranding Journey in loading. Late replies cannot restore it, and recovery requires an explicit retry. Completed projections remain available across those actions.
 
 ## Reproducible acceptance
 
