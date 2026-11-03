@@ -99,7 +99,7 @@ def exercise(cd):
         assert 'line 9' in original and 'Amended fictional marker' in original
         before = cd.evaluate("window.__readingRequests")
         cd.evaluate("document.querySelector('[data-testid=source-to-question]').click()")
-        cd.wait("document.querySelector('[data-view=investigations]') && document.querySelector('[data-testid=question-draft-editor]')",
+        cd.wait("Boolean(document.querySelector('[data-view=investigations]')) && Boolean(document.querySelector('[data-testid=question-draft-editor]'))",
                 'freshly authorized source-linked draft from original reading')
         assert cd.evaluate("window.__readingRequests") == before + 1, 'handoff must perform one fresh World Model read, not a question save or model execution'
         assert cd.evaluate("document.querySelector('[data-testid=question-draft-editor]').textContent.includes('line 9')"), 'current v2 source line retained'
