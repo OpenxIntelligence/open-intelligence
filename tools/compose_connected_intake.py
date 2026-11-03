@@ -21,7 +21,8 @@ SOURCES = {
 }
 PATCH_SHA = '947205946115e9680f61e266ffc40db540399f52d7b9352b0e582c57a086c507'
 COMPOSED = '08d8fc7ab6b8da872d097e8a4f3ed7ef125da1e8cc1106a47a7b9df58dae0815'
-FINAL = '2a52abe4bbbd537d681672f9b10d2c597da7b6e4a49b3472aa899bcb768ed61f'
+REVIEWED = '2a52abe4bbbd537d681672f9b10d2c597da7b6e4a49b3472aa899bcb768ed61f'
+FINAL = 'd6546d4fd45fcf1ee4e96cac5d29ef21331771573d9bc0fc7d79cea30e28bbcf'
 PATCH_PATHS = {
     'README_WORKSPACE.md', 'docs/engineering/CONNECTED_PATIENT_WORKFLOW.md',
     'docs/superpowers/plans/2026-11-03-connected-intake-report.md',
@@ -113,8 +114,27 @@ def main():
         for path in PATCH_PATHS:
             target = stage / path
             result[path] = ('100755' if target.stat().st_mode & 0o111 else '100644', target.read_bytes())
+    if digest(result) != REVIEWED:
+        raise ValueError('Reviewed source does not match locally tested source')
+    # CI 41564178163 reproduced an old navigation expectation that conflicts
+    # with the new, tested pending-write veto. Keep all export/read assertions
+    # and verify navigation refusal plus successful navigation after settlement.
+    path = 'tests/patient_report_followthrough_browser_journey.py'
+    mode, data = result[path]
+    text = data.decode('utf-8')
+    changes = [
+        ('            session.wait("document.querySelector(\'#case-heading\').textContent === \'Fictional case Alpha\'",\n                         "case switch during pending global evidence write")',
+         '            # The shared intake guard now vetoes a case switch while any\n            # write is pending. Verify the veto instead of assuming navigation\n            # succeeded; report invalidation still applies throughout.\n            session.wait("document.querySelector(\'#notice\').textContent.includes(\'finish pending writes\')",\n                         "case switch explicitly vetoed during pending global write")\n            assert session.evaluate("document.querySelector(\'#case-picker\').value") == \'CASE-BETA\'\n            assert session.evaluate("document.querySelector(\'#case-heading\').textContent") == \'Fictional case Beta\''),
+        ('            session.evaluate("document.querySelector(\'#report-refresh\').click()")\n            report_ready(session, "CASE-ALPHA", TASK_TITLE)\n            assert download_report(session, downloads, "CASE-ALPHA") == completed',
+         '            session.evaluate("document.querySelector(\'#report-refresh\').click()")\n            report_ready(session, "CASE-BETA")\n            assert download_report(session, downloads, "CASE-BETA") == beta\n            # After settlement the same deliberate switch is allowed, and\n            # the historical Alpha report still matches its earlier export.\n            session.evaluate("""(() => {\n              const picker = document.querySelector(\'#case-picker\');\n              picker.value = \'CASE-ALPHA\'; picker.dispatchEvent(new Event(\'change\'));\n            })()""")\n            report_ready(session, "CASE-ALPHA", TASK_TITLE)\n            assert download_report(session, downloads, "CASE-ALPHA") == completed'),
+    ]
+    for old, new in changes:
+        if text.count(old) != 1:
+            raise ValueError('Unexpected browser acceptance anchor')
+        text = text.replace(old, new)
+    result[path] = (mode, text.encode('utf-8'))
     if digest(result) != FINAL:
-        raise ValueError('Final source does not match locally tested source')
+        raise ValueError('Final source does not match reviewed navigation acceptance')
     for path, (_, data) in result.items():
         target = root / path
         if '..' in PurePosixPath(path).parts or target.is_symlink() or any(
