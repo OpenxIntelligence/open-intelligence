@@ -97,3 +97,113 @@ recheck their own permissions; external revocation, database commit and HTTP
 delivery are not one atomic operation. Receipts are not delivery proof and
 downloaded files cannot be recalled. Repository-wide historical data cleanup
 remains a separate administration/integration issue. Keep this PR draft and unmerged.
+
+## Verification-reason continuity — 3 November 2026
+
+Draft [#324](https://github.com/OpenxIntelligence/open-intelligence/pull/324) extends
+[#319](https://github.com/OpenxIntelligence/open-intelligence/pull/319) at
+`2475d924fddef6792076bdf9039fad5be7312b7a` (tree
+`b87461e4ff32bc2088678055e9c6fbf03f2fdf29`). All 403 baseline tracked blobs
+were compared with GitHub before implementation. This is a bounded OI-007,
+OI-009, OI-010 and OI-013 correction, not an architecture or permissions change.
+
+### Defect and correction
+
+Writing a reason in Review, choosing **View source questions**, and returning
+unmounted the editor. Its local unsaved reason map disappeared and the valid
+fictional example reason returned. An operator could consequently submit wording
+other than the text they had just authored.
+
+Only unsaved presentation text now lives at the existing App lifetime. The
+patient/case scope is shared with the original Review panel. Navigating between
+Review, Investigations, Records and Overview preserves exact unfinished text.
+Disconnect, case/identity loss and relevant failed access checks clear it; it is
+not written to browser storage. A fresh matching authorized Review queue can
+restore editing independently of an earlier failed World Model request. Captured
+in-flight and uncertain return intents keep their existing RegistrySession
+precedence and exact retry identity. No automatic submission is introduced.
+
+Two product files change: `apps/web/src/main.tsx` and
+`apps/web/src/review-panel.tsx`. Three existing browser helpers exercise the
+original user flow, denial, recovery, case and session boundaries. Backend,
+SQL/migrations, API contracts, RegistrySession, review rules, dependencies,
+workflow definitions and source fixtures retain their parent bytes.
+
+### Verification history
+
+- Tests-first `6bcd8fd079fe51895a8e5c9b2e2bf538a9e03996`,
+  [run 41665269329](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41665269329):
+  274 client checks/build passed; the actual React/FastAPI/PostgreSQL/Chromium
+  journey failed the new exact unfinished-reason assertion after navigation.
+- First repair `52d14ddee98997457878a74876583e0e40abebc1`,
+  [run 41666036789](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41666036789):
+  all 274 client checks and the full browser journey passed, including new
+  A/B/A case, disconnect/reconnect, independent read-denial and no-submission
+  checks. This intermediate pass did not cover independent Review recovery.
+- Independent code review then reproduced a valid fresh Review queue alongside
+  a retained World Model error. The first repair made its enabled reason field
+  reject typing. A separate browser regression and correction are recorded
+  below; the earlier pass does not establish this recovery behavior.
+- Recovery tests-first `b0801fa9cd2f58a1420da3f638136c5d717c83fc`,
+  [run 41666378072](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41666378072),
+  passed the preceding journey then failed waiting for the enabled reason field
+  to accept text after the fresh Review read. The actual DOM event left its value
+  unchanged; the assertion was retained for the final repair.
+
+### Final tested runtime
+
+Runtime `0d08fa657c0416201536a84da9af60a8f8be7b53`, tree
+`dd23617d567648c01cb281e92afbaff1fa188e65`:
+[run 41666930017](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41666930017)
+completed successfully. Checkout logs name that exact feature SHA, not an
+inferred temporary merge. All 274 client checks passed with zero skips, the
+pinned TypeScript/Vite build and existing dependency gates passed, and the actual
+React/FastAPI/PostgreSQL 16/Chromium journey passed. It includes literal reason
+preservation with no implicit submission, recording that exact reason, independent
+queue/question denial, editing after restored Review access while World Model
+still shows its earlier error, A/B/A case isolation, disconnect/reconnect clearing,
+empty browser storage, and the inherited source/evidence/report/task flows.
+
+Local final verification also passed all 274 client tests, the production build,
+Python browser-helper compilation and git whitespace checks. Local Chromium and
+PostgreSQL were unavailable; browser/database results are hosted, not local.
+The first local npm attempt could not resolve the TypeScript launcher because a
+cached dependency copy dereferenced its bin symlink; restoring the generated bin
+links fixed setup. No product/lockfile/test change was used to hide that failure.
+The existing npm http-proxy warning remains an environment warning.
+
+Downloaded artifact [13247015056](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41666930017/artifacts/13247015056)
+matched GitHub SHA-256
+`8b25227079f9d043d8e97f5fcd6abc120a319e7879a58331ed066b61923c2a33`.
+Its commit receipt is the tested SHA; all **403** archived source files match the
+local verified runtime. The retained `review-reason-boundaries.json` records the
+actual synthetic patient, both existing cases, question and clearing checks.
+The artifact expires 10 November 2026. Independent code review found no remaining
+blocker after the recovery correction. This documentation is appended after the
+runtime checkpoint; no application, test, workflow or dependency bytes change.
+
+### Audit scope and limits
+
+The two supplied briefs, repository contributor rules/main plan/backlog, current
+#181/#183 and the #307/#314/#318/#319 integration chain were inspected, together
+with canonical Notion precedence/H1 decisions and the linked historical Drive
+research. The current accepted H1 stack is React/Vite/TypeScript with
+FastAPI/PostgreSQL; the earlier broadly undecided stack wording is historical.
+The full patient-centered first-party platform remains the goal. This correction
+preserves its existing connected workflow rather than starting another frontend.
+
+The existing workflow-pattern audit passed, and four retired named-person data
+entrypoint tests passed with network calls intercepted. This is not a complete
+history/artifact/data audit. The existing installed-package license/notice gate
+reported 18 installed packages, two optional packages uninspected, and zero
+errors. No software/model/data/content artifact is newly adopted or cleared.
+Public patient narratives, competitor workflows, the broader technology atlas,
+biomedical rights and clinical validation were not newly researched in this
+bounded correction; earlier source evidence is not upgraded by these tests.
+
+Independently authored fictional data and operator fixture grants only. No real
+identity/consent, professional clinical review, model inference, clinical
+recommendation, merge or deployment. Full separate API unit/restore suites were
+not rerun for this UI-only change. Parent and sibling integrations still need
+source-owner and maintainer review; #315 citation-history and #316 report-cover
+fixes are separate and are not included merely because they were inspected.
