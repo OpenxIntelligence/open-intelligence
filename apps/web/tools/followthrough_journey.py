@@ -311,6 +311,22 @@ class FollowthroughChecks:
                 assert self.cd.evaluate('document.querySelector(' + json.dumps(selector) + ').value') == expected, (
                     'Successful existing-task ' + status + ' changed the unsaved creation ' + name)
 
+        transition_fields = {'owner': 'Fictional proposed coordinator',
+                             'reason': 'Keep this unsent assignment reason during source inspection.'}
+        for name, value in transition_fields.items():
+            fill(self.cd, self.row(completed) + ' [data-testid=followthrough-transition-' + name + ']', value)
+        for section in ('Journey', 'Records', 'Overview', 'Review'):
+            navigate(self.cd, section)
+            navigate(self.cd, 'Investigations')
+            for name, expected in transition_fields.items():
+                actual = self.cd.evaluate('document.querySelector(' + json.dumps(
+                    self.row(completed) + ' [data-testid=followthrough-transition-' + name + ']') + ')?.value')
+                assert actual == expected, 'Same-case navigation discarded unsent transition ' + name
+            assert self.cd.evaluate('window.__oiFollowthroughChecks.writes.length') == before_transitions
+        self.refresh(expected_count=1)
+        for name, expected in transition_fields.items():
+            assert self.cd.evaluate('document.querySelector(' + json.dumps(
+                self.row(completed) + ' [data-testid=followthrough-transition-' + name + ']') + ').value') == expected
         self.transition(completed, 'assigned', 2, 'Fictional coordinator')
         assert_creation_draft_survives('assignment')
         assert self.cd.evaluate('!document.querySelector(' + json.dumps(self.row(completed)
