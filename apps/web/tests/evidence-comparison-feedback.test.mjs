@@ -32,7 +32,7 @@ async function prepared(){
 }
 function render(s,evidence){
  const comparison=s.snapshot().evidenceComparisonDraft;
- return renderToStaticMarkup(createElement(EvidenceComparisonEditor,{evidence,comparison,current:true,locked:false,
+ return renderToStaticMarkup(createElement(EvidenceComparisonEditor,{evidence,comparison,rejectedFields:s.snapshot().evidenceRejectedFields,current:true,locked:false,
   onEdit:patch=>s.editEvidenceComparison(patch),
   onAcknowledge:field=>s.acknowledgeRejectedEvidenceComparisonField(field),
   onSave:()=>s.saveEvidenceComparison()}));
@@ -71,12 +71,14 @@ test('rejected oversized rationale retains previous accepted text and blocks sav
  s.editEvidenceComparison({quote:'café experiment',relation:'supports',applicability:'limited',
   rationale:'This accepted fictional rationale remains uncertain and unreviewed.'});
  const accepted=s.snapshot().evidenceComparisonDraft.rationale;
+ const acceptedDraft=s.snapshot().evidenceComparisonDraft;
  assert.equal(s.editEvidenceComparison({rationale:'x'.repeat(601)}),false);
  let draft=s.snapshot().evidenceComparisonDraft;
- assert.equal(draft.rationale,accepted);assert.deepEqual(draft.rejected_fields,['rationale']);
+ assert.equal(draft,acceptedDraft,'rejected input must not mutate or replace the accepted draft object');
+ assert.equal(draft.rationale,accepted);assert.deepEqual(s.snapshot().evidenceRejectedFields,['rationale']);
  await s.loadQuestionEvidence(questionId);
  draft=s.snapshot().evidenceComparisonDraft;
- assert.equal(draft.rationale,accepted);assert.deepEqual(draft.rejected_fields,['rationale']);
+ assert.equal(draft.rationale,accepted);assert.deepEqual(s.snapshot().evidenceRejectedFields,['rationale']);
  await s.saveEvidenceComparison();assert.equal(writes.length,0,'a rejected edit cannot silently submit the previous text');
  const html=render(s,evidence);
  assert.match(html,/last rationale edit was rejected/);
@@ -90,7 +92,7 @@ test('explicitly keeping previous rationale re-enables the exact accepted compar
   rationale:'This accepted fictional rationale remains uncertain and unreviewed.'});
  s.editEvidenceComparison({rationale:'x'.repeat(601)});
  assert.equal(s.acknowledgeRejectedEvidenceComparisonField('rationale'),true);
- assert.deepEqual(s.snapshot().evidenceComparisonDraft.rejected_fields,[]);
+ assert.deepEqual(s.snapshot().evidenceRejectedFields,[]);
  const html=render(s,evidence);
  assert.match(html,/Ready to save this human-authored comparison/);
  assert.doesNotMatch(html,/data-testid="evidence-assess"[^>]*disabled/);
@@ -100,8 +102,8 @@ test('explicitly keeping previous rationale re-enables the exact accepted compar
 test('a valid correction clears the rejection without requiring acknowledgement',async()=>{
  const {s,evidence}=await prepared();
  s.editEvidenceComparison({rationale:'x'.repeat(601)});
- assert.deepEqual(s.snapshot().evidenceComparisonDraft.rejected_fields,['rationale']);
+ assert.deepEqual(s.snapshot().evidenceRejectedFields,['rationale']);
  assert.equal(s.editEvidenceComparison({rationale:'A corrected fictional rationale with explicit uncertainty.'}),true);
- assert.deepEqual(s.snapshot().evidenceComparisonDraft.rejected_fields,[]);
+ assert.deepEqual(s.snapshot().evidenceRejectedFields,[]);
  assert.doesNotMatch(render(s,evidence),/last rationale edit was rejected/);
 });

@@ -119,7 +119,7 @@ export function AuthoredEvidencePanel({session,state,busy}:{session:RegistrySess
     {evidence&&<section className="evidence-assessment-editor" aria-labelledby="evidence-assessment-heading">
      <h4 id="evidence-assessment-heading">Propose a comparison</h4><p>Selected <strong>{evidence.title??evidence.evidence_key}</strong>, version {evidence.version}. The relation below is your proposal, not a conclusion authored by the evidence source.</p>
      {evidence.statement!==null&&comparison?<>
-      <EvidenceComparisonEditor evidence={evidence} comparison={comparison} current={current} locked={locked}
+      <EvidenceComparisonEditor evidence={evidence} comparison={comparison} rejectedFields={state.evidenceRejectedFields} current={current} locked={locked}
        onEdit={patch=>session.editEvidenceComparison(patch)}
        onAcknowledge={field=>session.acknowledgeRejectedEvidenceComparisonField(field)}
        onSave={()=>void session.saveEvidenceComparison()}/>

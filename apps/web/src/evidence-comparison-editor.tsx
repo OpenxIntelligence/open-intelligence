@@ -2,16 +2,16 @@ import {visibleLine} from './authored-evidence';
 import type {Applicability,EvidenceVersion,Relation} from './authored-evidence';
 import type {EvidenceComparisonDraft,EvidenceDraftPatch} from './authored-evidence-session';
 
-export function comparisonIssues(evidence:EvidenceVersion,comparison:EvidenceComparisonDraft){
+export function comparisonIssues(evidence:EvidenceVersion,comparison:EvidenceComparisonDraft,rejectedFields:readonly ('quote'|'rationale')[]){
  const quote=comparison.quote,rationale=comparison.rationale;
- const quoteIssue=comparison.rejected_fields.includes('quote')
+ const quoteIssue=rejectedFields.includes('quote')
   ?'Your last passage edit was rejected. The previous accepted passage is still shown; enter a shorter passage or explicitly keep the previous passage.'
   :!quote?'Enter a passage from the selected evidence statement.'
   :Array.from(quote).length>400?'Use no more than 400 Unicode characters.'
   :!evidence.statement?.includes(quote)?'Use text copied exactly from the selected evidence statement.'
   :evidence.statement.indexOf(quote)!==evidence.statement.lastIndexOf(quote)?'Choose a passage that appears only once in the selected evidence statement.'
   :null;
- const rationaleIssue=comparison.rejected_fields.includes('rationale')
+ const rationaleIssue=rejectedFields.includes('rationale')
   ?'Your last rationale edit was rejected. The previous accepted rationale is still shown; enter a shorter rationale or explicitly keep the previous rationale.'
   :Array.from(rationale).length<10?'Write at least 10 visible characters describing your reasoning and uncertainty.'
   :Array.from(rationale).length>600?'Use no more than 600 Unicode characters.'
@@ -23,11 +23,11 @@ export function comparisonIssues(evidence:EvidenceVersion,comparison:EvidenceCom
  return {quoteIssue,rationaleIssue,relationIssue};
 }
 
-export function EvidenceComparisonEditor({evidence,comparison,current,locked,onEdit,onAcknowledge,onSave}:{
- evidence:EvidenceVersion;comparison:EvidenceComparisonDraft;current:boolean;locked:boolean;
+export function EvidenceComparisonEditor({evidence,comparison,rejectedFields,current,locked,onEdit,onAcknowledge,onSave}:{
+ evidence:EvidenceVersion;comparison:EvidenceComparisonDraft;rejectedFields:readonly ('quote'|'rationale')[];current:boolean;locked:boolean;
  onEdit:(patch:EvidenceDraftPatch)=>unknown;onAcknowledge:(field:'quote'|'rationale')=>unknown;onSave:()=>unknown;
 }){
- const {quoteIssue,rationaleIssue,relationIssue}=comparisonIssues(evidence,comparison);
+ const {quoteIssue,rationaleIssue,relationIssue}=comparisonIssues(evidence,comparison,rejectedFields);
  const canAssess=Boolean(current&&evidence.state==='current'&&evidence.statement&&!quoteIssue&&!rationaleIssue&&!relationIssue);
  const readiness=locked?'Saving is unavailable while another evidence action is in progress.'
   :!current?'Saving is unavailable because this question no longer matches the current source context.'
@@ -37,7 +37,7 @@ export function EvidenceComparisonEditor({evidence,comparison,current,locked,onE
    aria-invalid={Boolean(quoteIssue)} aria-describedby={quoteIssue?'evidence-quote-help evidence-quote-error':'evidence-quote-help'} onChange={e=>onEdit({quote:e.target.value})}/></label>
   <p id="evidence-quote-help" className="muted">Choose 1–400 characters appearing once in the stored statement. The original statement line and Unicode character offset are retained.</p>
   {quoteIssue&&<div className="evidence-field-error" id="evidence-quote-error" data-testid="evidence-quote-error" role="alert"><span>{quoteIssue}</span>
-   {comparison.rejected_fields.includes('quote')&&<button type="button" data-testid="evidence-quote-keep" disabled={locked||!current} onClick={()=>onAcknowledge('quote')}>Keep previous passage</button>}</div>}
+   {rejectedFields.includes('quote')&&<button type="button" data-testid="evidence-quote-keep" disabled={locked||!current} onClick={()=>onAcknowledge('quote')}>Keep previous passage</button>}</div>}
   <div className="evidence-form-grid">
    <label htmlFor="evidence-relation">Proposed relation<select id="evidence-relation" data-testid="evidence-relation" value={comparison.relation} disabled={locked||!current}
     aria-invalid={Boolean(relationIssue)} aria-describedby={relationIssue?'evidence-relation-error':undefined} onChange={e=>onEdit({relation:e.target.value as Relation})}><option value="unknown">Unknown</option><option value="supports">Supports</option><option value="contradicts">Contradicts</option><option value="context">Context only</option></select></label>
@@ -49,7 +49,7 @@ export function EvidenceComparisonEditor({evidence,comparison,current,locked,onE
    aria-invalid={Boolean(rationaleIssue)} aria-describedby={rationaleIssue?'evidence-rationale-help evidence-rationale-error':'evidence-rationale-help'} onChange={e=>onEdit({rationale:e.target.value})}/></label>
   <p id="evidence-rationale-help" className="muted">One visible line, 10–600 characters. Saving a proposal does not establish clinical relevance or approve a decision.</p>
   {rationaleIssue&&<div className="evidence-field-error" id="evidence-rationale-error" data-testid="evidence-rationale-error" role="alert"><span>{rationaleIssue}</span>
-   {comparison.rejected_fields.includes('rationale')&&<button type="button" data-testid="evidence-rationale-keep" disabled={locked||!current} onClick={()=>onAcknowledge('rationale')}>Keep previous rationale</button>}</div>}
+   {rejectedFields.includes('rationale')&&<button type="button" data-testid="evidence-rationale-keep" disabled={locked||!current} onClick={()=>onAcknowledge('rationale')}>Keep previous rationale</button>}</div>}
   <button type="button" className="primary" data-testid="evidence-assess" disabled={locked||!canAssess} aria-describedby="evidence-assess-readiness" onClick={()=>onSave()}>Save human-authored comparison</button>
   <p id="evidence-assess-readiness" data-testid="evidence-assess-readiness" className={canAssess?'muted':'evidence-field-error'} role="status" aria-live="polite">{readiness}</p>
  </>;
