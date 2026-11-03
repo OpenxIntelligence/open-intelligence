@@ -317,3 +317,107 @@ with separately verified review-draft, reviewed-document, imaging/archive and
 live-evidence work reconciled through the existing contracts. These sibling
 capabilities are not claimed by this increment. All inputs remain independently
 fictional. The candidate is draft, unmerged and undeployed.
+
+## Unfinished comparison in the connected workspace — 3 November 2026
+
+[Draft #348](https://github.com/OpenxIntelligence/open-intelligence/pull/348)
+brings #338's existing comparison draft into #335's combined source-reading,
+record-intake, evidence-report and follow-up workspace. A writer can refresh
+unchanged evidence or leave Investigations and resume the exact quote, relation,
+applicability and rationale after a fresh matching access check. Editing does
+not save an assessment. Existing OI-008/010/013 remain the acceptance owners.
+
+### Source ownership and boundaries
+
+- Base #335: `9d173843f924b40becba3a7dffd71717c12afb5d`, tree
+  `57165fc8b1c6305336752eb948710a437eda9cf9`.
+- Donor #338: `ac6d2be176ff4488aefde870a5f5286313a99210`. Its session
+  implementation, all 30 draft tests, historical spec and historical plan are
+  byte-identical. The new integration plan supersedes the donor plan's old
+  publication checkpoint, without rewriting that provenance.
+- Retain the current `AuthoredEvidencePanel` identity and CSS, the larger current
+  registry session, and separate `authored_evidence_journey.py` and
+  `question_metadata_journey.py` browser owners. The registry adds only the draft
+  patch type import and four delegates. No duplicate ledger or authority owner.
+- Draft identity binds patient, case, question, source snapshot, preflight,
+  evidence version/hash and rights hash. Dirty input cannot silently retarget.
+  Refresh/navigation conceal the draft until a fresh matching packet permits it;
+  stale or denied context cannot submit. Patient/case/credential/reload reset it.
+- Independent metadata or follow-through denial does not erase an independently
+  authorized comparison. Common patient, binding, source or question denial
+  clears the draft; a late earlier response cannot restore it.
+- An uncertain save retains the exact original retry intent and locks edits and
+  discard. A matching successful receipt clears the draft. This is in-memory
+  input retention only, not durable autosave or clinical review.
+- Backend, migrations, authorization contracts, workflow definitions,
+  dependencies, current report-download code, source-reading and intake owners
+  are unchanged. The separate #339 frontend rights correction, #330 strict-date
+  correction, #324 review drafts, #323 reviewed document intake, #327/#332 imaging
+  and archive convergence, and #321 DOI connector are not included by this PR.
+
+### Tests and independent review
+
+The tests-first commit `1611720ca8bb6e599d42f41edd87694fd66ba33e`
+(tree `396438ecedd833604966c61e0a87401277952769`) compiled successfully and
+produced 36 expected missing-behavior failures: the 30 unchanged donor tests and
+six new composed-session cases. These were behavior failures, not missing imports
+or setup failures. After adoption, all **336 compiled client tests passed** with
+zero failures/skips; the TypeScript/Vite production build and current dependency
+gate passed (18 installed packages, two optional uninspected, zero errors).
+
+A separate read-only automated reviewer inspected the complete donor session and
+integration diff, independently ran 64 focused tests, and found no important
+runtime finding. Its P3 observation was accepted: the actual-browser POST count
+now starts before selection/editing and is asserted both immediately after edits
+and after refresh/navigation. A second review confirmed that change and the
+correct metadata-helper path. This does not represent human or clinical review.
+
+### Published execution evidence
+
+Initial combined runtime `8d2ee0f4586db4dc5f7078d545262b3798c7b310`, tree
+`8463bd26010783b78584ddf67b2505223f8e4ee6`, passed the complete existing
+[hosted web workflow 41674964740](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41674964740):
+336 client tests, production build, frontend and exact-wheel dependency gates,
+and actual built React/FastAPI/PostgreSQL 16/Chromium journey. Artifact
+`13249174330`, SHA-256
+`2f73f3eaa1e2bca8a4b887f4e6cd0c929804471c71f7bd9024d6bf1c6975da4d`,
+was downloaded and its digest verified. Every one of its 410 source files and
+Git executable classifications matched the candidate tree. Local equivalent
+commit was `b6cc6b69073a0bcf54bd67922b8edee4f7ffb983`.
+
+The stronger browser assertion is published at
+`297c9d4928105a77c9cf132a17b244409611c018`, tree
+`b515b6379e373f92176cc23afa2f145438b4c0b7` (local equivalent
+`af096a5347b01692822be8741c86f473e1d58b3e`). Attempt 1 of
+[run 41675783452](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41675783452)
+passed all 336 client tests and build but stopped before app navigation: the
+Chromium debugging endpoint refused connections for 30 seconds. It never reached
+the comparison assertions. Browser startup code was unchanged; browser stderr
+was discarded by the inherited helper, so the underlying startup cause is not
+established. The failed attempt remains recorded.
+
+Attempt 2 on that **unchanged commit passed**, job `126057574593`: all 336 client
+tests (zero failures/skips), production build, both dependency gates and the full
+actual PostgreSQL/API/Chromium journey, including the stronger editing assertion.
+Artifact `13250885948`, SHA-256
+`267454af434fdb56f559859e87a25ba84d6c609119f006f0b5e8baa97b6eb3a2`,
+was downloaded and its digest verified. All 410 source files and executable
+classifications matched the strengthened candidate tree. The retry's three report
+files/body hashes and distinct receipts were independently checked again, and
+both draft captures were inspected. CI artifact retention ends 10 November 2026.
+The PR carries the final documentation head and its automatic workflow result;
+these documentation updates leave the verified application and browser code exact.
+
+The artifacts' desktop draft status and 390px resume captures were
+visually inspected; the browser asserts no horizontal overflow and no exposed
+rationale before explicit fresh resume. Its receipt records exact input retention,
+lost-response retry, real API restart, independent denial, amendment and
+withdrawal. All three downloaded report files were independently checked against
+whole-file/body hashes and distinct fresh access receipts; the earlier report's
+body remains byte-identical when its cover changes to historical status.
+
+This frontend-only increment does not claim another full standalone API or
+backup/restore suite. The inherited full backend verification remains separately
+recorded on #322. Browser evidence covers Chromium and independently authored
+fictional records only. Draft, unmerged and undeployed; no model execution,
+professional appraisal, production authorization or clinical validation.
