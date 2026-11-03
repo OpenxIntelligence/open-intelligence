@@ -1,5 +1,7 @@
 import {decodeOriginal,decodeRecordRequests} from './record-views.js';
 import {decodeSourceWorldModel} from './world-model-views.js';
+import {decodeReviewQueue,decodeReviewReturnResult,FICTIONAL_RETURN_REASON} from './review-queue-view.js';
+import type {ReviewQueue,ReviewReturnResult} from './review-queue-view.js';
 import {decodeComposerPreflight,DEFAULT_SOURCE_QUESTION} from './composer-preflight-view.js';
 import {decodeSavedQuestion,decodeSourceQuestions} from './source-questions-view.js';
 import type {SavedQuestion,SourceQuestion} from './source-questions-view.js';
@@ -25,6 +27,8 @@ export type ViewState = Readonly<{
   composerPhase:'idle'|'loading'|'ready'|'error';composerMessage:string;
   savedQuestion:SavedQuestion|null;questionSavePhase:'idle'|'saving'|'saved'|'error';questionSaveMessage:string;
   questions:readonly SourceQuestion[]|null;questionListPhase:'idle'|'loading'|'ready'|'error';questionListMessage:string;
+  reviewQueue:ReviewQueue|null;reviewPhase:'idle'|'loading'|'ready'|'error';reviewMessage:string;
+  reviewReturn:ReviewReturnResult|null;reviewReturnPhase:'idle'|'saving'|'saved'|'error';reviewReturnMessage:string;
 }>;
 export type Transport = (input: string, init: RequestInit) => Promise<Response>;
 const KEY = /^[A-Za-z0-9][A-Za-z0-9_.:-]{2,127}$/;
@@ -49,6 +53,8 @@ const fresh = (): ViewState => Object.freeze({
   composerMessage:'Select an exact current source observation to prepare a non-executing context.',
   savedQuestion:null,questionSavePhase:'idle',questionSaveMessage:'Save a verified preflight to create one unreviewed source-linked question.',
   questions:null,questionListPhase:'idle',questionListMessage:'Open an authorized case to inspect saved source questions.',
+  reviewQueue:null,reviewPhase:'idle',reviewMessage:'Select a permitted case to inspect the derived question-review inbox.',
+  reviewReturn:null,reviewReturnPhase:'idle',reviewReturnMessage:'No review return has been recorded.',
 });
 function exact(value: unknown, fields: string[]): value is Record<string,unknown> {
   return value !== null && typeof value==='object' && !Array.isArray(value) &&
@@ -84,12 +90,21 @@ function created(value: unknown): CreatedPatient {
 export class RegistrySession {
   #token=''; #scope=0; #read=0; #recordsRead=0; #originalRead=0; #worldRead=0; #composerRead=0;
   #questionWrite=0; #questionRead=0; #questionKey=''; #questionFingerprint=''; #savingQuestion=false;
+  #reviewRead=0; #reviewWrite=0; #reviewKey=''; #reviewIntent=''; #savingReview=false;
   #state:ViewState=fresh();
   #listeners=new Set<()=>void>(); #controllers=new Set<AbortController>(); #creating=false;
   constructor(private readonly transport:Transport=(url,init)=>fetch(url,init)) {}
   snapshot=():ViewState=>this.#state;
   subscribe=(listener:()=>void):(()=>void)=>{this.#listeners.add(listener);return()=>this.#listeners.delete(listener);};
   #publish(patch:Partial<ViewState>){this.#state=Object.freeze({...this.#state,...patch});for(const listener of this.#listeners)listener();}
+  #resetReview(){
+    this.#reviewRead++;this.#reviewWrite++;this.#savingReview=false;
+    this.#reviewKey='';this.#reviewIntent='';
+    this.#publish({reviewQueue:null,reviewPhase:'idle',
+      reviewMessage:'Select a permitted case to inspect the derived question-review inbox.',
+      reviewReturn:null,reviewReturnPhase:'idle',
+      reviewReturnMessage:'No review return has been recorded.'});
+  }
   #resetQuestions(){
     this.#questionWrite++;this.#questionRead++;this.#savingQuestion=false;
     this.#questionKey='';this.#questionFingerprint='';
@@ -99,7 +114,7 @@ export class RegistrySession {
       questionListMessage:'Open an authorized case to inspect saved source questions.'});
   }
   #resetWorld(){
-    this.#worldRead++;this.#composerRead++;this.#resetQuestions();
+    this.#worldRead++;this.#composerRead++;this.#resetQuestions();this.#resetReview();
     this.#publish({worldModel:null,worldPhase:'idle',worldMessage:
       'Open an authorized patient and select a source case.',
       composerPreview:null,composerPhase:'idle',composerMessage:
@@ -108,7 +123,7 @@ export class RegistrySession {
   clearWorldModel=()=>this.#resetWorld();
   #resetRecords(){
     this.#recordsRead++;this.#originalRead++;this.#worldRead++;this.#composerRead++;
-    this.#resetQuestions();
+    this.#resetQuestions();this.#resetReview();
     this.#publish({records:null,recordsPhase:'idle',recordsMessage:'Open an authorized patient to inspect record requests.',
       original:null,originalPhase:'idle',originalMessage:'Original text is never loaded automatically.',
       worldModel:null,worldPhase:'idle',worldMessage:'Open an authorized patient and select a source case.',
@@ -118,7 +133,9 @@ export class RegistrySession {
   disconnect=()=>{
     this.#scope++;this.#read++;this.#recordsRead++;this.#originalRead++;this.#worldRead++;this.#composerRead++;
     this.#questionRead++;this.#questionWrite++;this.#questionKey='';this.#questionFingerprint='';
-    this.#savingQuestion=false;this.#token='';this.#creating=false;
+    this.#savingQuestion=false;
+    this.#reviewRead++;this.#reviewWrite++;this.#reviewKey='';this.#reviewIntent='';this.#savingReview=false;
+    this.#token='';this.#creating=false;
     for(const c of this.#controllers)c.abort();this.#controllers.clear();
     this.#state=fresh();for(const listener of this.#listeners)listener();
   };
@@ -154,6 +171,116 @@ export class RegistrySession {
     }catch(_){if(current())this.#publish({patient:null,phase:'error',message:'The patient response could not be verified. No cached patient is shown.'});}
     finally{clearTimeout(timeout);this.#controllers.delete(control);}
   }
+  async loadReviewQueue(caseId:string):Promise<void>{
+    const patientId=this.#state.patient?.patient_id;
+    const query=++this.#reviewRead,scope=this.#scope,selection=this.#read;
+    this.#reviewWrite++;this.#savingReview=false;
+    this.#publish({reviewQueue:null,reviewPhase:'idle',
+      reviewMessage:'Review context must be reauthorized for this patient and source case.',
+      reviewReturn:null,reviewReturnPhase:'idle',reviewReturnMessage:'No return is assumed after a refresh.'});
+    if(!patientId||!this.#token||!/^CASE-[A-Z0-9-]{1,35}$/.test(caseId)){
+      this.#publish({reviewPhase:'error',reviewMessage:
+        'Open an authorized patient and provide an exact CASE-* identifier.'});
+      return;
+    }
+    const current=()=>scope===this.#scope&&selection===this.#read&&
+      query===this.#reviewRead&&this.#state.patient?.patient_id===patientId;
+    const control=new AbortController();this.#controllers.add(control);
+    const timeout=setTimeout(()=>control.abort(),10000);
+    this.#publish({reviewPhase:'loading',reviewMessage:
+      'Checking independent review-queue and source-read permissions…'});
+    try{
+      const url='/v1/patients/'+encodeURIComponent(patientId)+'/cases/'+
+        encodeURIComponent(caseId)+'/review-queue';
+      const res=await this.transport(url,this.#init(control));
+      if(!current())return;
+      if(res.status===401){this.#httpError(res.status);return;}
+      if(res.status!==200){
+        this.#publish({reviewQueue:null,reviewPhase:'error',reviewMessage:
+          'Review inbox unavailable for this credential or source case.'});
+        return;
+      }
+      const result=decodeReviewQueue(await json(res),patientId,caseId);
+      if(!current())return;
+      this.#publish({reviewQueue:result,reviewPhase:'ready',
+        reviewMessage:result.items.length?
+          'Source-linked questions and immutable return receipts; no clinical review was completed.':
+          'No source-linked questions are visible under this grant.'});
+    }catch(_){
+      if(current())this.#publish({reviewQueue:null,reviewPhase:'error',reviewMessage:
+        'The current review projection could not be verified. Prior content is cleared.'});
+    }finally{clearTimeout(timeout);this.#controllers.delete(control);}
+  }
+
+  async returnReviewQuestion(questionId:string,fingerprint:string,
+                              reason:string=FICTIONAL_RETURN_REASON):Promise<void>{
+    if(this.#savingReview)return;
+    const queue=this.#state.reviewQueue;
+    const patientId=this.#state.patient?.patient_id,caseId=queue?.case_id;
+    const item=queue?.items.find(i=>i.question_id===questionId);
+    const view=this.#reviewRead,scope=this.#scope,selection=this.#read;
+    const query=++this.#reviewWrite;
+    this.#publish({reviewReturn:null,reviewReturnPhase:'idle',
+      reviewReturnMessage:'Return action requires a separate grant and current version.'});
+    if(!patientId||!caseId||this.#state.reviewPhase!=='ready'||!item||
+       item.review_state==='source_reassessment_required'||
+       item.queue_fingerprint===null||item.queue_fingerprint!==fingerprint||
+       reason.length<10||reason.length>600||reason!==reason.trim()||
+       /[\u0000-\u001f\u007f\u202a-\u202e]/.test(reason)){
+      this.#publish({reviewReturnPhase:'error',reviewReturnMessage:
+        'Select a current version-bound review item and a valid fictional verification reason.'});
+      return;
+    }
+    const intent=JSON.stringify([patientId,caseId,questionId,fingerprint,reason]);
+    if(this.#reviewIntent!==intent||!this.#reviewKey){
+      this.#reviewKey=crypto.randomUUID();this.#reviewIntent=intent;
+    }
+    const requestKey=this.#reviewKey;
+    const current=()=>scope===this.#scope&&selection===this.#read&&
+      view===this.#reviewRead&&query===this.#reviewWrite&&
+      this.#state.patient?.patient_id===patientId&&
+      this.#state.reviewQueue?.case_id===caseId;
+    const control=new AbortController();this.#controllers.add(control);
+    const timeout=setTimeout(()=>control.abort(),10000);
+    this.#savingReview=true;
+    this.#publish({reviewReturnPhase:'saving',reviewReturnMessage:
+      'Rechecking the exact source fingerprint and return permission before append…'});
+    try{
+      const url='/v1/patients/'+encodeURIComponent(patientId)+'/cases/'+
+        encodeURIComponent(caseId)+'/questions/'+encodeURIComponent(questionId)+
+        '/return-for-verification';
+      const res=await this.transport(url,this.#init(control,JSON.stringify({
+        synthetic:true,request_key:requestKey,expected_queue_fingerprint:fingerprint,reason
+      })));
+      if(!current())return;
+      if(res.status===401){this.#httpError(res.status);return;}
+      if(res.status===409){
+        this.#resetReview();
+        this.#publish({reviewReturnPhase:'error',reviewReturnMessage:
+          'Review/source context changed or the request key conflicts. Refresh the inbox.'});
+        return;
+      }
+      if(res.status!==201&&res.status!==200){
+        this.#resetReview();
+        this.#publish({reviewReturnPhase:'error',reviewReturnMessage:
+          'Return permission or source context unavailable. Prior queue was cleared.'});
+        return;
+      }
+      const saved=decodeReviewReturnResult(await json(res),questionId);
+      if(!current())return;
+      this.#publish({reviewReturn:saved,reviewReturnPhase:'saved',
+        reviewReturnMessage:saved.duplicate?
+          'Original nonterminal return receipt recovered; no duplicate event.':
+          'Nonterminal verification return recorded. No clinician or external provider was notified.'});
+    }catch(_){
+      if(current())this.#publish({reviewReturn:null,reviewReturnPhase:'error',
+        reviewReturnMessage:'Return outcome uncertain. Retrying this same item uses the original request key.'});
+    }finally{
+      clearTimeout(timeout);this.#controllers.delete(control);
+      if(scope===this.#scope)this.#savingReview=false;
+    }
+  }
+
   async loadWorldModel(caseId:string):Promise<void>{
     const patientId=this.#state.patient?.patient_id;
     const query=++this.#worldRead,scope=this.#scope,selection=this.#read;

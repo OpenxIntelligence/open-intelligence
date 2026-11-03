@@ -239,6 +239,64 @@ def main():
             cd.wait("document.querySelector('[data-testid=composer-status]').textContent.includes('Composer context unavailable')",
                     'separate Composer-context permission can be revoked')
             assert cd.evaluate("!document.querySelector('[data-testid=composer-context]') && !document.querySelector('[data-testid=world-model-result]')")
+
+            # Original-first-party review pattern: derived inbox from the
+            # real saved source questions, only immutable 'returned' receipts.
+            credentials[0]['actions'].extend(['review_queue_read','review_return'])
+            write_grants()
+            cd.evaluate("document.querySelector('[data-testid=review-nav]').click()")
+            cd.wait("Boolean(document.querySelector('[data-testid=review-case-id]'))",
+                    'Review workspace uses same canonical patient session')
+            value('#review-case-id','CASE-ALPHA')
+            cd.evaluate("document.querySelector('[data-testid=review-case-id]').form.requestSubmit()")
+            cd.wait("document.querySelectorAll('[data-testid=review-queue-item]').length===2",
+                    'real PostgreSQL source-question derived review inbox')
+            inbox=cd.evaluate("document.querySelector('[data-testid=review-queue-result]').textContent")
+            assert q1 in inbox and q2 in inbox
+            assert sid in inbox and correction['source_id'] in inbox
+            assert "Source changed" in inbox
+            assert "CURRENT / UNREVIEWED" in inbox
+            assert "Clinical approval is unavailable" in inbox
+            assert cd.evaluate("document.querySelectorAll('[data-testid=return-for-verification]').length===1")
+            assert cd.evaluate("!document.querySelector('[data-testid=review-return-result]')")
+            cd.evaluate("document.querySelector('[data-testid=return-for-verification]').click()")
+            cd.wait("document.querySelector('[data-testid=review-return-result]')?.textContent.includes('Return receipt recorded')",
+                    'PG16 nonterminal return appended atomically to existing question')
+            review_receipt=cd.evaluate("document.querySelector('[data-testid=review-return-result] code').textContent")
+            assert review_receipt.startswith('REVIEW-') and len(review_receipt)==39
+            cd.evaluate("document.querySelector('[data-testid=load-review-queue]').click()")
+            cd.wait("document.querySelector('[data-testid=review-return-history]')?.textContent.includes('Please independently verify')",
+                    'returned receipt remains visible in immutable history')
+            history=cd.evaluate("document.querySelector('[data-testid=review-queue-result]').textContent")
+            assert review_receipt in history and q2 in history
+            assert "Returned for independent verification" in history
+            assert "not an authenticated clinician" not in history  # wording does not assert proof
+            assert "Not an authenticated clinician" in history
+            assert "Source changed" in history
+            # A separate review-read grant can be revoked without modifying
+            # source records or question history; the UI must erase the inbox.
+            credentials[0]['actions'].remove('review_queue_read')
+            write_grants()
+            cd.evaluate("document.querySelector('[data-testid=load-review-queue]').click()")
+            cd.wait("document.querySelector('[data-testid=review-status]').textContent.includes('unavailable')",
+                    'independent review inbox revocation clears all return history')
+            assert cd.evaluate("!document.querySelector('[data-testid=review-queue-result]')")
+            assert cd.evaluate("!document.querySelector('[data-testid=review-return-result]')")
+            credentials[0]['actions'].append('review_queue_read')
+            write_grants()
+            cd.evaluate("document.querySelector('[data-testid=load-review-queue]').click()")
+            cd.wait("document.querySelector('[data-testid=review-return-history]')?.textContent.includes('Please independently verify')",
+                    'same persisted review receipt survives a fresh valid grant')
+            records_out=Path(os.environ.get('OI_WEB_ARTIFACT_DIR',ROOT/'apps/web/.evidence'))
+            records_out.mkdir(parents=True,exist_ok=True)
+            cd.command('Emulation.setDeviceMetricsOverride',
+                {'width':390,'height':844,'deviceScaleFactor':1,'mobile':False})
+            cd.wait('window.innerWidth===390','Review narrow width')
+            assert cd.evaluate('document.documentElement.scrollWidth<=window.innerWidth+1')
+            screenshot=cd.command('Page.captureScreenshot',{'format':'png'})
+            (records_out/'h1-review-mobile.png').write_bytes(base64.b64decode(screenshot['data']))
+            cd.command('Emulation.setDeviceMetricsOverride',
+                {'width':1440,'height':1100,'deviceScaleFactor':1,'mobile':False})
             cd.evaluate("document.querySelector('[data-testid=records-nav]').click()")
             cd.wait("Boolean(document.querySelector('[data-testid=load-records]'))",
                     'return to records without losing patient selection')

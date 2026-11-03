@@ -63,3 +63,21 @@
 .question-status.reassessment{background:#f2e7d9;color:#764b21}
 .question-receipt{padding:12px;background:#edf5ee;border-left:3px solid #638673}
 @media(max-width:600px){.question-history{padding:12px}.question-history-heading button{width:100%}.question-status-title{flex-direction:column;gap:8px}}
+
+/* Nonterminal source review return, not clinician sign-off. */
+.review-panel{max-width:1080px}
+.review-case-form{border-top:1px solid #d7e0d8;border-bottom:1px solid #d7e0d8;padding:18px 0;margin:18px 0}
+.review-case-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.review-case-controls input{max-width:320px;min-width:170px;flex:1;margin:8px 0}
+.review-boundary{border-left:3px solid #9d8154;background:#f2eee2;padding:13px 17px;margin:12px 0 20px;font-size:13px}
+.review-panel h3{margin:22px 0 10px;font-size:18px}
+.review-items,.review-history{list-style:none;padding:0;margin:0;display:grid;gap:12px}
+.review-item,.review-history li{padding:18px;border:1px solid #d7e0d8;border-radius:9px;background:#fbfcfa;min-width:0}
+.review-item h4{font-size:17px;margin:8px 0 14px}
+.review-item p,.review-history p{margin:8px 0;overflow-wrap:anywhere}
+.review-item code,.review-history code,.review-result code{word-break:break-all;font-size:12px}
+.review-return-form{border-top:1px solid #dce3dc;padding-top:16px;margin-top:16px}
+.review-return-form textarea{display:block;max-width:100%;width:100%;min-height:85px;padding:10px 12px;margin:8px 0 12px;border:1px solid #a9b6b3;border-radius:7px;background:#fff;color:#173a3b;font:inherit}
+.review-return-form textarea:focus-visible{outline:3px solid #ba8639;outline-offset:2px}
+.review-result{padding:12px;border-left:3px solid #819b87;background:#edf4ef;overflow-wrap:anywhere}
+@media(max-width:600px){.review-case-controls input{max-width:none}.review-case-controls button,.review-return-form button{width:100%}.review-item,.review-history li{padding:14px}}
