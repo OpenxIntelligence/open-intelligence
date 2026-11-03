@@ -61,6 +61,30 @@ function report(caseId = 'CASE-A', statement = 'Original fictional statement', e
   };
 }
 
+function revisionReport({pdf = true} = {}) {
+  const payload = report('CASE-A', 'Manual fictional passage remains pending.', 9);
+  const item = payload.sections[0].items[0];
+  item.detail = 'User-selected status: pending. Clinical review not performed.';
+  item.source_reference = {
+    assertion_id: 4, source_version_id: 1, document_id: 'MANUAL-FICTIONAL',
+    document_version: 1, sha256: 'a'.repeat(64), source_line: 8,
+    classification_origin: 'user_selected',
+    annotation_method: pdf ? 'manual-exact-extraction-line-selection' : 'manual-exact-line-selection',
+    clinical_review: 'not_performed', annotation_revision_id: 7, annotation_revision: 2,
+    initial_transcription_review_sha256: 'b'.repeat(64), transcription_review_sha256: 'c'.repeat(64),
+    ...(pdf ? {text_origin: 'pdf_extraction', extraction_sha256: 'd'.repeat(64),
+      source_page: 2, page_line: 3, page_text_sha256: 'e'.repeat(64)} : {}),
+  };
+  item.citation = 'Source version #1 (MANUAL-FICTIONAL@1); ' +
+    (pdf ? 'physical page 2, page line 3, global extraction line 8' : 'line 8') +
+    '; original SHA-256: ' + 'a'.repeat(64) + '; Annotation revision: 2; revision ID: 7; ' +
+    'Initial transcription review SHA-256: ' + 'b'.repeat(64) +
+    '; Transcription review SHA-256: ' + 'c'.repeat(64) +
+    (pdf ? '; extraction SHA-256: ' + 'd'.repeat(64) + '; page text SHA-256: ' + 'e'.repeat(64) : '') + '.';
+  payload.text = 'Fictional CASE-A report at event 9\n' + item.text + '\n' + item.detail + '\n' + item.citation + '\n';
+  return payload;
+}
+
 function harness(t, initialCase = 'CASE-A') {
   const nodes = new Map([
     ['#case-picker', new Element('select')], ['#patient-report', new Element('section')],
@@ -124,6 +148,86 @@ function assertBlocked(h) {
   h.get('#report-print').dispatchEvent(new Event('click'));
   assert.equal(h.printed.length, before, 'disabled print handler does nothing');
 }
+
+test('manual text and PDF reports keep revision provenance in the accepted display and download', async t => {
+  for (const pdf of [false, true]) {
+    const h = harness(t);
+    await h.flush();
+    const payload = revisionReport({pdf});
+    await h.respond(0, payload);
+    assert.equal(h.get('#report-print').disabled, false);
+    const displayed = h.get('#report-sections').textContent;
+    assert.match(displayed, /Annotation revision: 2; revision ID: 7/);
+    assert.ok(displayed.includes('Initial transcription review SHA-256: ' + 'b'.repeat(64)));
+    assert.ok(displayed.includes('Transcription review SHA-256: ' + 'c'.repeat(64)));
+    assert.equal(await (await fetch(h.get('#report-text-link').href)).text(), payload.text);
+  }
+});
+
+test('invalid manual revision fields cannot create a printable or downloadable report', async t => {
+  const changes = [
+    reference => delete reference.annotation_revision_id,
+    reference => delete reference.annotation_revision,
+    reference => delete reference.initial_transcription_review_sha256,
+    reference => reference.annotation_revision_id = true,
+    reference => reference.annotation_revision_id = Number.MAX_SAFE_INTEGER + 1,
+    reference => reference.annotation_revision = 0,
+    reference => reference.annotation_revision = '2',
+    reference => reference.annotation_revision = 2.5,
+    reference => reference.initial_transcription_review_sha256 = 'not-a-hash',
+    reference => reference.transcription_review_sha256 = null,
+    reference => reference.clinical_review = 'approved',
+    reference => reference.source_version_id = true,
+    reference => reference.source_page = true,
+    reference => reference.page_line = 9,
+    reference => reference.annotation_revision = 1,
+    reference => reference.unrecognized_provenance = 'not part of the source reference',
+  ];
+  for (const [index, change] of changes.entries()) {
+    await t.test(`invalid revision reference ${index}`, async subtest => {
+      const h = harness(subtest);
+      await h.flush();
+      const payload = revisionReport();
+      change(payload.sections[0].items[0].source_reference);
+      await h.respond(0, payload);
+      assertBlocked(h);
+      assert.equal(h.urls.length, 0);
+      assert.doesNotMatch(h.get('#report-sections').textContent, /Manual fictional passage/);
+    });
+  }
+});
+
+test('one readable report cannot mix annotation revisions or hashes for the same source', async t => {
+  for (const field of ['annotation_revision', 'annotation_revision_id',
+    'initial_transcription_review_sha256', 'transcription_review_sha256', 'sha256', 'extraction_sha256']) {
+    await t.test(field, async subtest => {
+      const h = harness(subtest);
+      await h.flush();
+      const payload = revisionReport();
+      const second = structuredClone(payload.sections[0].items[0]);
+      second.source_reference.assertion_id = 5;
+      second.source_reference[field] = field.endsWith('sha256') ? 'f'.repeat(64) : 3;
+      payload.sections[0].items.push(second);
+      await h.respond(0, payload);
+      assertBlocked(h);
+      assert.equal(h.urls.length, 0);
+    });
+  }
+});
+
+test('an annotation revision ID cannot be relabeled as another source in the same report', async t => {
+  const h = harness(t);
+  await h.flush();
+  const payload = revisionReport();
+  const second = structuredClone(payload.sections[0].items[0]);
+  second.source_reference.assertion_id = 5;
+  second.source_reference.source_version_id = 2;
+  second.source_reference.document_id = 'ANOTHER-FICTIONAL-SOURCE';
+  payload.sections[0].items.push(second);
+  await h.respond(0, payload);
+  assertBlocked(h);
+  assert.equal(h.urls.length, 0);
+});
 
 test('loading blocks both actions before any report response', async t => {
   const h = harness(t);

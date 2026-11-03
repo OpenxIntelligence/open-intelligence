@@ -1,5 +1,7 @@
 # Source-derived Patient World Model projection — synthetic engineering slice
 
+Current annotation convergence: #229’s revision ID/number and initial/effective transcription hashes now pass through #235’s shared provenance validator into governed reports and locked receipts. A corrected selection, including a return to earlier text, retains a distinct identity. See [CONNECTED_PATIENT_WORKFLOW.md](CONNECTED_PATIENT_WORKFLOW.md) for current evidence; older receipts below retain their original scope.
+
 Current convergence: the source/receipt validators are shared with existing clinical knowledge and report owners through `source_provenance.py`, preserving this projection's wire contract. Manual classification and PDF anchors continue into governed report preparation and review receipts. See [CONNECTED_PATIENT_WORKFLOW.md](CONNECTED_PATIENT_WORKFLOW.md) for current execution evidence; earlier counts here belong to their pinned #161/#215 commits.
 
 ## PDF and manual-intake convergence — 3 November 2026 UTC

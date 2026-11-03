@@ -4,7 +4,7 @@ on:
     branches: [work/connected-patient-composition-20261103]
     paths: ['.github/workflows/connected-patient-workflow.yml', 'tools/compose_connected_patient_workflow.py', 'tests/test_connected_patient_workflow.py', 'docs/engineering/CONNECTED_PATIENT_WORKFLOW.md']
   pull_request:
-    branches: [integration/pwm-v2-report-review-20261102, integration/connected-patient-workflow-41558360041-1]
+    branches: [integration/pwm-v2-report-review-20261102, integration/connected-patient-workflow-41558360041-1, integration/pdf-governed-report-20261103]
 permissions:
   contents: read
 jobs:
@@ -81,6 +81,12 @@ jobs:
         run: |
           set -euo pipefail
           for journey in document_intake_browser_journey composer_browser_journey composer_lab_browser_journey composer_durable_browser_journey composer_broker_browser_journey; do
+            python "tests/$journey.py" 2>&1 | tee "verification-artifacts/$journey.txt"
+          done
+      - name: Retained text and PDF correction journeys with readable revision reports
+        run: |
+          set -euo pipefail
+          for journey in document_annotation_revisions_browser_journey pdf_annotation_revisions_browser_journey; do
             python "tests/$journey.py" 2>&1 | tee "verification-artifacts/$journey.txt"
           done
       - name: Bundle the verified candidate only

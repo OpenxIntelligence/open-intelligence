@@ -394,6 +394,8 @@
             <div id="intake-review" hidden>
               <h3 id="intake-review-heading">Review the original</h3>
               <p id="intake-file-summary" class="muted"></p>
+              <p id="intake-revision-summary" class="notice" hidden></p>
+              <details id="intake-annotation-history" hidden><summary>Previously saved selections</summary><div id="intake-annotation-history-list" class="cards"></div></details>
               <p id="intake-preview-help" class="muted tiny">Select a line number to choose a passage. You can shorten it to an exact excerpt of that line.</p>
               <div id="intake-original-lines" class="intake-original" tabindex="0" role="region" aria-label="Uploaded original with selectable source lines"></div>
               <details class="intake-provenance"><summary>File and text provenance</summary><p id="intake-source-hash" class="muted tiny"></p><p id="intake-extraction-details" class="muted tiny"></p></details>
@@ -422,11 +424,12 @@
               </form>
               <p id="intake-passage-count" class="muted tiny"></p>
               <div id="intake-passages" class="cards"></div>
-              <p class="muted tiny">Check your selections before saving. This version keeps them immutable; adding or correcting passages after saving is not available yet.</p>
+              <p class="muted tiny">Check your selections before saving. You can change them later; each confirmed revision remains available in the record's selection history.</p>
 
               <form id="intake-metadata-form">
                 <fieldset id="intake-metadata-fields" class="intake-fields">
                   <legend>Confirm record details</legend>
+                  <div id="intake-record-details">
                   <label for="intake-document-id">Document reference</label>
                   <input id="intake-document-id" type="text" pattern="[A-Z][A-Z0-9-]{1,39}" maxlength="40" required aria-describedby="intake-document-help">
                   <p id="intake-document-help" class="muted tiny">A reference is filled in for a new record. For a correction, use the earlier record's reference and version below.</p>
@@ -441,6 +444,12 @@
                     <label for="intake-specimen">Specimen reference</label><input id="intake-specimen" type="text" pattern="[A-Z][A-Z0-9-]{1,39}" maxlength="40">
                     <label for="intake-amends">Latest version being corrected</label><input id="intake-amends" type="number" min="1" step="1" placeholder="Leave empty for a new document">
                   </details>
+                  </div>
+                  <div id="intake-revision-fields" hidden>
+                    <label for="intake-revision-reason">Reason for changing the selected passages</label>
+                    <textarea id="intake-revision-reason" rows="2" minlength="3" maxlength="500" disabled aria-describedby="intake-revision-help"></textarea>
+                    <p id="intake-revision-help" class="muted tiny">For example, add a passage you missed or correct the status you selected. Previous selections and reports remain available. Affected investigations will need another review.</p>
+                  </div>
                   <label class="intake-confirmation" for="intake-confirm"><input id="intake-confirm" type="checkbox" required><span>I checked that this record belongs in <strong id="intake-case-label"></strong>, that the details match the record, and that the selected passages are exact.</span></label>
                   <p class="muted tiny">This confirms transcription only. It does not establish clinical accuracy or professional approval.</p>
                   <button id="intake-save" class="button" type="submit">Add record to this case</button>
@@ -471,7 +480,7 @@
         <p id="changes-anchor" class="muted" role="status" aria-live="polite">Loading change anchor…</p>
         <p id="changes-disclaimer" class="muted tiny"></p>
         <div class="subhead">New sources since the anchor</div><div id="changes-new-sources" class="cards" aria-live="polite"></div>
-        <div class="subhead">Amendments since the anchor</div><div id="changes-amendments" class="cards" aria-live="polite"></div>
+        <div class="subhead">Document and passage changes since the anchor</div><div id="changes-amendments" class="cards" aria-live="polite"></div>
         <div class="subhead">Stale investigations with cause</div><div id="changes-stale" class="snapshots" aria-live="polite"></div>
         <div class="subhead">New questions since the anchor</div><div id="changes-questions" class="questions" aria-live="polite"></div>
       </section>

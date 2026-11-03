@@ -172,9 +172,12 @@ def _manual_finding_reference(assertion: dict, source: dict | None) -> dict | No
             type(assertion.get("certainty")) is not str or
             assertion["certainty"] not in CERTAINTY_PLAIN):
         raise InvalidInput("Manual finding requires a current source and recorded status")
-    for value in (assertion.get("id"), assertion.get("source_version_id"), source.get("version")):
+    for value in (assertion.get("id"), assertion.get("source_version_id"),
+                  source.get("id"), source.get("version")):
         if type(value) is not int or not 1 <= value <= 9223372036854775807:
             raise InvalidInput("Invalid manual source identity")
+    if source["id"] != assertion["source_version_id"]:
+        raise InvalidInput("Manual finding does not match its source identity")
     digest = source.get("sha256")
     if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
         raise InvalidInput("Invalid original source digest")
@@ -248,7 +251,10 @@ def _overview(state: dict, current: list[dict], stale: list[dict]) -> dict:
                 f"Source version #{reference['source_version_id']} "
                 f"({_visible_record_text(reference['document_id'])}@{reference['document_version']}); "
                 f"{anchor}; original SHA-256: {reference['sha256']}; "
-                f"transcription review SHA-256: {reference['transcription_review_sha256']}"
+                f"Annotation revision: {reference['annotation_revision']}; "
+                f"revision ID: {reference['annotation_revision_id']}; "
+                f"Initial transcription review SHA-256: {reference['initial_transcription_review_sha256']}; "
+                f"Transcription review SHA-256: {reference['transcription_review_sha256']}"
             )
             if reference.get("text_origin") == "pdf_extraction":
                 citation += (f"; extraction SHA-256: {reference['extraction_sha256']}"

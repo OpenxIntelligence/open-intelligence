@@ -17,7 +17,8 @@ from typing import Any, Mapping
 
 from .rights import (RightsError, normalize_permissions, permitted,
                      validate_content_item)
-from .source_provenance import source_provenance, assertion_provenance
+from .source_provenance import (source_provenance, assertion_provenance,
+                                REVISION_FIELDS, _positive)
 from .store import InvalidInput
 
 SOURCE_FAMILIES = frozenset({
@@ -212,15 +213,32 @@ def compile_context(case_id: str, case_state: Mapping[str, Any],
     if len({item["id"] for item in checked}) != len(checked):
         raise KnowledgeContextError("duplicated knowledge source")
     knowledge_map = {item["id"]: item for item in checked}
+    observations = {item["id"]: item for item in observed}
     proposed_links = []
     for link in comparison_proposals or []:
-        if not isinstance(link, dict) or set(link) != {
+        required = {
             "assertion_id", "knowledge_id", "relation", "applicability",
             "reviewer_note", "proposed_by",
-        }:
+        }
+        if not isinstance(link, dict) or not required <= link.keys():
             raise KnowledgeContextError("invalid comparison proposal shape")
         if type(link["assertion_id"]) is not int or link["assertion_id"] not in current_ids:
             raise KnowledgeContextError("comparison cites unknown or stale patient assertion")
+        observation = observations[link["assertion_id"]]
+        manual = observation.get("classification_origin") == "user_selected"
+        if set(link) != required | (set(REVISION_FIELDS) if manual else set()):
+            raise KnowledgeContextError("comparison requires its exact captured annotation revision")
+        if manual:
+            # The assertions table is a mutable current projection. Its row
+            # IDs may be reused after correction, including an A -> B -> A
+            # change, so only the immutable revision can bind the proposal.
+            for field in REVISION_FIELDS:
+                try:
+                    captured = _positive(link[field], field)
+                except InvalidInput as exc:
+                    raise KnowledgeContextError(str(exc)) from exc
+                if captured != observation[field]:
+                    raise KnowledgeContextError("comparison cites a stale annotation revision; reselect")
         source = knowledge_map.get(link["knowledge_id"])
         if source is None or not source["model_text_available"]:
             raise KnowledgeContextError("comparison requires current rights-qualified evidence text")

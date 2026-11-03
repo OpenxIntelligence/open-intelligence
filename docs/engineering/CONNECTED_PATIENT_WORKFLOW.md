@@ -1,6 +1,36 @@
 # Connected patient workflow integration — 2 November 2026 local / 3 November UTC
 
-## Current increment: reviewed PDF provenance through governed reports
+## Current increment: annotation revisions through governed reports
+
+This continuation composes #229 at `abbe3bf981ac0583f59eab45d853edd7b01a6aa6` into the verified #235 owner at `4f96b835f1306e0f92b803cd20ca6e46e2180216`. The exact shared source ancestor is #215 at `3be1106b5cd34523c4746e2df6f123048beb5659`. All 250 #235 source blobs and its complete tree (`34af78b0794e65c37ef5a06ab56bfa8c81467c64`) were matched locally before composition; #229's tree is `3c996392cf584a0bcb5bee7682b8295e4b110a60`. Local snapshot commit IDs are not substituted for these published source parents.
+
+### Corrected-selection contract
+
+The existing append-only `document_annotation_revisions` owner supplies `annotation_revision_id`, `annotation_revision`, `initial_transcription_review_sha256`, and the effective `transcription_review_sha256` through the shared source validator, clinical context, Composer, Patient World Model, knowledge comparison, quotation packet, readable/governed report and prepared receipt. Initial intake confirmation, current selection review, document version, original bytes and frozen PDF extraction remain separate identities. Returning to an earlier selection creates a new revision even if its text and review digest recur.
+
+Manual comparison proposals and selected evidence quotations now require both captured revision fields. This closes a concrete integration defect: SQLite can reuse the assertion row ID when corrections replace the current projection. An old ID alone must not retarget a proposal or an already-selected quote. Authored-source input shapes remain unchanged. Missing, malformed, stale or extraneous identity is refused; explicit reselection is required after a correction.
+
+The existing receipt owner reconstructs its complete expected patient reference under the same `BEGIN IMMEDIATE`. Revision fields are strict positive signed 64-bit integers, not booleans/floats/strings. Missing or changed identity, including an A→B→A return to the same passage/hash, produces no receipt or event. A correction after a preparation receipt commits withholds the report body and preserves the nonterminal historical event; it is not a delivery or clinical approval.
+
+Clinical note links add a nullable reference to the existing annotation history. New manual links retain their captured selection; removing/changing the current selection does not erase or rewrite an earlier note citation. Corrected, superseded and unbound legacy references have distinct review-required states. Legacy manual links lacking a captured revision remain visible without inventing an old quotation or classification. First-time note attachment also checks `expected_annotation_revision` under the existing write lock. Omission means initial revision 1; a corrected source requires explicit current revision. Existing links cannot be rebound; a new note version can cite the revised selection. No separate note/source history store is created.
+
+Readable reports display the annotation revision/ID, initial and effective review hashes, original identity and physical PDF coordinates. The client refuses incomplete/mixed revision provenance before print or download. Earlier snapshot exports and downloaded reports retain their captured selections. Manual classification still does not establish clinical review.
+
+### Verification record
+
+The unchanged pinned PDF environment passed all 17 #235 governed/readable provenance baseline tests before integration. Default Python lacked the pinned parser; that failed setup was corrected by using the existing Python 3.12.14 / pypdf 6.21.4 environment, not by changing parser limits. The merged pre-fix source lost revision fields in #235's shared validator: the inherited nine-test PDF World Model suite exposed 48 failed assertions/subtests and one missing-field error. All nine then passed after integrating #229's checks into the shared owner.
+
+New acceptance exercises correction, repeated selection content, stale comparisons and quotes, exact locked receipt validation, corrections at/beyond the receipt boundary, unchanged original bytes/history after restart, and preserved note links. Readable-report/client tests cover malformed IDs/hashes, mixed same-source revisions and cross-source revision reuse. The existing 11 browser journeys are retained; the two #229 text/PDF correction journeys join the same gate, with actual readable-report rendering and downloads added to the PDF journey. The complete local suite passed **871 Python/domain/HTTP tests in 319.662 seconds** and **193 JavaScript executions** with zero failures or skips. No SQLite ResourceWarning was emitted by this Python 3.12.14 run. The no-download guard and all five policy regressions passed; all 11 workflow YAML files parse. An independent reviewer found no blocking or minor finding and independently passed the 32 governed-annotation, clinical-annotation and readable-provenance checks. These focused executions overlap the full suite and are not extra distinct capabilities.
+
+Local Chrome/Chromium is absent: the actual PDF browser command stopped before application interaction and is not counted as a pass. The published draft PR receipt records the subsequent hosted results at the exact candidate commit/tree; this document does not substitute a source-parent result for that execution. The UI and offline workflows now check out the exact PR head, and the no-download guard runs when any workflow is changed. The connected gate retains all 13 actual browser journeys and archives source, screenshots and receipts.
+
+### Boundaries and current H1 dependency
+
+Only independently authored fictional records/evidence and the existing labelled recorded replay are used. No new dependency, live model, patient-derived data, rights grant, source acquisition or clinical action is introduced. The existing PDF limits and manual numeric HOLD remain. Source, evidence, question, report, receipt and follow-through owners remain shared.
+
+H1 #234 has advanced beyond the older tests-only audit below. Its source-fidelity/authority implementation at `65eafebd9fda221dc79789619133c78c6d01dc60` passed [API verification](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41568014664) and [React verification](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41568014897), extending #222. This continuation does not duplicate that owner or claim authenticated governed-report transport, production authorization, clinical validation or deployment. Repository-wide workflow administration and historical data/artifact cleanup remain outside this branch's completed evidence.
+
+## Historical #235 increment: reviewed PDF provenance through governed reports
 
 This increment builds on #210 at `9735414c947c211ab20154638179d0be8ff2db32`, selectively incorporates #203 at `f9ba8d66b56a7d6669ef0ffce902af6565e1b477` for content-specific evidence rights, and composes the PDF/patient-record behavior from #215 at `3be1106b5cd34523c4746e2df6f123048beb5659`. All three source PRs remain separate, draft and unmerged. The #210 source artifact was checksum verified and all 215 files matched its official Git blobs; all 223 local #215 files matched their pinned Git blobs before composition.
 

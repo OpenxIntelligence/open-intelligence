@@ -199,7 +199,14 @@ class ClinicalContinuityView:
             (patient_id, case_id),
         ).fetchall()
         lab = [self._lab_record(patient_id, case_id, dict(r)) for r in rows]
-        note_reviews = context["note_versions_requiring_source_review"]
+        note_reasons = {
+            "source_superseded_review_required": "source_superseded",
+            "annotation_revision_changed_review_required": "annotation_revision_changed",
+            "annotation_revision_unrecorded_review_required": "annotation_revision_unrecorded",
+        }
+        note_reviews = sorted({(link["note_version_id"], note_reasons[link["provenance_state"]])
+                               for link in context["note_source_links"]
+                               if link["provenance_state"] in note_reasons})
         # A case grant can be revoked between the clinical source read and the
         # independent lab receiver read. Revalidate both policy boundaries
         # before releasing even an evidence pointer. This narrows, but does
@@ -217,7 +224,7 @@ class ClinicalContinuityView:
             "lab_evidence_candidates": lab,
             "review_required": [
                 *({"kind": "clinical_note", "note_version_id": k,
-                    "reason": "source_superseded"} for k in note_reviews),
+                    "reason": reason} for k, reason in note_reviews),
                 *({"kind": "laboratory", "event_id": c["event_id"],
                     "reason": c["current_provenance_state"]} for c in lab),
             ],

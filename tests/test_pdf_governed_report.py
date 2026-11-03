@@ -28,7 +28,8 @@ ORIGINAL, STATEMENT = fixture.ORIGINAL, fixture.STATEMENT
 
 
 MANUAL_FIELDS = ("classification_origin", "annotation_method", "clinical_review",
-                 "transcription_review_sha256")
+                 "transcription_review_sha256", "initial_transcription_review_sha256",
+                 "annotation_revision_id", "annotation_revision")
 PDF_FIELDS = ("text_origin", "extraction_sha256", "source_page", "page_line",
               "page_text_sha256")
 PASSAGE = "Marker Q needs a separate review."
@@ -100,6 +101,10 @@ class PdfGovernedReportTests(unittest.TestCase):
         })
         quotes = [{"assertion_id": assertion["id"], "knowledge_id": EVIDENCE_KEY,
                    "quote": "claims no therapeutic outcomes"}]
+        if media != "authored":
+            for row in (proposals[-1], quotes[0]):
+                for field in ("annotation_revision_id", "annotation_revision"):
+                    row[field] = assertion[field]
         packets = EvidenceReviewPacket(bridge)
         review = AuthorizedEvidenceReviewHandoff(
             packets, return_authorizer=lambda actor, patient, action, purpose: (

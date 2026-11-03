@@ -104,6 +104,59 @@
     return block;
   }
 
+  function validateSourceReferences(report) {
+    // These checks preserve the server snapshot's declared associations. The
+    // source owner remains responsible for authenticating its actual records.
+    const baseFields = ['assertion_id', 'source_version_id', 'document_id',
+      'document_version', 'sha256', 'source_line'];
+    const manualFields = ['classification_origin', 'annotation_method', 'clinical_review',
+      'annotation_revision_id', 'annotation_revision', 'initial_transcription_review_sha256',
+      'transcription_review_sha256'];
+    const pdfFields = ['text_origin', 'extraction_sha256', 'source_page', 'page_line', 'page_text_sha256'];
+    const sourceFields = ['source_version_id', 'document_id', 'document_version', 'sha256',
+      ...manualFields, 'text_origin', 'extraction_sha256'];
+    const bySource = new Map(), byRevision = new Map(), byAssertion = new Map();
+    const positive = value => Number.isSafeInteger(value) && value > 0;
+    const digest = value => typeof value === 'string' && /^[0-9a-f]{64}$/.test(value);
+    const fail = () => { throw new Error('Report source revision provenance is incomplete or inconsistent.'); };
+    for (const reportSection of report.sections) {
+      for (const item of reportSection.items || []) {
+        if (!Object.prototype.hasOwnProperty.call(item, 'source_reference')) continue;
+        const reference = item.source_reference;
+        if (!reference || typeof reference !== 'object' || Array.isArray(reference)) fail();
+        const pdf = reference.text_origin === 'pdf_extraction';
+        const fields = [...baseFields, ...manualFields, ...(pdf ? pdfFields : [])];
+        if (Object.keys(reference).length !== fields.length ||
+            fields.some(field => !Object.prototype.hasOwnProperty.call(reference, field))) fail();
+        if (!['assertion_id', 'source_version_id', 'document_version', 'source_line',
+          'annotation_revision_id', 'annotation_revision'].every(field => positive(reference[field])) ||
+            reference.source_line > 512 ||
+            typeof reference.document_id !== 'string' || !reference.document_id.trim() ||
+            !['sha256', 'initial_transcription_review_sha256', 'transcription_review_sha256']
+              .every(field => digest(reference[field])) ||
+            reference.classification_origin !== 'user_selected' ||
+            reference.clinical_review !== 'not_performed' ||
+            reference.annotation_method !== (pdf ? 'manual-exact-extraction-line-selection' : 'manual-exact-line-selection') ||
+            (reference.annotation_revision === 1 &&
+              reference.initial_transcription_review_sha256 !== reference.transcription_review_sha256)) fail();
+        if (pdf && (!positive(reference.source_page) || reference.source_page > 20 ||
+            !positive(reference.page_line) || reference.page_line > reference.source_line ||
+            !digest(reference.extraction_sha256) || !digest(reference.page_text_sha256))) fail();
+        const sourceIdentity = JSON.stringify(sourceFields.map(field => reference[field]));
+        const assertionIdentity = JSON.stringify(fields.map(field => reference[field]));
+        if ((bySource.has(reference.source_version_id) &&
+              bySource.get(reference.source_version_id) !== sourceIdentity) ||
+            (byRevision.has(reference.annotation_revision_id) &&
+              byRevision.get(reference.annotation_revision_id) !== reference.source_version_id) ||
+            (byAssertion.has(reference.assertion_id) &&
+              byAssertion.get(reference.assertion_id) !== assertionIdentity)) fail();
+        bySource.set(reference.source_version_id, sourceIdentity);
+        byRevision.set(reference.annotation_revision_id, reference.source_version_id);
+        byAssertion.set(reference.assertion_id, assertionIdentity);
+      }
+    }
+  }
+
   function renderReport(report, caseId, sequence) {
     // The server supplies structured sections and text from the same state.
     // Download that accepted text instead of fetching a newer report later.
@@ -143,6 +196,7 @@
           !Array.isArray(payload.sections)) {
         throw new Error("Report does not match the selected case or lacks its text snapshot.");
       }
+      validateSourceReferences(payload);
       renderReport(payload, caseId, sequence);
     } catch (error) {
       if (sequence !== requestSequence || picker.value !== caseId) return;

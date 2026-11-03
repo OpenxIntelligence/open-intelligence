@@ -15,7 +15,8 @@ import json
 from .clinical_continuity import ClinicalContinuityError
 from .clinical_knowledge_context import AuthorizedClinicalKnowledge
 from .knowledge_context import KnowledgeContextError
-from .source_provenance import PROVENANCE_FIELDS
+from .source_provenance import PROVENANCE_FIELDS, REVISION_FIELDS, _positive
+from .store import InvalidInput
 
 MAX_QUOTE = 400
 
@@ -58,9 +59,10 @@ class EvidenceReviewPacket:
         seen = set()
         rows = []
         for selected in selected_quotes:
-            if not isinstance(selected, dict) or set(selected) != {
+            required = {
                 "assertion_id", "knowledge_id", "quote",
-            }:
+            }
+            if not isinstance(selected, dict) or not required <= selected.keys():
                 raise KnowledgeContextError("selected quote requires exact identifiers and text")
             aid, kid, quote = (selected["assertion_id"],
                                selected["knowledge_id"], selected["quote"])
@@ -69,6 +71,20 @@ class EvidenceReviewPacket:
             key = (aid, kid)
             if key in seen or key not in proposals or aid not in patient or kid not in evidence:
                 raise KnowledgeContextError("unknown or duplicated source/evidence comparison")
+            observation = patient[aid]
+            manual = observation.get("classification_origin") == "user_selected"
+            if set(selected) != required | (set(REVISION_FIELDS) if manual else set()):
+                raise KnowledgeContextError("selected quote requires its captured annotation revision")
+            if manual:
+                # A freshly loaded proposal cannot authorize an old browser
+                # selection against a different revision of the same passage.
+                for field in REVISION_FIELDS:
+                    try:
+                        captured = _positive(selected[field], field)
+                    except InvalidInput as exc:
+                        raise KnowledgeContextError(str(exc)) from exc
+                    if captured != observation[field]:
+                        raise KnowledgeContextError("selected quote cites a stale annotation revision; reselect")
             seen.add(key)
             source = evidence[kid]
             if not source["model_text_available"] or not isinstance(source["evidence_text"], str):
@@ -77,7 +93,6 @@ class EvidenceReviewPacket:
                 raise KnowledgeContextError("quote must be nonempty and bounded")
             if quote not in source["evidence_text"]:
                 raise KnowledgeContextError("quoted passage is absent from permitted original text")
-            observation = patient[aid]
             proposal = proposals[key]
             rows.append({
                 "candidate_relation": proposal["relation"],

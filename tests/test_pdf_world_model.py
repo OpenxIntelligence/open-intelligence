@@ -14,7 +14,8 @@ from pdf_fixtures import text_pdf
 
 
 MANUAL_FIELDS = ("classification_origin", "annotation_method", "clinical_review",
-                 "transcription_review_sha256")
+                 "transcription_review_sha256", "initial_transcription_review_sha256",
+                 "annotation_revision_id", "annotation_revision")
 PDF_FIELDS = ("text_origin", "extraction_sha256", "source_page", "page_line", "page_text_sha256")
 
 
@@ -86,6 +87,64 @@ class PdfWorldModelTests(unittest.TestCase):
             self.assertEqual(row.get("clinical_review"), "not_performed")
             self.assertEqual(row.get("transcription_review_sha256"), state["assertions"][0]["transcription_review_sha256"])
             self.assertTrue(all(field not in row for field in PDF_FIELDS))
+
+    def test_pdf_selection_revision_updates_current_understanding_without_changing_the_source(self):
+        imported, raw, preview = attach_pdf(self.store, state="reported")
+        source_id = imported["source_id"]
+        original = synthetic_world_model(self.store.state("CASE-ALPHA"), "CASE-ALPHA")
+        previous = original["observations"][0]
+        self.assertEqual(previous["annotation_revision"], 1)
+        question = self.store.add_question("CASE-ALPHA", "What does the selected passage actually say?")
+        snapshot = self.store.create_snapshot("CASE-ALPHA", question, "Independent fictional report", [source_id])
+        self.store.acknowledge_demo_review("CASE-ALPHA", snapshot, "Fictional operator")
+        with patch("open_intelligence.pdf_intake.extract_pdf", side_effect=AssertionError("Saved rendition must be reused")):
+            self.store.revise_document_annotations("CASE-ALPHA", source_id,
+                findings=[{"key": "marker-p", "state": "not-assessed", "quote": "Marker P was not assessed.", "line": 2}],
+                expected_revision=1, expected_sha256=preview["sha256"],
+                expected_extraction_sha256=preview["extraction_sha256"], confirmed_case_id="CASE-ALPHA",
+                manual_transcription_confirmed=True, reason="Correct the selected status to match this literal passage.")
+            self.store.close()
+            self.store = CaseStore(self.path)
+            model = synthetic_world_model(self.store.state("CASE-ALPHA"), "CASE-ALPHA")
+            current = model["observations"][0]
+            self.assertEqual(current["reported_state"], "not-assessed")
+            self.assertEqual(current["annotation_revision"], 2)
+            self.assertNotEqual(current["annotation_revision_id"], previous["annotation_revision_id"])
+            self.assertNotEqual(current["transcription_review_sha256"], previous["transcription_review_sha256"])
+            for field in ("source_version_id", "source_sha256", "document_version", "source_line",
+                          "initial_transcription_review_sha256") + PDF_FIELDS:
+                self.assertEqual(current[field], previous[field], field)
+            for field in MANUAL_FIELDS:
+                self.assertEqual(model["current_sources"][0][field], current[field], field)
+                self.assertEqual(model["unresolved"][0][field], current[field], field)
+            self.assertEqual(model["review_needed"]["stale_snapshot_ids"], [snapshot])
+            self.assertEqual(model["review_needed"]["open_question_ids"], [question])
+            self.assertEqual(self.store.source_document("CASE-ALPHA", source_id)["raw"], raw)
+            self.assertEqual(model["history"], [], "A selection correction is not an amended medical record")
+
+    def test_revision_provenance_rejects_missing_invalid_and_misbound_identity(self):
+        attach_pdf(self.store)
+        state = self.store.state("CASE-ALPHA")
+        for field in ("annotation_revision_id", "annotation_revision"):
+            for location in ("receipt", "source", "assertion"):
+                for invalid in (None, True, 0, -1, 1.0, 2 ** 63):
+                    changed = deepcopy(state)
+                    target = (changed["sources"][0]["document_intake"] if location == "receipt" else
+                              changed["sources"][0] if location == "source" else changed["assertions"][0])
+                    if invalid is None:
+                        del target[field]
+                    else:
+                        target[field] = invalid
+                    with self.subTest(field=field, location=location, invalid=invalid):
+                        with self.assertRaises(InvalidInput):
+                            synthetic_world_model(changed, "CASE-ALPHA")
+            for location in ("source", "assertion"):
+                changed = deepcopy(state)
+                target = changed["sources"][0] if location == "source" else changed["assertions"][0]
+                target[field] += 1
+                with self.subTest(field=field, location=location, invalid="different positive identity"):
+                    with self.assertRaises(InvalidInput):
+                        synthetic_world_model(changed, "CASE-ALPHA")
 
     def test_manual_conflict_references_retain_original_and_extraction_provenance(self):
         attach_pdf(self.store, document="PDF-ONE", state="reported", quote="Marker P was reported.")

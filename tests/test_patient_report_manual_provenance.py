@@ -73,13 +73,114 @@ class PatientReportManualProvenanceTests(unittest.TestCase):
         self.assertEqual(reference.get("extraction_sha256"), preview["extraction_sha256"])
         self.assertEqual(reference.get("page_text_sha256"), hashlib.sha256(b"Marker P was not assessed.\n").hexdigest())
         self.assertEqual(reference.get("transcription_review_sha256"), state["sources"][0]["document_intake"]["review_sha256"])
+        revision = self.store.document_annotations("CASE-ALPHA", source_id)["current_revision"]
+        self.assertEqual(reference.get("annotation_revision_id"), revision["id"])
+        self.assertEqual(reference.get("annotation_revision"), 1)
+        self.assertEqual(reference.get("initial_transcription_review_sha256"), revision["review_sha256"])
         text = render_text(payload)
         for value in ("physical page 2", "page line 1", "global extraction line 2",
+                      f"Annotation revision: 1; revision ID: {revision['id']}",
+                      "Initial transcription review SHA-256: " + revision["review_sha256"],
+                      "Transcription review SHA-256: " + revision["review_sha256"],
                       reference["sha256"], reference["extraction_sha256"],
                       reference["page_text_sha256"], reference["transcription_review_sha256"]):
             self.assertIn(value, item["citation"])
             self.assertIn(value, text)
         self.assertEqual(state, untouched)
+        self.assertEqual(tuple(self.store.db.iterdump()), ledger)
+
+    def test_readable_report_keeps_revision_identity_and_both_hashes_through_correction_revert_and_restart(self):
+        for pdf in (False, True):
+            with self.subTest(pdf=pdf):
+                # A separate source is used for each format without changing the
+                # shared source, annotation or historical report owners.
+                self.store.close()
+                self.store = CaseStore(Path(self.temp.name) / f"revisions-{pdf}.sqlite")
+                self.store.add_case("CASE-ALPHA", "Independent fictional report case")
+                raw, preview, source_id = self.import_manual(pdf=pdf)
+                first = self.store.document_annotations("CASE-ALPHA", source_id)["current_revision"]
+                initial_report = build_patient_report(self.store.state("CASE-ALPHA"))
+                initial_text = render_text(initial_report)
+                initial_reference = copy.deepcopy(self.item(initial_report)["source_reference"])
+                corrected = self.store.revise_document_annotations(
+                    "CASE-ALPHA", source_id,
+                    findings=[{"key": "marker-p", "state": "pending",
+                               "quote": "Marker P was not assessed.", "line": 2}],
+                    expected_revision=1, expected_sha256=preview["sha256"],
+                    confirmed_case_id="CASE-ALPHA", manual_transcription_confirmed=True,
+                    reason="Record a different fictional user-selected classification.",
+                    **({"expected_extraction_sha256": preview["extraction_sha256"]} if pdf else {}))
+                current_report = build_patient_report(self.store.state("CASE-ALPHA"))
+                reference = self.item(current_report)["source_reference"]
+                self.assertEqual(reference.get("annotation_revision"), 2)
+                self.assertEqual(reference.get("annotation_revision_id"), corrected["annotation_revision_id"])
+                self.assertNotEqual(reference["annotation_revision_id"], first["id"])
+                self.assertEqual(reference.get("initial_transcription_review_sha256"), first["review_sha256"])
+                self.assertEqual(reference["transcription_review_sha256"], corrected["review_sha256"])
+                self.assertNotEqual(reference["transcription_review_sha256"], first["review_sha256"])
+                self.assertEqual(reference["sha256"], hashlib.sha256(raw).hexdigest())
+                self.assertEqual(reference["document_version"], 1)
+                self.assertEqual(self.item(initial_report)["source_reference"], initial_reference)
+                self.assertEqual(render_text(initial_report), initial_text)
+                self.assertIn("Annotation revision: 1;", initial_text)
+                self.assertNotIn(corrected["review_sha256"], initial_text)
+                for digest_label, digest in (
+                    ("Initial transcription review", first["review_sha256"]),
+                    ("Transcription review", corrected["review_sha256"]),
+                ):
+                    self.assertIn(f"{digest_label} SHA-256: {digest}", render_text(current_report))
+                reverted = self.store.revise_document_annotations(
+                    "CASE-ALPHA", source_id, findings=first["findings"],
+                    expected_revision=2, expected_sha256=preview["sha256"],
+                    confirmed_case_id="CASE-ALPHA", manual_transcription_confirmed=True,
+                    reason="Return to the original fictional classification while retaining history.",
+                    **({"expected_extraction_sha256": preview["extraction_sha256"]} if pdf else {}))
+                reverted_report = build_patient_report(self.store.state("CASE-ALPHA"))
+                reverted_reference = self.item(reverted_report)["source_reference"]
+                self.assertEqual(reverted_reference["annotation_revision"], 3)
+                self.assertEqual(reverted_reference["annotation_revision_id"], reverted["annotation_revision_id"])
+                self.assertNotEqual(reverted_reference["annotation_revision_id"], first["id"])
+                self.assertEqual(reverted_reference["transcription_review_sha256"], first["review_sha256"])
+                before_restart = render_text(reverted_report)
+                path = Path(self.temp.name) / f"revisions-{pdf}.sqlite"
+                self.store.close()
+                self.store = CaseStore(path)
+                self.assertEqual(render_text(build_patient_report(self.store.state("CASE-ALPHA"))), before_restart)
+                self.assertEqual(self.store.source_document("CASE-ALPHA", source_id)["raw"], raw)
+                self.assertEqual([row["revision"] for row in self.store.document_annotations(
+                    "CASE-ALPHA", source_id)["history"]], [1, 2, 3])
+
+    def test_revision_type_and_source_association_mismatches_refuse_readable_reports(self):
+        _, _, source_id = self.import_manual()
+        base = self.store.state("CASE-ALPHA")
+        revision = self.store.document_annotations("CASE-ALPHA", source_id)["current_revision"]
+        changes = [
+            lambda state: state["assertions"][0].pop("annotation_revision_id"),
+            lambda state: state["assertions"][0].update(annotation_revision_id=revision["id"] + 1),
+            lambda state: state["assertions"][0].update(annotation_revision=2),
+            lambda state: state["assertions"][0].pop("initial_transcription_review_sha256"),
+            lambda state: state["assertions"][0].update(initial_transcription_review_sha256="0" * 64),
+            lambda state: state["sources"][0].update(id=True),
+        ]
+        for field, receipt_field in (
+            ("annotation_revision_id", "annotation_revision_id"),
+            ("annotation_revision", "annotation_revision"),
+            ("initial_transcription_review_sha256", "initial_review_sha256"),
+        ):
+            for value in ((True, 0, -1, 1.0, "1", 2 ** 63) if field != "initial_transcription_review_sha256"
+                          else (True, None, "not-a-digest", "A" * 64)):
+                def corrupt_together(state, field=field, receipt_field=receipt_field, value=value):
+                    state["assertions"][0][field] = value
+                    state["sources"][0][field] = value
+                    state["sources"][0]["document_intake"][receipt_field] = value
+                changes.append(corrupt_together)
+        ledger = tuple(self.store.db.iterdump())
+        for index, change in enumerate(changes):
+            with self.subTest(change=index):
+                altered = copy.deepcopy(base)
+                change(altered)
+                with self.assertRaises(InvalidInput):
+                    build_patient_report(altered)
         self.assertEqual(tuple(self.store.db.iterdump()), ledger)
 
     def test_manual_text_report_preserves_manual_review_without_claiming_pdf_extraction(self):

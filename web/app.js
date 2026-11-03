@@ -87,7 +87,7 @@ async function initialize() {
     picker.addEventListener('change', () => {
       if (documentIntake.hasDraft()) {
         picker.value = caseId;
-        notice('Add the record or discard its intake before switching cases.', true);
+        notice('Save the record review or discard it before switching cases.', true);
         return;
       }
       // An unfinished narrative must never silently become attached to another case.
@@ -407,6 +407,10 @@ function render() {
   const priorQuestion = sameCase ? el('question-choice').value : null;
   const priorModelQuestion = sameCase ? el('model-investigation-question').value : null;
   const priorInputs = sameCase ? [...el('source-choice').querySelectorAll('input')] : [];
+  const hasNarrative = ['draft-observations', 'draft-summary', 'draft-assumptions'].some(id => el(id).value.trim());
+  const priorAnnotationRevisions = new Map(priorInputs
+    .filter(input => input.checked && input.dataset.annotationRevision)
+    .map(input => [Number(input.value), Number(input.dataset.annotationRevision)]));
   const priorSourceIds = new Set(priorInputs.filter(x => x.checked).map(x => Number(x.value)));
   const preserveSources = priorInputs.length > 0;
   const priorEvidenceQuestion = sameCase ? el('evidence-question-choice').value : null;
@@ -463,6 +467,16 @@ function render() {
       download.href = '/api/cases/' + caseId + '/sources/' + source.id + '/download';
       download.download = source.document_intake.filename;
       card.append(download);
+      const edit = node('button', source.state === 'current' ? 'Edit selected passages' : 'View passage history',
+        'button secondary minor edit-source-passages');
+      edit.type = 'button'; edit.dataset.sourceId = source.id;
+      const sourceCase = caseId;
+      edit.addEventListener('click', async () => {
+        if (sourceCase !== caseId || renderedCaseId !== sourceCase) return;
+        try { await documentIntake.editSource(source.id); }
+        catch (error) { if (sourceCase === caseId) notice(error.message, true); }
+      });
+      card.append(edit);
     }
     el('source-list').append(card);
   }
@@ -579,8 +593,18 @@ function render() {
     const label = node('label');
     const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.value = source.id;
     checkbox.checked = preserveSources ? priorSourceIds.has(source.id) : true;
+    const revision = source.document_intake?.annotation_revision;
+    if (Number.isSafeInteger(revision)) {
+      checkbox.dataset.annotationRevision = hasNarrative && priorAnnotationRevisions.has(source.id)
+        ? priorAnnotationRevisions.get(source.id) : revision;
+      checkbox.addEventListener('change', () => {
+        if (checkbox.checked) checkbox.dataset.annotationRevision = revision;
+      });
+    }
     label.append(checkbox, node('span', source.document_id + '@' + source.version + ', ' +
       source.event_date + (source.state !== 'current' ? ', Needs review: uncheck and select the replacement explicitly' : '')));
+    if (revision && Number(checkbox.dataset.annotationRevision) !== revision)
+      label.append(node('span', 'Selected passages changed while this draft was open. Review them, then uncheck and reselect this source.', 'muted tiny'));
     el('source-choice').append(label);
   }
   if (!latest.length) empty(el('source-choice'), 'No current sources.');
@@ -609,7 +633,7 @@ function render() {
       }); actions.append(button);
     }
     box.append(top, description, meta, actions);
-    if (snapshot.state === 'stale') box.append(node('p', 'A source was amended. This version remains historical and cannot be acknowledged as current.', 'muted'));
+    if (snapshot.state === 'stale') box.append(node('p', 'Supporting records, selected passages or evidence changed. This version remains historical and cannot be acknowledged as current.', 'muted'));
     el('snapshot-list').append(box);
   }
   clear('model-investigation-question');
@@ -900,7 +924,8 @@ el('draft-form').addEventListener('submit', async event => {
   }
   try {
     const requestedCase = readyCase();
-    const sources = [...el('source-choice').querySelectorAll('input:checked')].map(x => Number(x.value));
+    const selectedSources = [...el('source-choice').querySelectorAll('input:checked')];
+    const sources = selectedSources.map(x => Number(x.value));
     const summary = [
       ['Reported observations', observations],
       ['Working hypothesis or mechanism', el('draft-summary').value],
@@ -910,6 +935,9 @@ el('draft-form').addEventListener('submit', async event => {
       .join('\n\n');
     const created = await api('/api/cases/' + requestedCase + '/snapshots', {
       question_id: Number(el('question-choice').value), summary, source_ids: sources,
+      expected_annotation_revisions: Object.fromEntries(selectedSources
+        .filter(input => input.dataset.annotationRevision)
+        .map(input => [input.value, Number(input.dataset.annotationRevision)])),
       evidence_assessment_ids: [...el('evidence-choice').querySelectorAll('input:checked')].map(x => Number(x.value)),
     });
     if (requestedCase !== caseId) return;
@@ -1425,7 +1453,9 @@ function renderChangesSinceReview(data) {
   }
   clear('changes-amendments');
   const amendments = data.amendments || [];
-  if (!amendments.length) empty(el('changes-amendments'), 'No amended source versions recorded after the anchor event.');
+  const annotationRevisions = data.annotation_revisions || [];
+  if (!amendments.length && !annotationRevisions.length)
+    empty(el('changes-amendments'), 'No document amendments or passage revisions recorded after the anchor event.');
   for (const item of amendments) {
     const card = node('article', null, 'source-card');
     const top = node('div', null, 'source-top');
@@ -1454,6 +1484,22 @@ function renderChangesSinceReview(data) {
       : 'No saved investigation cited the superseded version.', 'muted'));
     el('changes-amendments').append(card);
   }
+  for (const item of annotationRevisions) {
+    const card = node('article', null, 'source-card');
+    card.append(node('strong', item.document_id + '@' + item.version + ' · Selection revision ' +
+      item.previous_annotation_revision + ' → ' + item.annotation_revision),
+      node('p', 'User-selected passages changed. The original document version is unchanged.', 'muted'),
+      node('p', item.reason, 'quoted'),
+      node('p', 'Event #' + item.event_id + ' at ' + item.occurred_at + '. Clinical review not performed.', 'snapshot-meta'));
+    const inspect = node('button', 'Inspect selection history', 'button secondary minor'); inspect.type = 'button';
+    const sourceCase = caseId;
+    inspect.addEventListener('click', async () => {
+      if (sourceCase !== caseId) return;
+      try { await documentIntake.editSource(item.source_id); }
+      catch (error) { if (sourceCase === caseId) notice(error.message, true); }
+    });
+    card.append(inspect); el('changes-amendments').append(card);
+  }
   clear('changes-stale');
   const staleList = data.stale_investigations || [];
   if (!staleList.length) empty(el('changes-stale'), 'No saved investigation was marked stale after the anchor event.');
@@ -1468,6 +1514,9 @@ function renderChangesSinceReview(data) {
     for (const cause of item.causes || []) {
       const causeText = cause.cause === 'source_amendment'
         ? 'Stale because a bound source was amended (event #' + cause.event_id + ' at ' + cause.occurred_at + ').'
+        : cause.cause === 'annotation_revision'
+          ? 'Stale because the selected passages changed to revision ' + cause.annotation_revision +
+            ' (event #' + cause.event_id + '). The original file is unchanged.'
         : cause.cause === 'evidence_change'
           ? 'Stale because fictional evidence changed (event #' + cause.event_id + ' at ' + cause.occurred_at +
             (cause.evidence_version_id ? ', evidence version #' + cause.evidence_version_id : '') +
