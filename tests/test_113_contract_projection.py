@@ -1,4 +1,4 @@
-"""Issue 113 contract projection tests, DRAFT, not yet submitted as a PR.
+"""Issue 113 contract projection tests.
 
 Maps legacy journeys to API read projections on clean main, without
 changing any legacy file or application behavior. Fictional data only,
@@ -42,11 +42,12 @@ class ContractProjectionTests(unittest.TestCase):
 
     def request(self, path, payload=None):
         url = f"http://127.0.0.1:{self.port}{path}"
+        headers = {"X-Fictional-Actor": "FICTIONAL-NAVIGATOR-A"}
         if payload is None:
-            req = Request(url)
+            req = Request(url, headers=headers)
         else:
             req = Request(url, data=json.dumps(payload).encode(), method="POST",
-                          headers={"Content-Type": "application/json"})
+                          headers={"Content-Type": "application/json", **headers})
         try:
             with urlopen(req, timeout=5) as response:
                 return response.status, json.loads(response.read())
