@@ -92,6 +92,8 @@ test('known same-specimen same-date contradiction is never promoted to assessmen
     unresolved_observations:1,source_disagreements:1};
   // There is no "reported" observation: fake source disagreement cannot pass.
   assert.throws(()=>parseSourceWorldModel(w,patientId,caseId));
+  assert.equal(Object.isFrozen(w.observations[0]),false,
+    'Parser must not freeze untrusted source data after a failed response');
   w.observations[0].reported_state='reported';
   w.unresolved_refs=[];
   w.conflicts[0].reported_states=['negative','reported'];
