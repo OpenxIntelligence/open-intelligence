@@ -83,7 +83,7 @@ class QuestionImageCoexistenceTests(SourceVersionFixture):
                 base, old_images + "/" + image_id
             )
             self.assertEqual((status, image_copy), (200, raw))
-            self.assertEqual(request(base, root + "/questions")[0], 200)
+            self.assertEqual(request(base, root + "/questions", token=TOKEN_A)[0], 200)
 
             status, amended, _ = self.ingest(base, patient, AMENDED)
             self.assertEqual(status, 201)
