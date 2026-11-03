@@ -192,5 +192,104 @@ class JourneyShellHttpTests(unittest.TestCase):
         self.assertEqual(error["error"], "Unknown case")
 
 
+class DraftFilterUiContractTests(unittest.TestCase):
+    def test_filter_control_present_and_text_only(self):
+        javascript = (ROOT / "web" / "app.js").read_text()
+
+        self.assertIn("draftQuestionFilter", javascript)
+        self.assertIn("draftFilterCaseId", javascript)
+        self.assertIn("Showing drafts for Q", javascript)
+        self.assertIn("Show all drafts", javascript)
+        self.assertIn("textContent", javascript)
+        self.assertNotIn("innerHTML", javascript)
+
+    def test_filter_state_resets_on_case_switch(self):
+        javascript = (ROOT / "web" / "app.js").read_text()
+
+        self.assertIn("if (!sameCase)", javascript)
+        self.assertIn("draftQuestionFilter = null", javascript)
+        self.assertIn("draftFilterCaseId = null", javascript)
+        self.assertIn("draftFilterCaseId !== caseId", javascript)
+        self.assertIn("draftFilterCaseId === caseId", javascript)
+        self.assertIn("draftQuestionFilter = question.id", javascript)
+        self.assertIn("draftFilterCaseId = caseId", javascript)
+
+    def test_filter_copy_is_descriptive_only(self):
+        for snippet in (
+            "Showing drafts for Q",
+            "Show all drafts",
+            "No drafts for this question yet in this fictional case.",
+        ):
+            lowered = snippet.lower()
+            for wording in FORBIDDEN_WORDING:
+                self.assertNotIn(wording, lowered)
+
+    def test_filter_is_client_side_only(self):
+        javascript = (ROOT / "web" / "app.js").read_text()
+
+        self.assertIn("active.snapshots", javascript)
+        self.assertIn(
+            "Number(snapshot.question_id) !== Number(draftQuestionFilter)",
+            javascript,
+        )
+        self.assertNotIn("/drafts/filter", javascript)
+
+
+class DraftFilterHttpTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.path = str(Path(cls.tmp.name) / "draft-filter-http.sqlite")
+        seed(cls.path)
+        bound_handler = type(
+            "BoundDraftFilterHandlerForTest", (Handler,), {"db_path": cls.path}
+        )
+        cls.server = ThreadingHTTPServer(("127.0.0.1", 0), bound_handler)
+        cls.port = cls.server.server_address[1]
+        cls.thread = threading.Thread(
+            target=cls.server.serve_forever, daemon=True
+        )
+        cls.thread.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown()
+        cls.server.server_close()
+        cls.thread.join(timeout=5)
+        cls.tmp.cleanup()
+
+    def request_json(self, path: str):
+        request = Request(f"http://127.0.0.1:{self.port}{path}")
+        try:
+            with urlopen(request, timeout=5) as response:
+                return response.status, json.loads(response.read())
+        except HTTPError as error:
+            return error.code, json.loads(error.read())
+
+    def request_text(self, path: str):
+        request = Request(f"http://127.0.0.1:{self.port}{path}")
+        try:
+            with urlopen(request, timeout=5) as response:
+                return response.status, response.read().decode("utf-8")
+        except HTTPError as error:
+            return error.code, error.read().decode("utf-8")
+
+    def test_state_still_returns_unfiltered_lists(self):
+        status, state = self.request_json("/api/cases/CASE-ALPHA/state")
+
+        self.assertEqual(status, 200)
+        self.assertIn("snapshots", state)
+        self.assertIn("questions", state)
+        self.assertIn("sources", state)
+
+    def test_portal_still_serves_draft_anchor_targets(self):
+        status, body = self.request_text("/")
+
+        self.assertEqual(status, 200)
+        self.assertIn('id="snapshot-list"', body)
+        self.assertIn('id="question-list"', body)
+        self.assertIn('id="investigation-history-heading"', body)
+
+
 if __name__ == "__main__":
     unittest.main()

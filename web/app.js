@@ -4,6 +4,8 @@ let caseId = null;
 let active = null;
 let refreshSequence = 0;
 let renderedCaseId = null;
+let draftQuestionFilter = null;
+let draftFilterCaseId = null;
 const el = (id) => document.getElementById(id);
 function node(tag, text, className = '') {
   const item = document.createElement(tag);
@@ -69,6 +71,8 @@ async function initialize() {
       cancelSourceRead();
       caseId = picker.value;
       active = null; // Reject writes while the next case is loading.
+      draftQuestionFilter = null;
+      draftFilterCaseId = null;
       for (const id of ['question-text', 'report-text', 'evidence-rationale', 'draft-observations',
         'draft-summary', 'draft-assumptions']) el(id).value = '';
       if (el('source-dialog').open) el('source-dialog').close();
@@ -357,6 +361,8 @@ function renderBiologicalAssets() {
 }
 function render() {
   const sameCase = renderedCaseId === caseId;
+  if (!sameCase) { draftQuestionFilter = null; draftFilterCaseId = null; }
+  if (draftFilterCaseId !== null && draftFilterCaseId !== caseId) { draftQuestionFilter = null; draftFilterCaseId = null; }
   const priorQuestion = sameCase ? el('question-choice').value : null;
   const priorInputs = sameCase ? [...el('source-choice').querySelectorAll('input')] : [];
   const priorSourceIds = new Set(priorInputs.filter(x => x.checked).map(x => Number(x.value)));
@@ -438,6 +444,11 @@ function render() {
     draftsLink.href = '#investigation-history-heading';
     draftsLink.className = 'button secondary minor';
     draftsLink.textContent = 'Open saved drafts';
+    draftsLink.addEventListener('click', () => {
+      draftQuestionFilter = question.id;
+      draftFilterCaseId = caseId;
+      render();
+    });
     row.append(draftsLink);
     el('question-list').append(row);
     const opt = node('option', 'Q' + question.id + ', ' + question.question.slice(0, 62));
@@ -526,8 +537,24 @@ function render() {
   if ([...priorSourceIds].some(id => !latest.some(x => x.id === id)))
     notice('An investigation source changed while you were editing. Review the narrative and explicitly reconcile source selections before saving.', true);
   clear('snapshot-list');
+  if (draftQuestionFilter !== null && draftFilterCaseId === caseId) {
+    const filterNotice = node('p', 'Showing drafts for Q' + draftQuestionFilter + ' in this fictional case. This list shows only drafts for that question.', 'muted');
+    el('snapshot-list').append(filterNotice);
+    const showAll = document.createElement('a');
+    showAll.href = '#investigation-history-heading';
+    showAll.className = 'button secondary minor';
+    showAll.textContent = 'Show all drafts';
+    showAll.addEventListener('click', () => {
+      draftQuestionFilter = null;
+      draftFilterCaseId = null;
+      render();
+    });
+    el('snapshot-list').append(showAll);
+  }
   if (!active.snapshots.length) empty(el('snapshot-list'), 'No investigation drafts yet.');
+  if (draftQuestionFilter !== null && draftFilterCaseId === caseId && active.snapshots.length && !active.snapshots.some(s => Number(s.question_id) === Number(draftQuestionFilter))) empty(el('snapshot-list'), 'No drafts for this question yet in this fictional case.');
   for (const snapshot of active.snapshots) {
+    if (draftQuestionFilter !== null && draftFilterCaseId === caseId && Number(snapshot.question_id) !== Number(draftQuestionFilter)) continue;
     const box = node('div', null, 'snapshot'); const top = node('div', null, 'topline');
     top.append(node('strong', 'Investigation #' + snapshot.id), pill(snapshot.state,
       snapshot.state === 'stale' ? 'pill-alert' : snapshot.state === 'draft' ? 'pill-warn' : ''));
