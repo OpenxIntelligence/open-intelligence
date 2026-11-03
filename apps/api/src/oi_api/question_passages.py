@@ -61,6 +61,19 @@ class QuestionPassages:
 
     def metadata_locked(self,c,*,revision_id=None):
         """Read passage-set identity/freshness without disclosing original text."""
+        if not self.registry._transaction_active:
+            raise PatientRegistryError('Question passage preparation requires a transaction')
+        if self.registry._fetchone(
+                "SELECT to_regclass('investigation.question_passage_revisions')")[0] is None:
+            # Direct migration fixtures seed published older authored schemas.
+            # Current HTTP still requires the exact application schema revision.
+            revisions=self.registry._fetchall(
+                'SELECT version_num FROM public.alembic_version ORDER BY version_num')
+            legacy={'0010_authored_evidence_origin','0011_evidence_convergence','0012_reviewed_documents'}
+            if revision_id is not None or len(revisions)!=1 or revisions[0][0] not in legacy:
+                raise RuntimeError('Question passage owner unavailable at this schema revision')
+            return dict(revision_id=None,revision=0,attached_by=None,attached_at=None,
+                        references=[],state='current_unreviewed')
         rows=self.rows_locked(c)
         row=next((r for r in rows if r[0]==revision_id),None) if revision_id else (rows[-1] if rows else None)
         if revision_id and row is None:

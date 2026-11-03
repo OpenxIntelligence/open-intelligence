@@ -70,6 +70,8 @@ class RegistryMigrationTests(unittest.TestCase):
             connection.execute(text("DROP TABLE IF EXISTS investigation.evidence_catalog_records"))
             connection.execute(text("DROP TABLE IF EXISTS investigation.evidence_command_origins"))
             connection.execute(text("DROP FUNCTION IF EXISTS investigation.guard_evidence_command_origin_insert()"))
+            connection.execute(text("DROP TABLE IF EXISTS investigation.question_passage_revisions"))
+            connection.execute(text("DROP FUNCTION IF EXISTS investigation.guard_question_passage_revision()"))
             connection.execute(text("DROP TABLE IF EXISTS investigation.evidence_commands"))
             connection.execute(text("DROP TABLE IF EXISTS investigation.question_evidence_reports"))
             connection.execute(text("DROP TABLE IF EXISTS investigation.question_evidence_assessments"))
