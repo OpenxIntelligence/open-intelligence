@@ -197,6 +197,8 @@ h1:focus{outline:2px solid #174b48;outline-offset:5px}
 .record-import-disclosure>summary:focus-visible{outline:3px solid #ba8639;outline-offset:3px}
 .record-import-disclosure>.intake-panel{margin:12px 0 16px}
 #opened-original:focus,#sources-heading:focus{outline:2px solid #174b48;outline-offset:5px}
+/* Root scroll padding already clears patient context at this entry heading. */
+#sources-heading{scroll-margin-block-start:0}
 
 /* Explicit keyboard access to the bounded original-text reader. */
 .original-text:focus-visible{outline:3px solid #ba8639;outline-offset:3px}

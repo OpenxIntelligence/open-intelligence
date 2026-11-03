@@ -43,6 +43,7 @@ def exercise(cd, out):
             request_sources();loaded()
             cd.wait("document.activeElement===document.querySelector('#sources-heading')", 'requested source history receives focus')
             cd.wait("(()=>{const r=document.activeElement.getBoundingClientRect();const h=document.querySelector('.topbar');return r.top>=0&&r.bottom<=innerHeight&&(h.dataset.sticky==='false'||r.top>=h.getBoundingClientRect().bottom)})()", 'source heading fully visible below workspace context')
+            assert cd.evaluate("(()=>{const r=document.activeElement.getBoundingClientRect();const h=document.querySelector('.topbar');const edge=h.dataset.sticky==='false'?0:h.getBoundingClientRect().bottom;return r.top>=edge&&r.top<=edge+32})()"), 'Entry positions the heading beneath context, leaving room to read instead of focusing at the bottom edge'
             assert cd.evaluate('document.documentElement.scrollWidth<=innerWidth+1'), 'Source entry retains narrow reflow'
             assert cd.evaluate("document.querySelector('[data-testid=workspace-identity]').textContent")==patient
             assert cd.evaluate("document.querySelector('#source-filter').value===''&&document.querySelector('#source-state').value==='all'"), 'Existing fresh-response filter reset retained'

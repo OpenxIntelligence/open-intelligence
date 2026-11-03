@@ -52,7 +52,10 @@ function App(){
   if(state.recordsPhase!=='ready')return;
   sourceEntry.current=null;
   if(state.sourceIndex?.case_id===requested.caseId&&
-     (document.activeElement===requested.trigger||document.activeElement===document.body))sourcesHeading.current?.focus();
+     (document.activeElement===requested.trigger||document.activeElement===document.body)){
+   sourcesHeading.current?.focus({preventScroll:true});
+   sourcesHeading.current?.scrollIntoView({block:'start'});
+  }
  },[state.sourceIndex,state.recordsPhase,state.patient?.patient_id,section]);
  function inspectSources(caseId:string,trigger:HTMLButtonElement){
   originalReturn.current=null;

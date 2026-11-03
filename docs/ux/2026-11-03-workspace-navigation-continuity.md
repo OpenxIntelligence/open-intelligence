@@ -136,3 +136,23 @@ recorded in the PR and canonical UX notes without claiming an unrun result.
 No separate full API/recovery suite, independent reviewer, assistive-technology
 participant study, full WCAG conformance or clinical validation is established.
 Draft, unmerged, undeployed; independently fictional inputs only.
+
+### Screenshot-driven refinement
+
+The first focus implementation, `92d6580b3b72fcbf8ee5346f2dd05edb89ab39d5`,
+passed [run 41740084294](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41740084294).
+Artifact `13281131549` SHA-256
+`205d66cadf89efa52c5ad8f95409983b9b7ef47ad2f3527c353dd451e8ba71f8`
+and all 464 source blobs/modes were verified. All new focus, cancellation and
+inherited connected assertions passed. Visual inspection nevertheless found
+the heading remained at the same bottom-edge position on mobile and desktop:
+focus alone does not scroll an already-visible element.
+
+The refinement explicitly positions that heading at the start of the reading
+area after focusing without automatic scroll. Root scroll padding supplies the
+measured header clearance; this heading no longer doubles that padding with
+an additional top scroll margin. The browser check now requires the heading
+within 32px below the sticky header (or viewport top in the short-screen
+fallback), as well as full visibility. This strengthens acceptance; it does
+not change the request, focus-cancellation or permission behavior. Final
+refined-head acceptance remains pending at this source checkpoint.
