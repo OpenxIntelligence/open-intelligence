@@ -43,11 +43,22 @@ their original donor's documentation claims. The separate comparison-draft
   `c4c6ab88ab0dadf53f7b9adcf35dec86637ced1cd572bc62fb57600572d1044a`.
   All source bytes reconstruct the exact base tree above.
 - [x] Baseline client suite: 300 passed, zero failures/skips.
-- [ ] Apply donor regressions first and record expected failures.
-- [ ] Adopt the bounded donor implementations and CI gate wiring; retain source
+- [x] Apply donor regressions first and record expected failures. Pinned local
+  tests-only commit `89d12cf` produced 9 chronology failures and 301 passing
+  client controls (310 total); the original package gate produced 8 expected
+  failures and 5 passing filesystem controls. No test was skipped.
+- [x] Adopt the bounded donor implementations and CI gate wiring; retain source
   pins and identify any adaptations instead of implying whole-branch reuse.
-- [ ] Run local client suite, production build, filesystem controls and actual
-  installed-tree gate; inspect diff and protected paths.
+  All five #330 code/test files and #339's filesystem test retain exact donor
+  bytes. The #339 gate, package scripts and workflow only lose an extra blank
+  line at EOF. Donor narrative/research documents are not imported.
+- [x] Run local client suite, production build, filesystem controls and actual
+  installed-tree gate: 310 client tests, 13 filesystem controls, TypeScript/Vite
+  build and installed-tree evidence gate pass; 18 installed packages inspected,
+  two optional packages explicitly uninspected, zero errors/skips. Dependency
+  cache bytes were copied into real local directories so the gate did not need
+  a symlink exemption. Diff whitespace checks pass. Backend, migrations,
+  lockfiles, patient/source/session owners and browser helpers are unchanged.
 - [ ] Obtain a fresh read-only code review and resolve material findings.
 - [ ] Publish a draft child of #335 and verify the exact proposed commit using
   the existing hosted PostgreSQL/FastAPI/React/Chromium workflow.
