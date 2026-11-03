@@ -56,7 +56,7 @@ class PostgresRecordRequests:
         """
         events = self.patients._fetchall(
             "SELECT metadata_json->>'case_id',metadata_json->>'source_id',"
-            "metadata_json->>'source_sha256',metadata_json->>'source_version' "
+            "metadata_json->>'source_sha256',metadata_json->>'source_version',occurred_at "
             "FROM identity.identity_domain_events "
             "WHERE patient_id=%s AND event_type='record.request.received' "
             "AND metadata_json->>'request_id'=%s ORDER BY id LIMIT 2",
@@ -66,7 +66,7 @@ class PostgresRecordRequests:
             return None
         if len(events) != 1:
             raise PatientRegistryError("Ambiguous record receipt history")
-        case_id, source_id, digest, source_version = events[0]
+        case_id, source_id, digest, source_version, received_at = events[0]
         source = self.patients._fetchone(
             "SELECT s.case_id,s.sha256,s.version,s.kind,s.state,"
             "b.patient_id,b.origin_org,b.status "
@@ -90,7 +90,7 @@ class PostgresRecordRequests:
                    "version": source[2], "sha256": digest}
         return {
             "source_id": source_id, "case_id": case_id,
-            "receipt_status": state, "reference": ref,
+            "receipt_status": state, "reference": ref, "received_at": received_at,
         }
 
     def _record(self, row: tuple, *, organization: str,
@@ -110,7 +110,14 @@ class PostgresRecordRequests:
             "status": "received" if received else status,
             "revision": 2 if received else revision,
             "created_at": created_at.isoformat() if isinstance(created_at, datetime) else str(created_at),
-            "updated_at": updated_at.isoformat() if isinstance(updated_at, datetime) else str(updated_at),
+            # A receive is a journal event, not a record-request row update.
+            # Project the true transition time rather than incorrectly
+            # repeating the original request's creation timestamp.
+            "updated_at": (
+                received["received_at"].isoformat()
+                if received and isinstance(received["received_at"], datetime)
+                else (updated_at.isoformat() if isinstance(updated_at, datetime) else str(updated_at))
+            ),
             "receipt_status": received["receipt_status"] if received else "not_received",
             "source_reference": received["reference"] if received else None,
             "external_request_sent": False,
