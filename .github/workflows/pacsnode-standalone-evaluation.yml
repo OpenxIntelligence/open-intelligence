@@ -41,6 +41,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p verification-artifacts
+          git rev-parse HEAD > verification-artifacts/oi-evaluator-commit.txt
           python -m unittest discover -s tests -p 'test_pacsnode_probe_contract.py' -v 2>&1 |
             tee verification-artifacts/pacsnode-harness-tests.txt
       - name: Install only hash-pinned pydicom core for synthetic fixture generation
@@ -110,8 +111,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/oi-pacsnode-run"
-          cd "$RUNNER_TEMP/oi-pacsnode-run"
+          # Persisted DB settings override bootstrap environment values upstream.
+          # Every evaluation therefore needs its own empty directory/database.
+          pacs_run_directory=$(mktemp -d "$RUNNER_TEMP/oi-pacsnode-run.XXXXXX")
+          cd "$pacs_run_directory"
           # Checked upstream binary source at the pinned commit: the
           # command writes config.toml in cwd and does not take --output.
           "$RUNNER_TEMP/oi-pacsnode-source/target/debug/pacsnode" generate-config standalone
@@ -121,7 +124,7 @@ jobs:
           # For a byte-for-byte raw pixel test use ExplicitVRLittleEndian
           # instead of comparing compressed PixelData bytes to uncompressed.
           export PACS_SERVER__STORAGE_TRANSFER_SYNTAX=1.2.840.10008.1.2.1
-          printf "%s\\n" "$PACS_SERVER__STORAGE_TRANSFER_SYNTAX" > "$GITHUB_WORKSPACE/verification-artifacts/pacsnode-test-storage-transfer-syntax.txt"
+          printf '%s\n' "$PACS_SERVER__STORAGE_TRANSFER_SYNTAX" > "$GITHUB_WORKSPACE/verification-artifacts/pacsnode-test-storage-transfer-syntax.txt"
           "$RUNNER_TEMP/oi-pacsnode-source/target/debug/pacsnode" \
             > "$GITHUB_WORKSPACE/verification-artifacts/pacsnode-stdout.txt" 2>&1 &
           server_pid=$!
@@ -153,6 +156,7 @@ jobs:
         with:
           name: synthetic-pacsnode-source-and-roundtrip-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
+            verification-artifacts/oi-evaluator-commit.txt
             verification-artifacts/pacsnode-harness-tests.txt
             verification-artifacts/pacsnode-dicom-regression-tests.txt
             verification-artifacts/pacsnode-upstream-commit.txt

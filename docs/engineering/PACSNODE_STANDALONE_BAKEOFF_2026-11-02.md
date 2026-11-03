@@ -31,3 +31,68 @@
 - **Adoption:** HOLD. Real enterprise PACS selection requires full source+binary SBOM, copyright/NOTICE review, codec/asset/plugin rights, FHIR/DICOM mapping, exact patient and tenant scopes enforced at the service, authenticated QIDO/WADO/STOW, audit/access revocation, object retention/amendment semantics, disaster recovery, performance/availability, clinical intended-use risk classification, professional signoff and owner authorization.
 
 This evaluation is a **candidate bake-off** tied to the existing [OI-17 policy](https://app.notion.com/p/40a3866f77ef815a97d5e016ededf5b9), the original 556-entry technology register and [backend wave #135](https://github.com/OpenxIntelligence/open-intelligence/pull/135). It is not a second technology registry or a new product architecture.
+
+## Verified checkpoint and stricter original-preservation gate
+
+The uncompressed experiment at first-party commit
+`81569bf6d909d9f7d153955642056c0ae57df280` completed in
+[run 41554474814](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41554474814).
+The downloaded artifact ZIP SHA-256 was
+`950e7afb9f3451fc30a682c52d2187b836a36330490cc7584a8efd71c7b8a965`.
+Its receipt verifies both complete Part 10 files and both eight-byte pixel values
+survived STOW/QIDO/WADO unchanged in the explicitly uncompressed storage mode.
+The existing first-party wrong-case and amended-source checks also passed.
+QIDO study and instance replies were `application/json`, so media conformance
+remained HOLD. STOW also returned `application/json`; this evaluator records its
+status/body digest but does not validate the complete STOW response contract.
+The checkpoint is evidence for that commit, not proof of later revisions.
+
+The previous encoded-pixel mismatch is consistent with the pinned backend's
+default archival transcoding, not evidence sufficient to establish image
+corruption. [Upstream storage settings](https://github.com/knopkem/pacsnode/blob/e9b4334477a66967d290add9e0b9afa068f59dc0/crates/pacs-core/src/domain/server_settings.rs)
+default to HTJ2K lossless `1.2.840.10008.1.2.4.201`, and
+[STOW ingestion](https://github.com/knopkem/pacsnode/blob/e9b4334477a66967d290add9e0b9afa068f59dc0/crates/pacs-api/src/routes/stow.rs)
+transcodes when the incoming syntax differs. Neither the earlier failure nor
+the uncompressed success establishes decoded fidelity of that compressed path.
+
+The evaluator now requires **both complete-original equality and matching raw
+pixel bytes in the expected uncompressed transfer syntax** for a successful
+technical result and exit code. Complete-file changes are a source-custody
+failure in this experiment even if DICOM permits an equivalent representation.
+This is an Open Intelligence preservation requirement, not a claim that DICOM
+generally requires identical file serialization.
+
+- WADO explicitly requests `transfer-syntax=1.2.840.10008.1.2.1`, and records that
+  actual Accept value. Default negotiation remains a separate unverified path.
+- Ten dependency-free harness/CLI checks include nonzero exit for changed
+  originals, retained pixel-failure receipts and safe receipts on early errors.
+- Eight isolated pydicom regression cases exercise real generation/parsing and
+  the first-party ledger, replacing only external HTTP: exact roundtrip, changed
+  preamble, changed nonpixel metadata, changed pixels, unexpected valid syntax,
+  explicit negotiation, valid fixture VRs and separate QIDO media HOLD.
+- The new tests were observed failing against the earlier evaluator in
+  [run 41555614502](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41555614502):
+  original-file changes were incorrectly accepted, the advertised transfer
+  syntax was not sent, and the fictional accession number exceeded SH's limit.
+  The accession is now `OI-SYNTH-ACC-001`; no source patient data was involved.
+- CI uses a fresh temporary database because persisted server settings override
+  bootstrap configuration. It preserves the exact evaluator commit alongside
+  the upstream pin, configuration, regression output and numerical receipts.
+- Local dependency-free checks pass. The local full suite cannot open loopback
+  sockets in this execution environment (`PermissionError: Operation not permitted`),
+  and the isolated pydicom package is unavailable locally. Hosted CI must verify
+  the full Python/HTTP suite, real-pydicom tests and live backend at the new head.
+
+[PS3.18 section 8.7.3.4](https://dicom.nema.org/medical/dicom/current/output/chtml/part18/sect_8.7.3.4.html)
+defines Explicit VR Little Endian as the default object-payload transfer syntax,
+with specified exceptions. The pinned
+[WADO handler](https://github.com/knopkem/pacsnode/blob/e9b4334477a66967d290add9e0b9afa068f59dc0/crates/pacs-api/src/routes/wado.rs)
+returns stored bytes when no syntax is supplied; review and live tests of that
+compressed-storage/default-negotiation path remain necessary.
+
+The loopback-only restriction belongs to the evaluation **client**. Upstream's
+HTTP listener binds `0.0.0.0`; the receipt does not claim server confinement,
+authentication or tenant isolation. Existing license, embedded asset, codec,
+authorization, recovery and clinical gates remain HOLD. This advances B-06 and
+the existing OI-006 source-preservation/OI-013 isolation requirements without
+adopting the backend or modifying application persistence or business logic.

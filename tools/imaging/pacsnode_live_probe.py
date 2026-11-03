@@ -40,6 +40,8 @@ BOUNDARY = "OI20261102SyntheticImageOnly"
 # tested independently. The vendor's default codec needs a separate
 # decoded-pixel comparison; encoded byte inequality does not prove corruption.
 EXPECTED_RETRIEVAL_TRANSFER_SYNTAX = "1.2.840.10008.1.2.1"
+WADO_ACCEPT = ('multipart/related; type="application/dicom"; transfer-syntax='
+               + EXPECTED_RETRIEVAL_TRANSFER_SYNTAX)
 
 
 class RejectRedirect(HTTPRedirectHandler):
@@ -98,7 +100,7 @@ def synthetic_part10(sop: str, index: int) -> tuple[bytes, str]:
     ds.StudyTime = "120000"
     ds.SeriesTime = "120000"
     ds.ContentTime = "120000"
-    ds.AccessionNumber = "FICTIONAL-ACC-001"
+    ds.AccessionNumber = "OI-SYNTH-ACC-001"
     ds.StudyID = "FICTIONAL-01"
     ds.Modality = "CT"
     ds.SeriesNumber = 1
@@ -285,7 +287,7 @@ def run_evaluation(base_url: str) -> dict:
                 _, wado_type, wado_body = _request(
                     base + "/wado/studies/" + IMAGE_STUDY_UID + "/series/"
                     + IMAGE_SERIES_UID + "/instances/" + sop,
-                    accept='multipart/related; type="application/dicom"'
+                    accept=WADO_ACCEPT
                 )
                 objects = multipart_dicom_parts(wado_type, wado_body)
                 if len(objects) != 1:
@@ -344,24 +346,28 @@ def run_evaluation(base_url: str) -> dict:
                 and p["retrieval_is_expected_uncompressed_encoding"]
                 for p in pixel_diagnostics.values()
             )
-            qido_mime_verified = study_mime == instance_mime == "application/dicom+json"
+            originals_verified = all(exact_byte_match.values())
             return {
                 "evaluation_status": (
                     "technical_roundtrip_observed_with_standards_hold"
+                    if encoding_verified and originals_verified else
+                    "HOLD_original_object_bytes_changed"
                     if encoding_verified else
                     "HOLD_uncompressed_pixel_or_transfer_syntax_mismatch"
                 ),
-                "technical_evaluation_passed": encoding_verified,
+                "technical_evaluation_passed": encoding_verified and originals_verified,
                 "clinical_or_full_dicomweb_approval": False,
                 "candidate": "knopkem/pacsnode standalone",
                 "source_commit": "e9b4334477a66967d290add9e0b9afa068f59dc0",
-                "backend_url": "127.0.0.1 loopback only",
+                "backend_url": "127.0.0.1 client destination only",
+                "backend_listener_isolation_verified": False,
                 "synthetic_only": True,
                 "dicom_count": len(SOP_UIDS),
                 "study_count": checked["study_count"],
                 "series_count": checked["series_count"],
                 "stow_http_status": status,
                 "stow_content_type": stow_type,
+                "wado_accept": WADO_ACCEPT,
                 "qido_media_types": {
                     "study": study_mime,
                     "instance": instance_mime,
@@ -377,7 +383,9 @@ def run_evaluation(base_url: str) -> dict:
                 "pixel_diagnostics": pixel_diagnostics,
                 "uncompressed_pixel_integrity_passed": encoding_verified,
                 "source_and_retrieved_objects_byte_identical":
-                    all(exact_byte_match.values()),
+                    originals_verified,
+                "compressed_pixel_equivalence_verified": False,
+                "default_storage_codec_evaluated": False,
                 "exact_original_object_preserved": exact_byte_match,
                 "first_party_wrong_case_rejected": case_isolated_at_adapter,
                 "first_party_amendment_rejected": amendment_blocks_first_party_binding,
@@ -388,6 +396,8 @@ def run_evaluation(base_url: str) -> dict:
                 "real_patient_data_used": False,
                 "limitations": [
                     "Standalone test server is unauthenticated and NOT clinical software",
+                    "Loopback client restriction does not confine the server's 0.0.0.0 listener",
+                    "Default HTJ2K storage and default transfer-syntax negotiation remain unverified",
                     "The PACS does not enforce Open Intelligence's canonical case grants",
                     "The source is an evaluation candidate, not an adopted dependency",
                     "Source-level MIT declarations do not clear all crates and embedded assets",
@@ -405,29 +415,43 @@ def main() -> int:
     args = parser.parse_args()
     try:
         evidence = run_evaluation(args.base_url)
-        output = Path(args.output)
+    except Exception as error:
+        # Persist a bounded failure even when parsing/transport stopped before
+        # per-SOP diagnostics existed. Never log an untrusted response or URL.
+        evidence = {
+            "evaluation_status": "HOLD_evaluation_error",
+            "technical_evaluation_passed": False,
+            "failure_type": type(error).__name__,
+            "clinical_or_full_dicomweb_approval": False,
+            "real_patient_data_used": False,
+        }
+    # The CLI independently enforces the original-preservation contract. A
+    # transport/pixel success must never hide changed complete file bytes.
+    evidence["technical_evaluation_passed"] = (
+        evidence.get("technical_evaluation_passed") is True
+        and evidence.get("uncompressed_pixel_integrity_passed") is True
+        and evidence.get("source_and_retrieved_objects_byte_identical") is True
+    )
+    output = Path(args.output)
+    try:
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(json.dumps(evidence, indent=2, sort_keys=True) + "\n",
                           encoding="utf-8")
-        if evidence["technical_evaluation_passed"]:
-            print("TECHNICAL TEST COMPLETE: uncompressed fictional pixel bytes match.")
-            if not evidence["qido_media_type_conformant"]:
-                print("STANDARDS HOLD: QIDO response used application/json "
-                      "rather than application/dicom+json")
-            if not evidence["source_and_retrieved_objects_byte_identical"]:
-                print("NOTE: complete DICOM file bytes were reserialized, "
-                      "even though uncompressed pixel bytes matched.")
-            print("No backend adoption, patient access control or clinical clearance.")
-            print("Evidence file:", output)
-            return 0
-        print("HOLD: uncompressed pixel integrity or transfer syntax mismatch; "
-              "inspect the bounded JSON diagnostics",file=sys.stderr)
+    except OSError:
+        print("HOLD: could not persist the evaluation receipt", file=sys.stderr)
+        return 1
+    if evidence["technical_evaluation_passed"]:
+        print("TECHNICAL TEST COMPLETE: original files and uncompressed pixel bytes match.")
+        if not evidence["qido_media_type_conformant"]:
+            print("STANDARDS HOLD: QIDO response used application/json "
+                  "rather than application/dicom+json")
+        print("No backend adoption, patient access control or clinical clearance.")
         print("Evidence file:", output)
-        return 1
-    except Exception as error:
-        # Never dump binary objects, headers, server responses or patient data.
-        print("HOLD: isolated backend evaluation failed:", str(error)[:280], file=sys.stderr)
-        return 1
+        return 0
+    print("HOLD: original-object, pixel, transfer-syntax or evaluation failure; "
+          "inspect the bounded JSON diagnostics", file=sys.stderr)
+    print("Evidence file:", output)
+    return 1
 
 
 if __name__ == "__main__":
