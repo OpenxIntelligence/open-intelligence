@@ -19,6 +19,7 @@ are not mock functions or pre-rendered example responses.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import re
 import sqlite3
@@ -214,7 +215,23 @@ class ClinicalEncounters:
                               JOIN clinical_note_versions v ON v.note_id=n.id AND v.version=n.latest_version
                               WHERE n.encounter_id=? AND n.note_key=?""",
                                     (encounter_id, note_key)).fetchone()
+        if row is not None:
+            self._check_note_integrity(row)
         return row
+
+    @staticmethod
+    def _check_note_integrity(row: sqlite3.Row | dict) -> None:
+        """Fail closed on storage corruption, without disclosing altered text.
+
+        SQLite immutability triggers prevent ordinary edits; a restore, faulty
+        migration or database-level operator can still present inconsistent
+        bytes. A content digest detects that mismatch, not authenticity or
+        professional attestation.
+        """
+        body, digest = row["body"], row["sha256"]
+        if (not isinstance(body, str) or not isinstance(digest, str)
+                or not hmac.compare_digest(hashlib.sha256(body.encode("utf-8")).hexdigest(), digest)):
+            raise ClinicalConflict("Clinical note integrity mismatch; source review required")
 
     def _command(self, patient_id: str, actor: str, purpose: str, action: str,
                  request_key: str, data: dict[str, Any], mutate: Callable[[], dict]) -> dict:
@@ -401,6 +418,8 @@ class ClinicalEncounters:
           FROM clinical_note_headers n JOIN clinical_note_versions v ON v.note_id=n.id
           WHERE n.encounter_id=? AND n.note_key=? ORDER BY v.version
           """, (encounter_id, note_key)).fetchall()]
+        for row in rows:
+            self._check_note_integrity(row)
         # A grant changed while retrieving notes must withhold the entire
         # response, including historical versions, not only new writes.
         self._allow(actor, patient_id, "note.read", purpose)
