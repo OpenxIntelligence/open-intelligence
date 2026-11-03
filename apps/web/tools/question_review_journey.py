@@ -54,6 +54,18 @@ class QuestionReviewChecks:
         self.cd.evaluate("document.querySelector('[data-testid=open-question-review]').click()")
         self.cd.wait("Boolean(document.querySelector('[data-testid=review-queue-result]'))",
                      'saved canonical question opens the existing Review workspace')
+        # Exercise the contextual handoff in both directions, not only the
+        # global navigation whose clearing behavior was already implemented.
+        self.cd.evaluate("[...document.querySelectorAll('[data-testid=review-workspace] button')].find(e=>e.textContent==='View source questions').click()")
+        self.cd.wait("Boolean(document.querySelector('[data-testid=source-question-panel]'))",
+                     'contextual review link returns to the same source questions')
+        assert self.cd.evaluate("!document.querySelector('[data-testid=source-quote-packet]')"), \
+            'Contextual navigation must invalidate the prepared source packet'
+        assert self.cd.evaluate("!document.querySelector('[data-testid=source-brief-preview]')"), \
+            'Contextual navigation must invalidate the prepared brief'
+        self.cd.evaluate("document.querySelector('[data-testid=open-question-review]').click()")
+        self.cd.wait("Boolean(document.querySelector('[data-testid=review-queue-result]'))",
+                     'same canonical question returns to independent verification')
         assert self.cd.evaluate("document.querySelectorAll('[data-testid=review-workspace]').length===1")
         assert self.cd.evaluate("document.querySelector('[data-testid=review-case-id]').textContent") == self.case_id
         assert self.cd.evaluate('document.querySelector(' + json.dumps(self.item()) + ').dataset.sourceId') == self.source_id
