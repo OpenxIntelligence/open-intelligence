@@ -1,4 +1,5 @@
 /** Transient UI state over the canonical patient API; never an authority or ledger. */
+export {patientContinuity} from './patient-continuity.js';
 import {parseCaseBindingList, parseSourceIndex} from './source-contracts.js';
 import {decodeQuestionSourcePacket} from './source-quote-review-packet.js';
 import type {QuestionSourceReviewPacket} from './source-quote-review-packet.js';

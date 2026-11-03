@@ -261,3 +261,28 @@ No production identity, consent, professional review, live model, licensed
 scientific content, clinical validity, deployment or real-patient authorization
 is supplied. Hashes are content identifiers, not signatures; access receipts are
 not delivery proof and downloaded files cannot be recalled. Keep draft/unmerged.
+
+## Patient continuity overview — 3 November 2026
+
+The Overview now offers a read-only preparation panel over the existing session:
+resume a source-bound question, distinguish a confirmed save from an unfinished
+or uncertain one, inspect current/unreviewed versus reassessment counts, and
+return to Records or Investigations. It creates no second task or patient store.
+This advances OI-007/009/010 and the founder's patient-centered direction.
+
+Counts cover only the loaded, active patient/case mapping and successful question
+history under its read receipt. Unknown, failed and loading histories never
+become zero. Mixed patient/case rows are withheld. A zero count does not imply
+no care needs; current source context is not clinical review. Drafts remain
+memory-only, with existing source fingerprints and idempotent recovery intact.
+Navigation sends no clinical action and performs no automatic read.
+
+Base: PR #280 at e8d851e5c7769c31f429a3d1649c26402aa9de12. Independent review-return
+and authority-owner branches remain separate; this panel does not claim their
+integration. Local verification: 112 client tests passed (eight new), pinned
+TypeScript/Vite build passed, Python browser-script compilation and whitespace
+checks passed. The dependency notice gate passed using CI's omit-optional
+installation; an initial default install included an optional native package
+without its expected notice, and that invocation failed the gate. No dependency
+or lockfile was changed. Hosted actual PostgreSQL/browser acceptance is pending
+at publication. Synthetic software evidence is not clinical validation.
