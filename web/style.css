@@ -1133,8 +1133,12 @@ dialog pre {
 .report-item > p { white-space: pre-line; overflow-wrap: anywhere; }
 @media print {
   .report-actions { display: none; }
+  /* Normal block flow lets page-break rules join headings to their summaries. */
+  .report-sections, .report-items { display: block; }
+  .report-section + .report-section { margin-top: var(--space-5); }
+  .report-item + .report-item { margin-top: var(--space-3); }
   .report-section { break-inside: auto; }
-  .report-section-head { break-after: avoid; }
+  .report-section-head { break-inside: avoid; break-after: avoid; }
   .report-section-head + p { break-before: avoid; }
   .report-item { break-inside: avoid; }
   #patient-report .pill-warn { color: #000; background: #fff; border: 2px solid #000; }
