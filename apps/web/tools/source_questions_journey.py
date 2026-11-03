@@ -124,6 +124,16 @@ class SourceQuestionChecks:
         self.history('Current source context')
         self.prepare_brief(self.original_question_id)
 
+    def overview_counts(self, *, current, reassessment):
+        self.navigate('Overview')
+        self.cd.wait("Boolean(document.querySelector('[data-testid=patient-continuity]'))",
+                     'patient preparation overview')
+        assert self.cd.evaluate("document.querySelector('[data-testid=continuity-current]').textContent") == str(current)
+        assert self.cd.evaluate("document.querySelector('[data-testid=continuity-reassessment]').textContent") == str(reassessment)
+        assert 'last successful reads' in self.cd.evaluate("document.querySelector('[data-testid=patient-continuity]').textContent")
+        self.cd.evaluate("document.querySelector('[data-testid=continuity-open-questions]').click()")
+        self.cd.wait("Boolean(document.querySelector('[data-view=investigations]'))", 'return to existing questions')
+
     def navigate(self, section):
         self.cd.evaluate("[...document.querySelectorAll('nav button')].find(e=>e.textContent.startsWith("
                          + json.dumps(section) + ")).click()")
@@ -196,6 +206,7 @@ class SourceQuestionChecks:
         history = self.history('Current source context')
         assert self.original_question_id in history and self.original_source_id in history
         assert 'Clinical approval: none' in history
+        self.overview_counts(current=1, reassessment=0)
         preview = self.prepare_brief(self.original_question_id)
         assert 'Fictional café <script>literal</script>.' in preview['body']
         self.original_download, self.original_download_bytes = self.download_brief(self.original_question_id)
@@ -208,6 +219,7 @@ class SourceQuestionChecks:
         history = self.history('Source changed')
         assert self.original_question_id in history and self.original_source_id in history
         assert replacement_source_id not in history
+        self.overview_counts(current=0, reassessment=1)
         assert self.original_download.read_bytes() == self.original_download_bytes
         assert not self.cd.evaluate("Boolean(document.querySelector('[data-testid=source-brief-preview]'))")
         stale = f'.question-items li[data-question-id="{self.original_question_id}"] [data-testid=brief-prepare]'
@@ -284,7 +296,12 @@ class SourceQuestionChecks:
         self.cd.wait("document.querySelector('[data-testid=question-draft]').value==="
                      + json.dumps(custom), 'literal editable question received')
         self.navigate('Records')
-        self.navigate('Investigations')
+        self.navigate('Overview')
+        self.cd.wait("document.querySelector('[data-testid=continuity-draft]')?.dataset.state==='unsaved'",
+                     'patient overview preserves and offers the unfinished question')
+        self.cd.evaluate("document.querySelector('[data-testid=continuity-resume]').click()")
+        self.cd.wait("Boolean(document.querySelector('[data-testid=question-draft]'))",
+                     'overview resumes the existing question editor')
         assert self.cd.evaluate("document.querySelector('[data-testid=question-draft]').value==="
                                 + json.dumps(custom))
         assert self.cd.evaluate("!document.querySelector('[data-testid=composer-context]')")
@@ -300,6 +317,7 @@ class SourceQuestionChecks:
         assert custom_question in custom_history
         assert self.cd.evaluate("document.querySelectorAll('.question-items li').length===3")
         assert 'Clinical approval: none' in custom_history
+        self.overview_counts(current=2, reassessment=1)
         assert self.cd.evaluate("localStorage.length===0 && sessionStorage.length===0")
 
         # One authored question must reach BOTH independently authorized readers
@@ -356,6 +374,22 @@ class SourceQuestionChecks:
         image = self.cd.command('Page.captureScreenshot', {'format':'png'})
         (screenshots/'h1-source-brief-mobile.png').write_bytes(base64.b64decode(image['data']))
         self.cd.command('Emulation.setDeviceMetricsOverride', {'width':1440,'height':1100,'deviceScaleFactor':1,'mobile':False})
+
+        self.navigate('Overview')
+        self.cd.wait("document.querySelector('[data-testid=continuity-draft]')?.dataset.state==='saved'",
+                     'confirmed save is not presented as an unsaved draft')
+        self.cd.evaluate("document.querySelector('[data-testid=patient-continuity]').scrollIntoView({block:'start'})")
+        image = self.cd.command('Page.captureScreenshot', {'format':'png'})
+        (screenshots/'h1-patient-continuity-desktop.png').write_bytes(base64.b64decode(image['data']))
+        self.cd.command('Emulation.setDeviceMetricsOverride', {'width':390,'height':844,'deviceScaleFactor':1,'mobile':False})
+        self.cd.wait('window.innerWidth===390', 'patient continuity narrow viewport')
+        assert self.cd.evaluate('document.documentElement.scrollWidth<=window.innerWidth+1')
+        self.cd.evaluate("document.querySelector('[data-testid=continuity-open-questions]').focus()")
+        assert self.cd.evaluate("document.activeElement.dataset.testid==='continuity-open-questions'")
+        image = self.cd.command('Page.captureScreenshot', {'format':'png'})
+        (screenshots/'h1-patient-continuity-mobile.png').write_bytes(base64.b64decode(image['data']))
+        self.cd.command('Emulation.setDeviceMetricsOverride', {'width':1440,'height':1100,'deviceScaleFactor':1,'mobile':False})
+        self.navigate('Investigations')
 
         # History has its own permission, independent of Composer context access.
         credentials[0]['actions'].remove('composer_context_read')
