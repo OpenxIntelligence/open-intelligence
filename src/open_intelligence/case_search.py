@@ -21,10 +21,10 @@ Counts derive from the same tables and state filters the case views use:
   demo acknowledgment; same as the mission drafts and the workspace
   draft-review button). Stale snapshots are preserved history, not
   pending review; their rework signal is the reopened open question.
-- overdue_follow_ups: always 0. The demo ledger contains no follow-up
-  due dates, urgency, priority, or next clinical step, so none is shown
-  or inferred. Returning 0 rather than guessing preserves the existing
-  incoming-board boundary that this demo is not a clinical triage list.
+- overdue_follow_ups: followthrough_tasks in an open status
+  (created/assigned/acknowledged) with due_date before today — the
+  followthrough module's own overdue convention. The count is a demo
+  work count, not a clinical triage list.
 
 Search matches case id and display label substrings only,
 case-insensitive. Empty search returns all cases. A term matching
@@ -37,10 +37,11 @@ timestamp, or None when unavailable rather than a guessed date.
 
 from __future__ import annotations
 
-from .store import CaseStore, InvalidInput
+from .store import CaseStore, InvalidInput, today_utc
 
 
-def list_cases(store: CaseStore, search: str | None = "", sort: str | None = "id") -> list[dict]:
+def list_cases(store: CaseStore, search: str | None = "", sort: str | None = "id",
+               allowed_ids: set[str] | None = None) -> list[dict]:
     """List case summaries matching a substring, with exact work counts.
 
     Reads only; writes nothing. Raises InvalidInput for a non-text
@@ -63,6 +64,8 @@ def list_cases(store: CaseStore, search: str | None = "", sort: str | None = "id
         rows = store.db.execute(
             "SELECT case_id,label,synthetic FROM cases ORDER BY case_id"
         ).fetchall()
+        if allowed_ids is not None:
+            rows = [row for row in rows if str(row["case_id"]) in allowed_ids]
         if needle:
             rows = [
                 row for row in rows
@@ -84,6 +87,15 @@ def list_cases(store: CaseStore, search: str | None = "", sort: str | None = "id
                 "SELECT COUNT(*) FROM snapshots WHERE case_id=? AND state='draft'",
                 (case_id,),
             ).fetchone()[0]
+            # Follow-through ledger now exists on main (#84): overdue uses
+            # the followthrough module's own convention — open statuses
+            # (created/assigned/acknowledged) with a due date before today.
+            overdue_follow_ups = store.db.execute(
+                "SELECT COUNT(*) FROM followthrough_tasks WHERE case_id=? "
+                "AND due_date IS NOT NULL AND due_date < ? "
+                "AND status IN ('created','assigned','acknowledged')",
+                (case_id, today_utc()),
+            ).fetchone()[0]
             created = store.db.execute(
                 "SELECT occurred_at FROM events WHERE case_id=? AND kind='case_created'"
                 " ORDER BY id LIMIT 1",
@@ -104,8 +116,7 @@ def list_cases(store: CaseStore, search: str | None = "", sort: str | None = "id
                     "sources": int(sources),
                     "open_questions": int(open_questions),
                     "pending_reviews": int(pending_reviews),
-                    # No follow-up ledger exists; 0 is the honest count.
-                    "overdue_follow_ups": 0,
+                    "overdue_follow_ups": int(overdue_follow_ups),
                 },
             })
         if sort == "recent":
