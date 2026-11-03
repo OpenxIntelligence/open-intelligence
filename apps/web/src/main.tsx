@@ -39,7 +39,13 @@ function App(){
  useEffect(()=>{setSourceFilters({scope:state.sourceIndex,...emptySourceFilters})},[state.sourceIndex]);
  const heading=useRef<HTMLHeadingElement>(null),moveFocus=useRef(false);
  useEffect(()=>{if(moveFocus.current){heading.current?.focus();moveFocus.current=false}},[section]);
- function navigate(next:string){if(next===section){heading.current?.focus();return}moveFocus.current=true;setSection(next)}
+ function navigate(next:string){
+  // Prepared source disclosures are scoped to a navigation context, not durable records.
+  // Apply the same invalidation to sidebar and contextual destinations.
+  session.dismissSourceQuotePacket();session.dismissSourceBrief();
+  if(next===section){heading.current?.focus();return}
+  moveFocus.current=true;setSection(next);
+ }
  const keyForReceipt=useRef(requestKey);
  useEffect(()=>{let active=true;const c=new AbortController();const timer=setTimeout(()=>c.abort(),5000);
   fetch('/health/ready',{signal:c.signal,credentials:'omit',redirect:'error',cache:'no-store'})
@@ -57,7 +63,7 @@ function App(){
   <aside className="rail" aria-label="Workspace navigation">
    <div className="brand"><span className="mark" aria-hidden="true">oi</span><span>Open<br/>Intelligence</span></div>
    <div className="environment">Development · fictional identities only</div>
-   <nav aria-label="Patient workspace">{navigation.map(name=><button type="button" key={name} aria-current={name===section?'page':undefined} onClick={()=>{session.dismissSourceQuotePacket();session.dismissSourceBrief();navigate(name)}}><span>{name}</span>{name==='Records'?<span className="nav-hint">Original records</span>:name==='Journey'?<span className="nav-hint">Source view</span>:name==='Investigations'?<span className="nav-hint">Source questions</span>:name==='Review'?<span className="nav-hint">Verification returns</span>:null}</button>)}</nav>
+   <nav aria-label="Patient workspace">{navigation.map(name=><button type="button" key={name} aria-current={name===section?'page':undefined} onClick={()=>navigate(name)}><span>{name}</span>{name==='Records'?<span className="nav-hint">Original records</span>:name==='Journey'?<span className="nav-hint">Source view</span>:name==='Investigations'?<span className="nav-hint">Source questions</span>:name==='Review'?<span className="nav-hint">Verification returns</span>:null}</button>)}</nav>
    <div className="rail-note">One patient context.<br/>Original sources.<br/>Human clinical authority.</div>
   </aside>
   <div className="body"><WorkspaceContext section={section} patientId={state.patient?.patient_id??null} readiness={readiness} view={view} onViewChange={setView}/>
