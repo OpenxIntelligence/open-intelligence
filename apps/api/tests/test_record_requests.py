@@ -166,7 +166,7 @@ class RecordRequestHTTPTests(unittest.TestCase):
             self.assertEqual(self.list(base, patient)[1]["requests"], [])
             self.assertEqual(request(
                 base, f"/v1/patients/{patient}/record-requests/RECORD-UNKNOWN/receive",
-                token=TOKEN_A, body={"source_version_id": 1})[0], 404)
+                token=TOKEN_A, body={"source_version_id": 1})[0], 422)
 
     def test_revoked_credential_and_suspended_patient_never_expose_queue(self):
         with running_server(create_app(self.settings)) as base:
