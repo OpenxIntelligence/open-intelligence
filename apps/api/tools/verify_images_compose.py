@@ -84,6 +84,47 @@ ACCESS_SNAPSHOT_KEYS = {"events", "rows:identity.identity_domain_events",
                         "sequence:identity.identity_domain_events_id_seq"}
 
 
+def verify_authored_command_origins(commands, origins, intents, *, patient_id, case_id,
+                                   organization, actor, purpose):
+    """Bind each frozen comparison/report to its exact recorded command.
+
+    Imports have durable commands but no question-object origin. The published
+    origin owner covers assessments and reports only; require that exact set.
+    """
+    operations = {"authored_evidence_import": "import", "authored_evidence_assess": "assess",
+                  "evidence_report_export": "report"}
+    expected, expected_origins = {}, {}
+    for _, payload, receipt, action in intents:
+        operation = operations[action]
+        key = (operation, payload["request_key"])
+        assert key not in expected, "Repeated captured command identity"
+        expected[key] = {name: value for name, value in receipt.items() if name != "duplicate"}
+        if operation in {"assess", "report"}:
+            report = operation == "report"
+            expected_origins[key] = {
+                "operation": operation, "object_id": receipt["report_id" if report else "assessment_id"],
+                "patient_id": patient_id, "case_id": case_id, "origin_org": organization,
+                "question_id": receipt["question_id"], "request_key": payload["request_key"],
+                "expected_packet_sha256": payload["expected_packet_sha256"] if report else None,
+                "packet_binding": "explicit_digest" if report else "not_applicable",
+                "report_renderer": "oi.h1-evidence-text/2" if report else None,
+                "actor": actor, "purpose": purpose,
+            }
+    ledger = {(row["operation"], row["request_key"]): row for row in commands}
+    assert len(ledger) == len(commands) and ledger.keys() == expected.keys(), "Command identity set changed"
+    for key, result in expected.items():
+        command = ledger[key]
+        assert command["result"] == result, "Command result differs from its original HTTP receipt"
+        assert tuple(command[name] for name in ("patient_id", "case_id", "origin_org", "actor", "purpose")) == (
+            patient_id, case_id, organization, actor, purpose), "Command authority changed"
+        assert re.fullmatch(r"[0-9a-f]{64}", command["intent_sha256"])
+    bound = {(row["operation"], row["request_key"]): row for row in origins}
+    assert len(bound) == len(origins) and bound.keys() == expected_origins.keys(), "Origin identity set changed"
+    for key, expected_origin in expected_origins.items():
+        assert bound[key] == {**expected_origin, "intent_sha256": ledger[key]["intent_sha256"]}, \
+            "Origin differs from its exact creating command, object or inspected report packet"
+
+
 def authored_originals():
     # Share the security owner's independent fixture; do not import vendor data
     # or construct a second DICOM parser in this acceptance helper.
@@ -896,6 +937,13 @@ finally:
                     FROM investigation.evidence_rights_decisions r),
                   'evidence_links', (SELECT COALESCE(json_agg(l ORDER BY l.link_id),'[]'::json)
                     FROM investigation.question_evidence_links l),
+                  'authored_commands', (SELECT COALESCE(json_agg(c ORDER BY c.operation,c.request_key),'[]'::json)
+                    FROM (SELECT operation,request_key,patient_id,case_id,origin_org,intent_sha256,result,actor,purpose
+                          FROM investigation.evidence_commands) c),
+                  'authored_origins', (SELECT COALESCE(json_agg(o ORDER BY o.operation,o.object_id),'[]'::json)
+                    FROM (SELECT operation,object_id,patient_id,case_id,origin_org,question_id,request_key,
+                                 intent_sha256,expected_packet_sha256,packet_binding,report_renderer,actor,purpose
+                          FROM investigation.evidence_command_origins) o),
                   'events', (SELECT json_agg(e ORDER BY e.id) FROM
                     (SELECT id,patient_id,event_type,metadata_json,occurred_at
                      FROM identity.identity_domain_events) e),
@@ -995,7 +1043,10 @@ finally:
             assert len(state["rows:investigation.question_evidence_assessments"]) == len(expected_reports)
             assert len(state["rows:investigation.question_evidence_reports"]) == len(expected_reports)
             assert len(state["rows:investigation.evidence_commands"]) == len(authored_intents)
-            assert len(state["rows:investigation.evidence_command_origins"]) == len(authored_intents)
+            assert len(state["rows:investigation.evidence_command_origins"]) == len(state["authored_origins"])
+            verify_authored_command_origins(state["authored_commands"], state["authored_origins"], authored_intents,
+                patient_id=patient, case_id=CASE, organization=credential["organization"],
+                actor=credential["actor"], purpose=credential["purpose"])
             assert state["rows:investigation.case_evidence_withdrawals"] == []
             reports = [row for row in state["events"] if row["event_type"] == "investigation.evidence.report_prepared"]
             assert {(row["metadata_json"]["question_id"], row["metadata_json"]["report_id"]) for row in reports} == {
