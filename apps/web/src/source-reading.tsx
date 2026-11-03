@@ -14,7 +14,7 @@ export function SourceReading({index, view, filters, onFiltersChange, busy, ques
   busy: boolean;
   questionBusy: boolean;
   onAskQuestion: (sourceId: string, line: number) => void;
-  onOpenOriginal: (sourceId: string) => void;
+  onOpenOriginal: (sourceId: string, trigger: HTMLButtonElement) => void;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const search = filters.query.trim().toLowerCase();
@@ -71,7 +71,7 @@ export function SourceReading({index, view, filters, onFiltersChange, busy, ques
               {item.supersedes_id && <div><dt>Supersedes</dt><dd><code>{item.supersedes_id}</code></dd></div>}
             </dl>
           </details>
-          <button data-testid="open-original" disabled={busy} onClick={() => onOpenOriginal(item.source_id)}>Inspect original v{item.version}</button>
+          <button data-testid="open-original" disabled={busy} onClick={event => onOpenOriginal(item.source_id, event.currentTarget)}>Inspect original v{item.version}</button>
         </li>;
       })}</ol>}
   </div>;

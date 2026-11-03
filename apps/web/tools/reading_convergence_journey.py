@@ -33,6 +33,40 @@ def exercise(cd):
     assert cd.evaluate("Boolean(document.querySelector('#source-filter'))"), 'Loaded source versions need a response-scoped filter'
     assert cd.evaluate("Boolean(document.querySelector('#reading-view'))"), 'Patient and clinical reading layouts must share the existing session'
     assert cd.evaluate("document.querySelector('[data-testid=readiness]').getAttribute('role')==='status'"), 'Readiness needs noninterrupting status semantics'
+    # Follow the actual separately authorized original read, then return to its trigger.
+    for width, version in ((1280, 2), (390, 1)):
+        cd.command('Emulation.setDeviceMetricsOverride', {'width':width,'height':900,'deviceScaleFactor':1,'mobile':False})
+        cd.evaluate("window.__originalOpener=[...document.querySelectorAll('[data-testid=open-original]')].find(e=>e.textContent==='Inspect original v"+str(version)+"');window.__originalOpener.focus()")
+        key('Enter',13)
+        cd.wait("document.activeElement===document.querySelector('#opened-original')", 'verified original receives keyboard focus')
+        assert cd.evaluate("document.querySelector('#opened-original').textContent.endsWith('v"+str(version)+"')")
+        cd.wait("(()=>{const r=document.activeElement.getBoundingClientRect();const h=document.querySelector('.topbar');return r.top>=0&&r.bottom<=innerHeight&&(h.dataset.sticky==='false'||r.top>=h.getBoundingClientRect().bottom)})()", 'original heading is visible below patient context')
+        (out/f'original-focus-{width}.png').write_bytes(base64.b64decode(cd.command('Page.captureScreenshot', {'format':'png'})['data']))
+        key('Tab',9)
+        assert cd.evaluate("document.activeElement===document.querySelector('[data-testid=close-original]')"), 'Tab from original heading reaches its close action'
+        key('Enter',13)
+        cd.wait("!document.querySelector('[data-testid=opened-original]')&&document.activeElement===window.__originalOpener", 'close returns to exact source-version button')
+    # If a local filter removes the opener, return to the source heading, not a detached node.
+    cd.evaluate("window.__originalOpener.focus()")
+    key('Enter',13)
+    cd.wait("document.activeElement===document.querySelector('#opened-original')", 'second historical read')
+    value('#source-filter','NO-MATCH-FOCUS')
+    cd.wait("Boolean(document.querySelector('[data-testid=source-no-match]'))", 'opener filtered out')
+    cd.evaluate("document.querySelector('[data-testid=close-original]').focus()")
+    key('Enter',13)
+    cd.wait("document.activeElement===document.querySelector('#sources-heading')", 'filtered opener uses visible source-heading fallback')
+    assert cd.evaluate("document.querySelector('#source-filter').value==='NO-MATCH-FOCUS'"), 'Closing originals must not rewrite local filters'
+    cd.evaluate("document.querySelector('[data-testid=clear-source-filters]').click()")
+    # Returning to the section must retain its ordinary navigation focus.
+    cd.evaluate("document.querySelector('[data-testid=open-original]').click()")
+    cd.wait("document.activeElement===document.querySelector('#opened-original')", 'current original before navigation')
+    navigate('Overview');navigate('Records')
+    assert cd.evaluate("document.activeElement===document.querySelector('h1')"), 'An earlier read cannot steal section navigation focus'
+    cd.evaluate("document.querySelector('[data-testid=close-original]').click()")
+    cd.wait("document.activeElement===document.querySelector('#sources-heading')", 'navigation discards stale return target')
+    cd.evaluate('delete window.__originalOpener')
+    cd.command('Emulation.setDeviceMetricsOverride', {'width':1280,'height':1000,'deviceScaleFactor':1,'mobile':False})
+    print('PASS ORIGINAL FOCUS: actual current/historical original read focuses visible heading; native keyboard close restores exact opener; filtered-out opener falls back without clearing filters; navigation does not replay old focus.')
     cd.evaluate("window.__readingFetch=window.fetch;window.__readingRequests=0;window.fetch=(input,init)=>{if(String(input).includes('/v1/'))window.__readingRequests++;return window.__readingFetch(input,init)}")
     try:
         value('#source-filter', 'DOC-ONE')
