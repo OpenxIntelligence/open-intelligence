@@ -40,6 +40,7 @@
           <a href="#overview">Case overview</a>
           <a href="#journey">Guided journey</a>
           <a href="#incoming-board">Incoming board</a>
+          <a href="#review-queue">Review queue</a>
           <a href="#patient-view">Patient view</a>
           <a href="#patient-mission">Patient Mission</a>
           <a href="#patient-goals">Patient goals</a>
@@ -79,6 +80,7 @@
         <div class="hero-actions">
           <a class="button" href="#assertions">Inspect reported findings</a>
           <a class="button secondary" href="#investigations">Prepare an investigation</a>
+          <a class="button secondary" href="#review-queue">Open review queue</a>
         </div>
       </section>
       <div class="metrics" id="metrics" aria-live="polite"></div>
@@ -172,6 +174,14 @@
         <div class="panel-head"><div><div class="eyebrow">00 / WORKLIST</div><h2>Incoming board</h2></div><span class="pill pill-warn">FICTIONAL DEMO CASES ONLY</span></div>
         <p class="muted">One shared worklist for the fictional cases in this local demo, most recent source event first. It is not a triage list: the demo data contains no urgency, priority, or next clinical step, so none is shown or inferred. Selecting a case opens the same record the clinician workspace shows — there is no second copy.</p>
         <div id="incoming-list" class="questions" aria-live="polite"></div>
+      </section>
+      <section class="panel" id="review-queue" aria-labelledby="review-queue-heading">
+        <div class="panel-head"><div><div class="eyebrow">01 / REVIEW QUEUE</div><h2 id="review-queue-heading">Review queue</h2></div><span class="pill pill-warn">FICTIONAL DEMO DATA — not a real patient</span></div>
+        <p class="muted">What still needs a person&rsquo;s look in this fictional case: investigation drafts, amended reports, held discussion items, and new fictional evidence notes. Oldest first. A sign-off only records that someone looked — it never approves or authorizes any treatment, test, or procedure. Nothing leaves this list on its own: every item ends in a recorded decision or stays visible.</p>
+        <p id="review-queue-disclaimer" class="muted tiny"></p>
+        <div class="subhead">Waiting for review</div><div id="review-awaiting" class="snapshots" aria-live="polite"></div>
+        <div class="subhead">Decided</div><div id="review-resolved" class="snapshots" aria-live="polite"></div>
+        <div class="subhead">Sign-off history</div><div id="review-receipts" class="activity" aria-live="polite"></div>
       </section>
       <section class="panel" id="patient-view">
         <div class="panel-head"><div><div class="eyebrow">PATIENT VIEW · SAME RECORD</div><h2>Your case, in plain words</h2></div><span class="pill">Same facts, plainer language</span></div>
