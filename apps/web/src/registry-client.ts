@@ -17,7 +17,7 @@ import type {ReviewQueue,ReviewReturnResult} from './review-queue-view.js';
 import {canPrepareSourceBrief,decodeSourceBrief} from './source-brief.js';
 import type {SourceBrief} from './source-brief.js';
 import {QuestionEvidenceSession,emptyEvidenceState} from './authored-evidence-session.js';
-import type {EvidenceState} from './authored-evidence-session.js';
+import type {EvidenceState,EvidenceDraftPatch} from './authored-evidence-session.js';
 import type {ContentItem,Permissions,Relation,Applicability} from './authored-evidence.js';
 export type Patient = Readonly<{
   patient_id: string; origin_org: string; created_at: string;
@@ -132,6 +132,10 @@ export class RegistrySession {
       add:control=>this.#controllers.add(control),remove:control=>this.#controllers.delete(control),
       expire:()=>this.#httpError(401)});
   }
+  selectEvidenceComparison=(questionId:string,evidenceId:string)=>this.#evidenceSession.beginComparison(questionId,evidenceId);
+  editEvidenceComparison=(patch:EvidenceDraftPatch)=>this.#evidenceSession.editComparison(patch);
+  discardEvidenceComparison=()=>this.#evidenceSession.discardComparison();
+  saveEvidenceComparison=()=>this.#evidenceSession.saveComparison();
   dismissQuestionEvidence=()=>this.#evidenceSession.dismiss();
   loadQuestionEvidence=(questionId:string)=>{this.#focusSavedQuestion(questionId);return this.#evidenceSession.load(questionId);};
   importQuestionEvidence=(questionId:string,text:string,item:ContentItem,permissions:Permissions)=>this.#evidenceSession.import(questionId,text,item,permissions);

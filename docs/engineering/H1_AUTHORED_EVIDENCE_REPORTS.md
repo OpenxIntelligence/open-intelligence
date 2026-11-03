@@ -398,3 +398,29 @@ sandbox/flags, timeouts, steps and assertions remain unchanged. Logs discarded
 Chrome's startup stderr, so the precise browser-exit or timing cause on the newer
 26.04 image is not established. This does not claim to qualify that image.
 Exact-head results for the pinned runner and both H1 gates are recorded in #300.
+
+
+## Local continuation — scoped comparison drafts (3 November 2026)
+
+**LOCAL REVIEW CANDIDATE ONLY.** This section describes an unpublished frontend-only child of published #300 `818c67fcb742941fe1588c4ee130ce07e15a814d`, tree `39b897a67da9a212e466c9ff7caf6241a219c980`. The earlier hosted results above verify that parent, not this patch. No current remote branch, PR, main revision or deployment was modified in this continuation.
+
+The existing `RegistrySession` / `QuestionEvidenceSession` now retain one bounded, immutable, in-memory comparison draft. The original React editor uses that session rather than discarding quotation, relation, applicability and rationale whenever its evidence packet refreshes or the workspace unmounts. An unchanged fresh evidence/rights response restores the captured input. Navigation and pending reads hide it; another question/source/evidence version or changed rights cannot inherit it. Dirty comparisons require explicit discard before another comparison is selected. Denied or failed current reads, withheld content and patient/case/credential resets clear it. Unknown save delivery preserves the existing exact intent and blocks draft editing/discard until recovery; only a matching successful receipt clears the submitted draft.
+
+The draft captures patient/case/question identity, source/preflight/original/rights hashes and evidence key/version/statement-line/content class. It is not a saved assessment or clinical decision. It is not persistent browser storage, continuous revocation delivery or a new authority service. Source refresh, patient change, disconnect and page reload do not preserve draft input. File-upload previews, withdrawal reasons and report selection retain their pre-existing form lifetimes; this patch does not protect every unfinished form.
+
+A separate UI selection projection preserves current-family withdrawal when quotation content is withheld or the question is historical. The existing backend grants and withdrawal validation remain authoritative; stale comparison creation is still blocked. No API contract, backend, migration, rights policy, dependency, package lock or workflow file changes.
+
+### Executed local evidence
+
+- Full client suite: **236 passed, zero failed/skipped**: all 206 inherited cases plus 30 new draft/selection cases. Available TypeScript **5.8.3**, Node **22.16.0**; this is not the locked TypeScript 5.9.3 CI environment.
+- Unchanged Python evidence/HTTP/content-rights/data-boundary subset: **25 passed**. This does not substitute for H1 PostgreSQL testing.
+- TSX syntax transpilation, browser acceptance Python compilation, current-workflow no-download pattern guard and Git whitespace checks passed. Syntax transpilation is not a React typecheck/build.
+- Regression-first evidence: 23 missing-draft failures; then four captured-metadata mismatch failures; then two missing selection-policy failures. Corrections were followed by whole-client-suite passes. One supersession fixture initially omitted the replacement version; its invalid lineage was corrected without weakening the production decoder. Working-directory/file-write mistakes and a browser-test quoting mistake were setup failures, not product regressions.
+- Full reference Python run **timed out after 120 seconds** at the existing evaluation-preflight CLI test, with no final suite result. `npm run build` was **blocked** by absent locked React/runtime/type dependencies. Neither is reported as passing.
+- The existing real-server browser journey now asserts exact draft retention after unchanged refresh, navigation hiding, explicit reauthorization, restored fields and zero POSTs from local drafting. That extended journey is **not yet run**; no screenshots or hosted acceptance are attributed to this patch.
+
+### Remaining gate
+
+Run unchanged locked dependency/notice checks, pinned TypeScript/Vite build, the complete actual PostgreSQL/React/Chromium workflow and inherited suites on this exact patch. Review denial clearing, stale-context handling, known/unknown write outcomes and withdrawal selection independently before publication or adoption. Keep #303 dates, #304 original-disclosure, #302 restored-HTTP and other concurrent owners separate; no convergence with those branches is claimed.
+
+Specification: `docs/superpowers/specs/2026-11-03-h1-evidence-comparison-draft.md`. Plan: `docs/superpowers/plans/2026-11-03-h1-evidence-comparison-draft.md`. Only independently authored fictional fixture inputs; no patient-derived material, model calls, clinical validation, main merge or deployment.
