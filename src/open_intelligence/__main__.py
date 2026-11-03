@@ -106,6 +106,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._static("app.js", "text/javascript; charset=utf-8")
             if path == "/mission.js":
                 return self._static("mission.js", "text/javascript; charset=utf-8")
+            if path == "/consent.js":
+                return self._static("consent.js", "text/javascript; charset=utf-8")
             if path == "/style.css":
                 return self._static("style.css", "text/css; charset=utf-8")
             if path == "/tokens.css":
@@ -176,6 +178,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, {"templates": [
                     {"id": template_id, "description": text[:160]}
                     for template_id, text in TEMPLATES.items()]})
+            consent_list = re.fullmatch(rf"/api/cases/{ID_PART}/consents", path)
+            if consent_list:
+                return self._json(200, {"consents": store.list_consents(consent_list[1])})
+            qualifier_list = re.fullmatch(rf"/api/cases/{ID_PART}/identity-qualifiers", path)
+            if qualifier_list:
+                return self._json(200, {"identity_qualifiers": store.list_identity_qualifiers(qualifier_list[1])})
             source = re.fullmatch(rf"/api/cases/{ID_PART}/sources/([0-9]+)", path)
             if source:
                 return self._json(200, {"text": store.source_text(source[1], int(source[2]))})
@@ -383,6 +391,29 @@ class Handler(BaseHTTPRequestHandler):
                     investigation_id = store.save_investigation(
                         case_id, question_id, template, validated, mode)
                     return self._json(201, store.get_investigation(case_id, investigation_id))
+                consent_create = re.fullmatch(rf"/api/cases/{ID_PART}/consents", path)
+                if consent_create:
+                    consent_id = store.record_consent(
+                        consent_create[1], data.get("scope_text"),
+                        data.get("date_recorded"),
+                        data.get("anchor_source_version_id"))
+                    return self._json(201, {"consent_id": consent_id})
+                consent_withdraw = re.fullmatch(
+                    rf"/api/cases/{ID_PART}/consents/([0-9]+)/withdraw", path)
+                if consent_withdraw:
+                    version = store.withdraw_consent(
+                        consent_withdraw[1], int(consent_withdraw[2]),
+                        data.get("reason"), data.get("date_recorded"))
+                    return self._json(200, {"consent_id": int(consent_withdraw[2]),
+                                            "version": version, "status": "withdrawn"})
+                qualifier_create = re.fullmatch(
+                    rf"/api/cases/{ID_PART}/identity-qualifiers", path)
+                if qualifier_create:
+                    qualifier_id = store.add_identity_qualifier(
+                        qualifier_create[1], data.get("qualifier_text"),
+                        data.get("anchor_source_version_id"),
+                        data.get("date_recorded"), data.get("anchor_line"))
+                    return self._json(201, {"qualifier_id": qualifier_id})
                 return self._json(404, {"error": "Route not found"})
             finally:
                 store.close()

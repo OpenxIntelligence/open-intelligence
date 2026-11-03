@@ -106,3 +106,59 @@ PYTHONPATH=src python -m open_intelligence serve
 Remaining proof step: a live-server run against the real API with
 the operator key set, before the demo. The API completion itself
 was verified separately on 2026-10-31.
+
+## Consent and identity records slice (display and history only)
+
+Fictional consent entries and identity-qualifier notes are inspectable
+records. This slice adds no identity resolution, matching, or cross-case
+logic, no treatment selection, and no clinical approval.
+
+Tables (additive, in `src/open_intelligence/store.py`):
+
+- `consent_records`: one row per fictional consent (`scope_text`,
+  `date_recorded`, current `status`, optional same-case source anchor,
+  `review_state='display_only'`).
+- `consent_versions`: append-only history. Version 1 is `active`;
+  withdrawal appends a `withdrawn` version with a reason. Prior versions
+  stay, never deleted.
+- `identity_qualifiers`: one fictional note per row (`qualifier_text`,
+  required `anchor_source_version_id` in the same case, optional
+  `anchor_line`, `date_recorded`, `review_state='display_only'`).
+
+Statuses are restricted to `active` and `withdrawn`. Withdrawing changes
+only its own status pointer and version chain; no other consent,
+qualifier, source, question, or snapshot is touched. Qualifiers never
+alter any existing identity field.
+
+Routes (all case-scoped; unknown case returns 422 `Unknown case`):
+
+```text
+POST /api/cases/{CASE-ID}/consents
+POST /api/cases/{CASE-ID}/consents/{ID}/withdraw
+GET  /api/cases/{CASE-ID}/consents
+POST /api/cases/{CASE-ID}/identity-qualifiers
+GET  /api/cases/{CASE-ID}/identity-qualifiers
+```
+
+`GET /api/cases/{CASE-ID}/state` also includes `consents` (with ordered
+`versions`) and `identity_qualifiers` (with `anchor_label`) for the
+current case only.
+
+UI: the case view has a `Consent & identity` panel (`web/index.html`,
+`web/consent.js`) with plain-word forms, current consents, full history
+per consent oldest-first, and qualifier notes with source anchors.
+Every item carries a FICTIONAL label. Rendering uses `textContent` only,
+never `innerHTML` with data. Case switching guards unfinished consent
+text and clears consent inputs; stale responses are discarded by
+sequence, and lists are cleared on switch so no case's data appears in
+another case's view.
+
+Verify with:
+
+```bash
+PYTHONPATH=src python -m unittest tests.test_consent_identity -v
+```
+
+Limitations: fictional/demo records only, no real consent management, no
+verified identity, no access control, no clinical meaning. Physician
+authority preserved; hypotheses stay separate from facts.
