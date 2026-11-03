@@ -83,6 +83,10 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
 
     def remove_owned_fixtures(self):
         with self.engine.begin() as conn:
+            conn.execute(text("DROP TABLE IF EXISTS coordination.record_requests"))
+            conn.execute(text("DROP FUNCTION IF EXISTS coordination.guard_record_request_origin()"))
+            conn.execute(text("DROP FUNCTION IF EXISTS coordination.guard_record_request_update()"))
+            conn.execute(text("DROP SCHEMA IF EXISTS coordination"))
             for name in ("identity_domain_events", "identity_create_receipts", "identity_patients"):
                 conn.execute(text(f"DROP TABLE IF EXISTS identity.{name}"))
             for name in ("guard_patient_identity_mutation", "guard_registration_receipt", "reject_registry_history_mutation"):
