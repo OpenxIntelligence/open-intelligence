@@ -78,6 +78,15 @@ class QuestionFingerprintMigrationTests(SourceVersionFixture):
         # identity, actor/purpose and creation time; the upgrade must not rehash.
         self.assertEqual(migrated, before)
 
+        # The published image-custody revision is an independent sibling.
+        # Running the API requires the explicit combined head, not an
+        # intermediate question-only revision.
+        migrate(self.admin, "upgrade", "head")
+        with self.engine.connect() as connection:
+            self.assertEqual(connection.execute(text(
+                "SELECT version_num FROM public.alembic_version"
+            )).scalar_one(), "0008_questions_images_merge")
+
         self.creds[0]["actions"].extend((
             "composer_context_read", "question_create", "question_read",
         ))
