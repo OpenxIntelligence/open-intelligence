@@ -57,6 +57,50 @@ foreign-key-backed receipt or reference contract, source-version/amendment
 checks and approved access policy, with a cross-domain transaction or safe
 compensating mechanism. Until that stage passes, receipt is disabled.
 
+## H1 canonical patient-to-case reference binding (draft extension)
+
+The PostgreSQL patient registry now has a **qualified synthetic case-reference mapping**
+port following the original `CanonicalLabBridge` and `ClinicalSourceProvenance`
+contracts from existing first-party clinical integration #95/#152. This
+increment makes the boundary durable, patient-scoped, revocable and auditable
+without duplicating a patient registry, source document table, clinical note or
+evidence ledger. It does **not** import source records or assert their validity.
+
+Migration `0004_case_binding` adds `coordination.patient_case_bindings`
+with one case reference per patient binding, a unique qualified external
+`(source_organization, source_system, source_subject_ref)` tuple, an explicit
+fictional review reference, an immutable mapping, guarded active → revoked
+transition and denial of deletion. Subject reassignment and reactivation after
+revocation are refused. Events use `identity.identity_domain_events`, inside
+the same `PostgresPatientRegistry.transaction()`. Creation/revocation are
+idempotent; conflicting reuse is rejected.
+
+Additional versioned endpoints are:
+- `POST /v1/patients/{patient_id}/case-bindings`: requires separate
+  `case_binding_create` plus `patient_read`, exact patient grant,
+  originating organization, actor/purpose and the independently authored
+  synthetic-only input. A synthetic `review_ref` is only an operator-provided
+  reference; it is **not** proof of actual professional identity verification.
+- `GET /v1/patients/{patient_id}/case-bindings`: separately gated by
+  `case_binding_read`; returns current/historical source reference mappings
+  and explicit `source_identity_verified:false` and
+  `clinical_sources_linked:false`.
+- `POST /v1/patients/{patient_id}/case-bindings/{case_id}/revoke`:
+  `case_binding_revoke`, exact patient grant and meaningful reason required.
+  No production consent or external source authorization is created.
+- **No actual medical record import or receipt endpoint is added**. Source
+  versions remain under their existing synthetic owner and are not replicated
+  in this H1 identity migration. The *next* integration must verify authoritative
+  source namespace/subject mapping, persist original bytes and amendments once,
+  and deny source read or use after binding revocation.
+
+The tests exercise real disposable PostgreSQL 16, duplicate and conflicting
+external identities, patient/org/action isolation, trigger immutability, event
+rollback, explicit revocation and restart. These fictional fixtures are **not**
+clinical records, human review attestations, verified patient identity, consent,
+external hospital connections or a production security boundary. No clinical
+data, open-model inference or guidelines may enter this synthetic environment.
+
 ## Product and release boundary
 
 The first integrated product remains patient information → source-linked World
