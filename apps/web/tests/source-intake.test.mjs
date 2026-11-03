@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {prepareSource,parseImportReceipt,verifyOriginal} from '../.test-dist/source-intake.js';
 import {RegistrySession} from '../.test-dist/registry-client.js';
+import {DocumentClient} from '../.test-dist/reviewed-documents.js';
 const PID='PAT-EXAMPLE-001', CID='CASE-INTAKE', SID='SRC-'+ 'A'.repeat(32), TOKEN='fictional_test_credential_000000000001';
 const RAW=`OI-SYNTHETIC-REPORT/1\nPatient: ${CID}\nDocument: INTAKE-PATH\nType: pathology\nEvent-Date: 2026-01-01\nIssued-At: 2026-01-02\nSpecimen: INTAKE-SPEC\nFinding: marker|not-reported|Fictional café <script>literal</script>.\n`;
 const HASH=createHash('sha256').update(RAW).digest('hex');
@@ -83,6 +84,44 @@ test('late original after patient recheck cannot restore older raw content',asyn
 });
 test('new metadata refresh dismisses previously authorized original',async()=>{
  const{session}=await ready(()=>reply(ORIGINAL));await session.loadOriginal(SID);assert.ok(session.snapshot().original);await session.loadSources(CID);assert.equal(session.snapshot().original,null);
+});
+
+for(const status of [403,404])for(const format of ['json','html'])test(`document ${status} ${format} denial clears the shared source scope before parsing the body`,async()=>{
+ const{session}=await ready(url=>url.endsWith('/documents')?
+  format==='json'?reply({detail:'Document unavailable'},status):new Response('<html>Denied</html>',{status,headers:{'Content-Type':'text/html'}}):reply(ORIGINAL));
+ await session.loadOriginal(SID);assert.equal(session.snapshot().original.original_text,RAW);
+ const client=new DocumentClient((path,body)=>session.documentRequest(CID,path,body));await client.load();
+ assert.equal(session.snapshot().sourceIndex,null);assert.equal(session.snapshot().cases,null);
+ assert.equal(session.snapshot().original,null);assert.equal(session.snapshot().recordsPhase,'error');
+ assert.equal(session.snapshot().patient.patient_id,PID);assert.equal(session.snapshot().connected,true);
+ assert.equal(client.snapshot().documents.length,0);assert.equal(client.snapshot().pending,null);
+});
+test('a source original completed after document denial cannot restore revoked case content',async()=>{
+ const held=deferred();const{session}=await ready(url=>url.endsWith('/documents')?reply({},404):held.promise);
+ const original=session.loadOriginal(SID);
+ const client=new DocumentClient((path,body)=>session.documentRequest(CID,path,body));await client.load();
+ held.resolve(reply(ORIGINAL));await original;
+ assert.equal(session.snapshot().original,null);assert.equal(session.snapshot().sourceIndex,null);
+ assert.equal(session.snapshot().recordsPhase,'error');
+});
+test('a late document denial cannot clear a freshly reauthorized source scope',async()=>{
+ const held=deferred();const{session}=await ready(()=>held.promise);
+ const old=session.documentRequest(CID,'');const rejected=assert.rejects(old,/changed/);
+ await session.loadCases();await session.loadSources(CID);const current=session.snapshot().sourceIndex;
+ held.resolve(reply({},404));await rejected;
+ assert.equal(session.snapshot().sourceIndex,current);assert.equal(session.snapshot().recordsPhase,'ready');
+});
+test('document credential expiry clears the session even with a non-JSON error body',async()=>{
+ const{session}=await ready(()=>new Response('Expired',{status:401,headers:{'Content-Type':'text/plain'}}));
+ const client=new DocumentClient((path,body)=>session.documentRequest(CID,path,body));await client.load();
+ assert.equal(session.snapshot().connected,false);assert.equal(session.snapshot().patient,null);
+ assert.equal(session.snapshot().sourceIndex,null);
+});
+test('temporary document service failure does not infer withdrawal of source authority',async()=>{
+ const{session}=await ready(()=>reply({},503));const index=session.snapshot().sourceIndex;
+ const client=new DocumentClient((path,body)=>session.documentRequest(CID,path,body));await client.load();
+ assert.equal(client.snapshot().phase,'error');assert.equal(session.snapshot().sourceIndex,index);
+ assert.equal(session.snapshot().patient.patient_id,PID);
 });
 test('unpaired Unicode surrogate is rejected rather than silently changed by encoding',async()=>{
  const{session,calls}=await ready(()=>reply({}));await session.importSource(CID,RAW+'\ud800',true);assert.equal(calls.length,0);assert.equal(session.snapshot().importOutcome,'rejected');

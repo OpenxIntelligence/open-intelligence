@@ -317,3 +317,85 @@ with separately verified review-draft, reviewed-document, imaging/archive and
 live-evidence work reconciled through the existing contracts. These sibling
 capabilities are not claimed by this increment. All inputs remain independently
 fictional. The candidate is draft, unmerged and undeployed.
+
+## Reviewed originals in the connected workspace — 3 November 2026
+
+Draft [#349](https://github.com/OpenxIntelligence/open-intelligence/pull/349)
+continues OI-006/007/009/010/013 by composing #335
+`9d173843f924b40becba3a7dffd71717c12afb5d` with the reviewed-document owner #323
+`fcf8c984756b22ea536f4c8c8d287fd7afeed1ac`. Both ancestries and the published
+migration history are retained. The inherited evidence merge-gate document is
+historical evidence for its named revisions; this candidate's readiness is
+recorded on #349.
+
+The current source-reading, structured-import, question, citation, report and
+follow-up owners remain intact. A separate native **Text and PDF originals**
+disclosure starts closed and stays mounted when collapsed. It is keyed to the
+patient/case scope. Opening or closing it preserves the selected file, preview,
+manual passage and confirmation without making a request. Source-reading empty
+copy now distinguishes structured reports from reviewed originals.
+
+The donor contributes its source-owned `0012_reviewed_documents` children,
+original bytes, frozen physical-page/line anchors, immutable selection revisions,
+explicit saves, fresh authority checks and bounded binary downloads. Its exact
+pypdf 6.21.4 wheel, hashes, inventory and notices travel together. The dependency
+gate covers the stated synthetic-development scope, not release-wide clearance.
+No new model, vector index, clinical-content source or alternate patient ledger
+is selected.
+
+Tests-first commit `75365e8532267ac31c4103cea8f9eea3b4591d24` reached the actual
+PostgreSQL/FastAPI/built-React/Chromium journey in
+[run 41675233846](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41675233846),
+attempt 1, job 126053951348. All 300 inherited client tests, the build and dependency
+gates passed; the browser failed specifically with `Reviewed originals start
+collapsed beside the structured import`. This observed failure precedes product
+composition.
+
+The combined browser gate opens the disclosure by keyboard before interacting
+with visible controls, preserves the same File and preview through collapse,
+checks zero browser requests and unchanged document persistence, and then saves
+the actual PDF. A separately authored structured source shares the case; document
+save and correction must leave its structured source index unchanged. The existing
+source-to-question, evidence/report, follow-up, amendment, restart and authority
+journeys still run. An inherited intake-denial wait now requires a completed
+denied response before later helpers restore access.
+
+Combined local client verification passed **307 tests with zero skips**. Final
+build, dependency, API/PostgreSQL, browser, recovery, independent review and visual
+evidence are recorded against the exact published commit in #349. Donor passes
+do not substitute for that result.
+
+Manual passage selections remain excluded from source-authored World Model
+observations and investigation snapshots; connecting their explicitly manual
+provenance to questions/reports remains the next dependent capability. Recovery
+checks compare document rows through dump/restore and document HTTP after API/
+database restart; HTTP against the restored document copy is not claimed. The
+broader 12-scenario clinical acceptance portfolio, professional review, live
+biomedical retrieval, production identity and real-patient use remain open.
+
+### Review corrections and observed regressions
+
+Independent review found that a denied document read cleared its own view while
+leaving the shared structured source index visible. An older original response
+could also restore text after that denial. Tests-only commit
+`a2e56de42dd26da45c266fc9f5ec8b84da4e2c17` records eight new regressions/controls:
+six failed locally before the correction, while late denial after reauthorization
+and temporary-service-failure controls passed. The fix handles current 401/403/404
+before parsing an error body, including non-JSON proxy errors. A 401 expires the
+session. An ambiguous 403/404 advances the Records generation and clears existing
+case/source/investigation views and local intake state; explicit permission reload
+is required. Stale denial cannot clear a newer authorized scope, and 503 does not
+infer revoked authority. All **315 client tests now pass**, zero failures/skips.
+
+The actual-browser gate additionally requires original-read and document-list
+denial to remove shared source quotations and the local File control. Explicit
+reauthorization must start with no old file/preview; saved original and annotation
+history must remain unchanged. Explicit local discard also clears the file-picker
+selection so that it can be selected again.
+
+The donor's reference UI workflow contained an unquoted `: ` in its parser-install
+command. Local YAML parsing reproduced the failure at line 29; the initial
+combined head had a failed zero-job check suite rather than a running UI job.
+The command now uses a block scalar and parses unchanged. The final published
+head must pass that restored workflow as well as both H1 workflows; the earlier
+successful React run alone does not close acceptance.

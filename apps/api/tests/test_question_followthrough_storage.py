@@ -182,7 +182,7 @@ class FollowthroughMigrationGraphTests(unittest.TestCase):
         config = Config()
         config.set_main_option("script_location", str(Path(__file__).resolve().parents[1] / "migrations"))
         script = ScriptDirectory.from_config(config)
-        self.assertEqual(script.get_heads(), ["0011_evidence_convergence"])
+        self.assertEqual(script.get_heads(), ["0012_reviewed_documents"])
         self.assertEqual(script.get_revision("0010_question_evidence").down_revision,
                          "0009_question_followthrough")
         self.assertEqual(script.get_revision("0009_question_followthrough").down_revision,

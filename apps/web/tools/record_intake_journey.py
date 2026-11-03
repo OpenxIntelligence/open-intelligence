@@ -132,7 +132,8 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, screen
     # Current source/mapping access is independently rechecked, not inferred from prior successful load.
     credentials[0]['actions'].remove('source_read');write_grants()
     cd.evaluate("[...document.querySelectorAll('[data-testid=case-row]')].find(e=>e.textContent.includes('CASE-WEB-INTAKE')).querySelector('[data-testid=load-sources]').click()")
-    cd.wait("!document.querySelector('[data-testid=source-index]')",'source metadata cleared on denied recheck')
+    cd.wait("document.querySelector('[data-testid=records-status]')?.textContent==='Sources unavailable, denied or mapping revoked. Reload case permissions.' && !document.querySelector('[data-testid=load-cases]').disabled",'completed source denial before restoring any grant')
+    assert cd.evaluate("!document.querySelector('[data-testid=source-index]')"), 'Denied source metadata remains cleared'
     cd.evaluate("[...document.querySelectorAll('nav button')].find(e=>e.textContent==='Overview').click()")
     cd.wait("Boolean(document.querySelector('[data-testid=patient-card]'))",'original identity journey preserved')
     print('PASS IMPORT DISCLOSURE: empty case starts open; native keyboard collapse/reopen preserves exact selected File, preview and confirmation; zero implicit imports; original duplicate/amendment/quarantine and denial checks retained.')

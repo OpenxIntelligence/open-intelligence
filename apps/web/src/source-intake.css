@@ -4,3 +4,5 @@
 .original-panel code,.intake-panel code{overflow-wrap:anywhere;word-break:break-all}
 #original-file{max-width:100%;font-size:13px}
 @media(max-width:600px){.intake-panel,.original-panel{padding:12px}.original-text{padding:10px}}
+
+.reviewed-documents code{overflow-wrap:anywhere}.document-lines{max-height:28rem;overflow:auto;padding-left:1.4rem}.document-lines pre{white-space:pre-wrap;overflow-wrap:anywhere}.document-metadata{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:12px}.reviewed-documents input,.reviewed-documents textarea,.reviewed-documents select{max-width:100%}.reviewed-documents fieldset{min-width:0;margin-block:16px}.reviewed-documents li{overflow-wrap:anywhere}
