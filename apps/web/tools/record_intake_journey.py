@@ -104,6 +104,6 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, screen
     credentials[0]['actions'].remove('source_read');write_grants()
     cd.evaluate("[...document.querySelectorAll('[data-testid=case-row]')].find(e=>e.textContent.includes('CASE-WEB-INTAKE')).querySelector('[data-testid=load-sources]').click()")
     cd.wait("!document.querySelector('[data-testid=source-index]')",'source metadata cleared on denied recheck')
-    cd.evaluate("[...document.querySelectorAll('nav button')].find(e=>e.textContent==='Overview').click()")
+    cd.evaluate("document.querySelector('[data-testid=nav-overview]').click()")
     cd.wait("Boolean(document.querySelector('[data-testid=patient-card]'))",'original identity journey preserved')
     print('PASS RECORDS: actual disk file preview with zero auto-upload; exact UTF-8/hash import; duplicate; amendment and old original; foreign-case quarantine; independent original-read denial and source-read clearing; no clinical approval; 390px containment.')
