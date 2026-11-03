@@ -169,9 +169,9 @@ def validate_output(payload: object, valid_sources: set[int],
             if not isinstance(cite, dict):
                 resolved = False
                 break
-            if cite.get("type") == "source" and isinstance(cite.get("id"), int) and cite["id"] in valid_sources:
+            if cite.get("type") == "source" and type(cite.get("id")) is int and cite["id"] in valid_sources:
                 continue
-            if cite.get("type") == "assessment" and isinstance(cite.get("id"), int) and cite["id"] in valid_assessments:
+            if cite.get("type") == "assessment" and type(cite.get("id")) is int and cite["id"] in valid_assessments:
                 continue
             resolved = False
             break

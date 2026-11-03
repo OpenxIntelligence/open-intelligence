@@ -877,6 +877,8 @@ class CaseStore:
     def create_option(self, case_id: str, snapshot_id: int, label: str, description: str,
                       epistemic_status: str) -> int:
         self._case(case_id)
+        if type(snapshot_id) is not int:
+            raise InvalidInput("Snapshot id must be an integer")
         label = self._check_no_clinical_language(label, "Option label")
         if not 1 <= len(label) <= 120:
             raise InvalidInput("Option label must have 1–120 characters")
@@ -1662,6 +1664,22 @@ class CaseStore:
                 self._event(case_id, "broker_invalidated",
                             rights_source_id=rights_source_id,
                             reason=reason, invalidated_snapshots=changed)
+        # OI-021: same transaction, dependent options only. Rights sources
+        # are shared, so this fan-out is global exactly like the snapshot
+        # fan-out above; mirrors _invalidate_evidence_version.
+        invalidated_options = self._invalidate_options(
+            snapshot_ids=set(invalidated), source_version_ids=set(),
+            evidence_version_ids=set())
+        if invalidated_options:
+            option_cases = {str(r[0]) for r in self.db.execute(
+                "SELECT DISTINCT case_id FROM options WHERE id IN (%s)" %
+                ",".join("?" for _ in invalidated_options), invalidated_options).fetchall()}
+            for case_id in sorted(option_cases):
+                per_case = [oid for oid in invalidated_options if self.db.execute(
+                    "SELECT case_id FROM options WHERE id=?", (oid,)).fetchone()["case_id"] == case_id]
+                self._event(case_id, "option_review_reopened",
+                            rights_source_id=rights_source_id, reason=reason,
+                            invalidated_options=per_case)
         return invalidated
 
     def _invalidate_discovery_source(self, rights_source_id: int, *, reason: str) -> list[int]:
@@ -1907,6 +1925,16 @@ class CaseStore:
                 self._event(case_id, "broker_invalidated",
                             broker_link_id=broker_link_id,
                             reason="review", invalidated_snapshots=invalidated)
+            # OI-021: same transaction, dependent options only. The staled
+            # snapshots are all in this case (broker links are case-scoped),
+            # so a single case event suffices.
+            invalidated_options = self._invalidate_options(
+                snapshot_ids=set(invalidated), source_version_ids=set(),
+                evidence_version_ids=set())
+            if invalidated_options:
+                self._event(case_id, "option_review_reopened",
+                            broker_link_id=broker_link_id, reason="review",
+                            invalidated_options=invalidated_options)
             return {"result": "reviewed", "broker_link_id": broker_link_id,
                     "invalidated_snapshots": invalidated}
 
@@ -2076,6 +2104,8 @@ class CaseStore:
                         evidence_assessment_ids: list[int] | None = None,
                         broker_link_ids: list[int] | None = None) -> int:
         self._case(case_id)
+        if type(question_id) is not int:
+            raise InvalidInput("Question id must be an integer")
         if not isinstance(summary, str) or not 10 <= len(summary.strip()) <= MAX_SUMMARY:
             raise InvalidInput("Draft must have 10–3000 characters")
         if not isinstance(source_ids, list) or not source_ids or any(type(x) is not int for x in source_ids):
@@ -2136,6 +2166,8 @@ class CaseStore:
 
     def acknowledge_demo_review(self, case_id: str, snapshot_id: int, reviewer_label: str) -> None:
         self._case(case_id)
+        if type(snapshot_id) is not int:
+            raise InvalidInput("Snapshot id must be an integer")
         if not isinstance(reviewer_label, str) or not 2 <= len(reviewer_label.strip()) <= 80:
             raise InvalidInput("Provide a demo reviewer label")
         with self.db:
@@ -2200,6 +2232,8 @@ class CaseStore:
 
     def get_investigation(self, case_id: str, investigation_id: int) -> dict:
         self._case(case_id)
+        if type(investigation_id) is not int:
+            raise InvalidInput("Investigation id must be an integer")
         row = self.db.execute("SELECT * FROM investigations WHERE id=? AND case_id=?",
                               (investigation_id, case_id)).fetchone()
         if not row:
@@ -2310,6 +2344,8 @@ class CaseStore:
 
     def source_text(self, case_id: str, source_id: int) -> str:
         self._case(case_id)
+        if type(source_id) is not int:
+            raise InvalidInput("Source id must be an integer")
         row = self.db.execute("SELECT raw FROM source_versions WHERE case_id=? AND id=?",
                               (case_id, source_id)).fetchone()
         if not row:
