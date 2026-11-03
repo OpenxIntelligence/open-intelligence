@@ -111,6 +111,11 @@ jobs:
           "$RUNNER_TEMP/oi-pacsnode-source/target/debug/pacsnode" generate-config standalone
           test -f config.toml
           export PACS_SERVER__HTTP_PORT=18042
+          # Upstream default storage is HTJ2K-lossless (1.2.840.10008.1.2.4.201).
+          # For a byte-for-byte raw pixel test use ExplicitVRLittleEndian
+          # instead of comparing compressed PixelData bytes to uncompressed.
+          export PACS_SERVER__STORAGE_TRANSFER_SYNTAX=1.2.840.10008.1.2.1
+          printf "%s\\n" "$PACS_SERVER__STORAGE_TRANSFER_SYNTAX" > "$GITHUB_WORKSPACE/verification-artifacts/pacsnode-test-storage-transfer-syntax.txt"
           "$RUNNER_TEMP/oi-pacsnode-source/target/debug/pacsnode" \
             > "$GITHUB_WORKSPACE/verification-artifacts/pacsnode-stdout.txt" 2>&1 &
           server_pid=$!
@@ -148,6 +153,7 @@ jobs:
             verification-artifacts/rustc-version.txt
             verification-artifacts/cargo-license-snapshot.json
             verification-artifacts/pacsnode-real-dicomweb.json
+            verification-artifacts/pacsnode-test-storage-transfer-syntax.txt
             verification-artifacts/pacsnode-stdout.txt
           if-no-files-found: warn
           retention-days: 7
