@@ -324,6 +324,47 @@ def run_evaluation(base_url: str) -> dict:
                 returned_pixel_digests[sop] = sha256(parsed.PixelData).hexdigest()
                 exact_byte_match[sop] = returned_digests[sop] == expected_digests[sop]
 
+            # Re-read the actual upstream PACS through the *first-party*
+            # source-version guard. Byte hashes and case/source identity must
+            # match before AND after the request. This is not user auth.
+            from tools.imaging.source_bound_wado import (
+                SyntheticWadoBinding, read_source_bound_wado,
+            )
+            source = next(
+                row for row in ledger.state("CASE-ALPHA")["sources"]
+                if row["id"] == source_id and row["state"] == "current"
+            )
+            read_bindings = {
+                sop: SyntheticWadoBinding(
+                    case_id="CASE-ALPHA",
+                    source_version_id=source_id,
+                    source_sha256=source["sha256"],
+                    study_uid=IMAGE_STUDY_UID,
+                    series_uid=IMAGE_SERIES_UID,
+                    sop_uid=sop,
+                    original_dicom_sha256=expected_digests[sop],
+                )
+                for sop in SOP_UIDS
+            }
+            protected_receipts = {
+                sop: read_source_bound_wado(ledger, binding, base)
+                for sop, binding in read_bindings.items()
+            }
+            try:
+                wrong_case = SyntheticWadoBinding(
+                    case_id="CASE-BETA",
+                    source_version_id=source_id,
+                    source_sha256=source["sha256"],
+                    study_uid=IMAGE_STUDY_UID,
+                    series_uid=IMAGE_SERIES_UID,
+                    sop_uid=SOP_UIDS[0],
+                    original_dicom_sha256=expected_digests[SOP_UIDS[0]],
+                )
+                read_source_bound_wado(ledger, wrong_case, base)
+            except InvalidInput:
+                source_guard_denies_wrong_case = True
+            else:
+                raise InvalidInput("Actual retrieval was not guarded from wrong-case access")
             if ledger.state("CASE-ALPHA") != original_state:
                 raise InvalidInput("Backend evaluation mutated first-party case ledger")
             amendment = (
@@ -340,6 +381,15 @@ def run_evaluation(base_url: str) -> dict:
                 amendment_blocks_first_party_binding = True
             else:
                 raise InvalidInput("Source amendment did not invalidate adapter binding")
+
+            # The upstream object may remain stored/retrievable: our own
+            # adapter must fail closed on the amended source *before HTTP*.
+            try:
+                read_source_bound_wado(ledger, read_bindings[SOP_UIDS[0]], base)
+            except InvalidInput:
+                source_guard_denies_amended_read = True
+            else:
+                raise InvalidInput("Source-bound WADO read ignored amended report")
 
             encoding_verified = all(
                 p["encoded_pixel_bytes_equal"]
@@ -389,6 +439,16 @@ def run_evaluation(base_url: str) -> dict:
                 "exact_original_object_preserved": exact_byte_match,
                 "first_party_wrong_case_rejected": case_isolated_at_adapter,
                 "first_party_amendment_rejected": amendment_blocks_first_party_binding,
+                "first_party_source_bound_wado_verified": all(
+                    receipt["original_bytes_verified"]
+                    and receipt["source_current_before_and_after"]
+                    and receipt["retrieved_original_dicom_sha256"] == expected_digests[sop]
+                    for sop, receipt in protected_receipts.items()
+                ),
+                "first_party_source_bound_receipts": protected_receipts,
+                "first_party_wado_wrong_case_refused": source_guard_denies_wrong_case,
+                "first_party_wado_amendment_refused": source_guard_denies_amended_read,
+                "pacs_direct_object_access_revoked": False,
                 "pacs_authentication_verified": False,
                 "pacs_tenant_isolation_verified": False,
                 "clinical_validation": False,
