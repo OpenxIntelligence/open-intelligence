@@ -250,8 +250,14 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
 
     def attach_manual():
         assert manual_document is not None
-        cd.wait("Boolean(document.querySelector('[data-testid=manual-context-documents]'))",
-                'fresh manual context before selecting reviewed records')
+        try:
+            cd.wait("Boolean(document.querySelector('[data-testid=manual-context-documents]'))",
+                    'fresh manual context before selecting reviewed records')
+        except Exception:
+            diagnostic = cd.evaluate("({text:document.querySelector('main')?.innerText,manual:document.querySelector('[data-testid=question-manual-passages]')?.innerText,responses:window.__oiAuthoredEvidenceChecks.responses.filter(r=>r.path.endsWith('/manual-passages'))})")
+            (artifacts / 'manual-context-failure.json').write_text(json.dumps(diagnostic, ensure_ascii=False, indent=2))
+            print('MANUAL CONTEXT DIAGNOSTIC', json.dumps(diagnostic, ensure_ascii=False))
+            raise
         before=len(responses())
         click('[data-testid=manual-context-documents]')
         cd.wait("Array.from(document.querySelectorAll('[data-testid=manual-context-document]')).some("
