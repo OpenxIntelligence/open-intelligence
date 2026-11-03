@@ -161,7 +161,7 @@ def main():
             preview=cd.evaluate("document.querySelector('[data-testid=composer-context]').textContent")
             assert sid in preview and "line 8" in preview and "version 1" in preview
             assert "This preview alone does not" in preview
-            assert "no model executed" in preview
+            assert "execute a model" in preview
             assert "authorize a clinician" in preview
             assert cd.evaluate("!document.querySelector('[data-testid=saved-source-question]')")
             cd.evaluate("document.querySelector('[data-testid=save-source-question]').click()")
