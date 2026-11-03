@@ -7,6 +7,14 @@ import './styles.css';
 import './source-intake.css';
 const session=new RegistrySession();
 const navigation=['Overview','Journey','Records','Investigations','Review'];
+function WorkspaceContext({section,patientId,readiness}:{section:string;patientId:string|null;readiness:'checking'|'ready'|'unavailable'}){
+ return <header className="topbar" aria-label="Current workspace context">
+  <div className="workspace-context"><span className="workspace-location">Patient workspace <span className="muted">/ {section}</span></span>
+   <span className="workspace-identity" data-testid="workspace-identity">{patientId?<><span className="workspace-context-label">Authorized fictional patient</span> <code>{patientId}</code></>:<span className="muted">No authorized patient open</span>}</span>
+  </div>
+  <span className={'connection '+readiness} data-testid="readiness">{readiness==='checking'?'Checking API':readiness==='ready'?'PostgreSQL API ready':'API unavailable'}</span>
+ </header>;
+}
 function App(){
  const state=useSyncExternalStore(session.subscribe,session.snapshot);
  const [token,setToken]=useState(''),[patientId,setPatientId]=useState(''),[confirmed,setConfirmed]=useState(false);
@@ -30,10 +38,10 @@ function App(){
   <aside className="rail" aria-label="Workspace navigation">
    <div className="brand"><span className="mark" aria-hidden="true">oi</span><span>Open<br/>Intelligence</span></div>
    <div className="environment">Development · fictional identities only</div>
-   <nav aria-label="Patient workspace">{navigation.map(name=><button type="button" key={name} aria-current={name===section?'page':undefined} onClick={()=>setSection(name)}><span>{name}</span>{name==='Records'?<span className="nav-hint">Original records</span>:name==='Journey'?<span className="nav-hint">Source view</span>:name==='Investigations'?<span className="nav-hint">Source questions</span>:name!=='Overview'?<span className="nav-hint">Not connected</span>:null}</button>)}</nav>
+   <nav aria-label="Patient workspace">{navigation.map(name=><button type="button" key={name} aria-current={name===section?'page':undefined} onClick={()=>setSection(name)}><span>{name}</span>{name==='Records'?<span className="nav-hint">Original records</span>:name==='Journey'?<span className="nav-hint">Source view</span>:name==='Investigations'?<span className="nav-hint">Source questions</span>:name==='Review'?<span className="nav-hint">Not connected · unavailable</span>:null}</button>)}</nav>
    <div className="rail-note">One patient context.<br/>Original sources.<br/>Human clinical authority.</div>
   </aside>
-  <div className="body"><header className="topbar"><span>Patient workspace <span className="muted">/ {section}</span></span><span className={'connection '+readiness} data-testid="readiness">{readiness==='checking'?'Checking API':readiness==='ready'?'PostgreSQL API ready':'API unavailable'}</span></header>
+  <div className="body"><WorkspaceContext section={section} patientId={state.connected&&state.patient?state.patient.patient_id:null} readiness={readiness}/>
    <main id="main" tabIndex={-1}>
     <div className="heading"><div><p className="eyebrow">OPEN INTELLIGENCE · H1</p><h1>{section==='Overview'?'Start with the right patient.':section}</h1><p className="lede">{section==='Overview'?'A connected foundation for the patient’s story, evidence and care.':section==='Records'?'Inspect authorized fictional case mappings, original source history and unreviewed source statements.':section==='Journey'?'View source-linked chronology, uncertainty and disagreements without implying clinical assessment.':section==='Investigations'?'Prepare exact source context, save a question and inspect its current or reassessment status. No AI execution or clinical approval.':'This capability remains part of the platform, but is not connected to this H1 API yet.'}</p></div></div>
     <div className="boundary" role="note"><strong>Development workspace, not a clinical service.</strong> Use operator-issued synthetic credentials and fictional identities only. These are not patient accounts, verified consent or professional sign-off.</div>
@@ -74,10 +82,14 @@ function App(){
          <dl className="source-metadata">
           <div><dt>Type</dt><dd>{item.kind}</dd></div><div><dt>Event date</dt><dd>{item.event_date}</dd></div>
           <div><dt>Issued</dt><dd>{item.issued_at}</dd></div><div><dt>Specimen</dt><dd>{item.specimen_id??'Not recorded'}</dd></div>
-          <div><dt>Original source ID</dt><dd><code>{item.source_id}</code></dd></div>
-          <div><dt>Original SHA-256</dt><dd><code>{item.sha256}</code></dd></div>
-          {item.supersedes_id&&<div><dt>Supersedes</dt><dd><code>{item.supersedes_id}</code></dd></div>}
-         </dl><button data-testid="open-original" disabled={busy||state.recordsPhase.startsWith('loading')} onClick={()=>void session.loadOriginal(item.source_id)}>Inspect original v{item.version}</button></li>)}</ol>}
+          </dl>
+         <details className="source-verify" data-testid="source-verify"><summary>Verify original details for {item.document_id} version {item.version}</summary>
+          <dl className="source-metadata"><div><dt>Original source ID</dt><dd><code>{item.source_id}</code></dd></div>
+           <div><dt>Original SHA-256</dt><dd><code>{item.sha256}</code></dd></div>
+           {item.supersedes_id&&<div><dt>Supersedes</dt><dd><code>{item.supersedes_id}</code></dd></div>}
+          </dl>
+         </details>
+         <button data-testid="open-original" disabled={busy||state.recordsPhase.startsWith('loading')} onClick={()=>void session.loadOriginal(item.source_id)}>Inspect original v{item.version}</button></li>)}</ol>}
        <h3>Source-reported findings from current versions</h3>
        <p>Statements below are unreviewed quotations reported by fictional input files, not independently established clinical facts.</p>
        {state.sourceIndex.source_reported_assertions.length===0?<p>No source-reported assertions were returned.</p>:
