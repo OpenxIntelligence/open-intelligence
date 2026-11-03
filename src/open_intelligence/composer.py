@@ -27,7 +27,9 @@ ASSESSMENT_KEYS = ("id", "evidence_version_id", "relation", "applicability",
 INTAKE_PROVENANCE_KEYS = ("classification_origin", "annotation_method",
                           "clinical_review", "transcription_review_sha256",
                           "text_origin", "extraction_sha256", "source_page",
-                          "page_line", "page_text_sha256")
+                          "page_line", "page_text_sha256",
+                          "annotation_revision_id", "annotation_revision",
+                          "initial_transcription_review_sha256")
 
 
 def _fields(row: dict, keys: tuple[str, ...], *, include_intake: bool = False) -> dict:

@@ -39,7 +39,22 @@ def classification_provenance(receipt: dict) -> dict:
     if receipt.get("extraction_sha256"):
         result["extraction_sha256"] = receipt["extraction_sha256"]
         result["text_origin"] = "pdf_extraction"
+    for key in ("annotation_revision_id", "annotation_revision"):
+        if receipt.get(key) is not None:
+            result[key] = receipt[key]
+    if "initial_review_sha256" in receipt:
+        result["initial_transcription_review_sha256"] = receipt["initial_review_sha256"]
     return result
+
+
+def validate_revision_reason(reason: object) -> str:
+    """Keep an operator's bounded correction reason separate from findings."""
+    if not isinstance(reason, str) or not 3 <= len(reason.strip()) <= 500:
+        raise InvalidInput("Annotation revision reason must have 3–500 characters")
+    if any(unicodedata.category(character) in {"Cc", "Cf", "Cs", "Zl", "Zp"}
+           and character not in {"\n", "\t"} for character in reason):
+        raise InvalidInput("Annotation revision reason contains unsupported controls")
+    return reason.strip()
 
 
 def safe_filename(filename: object) -> str:
@@ -108,6 +123,82 @@ def preview_document(raw: bytes, filename: str) -> dict:
         "annotation_method": "manual-exact-extraction-line-selection",
         "clinical_review": "not_performed",
     }
+
+
+def preview_saved_document(raw: bytes, filename: str,
+                           frozen_rendition: dict | None = None) -> dict:
+    """Validate an existing original and its server-owned frozen display text.
+
+    A PDF correction must use the rendition reviewed at intake. Reconstructing
+    indices and hashes from its saved page strings does not run a PDF parser.
+    Keep the saved extractor descriptor in the digest even if the installed
+    extractor has since changed. This checks ledger consistency, not clinical
+    correctness, visual fidelity, or authenticity of the uploaded document.
+    """
+    filename = safe_filename(filename)
+    if filename.lower().endswith(".txt"):
+        if frozen_rendition is not None:
+            raise InvalidInput("Plain-text annotations cannot use a PDF rendition")
+        return preview_text(raw, filename)
+    if (not isinstance(raw, bytes) or not raw or len(raw) > MAX_SOURCE_BYTES or
+            not isinstance(frozen_rendition, dict)):
+        raise InvalidInput("Saved PDF original or frozen extraction is unavailable")
+    original_sha256 = hashlib.sha256(raw).hexdigest()
+    original = frozen_rendition.get("original_sha256")
+    extraction = frozen_rendition.get("extraction_sha256")
+    if (not isinstance(original, str) or not _HASH.fullmatch(original) or
+            not hmac.compare_digest(original_sha256, original) or
+            not isinstance(extraction, str) or not _HASH.fullmatch(extraction)):
+        raise InvalidInput("Saved PDF extraction does not match its original or identity")
+    from .pdf_worker import PdfRejected, canonical_json, make_rendition
+    try:
+        pages = frozen_rendition["pages"]
+        if (not isinstance(pages, list) or
+                any(not isinstance(page, dict) or not isinstance(page.get("text"), str) for page in pages)):
+            raise ValueError("Invalid saved PDF pages")
+        derived = make_rendition([page["text"] for page in pages])
+        # JSON equality preserves exact key and scalar types, including rejecting
+        # a Boolean masquerading as a page/line number. Never trust client anchors.
+        for field in ("text", "lines", "pages", "page_count"):
+            if canonical_json(frozen_rendition[field]) != canonical_json(derived[field]):
+                raise ValueError("Saved PDF page or line identity changed")
+        extractor = frozen_rendition["extractor"]
+        if (not isinstance(extractor, dict) or not isinstance(extractor.get("name"), str) or
+                not isinstance(extractor.get("version"), str)):
+            raise ValueError("Saved extractor descriptor is unavailable")
+        payload = {field: frozen_rendition[field]
+                   for field in ("text", "lines", "pages", "page_count", "extractor")}
+        if not hmac.compare_digest(hashlib.sha256(canonical_json(payload)).hexdigest(), extraction):
+            raise ValueError("Saved extraction fingerprint changed")
+    except (KeyError, TypeError, ValueError, UnicodeError, RecursionError, PdfRejected):
+        raise InvalidInput("Saved PDF extraction or page anchors are inconsistent") from None
+    return {
+        "filename": filename, "media_type": "application/pdf",
+        "sha256": original_sha256, "byte_count": len(raw), **payload,
+        "extraction_sha256": extraction,
+        "extraction_method": "pypdf-text-v1",
+        "annotation_method": "manual-exact-extraction-line-selection",
+        "clinical_review": "not_performed",
+    }
+
+
+def review_saved_document(case_id: str, raw: bytes, filename: str, metadata: dict,
+                          findings: list[dict], expected_sha256: str,
+                          confirmed_case_id: str,
+                          expected_extraction_sha256: str | None = None, *,
+                          frozen_rendition: dict | None = None
+                          ) -> tuple[ParsedReport, dict]:
+    """Review a correction against the saved original/rendition, never a reparse."""
+    preview = preview_saved_document(raw, filename, frozen_rendition)
+    if preview["media_type"] == "application/pdf":
+        if (not isinstance(expected_extraction_sha256, str) or
+                not _HASH.fullmatch(expected_extraction_sha256) or
+                not hmac.compare_digest(expected_extraction_sha256, preview["extraction_sha256"])):
+            raise InvalidInput("PDF extraction changed or extraction SHA-256 is missing; refresh saved selections")
+    elif expected_extraction_sha256 is not None:
+        raise InvalidInput("An extraction SHA-256 is only accepted for PDF annotations")
+    return _review_preview(case_id, raw, preview, metadata, findings,
+                           expected_sha256, confirmed_case_id)
 
 
 def review_text(case_id: str, raw: bytes, filename: str, metadata: dict,

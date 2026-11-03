@@ -1,5 +1,31 @@
 # Implementation slice 01 — source and investigation ledger
 
+## PDF selection correction convergence — 2 November 2026 (America/New_York)
+
+The current follow-on combines #190's versioned passage corrections with #215's
+PDF intake, Patient World Model and question/report workflow, based on exact
+#215 head `3be1106b5cd34523c4746e2df6f123048beb5659`.
+Source bytes, source version and frozen extraction remain unchanged when a
+manual selection changes. Current patient understanding uses the new revision;
+older reports retain the revision and page anchors they captured. A correction
+invalidates dependent work and reopens its question. Unreviewed model attempts
+and manually transcribed numeric measurements retain #189's existing safeguards.
+
+Implemented and hosted-verified in [draft PR #229](https://github.com/OpenxIntelligence/open-intelligence/pull/229).
+Exact implementation `ee102497e173ac80f52a1d94f25c626dc82faf4a` passed
+[CI 41566545004](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41566545004):
+467 Python tests, 146 JavaScript checks, 80 offline checks with 18 optional skips,
+and all seven integration Chrome journeys. [UI run 41566545049 attempt 2](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41566545049/attempts/2)
+passed the overlapping regression and all four UI journeys. Its first attempt
+hit Chrome startup timeout before app interaction; unchanged-code retry passed.
+The local full run's inherited PDF deadline failure and successful isolated
+rerun remain recorded in the contract. Artifact 13199631798 checksum and all
+126 source hashes matched; desktop/mobile/current-patient screenshots inspected. See [the maintained revision contract](engineering/ANNOTATION_REVISIONS.md).
+This is the synthetic behavioral reference, not a completed authenticated H1
+migration, full MVP, clinical approval or deployment. Earlier checkpoints below
+retain their original scope; their statements about absent annotation editing
+are superseded by this follow-on.
+
 ## Source intake to patient record integration — 3 November 2026 UTC
 
 Implemented and verified in [draft PR #215](https://github.com/OpenxIntelligence/open-intelligence/pull/215),

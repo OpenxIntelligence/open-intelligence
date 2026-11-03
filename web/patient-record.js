@@ -4,7 +4,9 @@
   const labels = Object.freeze({reported: 'Reported', negative: 'Negative', pending: 'Pending',
     indeterminate: 'Indeterminate', 'not-reported': 'Not reported', 'not-assessed': 'Not assessed', conflicting: 'Conflicting'});
   const unresolvedStates = new Set(['pending', 'indeterminate', 'not-reported', 'not-assessed', 'conflicting']);
-  const manualKeys = ['classification_origin', 'annotation_method', 'clinical_review', 'transcription_review_sha256'];
+  const revisionKeys = ['annotation_revision_id', 'annotation_revision'];
+  const manualKeys = ['classification_origin', 'annotation_method', 'clinical_review', 'transcription_review_sha256',
+    'initial_transcription_review_sha256', ...revisionKeys];
   const extractionKeys = ['text_origin', 'extraction_sha256'];
   const pageKeys = ['source_page', 'page_line', 'page_text_sha256'];
   const provenanceKeys = [...manualKeys, ...extractionKeys, ...pageKeys];
@@ -26,13 +28,15 @@
       return;
     }
     requireMatch(receipt && !Array.isArray(receipt) && receipt.manual_transcription_confirmed === true &&
-      receipt.clinical_review === 'not_performed' && digest(receipt.review_sha256));
+      receipt.clinical_review === 'not_performed' && digest(receipt.review_sha256) && digest(receipt.initial_review_sha256));
+    for (const key of revisionKeys) requireMatch(positive(receipt[key]) && source[key] === receipt[key]);
     const pdf = receipt.media_type === 'application/pdf';
     requireMatch(pdf || receipt.media_type === 'text/plain; charset=utf-8');
     const method = pdf ? 'manual-exact-extraction-line-selection' : 'manual-exact-line-selection';
     requireMatch(source.classification_origin === 'user_selected' && source.clinical_review === 'not_performed' &&
       source.annotation_method === method && receipt.annotation_method === method &&
       source.transcription_review_sha256 === receipt.review_sha256 &&
+      source.initial_transcription_review_sha256 === receipt.initial_review_sha256 &&
       receipt.extraction_method === (pdf ? 'pypdf-text-v1' : 'utf8-plain-text-v1'));
     requireMatch(pageKeys.every(key => !Object.hasOwn(source, key)));
     if (pdf) requireMatch(source.text_origin === 'pdf_extraction' && digest(source.extraction_sha256) &&
@@ -193,7 +197,8 @@
         'pill ' + (unresolvedStates.has(item.reported_state) ? 'pill-warn' : 'pill-neutral')));
       card.append(head, node('p', item.source_statement, 'quoted'),
         node('p', `${item.event_date} · ${item.specimen_id ? 'Specimen ' + item.specimen_id : 'Specimen not recorded'}`, 'source-meta'));
-      if (manual) card.append(node('p', 'Clinical review not performed. A user selected this status for the quoted passage.', 'source-meta'));
+      if (manual) card.append(node('p', 'Selection revision ' + item.annotation_revision +
+        ' · Clinical review not performed. A user selected this status for the quoted passage.', 'source-meta'));
       card.append(sourceButton(sources.get(item.source_version_id), item.source_line, token, item));
       return card;
     }
@@ -205,7 +210,8 @@
         sourceButton(source, null, token));
       if (source.classification_origin === 'user_selected') row.append(node('p',
         (source.text_origin === 'pdf_extraction' ? 'PDF text extraction' : 'Plain-text record') +
-        ' · manually selected passages. Clinical review not performed.', 'source-meta'));
+        ' · manually selected passages · Selection revision ' + source.annotation_revision +
+        '. Clinical review not performed.', 'source-meta'));
       return row;
     }
     function render(model, state, checked, token) {
