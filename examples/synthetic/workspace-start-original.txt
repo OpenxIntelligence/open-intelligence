@@ -1,0 +1,8 @@
+OI-SYNTHETIC-REPORT/1
+Patient: CASE-START
+Document: START-PATH
+Type: pathology
+Event-Date: 2026-01-02
+Issued-At: 2026-01-03
+Specimen: START-TISSUE
+Finding: marker|not-reported|The fictional marker was not tested; café <script>literal</script>.
