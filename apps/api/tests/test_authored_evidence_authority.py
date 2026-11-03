@@ -330,7 +330,7 @@ class QuestionEvidenceAuthorityTests(EvidenceFixture):
             self.assertEqual(self.withdrawn(base, state["patient"], state["question"], state["evidence_id"])[0], 201)
             before = self.persisted_state()
             for table in ("case_evidence_versions", "case_evidence_withdrawals",
-                          "question_evidence_assessments", "question_evidence_reports", "evidence_commands"):
+                          "question_evidence_assessments", "question_evidence_reports", "evidence_commands", "evidence_command_origins"):
                 for statement in (f"DELETE FROM investigation.{table}",
                                   f"UPDATE investigation.{table} SET actor=actor"):
                     with self.subTest(table=table, statement=statement), self.assertRaises(DBAPIError):
@@ -437,6 +437,6 @@ class QuestionEvidenceAuthorityTests(EvidenceFixture):
             self.assertEqual(self.persisted_state(), before)
             with self.engine.connect() as db:
                 revision = db.execute(text("SELECT version_num FROM public.alembic_version")).scalar_one()
-            self.assertEqual(revision, "0009_question_evidence")
+            self.assertEqual(revision, "0010_authored_evidence_origin")
             self.assertEqual(len(self.packet(base, p, q)["evidence"]), 1)
 

@@ -70,3 +70,28 @@ test('an amendment declaring abstract rights cannot permit an earlier full-text 
  old.title=null;old.statement=null;p.assessments[0].state='content_withheld';p.assessments[0].quote=null;p.assessments[0].quote_start=null;p.assessments[0].rationale=null;
  assert.equal((await decodeEvidencePacket(signPacket(p),question())).evidence[0].statement,null);
 });
+
+test('field-leading U+FEFF is preserved as literal title, statement and quote data without UTF-8 normalization',async()=>{
+ const p=packet();p.evidence[0].title='\uFEFF'+p.evidence[0].title;p.evidence[0].statement='\uFEFF'+p.evidence[0].statement;
+ p.assessments[0].quote='\uFEFFFictional';p.assessments[0].quote_start=0;
+ const result=await decodeEvidencePacket(signPacket(p),question());
+ assert.equal(result.evidence[0].title,p.evidence[0].title);assert.equal(result.evidence[0].statement,p.evidence[0].statement);assert.equal(result.assessments[0].quote,p.assessments[0].quote);
+ const r=report();r.snapshot.comparisons=[{evidence:p.evidence[0],assessment:p.assessments[0]}];r.snapshot_sha256=hash(r.snapshot);
+ assert.equal((await decodeEvidenceReport(r,question(),reportId)).snapshot.comparisons[0].assessment.quote,p.assessments[0].quote);
+});
+
+test('all evidence enums and permission cells require strings rather than coercible singleton arrays',async()=>{
+ const mutations=[p=>p.evidence[0].content_item=['abstract'],p=>p.assessments[0].relation=['supports'],p=>p.assessments[0].applicability=['limited'],p=>p.assessments[0].state=['current_unreviewed'],p=>p.reports[0].state=['current_unreviewed'],p=>{
+  p.evidence[0].permissions.full_text.display=['unknown'];p.evidence[0].rights_sha256=hash(p.evidence[0].permissions);p.assessments[0].rights_sha256=p.evidence[0].rights_sha256;
+ }];
+ for(const mutate of mutations){const p=packet();mutate(p);await assert.rejects(()=>decodeEvidencePacket(signPacket(p),question()));}
+ for(const mutate of [r=>r.state=['current_unreviewed'],r=>r.snapshot.selected_source.reported_state=['not-reported'],r=>r.snapshot.selected_source.kind=['pathology']]){
+  const r=report();mutate(r);r.snapshot_sha256=hash(r.snapshot);await assert.rejects(()=>decodeEvidenceReport(r,question(),reportId));
+ }
+});
+
+test('fresh report state may become historical or withheld but cannot promote a known historical preparation to current',async()=>{
+ const r=report(),summary=Object.fromEntries(['report_id','question_id','prepared_at','body_sha256','snapshot_sha256','state'].map(k=>[k,r[k]]));
+ await assert.rejects(()=>decodeEvidenceReport(r,question(),reportId,{...summary,state:'historical_reassessment_required'}));
+ assert.equal((await decodeEvidenceReport({...r,state:'historical_reassessment_required'},question(),reportId,summary)).state,'historical_reassessment_required');
+});

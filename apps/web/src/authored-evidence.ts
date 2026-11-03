@@ -69,13 +69,14 @@ const fullReportFields=['contract','patient_id','case_id','question_id','report_
 const sourceFields=['source_id','document_id','version','sha256','line','finding_key','reported_state','statement','kind','event_date','issued_at','specimen_id'];
 function exact(v:unknown,keys:readonly string[]):v is Record<string,unknown>{return v!==null&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).length===keys.length&&keys.every(k=>Object.hasOwn(v,k));}
 function id(v:unknown,prefix:string):v is string{return typeof v==='string'&&new RegExp('^'+prefix+'-[0-9A-F]{32}$').test(v);}
+function member(v:unknown,values:readonly string[]):v is string{return typeof v==='string'&&values.includes(v);}
 function hex(v:unknown):v is string{return typeof v==='string'&&HASH.test(v);}
 function integer(v:unknown,min=1,max=Number.MAX_SAFE_INTEGER):v is number{return typeof v==='number'&&Number.isSafeInteger(v)&&v>=min&&v<=max;}
 function utc(v:unknown):v is string{return typeof v==='string'&&v.length<=64&&/^\d{4}-\d{2}-\d{2}T.+(?:Z|[+-]\d{2}:\d{2})$/.test(v)&&Number.isFinite(Date.parse(v));}
 function date(v:unknown):v is string{return typeof v==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(v)&&Number.isFinite(Date.parse(v+'T00:00:00Z'))&&new Date(v+'T00:00:00Z').toISOString().slice(0,10)===v;}
 function text(v:unknown,min:number,max:number):v is string{
  if(typeof v!=='string'||Array.from(v).length<min||Array.from(v).length>max)return false;
- const bytes=new TextEncoder().encode(v);return new TextDecoder('utf-8',{fatal:true}).decode(bytes)===v;
+ const bytes=new TextEncoder().encode(v);return new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(bytes)===v;
 }
 export function visibleLine(v:unknown,min=10,max=600):v is string{return text(v,min,max)&&v===v.trim()&&!/[\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp}]/u.test(v);}
 function flags(v:Record<string,unknown>):boolean{return v.synthetic===true&&v.human_review_state==='not_performed'&&v.clinical_approval===false&&v.model_executed===false;}
@@ -85,20 +86,20 @@ export function canonicalEvidenceJson(v:unknown):string{
  if(v===undefined||typeof v==='number'&&!Number.isFinite(v))throw Error('evidence contract');
  return JSON.stringify(v);
 }
-async function digest(v:string):Promise<string>{const bytes=new TextEncoder().encode(v);if(new TextDecoder('utf-8',{fatal:true}).decode(bytes)!==v)throw Error('evidence bytes');return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('');}
+async function digest(v:string):Promise<string>{const bytes=new TextEncoder().encode(v);if(new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(bytes)!==v)throw Error('evidence bytes');return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('');}
 export function declaredPermissions(item:ContentItem,display:Permission='allowed',redistribute:Permission='allowed'):Permissions{
  if(!CONTENT.includes(item)||!PERMISSIONS.includes(display)||!PERMISSIONS.includes(redistribute))throw Error('evidence permissions');
  return Object.freeze(Object.fromEntries(ITEMS.map(key=>[key,Object.freeze(Object.fromEntries(USES.map(use=>[use,(['metadata',item].includes(key)?use==='store'?'allowed':use==='display'?display:use==='redistribute'?redistribute:'unknown':'unknown') as Permission])))])));
 }
 function permissions(v:unknown):Permissions{
  if(!exact(v,ITEMS))throw Error('evidence permissions');
- for(const item of ITEMS){if(!exact(v[item],USES)||!USES.every(use=>PERMISSIONS.includes(String((v[item] as Record<string,unknown>)[use]))))throw Error('evidence permissions');}
+ for(const item of ITEMS){if(!exact(v[item],USES)||!USES.every(use=>member((v[item] as Record<string,unknown>)[use],PERMISSIONS)))throw Error('evidence permissions');}
  return Object.freeze(Object.fromEntries(ITEMS.map(item=>[item,Object.freeze({...v[item] as Record<string,Permission>})])));
 }
 function allowed(p:Permissions,item:ContentItem,exporting=false):boolean{return ['metadata',item].every(key=>['store','display',...(exporting?['redistribute']:[])].every(use=>p[key]?.[use]==='allowed'));}
 function sameQuestion(a:SourceQuestion,b:SourceQuestion):boolean{return Object.keys(a).every(key=>key==='source_context_state'||a[key as keyof SourceQuestion]===b[key as keyof SourceQuestion]);}
 async function evidence(v:unknown):Promise<EvidenceVersion>{
- if(!exact(v,evidenceFields)||!id(v.evidence_id,'EVIDENCE')||typeof v.evidence_key!=='string'||!DOC.test(v.evidence_key)||!integer(v.version)||!hex(v.sha256)||!integer(v.statement_line,1,32768)||!CONTENT.includes(String(v.content_item))||!hex(v.rights_sha256)||!['current','superseded','withdrawn'].includes(String(v.state))||!date(v.issued_at)||!utc(v.created_at))throw Error('evidence version');
+ if(!exact(v,evidenceFields)||!id(v.evidence_id,'EVIDENCE')||typeof v.evidence_key!=='string'||!DOC.test(v.evidence_key)||!integer(v.version)||!hex(v.sha256)||!integer(v.statement_line,1,32768)||!member(v.content_item,CONTENT)||!hex(v.rights_sha256)||!member(v.state,['current','superseded','withdrawn'])||!date(v.issued_at)||!utc(v.created_at))throw Error('evidence version');
  const p=permissions(v.permissions);
  if(await digest(canonicalEvidenceJson(p))!==v.rights_sha256)throw Error('evidence rights digest');
  if(v.title===null||v.statement===null){if(v.title!==null||v.statement!==null)throw Error('evidence withholding');}
@@ -106,7 +107,7 @@ async function evidence(v:unknown):Promise<EvidenceVersion>{
  return Object.freeze({...v,permissions:p} as EvidenceVersion);
 }
 function assessment(v:unknown,q:SourceQuestion,e:EvidenceVersion):EvidenceAssessment{
- if(!exact(v,assessmentFields)||!id(v.assessment_id,'ASSESSMENT')||v.question_id!==q.question_id||v.evidence_id!==e.evidence_id||v.evidence_sha256!==e.sha256||v.rights_sha256!==e.rights_sha256||v.source_snapshot_sha256!==q.source_snapshot_sha256||v.preflight_sha256!==q.preflight_sha256||!RELATIONS.includes(String(v.relation))||!APPLICABILITY.includes(String(v.applicability))||v.relation==='supports'&&v.applicability==='not_applicable'||typeof v.actor_label!=='string'||!KEY.test(v.actor_label)||!utc(v.created_at)||!['current_unreviewed','reassessment_required','content_withheld'].includes(String(v.state)))throw Error('evidence assessment');
+ if(!exact(v,assessmentFields)||!id(v.assessment_id,'ASSESSMENT')||v.question_id!==q.question_id||v.evidence_id!==e.evidence_id||v.evidence_sha256!==e.sha256||v.rights_sha256!==e.rights_sha256||v.source_snapshot_sha256!==q.source_snapshot_sha256||v.preflight_sha256!==q.preflight_sha256||!member(v.relation,RELATIONS)||!member(v.applicability,APPLICABILITY)||v.relation==='supports'&&v.applicability==='not_applicable'||typeof v.actor_label!=='string'||!KEY.test(v.actor_label)||!utc(v.created_at)||!member(v.state,['current_unreviewed','reassessment_required','content_withheld']))throw Error('evidence assessment');
  if(v.state==='content_withheld'){
   if(v.quote!==null||v.quote_start!==null||v.rationale!==null||e.statement!==null)throw Error('evidence withholding');
  }else{
@@ -118,7 +119,7 @@ function assessment(v:unknown,q:SourceQuestion,e:EvidenceVersion):EvidenceAssess
  return Object.freeze({...v} as EvidenceAssessment);
 }
 function reportSummary(v:unknown,q:SourceQuestion):ReportSummary{
- if(!exact(v,reportFields)||!id(v.report_id,'REPORT')||v.question_id!==q.question_id||!utc(v.prepared_at)||!hex(v.body_sha256)||!hex(v.snapshot_sha256)||!REPORT_STATES.includes(String(v.state))||q.source_context_state==='source_reassessment_required'&&v.state==='current_unreviewed')throw Error('report history');
+ if(!exact(v,reportFields)||!id(v.report_id,'REPORT')||v.question_id!==q.question_id||!utc(v.prepared_at)||!hex(v.body_sha256)||!hex(v.snapshot_sha256)||!member(v.state,REPORT_STATES)||q.source_context_state==='source_reassessment_required'&&v.state==='current_unreviewed')throw Error('report history');
  return Object.freeze({...v} as ReportSummary);
 }
 function unique(values:readonly string[]):void{if(new Set(values).size!==values.length)throw Error('duplicate evidence identity');}
@@ -126,7 +127,7 @@ function unique(values:readonly string[]):void{if(new Set(values).size!==values.
 export async function decodeEvidencePacket(value:unknown,expected:SourceQuestion):Promise<EvidencePacket>{
  if(!exact(value,packetFields)||value.contract!=='oi.h1-question-evidence/1'||value.patient_id!==expected.patient_id||value.case_id!==expected.case_id||!hex(value.source_snapshot_sha256)||!id(value.access_receipt_id,'ACCESS')||!hex(value.packet_sha256)||!flags(value)||!Array.isArray(value.evidence)||value.evidence.length>100||!Array.isArray(value.assessments)||value.assessments.length>200||!Array.isArray(value.reports)||value.reports.length>100)throw Error('evidence packet');
  const q=decodeSourceQuestion(value.question,expected.patient_id,expected.case_id);
- if(!sameQuestion(q,expected)||q.source_context_state==='current_unreviewed_question'&&q.source_snapshot_sha256!==value.source_snapshot_sha256)throw Error('evidence question');
+ if(!member(q.source_context_state,['current_unreviewed_question','source_reassessment_required'])||!sameQuestion(q,expected)||q.source_context_state==='current_unreviewed_question'&&q.source_snapshot_sha256!==value.source_snapshot_sha256)throw Error('evidence question');
  const rows=await Promise.all(value.evidence.map(evidence));unique(rows.map(e=>e.evidence_id));unique(rows.map(e=>e.evidence_key+':'+e.version));
  for(const row of rows){
   const latest=rows.filter(e=>e.evidence_key===row.evidence_key).reduce((a,b)=>a.version>b.version?a:b);
@@ -147,12 +148,13 @@ export async function decodeEvidencePacket(value:unknown,expected:SourceQuestion
 }
 
 function selectedSource(v:unknown,q:SourceQuestion):ComposerSource{
- if(!exact(v,sourceFields)||v.source_id!==q.source_id||v.version!==q.source_version||v.sha256!==q.source_sha256||v.line!==q.source_line||typeof v.document_id!=='string'||!DOC.test(v.document_id)||typeof v.finding_key!=='string'||!/^[a-z][a-z0-9_-]{0,59}$/.test(v.finding_key)||!['reported','negative','pending','indeterminate','not-reported','not-assessed','conflicting'].includes(String(v.reported_state))||!text(v.statement,1,1200)||!['clinical','pathology','laboratory','imaging','molecular','other'].includes(String(v.kind))||!date(v.event_date)||!date(v.issued_at)||(v.specimen_id!==null&&(typeof v.specimen_id!=='string'||!DOC.test(v.specimen_id))))throw Error('report source');
+ if(!exact(v,sourceFields)||v.source_id!==q.source_id||v.version!==q.source_version||v.sha256!==q.source_sha256||v.line!==q.source_line||typeof v.document_id!=='string'||!DOC.test(v.document_id)||typeof v.finding_key!=='string'||!/^[a-z][a-z0-9_-]{0,59}$/.test(v.finding_key)||!member(v.reported_state,['reported','negative','pending','indeterminate','not-reported','not-assessed','conflicting'])||!text(v.statement,1,1200)||!member(v.kind,['clinical','pathology','laboratory','imaging','molecular','other'])||!date(v.event_date)||!date(v.issued_at)||(v.specimen_id!==null&&(typeof v.specimen_id!=='string'||!DOC.test(v.specimen_id))))throw Error('report source');
  return Object.freeze({...v} as ComposerSource);
 }
 export async function decodeEvidenceReport(value:unknown,expected:SourceQuestion,reportId:string,summary?:ReportSummary):Promise<EvidenceReport>{
- if(!exact(value,fullReportFields)||value.contract!=='oi.h1-evidence-report/1'||value.patient_id!==expected.patient_id||value.case_id!==expected.case_id||value.question_id!==expected.question_id||value.report_id!==reportId||!id(value.report_id,'REPORT')||!utc(value.prepared_at)||!REPORT_STATES.includes(String(value.state))||!hex(value.body_sha256)||!hex(value.snapshot_sha256)||!id(value.access_receipt_id,'ACCESS')||!flags(value))throw Error('evidence report');
+ if(!exact(value,fullReportFields)||value.contract!=='oi.h1-evidence-report/1'||value.patient_id!==expected.patient_id||value.case_id!==expected.case_id||value.question_id!==expected.question_id||value.report_id!==reportId||!id(value.report_id,'REPORT')||!utc(value.prepared_at)||!member(value.state,REPORT_STATES)||!hex(value.body_sha256)||!hex(value.snapshot_sha256)||!id(value.access_receipt_id,'ACCESS')||!flags(value))throw Error('evidence report');
  if(summary&&(['report_id','question_id','prepared_at','body_sha256','snapshot_sha256'] as const).some(k=>value[k]!==summary[k]))throw Error('report immutable history');
+ if(summary&&summary.state!=='current_unreviewed'&&value.state==='current_unreviewed')throw Error('report historical promotion');
  if(value.state==='content_withheld'){
   if(value.body!==null||value.snapshot!==null)throw Error('report withholding');
   return Object.freeze({...value} as EvidenceReport);

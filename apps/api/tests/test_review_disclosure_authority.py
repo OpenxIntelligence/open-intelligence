@@ -111,7 +111,7 @@ class ReviewDisclosureAuthorityTests(SourceVersionFixture):
         with self.engine.connect() as connection:
             self.assertEqual(connection.execute(text(
                 "SELECT version_num FROM public.alembic_version"
-            )).scalars().all(), ["0009_question_evidence"])
+            )).scalars().all(), ["0010_authored_evidence_origin"])
 
     def persisted_state(self):
         """Include every return and event, including source access receipts."""

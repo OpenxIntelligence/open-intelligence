@@ -304,6 +304,20 @@ The five append-only tables are `case_evidence_versions`,
 routine downgrade. The distinct parallel `0009_question_followthrough` owner must
 be reconciled through an explicit merge preserving both histories.
 
+Follow-up `0010_authored_evidence_origin` preserves the published 0009 migration
+and all existing rows. Its append-only `evidence_command_origins` table binds each
+assessment/report to the exact creating request key and intent. Upgrade requires
+exactly one matching scoped command per old object; missing or ambiguous mappings
+stop for explicit reconciliation. Old reports retain their original body/hash and
+`oi.h1-evidence-text/1` renderer. Their inspected packet is bound by the original
+complete command-intent digest and is explicitly labelled `intent_digest_only`;
+no packet hash is invented from that one-way digest. New reports retain an explicit
+expected packet digest and `/2` rendering, which prints frozen metadata and declared
+content-item store/display/redistribute/ml_use permissions. Exact retry verifies
+these independent origins so a corrupted receipt cannot redirect to another valid
+same-content object. No earlier report body, snapshot, command or audit event is
+rewritten by this migration. Populated origin history prevents routine downgrade.
+
 The separate metadata search/citation-link owner remains independent: this slice
 adds no acquisition connector, publisher verification, clinical appraisal, model,
 professional review or delivery. Source-only briefs retain their original meaning.
@@ -437,7 +451,7 @@ URLs, SQL, source text and rejected validation inputs.
 | Route | Behavior |
 |---|---|
 | GET /health | Process liveness; 200 even if the database is unavailable. |
-| GET /health/ready | 200 only for PostgreSQL major 16 at revision 0009_question_evidence; bounded 503 otherwise. |
+| GET /health/ready | 200 only for PostgreSQL major 16 at revision 0010_authored_evidence_origin; bounded 503 otherwise. |
 | GET /v1 | Reports synthetic_patient_registry stage, implemented synthetic capabilities and the configured authentication mode. |
 | GET /v1/openapi.json | Local typed contract, including bearer security; no CDN documentation UI. |
 | POST /v1/patients | Authenticated synthetic creation; trusted actor/org/purpose; 201 for new identity or 200 for identical retry. |

@@ -20,13 +20,19 @@ export const emptyEvidenceDisclosure=()=>({
 export const emptyEvidenceState=():EvidenceState=>({...emptyEvidenceDisclosure(),evidenceWriteIntent:null,evidenceReceipt:null,evidenceWritePhase:'idle',evidenceWriteMessage:'No evidence change is in progress.'});
 type Host={
  snapshot:()=>ViewState;publish:(patch:Partial<ViewState>)=>void;
- scope:()=>string;request:(url:string,controller:AbortController,body?:string)=>Promise<Response>;
+ scope:()=>string;selectedQuestion:()=>string|null;request:(url:string,controller:AbortController,body?:string)=>Promise<Response>;
  json:(response:Response,limit?:number)=>Promise<unknown>;
  add:(control:AbortController)=>void;remove:(control:AbortController)=>void;expire:()=>void;
 };
 export class QuestionEvidenceSession{
  #read=0;#reportRead=0;#originalRead=0;#write=0;
  constructor(private host:Host){}
+ #clearDisclosure(patch:Partial<EvidenceState>):void{
+  // A failed current read also invalidates parallel dependent readers. Keep
+  // uncertain writes: a disclosure failure says nothing about their commit.
+  this.#read++;this.#reportRead++;this.#originalRead++;
+  this.host.publish({...emptyEvidenceDisclosure(),...patch});
+ }
  reset(preserveCase?:string):EvidenceState{
   this.#read++;this.#reportRead++;this.#originalRead++;this.#write++;
   const state=this.host.snapshot(),intent=state.evidenceWriteIntent;
@@ -58,11 +64,11 @@ export class QuestionEvidenceSession{
   try{
    const response=await this.host.request(this.#path(q)+'/evidence',control);if(!current())return;
    if(response.status===401){this.host.expire();return;}
-   if(response.status!==200){this.host.publish({evidencePhase:'error',evidenceMessage:'Evidence unavailable under current authority. No earlier evidence view is retained.'});return;}
+   if(response.status!==200){this.#clearDisclosure({evidencePhase:'error',evidenceMessage:'Evidence unavailable under current authority. No earlier evidence view is retained.'});return;}
    const value=await decodeEvidencePacket(await this.host.json(response,524288),q);
-   if(!current()||control.signal.aborted)return;
+   if(!current())return;if(control.signal.aborted)throw Error('evidence timeout');
    this.host.publish({evidencePacket:value,evidencePhase:'ready',evidenceMessage:value.question.source_context_state==='current_unreviewed_question'?'Case evidence and human-authored proposals. Scientific appraisal and clinical review have not been performed.':'Source changed. Earlier proposals remain historical; create a current source question before new comparisons.'});
-  }catch(_){if(current())this.host.publish({evidencePhase:'error',evidenceMessage:'Evidence response could not be verified. Refresh before trying again.'});}
+  }catch(_){if(current())this.#clearDisclosure({evidencePhase:'error',evidenceMessage:'Evidence response could not be verified. Refresh before trying again.'});}
   finally{done();}
  }
  async readReport(questionId:string,reportId:string):Promise<EvidenceReport|null>{
@@ -78,12 +84,13 @@ export class QuestionEvidenceSession{
   try{
    const response=await this.host.request(this.#path(q)+'/evidence-reports/'+encodeURIComponent(reportId),control);if(!current())return null;
    if(response.status===401){this.host.expire();return null;}
-   if(response.status!==200){this.host.publish({...emptyEvidenceDisclosure(),evidenceReportPhase:'error',evidenceReportMessage:'Report unavailable under current authority. No previous body can be downloaded.'});return null;}
+   if(response.status!==200){this.#clearDisclosure({evidenceReportPhase:'error',evidenceReportMessage:'Report unavailable under current authority. No previous body can be downloaded.'});return null;}
    const value=await decodeEvidenceReport(await this.host.json(response,524288),q,reportId,summary);
-   if(!current()||control.signal.aborted)return null;
-   this.host.publish({...(value.state==='content_withheld'?emptyEvidenceDisclosure():{}),evidenceReport:value,evidenceReportPhase:'ready',evidenceReportMessage:value.state==='content_withheld'?'Current content permissions withhold this report. Its immutable preparation references remain. Refresh evidence to inspect current permissions.':value.state==='historical_reassessment_required'?'Historical preparation. Source or evidence changed; this report is not a current comparison.':'Immutable human-authored comparison report verified. Each download rechecks authority and content rights.'});
+   if(!current())return null;if(control.signal.aborted)throw Error('report timeout');
+   const patch={evidenceReport:value,evidenceReportPhase:'ready' as const,evidenceReportMessage:value.state==='content_withheld'?'Current content permissions withhold this report. Its immutable preparation references remain. Refresh evidence to inspect current permissions.':value.state==='historical_reassessment_required'?'Historical preparation. Source or evidence changed; this report is not a current comparison.':'Immutable human-authored comparison report verified. Each download rechecks authority and content rights.'};
+   if(value.state==='content_withheld')this.#clearDisclosure(patch);else this.host.publish(patch);
    return value;
-  }catch(_){if(current())this.host.publish({evidenceReportPhase:'error',evidenceReportMessage:'Report bytes or provenance failed verification. No cached body can be downloaded.'});return null;}
+  }catch(_){if(current())this.#clearDisclosure({evidenceReportPhase:'error',evidenceReportMessage:'Report bytes or provenance failed verification. No cached body can be downloaded.'});return null;}
   finally{done();}
  }
  async original(questionId:string,evidenceId:string):Promise<EvidenceOriginal|null>{
@@ -97,11 +104,11 @@ export class QuestionEvidenceSession{
   try{
    const response=await this.host.request(this.#path(q)+'/evidence/'+encodeURIComponent(evidenceId)+'/original',control);if(!current())return null;
    if(response.status===401){this.host.expire();return null;}
-   if(response.status!==200){this.host.publish({...emptyEvidenceDisclosure(),evidencePhase:'error',evidenceMessage:'Original evidence unavailable under current authority. Nothing was downloaded.'});return null;}
+   if(response.status!==200){this.#clearDisclosure({evidencePhase:'error',evidenceMessage:'Original evidence unavailable under current authority. Nothing was downloaded.'});return null;}
    const value=await decodeEvidenceOriginal(await this.host.json(response,524288),q,selected);
-   if(!current()||control.signal.aborted)return null;
+   if(!current())return null;if(control.signal.aborted)throw Error('original timeout');
    this.host.publish({evidenceOriginal:value,evidenceMessage:'Exact original evidence bytes verified. This is an authored fictional record.'});return value;
-  }catch(_){if(current())this.host.publish({evidenceMessage:'Original evidence failed verification. Nothing was downloaded.'});return null;}
+  }catch(_){if(current())this.#clearDisclosure({evidencePhase:'error',evidenceMessage:'Original evidence failed verification. Nothing was downloaded.'});return null;}
   finally{done();}
  }
  #canStart(questionId:string):{question:SourceQuestion;packet:EvidencePacket}|null{
@@ -118,7 +125,7 @@ export class QuestionEvidenceSession{
  async import(questionId:string,originalText:string,contentItem:ContentItem,permissions:Permissions):Promise<void>{
   const scope=this.#canStart(questionId);if(!scope)return;
   const bytes=new TextEncoder().encode(originalText);
-  if(typeof originalText!=='string'||bytes.length<1||bytes.length>32768||new TextDecoder('utf-8',{fatal:true}).decode(bytes)!==originalText||!originalText.startsWith('OI-SYNTHETIC-EVIDENCE/1\n')||/[\r\0]/.test(originalText)||!['abstract','api_output','full_text'].includes(contentItem)){
+  if(typeof originalText!=='string'||bytes.length<1||bytes.length>32768||new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(bytes)!==originalText||!originalText.startsWith('OI-SYNTHETIC-EVIDENCE/1\n')||/[\r\0]/.test(originalText)||!['abstract','api_output','full_text'].includes(contentItem)){
    this.#invalid('Choose a valid independently authored evidence file, at most 32 KiB, and its declared content class.');return;
   }
   await this.#start(scope.question,'import','/evidence',{original_text:originalText,content_item:contentItem,permissions});
@@ -155,9 +162,9 @@ export class QuestionEvidenceSession{
  retry=async():Promise<void>=>{
   const state=this.host.snapshot(),intent=state.evidenceWriteIntent;
   if(!intent||state.evidenceWritePhase!=='unknown'||!state.connected||state.phase!=='ready'||state.patient?.patient_id!==intent.patient_id||!state.cases?.some(c=>c.case_id===intent.case_id&&c.status==='active'))return;
-  await this.#send(intent);
+  await this.#send(intent,true);
  };
- async #send(intent:EvidenceWriteIntent):Promise<void>{
+ async #send(intent:EvidenceWriteIntent,recovering=false):Promise<void>{
   const stamp=this.host.scope(),write=++this.#write;
   this.#read++;this.#reportRead++;this.#originalRead++;
   this.host.publish({...emptyEvidenceDisclosure(),evidenceWriteIntent:intent,evidenceReceipt:null,evidenceWritePhase:'saving',evidenceWriteMessage:'Saving this exact fictional evidence intent. The server rechecks source and content authority.'});
@@ -167,14 +174,21 @@ export class QuestionEvidenceSession{
    const response=await this.host.request(intent.path,control,intent.body);if(!current())return;
    if(response.status===401){this.host.expire();return;}
    if([403,404,409,413,422].includes(response.status)){
-    this.host.publish({evidenceWriteIntent:null,evidenceWritePhase:'error',evidenceWriteMessage:response.status===409?'Source, evidence or request context changed. Refresh and explicitly reassess; no success is claimed.':'Evidence action was refused under current scope or permissions. No success is claimed.'});return;
+    if(recovering){
+     this.host.publish({evidenceWritePhase:'unknown',evidenceWriteMessage:'Receipt recovery was refused. The earlier write may still have committed; retain and retry this exact intent when current authority permits.'});
+    }else{
+     this.host.publish({evidenceWriteIntent:null,evidenceWritePhase:'error',evidenceWriteMessage:response.status===409?'Source, evidence or request context changed. Refresh and explicitly reassess; no success is claimed.':'Evidence action was refused under current scope or permissions. No success is claimed.'});
+    }
+    return;
    }
    if(![200,201].includes(response.status))throw Error('uncertain evidence write');
    const evidenceId=intent.kind==='withdrawal'?decodeURIComponent(intent.path.split('/').at(-2)!):undefined;
    const receipt=decodeEvidenceReceipt(await this.host.json(response),intent.kind,intent.question_id,evidenceId);
-   if(!current()||control.signal.aborted)return;
+   if(!current())return;if(control.signal.aborted)throw Error('write timeout');
    this.host.publish({evidenceWriteIntent:null,evidenceReceipt:receipt,evidenceWritePhase:'saved',evidenceWriteMessage:receipt.duplicate?'Original evidence receipt recovered. No duplicate intent was created.':'Evidence intent saved with immutable provenance. No clinical approval occurred.'});
-   await this.load(intent.question_id);
+   // Recovering an old question is receipt recovery, not a new selection.
+   // The host owns question focus across source briefs, packets and evidence.
+   if(this.host.selectedQuestion()===intent.question_id)await this.load(intent.question_id);
   }catch(_){if(current())this.host.publish({evidenceWritePhase:'unknown',evidenceWriteMessage:'Evidence write outcome unknown. It may have committed. Retry this exact intent to recover its original receipt.'});}
   finally{done();}
  }

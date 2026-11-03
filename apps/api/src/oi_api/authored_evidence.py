@@ -264,10 +264,11 @@ class PostgresQuestionEvidence:
         try:
             for rid, qid, prepared_at, body, body_sha, snapshot, snapshot_sha, actor in rows:
                 _id(rid, "REPORT")
+                origin = self._origin(c, "report", rid)
                 checked = ReportSnapshot(**snapshot).model_dump(mode="json")
                 if (checked != snapshot or canonical_hash(snapshot) != snapshot_sha
                         or hashlib.sha256(body.encode("utf-8")).hexdigest() != body_sha
-                        or render_evidence_report(snapshot) != body
+                        or render_evidence_report(snapshot, renderer=origin["report_renderer"]) != body
                         or datetime.fromisoformat(snapshot["prepared_at"]) != prepared_at
                         or snapshot["actor_label"] != actor or qid != c["question_id"]):
                     raise ValueError()
@@ -310,6 +311,57 @@ class PostgresQuestionEvidence:
     def packet(self, patient_id, case_id, question_id, **kwargs):
         return self._run(patient_id, case_id, question_id, action="authored_evidence_read", operation=self._packet, **kwargs)
 
+    @staticmethod
+    def _intent(c, operation, payload):
+        return canonical_hash({"patient_id": c["patient_id"], "case_id": c["case_id"],
+                               "question_id": c["question_id"], "organization": c["organization"],
+                               "actor": c["actor"], "purpose": c["purpose"],
+                               "operation": operation, "payload": payload})
+
+    def _origin(self, c, operation, object_id):
+        row = self.registry._fetchone(
+            "SELECT request_key,intent_sha256,expected_packet_sha256,packet_binding,report_renderer,actor,purpose "
+            "FROM investigation.evidence_command_origins WHERE patient_id=%s AND case_id=%s AND origin_org=%s "
+            "AND question_id=%s AND operation=%s AND object_id=%s",
+            (*self._scope(c), c["question_id"], operation, object_id))
+        if row is None:
+            raise RuntimeError("Stored evidence origin unavailable")
+        origin = dict(zip(("request_key", "intent_sha256", "expected_packet_sha256", "packet_binding",
+                           "report_renderer", "actor", "purpose"), row, strict=True))
+        ledger = self.registry._fetchone(
+            "SELECT intent_sha256,result,origin_org,actor,purpose FROM investigation.evidence_commands "
+            "WHERE patient_id=%s AND case_id=%s AND operation=%s AND request_key=%s",
+            (c["patient_id"], c["case_id"], operation, origin["request_key"]))
+        id_field = "assessment_id" if operation == "assess" else "report_id"
+        if (ledger is None or ledger[0] != origin["intent_sha256"] or
+                ledger[1] != {id_field: object_id, "question_id": c["question_id"]} or
+                tuple(ledger[2:]) != (c["organization"], origin["actor"], origin["purpose"]) or
+                origin["purpose"] != "operations"):
+            raise RuntimeError("Stored evidence origin differs from creating command")
+        if operation == "assess":
+            valid = (origin["packet_binding"] == "not_applicable" and origin["expected_packet_sha256"] is None
+                     and origin["report_renderer"] is None)
+        else:
+            valid = ((origin["packet_binding"] == "intent_digest_only" and origin["expected_packet_sha256"] is None
+                      and origin["report_renderer"] == "oi.h1-evidence-text/1") or
+                     (origin["packet_binding"] == "explicit_digest" and type(origin["expected_packet_sha256"]) is str
+                      and re.fullmatch(r"[0-9a-f]{64}", origin["expected_packet_sha256"]) is not None
+                      and origin["report_renderer"] == "oi.h1-evidence-text/2"))
+        if not valid:
+            raise RuntimeError("Stored evidence origin contract is invalid")
+        return origin
+
+    def _verify_recovered_origin(self, c, operation, payload, result):
+        field = "assessment_id" if operation == "assess" else "report_id"
+        origin = self._origin(c, operation, result[field])
+        if (origin["request_key"] != payload["request_key"] or
+                not hmac.compare_digest(origin["intent_sha256"], self._intent(c, operation, payload)) or
+                origin["actor"] != c["actor"]):
+            raise RuntimeError("Recovered object was created by a different command")
+        if operation == "report" and origin["packet_binding"] == "explicit_digest" and (
+                origin["expected_packet_sha256"] != payload["expected_packet_sha256"]):
+            raise RuntimeError("Recovered report inspected a different packet")
+
     def _recovered_result(self, c, operation, payload, result):
         """A command digest cannot stand in for the actual immutable record."""
         try:
@@ -329,11 +381,12 @@ class PostgresQuestionEvidence:
                     "SELECT evidence_id,reason,actor FROM investigation.case_evidence_withdrawals "
                     "WHERE patient_id=%s AND case_id=%s AND origin_org=%s AND withdrawal_id=%s",
                     (*self._scope(c), result["withdrawal_id"]))
-                if row != (payload["evidence_id"], payload["reason"], c["actor"]):
+                if row is None or tuple(row) != (payload["evidence_id"], payload["reason"], c["actor"]):
                     raise ValueError()
             elif operation == "assess":
                 if set(result) != {"assessment_id", "question_id"} or result["question_id"] != c["question_id"]:
                     raise ValueError()
+                self._verify_recovered_origin(c, operation, payload, result)
                 stored, _ = self._assessments(c)
                 a = stored[result["assessment_id"]]
                 for field in ("evidence_id", "evidence_sha256", "rights_sha256", "quote", "relation", "applicability", "rationale"):
@@ -345,6 +398,7 @@ class PostgresQuestionEvidence:
             elif operation == "report":
                 if set(result) != {"report_id", "question_id"} or result["question_id"] != c["question_id"]:
                     raise ValueError()
+                self._verify_recovered_origin(c, operation, payload, result)
                 stored, assessments = self._assessments(c)
                 reports = self._reports(c, stored, assessments)
                 report, = [r for r in reports if r["report_id"] == result["report_id"]]
@@ -360,16 +414,13 @@ class PostgresQuestionEvidence:
 
     def _command(self, c, operation, payload, apply):
         key = _key(payload["request_key"], "request_key")
-        intent = canonical_hash({"patient_id": c["patient_id"], "case_id": c["case_id"],
-                                 "question_id": c["question_id"], "organization": c["organization"],
-                                 "actor": c["actor"], "purpose": c["purpose"],
-                                 "operation": operation, "payload": payload})
+        intent = self._intent(c, operation, payload)
         previous = self.registry._fetchone(
             "SELECT intent_sha256,result,origin_org,actor,purpose FROM investigation.evidence_commands "
             "WHERE patient_id=%s AND case_id=%s AND operation=%s AND request_key=%s",
             (c["patient_id"], c["case_id"], operation, key))
         if previous is not None:
-            if (not hmac.compare_digest(previous[0], intent) or previous[2:] !=
+            if (not hmac.compare_digest(previous[0], intent) or tuple(previous[2:]) !=
                     (c["organization"], c["actor"], c["purpose"])):
                 raise PatientRegistryConflict("Evidence request key reused with changed intent")
             return self._recovered_result(c, operation, payload, previous[1])
@@ -380,6 +431,17 @@ class PostgresQuestionEvidence:
             "(patient_id,case_id,origin_org,operation,request_key,intent_sha256,result,actor,purpose) "
             "VALUES (%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s)",
             (*self._scope(c), operation, key, intent, canonical_json(result), c["actor"], c["purpose"]))
+        if operation in {"assess", "report"}:
+            is_report = operation == "report"
+            self.registry._execute(
+                "INSERT INTO investigation.evidence_command_origins "
+                "(operation,object_id,patient_id,case_id,origin_org,question_id,request_key,intent_sha256,"
+                "expected_packet_sha256,packet_binding,report_renderer,actor,purpose) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                (operation, result["report_id" if is_report else "assessment_id"], *self._scope(c),
+                 c["question_id"], key, intent, payload["expected_packet_sha256"] if is_report else None,
+                 "explicit_digest" if is_report else "not_applicable",
+                 "oi.h1-evidence-text/2" if is_report else None, c["actor"], c["purpose"]))
         return {**result, "duplicate": duplicate}
 
     def import_evidence(self, patient_id, case_id, question_id, *, payload, **kwargs):

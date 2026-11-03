@@ -36,6 +36,17 @@ slice owns the distinct `0009_question_evidence`, based on
 explicitly merge their heads. PRs #290, #291, #292, #294 and #279 retain their own
 clinical, navigation, recovery and PDF consistency scopes.
 
+Review adds `0010_authored_evidence_origin` after this slice's unchanged published
+`0009_question_evidence`. It records append-only command origins for assessments
+and reports. An exact retry must match that creating command, not merely another
+record with identical content. Populated `0009` history is backfilled only when
+each object has exactly one matching command; missing or ambiguous associations
+require reconciliation. New report origins retain the inspected packet digest.
+Older report origins retain the original full command-intent digest and explicitly
+identify that provenance limitation rather than inventing a missing packet digest.
+The old text renderer remains versioned for existing report bodies; new report
+text includes the actual frozen permission values as well as their digest.
+
 A subsequent live refresh found two newly published owners after the initial
 audit: #296 (`09651d35fb2d495330026db78eb82debd936d7e4`) is a pure proposed
 provenance bridge without persistence/API/UI, and #298
@@ -53,7 +64,8 @@ Convergence must retain these distinctions rather than silently coerce identitie
 ## Persistence and rights semantics
 
 Use append-only tables in `investigation` for evidence versions, withdrawal
-receipts, authored assessments and report snapshots. Preserve original UTF-8
+receipts, authored assessments, report snapshots, exact command receipts and
+their original object bindings. Preserve original UTF-8
 bytes, parser fields, SHA-256, physical statement line, content item, normalized
 permission map and its digest. Evidence version IDs are `EVIDENCE-` plus 32
 uppercase hex characters; assessment IDs use `ASSESSMENT-`, reports `REPORT-`,
@@ -239,11 +251,60 @@ API/client/browser tests. Software results establish no medical or production cl
 
 ## Implementation and verification receipt
 
-The first implementation is present. Tests-first checks recorded an absent client
-module and seven absent authenticated routes before implementation. The subsequent
-client suite passed 197 tests (178 retained and 19 new), and the locked production
-build passed. All 250 reference tests passed, including five unchanged donor
-content-rights tests. Hosted PostgreSQL, actual browser/download/recovery acceptance
-and independent whole-change review remain pending at this checkpoint. Local
-PostgreSQL skips are not counted as passes. Exact publication and hosted results
-will be appended after verification.
+Published as draft [#300](https://github.com/OpenxIntelligence/open-intelligence/pull/300).
+Initial implementation head `3b3abd11c4a9998a1ec0af50596f132ba0588cb3` corresponds
+to local `7ce75e99f3694c05be5ef1699b4a856cb656a4a5`, identical tree
+`9327a480af596b3de8c4da282d925a310d3abf4d`. The first checkpoint passed 197 client
+tests and the locked build, 250 reference tests, and 60 executable local API
+checks; 277 database checks were explicitly skipped locally.
+
+### Observed failures and corrections
+
+The initial [hosted API run](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41637509292)
+ran all 337 methods without skips and reported four failures and one error in five
+exact-retry methods. The [hosted browser run](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41637509369)
+passed the inherited World Model, question, source brief, verification-return and
+Overview journeys, then failed the new post-commit lost-response recovery check.
+The PostgreSQL driver returns rows as lists; two recovery checks compared those
+rows to tuples and therefore refused equal values. The correction compares the
+actual values while retaining the original failed assertions and retry identities.
+The independent reference/UI workflow passed at that checkpoint; it does not
+substitute for the failing new PostgreSQL/browser acceptance.
+
+Three independent reviews separately examined backend, client and actual acceptance
+harnesses. They found and reproduced:
+
+- Uncertain writes could lose their request key after a refused retry or rechecking
+  the same patient. Recovery now retains the exact pending intent until a valid
+  receipt or an actual scope reset resolves it.
+- Network, JSON or digest failure on a fresh read could retain earlier disclosure.
+  All evidence readers now invalidate dependent requests and clear old content.
+- Recovering question A while question B was selected could restore A's evidence
+  beside B's source brief. Receipt recovery no longer implicitly changes selection.
+- Valid field-leading U+FEFF text was rejected by a UTF-8 round-trip check, and
+  coercible singleton arrays could pass enum validation and crash rendering.
+  Exact Unicode values are preserved and enum values must be actual strings.
+- A corrupted command receipt could point to another legitimate same-content
+  assessment/report. The follow-up origin migration binds each record to its
+  creating command while preserving historical records and renderer semantics.
+- The downloadable text included a rights digest but omitted the declaration
+  values. New text now includes metadata and exact-item permissions, including
+  the explicitly unknown model-use permission.
+
+The client repairs first reproduced eight failures in a 205-test run plus a ninth
+focused question-selection regression. After correction, all **206 client tests**
+and the locked build passed. An additional harness timing guard waits for the
+withdrawal receipt and refreshed rendered state before navigating; response
+observation alone did not establish that the client had processed the receipt.
+
+The repaired local API suite discovers **347 tests: 64 pass and 283 PostgreSQL
+tests skip**, with no failures or errors. The new database checks cover receipt
+redirection, explicit packet binding, populated legacy upgrade, missing or
+ambiguous backfill refusal, and rejection of originless writes by the retired
+writer. The published 0009 migration remains byte-identical. Independent client
+correction review passes its 28 focused checks and 13 additional probes.
+
+Final exact-head PostgreSQL/browser/recovery acceptance and independent correction
+review remain pending at this checkpoint. The PR receipt records the final tested
+commit, actual gate outcomes, artifact hashes and any further correction. No local
+database skip or earlier passing parent gate is represented as that final result.

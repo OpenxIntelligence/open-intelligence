@@ -82,10 +82,20 @@ def main():
                       'investigation.source_questions', 'investigation.case_evidence_versions',
                       'investigation.case_evidence_withdrawals', 'investigation.question_evidence_assessments',
                       'investigation.question_evidence_reports', 'investigation.evidence_commands',
+                      'investigation.evidence_command_origins',
                       'identity.identity_domain_events', 'public.alembic_version']
-            return {table: query('SELECT COALESCE(json_agg(row ORDER BY row::text),\'[]\'::json) '
-                                'FROM (SELECT to_jsonb(t) AS row FROM ' + table + ' t) v', database)
-                    for table in tables}
+            result = {table: query('SELECT COALESCE(json_agg(row ORDER BY row::text),\'[]\'::json) '
+                                  'FROM (SELECT to_jsonb(t) AS row FROM ' + table + ' t) v', database)
+                      for table in tables}
+            result['sequence_state'] = query("""
+                SELECT COALESCE(json_agg(row ORDER BY row::text),'[]'::json)
+                FROM (SELECT to_jsonb(s) AS row FROM (
+                    SELECT schemaname,sequencename,start_value,min_value,max_value,
+                           increment_by,cycle,cache_size,last_value
+                    FROM pg_sequences WHERE schemaname IN ('identity','clinical_source','investigation')
+                ) s) v
+            """, database)
+            return result
 
         def request(path, body=None, *, authenticated=True):
             headers = {'Authorization': 'Bearer ' + token} if authenticated else {}

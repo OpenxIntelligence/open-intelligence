@@ -200,6 +200,7 @@ class EvidenceFixture(SourceVersionFixture):
             "assessments": "SELECT * FROM investigation.question_evidence_assessments ORDER BY assessment_id",
             "reports": "SELECT * FROM investigation.question_evidence_reports ORDER BY report_id",
             "commands": "SELECT * FROM investigation.evidence_commands ORDER BY operation,request_key",
+            "origins": "SELECT * FROM investigation.evidence_command_origins ORDER BY operation,object_id",
             "events": "SELECT * FROM identity.identity_domain_events ORDER BY id",
         }
         with self.engine.connect() as db:

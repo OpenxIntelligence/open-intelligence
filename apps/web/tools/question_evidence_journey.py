@@ -304,6 +304,10 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
         click('[data-testid=evidence-withdraw]')
         cd.wait("window.__oiEvidenceChecks.responses.some(r=>r.path.endsWith('/withdraw')&&r.status===201)",
                 'withdrawal preserves history while removing content rights')
+        cd.wait('document.querySelector(' + json.dumps(
+            f'[data-testid=evidence-version][data-evidence-id="{corrected["evidence_id"]}"]')
+            + ")?.textContent.includes('withdrawn')",
+            'withdrawal receipt and fresh packet settle before navigation')
         inspect()
         for report_value in (first_report, second_report):
             inspect()

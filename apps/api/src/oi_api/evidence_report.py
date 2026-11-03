@@ -65,7 +65,9 @@ def _quoted(value: object) -> str:
                    else c for c in literal)
 
 
-def render_evidence_report(snapshot: dict) -> str:
+def render_evidence_report(snapshot: dict, *, renderer: str = "oi.h1-evidence-text/2") -> str:
+    if renderer not in {"oi.h1-evidence-text/1", "oi.h1-evidence-text/2"}:
+        raise PatientRegistryError("Unknown evidence report renderer")
     from .authored_evidence_contracts import ReportSnapshot
     try:
         value = ReportSnapshot(**snapshot).model_dump(mode="json")
@@ -112,6 +114,11 @@ def render_evidence_report(snapshot: dict) -> str:
                 f"Exact quotation: {_quoted(assessment['quote'])}",
                 f"Human-authored rationale: {_quoted(assessment['rationale'])}",
             ])
+            if renderer == "oi.h1-evidence-text/2":
+                lines.append("Frozen declared permissions (not independently verified):")
+                for item in ("metadata", evidence["content_item"]):
+                    for use in ("store", "display", "redistribute", "ml_use"):
+                        lines.append(f"{item}/{use}: {evidence['permissions'][item][use]}")
     lines.extend(["", "This preparation is historical from the moment recorded. Reopen through the authorized application to check current source, evidence and rights status.", ""])
     body = "\n".join(lines)
     if len(body.encode("utf-8")) > MAX_BODY_BYTES:

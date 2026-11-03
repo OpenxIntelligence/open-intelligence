@@ -16,6 +16,7 @@
 - Canonical H1 patient/case/question/source IDs and source snapshot meaning remain unchanged.
 - Case-owned evidence only; no global catalog authority under a patient-scoped grant.
 - New migration `0009_question_evidence` follows `0008_review_convergence`; preserve all older migrations.
+- Follow-up `0010_authored_evidence_origin` preserves the published `0009` migration and binds exact creating-command identity without rewriting historical report bodies.
 - Source-only brief and source packet meanings remain unchanged.
 - No merge, deployment, clinical approval or external delivery.
 - Preserve exact failed-check evidence; report skips separately from passes.
@@ -39,6 +40,7 @@
 - [ ] Implement append-only schema and bounded version/assessment/report adapter with exact idempotency and complete response preparation inside the transaction.
 - [ ] Implement shared human-only rights gates and deterministic literal report rendering; test historical class changes and Unicode quote offsets.
 - [ ] Implement independently authorized routes and coordinated readiness/manifest fixtures; preserve prior source APIs.
+- [ ] Preserve populated `0009` history through explicit command-origin backfill, reject ambiguous associations, and retain the legacy renderer while adding declaration values to new report text.
 - [ ] Run available API/reference tests and compile; retain actual logs. Root commits after integration to avoid shared-index conflicts.
 
 ### Task 2: Evidence inspection and authored comparison UI

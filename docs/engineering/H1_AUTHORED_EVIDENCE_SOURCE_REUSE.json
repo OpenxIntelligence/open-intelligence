@@ -22,7 +22,8 @@
     "patient_case_source_question": "Existing canonical PostgreSQL identity, case-binding, source and question owners",
     "case_authored_originals": "New investigation.case_evidence_versions, immutable family withdrawal receipts",
     "human_proposals_and_report_preparations": "New investigation.question_evidence_assessments and question_evidence_reports",
-    "migration": "0009_question_evidence following 0008_review_convergence",
+    "migration": "0009_question_evidence following 0008_review_convergence; append-only command origins in 0010_authored_evidence_origin preserve the published 0009 migration and historical report renderer",
+    "command_origin": "investigation.evidence_command_origins binds each assessment/report to its creating key and full intent; new reports additionally retain the inspected packet digest",
     "separate_metadata_catalog": "PR298 metadata search and citation links are not copied or replaced",
     "separate_followthrough": "PR293 0009_question_followthrough remains a separate migration head; explicit future convergence required",
     "pure_proposed_bridge": "PR296 has no canonical persistence/API/UI and uses a different source-version/rights contract"

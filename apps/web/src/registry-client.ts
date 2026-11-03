@@ -127,6 +127,7 @@ export class RegistrySession {
   constructor(private readonly transport:Transport=(url,init)=>fetch(url,init)) {
     this.#evidenceSession=new QuestionEvidenceSession({snapshot:this.snapshot,
       publish:patch=>this.#publish(patch),scope:()=>[this.#scope,this.#read,this.#worldRead,this.#questionRead].join(':'),
+      selectedQuestion:()=>this.#inspectionQuestionId,
       request:(url,control,body)=>this.transport(url,this.#init(control,body)),json,
       add:control=>this.#controllers.add(control),remove:control=>this.#controllers.delete(control),
       expire:()=>this.#httpError(401)});
@@ -205,7 +206,12 @@ export class RegistrySession {
   }
   async read(id:string):Promise<void>{
     const scope=this.#scope, request=++this.#read;
-    this.#records++;this.#publish({patient:null,...emptyRecords(),...this.#resetInvestigation()});
+    const pendingEvidence=this.#state.evidenceWriteIntent;
+    const preserveEvidence=pendingEvidence?.patient_id===id&&
+      ['saving','unknown'].includes(this.#state.evidenceWritePhase)?pendingEvidence:null;
+    this.#records++;this.#publish({patient:null,...emptyRecords(),...this.#resetInvestigation(),
+      ...(preserveEvidence?{evidenceWriteIntent:preserveEvidence,evidenceWritePhase:'unknown' as const,
+        evidenceWriteMessage:'The same patient is being rechecked. The earlier evidence write remains uncertain; reload its case authority before exact receipt recovery.'}:{})});
     if(!this.#token){this.#publish({message:'Connect an authorized synthetic credential first.'});return;}
     if(!boundedKey(id)){this.#publish({phase:'error',message:'Use an opaque patient ID, not a name or URL.'});return;}
     const control=new AbortController();this.#controllers.add(control);

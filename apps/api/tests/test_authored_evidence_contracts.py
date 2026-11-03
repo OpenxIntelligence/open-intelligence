@@ -2,10 +2,13 @@
 from copy import deepcopy
 import hashlib
 import unittest
+from unittest.mock import Mock
 
 from open_intelligence.patient_registry import PatientRegistryError
 from open_intelligence.rights import normalize_permissions
 from oi_api.evidence_report import canonical_hash, human_content_allowed, quote_offset, render_evidence_report
+from oi_api.authored_evidence import PostgresQuestionEvidence
+from open_intelligence.postgres_registry import PostgresPatientRegistry
 from oi_api.authored_evidence_contracts import EvidencePacket, EvidenceReport, ImportEvidence, AssessEvidence
 from pydantic import ValidationError
 from test_question_source_brief import fictional_brief_inputs
@@ -85,6 +88,56 @@ class QuestionEvidencePureTests(unittest.TestCase):
                          value["selected_source"]["source_id"], "not an exhaustive"):
             self.assertIn(expected, body)
         self.assertNotIn("clinically approved", body)
+
+    def test_download_body_includes_frozen_metadata_and_declared_item_permissions(self):
+        value = snapshot()
+        body = render_evidence_report(value)
+        for item in ("metadata", "abstract"):
+            for use in ("store", "display", "redistribute", "ml_use"):
+                expected = value["comparisons"][0]["evidence"]["permissions"][item][use]
+                self.assertIn(f"{item}/{use}: {expected}", body)
+        self.assertIn("not independently verified clearance", body)
+
+    def test_legacy_report_renderer_preserves_the_published_0009_body_bytes(self):
+        body = render_evidence_report(snapshot(), renderer="oi.h1-evidence-text/1")
+        # Independently checked against the immutable 7ce75e9 renderer before
+        # this compatibility assertion was added; no old report is re-rendered
+        # into the new format or assigned a replacement digest at migration.
+        self.assertEqual(hashlib.sha256(body.encode("utf-8")).hexdigest(),
+                         "0537833d93e8c73bd21bfc182f3b8dfb0a1cfdcd8f0fa3f28a61df9a86c4e050")
+        self.assertNotIn("metadata/store: allowed", body)
+        self.assertIn("metadata/store: allowed", render_evidence_report(snapshot()))
+
+    def test_exact_command_recovery_accepts_pg8000_list_rows(self):
+        registry = object.__new__(PostgresPatientRegistry)
+        owner = PostgresQuestionEvidence(registry)
+        eid = "EVIDENCE-" + "C" * 32
+        payload = {"synthetic": True, "request_key": "PG8000-LIST-RETRY", "original_text": "fictional bytes",
+                   "content_item": "abstract", "permissions": permissions()}
+        context = {"patient_id": "PAT-" + "D" * 32, "case_id": "CASE-ALPHA", "question_id": "QUESTION-" + "E" * 32,
+                   "organization": "ORG-FIXTURE", "actor": "ACTOR-FIXTURE", "purpose": "operations",
+                   "versions": {eid: {"version": 1, "original_bytes": b"fictional bytes",
+                                      "content_item": "abstract", "permissions": permissions()}}}
+        intent = canonical_hash({**{key: context[key] for key in (
+            "patient_id", "case_id", "question_id", "organization", "actor", "purpose")},
+            "operation": "import", "payload": payload})
+        registry._fetchone = Mock(return_value=[intent, {"evidence_id": eid, "version": 1},
+                                               "ORG-FIXTURE", "ACTOR-FIXTURE", "operations"])
+        apply = Mock(side_effect=AssertionError("Exact recovery must not invoke a new write"))
+        self.assertEqual(owner._command(context, "import", payload, apply),
+                         {"evidence_id": eid, "version": 1, "duplicate": True})
+        apply.assert_not_called()
+
+    def test_withdrawal_recovery_accepts_pg8000_list_rows(self):
+        registry = object.__new__(PostgresPatientRegistry)
+        owner = PostgresQuestionEvidence(registry)
+        eid, wid = "EVIDENCE-" + "D" * 32, "WITHDRAWAL-" + "E" * 32
+        context = {"patient_id": "PAT-" + "D" * 32, "case_id": "CASE-ALPHA", "organization": "ORG-FIXTURE", "actor": "ACTOR-FIXTURE"}
+        payload = {"evidence_id": eid, "reason": "The fictional declaration was withdrawn for review."}
+        registry._fetchone = Mock(return_value=[eid, payload["reason"], context["actor"]])
+        result = {"evidence_id": eid, "withdrawal_id": wid}
+        self.assertEqual(owner._recovered_result(context, "withdraw", payload, result),
+                         {**result, "duplicate": True})
 
     def test_snapshot_rejects_forged_patient_source_and_evidence_alignment(self):
         for path, field, value in (
