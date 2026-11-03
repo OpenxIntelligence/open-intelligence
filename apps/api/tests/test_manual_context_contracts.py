@@ -1,6 +1,8 @@
 """Literal provenance and legacy-compatible report snapshot controls."""
 from copy import deepcopy
+import json
 import unittest
+from unittest.mock import Mock, patch
 
 from pydantic import ValidationError
 from oi_api.question_passage_contracts import ManualContext, ReplaceQuestionPassages, context_hash
@@ -8,6 +10,9 @@ from oi_api.reviewed_documents import selection_reference, fingerprint
 from oi_api.authored_evidence_contracts import checked_report_snapshot
 from oi_api.evidence_report import render_evidence_report
 from open_intelligence.patient_registry import PatientRegistryError
+from open_intelligence.postgres_registry import PostgresPatientRegistry
+from oi_api.question_passages import QuestionPassages
+from oi_api.sources import PostgresSourceVersions
 from test_document_selection_reference import document, REVISION
 from test_authored_evidence_contracts import snapshot
 
@@ -25,6 +30,25 @@ def manual_snapshot():
 
 
 class ManualContextContracts(unittest.TestCase):
+    def test_empty_manual_read_obeys_the_actual_primitive_event_contract(self):
+        db=Mock(autocommit=False)
+        registry=PostgresPatientRegistry(db)
+        registry._fetchone=Mock(return_value=('QUESTION-'+'A'*32,))
+        registry._fetchall=Mock(return_value=[])
+        registry.require_patient=Mock()
+        registry._execute=Mock()
+        def source_read(owner, patient, case, **kwargs):
+            return kwargs['prepare_response']({'access_receipt_id':'ACCESS-'+'B'*32})
+        with patch.object(PostgresSourceVersions,'list_locked',source_read):
+            result=QuestionPassages(registry).perform('PAT-FICTIONAL','CASE-ALPHA','QUESTION-'+'A'*32,
+                organization='ORG-FICTIONAL',actor='ACTOR-FICTIONAL',purpose='operations',
+                recheck_authority=lambda original:None,prepare_response=lambda result:result)
+        self.assertEqual(result['passages'],[])
+        details=json.loads(registry._execute.call_args.args[1][2])
+        self.assertEqual(details['reference_count'],0)
+        self.assertEqual(details['references_sha256'],fingerprint([]))
+        db.commit.assert_called_once();db.rollback.assert_not_called()
+
     def test_manual_report_preserves_distinct_authority_and_exact_anchor(self):
         snap=manual_snapshot()
         self.assertEqual(checked_report_snapshot(snap),snap)

@@ -30,7 +30,7 @@ from .question_review_returns import _question_id
 from .source_questions import PostgresSourceQuestions
 from .source_world_model import project_source_world_model
 from .sources import PostgresSourceVersions
-from .question_passages import QuestionPassages
+from .question_passages import QuestionPassages, reference_audit
 
 MAX_EVIDENCE = 100
 MAX_ASSESSMENTS = 200
@@ -119,7 +119,7 @@ class PostgresQuestionEvidence:
                 self.registry.append_event(patient_id, 'investigation.report_manual_context_access_prepared',
                     case_id=case_id, question_id=question_id, actor=actor,
                     receipt_id=prepared_context['index']['access_receipt_id'],
-                    references=prepared_context.get('manual_reads', []))
+                    **reference_audit(prepared_context))
             recheck()
             return response
 

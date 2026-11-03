@@ -12,6 +12,13 @@ from .question_passage_contracts import ManualContext, ReplaceQuestionPassages, 
 from .sources import PostgresSourceVersions
 
 
+def reference_audit(context):
+    # The shared event port accepts primitive references only. Exact references
+    # remain in immutable passage revisions; the audit pins their resolved set.
+    references=context.get('manual_reads',[])
+    return dict(reference_count=len(references),references_sha256=fingerprint(references))
+
+
 class QuestionPassages:
     def __init__(self, registry):
         self.registry = registry
@@ -173,7 +180,7 @@ class QuestionPassages:
             recheck()
             self.registry.append_event(patient_id,'investigation.question_passages_access_prepared',case_id=case_id,question_id=question_id,
                 actor=actor,receipt_id=index['access_receipt_id'],revision_id=result.get('revision_id'),context_sha256=current['context_sha256'],
-                references=c.get('manual_reads',[]))
+                **reference_audit(c))
             return response
         with self.registry.transaction():
             response=PostgresSourceVersions(self.registry).list_locked(patient_id,case_id,organization=organization,actor=actor,purpose=purpose,

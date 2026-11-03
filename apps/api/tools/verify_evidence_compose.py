@@ -210,7 +210,9 @@ def main():
                 assert event['patient_id'] == patient
                 assert event['metadata_json']['question_id'] == question_id
                 assert event['metadata_json']['case_id'] == CASE
-                assert event['metadata_json']['references'] == passage_command['references']
+                assert event['metadata_json']['reference_count'] == len(passage_command['references'])
+                expected_refs = json.dumps(passage_command['references'], sort_keys=True, ensure_ascii=False, separators=(',', ':'))
+                assert event['metadata_json']['references_sha256'] == hashlib.sha256(expected_refs.encode()).hexdigest()
             assert all(row['event_type'] in ('source.read_authorized', 'evidence.links.read_authorized',
                                              'investigation.report_manual_context_access_prepared',
                                              'investigation.question_passages_access_prepared')
