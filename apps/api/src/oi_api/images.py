@@ -178,7 +178,9 @@ class PostgresSourceImages:
                                                  separators=(",", ":")).encode()).hexdigest()
             result["access_receipt_id"] = self.sources._read_receipt(
                 patient_id, case_id, actor=actor, purpose=purpose, binding_revision=revision,
-                event="image.read_authorized", recheck_authority=recheck_authority,
+                event="image.read_authorized",
+                receipt_id="ACCESS-" + uuid.uuid4().hex.upper(),
+                recheck_authority=recheck_authority,
                 source_id=source_id, source_version=source["version"], source_sha256=source["sha256"],
                 snapshot_sha256=snapshot, image_count=len(images))
             return result
@@ -200,7 +202,9 @@ class PostgresSourceImages:
             raw = self._validated_object(row, source, binding)
             receipt = self.sources._read_receipt(
                 patient_id, case_id, actor=actor, purpose=purpose, binding_revision=revision,
-                event="image.original_read_authorized", recheck_authority=recheck_authority,
+                event="image.original_read_authorized",
+                receipt_id="ACCESS-" + uuid.uuid4().hex.upper(),
+                recheck_authority=recheck_authority,
                 source_id=source_id, source_version=source["version"], source_sha256=source["sha256"],
                 image_id=image_id, sha256=row["sha256"], byte_count=len(raw))
             return raw, receipt
