@@ -287,6 +287,22 @@ class ClinicianOverviewProjectionTests(unittest.TestCase):
         overview = self.overview("CASE-ALPHA")
         self.assertEqual(overview["journey_stage"]["stage"], "review_required")
 
+    def test_quarantine_history_alone_never_blocks_reviewed_stage(self):
+        first = self.store.import_report("CASE-ALPHA", report("alpha-pathology-original.txt"))
+        question_id = self.store.add_question("CASE-ALPHA", BENIGN_QUESTION)
+        snapshot_id = self.store.create_snapshot(
+            "CASE-ALPHA", question_id, BENIGN_SUMMARY, [first["source_id"]],
+        )
+        self.store.acknowledge_demo_review("CASE-ALPHA", snapshot_id, "Synthetic reviewer")
+        quarantine = self.store.import_report("CASE-ALPHA", report("wrong-patient.txt"))
+        self.assertEqual(quarantine["result"], "quarantined")
+        overview = self.overview("CASE-ALPHA")
+        # CR-01: quarantine history is listed, never a stage gate.
+        self.assertEqual(overview["journey_stage"]["stage"], "reviewed_in_demo")
+        got_quarantine = {item["quarantine_id"] for item in overview["pending_reviews"]
+                          if item["kind"] == "quarantined_delivery"}
+        self.assertIn(quarantine["quarantine_id"], got_quarantine)
+
     def test_case_isolation_holds(self):
         self.store.import_report("CASE-ALPHA", report("alpha-pathology-original.txt"))
         self.store.import_report("CASE-BETA", report("beta-pathology.txt"))

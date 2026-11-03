@@ -164,9 +164,12 @@ def build_clinician_overview(state: dict) -> dict:
     drafts = [s for s in snapshots if s.get("state") == "draft"]
     reviewed = [s for s in snapshots if s.get("state") == "reviewed_in_demo"]
 
-    if pending:
+    blocking = [p for p in pending if p["kind"] != "quarantined_delivery"]
+    if blocking:
         # Drafts are pending (they wait for acknowledgment), so a case with
         # only drafts is already review_required above, not below.
+        # Quarantined deliveries are history, not blocking work: a case
+        # with only quarantine history must still reach reviewed_in_demo.
         stage = "review_required"
     elif questions:
         stage = "investigation_in_progress"
