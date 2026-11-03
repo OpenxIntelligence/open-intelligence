@@ -31,8 +31,8 @@ jobs:
           PYTHONPATH=src:tests:. python -m unittest discover -s tests -p 'test_report_review_handoff.py' -v
       - name: Full existing Python and HTTP suite
         run: PYTHONPATH=src:tests:. python -m unittest discover -s tests -v
-      - name: Actual empty-workspace browser intake journey
-        run: PYTHONPATH=src:tests:. python tests/workspace_start_browser_journey.py
+      - name: Actual empty-workspace v2 preview and human-authored review journey
+        run: PYTHONPATH=src:tests:. python tests/clinical_workspace_browser_journey.py
       - name: Existing source and Patient Mission browser journeys
         run: |
           PYTHONPATH=src:tests:. python tests/browser_journey.py
