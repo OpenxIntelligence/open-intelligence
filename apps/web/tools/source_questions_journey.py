@@ -82,6 +82,42 @@ class SourceQuestionChecks:
         assert 'Source changed' in history and 'Current source context' in history
         assert 'Clinical approval: none' in history
 
+        # Patient-authored question: the original source/case are fixed by the
+        # current World Model, but the question text is intentionally editable.
+        # One session draft must survive same-patient navigation; no upload,
+        # localStorage, extra clinical ledger or model execution is involved.
+        custom = 'Which original fictional report and line support this recorded marker status?'
+        self.cd.evaluate("document.querySelector('[data-testid=choose-question-draft]').click()")
+        self.cd.wait("Boolean(document.querySelector('[data-testid=question-draft-editor]'))",
+                     'authoring form bound to the current source observation')
+        self.cd.evaluate("""(() => {
+          const input = document.querySelector('[data-testid=question-draft]');
+          const set = Object.getOwnPropertyDescriptor(
+            HTMLTextAreaElement.prototype,'value').set;
+          set.call(input, """ + json.dumps(custom) + """);
+          input.dispatchEvent(new Event('input',{bubbles:true}));
+        })()""")
+        self.cd.wait("document.querySelector('[data-testid=question-draft]').value==="
+                     + json.dumps(custom), 'literal editable question received')
+        self.navigate('Records')
+        self.navigate('Investigations')
+        assert self.cd.evaluate("document.querySelector('[data-testid=question-draft]').value==="
+                                + json.dumps(custom))
+        assert self.cd.evaluate("!document.querySelector('[data-testid=composer-context]')")
+        self.cd.evaluate("document.querySelector('[data-testid=prepare-custom-question]').click()")
+        self.cd.wait("document.querySelector('[data-testid=composer-context]')?.textContent.includes("
+                     + json.dumps(custom) + ")",
+                     'exact custom text returned through existing source preflight')
+        assert self.cd.evaluate("document.querySelector('[data-testid=composer-context]').textContent.includes("
+                                + json.dumps(replacement_source_id) + ")")
+        custom_question = self.save()
+        assert custom_question not in (self.original_question_id,replacement_question)
+        custom_history = self.history(custom)
+        assert custom_question in custom_history
+        assert self.cd.evaluate("document.querySelectorAll('.question-items li').length===3")
+        assert 'Clinical approval: none' in custom_history
+        assert self.cd.evaluate("localStorage.length===0 && sessionStorage.length===0")
+
         screenshots.mkdir(parents=True, exist_ok=True)
         self.cd.command('Emulation.setDeviceMetricsOverride', {'width':1440,'height':1100,'deviceScaleFactor':1,'mobile':False})
         self.cd.wait('window.innerWidth===1440', 'question panel desktop viewport')
@@ -118,7 +154,7 @@ class SourceQuestionChecks:
         self.cd.evaluate("document.querySelector('[data-testid=world-load]').click()")
         self.cd.wait("Boolean(document.querySelector('[data-testid=world-projection]'))", 'fresh canonical source view restored')
         self.navigate('Journey')
-        print('PASS SOURCE QUESTIONS: canonical source-line preflight; durable question and history; amendment requires reassessment without moving original anchor; explicit v2 context/question; independent question-read and Composer denial; actual desktop panel capture and narrow containment; no model execution or clinical approval.')
+        print('PASS SOURCE QUESTIONS: canonical source-line preflight; durable question and history; amendment requires reassessment without moving original anchor; explicit v2 context/question and patient-authored verified third question; independent question-read and Composer denial; actual desktop panel capture and narrow containment; no model execution or clinical approval.')
 
 
 @contextmanager
