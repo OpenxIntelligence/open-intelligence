@@ -106,3 +106,52 @@ PYTHONPATH=src python -m open_intelligence serve
 Remaining proof step: a live-server run against the real API with
 the operator key set, before the demo. The API completion itself
 was verified separately on 2026-10-31.
+
+## Whole-journey timeline slice (additive)
+
+The existing source-chronology projection (`src/open_intelligence/timeline.py`,
+`GET /api/cases/{id}/timeline`, `tests/test_timeline.py`) is preserved
+unchanged. This slice adds a **whole-journey** read-only projection over the
+same ledger that lists fictional imports, amendments, questions, drafts, demo
+reviews, quarantine, and status changes oldest-first.
+
+- Backend: `src/open_intelligence/journey.py` (`case_journey`). Reads the
+  `events` ledger in one read transaction; writes nothing, calls no model,
+  fetches nothing external. Each entry carries `occurred_at`, plain-language
+  `description`, `kind`, `source_version_id`/`source_ref` (or explicit lists
+  for drafts/reviews, `None` where no source applies), and current `status`.
+  Superseded imports stay visible with `status=superseded` and
+  `superseded_by_event_id`; amendments carry `supersedes_event_id`. Stale
+  drafts/reviews point at the invalidating event. `case_created` is not a
+  journey entry, so an empty case honestly yields zero entries. Unknown cases
+  raise `InvalidInput`, served as HTTP 422 like neighboring routes.
+- Routes (additive, existing default untouched):
+  `GET /api/cases/{id}/journey` and
+  `GET /api/cases/{id}/timeline?view=journey` return
+  `{case_id, synthetic, disclaimer, count, counts, entries}` oldest-first.
+  Plain `GET /api/cases/{id}/timeline` still returns the source-chronology
+  shape with `gaps`/`conflicts`/`history`.
+- UI: `#journey` panel ("Whole-journey timeline") in the case view renders
+  entries in recorded order with per-item `FICTIONAL` pills, `textContent`-only
+  construction (no `innerHTML`), existing CSS classes only, case-switch guards
+  (`requested !== caseId`, `active.case.case_id` check), and cleared lists on
+  switch. Empty state is exactly `No timeline entries recorded yet`.
+- Tests: `tests/test_timeline_journey.py` (store + HTTP + UI-contract).
+  The filename differs from `tests/test_timeline.py` because that file already
+  covers the source-chronology slice; overwriting it would violate the additive
+  rule. Every new assertion fails without the journey module, routes, or UI
+  strings.
+
+Run the focused checks (reviewer runs; author executed nothing):
+
+```bash
+PYTHONPATH=src python -m compileall -q src
+node --check web/app.js
+PYTHONPATH=src python -m unittest tests.test_timeline_journey -v
+PYTHONPATH=src python -m unittest discover -s tests -v
+```
+
+Limitations: journey descriptions are ledger facts only, not clinical
+interpretation. Draft/review entries show current snapshot freshness; the
+description preserves what happened at event time. No new tables, no new
+dependencies, no identity or clinical-review claims.

@@ -23,6 +23,7 @@ from .investigation import (
     meta_api_key,
     validate_output,
 )
+from .journey import case_journey
 from .mission import build_patient_mission
 from .store import CaseStore, InvalidInput, MAX_SOURCE_BYTES
 from .timeline import case_timeline
@@ -165,7 +166,15 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, changes_since_review(store, changes[1], since_event_id=since))
             timeline = re.fullmatch(rf"/api/cases/{ID_PART}/timeline", path)
             if timeline:
-                return self._json(200, case_timeline(store, timeline[1]))
+                view = parse_qs(urlsplit(self.path).query).get("view", [None])[0]
+                if view == "journey":
+                    return self._json(200, case_journey(store, timeline[1]))
+                if view is None:
+                    return self._json(200, case_timeline(store, timeline[1]))
+                raise InvalidInput("Unknown timeline view")
+            journey = re.fullmatch(rf"/api/cases/{ID_PART}/journey", path)
+            if journey:
+                return self._json(200, case_journey(store, journey[1]))
             inv_list = re.fullmatch(rf"/api/cases/{ID_PART}/investigations", path)
             if inv_list:
                 return self._json(200, {"investigations": store.list_investigations(inv_list[1])})
