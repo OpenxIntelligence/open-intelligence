@@ -454,8 +454,13 @@ def main() -> None:
               const picker = document.querySelector('#case-picker');
               picker.value = 'CASE-ALPHA'; picker.dispatchEvent(new Event('change'));
             })()""")
-            session.wait("document.querySelector('#case-heading').textContent === 'Fictional case Alpha'",
-                         "case switch during pending global evidence write")
+            # The shared intake guard now vetoes a case switch while any
+            # write is pending. Verify the veto instead of assuming navigation
+            # succeeded; report invalidation still applies throughout.
+            session.wait("document.querySelector('#notice').textContent.includes('finish pending writes')",
+                         "case switch explicitly vetoed during pending global write")
+            assert session.evaluate("document.querySelector('#case-picker').value") == 'CASE-BETA'
+            assert session.evaluate("document.querySelector('#case-heading').textContent") == 'Fictional case Beta'
             report_blocked(session)
             assert session.evaluate("document.querySelector('#report-refresh').disabled")
             session.evaluate("document.querySelector('#report-refresh').click()")
@@ -470,6 +475,14 @@ def main() -> None:
             report_blocked(session)
             assert session.evaluate("window.__oiReportProbe.responses.length") == previous_reads
             session.evaluate("document.querySelector('#report-refresh').click()")
+            report_ready(session, "CASE-BETA")
+            assert download_report(session, downloads, "CASE-BETA") == beta
+            # After settlement the same deliberate switch is allowed, and
+            # the historical Alpha report still matches its earlier export.
+            session.evaluate("""(() => {
+              const picker = document.querySelector('#case-picker');
+              picker.value = 'CASE-ALPHA'; picker.dispatchEvent(new Event('change'));
+            })()""")
             report_ready(session, "CASE-ALPHA", TASK_TITLE)
             assert download_report(session, downloads, "CASE-ALPHA") == completed
             print(f"PASS: report/follow-through browser journey ({version}); actual downloads, scoped print, source amendment, history, stale/failed reads, and global-write blocking verified")

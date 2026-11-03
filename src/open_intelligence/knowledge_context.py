@@ -15,7 +15,8 @@ import re
 from datetime import date
 from typing import Any, Mapping
 
-from .rights import RightsError, normalize_permissions, permitted
+from .rights import (RightsError, normalize_permissions, permitted,
+                     validate_content_item)
 
 SOURCE_FAMILIES = frozenset({
     "nccn", "asco", "esmo", "nci_pdq", "pubmed", "pmc", "civic",
@@ -79,6 +80,9 @@ def _source(item: Mapping[str, Any]) -> dict:
     )
     try:
         permissions = normalize_permissions(item["permissions"])
+        # Omission retains the original full-text contract; null/unknown labels
+        # cannot silently default or acquire another artifact's permissions.
+        content_item = validate_content_item(item.get("content_item", "full_text"))
     except RightsError as exc:
         raise KnowledgeContextError(str(exc)) from exc
     metadata = item.get("title")
@@ -95,9 +99,9 @@ def _source(item: Mapping[str, Any]) -> dict:
     )
     # Rights to download and *read* a PDF are not rights to feed it to an LLM.
     model_text_allowed = bool(
-        approved and permitted(permissions, "full_text", "store")
-        and permitted(permissions, "full_text", "display")
-        and permitted(permissions, "full_text", "ml_use")
+        approved and permitted(permissions, content_item, "store")
+        and permitted(permissions, content_item, "display")
+        and permitted(permissions, content_item, "ml_use")
     )
     if metadata is not None and not metadata_allowed and content_state == "current" and state != "revoked":
         raise KnowledgeContextError("cannot ingest source title without metadata rights")
@@ -108,6 +112,9 @@ def _source(item: Mapping[str, Any]) -> dict:
     return {
         "id": identifier,
         "family": family,
+        "content_item": content_item,
+        "content_item_basis": ("declared" if "content_item" in item
+                               else "legacy_full_text_default"),
         "public_identifier": public_id,
         "version": version,
         "source_date": source_date,
@@ -121,7 +128,7 @@ def _source(item: Mapping[str, Any]) -> dict:
         # Reading/displaying/model processing does not grant redistribution.
         "report_export_allowed": bool(
             model_text_allowed and excerpt and metadata_allowed
-            and permitted(permissions, "full_text", "redistribute")
+            and permitted(permissions, content_item, "redistribute")
             and permitted(permissions, "metadata", "redistribute")
         ),
         "evidence_text_sha256": (

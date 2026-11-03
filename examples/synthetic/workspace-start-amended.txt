@@ -1,0 +1,9 @@
+OI-SYNTHETIC-REPORT/1
+Patient: CASE-START
+Document: START-PATH
+Type: pathology
+Event-Date: 2026-01-02
+Issued-At: 2026-01-04
+Specimen: START-TISSUE
+Amends: START-PATH@1
+Finding: marker|negative|The amended fictional report records a negative marker; café <script>literal</script>.

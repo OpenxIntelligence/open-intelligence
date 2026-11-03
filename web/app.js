@@ -19,7 +19,7 @@ function notice(message, error = false) {
   item.className = error ? 'notice error' : 'notice';
   item.hidden = false;
 }
-async function api(path, payload) {
+async function api(path, payload, {responseEnvelope = false} = {}) {
   const target = payload === undefined ? null : path.match(/^\/api\/cases\/([^/]+)\//);
   const mutationCase = target ? decodeURIComponent(target[1]) : null;
   // Shared evidence/rights updates can affect several cases. The DOI lookup
@@ -40,6 +40,10 @@ async function api(path, payload) {
     });
     const type = response.headers.get('content-type') || '';
     const data = type.includes('json') ? await response.json() : await response.text();
+    // Intake needs explicit per-file HTTP outcomes, but must use the same
+    // mutation lifetime as all other writers. Transport/parse failures still
+    // reject and are classified as unknown by the existing intake owner.
+    if (responseEnvelope) return {status: response.status, body: data};
     if (!response.ok) throw Error(data.error || 'Request failed');
     return data;
   } finally {
@@ -52,6 +56,17 @@ async function api(path, payload) {
       }));
     }
   }
+}
+function hasUnsavedCaseWork() {
+  // Both case switching and workspace creation consult the same owner. A
+  // pending write is still case-bound even when its form has been cleared.
+  return pendingCaseWrites.size > 0 ||
+    ['question-text', 'report-text', 'draft-observations', 'draft-summary',
+      'draft-assumptions', 'evidence-rationale', 'evidence-withdraw-reason',
+      'option-description', 'ft-title', 'ft-detail', 'ft-due', 'ft-trigger',
+      'ft-actor', 'ft-reason', 'ft-owner', 'ft-update-due', 'ft-update-actor',
+      'ft-update-reason'].some(id => Boolean(el(id)?.value.trim())) ||
+    Boolean(el('ft-clear-due')?.checked) || Boolean(el('source-file')?.files?.length);
 }
 function pill(value, style = '') { return node('span', value, 'pill ' + style); }
 function empty(container, text) { container.append(node('p', text, 'empty')); }
@@ -85,12 +100,9 @@ async function initialize() {
     }
     await renderIncomingBoard(cases);
     picker.addEventListener('change', () => {
-      // An unfinished narrative must never silently become attached to another case.
-      if ((['draft-observations', 'draft-summary', 'draft-assumptions', 'evidence-rationale',
-            'evidence-withdraw-reason', 'option-description',
-            'ft-title', 'ft-detail', 'ft-reason', 'ft-update-reason'].some(id => el(id).value.trim()))) {
+      if (hasUnsavedCaseWork()) {
         picker.value = caseId;
-        notice('Save or explicitly clear the unfinished investigation draft before switching cases.', true);
+        notice('Save or explicitly clear unfinished case work, and finish pending writes, before switching cases.', true);
         return;
       }
       cancelSourceRead();
