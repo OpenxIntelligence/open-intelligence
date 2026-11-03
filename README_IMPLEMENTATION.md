@@ -57,6 +57,9 @@ The UI can register an original fictional evidence item, attach a manually-autho
 
 The labels `supports`, `contradicts`, and `applicable` are human-entered **fictional engineering data**, not determinations of evidence quality, clinical benefit, trial eligibility, or clinical relevance. The prototype has no clinician identity verification or legal rights-verification service. Never use real patient records or copyrighted publication text. Run the unit/HTTP tests before reviewing the UI; browser execution requires a separate interactive verification.
 
+## Longitudinal biological explanation slice
+
+The case view links to a **Biological explanation** panel for human-authored, source-anchored context records: each explanation ties one question to a fictional episode, specimen, lesion, and clinical time point, and each assay observation ties one fictional assay to exactly one tissue block (or explicitly unknown), a matched-control state (`recorded`, `missing`, or `unknown`), and a reference kind (`patient_normal`, `external_population`, or `unknown`). Competing explanations for one question survive side by side; a recorded specimen that contradicts its anchored source is rejected rather than merged; and both tables go stale anchor-exactly on source amendment. Authored text rejects staging, grading, variant-interpretation, response/progression, eligibility, and treatment language. See `docs/BIOLOGICAL_EXPLANATION.md` and `tests/test_bio_explanation.py`. This slice states no clinical meaning for any variant, stage, grade, or response, and is not evidence of benefit or a basis for administering anything.
 ## Counterevidence and safety-uncertainty surfacing (options)
 
 The options panel can record, per option, append-only **counterevidence**

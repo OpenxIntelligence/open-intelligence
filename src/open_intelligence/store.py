@@ -185,6 +185,31 @@ DERIVATIVE_PARENTS = {
 }
 FIELD_STATES = frozenset({"known", "unknown"})
 
+# Longitudinal biological explanation: an assay observation anchors to one
+# physical tissue block only. Slides, WSI views, and genomics pointers are
+# derivatives, not tissue sources, so they cannot silently stand in for one.
+BIO_TISSUE_BLOCK_KINDS = frozenset({"ffpe_block", "fresh_frozen_aliquot"})
+
+# Narrow guard, not a clinical-language classifier: biological-explanation
+# text must stay a fictional context record. It must not state staging,
+# grading, variant interpretation, response/progression, eligibility, or
+# treatment claims. A human author rewords the text; nothing is repaired.
+BIO_GUARDED_LANGUAGE = re.compile(
+    r"\b(stag\w*|grad\w*|respond\w*|response|progress\w*|pathogenic\w*|actionable|"
+    r"eligib\w*|recommend\w*|prescrib\w*|treat\w*|benefit|efficacy|"
+    r"remission|relaps\w*|mutation burden|tumor burden)\b", re.IGNORECASE)
+
+
+def _check_bio_language(text: object, field: str) -> str:
+    if not isinstance(text, str) or not text.strip():
+        raise InvalidInput(f"{field} is required")
+    if BIO_GUARDED_LANGUAGE.search(text):
+        raise InvalidInput(
+            f"{field} must not state staging, grading, variant interpretation, "
+            "response/progression, eligibility, or treatment claims; "
+            "rephrase as a fictional context record")
+    return text.strip()
+
 
 @dataclass(frozen=True)
 class ParsedEvidence:
@@ -571,6 +596,48 @@ CREATE TABLE IF NOT EXISTS biological_inventory_assertions (
 CREATE INDEX IF NOT EXISTS idx_biological_assets_case ON biological_assets(case_id, asset_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_assertions_asset ON biological_inventory_assertions(asset_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_assertions_source ON biological_inventory_assertions(source_version_id);
+-- Longitudinal biological explanation: human-authored, source-anchored
+-- context records inside the existing case model, NOT a second ledger.
+-- Explanations are never auto-superseded: competing hypotheses for one
+-- question survive side by side as separate rows. Assay observations each
+-- cite exactly one tissue block (or explicitly unknown), so assays from
+-- different blocks can never silently pool. Both tables go stale
+-- anchor-exactly on source amendment, like snapshots and inventory rows.
+-- No rollup is ever computed: readers see each row with its own anchor,
+-- context, and state. Nothing here states staging, grading, variant
+-- interpretation, or response/progression; guarded text rejects that language.
+CREATE TABLE IF NOT EXISTS bio_explanations (
+  id INTEGER PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(case_id),
+  question_id INTEGER NOT NULL REFERENCES questions(id),
+  label TEXT NOT NULL, mechanism_text TEXT NOT NULL,
+  episode_id TEXT NOT NULL,
+  specimen_state TEXT NOT NULL CHECK(specimen_state IN ('recorded','unknown')),
+  specimen_id TEXT,
+  lesion_state TEXT NOT NULL CHECK(lesion_state IN ('recorded','unknown')),
+  lesion_id TEXT,
+  clinical_context_state TEXT NOT NULL CHECK(clinical_context_state IN ('known','unknown')),
+  clinical_context_value TEXT,
+  source_version_id INTEGER NOT NULL REFERENCES source_versions(id),
+  state TEXT NOT NULL CHECK(state IN ('current','stale')), created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS bio_assay_observations (
+  id INTEGER PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(case_id),
+  explanation_id INTEGER NOT NULL REFERENCES bio_explanations(id),
+  method_label TEXT NOT NULL,
+  tissue_block_state TEXT NOT NULL CHECK(tissue_block_state IN ('recorded','unknown')),
+  tissue_block_asset_id INTEGER REFERENCES biological_assets(id),
+  matched_control_state TEXT NOT NULL CHECK(matched_control_state IN ('recorded','missing','unknown')),
+  matched_control_specimen TEXT,
+  reference_kind TEXT NOT NULL CHECK(reference_kind IN ('patient_normal','external_population','unknown')),
+  result_note TEXT NOT NULL,
+  source_version_id INTEGER NOT NULL REFERENCES source_versions(id),
+  state TEXT NOT NULL CHECK(state IN ('current','stale')), created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_bio_explanations_case ON bio_explanations(case_id, question_id);
+CREATE INDEX IF NOT EXISTS idx_bio_explanations_source ON bio_explanations(source_version_id);
+CREATE INDEX IF NOT EXISTS idx_bio_assay_case ON bio_assay_observations(case_id, explanation_id);
+CREATE INDEX IF NOT EXISTS idx_bio_assay_source ON bio_assay_observations(source_version_id);
+CREATE INDEX IF NOT EXISTS idx_bio_assay_block ON bio_assay_observations(tissue_block_asset_id);
 -- B-01 fictional-actor grants: workflow governance for the synthetic case
 -- workspace, NOT identity proofing, NOT credential verification, NOT a
 -- production-security control. A grant authorizes one fictional actor for one
@@ -1043,6 +1110,29 @@ class CaseStore:
                     marks = ",".join("?" for _ in invalidated_inventory)
                     self.db.execute(f"UPDATE biological_inventory_assertions SET state='stale' WHERE id IN ({marks})",
                                     invalidated_inventory)
+            invalidated_bio_explanations = []
+            invalidated_bio_assays = []
+            if previous:
+                # Anchor-exact, like snapshots and inventory rows: only
+                # explanations and assay observations citing the superseded
+                # version go stale. Competing hypotheses on other versions
+                # survive untouched, and history is preserved.
+                invalidated_bio_explanations = [row[0] for row in self.db.execute(
+                    """SELECT id FROM bio_explanations
+                    WHERE case_id=? AND source_version_id=? AND state='current'""",
+                    (case_id, previous["id"])).fetchall()]
+                if invalidated_bio_explanations:
+                    marks = ",".join("?" for _ in invalidated_bio_explanations)
+                    self.db.execute(f"UPDATE bio_explanations SET state='stale' WHERE id IN ({marks})",
+                                    invalidated_bio_explanations)
+                invalidated_bio_assays = [row[0] for row in self.db.execute(
+                    """SELECT id FROM bio_assay_observations
+                    WHERE case_id=? AND source_version_id=? AND state='current'""",
+                    (case_id, previous["id"])).fetchall()]
+                if invalidated_bio_assays:
+                    marks = ",".join("?" for _ in invalidated_bio_assays)
+                    self.db.execute(f"UPDATE bio_assay_observations SET state='stale' WHERE id IN ({marks})",
+                                    invalidated_bio_assays)
             # B-05: record the explicit match decision that bound these bytes
             # to this case. Duplicates return before this point, so the
             # original link is never duplicated either.
@@ -1055,7 +1145,9 @@ class CaseStore:
             event_id = self._event(case_id, "source_imported", document_id=report.document_id,
                         version=version, source_id=source_id, amends_id=previous["id"] if previous else None,
                         invalidated_snapshots=invalidated, invalidated_options=invalidated_options,
-                        invalidated_inventory_assertions=invalidated_inventory)
+                        invalidated_inventory_assertions=invalidated_inventory,
+                        invalidated_bio_explanations=invalidated_bio_explanations,
+                        invalidated_bio_assay_observations=invalidated_bio_assays)
             if previous is not None and invalidated:
                 self._create_re_review_tasks(
                     case_id=case_id, snapshot_ids=invalidated, cause="source_amendment",
@@ -1065,7 +1157,9 @@ class CaseStore:
                     finding_diff=self._source_finding_diff(previous["id"], source_id))
             return {"result": "imported", "source_id": source_id, "version": version,
                     "invalidated_snapshots": invalidated, "invalidated_options": invalidated_options,
-                    "invalidated_inventory_assertions": invalidated_inventory}
+                    "invalidated_inventory_assertions": invalidated_inventory,
+                    "invalidated_bio_explanations": invalidated_bio_explanations,
+                    "invalidated_bio_assay_observations": invalidated_bio_assays}
 
     # ---- B-05: explicit subject binding + reversible quarantine correction ----
     SUBJECT_LINK_DECISION = "bound_by_declared_id_equality"
@@ -2974,6 +3068,187 @@ class CaseStore:
                         source_version_id=source_version_id)
             return int(cur.lastrowid)
 
+    def add_bio_explanation(self, case_id: str, question_id: int, label: str,
+                            mechanism_text: str, episode_id: str,
+                            source_version_id: int,
+                            specimen_state: str = "unknown",
+                            specimen_id: str | None = None,
+                            lesion_state: str = "unknown",
+                            lesion_id: str | None = None,
+                            clinical_context_state: str = "unknown",
+                            clinical_context_value: str | None = None) -> int:
+        """Propose one human-authored biological explanation for one question.
+
+        Competing hypotheses survive side by side: creation never alters,
+        supersedes, or withdraws a sibling explanation. Context states are
+        explicit — unknown is stored, never defaulted — and a recorded
+        specimen that contradicts the anchored source's specimen is rejected,
+        so a new specimen is never confused with an amendment of an old one.
+        The anchor source is creation provenance; amendment staleness follows
+        the same anchor-exact rule as snapshots and inventory assertions.
+        """
+        case_id = self._case(case_id)
+        label = _check_bio_language(label, "Explanation label")
+        if not 1 <= len(label) <= 120:
+            raise InvalidInput("Explanation label must have 1–120 characters")
+        mechanism_text = _check_bio_language(mechanism_text, "Mechanism text")
+        if not 10 <= len(mechanism_text) <= 1000:
+            raise InvalidInput("Mechanism text must have 10–1000 characters")
+        episode_id = valid_id(episode_id)
+        if type(question_id) is not int or question_id < 1:
+            raise InvalidInput("Question ID must be a positive integer")
+        if type(source_version_id) is not int or source_version_id < 1:
+            raise InvalidInput("Source version ID must be a positive integer")
+        if specimen_state not in ("recorded", "unknown"):
+            raise InvalidInput("Specimen state must be recorded or unknown")
+        if specimen_state == "recorded":
+            if specimen_id is None:
+                raise InvalidInput("Recorded specimen requires a specimen ID")
+            specimen_id = valid_id(specimen_id)
+        elif specimen_id is not None:
+            raise InvalidInput("Unknown specimen must not carry a specimen ID")
+        if lesion_state not in ("recorded", "unknown"):
+            raise InvalidInput("Lesion state must be recorded or unknown")
+        if lesion_state == "recorded":
+            if lesion_id is None:
+                raise InvalidInput("Recorded lesion requires a lesion ID")
+            lesion_id = valid_id(lesion_id)
+        elif lesion_id is not None:
+            raise InvalidInput("Unknown lesion must not carry a lesion ID")
+        if clinical_context_state not in FIELD_STATES:
+            raise InvalidInput("Clinical context state must be known or unknown")
+        if clinical_context_state == "known":
+            if not isinstance(clinical_context_value, str) or not 1 <= len(clinical_context_value.strip()) <= 120:
+                raise InvalidInput("Known clinical context requires a 1–120 character label")
+            clinical_context_value = _check_bio_language(
+                clinical_context_value.strip(), "Clinical context label")
+        elif clinical_context_value is not None:
+            raise InvalidInput("Unknown clinical context must not carry a label")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            if not self.db.execute("SELECT 1 FROM questions WHERE id=? AND case_id=?",
+                                   (question_id, case_id)).fetchone():
+                raise InvalidInput("Question not in this case")
+            source = self.db.execute(
+                "SELECT specimen_id, state FROM source_versions WHERE id=? AND case_id=?",
+                (source_version_id, case_id)).fetchone()
+            if not source or source["state"] != "current":
+                raise InvalidInput("Explanation source is missing, superseded, or belongs to another case")
+            if (specimen_state == "recorded" and source["specimen_id"] is not None
+                    and source["specimen_id"] != specimen_id):
+                raise InvalidInput(
+                    "Explanation specimen does not match the anchored source's specimen; "
+                    "a new specimen is a distinct context, never an amendment")
+            cur = self.db.execute("""INSERT INTO bio_explanations
+                (case_id,question_id,label,mechanism_text,episode_id,
+                 specimen_state,specimen_id,lesion_state,lesion_id,
+                 clinical_context_state,clinical_context_value,
+                 source_version_id,state,created_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'current',?)""",
+                (case_id, question_id, label, mechanism_text, episode_id,
+                 specimen_state, specimen_id, lesion_state, lesion_id,
+                 clinical_context_state, clinical_context_value,
+                 source_version_id, now_utc()))
+            self._event(case_id, "bio_explanation_proposed",
+                        bio_explanation_id=int(cur.lastrowid), question_id=question_id,
+                        source_version_id=source_version_id)
+            return int(cur.lastrowid)
+
+    def record_bio_assay_observation(self, case_id: str, explanation_id: int,
+                                     method_label: str, result_note: str,
+                                     source_version_id: int, reference_kind: str,
+                                     tissue_block_state: str = "unknown",
+                                     tissue_block_asset_id: int | None = None,
+                                     matched_control_state: str = "unknown",
+                                     matched_control_specimen: str | None = None) -> int:
+        """Record one assay observation against exactly one tissue context.
+
+        Each observation cites at most one tissue block, and a recorded block
+        must share the explanation's episode, so assays from different blocks
+        or tumors are never silently pooled. A missing matched control is a
+        first-class stored state, and the reference kind explicitly separates
+        the patient's own normal tissue from an external reference population.
+        Unknown is stored, never defaulted: every context dimension requires
+        an explicit state, and values are rejected unless their state allows.
+        A stale explanation cannot grow new observations; propose anew, so a
+        changed basis is never silently extended.
+        """
+        case_id = self._case(case_id)
+        method_label = _check_bio_language(method_label, "Assay method label")
+        if not 1 <= len(method_label) <= 120:
+            raise InvalidInput("Assay method label must have 1–120 characters")
+        result_note = _check_bio_language(result_note, "Result note")
+        if not 10 <= len(result_note) <= 500:
+            raise InvalidInput("Result note must have 10–500 characters")
+        if type(explanation_id) is not int or explanation_id < 1:
+            raise InvalidInput("Explanation ID must be a positive integer")
+        if type(source_version_id) is not int or source_version_id < 1:
+            raise InvalidInput("Source version ID must be a positive integer")
+        if reference_kind not in ("patient_normal", "external_population", "unknown"):
+            raise InvalidInput("Reference kind must be patient_normal, external_population, or unknown")
+        if tissue_block_state not in ("recorded", "unknown"):
+            raise InvalidInput("Tissue block state must be recorded or unknown")
+        if tissue_block_state == "recorded":
+            if type(tissue_block_asset_id) is not int or tissue_block_asset_id < 1:
+                raise InvalidInput("Recorded tissue block requires a biological asset ID")
+        elif tissue_block_asset_id is not None:
+            raise InvalidInput("Unknown tissue block must not carry an asset ID")
+        if matched_control_state not in ("recorded", "missing", "unknown"):
+            raise InvalidInput("Matched control state must be recorded, missing, or unknown")
+        if matched_control_state == "recorded":
+            if matched_control_specimen is None:
+                raise InvalidInput("Recorded matched control requires a specimen ID")
+            matched_control_specimen = valid_id(matched_control_specimen)
+        elif matched_control_specimen is not None:
+            raise InvalidInput("A missing or unknown matched control must not carry a specimen ID")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            explanation = self.db.execute(
+                "SELECT episode_id, state FROM bio_explanations WHERE id=? AND case_id=?",
+                (explanation_id, case_id)).fetchone()
+            if not explanation:
+                raise InvalidInput("Biological explanation not in this case")
+            if explanation["state"] != "current":
+                raise InvalidInput(
+                    "Biological explanation is stale; propose a new explanation "
+                    "instead of extending it")
+            source = self.db.execute(
+                "SELECT specimen_id, state FROM source_versions WHERE id=? AND case_id=?",
+                (source_version_id, case_id)).fetchone()
+            if not source or source["state"] != "current":
+                raise InvalidInput("Assay source is missing, superseded, or belongs to another case")
+            if tissue_block_state == "recorded":
+                block = self.db.execute(
+                    "SELECT kind, episode_id, specimen_id, specimen_state FROM biological_assets "
+                    "WHERE id=? AND case_id=?", (tissue_block_asset_id, case_id)).fetchone()
+                if not block:
+                    raise InvalidInput("Tissue block asset not in this case")
+                if block["kind"] not in BIO_TISSUE_BLOCK_KINDS:
+                    raise InvalidInput(
+                        "Assay tissue must be a physical tissue block (ffpe_block or "
+                        "fresh_frozen_aliquot); derivatives cannot silently stand in for one")
+                if block["episode_id"] != explanation["episode_id"]:
+                    raise InvalidInput(
+                        "Assay tissue block must share the explanation's episode; "
+                        "tumors are never pooled across episodes")
+                if (block["specimen_state"] == "recorded" and source["specimen_id"] is not None
+                        and block["specimen_id"] != source["specimen_id"]):
+                    raise InvalidInput(
+                        "Tissue block specimen does not match the anchored source's specimen; "
+                        "a new specimen is a distinct context, never an amendment")
+            cur = self.db.execute("""INSERT INTO bio_assay_observations
+                (case_id,explanation_id,method_label,tissue_block_state,tissue_block_asset_id,
+                 matched_control_state,matched_control_specimen,reference_kind,result_note,
+                 source_version_id,state,created_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?, 'current',?)""",
+                (case_id, explanation_id, method_label, tissue_block_state, tissue_block_asset_id,
+                 matched_control_state, matched_control_specimen, reference_kind, result_note,
+                 source_version_id, now_utc()))
+            self._event(case_id, "bio_assay_observed",
+                        bio_assay_observation_id=int(cur.lastrowid),
+                        explanation_id=explanation_id, source_version_id=source_version_id)
+            return int(cur.lastrowid)
+
     def add_question(self, case_id: str, question: str, owner_label: str | None = None) -> int:
         self._case(case_id)
         if not isinstance(question, str) or not 5 <= len(question.strip()) <= 500:
@@ -3652,6 +3927,12 @@ class CaseStore:
                     "SELECT * FROM biological_assets WHERE case_id=? ORDER BY id", (case_id,)).fetchall()),
                 "biological_inventory_assertions": self._dicts(self.db.execute(
                     "SELECT * FROM biological_inventory_assertions WHERE case_id=? ORDER BY id",
+                    (case_id,)).fetchall()),
+                "bio_explanations": self._dicts(self.db.execute(
+                    "SELECT * FROM bio_explanations WHERE case_id=? ORDER BY id",
+                    (case_id,)).fetchall()),
+                "bio_assay_observations": self._dicts(self.db.execute(
+                    "SELECT * FROM bio_assay_observations WHERE case_id=? ORDER BY id",
                     (case_id,)).fetchall()),
                 "evidence": evidence_rows,
                 "evidence_changes": self._dicts(self.db.execute(

@@ -183,7 +183,8 @@ async function initialize() {
             'evidence-withdraw-reason', 'option-description', 'synthesis-note-text',
             'synthesis-note-author', 'owner-label-input', 'note-text',
             'scoped-decision-note', 'scoped-dissent-rationale',
-            'counterevidence-reason', 'safety-detail'].some(id => el(id).value.trim()))) {
+            'counterevidence-reason', 'safety-detail',
+            'bio-mechanism', 'bio-result-note'].some(id => el(id).value.trim()))) {
         picker.value = caseId;
         notice('Save or explicitly clear the unfinished investigation draft before switching cases.', true);
         return;
@@ -196,7 +197,8 @@ async function initialize() {
       for (const id of ['question-text', 'question-owner', 'owner-label-input', 'note-text',
         'report-text', 'evidence-rationale', 'draft-observations',
         'draft-summary', 'draft-assumptions', 'synthesis-note-text', 'synthesis-note-author',
-        'counterevidence-reason', 'safety-detail']) el(id).value = '';
+        'counterevidence-reason', 'safety-detail',
+        'bio-mechanism', 'bio-result-note']) el(id).value = '';
       if (el('source-dialog').open) el('source-dialog').close();
       if (el('compare-dialog').open) el('compare-dialog').close();
       refresh();
@@ -531,6 +533,104 @@ function renderBiologicalAssets() {
     el('asset-list').append(card);
   }
 }
+function renderBioExplanations() {
+  clear('bio-explanation-list');
+  const list = el('bio-explanation-list');
+  const explanations = active.bio_explanations || [];
+  const observations = active.bio_assay_observations || [];
+  const assets = new Map((active.biological_assets || []).map(a => [a.id, a]));
+  if (!explanations.length)
+    empty(list, 'No biological explanations proposed for this fictional case yet.');
+  for (const explanation of explanations) {
+    // One card per explanation: competing hypotheses are never merged.
+    const card = node('div', null, 'finding');
+    const heading = node('div', null, 'finding-head');
+    heading.append(node('strong', explanation.label + ' · Q' + explanation.question_id),
+      pill(explanation.state, explanation.state === 'stale' ? 'pill-alert' : ''));
+    card.append(heading, node('p', explanation.mechanism_text));
+    card.append(node('p', [
+      'Episode ' + explanation.episode_id,
+      explanation.specimen_state === 'recorded'
+        ? 'Specimen ' + explanation.specimen_id
+        : 'Specimen unknown (explicit — not absent)',
+      explanation.lesion_state === 'recorded'
+        ? 'Lesion ' + explanation.lesion_id
+        : 'Lesion unknown (explicit — not absent)',
+      explanation.clinical_context_state === 'known'
+        ? 'Clinical time point: ' + explanation.clinical_context_value
+        : 'Clinical time point unknown (explicit — not absent)',
+    ].join(' · '), 'snapshot-meta'));
+    card.append(node('span', 'Explanation anchor: source version #' + explanation.source_version_id +
+      (explanation.state === 'stale'
+        ? ' · STALE: source amended; propose a new explanation explicitly'
+        : ''), 'ref'));
+    const mine = observations.filter(o => o.explanation_id === explanation.id);
+    if (!mine.length) {
+      card.append(node('p', 'No assay observations recorded — assays unknown, not absent, and nothing pooled.', 'muted'));
+    } else {
+      // Grouped for reading by tissue block, but every observation keeps its
+      // own card: assays from different blocks are never merged.
+      const groups = new Map();
+      for (const item of mine) {
+        const key = item.tissue_block_state === 'recorded'
+          ? 'block:' + item.tissue_block_asset_id : 'block:unknown';
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(item);
+      }
+      for (const [key, items] of groups) {
+        const block = key === 'block:unknown' ? null : assets.get(items[0].tissue_block_asset_id);
+        card.append(node('p', key === 'block:unknown'
+          ? 'Tissue block unknown (explicit — not pooled with any block)'
+          : 'Tissue block ' + (block
+            ? block.asset_id + ' (' + block.kind + ', ' + block.episode_id + ')'
+            : '#' + items[0].tissue_block_asset_id), 'subhead'));
+        for (const item of items) {
+          const box = node('div', null, 'snapshot');
+          const top = node('div', null, 'topline');
+          top.append(node('strong', 'Assay observation #' + item.id + ' · ' + item.method_label),
+            pill(item.state, item.state === 'stale' ? 'pill-alert' : ''));
+          box.append(top, node('p', item.result_note));
+          const control = item.matched_control_state === 'recorded'
+            ? 'Matched control recorded: ' + item.matched_control_specimen
+            : item.matched_control_state === 'missing'
+              ? 'Matched control MISSING — no matched control specimen recorded'
+              : 'Matched control unknown (explicit — not absent)';
+          const reference = item.reference_kind === 'patient_normal'
+            ? "Reference: patient's own normal tissue"
+            : item.reference_kind === 'external_population'
+              ? 'Reference: external reference population (not this patient)'
+              : 'Reference unknown (explicit — not absent)';
+          box.append(node('p', control + ' · ' + reference, 'snapshot-meta'));
+          box.append(node('span', 'Assay anchor: source version #' + item.source_version_id +
+            (item.state === 'stale'
+              ? ' · STALE: source amended; record a new observation explicitly'
+              : ''), 'ref'));
+          card.append(box);
+        }
+      }
+    }
+    list.append(card);
+  }
+  const fill = (id, items, labelFn, allowEmpty = false) => {
+    const select = el(id);
+    const prior = select.value;
+    clear(id);
+    if (allowEmpty) { const blank = node('option', '—'); blank.value = ''; select.append(blank); }
+    for (const item of items) {
+      const opt = node('option', labelFn(item));
+      opt.value = item.id; select.append(opt);
+    }
+    if (prior && [...select.options].some(x => x.value === prior)) select.value = prior;
+  };
+  fill('bio-question-choice', active.questions, q => 'Q' + q.id + ', ' + q.question.slice(0, 62));
+  fill('bio-source-choice', active.sources, s => s.document_id + '@' + s.version + ' · ' + s.state);
+  fill('bio-assay-explanation-choice', explanations,
+    e => 'Explanation #' + e.id + ' · ' + e.label + ' (' + e.state + ')');
+  fill('bio-assay-source-choice', active.sources, s => s.document_id + '@' + s.version + ' · ' + s.state);
+  fill('bio-block-choice', (active.biological_assets || [])
+    .filter(a => a.kind === 'ffpe_block' || a.kind === 'fresh_frozen_aliquot'),
+    a => a.asset_id + ' · ' + a.kind + ' · ' + a.episode_id, true);
+}
 function render() {
   const sameCase = renderedCaseId === caseId;
   if (!sameCase) { draftQuestionFilter = null; draftFilterCaseId = null; }
@@ -600,6 +700,7 @@ function render() {
     el('assertion-list').append(card);
   }
   renderBiologicalAssets();
+  renderBioExplanations();
   clear('question-list'); clear('question-choice');
   clear('owner-question-choice'); clear('triage-question-choice');
   clear('note-question-choice'); clear('rollup-question-choice');
@@ -1181,6 +1282,53 @@ el('evidence-withdraw-form').addEventListener('submit', async event => {
     if (requestedCase !== caseId) return;
     notice('Synthetic evidence withdrawn, ' + outcome.invalidated_snapshots.length + ' dependent draft(s) stale.');
     el('evidence-withdraw-reason').value = ''; await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('bio-explanation-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const text = id => el(id).value.trim();
+    const created = await api('/api/cases/' + requestedCase + '/bio-explanations', {
+      question_id: Number(el('bio-question-choice').value),
+      label: text('bio-label'), mechanism_text: el('bio-mechanism').value,
+      episode_id: text('bio-episode'), source_version_id: Number(el('bio-source-choice').value),
+      specimen_state: el('bio-specimen-state').value,
+      specimen_id: text('bio-specimen-id') || null,
+      lesion_state: el('bio-lesion-state').value,
+      lesion_id: text('bio-lesion-id') || null,
+      clinical_context_state: el('bio-clinical-state').value,
+      clinical_context_value: text('bio-clinical-value') || null,
+    });
+    if (requestedCase !== caseId) return;
+    for (const id of ['bio-label', 'bio-mechanism', 'bio-episode', 'bio-specimen-id',
+      'bio-lesion-id', 'bio-clinical-value']) el(id).value = '';
+    notice('Biological explanation #' + created.bio_explanation_id +
+      ' proposed; competing hypotheses stay side by side.');
+    await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('bio-assay-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const text = id => el(id).value.trim();
+    const blockChoice = el('bio-block-choice').value;
+    const created = await api('/api/cases/' + requestedCase + '/bio-explanations/' +
+      Number(el('bio-assay-explanation-choice').value) + '/assay-observations', {
+      method_label: text('bio-method'), result_note: el('bio-result-note').value,
+      source_version_id: Number(el('bio-assay-source-choice').value),
+      reference_kind: el('bio-reference-kind').value,
+      tissue_block_state: el('bio-block-state').value,
+      tissue_block_asset_id: blockChoice === '' ? null : Number(blockChoice),
+      matched_control_state: el('bio-control-state').value,
+      matched_control_specimen: text('bio-control-specimen') || null,
+    });
+    if (requestedCase !== caseId) return;
+    for (const id of ['bio-method', 'bio-result-note', 'bio-control-specimen']) el(id).value = '';
+    notice('Assay observation #' + created.bio_assay_observation_id +
+      ' recorded against one tissue context.');
+    await refresh();
   } catch (err) { notice(err.message, true); }
 });
 el('option-form').addEventListener('submit', async event => {

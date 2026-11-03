@@ -47,6 +47,7 @@
           <a href="#synthesis">Claim synthesis</a>
           <a href="#scoped-review">Scoped review</a>
           <a href="#sources">Sources and findings</a>
+          <a href="#biological-explanation">Biological explanation</a>
           <a href="#evidence">Evidence review</a>
           <a href="#bibliography">Bibliography</a>
           <a href="#import">Updates</a>
@@ -373,6 +374,45 @@
           <section class="panel" id="biological-assets">
             <div class="panel-head"><div><div class="eyebrow">03 / BIOLOGICAL ASSETS</div><h2>Biological-asset provenance</h2></div><span class="muted tiny">Synthetic only · no files stored · no release or shipment</span></div>
             <div id="asset-list" class="findings"></div>
+          </section>
+          <section class="panel" id="biological-explanation">
+            <div class="panel-head"><div><div class="eyebrow">03b / BIOLOGICAL EXPLANATION</div><h2>Biological explanation</h2></div><span class="pill pill-warn">FICTIONAL CONTEXT ONLY</span></div>
+            <p class="muted">Human-authored context records linking one question to a fictional episode, specimen, lesion, assay, reference, and time point — not a mutation list. Competing explanations stay side by side. Nothing here states staging, grading, variant meaning, or response; this fictional demo is not clinical software and supports no treatment decision.</p>
+            <div id="bio-explanation-list" class="findings"></div>
+            <h3 class="subhead">Propose an explanation</h3>
+            <form id="bio-explanation-form">
+              <label for="bio-question-choice">Question</label><select id="bio-question-choice" required></select>
+              <label for="bio-label">Label (plain words, fictional)</label><input id="bio-label" type="text" maxlength="120" required placeholder="Fictional mechanism A">
+              <label for="bio-mechanism">Mechanism outline (plain words; no staging, grading, or response claims)</label><textarea id="bio-mechanism" rows="3" minlength="10" maxlength="1000" required placeholder="Fictional outline of what the cells might show; no interpretation."></textarea>
+              <label for="bio-episode">Episode ID</label><input id="bio-episode" type="text" maxlength="40" required placeholder="EPISODE-A">
+              <label for="bio-specimen-state">Specimen</label>
+              <select id="bio-specimen-state"><option value="unknown">Unknown (explicit — not absent)</option><option value="recorded">Recorded specimen below</option></select>
+              <label for="bio-specimen-id">Specimen ID (only when recorded)</label><input id="bio-specimen-id" type="text" maxlength="40" placeholder="BIOPSY-ALPHA">
+              <label for="bio-lesion-state">Lesion</label>
+              <select id="bio-lesion-state"><option value="unknown">Unknown (explicit — not absent)</option><option value="recorded">Recorded lesion below</option></select>
+              <label for="bio-lesion-id">Lesion ID (only when recorded)</label><input id="bio-lesion-id" type="text" maxlength="40" placeholder="LESION-A">
+              <label for="bio-clinical-state">Clinical time point</label>
+              <select id="bio-clinical-state"><option value="unknown">Unknown (explicit — not absent)</option><option value="known">Known label below</option></select>
+              <label for="bio-clinical-value">Time-point label (only when known)</label><input id="bio-clinical-value" type="text" maxlength="120" placeholder="Fictional baseline time point T0">
+              <label for="bio-source-choice">Anchored source version</label><select id="bio-source-choice" required></select>
+              <button class="button" type="submit">Propose explanation</button>
+            </form>
+            <h3 class="subhead">Record an assay observation</h3>
+            <form id="bio-assay-form">
+              <label for="bio-assay-explanation-choice">Explanation</label><select id="bio-assay-explanation-choice" required></select>
+              <label for="bio-method">Assay method (fictional name)</label><input id="bio-method" type="text" maxlength="120" required placeholder="Fictional Assay Panel FAP-7">
+              <label for="bio-result-note">Result note (plain words; no interpretation)</label><textarea id="bio-result-note" rows="2" minlength="10" maxlength="500" required placeholder="Fictional signal pattern noted; no interpretation recorded."></textarea>
+              <label for="bio-assay-source-choice">Anchored source version</label><select id="bio-assay-source-choice" required></select>
+              <label for="bio-block-state">Tissue block</label>
+              <select id="bio-block-state"><option value="unknown">Unknown (explicit — never pooled)</option><option value="recorded">Recorded block below (exactly one)</option></select>
+              <label for="bio-block-choice">Tissue block (physical blocks only; same episode required)</label><select id="bio-block-choice"></select>
+              <label for="bio-control-state">Matched control</label>
+              <select id="bio-control-state"><option value="unknown">Unknown (explicit — not absent)</option><option value="recorded">Recorded specimen below</option><option value="missing">Missing — identified as missing</option></select>
+              <label for="bio-control-specimen">Matched-control specimen (only when recorded)</label><input id="bio-control-specimen" type="text" maxlength="40" placeholder="NORMAL-ALPHA">
+              <label for="bio-reference-kind">Reference kind</label>
+              <select id="bio-reference-kind"><option value="unknown">Unknown (explicit — not absent)</option><option value="patient_normal">Patient's own normal tissue</option><option value="external_population">External reference population (not this patient)</option></select>
+              <button class="button" type="submit">Record assay observation</button>
+            </form>
           </section>
           <section class="panel" id="activity">
             <div class="panel-head"><h2>Recent activity</h2></div>
