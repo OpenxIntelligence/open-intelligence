@@ -4,9 +4,11 @@ on:
   push:
     branches:
       - experiment/pacsnode-dicomweb-eval-20261102
+      - test/pacsnode-source-bound-wado-20261102
     paths:
       - 'tools/imaging/**'
       - 'tests/test_pacsnode_probe_contract.py'
+      - 'tests/test_source_bound_wado.py'
       - '.github/workflows/pacsnode-standalone-evaluation.yml'
   workflow_dispatch:
 
@@ -44,6 +46,8 @@ jobs:
           git rev-parse HEAD > verification-artifacts/oi-evaluator-commit.txt
           python -m unittest discover -s tests -p 'test_pacsnode_probe_contract.py' -v 2>&1 |
             tee verification-artifacts/pacsnode-harness-tests.txt
+          python -m unittest discover -s tests -p 'test_source_bound_wado.py' -v 2>&1 |
+            tee verification-artifacts/pacsnode-source-bound-wado-tests.txt
       - name: Install only hash-pinned pydicom core for synthetic fixture generation
         shell: bash
         run: |
@@ -147,7 +151,8 @@ jobs:
             exit 1
           fi
           cd "$GITHUB_WORKSPACE"
-          python tools/imaging/pacsnode_live_probe.py \
+          # Import via the package path so source_bound_wado is resolvable.
+          python -m tools.imaging.pacsnode_live_probe \
             --base-url http://127.0.0.1:18042 \
             --output verification-artifacts/pacsnode-real-dicomweb.json
       - name: Preserve only source and numerical receipts, no image objects
@@ -158,6 +163,7 @@ jobs:
           path: |
             verification-artifacts/oi-evaluator-commit.txt
             verification-artifacts/pacsnode-harness-tests.txt
+            verification-artifacts/pacsnode-source-bound-wado-tests.txt
             verification-artifacts/pacsnode-dicom-regression-tests.txt
             verification-artifacts/pacsnode-upstream-commit.txt
             verification-artifacts/pacsnode-cargo-lock-sha256.txt

@@ -45,6 +45,8 @@ class RealBackendHarnessTests(unittest.TestCase):
         with self.assertRaises(InvalidInput):
             multipart_dicom_parts(media, b"not multipart")
         with self.assertRaises(InvalidInput):
+            multipart_dicom_parts(media, wire + b"UNEXPECTED_TRAILING_BYTES")
+        with self.assertRaises(InvalidInput):
             multipart_body([])
         with self.assertRaises(InvalidInput):
             multipart_body([one]*3)
