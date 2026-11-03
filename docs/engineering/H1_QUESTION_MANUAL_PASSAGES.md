@@ -45,8 +45,8 @@ remain separate extensions.
 
 ## Verification and recovery behavior
 
-Draft #396 implements this increment on #392. Its current pinned head and hosted
-results are recorded in the pull request. Do not infer merged or clinical state
+Draft #398 verifies the combined increment on #392, incorporating #396. Its current pinned head and hosted
+results are recorded in draft #398. Do not infer merged or clinical state
 from this engineering candidate.
 
 An uncertain save retains only its exact reference command in the scoped session,
@@ -62,7 +62,7 @@ refresh disposing pending intent, and unsaved selections diverging from report
 context. The combined implementation addresses all four. Metadata freshness is
 checked without disclosing manual text; only the requested quotation-bearing
 report invokes original resolution and its final authority checks. Concurrent
-commits through `08c5e933fd21b346f03a740db1379af188b9ab70` are preserved.
+commits through `595b2c421213a25752a1813334e73463fe9659e5` are preserved.
 The combined continuation uses an isolated branch to keep its checks pinned
 while the shared draft continues to advance.
 

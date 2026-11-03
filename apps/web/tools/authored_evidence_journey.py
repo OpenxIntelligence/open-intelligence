@@ -250,6 +250,8 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
 
     def attach_manual():
         assert manual_document is not None
+        cd.wait("Boolean(document.querySelector('[data-testid=manual-context-documents]'))",
+                'fresh manual context before selecting reviewed records')
         before=len(responses())
         click('[data-testid=manual-context-documents]')
         cd.wait("Array.from(document.querySelectorAll('[data-testid=manual-context-document]')).some("

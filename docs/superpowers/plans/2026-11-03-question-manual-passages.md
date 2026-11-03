@@ -55,9 +55,9 @@ Files: new `question-passages.ts` and `question-passages-panel.tsx`; existing re
 - [x] Add failing client checks for strict provenance, foreign scope, uncertain retry and late responses.
 - [x] Add bounded passage selection/editing in the existing evidence workspace and bind report creation to the inspected context hash.
 - [x] Run client suite/build/rights checks; add actual PostgreSQL HTTP/browser acceptance to the hosted gates.
-- [ ] Confirm the final combined revision completes both hosted gates; record the exact head and artifacts in draft #396.
+- [ ] Confirm the final combined revision completes both hosted gates; record the exact head and artifacts in draft #398.
 - [x] Extend restored database coverage for context revisions and report continuity.
-- [x] Obtain fresh independent review, fix material findings, publish draft #396 and update backlog/limitations.
+- [x] Obtain fresh independent review, fix material findings, publish draft #398 and update backlog/limitations.
 
 ## Execution record
 
@@ -67,5 +67,5 @@ regressions for question scope and all three recovery/report-binding findings
 were observed failing before fixes and then passed. The independent review's
 four material findings are addressed; backend authority regressions additionally
 run in the hosted database suite. Concurrent metadata/legacy-report/restore work
-through `d0855ea` is integrated rather than overwritten. Verification evidence
-and the remaining scope boundaries are in the engineering spec and draft #396.
+through `595b2c4` is integrated rather than overwritten. Verification evidence
+and the remaining scope boundaries are in the engineering spec and draft #398.
