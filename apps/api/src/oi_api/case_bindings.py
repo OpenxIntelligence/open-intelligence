@@ -97,18 +97,28 @@ class CanonicalCaseBindings:
                         "duplicate": True, "source_identity_verified": False}
             # The unique qualified external subject prevents silent many-to-many
             # reuse. Do not infer identity from subject text; this is a fixture.
-            try:
-                self.registry._execute(
-                    "INSERT INTO coordination.patient_case_bindings "
-                    "(case_id,patient_id,origin_org,source_organization,source_system,"
-                    "source_subject_ref,review_ref,created_by,purpose) "
-                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                    (case_id, *intent),
+            inserted = self.registry._fetchone(
+                "INSERT INTO coordination.patient_case_bindings "
+                "(case_id,patient_id,origin_org,source_organization,source_system,"
+                "source_subject_ref,review_ref,created_by,purpose) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+                "ON CONFLICT DO NOTHING RETURNING case_id",
+                (case_id, *intent),
+            )
+            if inserted is None:
+                # Only a genuine uniqueness collision is a conflict; arbitrary
+                # SQL/network failures must propagate to the unavailable path.
+                # Re-read after a concurrent identical bind commits.
+                conflicting = self.registry._fetchone(
+                    "SELECT patient_id,origin_org,source_organization,source_system,"
+                    "source_subject_ref,review_ref,created_by,purpose,status "
+                    "FROM coordination.patient_case_bindings WHERE case_id=%s",
+                    (case_id,),
                 )
-            except Exception:
-                # DB uniqueness violations are normalized by the owning HTTP
-                # boundary as bounded 409s without leaking another patient.
-                raise PatientRegistryConflict("Case or external subject is already linked") from None
+                if conflicting is not None and tuple(conflicting[:8]) == intent and conflicting[8] == "active":
+                    return {"case_id": case_id, "patient_id": patient_id,
+                            "duplicate": True, "source_identity_verified": False}
+                raise PatientRegistryConflict("Case or external subject is already linked")
             self.registry.append_event(
                 patient_id, "identity.case_binding_created",
                 case_id=case_id, actor=actor, review_ref=review_ref,
