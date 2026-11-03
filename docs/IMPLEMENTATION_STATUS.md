@@ -1,5 +1,43 @@
 # Implementation slice 01 — source and investigation ledger
 
+## Document intake checkpoint — 2 November 2026
+
+**Hosted verification update — 3 November 2026:** [PR #173](https://github.com/OpenxIntelligence/open-intelligence/pull/173)
+implementation head `fe8a6368245bb52944e6ebc7f3e6f5b43daf69d0` passed
+[dedicated exact-head run 41550282180](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41550282180):
+349 Python/HTTP tests, 47 JavaScript cases, 80 offline checks plus 18 optional
+skips, and five Chromium journeys including real record intake through
+question/draft/export/amendment. [UI run 41550282107](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41550282107)
+also passed its existing browser/keyboard/race checks on the generated merge.
+The initial mobile overflow failure was corrected without weakening the gate.
+Verified artifacts and source hashes are in the linked intake contract.
+
+The current feature adds ordinary UTF-8 `.txt` file upload, read-only preview,
+manual exact-line passage selection, confirmed metadata, original-byte download,
+and the existing timeline/question/Composer/report path. It extends the original
+source/version/assertion/event owner; it does not create another patient or
+record store. See [the intake contract](engineering/DOCUMENT_INTAKE.md).
+
+Manual statuses retain `classification_origin=user_selected` and
+`clinical_review=not_performed` in the patient views, Patient Mission, timeline,
+change review, investigation prompt, Composer preview/fingerprint, and snapshot
+export. The selected quote remains distinct from the operator's classification.
+An amendment uses the existing atomic invalidation and review mechanism.
+
+At this checkpoint, 349 Python/domain/HTTP tests passed locally, including 19
+intake domain tests and 14 intake HTTP tests. Six direct JavaScript intake cases
+passed. A subsequent 43-test projection-specific regression run verifies manual
+origin in Patient Mission, timeline and change review. Local Chrome/Chromium is
+unavailable; hosted browser acceptance is established by the executed runs above.
+
+The feature is stacked on verified PR #140. It is unmerged synthetic-only code,
+not an authenticated clinical release. Limits include no PDF/OCR, no trusted
+patient identity/session, no clinical interpretation, and no post-save annotation
+editing. Original-only uploads are allowed, but their passages cannot be added
+later through this version. No new third-party dependency is introduced.
+
+The earlier checkpoints below describe their respective source trees.
+
 ## Current additive checkpoint — 2 November 2026
 
 The platform mandate is now explicit in `AGENTS.md`: build a complete first-party cancer-care ecosystem incrementally, with a useful integrated MVP before advanced custom models. Public patient narratives inform workflow discovery only; Sid's patient data is excluded from development, training, evaluation, testing and synthetic derivation.

@@ -52,7 +52,7 @@ The repository contains planning artifacts and working synthetic application sli
 
 Prefer deterministic software for authorization, source identity, validation, versioning, job state, and publication state. Model outputs are inspectable proposals governed by typed task contracts and allowed tools.
 
-The existing Python/SQLite/vanilla-JavaScript synthetic application is an implemented foundation, not a final production-stack decision. Reconcile the canonical candidate-stack recommendations in a scoped ADR before migration or dependency adoption. Preserve working code while resolving that decision; a research report cannot itself approve a replacement backend, model provider or UI stack.
+The existing Python/SQLite/vanilla-JavaScript synthetic application remains the behavioral reference and fallback. The canonical decision register accepts Python 3.12/FastAPI/Pydantic 2/SQLAlchemy 2/Alembic/PostgreSQL 16 and React/Vite/TypeScript as the H1 working target; migration is not complete. This bounded engineering direction does not approve production tenancy, hosting, clinical use or every dependency. Preserve source contracts and tested behavior during migration, and document scoped adoption decisions rather than restarting stack selection. See the existing [decision register](https://www.notion.so/40a3866f77ef81e08a12fd4921e19629).
 
 ## Completion reports
 

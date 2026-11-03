@@ -59,6 +59,11 @@ async function initialize() {
     }
     await renderIncomingBoard(cases);
     picker.addEventListener('change', () => {
+      if (documentIntake.hasDraft()) {
+        picker.value = caseId;
+        notice('Add the record or discard its intake before switching cases.', true);
+        return;
+      }
       // An unfinished narrative must never silently become attached to another case.
       if ((['draft-observations', 'draft-summary', 'draft-assumptions', 'evidence-rationale',
             'evidence-withdraw-reason', 'option-description'].some(id => el(id).value.trim()))) {
@@ -68,6 +73,7 @@ async function initialize() {
       }
       cancelSourceRead();
       caseId = picker.value;
+      documentIntake.syncCase(caseId);
       active = null; // Reject writes while the next case is loading.
       for (const id of ['question-text', 'report-text', 'evidence-rationale', 'draft-observations',
         'draft-summary', 'draft-assumptions']) el(id).value = '';
@@ -143,9 +149,12 @@ function renderPatientView() {
   if (!active.assertions.length) empty(el('patient-findings'), 'No reported findings yet in this fictional case.');
   for (const assertion of active.assertions) {
     const card = node('div', null, 'finding');
+    const manual = assertion.classification_origin === 'user_selected';
     card.append(node('strong', 'Source says'), node('p', assertion.quote, 'quoted'),
-      node('span', 'How certain the source is: ' + (CERTAINTY_PLAIN[assertion.certainty] || assertion.certainty) +
+      node('span', (manual ? 'User-selected status: ' : 'How certain the source is: ') +
+        (CERTAINTY_PLAIN[assertion.certainty] || assertion.certainty) +
         ' · Exact source version #' + assertion.source_version_id + ', line ' + assertion.source_line, 'ref'));
+    if (manual) card.append(node('p', 'Passage manually selected. Clinical review not performed.', 'muted tiny'));
     el('patient-findings').append(card);
   }
   const open = active.questions.filter(q => q.state === 'open');
@@ -356,6 +365,7 @@ function renderBiologicalAssets() {
   }
 }
 function render() {
+  documentIntake.syncCase(caseId);
   const sameCase = renderedCaseId === caseId;
   const priorQuestion = sameCase ? el('question-choice').value : null;
   const priorInputs = sameCase ? [...el('source-choice').querySelectorAll('input')] : [];
@@ -404,7 +414,16 @@ function render() {
       'Received ' + source.received_at.substring(0, 10), 'SHA ' + source.sha256.slice(0, 12) + '…']) meta.append(node('span', text));
     const button = node('button', 'View original text', 'button secondary minor');
     button.type = 'button'; button.addEventListener('click', () => openSource(source));
-    card.append(top, meta, button); el('source-list').append(card);
+    card.append(top, meta, button);
+    if (source.document_intake) {
+      card.append(node('p', source.document_intake.filename +
+        ' · Manually confirmed passages · Clinical review not performed', 'muted tiny'));
+      const download = node('a', 'Download original file', 'button secondary minor');
+      download.href = '/api/cases/' + caseId + '/sources/' + source.id + '/download';
+      download.download = source.document_intake.filename;
+      card.append(download);
+    }
+    el('source-list').append(card);
   }
   clear('assertion-list');
   if (!active.assertions.length) empty(el('assertion-list'), 'No current reported statements.');
@@ -412,7 +431,8 @@ function render() {
     const card = node('div', null, 'finding');
     const heading = node('div', null, 'finding-head');
     const labels = node('div', null, 'finding-labels');
-    labels.append(pill('Source says', 'pill-neutral'), pill(assertion.certainty,
+    labels.append(pill('Source says', 'pill-neutral'), pill(
+      (assertion.classification_origin === 'user_selected' ? 'User-selected: ' : '') + assertion.certainty,
       ['pending', 'indeterminate', 'conflicting', 'not-reported', 'not-assessed'].includes(assertion.certainty) ? 'pill-warn' : ''));
     heading.append(node('strong', assertion.finding_key), labels);
     card.append(heading, node('p', assertion.quote, 'quoted'));
@@ -426,6 +446,8 @@ function render() {
     if (supportingSource)
       sourceButton.addEventListener('click', () => openSource(supportingSource, Number(assertion.source_line)));
     card.append(sourceButton);
+    if (assertion.classification_origin === 'user_selected')
+      card.append(node('p', 'Passage and status manually selected. Clinical review not performed.', 'muted tiny'));
     el('assertion-list').append(card);
   }
   renderBiologicalAssets();
@@ -1176,7 +1198,8 @@ function renderChangesSinceReview(data) {
       'snapshot-meta'));
     const findings = item.reported_findings || [];
     card.append(node('p', findings.length
-      ? 'Reported findings: ' + findings.map(entry => entry.finding_key + ' (' + entry.reported_state + ')').join('; ')
+      ? (item.classification_origin === 'user_selected' ? 'User-selected finding statuses: ' : 'Reported findings: ') +
+        findings.map(entry => entry.finding_key + ' (' + entry.reported_state + ')').join('; ')
       : 'No reported findings recorded for this source version.', 'muted'));
     el('changes-new-sources').append(card);
   }
@@ -1193,6 +1216,8 @@ function renderChangesSinceReview(data) {
       ' · Source version #' + item.source_id + ' supersedes #' + item.supersedes_source_id +
       ' · ' + item.kind + ', event ' + item.event_date + ', received ' + item.received_at, 'snapshot-meta'));
     const diff = item.finding_key_diff || {};
+    if (item.classification_origin === 'user_selected' || item.previous_classification_origin === 'user_selected')
+      card.append(node('p', 'This comparison includes user-selected statuses. Clinical review not performed.', 'muted tiny'));
     const added = diff.added_finding_keys || [];
     const removed = diff.removed_finding_keys || [];
     const stateChanges = diff.reported_state_changes || [];
@@ -1281,6 +1306,21 @@ el('model-investigation-form').addEventListener('submit', async event => {
     }
     notice(err.message, true);
   }
+});
+const documentIntake = window.OpenIntelligenceIntake.mount({
+  api, getCase: readyCase,
+  onImported: () => refresh(),
+  onSource: async sourceId => {
+    const requestedCase = readyCase();
+    await refresh();
+    if (requestedCase !== caseId) return;
+    const source = active.sources.find(item => item.id === sourceId);
+    if (source) await openSource(source);
+  },
+  onQuestion: () => {
+    el('question-text').scrollIntoView({block: 'center'});
+    el('question-text').focus();
+  },
 });
 initialize();
 initializeBibliography();
