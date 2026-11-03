@@ -183,6 +183,20 @@ class Handler(BaseHTTPRequestHandler):
             if exported:
                 contents = store.export_markdown(exported[1], int(exported[2])).encode("utf-8")
                 return self._send(200, contents, "text/markdown; charset=utf-8")
+            question_synthesis = re.fullmatch(rf"/api/cases/{ID_PART}/questions/([0-9]+)/synthesis", path)
+            if question_synthesis:
+                return self._json(200, store.question_synthesis(question_synthesis[1], int(question_synthesis[2])))
+            snapshot_synthesis = re.fullmatch(rf"/api/cases/{ID_PART}/snapshots/([0-9]+)/synthesis", path)
+            if snapshot_synthesis:
+                return self._json(200, store.snapshot_synthesis(snapshot_synthesis[1], int(snapshot_synthesis[2])))
+            synthesis_report = re.fullmatch(rf"/api/cases/{ID_PART}/snapshots/([0-9]+)/synthesis-report", path)
+            if synthesis_report:
+                contents = store.synthesis_report(synthesis_report[1], int(synthesis_report[2])).encode("utf-8")
+                return self._send(200, contents, "text/markdown; charset=utf-8")
+            synthesis_patient = re.fullmatch(rf"/api/cases/{ID_PART}/snapshots/([0-9]+)/synthesis-report-patient", path)
+            if synthesis_patient:
+                contents = store.synthesis_patient_report(synthesis_patient[1], int(synthesis_patient[2])).encode("utf-8")
+                return self._send(200, contents, "text/markdown; charset=utf-8")
             return self._json(404, {"error": "Route not found"})
         except InvalidInput as error:
             return self._json(422, {"error": str(error)})
@@ -280,6 +294,13 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(200, store.review_broker_link(
                         broker_review[1], int(broker_review[2]), data.get("relation"),
                         data.get("applicability"), data.get("rationale")))
+                limitation_note = re.fullmatch(rf"/api/cases/{ID_PART}/limitation-notes", path)
+                if limitation_note:
+                    return self._json(201, {"note_id": store.add_limitation_note(
+                        limitation_note[1], data.get("question_id"),
+                        assessment_id=data.get("assessment_id"),
+                        broker_link_id=data.get("broker_link_id"),
+                        note=data.get("note"), author_label=data.get("author_label"))})
                 bio_assets = re.fullmatch(rf"/api/cases/{ID_PART}/biological-assets", path)
                 if bio_assets:
                     return self._json(201, {"biological_asset_id": store.add_biological_asset(
