@@ -122,10 +122,45 @@ read/retry authorization, audit-tail revocation, competing keys/changed actor,
 unreceived/cancelled/cross-patient requests, body bounds, a forked stored journal,
 source/request/patient/binding locks through actual encoding, and request-only
 metadata projection without loading original bytes.
-Hosted API, regression, recovery and React/browser verification of the
-implementation is pending at this checkpoint. No local runtime was available;
-no local execution or independent review is claimed.
+The initial publication checkpoint had hosted verification pending. The completed
+runtime receipt below supersedes that pending status. No local runtime was
+available; no local execution or independent review is claimed.
 
 Synthetic operational provenance only. No clinical approval, institutional
 outreach, real patient content, deployment or merge. UI integration and
 reconciliation with newer combined branch owners remain separate follow-up work.
+
+### Executed runtime acceptance — 3 November 2026
+
+**Verified runtime:** `1ee9ee399ba5f2969aea09b33cf79131d0962edd`, tree `ed646cebd486e83041f23b40ffab7e4f0d4bdf56`.
+Both complete workflows passed at this exact commit.
+
+| Gate | Observed result |
+| --- | --- |
+| [H1 API 41666229300](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41666229300) | 260 PostgreSQL/API executions passed in 231.803 seconds; zero skips. All 14 reconciliation methods individually passed. |
+| Inherited prototype in that run | 245 tests passed in 12.420 seconds. Both original browser journeys completed. |
+| Inherited recovery probes in that run | Actual patient, source and review HTTP; independent authority; API/database restarts; PostgreSQL dump/restore passed. |
+| [H1 React 41666229252](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41666229252) | 106 client tests passed with zero failures/skips; TypeScript/Vite build, dependency gates and actual PostgreSQL/FastAPI/React/Chromium journey passed. |
+| Publication comparison | All eight changed files were read back and exactly matched the submitted contents. Main remains 24519839aa8ac1ea3aff88a956349ba72798a72a. |
+
+The new reconciliation tests exercise real PostgreSQL/HTTP, concurrent retries,
+original-byte preservation, later reconciliation and application restart.
+The inherited container recovery probes do not add a new reconciliation-specific
+restored-HTTP scenario; no such claim is made. Existing browser journeys cover
+regressions, not a new reconciliation UI. No screenshots or artifacts were
+downloaded or visually inspected in this continuation.
+
+**Intermediate failure preserved:** at fe6e0860e1b17693c21af7157495ba029e1f2259,
+[API run 41665452889](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41665452889)
+passed 258 API/PostgreSQL and 245 prototype tests, then failed before browser
+assertions because Chromium's DevTools endpoint did not start. Recovery stages
+were skipped. Its [React run 41665452419](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41665452419)
+passed. The final runtime above adds source-row locks and request-only metadata
+projection plus two targeted tests; the browser harness and assertions remain
+unchanged. The startup cause was not independently diagnosed.
+
+This receipt and the OI-009 status are a documentation-only closeout of the
+verified runtime. Current branch-head and any subsequent automatic workflow
+results are maintained in [PR #289](https://github.com/OpenxIntelligence/open-intelligence/pull/289).
+Independent source-owner review, adoption into newer combined branches and an
+explicit Records UI action remain open. Draft, unmerged and undeployed.
