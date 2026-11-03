@@ -10,6 +10,18 @@ index 788957c..47facec 100644
   "tempfile",
   "thiserror",
   "tokio",
+diff --git a/crates/pacs-admin-plugin/src/web.rs b/crates/pacs-admin-plugin/src/web.rs
+index 65d90c1..1f8ca55 100644
+--- a/crates/pacs-admin-plugin/src/web.rs
++++ b/crates/pacs-admin-plugin/src/web.rs
+@@ -4236,6 +4236,7 @@ fn internal_store_error(error: pacs_core::PacsError) -> StatusCode {
+ fn pacs_error_to_status(error: &PacsError) -> StatusCode {
+     match error {
+         PacsError::NotFound { .. } => StatusCode::NOT_FOUND,
++        PacsError::Conflict(_) => StatusCode::CONFLICT,
+         PacsError::Forbidden(_) => StatusCode::FORBIDDEN,
+         PacsError::InvalidUid(_) | PacsError::InvalidRequest(_) => StatusCode::BAD_REQUEST,
+         PacsError::NotAcceptable(_) => StatusCode::NOT_ACCEPTABLE,
 diff --git a/crates/pacs-api/src/error.rs b/crates/pacs-api/src/error.rs
 index b09b30c..2cb95ad 100644
 --- a/crates/pacs-api/src/error.rs

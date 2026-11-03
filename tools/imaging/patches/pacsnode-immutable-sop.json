@@ -2,6 +2,7 @@
   "backend_adoption_approved": false,
   "changed_upstream_files": [
     "Cargo.lock",
+    "crates/pacs-admin-plugin/src/web.rs",
     "crates/pacs-api/src/error.rs",
     "crates/pacs-api/src/routes/stow.rs",
     "crates/pacs-core/src/blob/mod.rs",
@@ -18,6 +19,7 @@
   "derived_cargo_lock_sha256": "49d369d9448ce0337375bf11511fd079d365edc15535cfc57cb3d16c8dbdf144",
   "derived_source_sha256": {
     "Cargo.lock": "49d369d9448ce0337375bf11511fd079d365edc15535cfc57cb3d16c8dbdf144",
+    "crates/pacs-admin-plugin/src/web.rs": "d0c20e82042c5e74b53557f3adce6fe1cefe837d3acb3899be58bbb65d191a87",
     "crates/pacs-api/src/error.rs": "f9a10237cba85fbd9915f50b90628859f8acc2190e6129fbf61f8133127f7fc5",
     "crates/pacs-api/src/routes/stow.rs": "b0aba1046917fd566ae81579837cf0c54f8cbadaa36f6a72d9efbb0918d2e2f8",
     "crates/pacs-core/src/blob/mod.rs": "046867e42f4c9cc59c1f9293fa8d79fadc15cf2f028d624e55c62c3f9196f832",
@@ -33,7 +35,7 @@
   },
   "kind": "oi.pacsnode-storage-patch/1",
   "original_cargo_lock_sha256": "ec18ccd828aedb35888484ad915bf1b4baaf324e2844330f642136bdd64a9e58",
-  "patch_sha256": "a1da88311bf15993712f353ee14ab01c367c0f6e958520a3bb7db30ab986ab95",
+  "patch_sha256": "d0a61a74d250df8a35b529474e2e9751d6b4b1ae7a4e564dee2527d912f00113",
   "scope": "standalone_sqlite_filesystem",
   "upstream_commit": "e9b4334477a66967d290add9e0b9afa068f59dc0",
   "upstream_failure": {
