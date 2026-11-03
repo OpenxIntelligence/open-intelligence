@@ -735,6 +735,8 @@ class CaseStore:
         if date_value is None:
             if basis != "unknown":
                 raise InvalidInput(f"{field} with no date must use basis 'unknown'")
+            if anchor is not None and not isinstance(anchor, str):
+                raise InvalidInput(f"{field} anchor must be a string")
             anchor_text = anchor if isinstance(anchor, str) else ""
             if len(anchor_text) > 300:
                 raise InvalidInput(f"{field} anchor must be at most 300 characters")
@@ -995,7 +997,9 @@ class CaseStore:
         lead = self._check_lead(lead_time_days)
         with self.db:
             self.db.execute("BEGIN IMMEDIATE")
-            self._option_row(case_id, option_id)
+            option = self._option_row(case_id, option_id)
+            if option["operational_status"] in ("rejected", "withdrawn", "expired"):
+                raise InvalidInput("Preserve the terminal option; create a new proposal for new tasks")
             cur = self.db.execute("""INSERT INTO preparation_tasks
                 (case_id,option_id,label,owner_label,status,lead_time_days,created_at)
                 VALUES (?,?,?,?,'not_started',?,?)""",
@@ -1006,6 +1010,8 @@ class CaseStore:
 
     def set_preparation_task_status(self, case_id: str, task_id: int, status: str) -> None:
         self._case(case_id)
+        if type(task_id) is not int or task_id < 1:
+            raise InvalidInput("Preparation task id must be a positive integer")
         if status not in self.TASK_STATUSES:
             raise InvalidInput("Invalid preparation task status")
         with self.db:
@@ -1034,7 +1040,9 @@ class CaseStore:
             threat_date, threat_basis, anchor, "Threat date")
         with self.db:
             self.db.execute("BEGIN IMMEDIATE")
-            self._option_row(case_id, option_id)
+            option = self._option_row(case_id, option_id)
+            if option["operational_status"] in ("rejected", "withdrawn", "expired"):
+                raise InvalidInput("Preserve the terminal option; create a new proposal for new threats")
             cur = self.db.execute("""INSERT INTO optionality_threats
                 (option_id,kind,description,threat_date,threat_basis,anchor,created_at)
                 VALUES (?,?,?,?,?,?,?)""",
