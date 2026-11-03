@@ -24,6 +24,7 @@ from .investigation import (
     validate_output,
 )
 from .mission import build_patient_mission
+from .patient_attention import case_patient_attention
 from .store import CaseStore, InvalidInput, MAX_SOURCE_BYTES
 from .timeline import case_timeline
 
@@ -166,6 +167,9 @@ class Handler(BaseHTTPRequestHandler):
             timeline = re.fullmatch(rf"/api/cases/{ID_PART}/timeline", path)
             if timeline:
                 return self._json(200, case_timeline(store, timeline[1]))
+            attention = re.fullmatch(rf"/api/cases/{ID_PART}/patient-attention", path)
+            if attention:
+                return self._json(200, case_patient_attention(store, attention[1]))
             inv_list = re.fullmatch(rf"/api/cases/{ID_PART}/investigations", path)
             if inv_list:
                 return self._json(200, {"investigations": store.list_investigations(inv_list[1])})

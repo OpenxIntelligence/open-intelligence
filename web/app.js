@@ -129,7 +129,7 @@ const CERTAINTY_PLAIN = {
   'not-assessed': 'not assessed',
 };
 function renderPatientView() {
-  clear('patient-timeline'); clear('patient-findings'); clear('patient-questions'); clear('patient-uncertainty');
+  clear('patient-timeline'); clear('patient-findings'); clear('patient-questions'); clear('patient-uncertainty'); clear('patient-attention');
   if (!active) return;
   const groups = groupedTimeline(active.sources).slice().reverse();
   if (!groups.length) empty(el('patient-timeline'), 'No records yet in this fictional case.');
@@ -165,6 +165,43 @@ function renderPatientView() {
     const row = node('div', null, 'question');
     row.append(node('p', text));
     el('patient-uncertainty').append(row);
+  }
+}
+
+function renderPatientAttention(data) {
+  clear('patient-attention');
+  const entries = (data && data.entries) || [];
+  if (!entries.length) {
+    empty(el('patient-attention'), 'Nothing is currently listed as needing attention in this fictional case. This does not mean the case is complete.');
+    return;
+  }
+  for (const entry of entries) {
+    const row = node('div', null, 'question');
+    row.append(pill('FICTIONAL', 'pill-warn'));
+    row.append(pill(String(entry.kind || 'item'), 'pill-neutral'));
+    row.append(node('p', String(entry.title || '')));
+    const dateText = entry.date_display || entry.recorded_date || 'no date recorded';
+    row.append(node('p', 'Recorded date: ' + dateText, 'muted'));
+    row.append(node('p', 'Citation: ' + String(entry.record_type || 'record') + ' #' + String(entry.record_id ?? '?'), 'muted'));
+    if (entry.review_state) row.append(node('p', 'Review state: ' + String(entry.review_state), 'muted'));
+    if (entry.detail) row.append(node('p', String(entry.detail), 'muted'));
+    if (entry.source_anchor) row.append(node('p', 'Source anchor: ' + String(entry.source_anchor), 'muted'));
+    el('patient-attention').append(row);
+  }
+}
+
+async function loadPatientAttention() {
+  const requested = caseId;
+  clear('patient-attention');
+  if (!requested) return;
+  try {
+    const data = await api('/api/cases/' + requested + '/patient-attention');
+    // Discard stale attention responses after case changes.
+    if (requested !== caseId || !active || active.case.case_id !== requested) return;
+    renderPatientAttention(data);
+  } catch (err) {
+    if (requested !== caseId) return;
+    empty(el('patient-attention'), 'Attention list unavailable: ' + err.message);
   }
 }
 
@@ -563,6 +600,7 @@ function render() {
     card.append(node('small', event.occurred_at)); el('event-list').append(card);
   }
   renderPatientView();
+  loadPatientAttention();
   renderOptions();
   renderedCaseId = caseId;
 }
