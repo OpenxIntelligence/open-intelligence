@@ -151,7 +151,8 @@ jobs:
             exit 1
           fi
           cd "$GITHUB_WORKSPACE"
-          python tools/imaging/pacsnode_live_probe.py \
+          # Import via the package path so source_bound_wado is resolvable.
+          python -m tools.imaging.pacsnode_live_probe \
             --base-url http://127.0.0.1:18042 \
             --output verification-artifacts/pacsnode-real-dicomweb.json
       - name: Preserve only source and numerical receipts, no image objects
