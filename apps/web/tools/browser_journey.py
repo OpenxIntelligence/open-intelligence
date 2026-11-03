@@ -159,6 +159,10 @@ def main():
                 assert cd.evaluate("document.querySelector('[data-testid=source-index]').textContent.includes('superseded')")
                 assert cd.evaluate("document.querySelector('[data-testid=source-index]').textContent.includes('Amended fictional marker is reported negative.')")
                 assert cd.evaluate("document.querySelectorAll('[data-testid=source-statement]').length===1")
+                # Reuse the previously verified reading/provenance acceptance on
+                # this combined evidence/report owner, against real PG16 responses.
+                from reading_convergence_journey import exercise as exercise_reading
+                exercise_reading(cd)
                 # The new Records action must recheck the canonical source before
                 # offering a question draft; no implicit question save or Composer call.
                 cd.evaluate("""(() => {
