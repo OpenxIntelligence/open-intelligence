@@ -64,6 +64,10 @@ def main() -> None:
             assert visible('#assertions') and not visible('#investigations'), 'Overview tab shows facts, hides authoring'
             cd.evaluate("document.querySelector('#view-nav a[data-tab=investigations]').click()")
             cd.wait("!document.querySelector('#view-investigations').hidden && document.querySelector('#view-overview').hidden", 'Investigations tab')
+            order = cd.evaluate("[...document.querySelector('#investigations').children].map(n => n.id || n.className)")
+            assert order.index('model-investigation') < order.index('investigation-history') < order.index('view-manual-draft'), order
+            assert cd.evaluate("!!document.querySelector('#view-manual-draft #draft-form') && !document.querySelector('#view-manual-draft').open"), \
+                'hand-written draft form kept, collapsed'
             cd.evaluate("location.hash = '#assertions'")
             cd.wait("!document.querySelector('#view-overview').hidden", 'existing in-page link routes to its tab')
             no_overflow('care team 1440')

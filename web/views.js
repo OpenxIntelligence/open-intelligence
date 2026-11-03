@@ -52,6 +52,28 @@
     return;
   }
 
+  // Investigations: put the main path first (question -> run -> saved drafts)
+  // and tuck the hand-written draft form into a disclosure. Same elements and
+  // IDs, only their order changes; skipped if the owner's structure differs.
+  (() => {
+    const section = blocks.investigations;
+    const grid = section.querySelector(':scope > .investigation-grid');
+    const draft = grid && grid.querySelector(':scope > .draft-pane');
+    const history = section.querySelector(':scope > .investigation-history');
+    const model = section.querySelector(':scope > .model-investigation');
+    if (!grid || !draft || !history || !model) return;
+    const manual = make('details', null, 'view-disclosure');
+    manual.id = 'view-manual-draft';
+    manual.append(make('summary', 'Write a draft by hand'), draft);
+    grid.classList.add('view-single');
+    grid.after(model);
+    model.after(history);
+    history.after(manual);
+    // A half-written draft blocks case switching; keep it visible when it exists.
+    for (const id of ['draft-observations', 'draft-summary', 'draft-assumptions'])
+      $(id).addEventListener('input', () => { if ($(id).value.trim()) manual.open = true; });
+  })();
+
   function card(id, eyebrow, title) {
     const section = make('section', null, 'panel view-card');
     section.id = id;

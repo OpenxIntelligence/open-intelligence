@@ -86,6 +86,13 @@ h1, h2 { letter-spacing: -0.015em; }
 .view-link-button:hover { text-decoration: underline; }
 #view-compare-changed { margin-top: var(--space-2); }
 
+/* Investigations in workflow order: question, run, saved drafts, then by hand. */
+#investigations .investigation-grid.view-single { grid-template-columns: minmax(0, 1fr); }
+#investigations > .model-investigation { margin-top: var(--space-5); padding-top: var(--space-4); border-top: 1px solid var(--color-rule); }
+.view-disclosure { margin-top: var(--space-5); padding-top: var(--space-3); border-top: 1px solid var(--color-rule); }
+.view-disclosure > summary { display: flex; min-height: 44px; align-items: center; font-weight: 650; cursor: pointer; }
+.view-disclosure[open] > summary { margin-bottom: var(--space-3); }
+
 /* Source inspector: the existing source/compare dialogs dock to the right. */
 dialog.view-inspector[open] {
   position: fixed;
