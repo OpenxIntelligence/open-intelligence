@@ -8,9 +8,15 @@ nonterminal verification-return receipts, and bounded fictional evidence
 metadata links. Evidence appraisal and report persistence remain separate
 integration work.
 
+## Reviewed ordinary documents
+
+Records uses source-owned ordinary text/PDF intake and immutable selection history.
+See [routes, grants, bounds and verification](../../docs/engineering/H1_REVIEWED_DOCUMENTS.md).
+Manual classifications remain separate from structured source assertions.
+
 ## Question-scoped fictional evidence metadata
 
-Apply the current migration head (`0011_evidence_convergence`) explicitly:
+Apply the current migration head (`0012_reviewed_documents`) explicitly:
 
 ```bash
 PYTHONPATH=apps/api/src:src python -m oi_api.migrate upgrade head

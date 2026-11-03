@@ -267,6 +267,8 @@ def main():
                 current_question_id=connected_question['question_id'])
             from reviewed_documents_journey import exercise as exercise_reviewed_documents
             exercise_reviewed_documents(cd,pid,directory,tokens[0],credentials,write_grants,out,restart_api)
+            cd.evaluate("[...document.querySelectorAll('nav button')].find(e=>e.textContent.startsWith('Overview')).click()")
+            cd.wait("Boolean(document.querySelector('#patient-id'))",'Overview restored after reviewed document journey')
             credentials[0]['patient_ids']=[];write_grants();read()
             cd.wait("!document.querySelector('[data-testid=patient-card]') && document.querySelector('[data-testid=status]').textContent.includes('Patient unavailable')",'revoked read removes prior view')
             credentials[0]['expires_at']=(datetime.now(timezone.utc)-timedelta(seconds=1)).isoformat();write_grants();read()

@@ -185,3 +185,20 @@ test('new identity creation cannot retain old patient source versions',async()=>
   assert.equal(s.snapshot().patient,null);assert.equal(s.snapshot().sourceIndex,null);
   assert.equal(s.snapshot().cases,null);
 });
+
+test('reviewed document transport accepts the complete bounded Unicode revision history',async()=>{
+  const quote='é'.repeat(1200);
+  const document={patient_id:'PAT-EXAMPLE-001',case_id:'CASE-ALPHA',revisions:Array.from({length:64},(_,i)=>({revision:i+1,findings:Array.from({length:30},(_,j)=>({key:'finding-'+j,state:'unknown',line:1,quote}))}))};
+  assert.ok(new TextEncoder().encode(JSON.stringify(document)).length>4_000_000);
+  const s=new RegistrySession(async url=>response(url.endsWith('/documents/'+sourceId)?document:url.endsWith('/case-bindings')?caseList():url.endsWith('/sources')?sourceIndex():patient()));
+  s.connect(token);await s.read('PAT-EXAMPLE-001');await s.loadCases();await s.loadSources('CASE-ALPHA');
+  assert.deepEqual((await s.documentRequest('CASE-ALPHA','/'+sourceId)).body,document);
+});
+test('document transport cancels an oversized undeclared stream before consuming its remainder',async()=>{
+  let cancelled=false,pulls=0;
+  const oversized=()=>new Response(new ReadableStream({pull(c){pulls++;if(pulls>36)c.close();else c.enqueue(new Uint8Array(1024*1024));},cancel(){cancelled=true;}}),{headers:{'Content-Type':'application/json'}});
+  const s=new RegistrySession(async url=>url.includes('/documents')?oversized():response(url.endsWith('/case-bindings')?caseList():url.endsWith('/sources')?sourceIndex():patient()));
+  s.connect(token);await s.read('PAT-EXAMPLE-001');await s.loadCases();await s.loadSources('CASE-ALPHA');
+  await assert.rejects(s.documentRequest('CASE-ALPHA','/'+sourceId));
+  assert.equal(cancelled,true);assert.ok(pulls<=35);
+});

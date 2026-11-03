@@ -41,6 +41,8 @@ Live biomedical retrieval, model execution, professional review, clinical/PDF/
 annotation parity and production identity remain separate capabilities. This is
 an unmerged engineering candidate, with no clinical approval or deployment claim.
 
+**Reviewed document continuation:** [draft #323](https://github.com/OpenxIntelligence/open-intelligence/pull/323) adds ordinary text/PDF preview, exact original custody, immutable passage corrections and Records downloads on #315. [Scope and verification](docs/engineering/H1_REVIEWED_DOCUMENTS.md) distinguish this implemented intake from the remaining manual-provenance integration into questions and reports.
+
 ## Start here
 
 | Document | Purpose |

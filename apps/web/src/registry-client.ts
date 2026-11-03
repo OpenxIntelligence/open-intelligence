@@ -118,6 +118,9 @@ function exact(value: unknown, fields: string[]): value is Record<string,unknown
 function boundedKey(value: unknown): value is string { return typeof value==='string' && KEY.test(value); }
 async function json(response: Response, limit=65536): Promise<unknown> {
   if(!/^application\/json(?:\s*;|$)/i.test(response.headers.get('Content-Type') || '')) throw Error('contract');
+  return JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(await boundedBytes(response,limit)));
+}
+async function boundedBytes(response:Response,limit:number):Promise<Uint8Array>{
   const declared=response.headers.get('Content-Length');
   if(declared && (!/^\d+$/.test(declared) || Number(declared)>limit)) throw Error('contract');
   // Bounded streaming read also covers absent or dishonest Content-Length.
@@ -128,7 +131,7 @@ async function json(response: Response, limit=65536): Promise<unknown> {
       if(size>limit){await reader.cancel();throw Error('contract');}parts.push(value); }
   } finally {reader.releaseLock();}
   const all=new Uint8Array(size);let offset=0;for(const p of parts){all.set(p,offset);offset+=p.length;}
-  return JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(all));
+  return all;
 }
 function patient(value: unknown, expected: string): Patient {
   if(!exact(value,['patient_id','origin_org','created_at','status','revision']) ||
@@ -153,9 +156,12 @@ export class RegistrySession {
       const response=await this.transport('/v1/patients/'+encodeURIComponent(patient)+'/cases/'+encodeURIComponent(caseId)+'/documents'+path,this.#init(control,body));
       let value:unknown;
       if(path.endsWith('/original')&&response.status===200){
-        const bytes=new Uint8Array(await response.arrayBuffer());if(bytes.byteLength>65536)throw Error('Original exceeds bounds');value=bytes;
+        value=await boundedBytes(response,65536);
       }else{
-        const text=await response.text();if(new TextEncoder().encode(text).length>4_000_000)throw Error('Document response exceeds bounds');value=JSON.parse(text);
+        // 64 revisions × 30 quotes × 1200 code points × at most 12 JSON bytes
+        // (escaped surrogate pairs), plus bounded findings metadata and 64 KiB rendition.
+        // 32 MiB covers the complete permitted history; streaming still limits bad peers.
+        value=await json(response,32*1024*1024);
       }
       if(!current())throw Error('Patient or case changed');
       if(response.status===401)this.#httpError(401);
