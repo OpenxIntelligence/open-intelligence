@@ -196,10 +196,10 @@ footer > span { white-space: nowrap; }
 @media (max-width: 760px) {
   .app { display: block; }
   .rail { position: static; height: auto; overflow: visible; padding: 16px; gap: 16px; }
-  .rail-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
-  .brand { font-size: 16px; gap: 8px; }
+  .rail-top { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 20px; }
+  .brand { font-size: 16px; gap: 8px; min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
   .mark { width: 38px; height: 38px; font-size: 24px; }
-  .view-choice { margin-top: 0; width: 155px; flex: 0 1 155px; }
+  .view-choice { margin-top: 0; width: 155px; max-width: 100%; flex: 1 1 155px; }
   .view-choice select { font-size: .8125rem; margin-top: 3px; padding: 8px; }
   .view-choice p { font-size: .625rem; }
   .working-navigation { display: flex; gap: 8px; }

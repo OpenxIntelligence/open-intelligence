@@ -19,7 +19,7 @@ from urllib.request import Request,urlopen
 ROOT=Path(__file__).resolve().parents[3]
 sys.path.insert(0,str(ROOT/'tests'))
 from browser_journey import ChromeSession,free_port,wait_for
-from workspace_ux_checks import check_workspace_navigation,check_source_presentation,check_case_switch,check_cleared_context,navigate
+from workspace_ux_checks import check_workspace_navigation,check_source_presentation,check_case_switch,check_cleared_context,navigate,set_value
 from workspace_reading_checks import check_reading_workspace,check_readiness_states,assert_reading_checks
 
 
@@ -156,6 +156,8 @@ def main():
             cd.wait("Boolean(document.querySelector('[data-testid=load-sources]'))",'restored case access')
             cd.evaluate("document.querySelector('[data-testid=load-sources]').click()")
             cd.wait("document.querySelectorAll('[data-testid=source-version]').length===2 && document.querySelectorAll('[data-testid=source-statement]').length===1",'visible source history before session expiry')
+            set_value(cd,'#source-filter','DOC-ONE');set_value(cd,'#source-state','current')
+            cd.wait("document.querySelector('#source-filter').value==='DOC-ONE' && document.querySelector('#source-state').value==='current' && document.querySelectorAll('[data-testid=source-version]').length===1",'active filter sentinel before session expiry')
             # Expiry may occur on a chart destination, not only on Overview.
             # The original client clears identity; the presentation must expose
             # reconnection and the truthful error without retaining old sources.
@@ -168,6 +170,13 @@ def main():
             navigate(cd,'Overview')
             connect();value('#patient-id',pid);read()
             cd.wait("Boolean(document.querySelector('[data-testid=patient-card]'))",'return to patient identity after governed records inspection')
+            navigate(cd,'Records')
+            cd.evaluate("document.querySelector('[data-testid=load-cases]').click()")
+            cd.wait("document.querySelectorAll('[data-testid=case-row]').length===2",'restored session independently reloads authorized cases')
+            cd.evaluate("document.querySelector('button[aria-label=\"Inspect source versions for CASE-ALPHA\"]').click()")
+            cd.wait("document.querySelectorAll('[data-testid=source-version]').length===2",'fresh source response after reconnect')
+            assert cd.evaluate("document.querySelector('#source-filter').value==='' && document.querySelector('#source-state').value==='all'"),'An active filter from the expired session must not return after reconnect'
+            navigate(cd,'Overview')
             cd.command('Accessibility.enable');tree=cd.command('Accessibility.getFullAXTree')['nodes']
             assert any(n.get('role',{}).get('value')=='main' for n in tree)
             assert any(n.get('role',{}).get('value')=='navigation' for n in tree)
