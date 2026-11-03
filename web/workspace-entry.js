@@ -3,13 +3,13 @@
 // Does not create another case/source store, parser, investigation or review flow.
 (() => {
   const $ = id => document.getElementById(id);
-  const dirty = () => ['draft-observations','draft-summary','draft-assumptions',
+  const dirty = () => ['question-text','draft-observations','draft-summary','draft-assumptions',
     'evidence-rationale','evidence-withdraw-reason','option-description']
     .some(id => $(id)?.value.trim());
   const current = () => {
     try { return readyCase(); } catch (_) { return null; }
   };
-  let refreshQueued=false;
+  let refreshQueued=false, lastScopedCase=null;
   const intake=globalThis.OIIntake.mount({
     api,
     getCase:current,
@@ -46,7 +46,9 @@
   });
   function sync() {
     refreshQueued=false;
-    if(current()) {
+    const selected=current();
+    if(selected) {
+      lastScopedCase=selected;
       document.body.dataset.workspaceState='ready';
       $('case-picker').disabled=false;
       intake.render(active);
@@ -69,7 +71,15 @@
   for(const id of ['case-heading','source-list','question-list','snapshot-list'])
     observer.observe($(id),{childList:true,subtree:true});
   $('case-picker').addEventListener('change',()=>{
-    intake.resetScope();document.body.dataset.workspaceState='loading';schedule();
+    // The original app listener runs first and may veto the attempted switch
+    // by restoring the previous case. Never discard an inspected original
+    // when the case did not actually change.
+    if (caseId && $('case-picker').value===caseId && caseId!==lastScopedCase) {
+      lastScopedCase=caseId;
+      intake.resetScope();
+      document.body.dataset.workspaceState='loading';
+    }
+    schedule();
   });
   $('new-workspace-button').addEventListener('click',()=>{
     $('workspace-start').open=true;$('new-case-panel').open=true;
