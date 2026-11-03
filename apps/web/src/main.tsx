@@ -98,7 +98,8 @@ function App(){
        <p>Source-reported statements are unreviewed quotations, not independently established clinical facts.</p>
        <SourceReading index={state.sourceIndex} view={view} filters={filters}
          onFiltersChange={next=>setSourceFilters({scope:state.sourceIndex,...next})}
-         busy={busy||state.recordsPhase.startsWith('loading')||state.worldPhase==='loading'}
+         busy={busy||state.recordsPhase.startsWith('loading')}
+         investigateBusy={state.worldPhase==='loading'}
          onOpenOriginal={id=>void session.loadOriginal(id)}
          onInvestigate={(id,line)=>{
            const caseId=state.sourceIndex!.case_id;
