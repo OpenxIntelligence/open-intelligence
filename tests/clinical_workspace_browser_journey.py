@@ -32,8 +32,24 @@ def main():
   try:
    url=f'http://127.0.0.1:{app_port}/'
    wait_for(lambda:urlopen(url,timeout=1).status==200,'workspace server')
-   browser=subprocess.Popen([chrome,'--headless=new','--disable-gpu','--disable-dev-shm-usage','--disable-background-networking','--no-first-run','--disable-extensions','--no-default-browser-check','--remote-allow-origins=*',f'--remote-debugging-port={debug}',f'--user-data-dir={profile}','about:blank'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
-   targets=wait_for(lambda:json.load(urlopen(f'http://127.0.0.1:{debug}/json/list',timeout=1)),'browser debugger')
+   chrome_stderr=Path(tmp)/'chrome-stderr.txt'
+   with chrome_stderr.open('wb') as log:
+    browser=subprocess.Popen(
+     [chrome,'--headless=new','--disable-gpu','--disable-dev-shm-usage',
+      '--disable-background-networking','--no-first-run','--disable-extensions',
+      '--no-default-browser-check','--remote-allow-origins=*',
+      f'--remote-debugging-port={debug}',f'--user-data-dir={profile}','about:blank'],
+     stdout=subprocess.DEVNULL,stderr=log,start_new_session=True)
+   try:
+    targets=wait_for(lambda:json.load(urlopen(
+     f'http://127.0.0.1:{debug}/json/list',timeout=1)),'browser debugger',timeout=25)
+   except AssertionError as exc:
+    # Startup failures occurred before app navigation in earlier CI. Preserve
+    # actual Chrome process status and stderr instead of suggesting that the
+    # clinical UI's source/review checks ran when they did not.
+    browser_log=chrome_stderr.read_text(encoding='utf-8',errors='replace')[-3200:]
+    raise AssertionError(
+     f'{exc}; chrome_exit={browser.poll()}; chrome_log_tail={browser_log}') from exc
    cd=ChromeSession(next(t['webSocketDebuggerUrl'] for t in targets if t['type']=='page'))
    cd.command('Page.enable');cd.command('Runtime.enable');cd.command('DOM.enable')
    cd.command('Page.navigate',{'url':url})
