@@ -106,8 +106,9 @@ def exercise_session_reset(cd, patient_id, case_id, token, credentials, write_gr
         cd.evaluate("[...document.querySelectorAll('nav button')].find(e=>e.textContent.startsWith("+json.dumps(section)+")).click()")
     def open_sources():
         nav('Records')
+        cd.wait("Boolean(document.querySelector('[data-testid=load-cases]')) && !document.querySelector('[data-testid=load-cases]').disabled", 'case refresh is available after the prior read finishes')
         cd.evaluate("document.querySelector('[data-testid=load-cases]').click()")
-        cd.wait("Boolean(document.querySelector('[data-testid=case-row]'))", 'restored case access')
+        cd.wait("Boolean(document.querySelector('[data-testid=case-row]')) && document.querySelector('[data-testid=records-status]').textContent==='Select an active case to check its original source metadata.'", 'restored completed case access')
         cd.evaluate("[...document.querySelectorAll('[data-testid=case-row]')].find(e=>e.textContent.includes("+json.dumps(case_id)+")).querySelector('[data-testid=load-sources]').click()")
         cd.wait("Boolean(document.querySelector('#source-filter'))", 'restored actual source response')
     def connect():
@@ -134,6 +135,9 @@ def exercise_session_reset(cd, patient_id, case_id, token, credentials, write_gr
     value('#source-filter', 'DOC-ONE')
     credentials[0]['actions'].remove('source_read');write_grants()
     cd.evaluate("[...document.querySelectorAll('[data-testid=case-row]')].find(e=>e.textContent.includes("+json.dumps(case_id)+")).querySelector('[data-testid=load-sources]').click()")
+    # Starting any read clears the source index. That loading state is not proof
+    # of denial: wait for the actual non-success response before restoring grants.
+    cd.wait("document.querySelector('[data-testid=records-status]')?.textContent==='Sources unavailable, denied or mapping revoked. Reload case permissions.' && !document.querySelector('[data-testid=load-cases]').disabled", 'completed denied source read')
     cd.wait("!document.querySelector('[data-testid=source-index]')", 'denied source read removes filtered quotations and provenance')
     assert cd.evaluate("!document.querySelector('#source-filter') && !document.querySelector('[data-testid=source-statement]')")
     credentials[0]['actions'].append('source_read');write_grants()
