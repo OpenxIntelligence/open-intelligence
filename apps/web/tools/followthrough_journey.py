@@ -297,9 +297,53 @@ class FollowthroughChecks:
                 + json.dumps(selector + ' [data-testid=followthrough-recheck]') + '))')
         return value
 
+    def assert_attention_filters(self):
+        """Filter actual authorized tasks without writes, reads or discarded form state."""
+        self.cd.wait("Boolean(document.querySelector('[data-testid=followthrough-attention]'))",
+                     'source-bound work attention filters')
+        counts = {'all': 3, 'recheck': 1, 'overdue': 1, 'unassigned': 1, 'history': 2}
+        for key, count in counts.items():
+            selector = '[data-testid=followthrough-filter-' + key + ']'
+            assert self.cd.evaluate('document.querySelector(' + json.dumps(selector) + ').dataset.count') == str(count)
+        current = self.task_ids[TITLE_OPEN]
+        reason = 'Keep this fictional transition note while filtering recorded work.'
+        owner = 'Fictional proposed owner'
+        fill(self.cd, self.row(current) + ' [data-testid=followthrough-transition-reason]', reason)
+        fill(self.cd, self.row(current) + ' [data-testid=followthrough-transition-owner]', owner)
+        calls = self.cd.evaluate('({reads:window.__oiFollowthroughChecks.reads.length,writes:window.__oiFollowthroughChecks.writes.length})')
+        for key, expected in (
+                ('recheck', [current]), ('overdue', [current]), ('unassigned', [current]),
+                ('history', [self.task_ids[TITLE_DONE], self.task_ids[TITLE_DEFERRED]]),
+                ('all', list(self.task_ids.values()))):
+            selector = '[data-testid=followthrough-filter-' + key + ']'
+            click(self.cd, selector)
+            self.cd.wait('document.querySelector(' + json.dumps(selector) + ").getAttribute('aria-pressed')==='true'",
+                         'selected operational filter ' + key)
+            visible = self.cd.evaluate("[...document.querySelectorAll('[data-testid=followthrough-task]')].filter(e=>e.getClientRects().length>0).map(e=>e.dataset.taskId)")
+            assert sorted(visible) == sorted(expected), (key, visible, expected)
+            # Even a hidden task remains mounted with the exact authored draft.
+            for name, value in (('reason', reason), ('owner', owner)):
+                control = self.row(current) + ' [data-testid=followthrough-transition-' + name + ']'
+                assert self.cd.evaluate('document.querySelector(' + json.dumps(control) + ').value') == value
+            assert self.cd.evaluate('({reads:window.__oiFollowthroughChecks.reads.length,writes:window.__oiFollowthroughChecks.writes.length})') == calls
+        # A real response with a new receipt resets the filter; it is not an effect-time stale frame.
+        click(self.cd, '[data-testid=followthrough-filter-history]')
+        self.refresh()
+        assert self.cd.evaluate("document.querySelector('[data-testid=followthrough-filter-all]').getAttribute('aria-pressed')") == 'true'
+        assert self.cd.evaluate("[...document.querySelectorAll('[data-testid=followthrough-task]')].filter(e=>e.getClientRects().length>0).length") == 3
+        # Keyboard activation uses an actual input event rather than calling click().
+        self.cd.evaluate("document.querySelector('[data-testid=followthrough-filter-recheck]').focus()")
+        self.cd.command('Input.dispatchKeyEvent', {'type': 'keyDown', 'key': 'Enter', 'code': 'Enter', 'windowsVirtualKeyCode': 13})
+        self.cd.command('Input.dispatchKeyEvent', {'type': 'keyUp', 'key': 'Enter', 'code': 'Enter', 'windowsVirtualKeyCode': 13})
+        self.cd.wait("document.querySelector('[data-testid=followthrough-filter-recheck]').getAttribute('aria-pressed')==='true'",
+                     'keyboard-select source-changed work')
+        assert self.cd.evaluate("document.activeElement.dataset.testid") == 'followthrough-filter-recheck'
+        print('PASS FOLLOWTHROUGH ATTENTION: actual source-amended task flags; overlapping counts; exact historical rows; no filter HTTP calls; preserved transition drafts; new-receipt reset; keyboard activation.')
+
     def finish(self, replacement_source_id, credentials, write_grants, screenshots):
         navigate(self.cd, 'Investigations')
         value = self.assert_amendment(replacement_source_id)
+        self.assert_attention_filters()
         # A failed fresh read must remove old task text and transition controls.
         credentials[0]['actions'].remove('followthrough_read')
         write_grants()
@@ -307,9 +351,11 @@ class FollowthroughChecks:
         self.cd.wait("document.querySelector('[data-testid=followthrough-status]')?.textContent.includes('unavailable')",
                      'independent task-read denial clears prior view')
         assert self.cd.evaluate("!document.querySelector('[data-testid=followthrough-task]')")
+        assert self.cd.evaluate("!document.querySelector('[data-testid=followthrough-attention]')")
         credentials[0]['actions'].append('followthrough_read')
         write_grants()
         self.refresh()
+        click(self.cd, '[data-testid=followthrough-filter-recheck]')
         screenshots.mkdir(parents=True, exist_ok=True)
         for width, height, suffix in ((1440, 1100, 'desktop'), (390, 844, 'mobile')):
             self.cd.command('Emulation.setDeviceMetricsOverride', {
@@ -320,6 +366,9 @@ class FollowthroughChecks:
                              + ").scrollIntoView({block:'center'})")
             image = self.cd.command('Page.captureScreenshot', {'format': 'png'})
             (screenshots / ('h1-followthrough-' + suffix + '.png')).write_bytes(base64.b64decode(image['data']))
+            self.cd.evaluate("document.querySelector('[data-testid=followthrough-attention]').scrollIntoView({block:'start'})")
+            image = self.cd.command('Page.captureScreenshot', {'format': 'png'})
+            (screenshots / ('h1-followthrough-attention-' + suffix + '.png')).write_bytes(base64.b64decode(image['data']))
         self.cd.command('Emulation.setDeviceMetricsOverride', {
             'width': 1440, 'height': 1100, 'deviceScaleFactor': 1, 'mobile': False})
         (screenshots / 'h1-followthrough-receipts.json').write_text(json.dumps({
