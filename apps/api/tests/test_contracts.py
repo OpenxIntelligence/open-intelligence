@@ -131,8 +131,9 @@ class HTTPContractTests(unittest.TestCase):
                 missing_status, _, _ = get_json(base, path)
                 self.assertEqual(missing_status, 404)
         self.assertEqual(status, 200)
-        self.assertEqual(set(schema["paths"]), {"/health", "/health/ready", "/v1", "/v1/patients", "/v1/patients/{patient_id}", "/v1/patients/{patient_id}/record-requests", "/v1/patients/{patient_id}/record-requests/{request_id}/cancel", "/v1/patients/{patient_id}/record-requests/{request_id}/receive", "/v1/patients/{patient_id}/case-bindings", "/v1/patients/{patient_id}/case-bindings/{case_id}/revoke", "/v1/patients/{patient_id}/cases/{case_id}/sources", "/v1/patients/{patient_id}/cases/{case_id}/sources/{source_id}"})
+        self.assertEqual(set(schema["paths"]), {"/health", "/health/ready", "/v1", "/v1/patients", "/v1/patients/{patient_id}", "/v1/patients/{patient_id}/record-requests", "/v1/patients/{patient_id}/record-requests/{request_id}/cancel", "/v1/patients/{patient_id}/record-requests/{request_id}/receive", "/v1/patients/{patient_id}/case-bindings", "/v1/patients/{patient_id}/case-bindings/{case_id}/revoke", "/v1/patients/{patient_id}/cases/{case_id}/sources", "/v1/patients/{patient_id}/cases/{case_id}/sources/{source_id}", "/v1/patients/{patient_id}/cases/{case_id}/world-model"})
         self.assertEqual(schema["paths"]["/v1/patients"]["post"]["security"], [{"SyntheticFixture": []}])
+        self.assertEqual(schema["paths"]["/v1/patients/{patient_id}/cases/{case_id}/world-model"]["get"]["security"], [{"SyntheticFixture": []}])
         self.assertIn("503", schema["paths"]["/health/ready"]["get"]["responses"])
         self.assertFalse(schema["components"]["schemas"]["Readiness"]["additionalProperties"])
 
