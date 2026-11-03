@@ -45,7 +45,8 @@ function focusOverviewFromCasePicker(event) {
 // Intake reuses the canonical case API and existing switch/unsaved-work guards.
 let caseSelectionTask = Promise.resolve();
 function hasUnsavedCaseWork() {
-  return ['draft-observations', 'draft-summary', 'draft-assumptions', 'evidence-rationale',
+  return ['question-text', 'report-text', 'evidence-text', 'draft-observations',
+    'draft-summary', 'draft-assumptions', 'evidence-rationale',
     'evidence-withdraw-reason', 'option-description'].some(id => el(id)?.value.trim());
 }
 function populateCasePicker(cases) {
@@ -196,16 +197,25 @@ function renderPatientView() {
 async function refresh() {
   const requestedCase = caseId;
   const sequence = ++refreshSequence;
+  // A source may have been saved even if the subsequent read fails. Keep
+  // authoring selections in the DOM, but never authorize writes from cached
+  // pre-import state while a refresh is pending or has failed.
+  active = null;
   try {
     const response = await api('/api/cases/' + requestedCase + '/state');
-    // The user can switch cases while a response is in flight. Never render
-    // the previous case underneath the newly selected case or its actions.
-    if (sequence !== refreshSequence || caseId !== requestedCase) return;
+    if (sequence !== refreshSequence || caseId !== requestedCase) return false;
+    if (!response || !response.case || response.case.case_id !== requestedCase)
+      throw Error('The refreshed case did not match the selected case. Reload before further work.');
     active = response;
     el('case-heading').textContent = active.case.label;
     render();
+    return true;
   } catch (err) {
-    if (sequence === refreshSequence && requestedCase === caseId) notice(err.message, true);
+    if (sequence === refreshSequence && requestedCase === caseId) {
+      active = null;
+      notice(err.message, true);
+    }
+    return false;
   }
 }
 function readyCase() {

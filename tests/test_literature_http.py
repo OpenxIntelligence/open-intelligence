@@ -189,16 +189,29 @@ class LiteratureHttpTests(unittest.TestCase):
         mutated.code = "SECRET-PROVIDER-QUERY"
         mutated.args = ("SECRET-PROVIDER-QUERY",)
         failures.append(mutated)
-        for error in failures:
-            with self.subTest(error=type(error).__name__):
-                self.handler.literature_last_request = None
-                self.provider.side_effect = error
-                code, result = self.request()
-                self.assertEqual(code, 422 if getattr(error, "code", None) == "invalid_input" else 502)
-                self.assertEqual(result["code"], "invalid_input" if code == 422 else "provider_unavailable")
-                self.assertNotIn("SECRET", json.dumps(result))
-                self.assertNotIn(REQUEST["terms"], json.dumps(result))
-                self.assertFalse(self.handler.literature_request_lock.locked())
+        # Receiving the HTTP response bytes need not mean the server thread
+        # has exited do_POST's finally block yet. Wait for the actual handler
+        # completion, not an arbitrary sleep, before asserting lock cleanup.
+        completed = threading.Event()
+        original_finish = self.handler.finish
+        def finished(handler):
+            try:
+                original_finish(handler)
+            finally:
+                completed.set()
+        with patch.object(self.handler, "finish", finished):
+            for error in failures:
+                with self.subTest(error=type(error).__name__):
+                    completed.clear()
+                    self.handler.literature_last_request = None
+                    self.provider.side_effect = error
+                    code, result = self.request()
+                    self.assertEqual(code, 422 if getattr(error, "code", None) == "invalid_input" else 502)
+                    self.assertEqual(result["code"], "invalid_input" if code == 422 else "provider_unavailable")
+                    self.assertNotIn("SECRET", json.dumps(result))
+                    self.assertNotIn(REQUEST["terms"], json.dumps(result))
+                    self.assertTrue(completed.wait(2), "HTTP handler did not finish after error response")
+                    self.assertFalse(self.handler.literature_request_lock.locked())
 
     def test_static_form_and_script_are_available_without_database(self):
         code, html = self.request("/", None)

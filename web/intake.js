@@ -164,7 +164,10 @@
         'Some outcomes are unknown. Inspect the receipts and original sources before retrying.' :
         'Batch complete. Inspect each result below, then review the available sources and ask an investigation question.';
       if (selected === get('case-picker').value) {
-        await refresh();
+        if (!(await refresh())) {
+          get('intake-complete').textContent += ' Workspace refresh failed. Saved receipts remain above; reload current sources before further work.';
+          throw Error('The current case could not be refreshed. No accepted source was rolled back; inspect the saved sources after reloading.');
+        }
         await renderIncomingBoard(await api('/api/cases'));
       }
       get('intake-files').value = ''; get('intake-file-fictional').checked = false;

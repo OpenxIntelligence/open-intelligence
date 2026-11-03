@@ -95,6 +95,13 @@ def main():
                 assert actual == expected, (actual, expected)
 
             create_case('CASE-ALPHA', 'Alpha')
+            # New-case intake must preserve an unfinished question instead
+            # of clearing it as a side effect of switching canonical case.
+            session.evaluate("document.querySelector('#question-text').value='Unsubmitted fictional question'; document.querySelector('#new-case-details').open=true; document.querySelector('#intake-case-id').value='CASE-BETA'; document.querySelector('#intake-case-label').value='Beta'; document.querySelector('#intake-case-fictional').checked=true; document.querySelector('#new-case-form').requestSubmit()")
+            session.wait("document.querySelector('#notice').textContent.includes('unfinished work')", 'unfinished question blocks new-case intake')
+            assert len(json.load(urlopen(url+'api/cases'))) == 1
+            assert session.evaluate("document.querySelector('#question-text').value") == 'Unsubmitted fictional question'
+            session.evaluate("document.querySelector('#question-text').value='';document.querySelector('#new-case-details').open=false")
             data = ROOT / 'examples' / 'synthetic'
             duplicate = directory / 'duplicate.txt'
             original = (data / 'alpha-pathology-original.txt').read_bytes()
@@ -111,6 +118,30 @@ def main():
             retrieved = json.load(urlopen(url+f"api/cases/CASE-ALPHA/sources/{source['id']}"))
             assert retrieved['text'].encode('utf-8') == original
             screenshot('intake-file-receipts.png', '#case-intake')
+
+            # Actual import receipt with a deliberately failed post-write
+            # state read. The source is still saved; the UI must not pretend
+            # its older cached projection permits additional case actions.
+            session.evaluate("""(() => {
+              const originalFetch = window.fetch;
+              window.fetch = async (...args) => {
+                const path = String(args[0]);
+                if (path === '/api/cases/CASE-ALPHA/state') {
+                  window.fetch = originalFetch;
+                  return new Response(JSON.stringify({error:'Simulated post-intake read failure'}),
+                    {status:503,headers:{'Content-Type':'application/json'}});
+                }
+                return originalFetch(...args);
+              };
+            })()""")
+            import_files([duplicate], ['duplicate'])
+            session.wait("document.querySelector('#intake-complete').textContent.includes('Workspace refresh failed')", 'saved receipt survives failed state read')
+            assert session.evaluate("document.querySelector('#intake-receipts li').dataset.status") == 'duplicate'
+            assert session.evaluate("(() => {try {readyCase();return false;}catch (_) {return true;}})()"), 'cached case must not remain writable after failed refresh'
+            assert len(json.load(urlopen(url+'api/cases/CASE-ALPHA/state'))['sources']) == 2
+            session.command('Page.reload', {'ignoreCache':True})
+            session.wait("(() => {try {return readyCase()==='CASE-ALPHA';}catch (_) {return false;}})()", 'explicit reload restores current case')
+            assert session.evaluate("document.querySelectorAll('#source-list .source-card').length") == 2
 
             session.evaluate("document.querySelector('#question-text').value='Which original fictional findings need review?'; document.querySelector('#question-form').requestSubmit()")
             session.wait("document.querySelector('#composer-context-fingerprint').value.length === 64 && !document.querySelector('#model-investigation-run').disabled", 'investigation context')
@@ -158,7 +189,7 @@ def main():
             assert len(final['sources']) == 3 and len(final['snapshots']) == 2
             assert next(s for s in final['snapshots'] if s['id']==old['id'])['summary'] == old['summary']
             assert final['quarantines'][0]['declared_patient_id'] == 'CASE-BETA'
-            print('PASS: empty database → create case → actual file input → per-file receipts → exact original bytes → question → recorded replay → reviewable report → explicit demo acknowledgment → amendment → stale history → reassessment → second case → restart persistence')
+            print('PASS: empty database → create case → actual file input → per-file receipts → exact original bytes → question → recorded replay → reviewable report → explicit demo acknowledgment → amendment → stale history → reassessment → second case → restart persistence; unsaved work preserved and failed refresh blocks stale actions')
         except Exception:
             if session is not None:
                 print('BROWSER DIAGNOSTIC:', session.evaluate("JSON.stringify({url:location.href,title:document.title,notice:document.querySelector('#notice')?.textContent,body:document.body?.innerText.slice(0,1600)})"))
