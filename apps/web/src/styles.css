@@ -91,3 +91,34 @@
  .rail .nav-group button{width:auto;max-width:100%;min-height:44px}
  .rail .nav-group button[aria-current=page]{box-shadow:inset 0 -3px 0 #b9dbc5}
 }
+
+/* Reading continuity: one response and one session, with two presentation densities. */
+html{scroll-padding-top:var(--workspace-offset,24px)}
+main :is(h1,h2,h3,input,select,textarea,button,summary,a){scroll-margin-block:var(--workspace-offset,24px) 24px}
+.topbar{height:auto;min-height:90px;padding-block:14px;flex-wrap:wrap;z-index:5}
+.topbar[data-sticky=true]{position:sticky;top:0}
+.workspace-context{flex:1 1 230px}
+.reading-controls{display:flex;align-items:center;gap:16px;flex-wrap:wrap;max-width:100%;min-width:0}
+.reading-controls>div{min-width:0;max-width:100%}
+.reading-controls label{font-size:12px}
+#reading-view-help{display:block;font-size:11px;color:#53685f;margin-top:4px;overflow-wrap:anywhere}
+select{font:inherit;color:inherit;background:#fff;border:1px solid #9caeac;border-radius:6px;min-height:44px;max-width:100%;width:100%;padding:8px}
+select:focus-visible{outline:3px solid #ba8639;outline-offset:3px}
+h1:focus{outline:2px solid #174b48;outline-offset:5px}
+.source-filters{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:16px;margin:24px 0 4px;align-items:start}
+.source-filters>div{min-width:0}.source-filters label{font-size:13px}.source-filters select{margin:6px 0 14px}
+.filter-summary{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px}.filter-summary p{font-size:12px;margin:0}
+.source-heading h4{font-size:18px;margin:0;overflow-wrap:anywhere;min-width:0}
+.source-list .source-row{padding:20px}.source-row .finding-list li{border:0;border-radius:0;background:transparent;padding:0}
+.source-row .finding-list blockquote{margin:10px 0;font-size:16px;line-height:1.65;background:#f2f6f0}
+.source-row .quote-label{font-weight:600;color:#233f36;margin-bottom:8px}
+.source-row .history-note{border-left:3px solid #99845e;padding-left:12px}
+.source-row.superseded{background:#f5f4ef}.source-row.superseded .record-state{background:#ece7d9;color:#65502d}
+.source-reading.clinical .source-dates{grid-template-columns:repeat(4,minmax(0,1fr))}
+.source-reading.clinical .source-row{padding:14px}.source-reading.clinical blockquote{font-size:14px;line-height:1.5}
+.source-reading.patient .source-dates{grid-template-columns:repeat(2,minmax(0,1fr))}
+.source-empty{padding:18px;background:#f4f6f1;border:1px solid #d7e0d8}.source-empty h4{margin:0}
+.source-row,.source-empty,.records-workspace h3,.reading-controls,.connection{overflow-wrap:anywhere}
+.skip{top:0;transform:translateY(calc(-100% - 20px));max-width:calc(100vw - 20px)}.skip:focus{transform:none;top:10px}
+@media(max-width:900px){.topbar{gap:12px}.reading-controls{width:100%}.reading-controls>div{flex:1 1 180px}}
+@media(max-width:600px){.source-filters{grid-template-columns:minmax(0,1fr);gap:0}.source-reading.clinical .source-dates,.source-reading.patient .source-dates{grid-template-columns:minmax(0,1fr)}.source-list .source-row{padding:12px}.connection{white-space:normal}.reading-controls{gap:8px}.reading-controls>div{flex:1 1 100%}.topbar{padding:12px 16px}}
