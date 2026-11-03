@@ -1,3 +1,5 @@
+import {decodeOriginal,decodeRecordRequests} from './record-views.js';
+import type {OriginalSource,RecordRequest} from './record-views.js';
 /** Transient UI state over the canonical patient API; never an authority or ledger. */
 export type Patient = Readonly<{
   patient_id: string; origin_org: string; created_at: string;
@@ -7,6 +9,10 @@ export type CreatedPatient = Readonly<{patient_id: string; duplicate: boolean}>;
 export type ViewState = Readonly<{
   connected: boolean; phase: 'disconnected' | 'idle' | 'reading' | 'creating' | 'ready' | 'error';
   patient: Patient | null; created: CreatedPatient | null; message: string;
+  records: readonly RecordRequest[] | null;
+  recordsPhase:'idle'|'loading'|'ready'|'error'; recordsMessage:string;
+  original:OriginalSource|null;
+  originalPhase:'idle'|'loading'|'ready'|'error'; originalMessage:string;
 }>;
 export type Transport = (input: string, init: RequestInit) => Promise<Response>;
 const KEY = /^[A-Za-z0-9][A-Za-z0-9_.:-]{2,127}$/;
@@ -21,7 +27,12 @@ const messages: Record<number,string> = {
   422:'The API refused this request. Check the opaque identifiers.',
   503:'The patient registry or access service is unavailable. No cached patient is shown.',
 };
-const fresh = (): ViewState => Object.freeze({connected:false,phase:'disconnected',patient:null,created:null,message:'Connect a local synthetic credential to use the patient registry.'});
+const fresh = (): ViewState => Object.freeze({
+  connected:false,phase:'disconnected',patient:null,created:null,
+  message:'Connect a local synthetic credential to use the patient registry.',
+  records:null,recordsPhase:'idle',recordsMessage:'Open an authorized patient to inspect record requests.',
+  original:null,originalPhase:'idle',originalMessage:'Original text is never loaded automatically.',
+});
 function exact(value: unknown, fields: string[]): value is Record<string,unknown> {
   return value !== null && typeof value==='object' && !Array.isArray(value) &&
     Object.keys(value).length===fields.length && fields.every(k=>Object.hasOwn(value,k));
@@ -54,14 +65,19 @@ function created(value: unknown): CreatedPatient {
   return Object.freeze(value as CreatedPatient);
 }
 export class RegistrySession {
-  #token=''; #scope=0; #read=0; #state:ViewState=fresh();
+  #token=''; #scope=0; #read=0; #recordsRead=0; #originalRead=0; #state:ViewState=fresh();
   #listeners=new Set<()=>void>(); #controllers=new Set<AbortController>(); #creating=false;
   constructor(private readonly transport:Transport=(url,init)=>fetch(url,init)) {}
   snapshot=():ViewState=>this.#state;
   subscribe=(listener:()=>void):(()=>void)=>{this.#listeners.add(listener);return()=>this.#listeners.delete(listener);};
   #publish(patch:Partial<ViewState>){this.#state=Object.freeze({...this.#state,...patch});for(const listener of this.#listeners)listener();}
+  #resetRecords(){
+    this.#recordsRead++;this.#originalRead++;
+    this.#publish({records:null,recordsPhase:'idle',recordsMessage:'Open an authorized patient to inspect record requests.',
+      original:null,originalPhase:'idle',originalMessage:'Original text is never loaded automatically.'});
+  }
   disconnect=()=>{
-    this.#scope++;this.#read++;this.#token='';this.#creating=false;
+    this.#scope++;this.#read++;this.#recordsRead++;this.#originalRead++;this.#token='';this.#creating=false;
     for(const c of this.#controllers)c.abort();this.#controllers.clear();
     this.#state=fresh();for(const listener of this.#listeners)listener();
   };
@@ -80,6 +96,7 @@ export class RegistrySession {
   }
   async read(id:string):Promise<void>{
     const scope=this.#scope, request=++this.#read;
+    this.#resetRecords();
     this.#publish({patient:null});
     if(!this.#token){this.#publish({message:'Connect an authorized synthetic credential first.'});return;}
     if(!boundedKey(id)){this.#publish({phase:'error',message:'Use an opaque patient ID, not a name or URL.'});return;}
@@ -96,12 +113,86 @@ export class RegistrySession {
     }catch(_){if(current())this.#publish({patient:null,phase:'error',message:'The patient response could not be verified. No cached patient is shown.'});}
     finally{clearTimeout(timeout);this.#controllers.delete(control);}
   }
+  async loadRecords():Promise<void>{
+    const patientId=this.#state.patient?.patient_id;
+    if(!patientId||!this.#token){
+      this.#resetRecords();
+      this.#publish({recordsPhase:'error',recordsMessage:'Open an authorized patient before loading requests.'});
+      return;
+    }
+    const scope=this.#scope,selection=this.#read,query=++this.#recordsRead;
+    this.#originalRead++;
+    const current=()=>scope===this.#scope && selection===this.#read &&
+      query===this.#recordsRead && this.#state.patient?.patient_id===patientId;
+    const control=new AbortController();this.#controllers.add(control);
+    const timeout=setTimeout(()=>control.abort(),10000);
+    this.#publish({records:null,recordsPhase:'loading',recordsMessage:'Checking current request-read authorization…',
+      original:null,originalPhase:'idle',originalMessage:'Original source access requires a separate action.'});
+    try{
+      const res=await this.transport('/v1/patients/'+encodeURIComponent(patientId)+'/record-requests',this.#init(control));
+      if(!current())return;
+      if(res.status===401){this.#httpError(res.status);return;}
+      if(res.status!==200){
+        this.#publish({records:null,recordsPhase:'error',recordsMessage:
+          messages[res.status]||'Record requests could not be authorized. No previous records are shown.'});
+        return;
+      }
+      const rows=decodeRecordRequests(await json(res),patientId);
+      if(!current())return;
+      this.#publish({records:rows,recordsPhase:'ready',recordsMessage:
+        rows.length ? 'Current authorized record requests. No external request was sent by this workspace.' :
+        'No record requests are currently visible under this grant.'});
+    }catch(_){
+      if(current())this.#publish({records:null,recordsPhase:'error',recordsMessage:
+        'The record response could not be verified. Previous records remain cleared.'});
+    }finally{clearTimeout(timeout);this.#controllers.delete(control);}
+  }
+
+  async openOriginal(caseId:string,sourceId:string):Promise<void>{
+    const patientId=this.#state.patient?.patient_id;
+    const ref=this.#state.records?.find(r=>r.status==='received' &&
+      r.source_reference?.case_id===caseId && r.source_reference.source_id===sourceId)?.source_reference;
+    const query=++this.#originalRead,scope=this.#scope,selection=this.#read,recordsQuery=this.#recordsRead;
+    this.#publish({original:null,originalPhase:'idle',originalMessage:'Original text requires its own grant.'});
+    if(!patientId||!ref||!this.#token||this.#state.recordsPhase!=='ready'){
+      this.#publish({originalPhase:'error',originalMessage:'No authorized exact source reference is selected.'});
+      return;
+    }
+    const current=()=>scope===this.#scope && selection===this.#read &&
+      query===this.#originalRead && recordsQuery===this.#recordsRead &&
+      this.#state.patient?.patient_id===patientId;
+    const control=new AbortController();this.#controllers.add(control);
+    const timeout=setTimeout(()=>control.abort(),10000);
+    this.#publish({originalPhase:'loading',originalMessage:'Checking original-text authority and SHA-256…'});
+    try{
+      const url='/v1/patients/'+encodeURIComponent(patientId)+'/cases/'+
+        encodeURIComponent(caseId)+'/sources/'+encodeURIComponent(sourceId);
+      const res=await this.transport(url,this.#init(control));
+      if(!current())return;
+      if(res.status===401){this.#httpError(res.status);return;}
+      if(res.status!==200){
+        this.#publish({original:null,originalPhase:'error',originalMessage:
+          messages[res.status]||'Original text unavailable for this credential.'});
+        return;
+      }
+      const source=await decodeOriginal(await json(res),ref);
+      if(!current())return;
+      this.#publish({original:source,originalPhase:'ready',originalMessage:
+        source.state==='superseded' ?
+          'Historical original only. This source was superseded; reconciliation is required.' :
+          'Exact fictional original verified against the selected receipt fingerprint; not clinically reviewed.'});
+    }catch(_){
+      if(current())this.#publish({original:null,originalPhase:'error',originalMessage:
+        'Original content or fingerprint could not be verified. No source text is shown.'});
+    }finally{clearTimeout(timeout);this.#controllers.delete(control);}
+  }
+
   async create(requestKey:string,confirmed:boolean):Promise<void>{
     if(this.#creating)return;
     if(!this.#token){this.#publish({message:'Connect an authorized synthetic credential first.'});return;}
     if(confirmed!==true || !boundedKey(requestKey)){this.#publish({phase:'error',message:'Confirm fictional identity creation and use a valid request key.'});return;}
     // A new creation is a new selection intent; an older read cannot restore it.
-    this.#read++;
+    this.#read++;this.#resetRecords();
     const scope=this.#scope,control=new AbortController();this.#controllers.add(control);this.#creating=true;
     const timeout=setTimeout(()=>control.abort(),10000);
     this.#publish({phase:'creating',patient:null,created:null,message:'Creating a fictional identity; reading it will still need an explicit grant…'});
