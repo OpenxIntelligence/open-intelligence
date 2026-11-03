@@ -1890,11 +1890,19 @@ class CaseStore:
             row = self._rights_row(int(link["rights_source_id"]))
             if row["state"] != "active":
                 raise InvalidInput("Cannot review a link whose rights source is not active")
+            # Keep-history: the cited basis must survive the re-review, so the
+            # superseded meaning is recorded in both audit rows below before
+            # the link row is updated in place.
+            prior_relation = link["relation"]
+            prior_applicability = link["applicability"]
+            prior_rationale = link["rationale"]
             self.db.execute("""UPDATE broker_links SET relation=?,applicability=?,rationale=?
                 WHERE id=?""", (relation, applicability, rationale.strip(), broker_link_id))
             self.db.execute("""INSERT INTO rights_events
                 (rights_source_id,kind,reason,recorded_at) VALUES (?,'link_reviewed',?,?)""",
-                (int(link["rights_source_id"]), f"Broker link {broker_link_id} re-reviewed", now_utc()))
+                (int(link["rights_source_id"]),
+                 f"Broker link {broker_link_id} re-reviewed; prior meaning kept: "
+                 f"{prior_relation}/{prior_applicability}: {prior_rationale}", now_utc()))
             rows = self.db.execute("""SELECT DISTINCT s.id,s.case_id,s.question_id
                 FROM snapshots s JOIN snapshot_broker_links sbl ON sbl.snapshot_id=s.id
                 WHERE sbl.broker_link_id=? AND s.state!='stale'""", (broker_link_id,)).fetchall()
@@ -1906,7 +1914,10 @@ class CaseStore:
                     (SELECT DISTINCT question_id FROM snapshots WHERE id IN ({ids}))""", invalidated)
                 self._event(case_id, "broker_invalidated",
                             broker_link_id=broker_link_id,
-                            reason="review", invalidated_snapshots=invalidated)
+                            reason="review", invalidated_snapshots=invalidated,
+                            prior_relation=prior_relation,
+                            prior_applicability=prior_applicability,
+                            prior_rationale=prior_rationale)
             return {"result": "reviewed", "broker_link_id": broker_link_id,
                     "invalidated_snapshots": invalidated}
 
@@ -1964,10 +1975,12 @@ class CaseStore:
         if pointer_label is not None:
             if kind not in ("digital_wsi", "genomics_data_pointer"):
                 raise InvalidInput("A pointer label applies only to digital WSI and genomics data pointers")
-            if (not isinstance(pointer_label, str) or not 1 <= len(pointer_label.strip()) <= 200
-                    or "://" in pointer_label or pointer_label.strip().startswith("/")):
+            stripped = pointer_label.strip() if isinstance(pointer_label, str) else ""
+            if (not isinstance(pointer_label, str) or not 1 <= len(stripped) <= 200
+                    or "://" in pointer_label or stripped.startswith("/")
+                    or stripped.startswith("\\") or re.match(r"[A-Za-z]:", stripped)):
                 raise InvalidInput("Pointer label must be 1-200 characters, not a URL or path")
-            pointer_label = pointer_label.strip()
+            pointer_label = stripped
         with self.db:
             self.db.execute("BEGIN IMMEDIATE")
             anchor = self.db.execute(
@@ -2182,8 +2195,17 @@ class CaseStore:
 
     def save_investigation(self, case_id: str, question_id: int, template: str,
                            validated, mode: str) -> int:
+        from .investigation import TEMPLATES
         self._case(case_id)
+        if mode not in ("live", "replay"):
+            raise InvalidInput("Mode must be live or replay")
+        if template not in TEMPLATES:
+            raise InvalidInput("Unknown investigation template")
         with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            if not self.db.execute("SELECT 1 FROM questions WHERE id=? AND case_id=?",
+                                   (question_id, case_id)).fetchone():
+                raise InvalidInput("Question not in this case")
             cur = self.db.execute(
                 """INSERT INTO investigations
                 (case_id,question_id,template,status,mode,model,claims_json,abstentions_json,dropped_json,created_at)
@@ -2318,6 +2340,8 @@ class CaseStore:
 
     def export_markdown(self, case_id: str, snapshot_id: int) -> str:
         self._case(case_id)
+        if type(snapshot_id) is not int or snapshot_id < 1:
+            raise InvalidInput("Invalid investigation ID")
         # Explicit read transaction keeps status and source/evidence versions
         # consistent if an amendment or withdrawal commits during export.
         with self.db:
