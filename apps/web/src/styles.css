@@ -66,3 +66,14 @@
 .question-draft .actions{margin:12px 0}
 .question-draft code{overflow-wrap:anywhere;word-break:break-word}
 @media(max-width:600px){.question-draft{padding:12px}.question-draft .actions button{width:100%}}
+
+/* UX-01: current authorized context and non-destructive provenance disclosure. */
+.workspace-context{display:flex;flex-direction:column;gap:4px;min-width:0}
+.workspace-location{font-weight:600}
+.workspace-identity{display:block;font-size:12px;overflow-wrap:anywhere}
+.workspace-identity code{font-size:12px;font-weight:600;word-break:break-all}
+.workspace-context-label{color:#52675e}
+.source-verify{border-top:1px solid #dce3dc;border-bottom:1px solid #dce3dc;margin:12px 0;padding:12px 0}
+.source-verify summary{font-size:13px;color:#174b48;min-height:44px;display:list-item;align-content:center}
+.source-verify .source-metadata{margin:10px 0}
+@media(max-width:600px){.topbar{flex-wrap:wrap}.workspace-context{flex:1 1 100%}.connection{flex:0 0 auto}}
