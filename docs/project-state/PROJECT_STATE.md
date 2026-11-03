@@ -3,18 +3,27 @@
 ## Current image/evidence integration — draft #327
 
 Draft [#327](https://github.com/OpenxIntelligence/open-intelligence/pull/327)
-starts from verified #319 `2475d924fddef6792076bdf9039fad5be7312b7a`, preserving
-source reading/import disclosure while joining #313 image custody and #322/#316
-report-download/status behavior. The new source-bound image inspector and
-DDL-free `0012_image_report_convergence` are being verified together.
+extends verified #319 source reading/import disclosure with #313 original-image
+custody and #322/#316 report-download/status behavior. Exact source
+`9cdce3071f69f3d4c55556ff1c53d9f788d9b053` passed **297 client tests**, **533
+API/PostgreSQL methods**, **287 reference methods**, the connected browser
+journeys and **all six actual recovery probes**, with no test skips. Original
+images, the canonical question, citation, authored report and task remain linked
+through amendment, independent authorization and actual database restore.
 [The existing integration record](../engineering/H1_EVIDENCE_CONTINUITY.md#source-bound-images-in-the-same-investigation--draft-327)
-records exact donors, rights scope, tests-first failures and acceptance limits.
-Tests-first #327 web execution passed all 274 inherited checks and failed the 17
-new image checks as intended; this is not completed integration acceptance.
-No source owner is merged, closed or rewritten. All records are independently
-fictional. Model execution, qualified clinical review, real-patient authority,
-archive transport and production release remain separate gates. Earlier
-assessments below retain their dated scopes and are not present-state overrides.
+contains exact runs/artifacts, donors, rights scope, initial failures and repairs.
+Published migrations remain unchanged; the new DDL-free
+`0012_image_report_convergence` joins their existing heads. The final delivery
+update is documentation only and does not change the tested software.
+
+This remains draft, unmerged, undeployed and independently fictional. The sole
+added code-only pydicom derivative is qualified only for local synthetic H1
+development under MIT AND BSD-3-Clause, not whole-product legal clearance. No
+source owner is merged, closed or rewritten. Live biomedical retrieval, model
+execution, qualified clinical review, production identity/consent, general
+document and image support, archive transport and real-patient release remain
+separate gates. Earlier assessments below retain their dated scopes; their
+former next-work proposals do not override this verified continuation.
 
 
 Assessment date: 3 November 2026. Initial assessment recorded before this branch's product changes.

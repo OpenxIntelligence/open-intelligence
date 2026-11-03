@@ -1,7 +1,8 @@
 # H1 question evidence and patient follow-through convergence
 
 **Status:** #307 acceptance and subsequent source-reading/export receipts are preserved below.
-The source-bound image continuation in draft #327 is implemented locally; combined verification is pending.
+The source-bound image continuation in draft #327 is published; its exact-source
+verification and remaining gates are recorded in the final section.
 **Scope:** independently authored fictional engineering inputs only.
 **Product job:** keep one saved patient question, its citation discovery, separately
 authored comparisons/reports and follow-up work in the same governed application.
@@ -327,10 +328,14 @@ No merge, deployment or clinical validation is authorized or claimed.
 
 ## Source-bound images in the same investigation — draft #327
 
-**Current candidate status:** tests-first checkpoint published; bounded runtime
-integration and actual combined verification in progress. This section does not
-substitute donor passes for candidate acceptance. The preceding sections retain
-their original dated scopes.
+**Verified source:** `9cdce3071f69f3d4c55556ff1c53d9f788d9b053`, tree
+`771ee99a5f36afc4a2ae18eaa94b0974161ab36f`. Both complete hosted workflows
+passed on this exact checkout: 297 client tests, 533 API/PostgreSQL methods,
+287 reference methods, connected browser acceptance and all six recovery probes.
+The subsequent delivery change updates documentation only; it does not change
+the verified application, tests, migrations, dependency gates or workflows.
+These results qualify the bounded synthetic engineering contribution. The
+preceding sections retain their original dated scopes.
 
 The patient-facing job is to inspect an original image from its current imaging
 report, ask a question against that exact report, and keep the question's evidence,
@@ -428,20 +433,137 @@ missing source-reader behavior.
 checked the same source and ran **421 methods in 440.531 seconds**: all 414
 inherited methods passed; the seven new methods produced nine intended missing
 image-route/joining-migration failure assertions, with zero errors or skips.
-Later recovery steps did not run after this expected failure. Final combined
-acceptance remains to be executed; it is not inferred from these negative tests.
+Later recovery steps did not run after this expected failure. These negative
+tests are retained separately from the later combined qualification.
 
-### Required combined acceptance
+### First combined run and corrected verification assumptions
 
-Keep all original source/question/evidence/report/review/task browser paths and
-all six registry/source/image/review/follow-through/evidence recovery probes.
-Add an actual current imaging report and original download through Records, then
-metadata, an authored comparison/report and a task on that same question.
-Exercise independent grants, actual original bytes, current/historical download
-status, source amendment and deliberate relink, late responses, exact retries,
-restart and full logical history/sequence recovery. API fixture image import is
-labeled setup and is not presented as browser image-import functionality.
+Runtime `d149f56e93ab1f0186b820da4fa72e6da2268fa1`, tree
+`ed8daac9c0140f222f2aac00bdf4fc7728df71f1`, preserves the exact donor commit
+ancestry. [API run 41670316303](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41670316303)
+passed **533 API/PostgreSQL methods in 554.519 seconds** and **287 reference
+tests in 12.853 seconds**, with no skips. Inherited browser journeys and actual
+registry/source restart/restore passed. The new image recovery helper then
+incorrectly expected one origin row for every authored command; subsequent
+recovery steps were skipped. The preserved origin owner intentionally records
+origins for assessments and reports, not imports.
 
-Publication remains draft. Complete scientific investigation, qualified live
-biomedical retrieval, actual model execution, professional signoff, production
-identity/consent, broad image support and real-patient release remain incomplete.
+[Web run 41670316231](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41670316231)
+passed **297 client tests**, build and inherited browser paths. Its new scenario
+completed downloads, independent denials and authored-report amendment/restart,
+then a whole-card substring selector mistook the current source's Supersedes
+reference for the original source-ID field. Explicit relinking and final
+isolation had not run; this failed run is not full browser acceptance.
+
+Two helper-only corrections preserve application/runtime, migration, rights,
+dependency and workflow bytes. `d9be3f137d5a56cd688f6f6711e1ebddb8203a59` matches
+the exact original-ID field, asserts both current/superseded row identities and
+retains the old-source no-image-control assertion. `9cdce307` replaces the false
+origin count with exact command/result and assessment/report origin sets,
+including object/question, request key, authority, intent and report packet/
+renderer binding. Two valid checkpoints and 12 corruption controls passed.
+Complete row/sequence comparisons and all original recovery assertions remain.
+
+Independent review also reproduced timeout during image hashing: an aborted
+request could otherwise complete a download. Two failing regressions preceded
+the cancellation correction. Explicit post-read/decode/digest guards and a
+visible terminal timeout state now pass. Review separately verified image/report
+denial isolation, exact request-size limits and all 18 distinct published
+migration files. This is engineering review, not clinical or whole-product
+legal clearance.
+
+### Completed browser and retained artifact verification
+
+[Corrected web run 41673061732](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41673061732)
+completed **SUCCESS** on `9cdce3071f69f3d4c55556ff1c53d9f788d9b053`:
+**297 client tests, zero failures/skips**, TypeScript/Vite build, dependency gates
+and actual React/FastAPI/PostgreSQL/Chromium acceptance. All inherited journeys
+remain. The new same-question image scenario now completes explicit amendment
+relinking and final access/session isolation.
+
+[Artifact 13249556104](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41673061732/artifacts/13249556104)
+was downloaded and checked against its uploaded SHA-256
+`05e4222e5c571f89523996700da0a6934a2177e8af084e585a0fe907648491cf`.
+All **447 source blobs** match the tested commit; desktop and 390-pixel browser
+captures were inspected. Hosted artifact retention ends **10 November 2026**.
+The scenario and reproducible assertions remain in the repository.
+
+The retained `image-evidence-continuity.json` links one canonical source/question,
+metadata citation, task and authored report. Four **578-byte** original downloads
+are byte-identical, have four distinct access receipts, and retain image SHA-256
+`a2361e5fc9c65371a890e4f450a61689f44da020cbc93d850ed11ce881f4e6b9`.
+The fourth follows an explicit link of the same image ID to the amended source;
+the original question/task retain their historical source and reassessment state.
+Three retained report downloads match their file/body digests and fresh status
+covers. The first and historical exports preserve exactly the same body.
+
+The historical report cover follows a **separate authored-evidence amendment**.
+The later imaging-source amendment occurs after that helper has withdrawn the
+evidence content; no newly readable report from withdrawn evidence is claimed.
+API image import is explicitly operator fixture setup. These checks establish
+neither browser image upload nor pixel interpretation, model execution, clinical
+approval, live biomedical retrieval or production accounts/consent.
+
+### Completed API and actual recovery verification
+
+[Corrected API run 41673062382](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41673062382)
+completed **SUCCESS** on the same exact `9cdce307` checkout. The completed job
+log records **533 API/PostgreSQL methods in 508.396 seconds**, **287 inherited
+reference methods in 12.443 seconds**, both `OK` with no skips, and all inherited
+loopback browser paths. The job also passed the current data-boundary checks,
+exact reviewed-wheel/offline-install gates, populated migrations, resolved
+container identities and package inventory.
+
+All six separate Compose probes passed against actual PostgreSQL 16, API
+processes and recovered databases:
+
+| Recovery probe | Observed result |
+| --- | --- |
+| Registry | Scoped HTTP, tenant denial, API/database restart, dump/restore and revoked-binding denial |
+| Sources | Exact original bytes, amendments, current authority, receipts and originals served from the restored database |
+| Images and the same investigation | Current/historical source and question, original image bytes, citation, task, frozen authored report and same-key retry identities reopened through the restored API; metadata redacted after rights revocation |
+| Review returns | Same-key recovery, amendment history, independent grants, restart/restore and access revocation |
+| Follow-through | Existing task lifecycle and acknowledgment, exact retries, three tasks/nine events, metadata/citation recovery and append-only rights withdrawal |
+| Authored evidence | Complete logical-row/sequence recovery; readable, restricted and withdrawn report/original states; exact retries, independent grants and revoked restored binding |
+
+The joined image probe retained complete logical-row hashes and sequence state,
+source amendment and explicit image relinking. It exercised the recovered copy
+through HTTP while verifying that the original database remained unchanged. The
+separate authored-evidence probe independently verified the same-question
+citation/report/task relationship after restore; it is not substituted for the
+joined image probe.
+
+[API artifact 13249897783](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41673062382/artifacts/13249897783)
+was downloaded and its ZIP SHA-256 verified:
+`24ca3bfadc17c3b4b1b34fd22729eae503a9d28be75446710ff7eef3238afc1a`.
+Its `oi.h1-evidence-recovery-acceptance/3` receipt records the actual object IDs,
+report body/snapshot hashes, complete row counts and the
+`0012_image_report_convergence` schema. It confirms restored readable/withheld
+HTTP, exact retry identity, independent export denial, revoked-binding denial
+and an unchanged original database. `model_executed` and `clinical_approval`
+remain false. Hosted artifact retention ends **10 November 2026**; the source
+probes and full run log retain the reproducible acceptance record.
+
+The suite counts above describe separate engineering executions, not unique
+patients, independent clinical reference cases or clinical validation. Local
+execution did not establish PostgreSQL acceptance; the hosted completed jobs
+provide that evidence. No passing result from an earlier or donor head is used
+as the combined candidate's result.
+
+### Acceptance scope and release boundary
+
+The connected Records journey and all inherited source/question/evidence/report/
+review/task paths now pass at the named source. Actual original downloads,
+independent grants, current/historical report covers, source amendment with
+deliberate relinking, late-response suppression, exact retries, restart and
+complete logical history/sequence recovery were exercised. API fixture image
+import is labeled setup and is not browser image-import functionality.
+
+Publication remains **draft, unmerged and undeployed**. Complete scientific
+investigation, qualified live biomedical retrieval, actual model execution,
+professional signoff, production identity/delegation/consent, general medical
+document and annotation parity, broad image support and real-patient release
+remain incomplete. The next integration decision should inspect the existing
+reviewed-document, bibliography/rights and review-reason owners rather than
+creating another source, evidence or review implementation. No donor work is
+merged or closed by this contribution.

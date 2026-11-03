@@ -31,14 +31,19 @@ source owners #85/#148 and is stacked on #162/#137. Local verification passed
 evidence belongs to the exact draft-PR head. Those counts describe the historical
 identity milestone, before the subsequent connected workspace.
 
-**Current unmerged H1 continuation:** [draft #307](https://github.com/OpenxIntelligence/open-intelligence/pull/307)
-converges #298's metadata citations and follow-through with #300's case-owned
-fictional originals, human-authored comparisons and immutable reports on the same
-canonical question. Both rights boundaries and migration histories remain intact.
+**Current unmerged H1 continuation:** [draft #327](https://github.com/OpenxIntelligence/open-intelligence/pull/327)
+extends #319's source reader and import disclosure with #313's original-image
+custody and #322/#316's freshly labeled report downloads. It preserves #307's
+same-question metadata citations, human-authored comparisons, immutable reports
+and follow-through. An inline Records inspector connects exact original DICOM
+downloads to those existing owners; image access and report access remain
+independent. Published migration histories are unchanged and joined by one
+DDL-free revision.
 Its [bounded convergence and verification record](docs/engineering/H1_EVIDENCE_CONTINUITY.md)
 distinguishes implementation, exact combined test evidence and remaining work.
-Live biomedical retrieval, model execution, professional review, clinical/PDF/
-annotation parity and production identity remain separate capabilities. This is
+Live biomedical retrieval, model execution, professional review, image viewing/
+interpretation, general PDF/annotation support and production identity remain
+separate capabilities. This is
 an unmerged engineering candidate, with no clinical approval or deployment claim.
 
 ## Start here
