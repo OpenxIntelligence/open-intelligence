@@ -1,0 +1,314 @@
+{
+  "baseline_commit": "18c494fb998d1fe9878cce2ca730480f8ba60553",
+  "base_pr": 166,
+  "base_commit": "334d863b2206b290c02cd2606dcb93c93afe3a68",
+  "runtime_sha256": {
+    "web/app.js": "3b1a148152b331c18f544a6c750f2138bceed79f8675f23e411fa64f5a9e1b4b",
+    "web/index.html": "df5d3dfcc573ed9cd5b8e536067e44ff233233bc50bd61a093ceac46b2fd12e1",
+    "web/intake.js": "81bb03a45292c99e261d14812e807b9d66974dd57acf40c7ac630f23fc7d1127",
+    "web/workspace-entry.js": "c4833e12bfb4d44c1663a46efcc8d7e12bc231b351961ec73a067d027ffd3050"
+  },
+  "runs": [
+    {
+      "name": "harness-preflight",
+      "id": 41573486172,
+      "commit": "7c82b0b9207524e865e429976ccad4c900d8dda4",
+      "artifact": {
+        "id": 13201719372,
+        "name": "startup-recovery-41573486172-1",
+        "size_in_bytes": 1739350,
+        "url": "https://api.github.com/repos/OpenxIntelligence/open-intelligence/actions/artifacts/13201719372",
+        "archive_download_url": "https://api.github.com/repos/OpenxIntelligence/open-intelligence/actions/artifacts/13201719372/zip",
+        "expired": false,
+        "created_at": "2026-11-03T03:39:47Z",
+        "expires_at": "2026-11-10T03:39:46Z",
+        "updated_at": "2026-11-03T03:39:47Z",
+        "digest": "sha256:94ee1beb2e8a1fb8e6ef2c66c5029bf5791139b421eed758f92606c41ccd36bc",
+        "workflow_run": {
+          "id": 41573486172,
+          "repository_id": 1440909333,
+          "head_repository_id": 1440909333,
+          "head_branch": "verification/worklist-currentness-20261102",
+          "head_sha": "7c82b0b9207524e865e429976ccad4c900d8dda4"
+        }
+      },
+      "outcome": "Harness timeout: fragment navigation did not install fresh-document interception."
+    },
+    {
+      "name": "baseline",
+      "id": 41573359981,
+      "commit": "05111c6825926a25b30590114433ba67c37d1a40",
+      "tree": "acf2108a813a28e0f49f89612c514bcb3aeedf73",
+      "artifact": {
+        "id": 13202795426,
+        "name": "startup-recovery-41573359981-1",
+        "size_in_bytes": 1712331,
+        "url": "https://api.github.com/repos/OpenxIntelligence/open-intelligence/actions/artifacts/13202795426",
+        "archive_download_url": "https://api.github.com/repos/OpenxIntelligence/open-intelligence/actions/artifacts/13202795426/zip",
+        "expired": false,
+        "created_at": "2026-11-03T03:38:04Z",
+        "expires_at": "2026-11-10T03:38:03Z",
+        "updated_at": "2026-11-03T03:38:04Z",
+        "digest": "sha256:693692f9f26e3ee81821903c6a6d81bc8a2cc89c9f452056206e8843951bd9bc",
+        "workflow_run": {
+          "id": 41573359981,
+          "repository_id": 1440909333,
+          "head_repository_id": 1440909333,
+          "head_branch": "verification/worklist-currentness-20261102",
+          "head_sha": "05111c6825926a25b30590114433ba67c37d1a40"
+        }
+      },
+      "outcome": "Intended missing-retry failure on unchanged runtime.",
+      "checks": 2,
+      "passed": 1,
+      "failed": 1
+    },
+    {
+      "name": "first-candidate",
+      "id": 41573809015,
+      "commit": "67016ccea98e079bc4c023940a794ef265187c93",
+      "tree": "ede456adecab2c21ac2bb106caaf17906c7ad2c4",
+      "artifact": {
+        "id": 13202831183,
+        "name": "startup-recovery-41573809015-1",
+        "size_in_bytes": 3209564,
+        "url": "https://api.github.com/repos/OpenxIntelligence/open-intelligence/actions/artifacts/13202831183",
+        "archive_download_url": "https://api.github.com/repos/OpenxIntelligence/open-intelligence/actions/artifacts/13202831183/zip",
+        "expired": false,
+        "created_at": "2026-11-03T03:44:10Z",
+        "expires_at": "2026-11-10T03:44:09Z",
+        "updated_at": "2026-11-03T03:44:10Z",
+        "digest": "sha256:c8b747d1f1de5521f6a96991832e0ef217c30db279ce73cc48d832163d71b33f",
+        "workflow_run": {
+          "id": 41573809015,
+          "repository_id": 1440909333,
+          "head_repository_id": 1440909333,
+          "head_branch": "verification/worklist-currentness-20261102",
+          "head_sha": "67016ccea98e079bc4c023940a794ef265187c93"
+        }
+      },
+      "outcome": "155/160 passed; five keyboard retries exposed incomplete CDP Enter simulation.",
+      "checks": 160,
+      "passed": 155,
+      "failed": 5
+    },
+    {
+      "name": "review-regressions",
+      "id": 41574283236,
+      "commit": "d88a456de47dec160d83a953f1cd634e026ea16a",
+      "tree": "e831f1e571f90a23670eb20ee1fe9e282b22fbab",
+      "artifact": {
+        "id": 13202716862,
+        "name": "startup-recovery-41574283236-1",
+        "size_in_bytes": 2195203,
+        "url": "https://api.github.com/repos/OpenxIntelligence/open-intelligence/actions/artifacts/13202716862",
+        "archive_download_url": "https://api.github.com/repos/OpenxIntelligence/open-intelligence/actions/artifacts/13202716862/zip",
+        "expired": false,
+        "created_at": "2026-11-03T03:47:50Z",
+        "expires_at": "2026-11-10T03:47:49Z",
+        "updated_at": "2026-11-03T03:47:50Z",
+        "digest": "sha256:94c388beff2d0668866d60d9156e76144eb63f77c882b237a2b623ee1fa7d109",
+        "workflow_run": {
+          "id": 41574283236,
+          "repository_id": 1440909333,
+          "head_repository_id": 1440909333,
+          "head_branch": "verification/worklist-currentness-20261102",
+          "head_sha": "d88a456de47dec160d83a953f1cd634e026ea16a"
+        }
+      },
+      "outcome": "Four intended creation/selection handoff failures; corrected native retry passed.",
+      "checks": 55,
+      "passed": 51,
+      "failed": 4
+    },
+    {
+      "name": "held-chart-waiter",
+      "id": 41574518438,
+      "commit": "159182e07c3a9a20e797186a9cb4441f47319b3f",
+      "tree": "95303058f0d92fa339319bd0112e4cbedd1911a9",
+      "artifact": {
+        "id": 13203555372,
+        "name": "startup-recovery-41574518438-1",
+        "size_in_bytes": 4009589,
+        "url": "https://api.github.com/repos/OpenxIntelligence/open-intelligence/actions/artifacts/13203555372",
+        "archive_download_url": "https://api.github.com/repos/OpenxIntelligence/open-intelligence/actions/artifacts/13203555372/zip",
+        "expired": false,
+        "created_at": "2026-11-03T03:50:54Z",
+        "expires_at": "2026-11-10T03:50:53Z",
+        "updated_at": "2026-11-03T03:50:54Z",
+        "digest": "sha256:ba28a11fada58de7e5d140ba44a05c718677c44592155a7d020539f959d0cff5",
+        "workflow_run": {
+          "id": 41574518438,
+          "repository_id": 1440909333,
+          "head_repository_id": 1440909333,
+          "head_branch": "verification/worklist-currentness-20261102",
+          "head_sha": "159182e07c3a9a20e797186a9cb4441f47319b3f"
+        }
+      },
+      "outcome": "17/18 scenarios passed; remaining harness awaited a deliberately held chart before switching away.",
+      "checks": 284,
+      "passed": 283,
+      "failed": 1
+    },
+    {
+      "name": "focused-verified",
+      "id": 41574710100,
+      "commit": "f207a34c1abba7ed28bab69d298d4f09ccf50c76",
+      "tree": "2ad4028d55c6b0e7ae7a86f2465bb0e5c30c7d4e",
+      "artifact": {
+        "id": 13203680226,
+        "name": "startup-recovery-41574710100-1",
+        "size_in_bytes": 4045850,
+        "url": "https://api.github.com/repos/OpenxIntelligence/open-intelligence/actions/artifacts/13203680226",
+        "archive_download_url": "https://api.github.com/repos/OpenxIntelligence/open-intelligence/actions/artifacts/13203680226/zip",
+        "expired": false,
+        "created_at": "2026-11-03T03:52:44Z",
+        "expires_at": "2026-11-10T03:52:43Z",
+        "updated_at": "2026-11-03T03:52:44Z",
+        "digest": "sha256:24583e4be43d79f646f601fa87c1098d3cac6ccc5ed1faa4097a66ec1c6a6839",
+        "workflow_run": {
+          "id": 41574710100,
+          "repository_id": 1440909333,
+          "head_repository_id": 1440909333,
+          "head_branch": "verification/worklist-currentness-20261102",
+          "head_sha": "f207a34c1abba7ed28bab69d298d4f09ccf50c76"
+        }
+      },
+      "outcome": "18/18 scenarios and 295/295 assertions passed.",
+      "checks": 295,
+      "passed": 295,
+      "failed": 0,
+      "screenshots": 19,
+      "browser_errors": 0
+    }
+  ],
+  "local_regression": {
+    "python": {
+      "tests": 347,
+      "passed": 347,
+      "seconds": 77.442
+    },
+    "javascript": {
+      "files": 8,
+      "tests": 80,
+      "passed": 80
+    }
+  },
+  "independent_review": {
+    "type": "Fresh-context static assistant review of the complete working diff, plus independent harness/form review.",
+    "initial_finding": "Creation submitted during startup could complete after initial selection and bypass saved-activation/cancellation handling.",
+    "resolution": "Reproduced four regressions, preserved pre-POST selection context, recovered through original initializer/worklist/picker, canceled displaced intent synchronously, and re-reviewed.",
+    "final": "No material blocker found; static review is separate from browser execution."
+  },
+  "full_candidate": {
+    "run_id": 41574913060,
+    "commit": "e5b168f0b6a451e5bebde866cd39bf6092dfad9a",
+    "tree": "8e29e10c71a8876e167241b68949ceca1271400c",
+    "status": "success",
+    "artifact": {
+      "id": 13203850319,
+      "name": "synthetic-ui-glance-41574913060-1",
+      "size_in_bytes": 10632737,
+      "url": "https://api.github.com/repos/OpenxIntelligence/open-intelligence/actions/artifacts/13203850319",
+      "archive_download_url": "https://api.github.com/repos/OpenxIntelligence/open-intelligence/actions/artifacts/13203850319/zip",
+      "expired": false,
+      "created_at": "2026-11-03T03:56:37Z",
+      "expires_at": "2026-11-10T03:56:36Z",
+      "updated_at": "2026-11-03T03:56:37Z",
+      "digest": "sha256:ad637a5983091ba97f9b19e07186ca5cac8dd218f141faa53f2801c343b62a39",
+      "workflow_run": {
+        "id": 41574913060,
+        "repository_id": 1440909333,
+        "head_repository_id": 1440909333,
+        "head_branch": "verification/worklist-currentness-20261102",
+        "head_sha": "e5b168f0b6a451e5bebde866cd39bf6092dfad9a"
+      }
+    },
+    "results": {
+      "navigation": {
+        "scenarios": 0,
+        "checks": 792,
+        "passed": 792,
+        "screenshots": 22,
+        "browser_errors": 0
+      },
+      "case_continuity": {
+        "scenarios": 14,
+        "checks": 310,
+        "passed": 310,
+        "screenshots": 14,
+        "browser_errors": 0
+      },
+      "scope_recovery": {
+        "scenarios": 0,
+        "checks": 68,
+        "passed": 68,
+        "screenshots": 4,
+        "browser_errors": 0
+      },
+      "worklist": {
+        "scenarios": 13,
+        "checks": 387,
+        "passed": 387,
+        "screenshots": 13,
+        "browser_errors": 0
+      },
+      "startup": {
+        "scenarios": 18,
+        "checks": 295,
+        "passed": 295,
+        "screenshots": 19,
+        "browser_errors": 0
+      }
+    },
+    "python_tests": 347,
+    "javascript_tests": 80,
+    "javascript_files": 8,
+    "established_browser_journeys": 7,
+    "source_identity": {
+      "web_src_test_files_identical": 93,
+      "runtime_fingerprints_identical": 5,
+      "artifact_digest_verified": true,
+      "commit_and_tree_verified": true
+    }
+  },
+  "final_published_verification": "Exact published head, source tree, runtime hashes and complete hosted results are recorded in PR #183 after this source snapshot is committed.",
+  "unchanged": [
+    "backend",
+    "schema",
+    "API payloads",
+    "authentication",
+    "authorization",
+    "processing/review rules",
+    "model behavior",
+    "production dependencies",
+    "existing fictional fixtures"
+  ],
+  "browser_environment": "Hosted Chromium; existing local socket-policy restriction respected; no local browser pass claimed.",
+  "contract_checks": {
+    "baseline": "18c494fb998d1fe9878cce2ca730480f8ba60553",
+    "forms_unchanged": {
+      "web/index.html": 14,
+      "web/workspace-entry.html": 2
+    },
+    "total_forms": 16,
+    "unique_ids_per_template": true,
+    "protected_files": 51,
+    "protected_prefixes": [
+      "src/",
+      "examples/",
+      "schemas/",
+      "fixtures/"
+    ],
+    "protected_explicit_files": [
+      "run_open_intelligence.py"
+    ],
+    "all_protected_bytes_identical": true
+  },
+  "whitespace_check": "git -c core.whitespace=cr-at-eol diff --check; existing CSV CRLF preserved",
+  "execution_archive": {
+    "path": "docs/ux/evidence/2026-11-02-workspace-startup-recovery.zip",
+    "bytes": 3706941,
+    "sha256": "20ab7f883cbf6af134946c427a105694e2b78c81cb2fc580ccc6e572ff695482"
+  }
+}

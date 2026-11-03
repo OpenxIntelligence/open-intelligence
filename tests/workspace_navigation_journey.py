@@ -256,7 +256,8 @@ class Journey:
 
 
 @contextmanager
-def browser_session(chrome: str, output: Path, report: dict, *, standard: bool = False):
+def browser_session(chrome: str, output: Path, report: dict, *, standard: bool = False,
+                    with_examples: bool = True):
     mode = 'standard' if standard else 'connected'
     with tempfile.TemporaryDirectory(prefix=f'oi-navigation-{mode}-', ignore_cleanup_errors=True) as directory:
         temporary = Path(directory)
@@ -265,11 +266,13 @@ def browser_session(chrome: str, output: Path, report: dict, *, standard: bool =
         app_port, debug_port = free_port(), free_port()
         env = dict(os.environ, PYTHONPATH=str(ROOT / 'src'))
         if standard:
-            subprocess.run([sys.executable, '-m', 'open_intelligence', 'seed', '--db', str(database)],
-                           cwd=ROOT, env=env, check=True, stdout=subprocess.DEVNULL)
+            if with_examples:
+                subprocess.run([sys.executable, '-m', 'open_intelligence', 'seed', '--db', str(database)],
+                               cwd=ROOT, env=env, check=True, stdout=subprocess.DEVNULL)
             command = [sys.executable, '-m', 'open_intelligence', 'serve', '--db', str(database), '--port', str(app_port)]
         else:
-            command = [sys.executable, str(ROOT / 'run_open_intelligence.py'), '--with-examples',
+            command = [sys.executable, str(ROOT / 'run_open_intelligence.py'),
+                       *(['--with-examples'] if with_examples else []),
                        '--db', str(database), '--port', str(app_port)]
         browser = cd = server = None
         with (output / f'navigation-{mode}-server.log').open('w') as server_log, \

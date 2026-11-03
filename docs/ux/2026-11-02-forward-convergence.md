@@ -59,6 +59,7 @@ Measure task success, first meaningful action, wrong-route hops, source traceabi
 
 ### Gate 2 — Close #183 UX-specific deficiencies without touching backend
 - Keep worklist state consistent with accepted chart responses through its **existing** refresh owner. The [currentness increment](2026-11-02-worklist-currentness.md) adds keyed projections, explicit refresh and delayed-read protection; its exact published verification status is recorded in #183. It adds no competing fetch cache or push events.
+- Recover the first roster read through the existing initializer. The [startup continuation](2026-11-02-workspace-startup-recovery.md) distinguishes loading, unavailable and proven empty states, keeps a global retry reachable, and preserves saved creation without another POST. Accepted worklist completion resumes pending activation through the original picker; a later accepted case choice cancels that intent. Eighteen focused scenarios and 295 assertions pass. Exact published integration results remain recorded in #183.
 - Audit the patient overview for repeated numbers, excessive warnings and unclear wording while preserving source provenance.
 - Test 200%/400% zoom, keyboard focus through disclosures and dialogs, Safari/Firefox when available, and real assistive technology with testers. Record unsupported cases.
 - Ensure all dynamic controls remain hidden in patient **presentation** only; explicitly communicate that the underlying demo lacks authorization.

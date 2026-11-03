@@ -7,34 +7,31 @@
   const current = () => {
     try { return readyCase(); } catch (_) { return null; }
   };
-  let refreshQueued=false, lastScopedCase=null, lastPresentedCase=null;
+  let refreshQueued=false, lastScopedCase=null, lastPresentedCase=null, pendingCreation=null;
+  let observedSelection=caseId, selectionRevision=0;
   const intake=globalThis.OIIntake.mount({
     api,
     getCase:current,
     canSwitch:() => !dirty(),
-    created:async id => {
-      const picker=$('case-picker');
+    getCreationContext:() => selectionRevision,
+    created:async (id, selection=selectionRevision) => {
+      // A user-selected chart after submission supersedes the old creation
+      // navigation intent, even when the successful POST response was delayed.
+      if(selection!==selectionRevision)return 'cancelled';
+      const intent={id, selection, cancelled:false};
+      pendingCreation=intent;
       if (!caseId) {
-        // The original empty startup exits before binding case change. Run it
-        // once after first creation; repeated creation uses its existing listener.
-        picker.replaceChildren();
-        await initialize();
+        // The POST has succeeded. Retain this activation intent across read
+        // failures and supersede an older startup snapshot with a fresh roster.
+        await initialize(id);
       } else {
-        const list=await api('/api/cases'), selected=caseId;
-        picker.replaceChildren();
-        for(const entry of list) {
-          const option=document.createElement('option');option.value=entry.case_id;
-          option.textContent=entry.label.replace(/^Fictional case /,'')+', '+entry.case_id;
-          picker.append(option);
-        }
-        picker.value=selected;
-        await renderIncomingBoard(list);
+        // This same path also covers startup completing while the POST waits.
+        // A failed read leaves its intent recoverable via the existing worklist.
+        await renderIncomingBoard();
       }
-      if(!dirty() && id!==caseId) { picker.value=id;picker.dispatchEvent(new Event('change')); }
-      workspacePresentation.navigate('source-intake');
-      $('source-intake').open=true;
-      $('source-intake').scrollIntoView({block:'start'});
       schedule();
+      if(intent.cancelled || intent.selection!==selectionRevision)return 'cancelled';
+      return current()===id;
     },
     imported:async id => {
       if(current()!==id)return;
@@ -67,24 +64,30 @@
       lastScopedCase=caseId;
       intake.resetScope();
     }
-    const selected=current(), unavailable=Boolean(caseId) && !selected;
+    const selected=current(), unavailable=!selected && (Boolean(caseId) || workspaceStartupPhase!=='empty');
     $('journey-steps').hidden=unavailable;
     $('source-intake-case').hidden=unavailable;
     if(selected) {
       document.body.dataset.workspaceState='ready';
       $('case-picker').disabled=false;
       renderIntakePresentation(active);
-    } else if(!caseId && !$('case-picker').options.length &&
-              ['No synthetic cases found','Create your first case workspace'].includes($('case-heading').textContent)) {
+      if(pendingCreation?.id===selected) {
+        pendingCreation=null;
+        $('case-create-status').textContent='Workspace created. Import its first original source below.';
+        $('case-create-status').dataset.error='false';
+        workspacePresentation.navigate('source-intake');
+        $('source-intake').open=true;
+        $('source-intake').scrollIntoView({block:'start'});
+      }
+    } else if(!caseId && workspaceStartupPhase==='empty') {
       document.body.dataset.workspaceState='empty';
       $('case-picker').disabled=true;
       if($('case-heading').textContent!=='Create your first case workspace')
         $('case-heading').textContent='Create your first case workspace';
-      const message=$('notice');
-      if(message.textContent.includes('seed before opening')) {message.hidden=true;message.textContent='';}
       renderIntakePresentation(null);
     } else if(unavailable) {
-      document.body.dataset.workspaceState='loading';
+      document.body.dataset.workspaceState=workspaceStartupPhase==='failed' ? 'unavailable' : 'loading';
+      $('case-picker').disabled=!caseId;
     }
   }
   function schedule() {
@@ -94,7 +97,31 @@
   const observer=new MutationObserver(schedule);
   for(const id of ['case-heading','source-list','question-list','snapshot-list'])
     observer.observe($(id),{childList:true,subtree:true});
-  document.addEventListener('oi:case-selection-changed',schedule);
+  document.addEventListener('oi:case-selection-changed',()=>{
+    // Initial automatic selection is not a later user choice. Subsequent
+    // accepted switches synchronously cancel an obsolete creation intent.
+    if(observedSelection && observedSelection!==caseId)selectionRevision++;
+    observedSelection=caseId;
+    if(pendingCreation) {
+      if(caseId===pendingCreation.id)pendingCreation.selection=selectionRevision;
+      else {
+        pendingCreation.cancelled=true;
+        pendingCreation=null;
+        $('case-create-status').textContent='Workspace created and saved. Open it from Patients when you are ready.';
+        $('case-create-status').dataset.error='false';
+      }
+    }
+    schedule();
+  });
+  document.addEventListener('oi:workspace-startup-changed',schedule);
+  document.addEventListener('oi:worklist-updated',()=>{
+    if(!caseId || !pendingCreation || dirty())return;
+    const picker=$('case-picker');
+    if(![...picker.options].some(option=>option.value===pendingCreation.id))return;
+    picker.value=pendingCreation.id;
+    picker.dispatchEvent(new Event('change'));
+    schedule();
+  });
   $('new-workspace-button').addEventListener('click',()=>{
     workspacePresentation.navigate('workspace-start');
     $('workspace-start').open=true;$('new-case-panel').open=true;

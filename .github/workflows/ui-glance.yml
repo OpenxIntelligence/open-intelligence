@@ -68,6 +68,10 @@ jobs:
         env:
           OI_WORKLIST_ARTIFACT_DIR: ui-artifacts/worklist
         run: python tests/workspace_worklist_journey.py
+      - name: First-load recovery, empty discovery and saved creation activation
+        env:
+          OI_STARTUP_ARTIFACT_DIR: ui-artifacts/startup
+        run: python tests/workspace_startup_recovery_journey.py
       - name: Source-first layout and keyboard journey
         if: always()
         run: python tests/ui_glance_journey.py

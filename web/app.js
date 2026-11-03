@@ -8,6 +8,10 @@ let renderedCaseId = null;
 let incomingBoardSequence = 0;
 let incomingRowRevision = 0;
 let incomingRosterUnavailable = false;
+// Startup describes the first roster request, not chart state or readiness.
+let workspaceStartupPhase = 'loading';
+let workspaceStartupSequence = 0;
+let workspaceStartupPreferredCase = null;
 const el = (id) => document.getElementById(id);
 function node(tag, text, className = '') {
   const item = document.createElement(tag);
@@ -46,60 +50,112 @@ function hasUnfinishedCaseWork() {
      'draft-assumptions', 'evidence-rationale', 'evidence-withdraw-reason',
      'option-description'].some(id => el(id)?.value.trim());
 }
-async function initialize() {
+function presentWorkspaceStartup(phase) {
+  workspaceStartupPhase = phase;
+  const loading = phase === 'loading', region = el('workspace-startup');
+  region.hidden = phase === 'available';
+  region.className = phase === 'failed' ? 'notice error' : 'notice';
+  region.setAttribute('aria-busy', String(loading));
+  el('workspace-startup-message').textContent = loading ? 'Loading the case list…' : phase === 'failed'
+    ? 'The case list is unavailable. Retry loading to open your workspace.'
+    : phase === 'empty' ? 'No case workspaces are available yet. Create a workspace or refresh the list after a case is added.' : '';
+  el('workspace-startup-retry').textContent = loading ? 'Loading…' : phase === 'empty' ? 'Refresh list' : 'Retry loading';
+  el('workspace-startup-retry').disabled = loading;
+  el('case-picker').disabled = phase !== 'available';
+  el('worklist-refresh').disabled = loading;
+  if (phase !== 'available') {
+    el('incoming-list').setAttribute('aria-busy', String(loading));
+    el('worklist-status').textContent = loading ? 'Loading the case list…' : phase === 'failed'
+      ? 'The case list is unavailable. Retry loading to check for cases.' : 'No case workspaces are available yet.';
+  }
+  document.dispatchEvent(new Event('oi:workspace-startup-changed'));
+}
+async function initialize(preferredCaseId) {
+  // Once established, selection and retry belong to the existing chart owner.
+  if (caseId) return true;
+  if (preferredCaseId) workspaceStartupPreferredCase = preferredCaseId;
+  const sequence = ++workspaceStartupSequence;
+  const current = () => sequence === workspaceStartupSequence && !caseId;
+  // Creation may supersede an initializer already reading its board summaries.
+  ++incomingBoardSequence;
+  presentWorkspaceStartup('loading');
   try {
-    const cases = await api('/api/cases');
+    const response = await api('/api/cases');
+    if (!current()) return false;
+    if (!Array.isArray(response) || response.some(entry => !entry ||
+      typeof entry.case_id !== 'string' || !entry.case_id.trim() || typeof entry.label !== 'string'))
+      throw Error('Case list unavailable.');
+    const seen = new Set();
+    const cases = response.filter(entry => {
+      if (seen.has(entry.case_id)) return false;
+      seen.add(entry.case_id); return true;
+    });
+    if (workspaceStartupPreferredCase && !seen.has(workspaceStartupPreferredCase))
+      throw Error('Created workspace not available yet.');
     const picker = el('case-picker');
+    picker.replaceChildren();
     for (const entry of cases) {
       const option = node('option', entry.label.replace(/^Fictional case /, '') + ', ' + entry.case_id);
       option.value = entry.case_id;
       picker.append(option);
     }
+    // Keep the initial list ahead of canonical chart projection, as before.
+    await renderIncomingBoard(cases);
+    if (!current()) return false;
     if (!cases.length) {
       el('case-heading').textContent = 'No synthetic cases found';
-      notice('Run PYTHONPATH=src python -m open_intelligence seed before opening the demo.', true);
-      return;
+      presentWorkspaceStartup('empty');
+      return true;
     }
-    await renderIncomingBoard(cases);
-    picker.addEventListener('change', () => {
-      // Reopening a ready chart preserves drafts. Reopening an unavailable
-      // chart retries its existing state owner without resetting local inputs.
-      if (picker.value === caseId) {
-        try { readyCase(); } catch (_) { refresh(); }
-        return;
-      }
-      // A selected File is unfinished work even before its original bytes finish
-      // loading. Use this same guard for the connected workspace creation flow.
-      if (hasUnfinishedCaseWork()) {
-        picker.value = caseId;
-        notice('Save or explicitly clear the unfinished investigation draft, question or pasted record, or discard the selected source before switching cases.', true, caseId);
-        return;
-      }
-      cancelSourceRead();
-      // Saved-report actions and switch warnings belong to the original chart.
-      // Unrelated global notices keep their existing lifetime.
-      if (el('notice').dataset.caseId === caseId) {
-        el('notice').replaceChildren();
-        el('notice').hidden = true;
-        delete el('notice').dataset.caseId;
-      }
-      caseId = picker.value;
-      active = null; // Reject writes while the next case is loading.
-      for (const id of ['question-text', 'report-text', 'evidence-rationale', 'draft-observations',
-        'draft-summary', 'draft-assumptions']) el(id).value = '';
-      if (el('source-dialog').open) el('source-dialog').close();
-      if (el('compare-dialog').open) el('compare-dialog').close();
-      // Notify consumers only after the canonical selection has been accepted.
-      // Native select events can run microtasks between their individual listeners.
-      document.dispatchEvent(new Event('oi:case-selection-changed'));
-      refresh();
-    });
-    caseId = cases[0].case_id;
-    el('worklist-refresh').disabled = false;
+    caseId = workspaceStartupPreferredCase || cases[0].case_id;
+    workspaceStartupPreferredCase = null;
+    picker.value = caseId;
+    presentWorkspaceStartup('available');
     document.dispatchEvent(new Event('oi:case-selection-changed'));
     await refresh();
-  } catch (err) { notice(err.message, true); }
+    return true;
+  } catch (_) {
+    if (current()) presentWorkspaceStartup('failed');
+    return false;
+  }
 }
+el('workspace-startup-retry').addEventListener('click', () => initialize());
+// Bind once, independently of how many initial roster requests are retried.
+el('case-picker').addEventListener('change', () => {
+  if (!caseId) return;
+  const picker = el('case-picker');
+  // Reopening a ready chart preserves drafts. Reopening an unavailable
+  // chart retries its existing state owner without resetting local inputs.
+  if (picker.value === caseId) {
+    try { readyCase(); } catch (_) { refresh(); }
+    return;
+  }
+  // A selected File is unfinished work even before its original bytes finish
+  // loading. Use this same guard for the connected workspace creation flow.
+  if (hasUnfinishedCaseWork()) {
+    picker.value = caseId;
+    notice('Save or explicitly clear the unfinished investigation draft, question or pasted record, or discard the selected source before switching cases.', true, caseId);
+    return;
+  }
+  cancelSourceRead();
+  // Saved-report actions and switch warnings belong to the original chart.
+  // Unrelated global notices keep their existing lifetime.
+  if (el('notice').dataset.caseId === caseId) {
+    el('notice').replaceChildren();
+    el('notice').hidden = true;
+    delete el('notice').dataset.caseId;
+  }
+  caseId = picker.value;
+  active = null; // Reject writes while the next case is loading.
+  for (const id of ['question-text', 'report-text', 'evidence-rationale', 'draft-observations',
+    'draft-summary', 'draft-assumptions']) el(id).value = '';
+  if (el('source-dialog').open) el('source-dialog').close();
+  if (el('compare-dialog').open) el('compare-dialog').close();
+  // Notify consumers only after the canonical selection has been accepted.
+  // Native select events can run microtasks between their individual listeners.
+  document.dispatchEvent(new Event('oi:case-selection-changed'));
+  refresh();
+});
 function incomingRows() {
   return [...el('incoming-list').children].filter(row => row.dataset.caseId);
 }
@@ -211,6 +267,9 @@ async function renderIncomingBoard(cases) {
     if (selected) picker.value = selected;
     orderIncomingRows(rows);
     if (!rows.length) empty(list, 'No fictional cases in this demo.');
+    // Presentation consumers may finish a saved creation after this accepted
+    // roster read. Selection still goes through the existing picker owner.
+    document.dispatchEvent(new Event('oi:worklist-updated'));
   } catch (_) {
     if (sequence !== incomingBoardSequence) return;
     incomingRosterUnavailable = true;
@@ -227,14 +286,14 @@ async function renderIncomingBoard(cases) {
   } finally {
     if (sequence === incomingBoardSequence) {
       list.setAttribute('aria-busy', 'false');
-      button.disabled = !caseId;
+      button.disabled = !caseId && workspaceStartupPhase === 'loading';
       incomingStatus();
       if (restoreButtonFocus && document.activeElement === document.body && !button.disabled)
         button.focus({ preventScroll: true });
     }
   }
 }
-el('worklist-refresh').addEventListener('click', () => renderIncomingBoard());
+el('worklist-refresh').addEventListener('click', () => caseId ? renderIncomingBoard() : initialize());
 
 const CERTAINTY_PLAIN = {
   reported: 'reported', pending: 'still pending', indeterminate: 'not certain yet',
@@ -1729,6 +1788,11 @@ const workspacePresentation = (() => {
     el(emptyId).hidden = !query || visible > 0 || !rows.length;
   }
   function filterCases() {
+    if (!caseId && !['empty', 'available'].includes(workspaceStartupPhase)) {
+      el('case-search-count').textContent = '';
+      el('case-search-empty').hidden = true;
+      return;
+    }
     filterList('case-search', 'incoming-list', '[data-case-search]', 'case-search-count', 'case-search-empty', 'cases', 'caseSearch');
   }
   function filterDocuments() {
@@ -1760,11 +1824,11 @@ const workspacePresentation = (() => {
     el('case-context').hidden = current.scope !== 'case';
     el('case-heading').hidden = !ready;
     el('case-reference').textContent = ready ? 'Fictional record · ' + caseId : (caseId ? 'Loading selected case…' : 'No case selected');
-    el('workspace-loading').hidden = !waiting;
+    el('workspace-loading').hidden = !waiting || !caseId;
     el('workspace-loading').textContent = !el('notice').hidden && el('notice').classList.contains('error')
       ? 'The selected record is unavailable. See the message above, or choose another case.'
       : 'Loading the selected record…';
-    host.setAttribute('aria-busy', String(waiting));
+    host.setAttribute('aria-busy', String(waiting && (Boolean(caseId) || workspaceStartupPhase === 'loading')));
     for (const [id, view] of views) view.hidden = id !== current.id || waiting;
     filterCases(); filterDocuments();
     if (ready) revealTarget();
@@ -1858,6 +1922,7 @@ const workspacePresentation = (() => {
   el('case-search').addEventListener('input', filterCases);
   el('document-search').addEventListener('input', filterDocuments);
   document.addEventListener('oi:case-selection-changed', scheduleSync);
+  document.addEventListener('oi:workspace-startup-changed', scheduleSync);
   const observer = new MutationObserver(scheduleSync);
   for (const id of ['case-heading', 'source-list', 'question-list', 'snapshot-list', 'incoming-list', 'notice'])
     observer.observe(el(id), { childList: true, subtree: true });
