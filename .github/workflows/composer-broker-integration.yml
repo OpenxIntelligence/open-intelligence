@@ -5,6 +5,7 @@ on:
     branches:
       - integration/composer-evidence-run-freshness-20261102
       - main
+      - integration/composer-rights-context-20261102
 
 permissions:
   contents: read

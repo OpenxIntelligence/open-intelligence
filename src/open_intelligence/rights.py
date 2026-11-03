@@ -12,8 +12,9 @@ Rules (fail closed, per the issue #2 boundary reconciliation):
   means "unknown", which means NO.
 - Content modes follow from the gate, never from a claim about the
   source:
-  - "full": full_text may be stored AND displayed. An excerpt may be
-    kept only in this mode.
+  - "full": the explicitly declared text item may be stored AND displayed.
+    This legacy availability name does not grant full_text rights to api_output
+    or abstract content. An excerpt may be kept only in this mode.
   - "metadata_only": metadata may be stored (title/identifier fields),
     but no excerpt. The record is usable as a citation, not as evidence
     text.
@@ -32,6 +33,8 @@ from __future__ import annotations
 ITEMS = frozenset({
     "metadata", "abstract", "full_text", "figures", "terminology", "api_output",
 })
+TEXT_ITEMS = frozenset({"full_text", "abstract", "api_output"})
+
 USES = frozenset({"store", "display", "redistribute", "ml_use"})
 PERMISSION_VALUES = frozenset({"allowed", "denied", "unknown"})
 
@@ -79,11 +82,20 @@ def permitted(permissions: dict[str, dict[str, str]], item: str, use: str,
     return permissions.get(item, {}).get(use) == "allowed"
 
 
+def validate_content_item(value: object) -> str:
+    """Classify only declared text artifacts; never infer rights from their label."""
+    if type(value) is not str or value not in TEXT_ITEMS:
+        raise RightsError("Content item must be full_text, abstract, or api_output")
+    return value
+
+
 def excerpt_mode(permissions: dict[str, dict[str, str]], *,
+                 content_item: str = "full_text",
                  revoked: bool = False, superseded: bool = False) -> str:
-    """Content mode for a rights record: full, metadata_only, or citation_only."""
-    if permitted(permissions, "full_text", "store", revoked=revoked, superseded=superseded) \
-            and permitted(permissions, "full_text", "display", revoked=revoked, superseded=superseded):
+    """Legacy availability mode for the exact declared item, not a full-text grant."""
+    validate_content_item(content_item)
+    if permitted(permissions, content_item, "store", revoked=revoked, superseded=superseded) \
+            and permitted(permissions, content_item, "display", revoked=revoked, superseded=superseded):
         return "full"
     if permitted(permissions, "metadata", "store", revoked=revoked, superseded=superseded):
         return "metadata_only"
@@ -92,18 +104,20 @@ def excerpt_mode(permissions: dict[str, dict[str, str]], *,
 
 def check_link_content(permissions: dict[str, dict[str, str]], *,
                        revoked: bool = False, superseded: bool = False,
-                       citation_title: str | None, excerpt: str | None) -> str:
+                       citation_title: str | None, excerpt: str | None,
+                       content_item: str = "full_text") -> str:
     """Validate proposed link content against the gate; return the mode.
 
     Raises RightsError when the caller tries to store more than the
     record permits: an excerpt without full mode, or a title without
-    metadata (or full) permission. Citation identity alone is always
+    its own metadata permission. Citation identity alone is always
     storable, because it carries no source content.
     """
-    mode = excerpt_mode(permissions, revoked=revoked, superseded=superseded)
+    mode = excerpt_mode(permissions, content_item=content_item,
+                        revoked=revoked, superseded=superseded)
     if excerpt is not None and mode != "full":
         raise RightsError(
-            f"Excerpt requires full-text store and display permission; mode is {mode}")
+            f"Excerpt requires {content_item} store and display permission; mode is {mode}")
     # A title is metadata content, not citation identity: it needs its own
     # metadata store permission even when full-text permission is granted.
     if citation_title is not None and not permitted(
