@@ -58,7 +58,7 @@ For fictional examples, independently walk through:
 Measure task success, first meaningful action, wrong-route hops, source traceability, back-navigation, and reading/keyboard burden. Keep observed timings distinct from estimates.
 
 ### Gate 2 — Close #183 UX-specific deficiencies without touching backend
-- Verify whether worklist state refresh can be presented more truthfully using its **existing** refresh owner; do not add a competing fetch cache or invent push events.
+- Keep worklist state consistent with accepted chart responses through its **existing** refresh owner. The [currentness increment](2026-11-02-worklist-currentness.md) adds keyed projections, explicit refresh and delayed-read protection; its exact published verification status is recorded in #183. It adds no competing fetch cache or push events.
 - Audit the patient overview for repeated numbers, excessive warnings and unclear wording while preserving source provenance.
 - Test 200%/400% zoom, keyboard focus through disclosures and dialogs, Safari/Firefox when available, and real assistive technology with testers. Record unsupported cases.
 - Ensure all dynamic controls remain hidden in patient **presentation** only; explicitly communicate that the underlying demo lacks authorization.

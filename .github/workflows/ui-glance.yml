@@ -64,6 +64,10 @@ jobs:
         env:
           OI_SCOPE_ARTIFACT_DIR: ui-artifacts/scope-recovery
         run: python tests/workspace_scope_recovery_journey.py
+      - name: Current worklist summaries and recoverable refresh
+        env:
+          OI_WORKLIST_ARTIFACT_DIR: ui-artifacts/worklist
+        run: python tests/workspace_worklist_journey.py
       - name: Source-first layout and keyboard journey
         if: always()
         run: python tests/ui_glance_journey.py
@@ -73,7 +77,7 @@ jobs:
           mkdir -p ui-artifacts
           git rev-parse HEAD > ui-artifacts/commit.txt
           git rev-parse 'HEAD^{tree}' | tee ui-artifacts/tree.txt
-          sha256sum web/app.js web/intake.js web/workspace-entry.js web/workspace-entry.html | tee ui-artifacts/runtime-sha256.txt
+          sha256sum web/app.js web/index.html web/intake.js web/workspace-entry.js web/workspace-entry.html | tee ui-artifacts/runtime-sha256.txt
           git archive --format=zip --output=ui-artifacts/source-under-test.zip HEAD
       - name: Preserve fictional screenshots and reproducible source
         if: always()
