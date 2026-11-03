@@ -282,17 +282,60 @@ def run_evaluation(base_url: str) -> dict:
             else:
                 raise InvalidInput("Case source binding leaked between synthetic patients")
 
+            # Wrap the *first and only* WADO network request for each SOP
+            # with source-version checks. Capture the reply for the existing
+            # independent pixel/transfer-syntax diagnostics; do not request
+            # the same SOP a second time or discard negative test evidence.
+            from tools.imaging.source_bound_wado import (
+                SyntheticWadoBinding, read_source_bound_wado,
+            )
+            source = next(
+                row for row in ledger.state("CASE-ALPHA")["sources"]
+                if row["id"] == source_id and row["state"] == "current"
+            )
+            read_bindings = {
+                sop: SyntheticWadoBinding(
+                    case_id="CASE-ALPHA",
+                    source_version_id=source_id,
+                    source_sha256=source["sha256"],
+                    study_uid=IMAGE_STUDY_UID,
+                    series_uid=IMAGE_SERIES_UID,
+                    sop_uid=sop,
+                    original_dicom_sha256=expected_digests[sop],
+                )
+                for sop in SOP_UIDS
+            }
             returned_digests = {}
             returned_pixel_digests = {}
             exact_byte_match = {}
             pixel_diagnostics = {}
+            protected_receipts = {}
             from pydicom import dcmread
             for sop in SOP_UIDS:
-                _, wado_type, wado_body = _request(
-                    base + "/wado/studies/" + IMAGE_STUDY_UID + "/series/"
-                    + IMAGE_SERIES_UID + "/instances/" + sop,
-                    accept=WADO_ACCEPT
-                )
+                replies = []
+
+                def capture_first_wado(url, accept):
+                    response = _request(url, accept=accept)
+                    replies.append(response)
+                    return response
+
+                try:
+                    protected_receipts[sop] = read_source_bound_wado(
+                        ledger, read_bindings[sop], base, fetch=capture_first_wado
+                    )
+                except InvalidInput as exc:
+                    # Preserve the technical comparison when intentionally
+                    # mutated DICOM bytes fail the stricter source guard.
+                    # Do not log upstream body or untrusted error content.
+                    protected_receipts[sop] = {
+                        "status": "held", "error_type": type(exc).__name__,
+                        "original_bytes_verified": False,
+                        "clinical_review_state": "not_performed",
+                        "case_authorization_verified": False,
+                    }
+                if len(replies) != 1:
+                    raise InvalidInput("Expected one bounded upstream WADO request")
+                _, wado_type, wado_body = replies[0]
                 objects = multipart_dicom_parts(wado_type, wado_body)
                 if len(objects) != 1:
                     raise InvalidInput("WADO instance endpoint returned multiple SOPs")
@@ -328,32 +371,8 @@ def run_evaluation(base_url: str) -> dict:
                 returned_pixel_digests[sop] = sha256(parsed.PixelData).hexdigest()
                 exact_byte_match[sop] = returned_digests[sop] == expected_digests[sop]
 
-            # Re-read the actual upstream PACS through the *first-party*
-            # source-version guard. Byte hashes and case/source identity must
-            # match before AND after the request. This is not user auth.
-            from tools.imaging.source_bound_wado import (
-                SyntheticWadoBinding, read_source_bound_wado,
-            )
-            source = next(
-                row for row in ledger.state("CASE-ALPHA")["sources"]
-                if row["id"] == source_id and row["state"] == "current"
-            )
-            read_bindings = {
-                sop: SyntheticWadoBinding(
-                    case_id="CASE-ALPHA",
-                    source_version_id=source_id,
-                    source_sha256=source["sha256"],
-                    study_uid=IMAGE_STUDY_UID,
-                    series_uid=IMAGE_SERIES_UID,
-                    sop_uid=sop,
-                    original_dicom_sha256=expected_digests[sop],
-                )
-                for sop in SOP_UIDS
-            }
-            protected_receipts = {
-                sop: read_source_bound_wado(ledger, binding, base)
-                for sop, binding in read_bindings.items()
-            }
+            # The wrong-case refusal must happen before any new upstream
+            # request. It is an OI source check, not a PACS access-control test.
             try:
                 wrong_case = SyntheticWadoBinding(
                     case_id="CASE-BETA",
@@ -444,9 +463,9 @@ def run_evaluation(base_url: str) -> dict:
                 "first_party_wrong_case_rejected": case_isolated_at_adapter,
                 "first_party_amendment_rejected": amendment_blocks_first_party_binding,
                 "first_party_source_bound_wado_verified": all(
-                    receipt["original_bytes_verified"]
-                    and receipt["source_current_before_and_after"]
-                    and receipt["retrieved_original_dicom_sha256"] == expected_digests[sop]
+                    receipt.get("original_bytes_verified") is True
+                    and receipt.get("source_current_before_and_after") is True
+                    and receipt.get("retrieved_original_dicom_sha256") == expected_digests[sop]
                     for sop, receipt in protected_receipts.items()
                 ),
                 "first_party_source_bound_receipts": protected_receipts,

@@ -137,6 +137,10 @@ class ProbeIntegrityIntegrationTests(unittest.TestCase):
         self.assertEqual(receipt["sop_returned_sha256"], receipt["sop_original_sha256"])
         self.assertTrue(receipt["first_party_wrong_case_rejected"])
         self.assertTrue(receipt["first_party_amendment_rejected"])
+        self.assertTrue(receipt["first_party_source_bound_wado_verified"])
+        self.assertTrue(receipt["first_party_wado_wrong_case_refused"])
+        self.assertTrue(receipt["first_party_wado_amendment_refused"])
+        self.assertEqual(len(receipt["first_party_source_bound_receipts"]), 2)
         self.assertFalse(receipt["pacs_authentication_verified"])
         self.assertFalse(receipt["pacs_tenant_isolation_verified"])
         self.assertFalse(receipt["clinical_or_full_dicomweb_approval"])
@@ -150,6 +154,7 @@ class ProbeIntegrityIntegrationTests(unittest.TestCase):
         self.assertEqual(receipt["exact_original_object_preserved"],
                          {first: False, second: True})
         self.assertFalse(receipt["source_and_retrieved_objects_byte_identical"])
+        self.assertFalse(receipt["first_party_source_bound_wado_verified"])
         self.assertFalse(receipt["technical_evaluation_passed"])
 
     def test_changed_nonpixel_metadata_fails_original_object_gate(self):
