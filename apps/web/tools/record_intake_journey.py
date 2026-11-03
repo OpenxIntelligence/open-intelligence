@@ -18,7 +18,7 @@ AMENDED = ORIGINAL.replace(b'Issued-At: 2026-01-03', b'Issued-At: 2026-01-04').r
 
 
 def exercise(cd, patient_id, directory, token, credentials, write_grants, screenshots):
-    credentials[0]['actions'] += ['case_binding_create', 'case_binding_read', 'source_import', 'source_read', 'source_original_read']
+    credentials[0]['actions'] = sorted(set(credentials[0]['actions']) | {'case_binding_create', 'case_binding_read', 'source_import', 'source_read', 'source_original_read'})
     write_grants()
 
     def operator(path, payload=None):
@@ -37,7 +37,7 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, screen
         cd.wait("Boolean(document.querySelector('[data-testid=load-cases]'))", 'existing Records workspace')
         cd.evaluate("document.querySelector('[data-testid=load-cases]').click()")
         cd.wait("Boolean(document.querySelector('[data-testid=load-sources]'))", 'authorized case mapping')
-        cd.evaluate("document.querySelector('[data-testid=load-sources]').click()")
+        cd.evaluate("[...document.querySelectorAll('[data-testid=case-row]')].find(e=>e.textContent.includes('CASE-WEB-INTAKE')).querySelector('[data-testid=load-sources]').click()")
         cd.wait("Boolean(document.querySelector('[data-testid=source-index]'))", 'authorized source index')
 
     records()
@@ -102,7 +102,7 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, screen
     assert len(operator(index_path)['sources'])==2
     # Current source/mapping access is independently rechecked, not inferred from prior successful load.
     credentials[0]['actions'].remove('source_read');write_grants()
-    cd.evaluate("document.querySelector('[data-testid=load-sources]').click()")
+    cd.evaluate("[...document.querySelectorAll('[data-testid=case-row]')].find(e=>e.textContent.includes('CASE-WEB-INTAKE')).querySelector('[data-testid=load-sources]').click()")
     cd.wait("!document.querySelector('[data-testid=source-index]')",'source metadata cleared on denied recheck')
     cd.evaluate("[...document.querySelectorAll('nav button')].find(e=>e.textContent==='Overview').click()")
     cd.wait("Boolean(document.querySelector('[data-testid=patient-card]'))",'original identity journey preserved')

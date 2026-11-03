@@ -41,7 +41,8 @@ export async function verifyOriginal(v:unknown,caseId:string,source:SourceVersio
      v.version!==source.version||v.state!==source.state||v.sha256!==source.sha256||
      v.synthetic!==true||v.clinical_review_state!=='not_established'||typeof v.original_text!=='string')throw Error('contract');
   const bytes=new TextEncoder().encode(v.original_text);
-  if(prepareSource(bytes,'original.txt').declaredCase!==caseId)throw Error('contract');
+  const prepared=prepareSource(bytes,'original.txt');
+  if(prepared.declaredCase!==caseId||prepared.text!==v.original_text)throw Error('contract');
   const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('');
   if(hash!==source.sha256)throw Error('contract');
   return Object.freeze(v as OriginalSource);

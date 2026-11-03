@@ -15,7 +15,7 @@ import signal
 import subprocess
 import sys
 import tempfile
-from urllib.request import urlopen
+from urllib.request import Request,urlopen
 ROOT=Path(__file__).resolve().parents[3]
 sys.path.insert(0,str(ROOT/'tests'))
 from browser_journey import ChromeSession,free_port,wait_for
@@ -73,6 +73,65 @@ def main():
             assert cd.evaluate("document.querySelector('[data-testid=patient-card]').textContent").count(pid)==1
             assert cd.evaluate('localStorage.length===0 && sessionStorage.length===0')
             assert tokens[0] not in cd.evaluate('document.documentElement.outerHTML')
+            # Add only operator-controlled fictional grants; no UI self-authorization.
+            credentials[0]['actions'].extend(['case_binding_create','case_binding_read','source_import','source_read'])
+            write_grants()
+            def add_synthetic(path,payload):
+                url='http://127.0.0.1:8000'+path
+                operation=Request(url,data=json.dumps(payload).encode('utf-8'),
+                    headers={'Authorization':'Bearer '+tokens[0],'Content-Type':'application/json',
+                             'Accept':'application/json'},method='POST')
+                with urlopen(operation,timeout=10) as response:
+                    return response.status,json.load(response)
+            root='/v1/patients/'+pid
+            case='CASE-ALPHA'
+            status,mapping=add_synthetic(root+'/case-bindings',{
+                'synthetic':True,'case_id':case,'source_organization':'ORG-INSTITUTION',
+                'source_system':'SYS-SYNTH','source_subject_ref':'SUBJECT-ALPHA','review_ref':'REVIEW-SYNTH'})
+            assert status==201 and mapping['case_id']==case and not mapping['source_identity_verified']
+            original=(
+                'OI-SYNTHETIC-REPORT/1\nPatient: CASE-ALPHA\nDocument: DOC-ONE\n'
+                'Type: pathology\nEvent-Date: 2026-01-10\nIssued-At: 2026-01-11\n'
+                'Specimen: SPECIMEN-ONE\n'
+                'Finding: marker|not-reported|Fictional café <script>literal</script>.\n'
+            )
+            status,receipt=add_synthetic(root+'/cases/'+case+'/sources',{
+                'synthetic':True,'original_text':original})
+            assert status==201 and receipt['result']=='imported'
+            original_id=receipt['source_id']
+            cd.evaluate("Array.from(document.querySelectorAll('nav[aria-label=\"Patient workspace\"] button')).find(b=>b.textContent.includes('Records')).click()")
+            cd.wait("Boolean(document.querySelector('[data-testid=records-workspace]'))",'actual read-only Records screen')
+            assert pid in cd.evaluate("document.querySelector('[data-testid=records-patient]').textContent")
+            cd.evaluate("document.querySelector('[data-testid=load-cases]').click()")
+            cd.wait("document.querySelectorAll('[data-testid=case-row]').length===1",'canonical scoped case binding')
+            cd.evaluate("document.querySelector('[data-testid=load-sources]').click()")
+            cd.wait("document.querySelectorAll('[data-testid=source-version]').length===1",'persisted original version in React')
+            assert cd.evaluate("document.querySelector('[data-testid=source-index]').textContent").find(original_id)>=0
+            assert cd.evaluate("document.querySelector('[data-testid=source-statement]').textContent.includes('<script>literal</script>')")
+            assert cd.evaluate("document.querySelectorAll('[data-testid=source-statement] script').length===0")
+            assert cd.evaluate("document.querySelector('[data-testid=source-index]').textContent.includes('not established')")
+            amended=(
+                'OI-SYNTHETIC-REPORT/1\nPatient: CASE-ALPHA\nDocument: DOC-ONE\n'
+                'Type: pathology\nEvent-Date: 2026-01-10\nIssued-At: 2026-01-12\n'
+                'Specimen: SPECIMEN-ONE\nAmends: DOC-ONE@1\n'
+                'Finding: marker|negative|Amended fictional marker is reported negative.\n'
+            )
+            status,new_receipt=add_synthetic(root+'/cases/'+case+'/sources',{
+                'synthetic':True,'original_text':amended})
+            assert status==201 and new_receipt['version']==2
+            cd.evaluate("document.querySelector('[data-testid=load-sources]').click()")
+            cd.wait("document.querySelectorAll('[data-testid=source-version]').length===2",'versioned amendment history')
+            assert cd.evaluate("document.querySelector('[data-testid=source-index]').textContent.includes('superseded')")
+            assert cd.evaluate("document.querySelector('[data-testid=source-index]').textContent.includes('Amended fictional marker is reported negative.')")
+            assert cd.evaluate("document.querySelectorAll('[data-testid=source-statement]').length===1")
+            # Read rights must be checked afresh; a denied refresh discards earlier findings.
+            credentials[0]['actions'].remove('source_read');write_grants()
+            cd.evaluate("document.querySelector('[data-testid=load-sources]').click()")
+            cd.wait("document.querySelector('[data-testid=records-status]').textContent.includes('Sources unavailable')",'revoked source permission erases stale view')
+            assert cd.evaluate("!document.querySelector('[data-testid=source-index]')")
+            credentials[0]['actions'].append('source_read');write_grants()
+            cd.evaluate("Array.from(document.querySelectorAll('nav[aria-label=\"Patient workspace\"] button')).find(b=>b.textContent.includes('Overview')).click()")
+            cd.wait("Boolean(document.querySelector('[data-testid=patient-card]'))",'return to patient identity after governed records inspection')
             cd.command('Accessibility.enable');tree=cd.command('Accessibility.getFullAXTree')['nodes']
             assert any(n.get('role',{}).get('value')=='main' for n in tree)
             assert any(n.get('role',{}).get('value')=='navigation' for n in tree)
@@ -94,7 +153,7 @@ def main():
             cd.wait("document.querySelector('[data-testid=status]').textContent.includes('Patient unavailable')",'cross-organization read denied')
             cd.command('Page.reload');cd.wait("Boolean(document.querySelector('#credential'))",'reload forgets credential')
             assert cd.evaluate("document.querySelector('#credential').value==='' && document.querySelector('#patient-id').value==='' && localStorage.length===0 && sessionStorage.length===0")
-            print('PASS: React/Vite -> actual FastAPI/PostgreSQL 16; create/retry, separate read grant, revoked view clearing, expiry, cross-organization denial, memory-only credential, reload, accessibility landmarks and 390px layout. Fictional identities only; no clinical workflow or production identity claim.')
+            print('PASS: React/Vite -> actual FastAPI/PostgreSQL 16; identity/create/retry; exact case/source read, immutable amendment history, unreviewed quoted text and rights revocation; cross-organization isolation, credential expiry/reload, keyboard landmarks and mobile layout. Independently fictional records only; no clinical workflow or production identity claim.')
         finally:
             if cd:cd.close()
             for process in (browser,web,api):
