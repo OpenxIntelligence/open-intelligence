@@ -83,6 +83,11 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
 
     def remove_owned_fixtures(self):
         with self.engine.begin() as conn:
+            conn.execute(text("DROP TABLE IF EXISTS clinical_source.assertions"))
+            conn.execute(text("DROP TABLE IF EXISTS clinical_source.quarantine"))
+            conn.execute(text("DROP TABLE IF EXISTS clinical_source.source_versions"))
+            conn.execute(text("DROP FUNCTION IF EXISTS clinical_source.guard_version_history()"))
+            conn.execute(text("DROP SCHEMA IF EXISTS clinical_source"))
             conn.execute(text("DROP TABLE IF EXISTS coordination.patient_case_bindings"))
             conn.execute(text("DROP TABLE IF EXISTS coordination.record_requests"))
             conn.execute(text("DROP FUNCTION IF EXISTS coordination.guard_case_binding_origin()"))
