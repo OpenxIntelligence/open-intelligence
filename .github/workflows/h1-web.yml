@@ -74,6 +74,7 @@ jobs:
           set -o pipefail
           python -m unittest discover -s apps/api/tests -p test_contracts.py -v 2>&1 | tee verification-web/world-model-contracts.txt
           python -m unittest discover -s apps/api/tests -p test_world_model_source_read.py -v 2>&1 | tee verification-web/world-model-postgres.txt
+          python -m unittest discover -s apps/api/tests -p test_composer_preflight.py -v 2>&1 | tee verification-web/composer-preflight-postgres.txt
       - name: Actual PostgreSQL API and built React browser journey
         shell: bash
         run: |
