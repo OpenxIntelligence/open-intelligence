@@ -61,6 +61,8 @@ jobs:
             tee verification-artifacts/pacsnode-network-and-gate-tests.txt
           python -m unittest discover -s tests -p 'test_pacsnode_security_evaluation.py' -v 2>&1 |
             tee verification-artifacts/pacsnode-direct-access-tests.txt
+          python -m unittest discover -s tests -p 'test_pacsnode_lifecycle*.py' -v 2>&1 |
+            tee verification-artifacts/pacsnode-lifecycle-tests.txt
       - name: Install only hash-pinned pydicom core for synthetic fixture generation
         shell: bash
         run: |
@@ -150,6 +152,64 @@ jobs:
           assert d['direct_access_boundary_characterized'] is True
           assert d['pacs_service_access_controls'] is False
           PY
+      - name: Characterize retained-store restart and duplicate SOP protection
+        shell: bash
+        run: |
+          set -euo pipefail
+          pacs_lifecycle_directory=$(mktemp -d "$RUNNER_TEMP/oi-pacsnode-lifecycle.XXXXXX")
+          parent_namespace=$(readlink /proc/self/ns/net)
+          lifecycle_exit=0
+          sudo unshare --net -- bash tools/imaging/run_confined_pacsnode.sh \
+            "$RUNNER_TEMP/oi-pacsnode-source/target/debug/pacsnode" \
+            "$GITHUB_WORKSPACE" "$pacs_lifecycle_directory" "$parent_namespace" \
+            "$(command -v python)" lifecycle || lifecycle_exit=$?
+          printf '%s\n' "$lifecycle_exit" > verification-artifacts/pacsnode-lifecycle-exit-code.txt
+          # Exit 2 is a completed NEGATIVE acceptance result. Keep it intact;
+          # this step validates the characterization, not backend acceptance.
+          # An incomplete run, missing evidence, or another failure is red CI.
+          python - "$lifecycle_exit" <<'PY'
+          import json, sys
+          from pathlib import Path
+          from tools.imaging import pacsnode_live_probe as pacs
+          from tools.imaging.pacsnode_lifecycle_evaluation import acceptance_exit_code
+          d = json.loads(Path('verification-artifacts/pacsnode-lifecycle.json').read_text())
+          status = int(sys.argv[1])
+          assert status in (0, 2) and status == acceptance_exit_code(d)
+          assert d['evaluation_completed'] is True
+          assert d['evaluation_network_namespace_confined'] is True
+          assert d['process_restarts_verified'] is True
+          assert len(d['restart_observations']) == 2
+          assert d['source_ledger_unchanged_after_restart'] is True
+          assert d['wrong_case_refused'] is True and d['wrong_case_http_calls'] == 0
+          assert d['amendment_refused_after_restart'] is True
+          assert d['amendment_http_calls_after_restart'] == 0
+          assert d['classification'] == 'HOLD_NOT_APPROVED'
+          assert d['backend_adoption_approved'] is False
+          for name in ('baseline', 'after_restart', 'identical_replay'):
+              phase = d['phases'][name]
+              assert phase['inventory_matches'] is True
+              assert phase['qido_sop_multiplicity'] == dict.fromkeys(pacs.SOP_UIDS, 1)
+              for sop in pacs.SOP_UIDS:
+                  obj = phase['objects'][sop]
+                  assert obj['returned_dicom_sha256'] == d['original_dicom_sha256'][sop]
+                  assert obj['returned_pixel_sha256'] == d['original_pixel_sha256'][sop]
+                  assert obj['source_bound_read_accepted'] is True
+          if status == 2:
+              assert d['lifecycle_acceptance_passed'] is False
+              assert d['acceptance_blockers'] == ['conflicting_sop_original_replaced']
+              target = d['phases']['conflicting_replay']['objects'][pacs.SOP_UIDS[0]]
+              sibling = d['phases']['conflicting_replay']['objects'][pacs.SOP_UIDS[1]]
+              assert target['returned_dicom_sha256'] == d['conflicting_submission']['dicom_sha256']
+              assert target['returned_dicom_sha256'] != d['original_dicom_sha256'][pacs.SOP_UIDS[0]]
+              assert target['source_bound_read_accepted'] is False
+              assert d['changed_object_withheld_by_source_guard'] is True
+              assert sibling['original_bytes_match'] and sibling['source_bound_read_accepted']
+              print('NEGATIVE RESULT RETAINED: conflicting SOP replaced the original; acceptance FAILED')
+          else:
+              assert d['lifecycle_acceptance_passed'] is True and d['acceptance_blockers'] == []
+              assert d['conflicting_sop_rejected_and_original_preserved'] is True
+              print('Bounded lifecycle contract passed; adoption still HOLD')
+          PY
       - name: Preserve only source and numerical receipts, no image objects
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -161,6 +221,7 @@ jobs:
             verification-artifacts/pacsnode-source-bound-wado-tests.txt
             verification-artifacts/pacsnode-network-and-gate-tests.txt
             verification-artifacts/pacsnode-direct-access-tests.txt
+            verification-artifacts/pacsnode-lifecycle-tests.txt
             verification-artifacts/pacsnode-dicom-regression-tests.txt
             verification-artifacts/pacsnode-upstream-commit.txt
             verification-artifacts/pacsnode-cargo-lock-sha256.txt
@@ -171,5 +232,9 @@ jobs:
             verification-artifacts/pacsnode-test-config-sha256.txt
             verification-artifacts/pacsnode-test-storage-transfer-syntax.txt
             verification-artifacts/pacsnode-stdout.txt
+            verification-artifacts/pacsnode-lifecycle.json
+            verification-artifacts/pacsnode-lifecycle-exit-code.txt
+            verification-artifacts/pacsnode-lifecycle-test-config-sha256.txt
+            verification-artifacts/pacsnode-lifecycle-test-storage-transfer-syntax.txt
           if-no-files-found: warn
           retention-days: 7

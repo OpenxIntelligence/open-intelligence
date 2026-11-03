@@ -3,8 +3,8 @@
 # The upstream wildcard sockets remain unchanged; this is synthetic test confinement.
 set -euo pipefail
 
-if [ "$#" -ne 5 ]; then
-  echo "Usage: run_confined_pacsnode.sh BINARY REPO RUN_DIR PARENT_NETNS PYTHON_BIN" >&2
+if [ "$#" -lt 5 ] || [ "$#" -gt 6 ]; then
+  echo "Usage: run_confined_pacsnode.sh BINARY REPO RUN_DIR PARENT_NETNS PYTHON_BIN [security|lifecycle]" >&2
   exit 2
 fi
 pacs_binary=$1
@@ -12,6 +12,11 @@ pacs_repo=$2
 pacs_run_directory=$3
 pacs_parent_namespace=$4
 pacs_python=$5
+pacs_mode=${6:-security}
+case "$pacs_mode" in
+  security|lifecycle) ;;
+  *) echo "HOLD: unknown evaluation mode" >&2; exit 2 ;;
+esac
 
 if [[ ! "$pacs_parent_namespace" =~ ^net:\[[1-9][0-9]*\]$ ]] || \
    [ "$(readlink /proc/self/ns/net)" = "$pacs_parent_namespace" ]; then
@@ -66,8 +71,19 @@ export PACS_SERVER__HTTP_PORT=18042
 export PACS_SERVER__DICOM_PORT=11112
 export PACS_SERVER__STORAGE_TRANSFER_SYNTAX=1.2.840.10008.1.2.1
 export PYTHONPATH="$pacs_repo/src"
-printf '%s\n' "$PACS_SERVER__STORAGE_TRANSFER_SYNTAX" > "$pacs_repo/verification-artifacts/pacsnode-test-storage-transfer-syntax.txt"
-sha256sum config.toml > "$pacs_repo/verification-artifacts/pacsnode-test-config-sha256.txt"
+pacs_evidence_prefix=pacsnode
+if [ "$pacs_mode" = lifecycle ]; then pacs_evidence_prefix=pacsnode-lifecycle; fi
+printf '%s\n' "$PACS_SERVER__STORAGE_TRANSFER_SYNTAX" > "$pacs_repo/verification-artifacts/$pacs_evidence_prefix-test-storage-transfer-syntax.txt"
+sha256sum config.toml > "$pacs_repo/verification-artifacts/$pacs_evidence_prefix-test-config-sha256.txt"
+if [ "$pacs_mode" = lifecycle ]; then
+  # A single Python owner starts, reaps and restarts the retained-store process.
+  # It receives the fresh generated configuration exactly once.
+  cd "$pacs_repo"
+  exec "$pacs_python" -m tools.imaging.pacsnode_lifecycle_process \
+    --binary "$pacs_binary" --run-directory "$pacs_run_directory" \
+    --parent-namespace "$pacs_parent_namespace" \
+    --output "$pacs_repo/verification-artifacts/pacsnode-lifecycle.json"
+fi
 "$pacs_binary" > "$pacs_repo/verification-artifacts/pacsnode-stdout.txt" 2>&1 &
 server_pid=$!
 cleanup() {
