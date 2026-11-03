@@ -1,6 +1,8 @@
 /** Transient UI state over the canonical patient API; never an authority or ledger. */
 import {parseCaseBindingList, parseSourceIndex} from './source-contracts.js';
 import type {CaseBinding, SourceIndex} from './source-contracts.js';
+import {parseExactOriginal} from './source-original.js';
+import type {ExactOriginal} from './source-original.js';
 export type Patient = Readonly<{
   patient_id: string; origin_org: string; created_at: string;
   status: 'active' | 'suspended'; revision: number;
@@ -10,6 +12,7 @@ export type ViewState = Readonly<{
   connected: boolean; phase: 'disconnected' | 'idle' | 'reading' | 'creating' | 'ready' | 'error';
   patient: Patient | null; created: CreatedPatient | null; message: string;
   cases: ReadonlyArray<CaseBinding> | null; sourceIndex: SourceIndex | null;
+  original:ExactOriginal|null; originalPhase:'idle'|'loading'|'ready'|'error'; originalMessage:string;
   recordsPhase: 'idle' | 'loading-cases' | 'loading-sources' | 'ready' | 'error';
   recordMessage: string;
 }>;
@@ -26,23 +29,23 @@ const messages: Record<number,string> = {
   422:'The API refused this request. Check the opaque identifiers.',
   503:'The patient registry or access service is unavailable. No cached patient is shown.',
 };
-const fresh = (): ViewState => Object.freeze({connected:false,phase:'disconnected',patient:null,created:null,message:'Connect a local synthetic credential to use the patient registry.',cases:null,sourceIndex:null,recordsPhase:'idle',recordMessage:'Open an authorized fictional patient in Overview first.'});
-const emptyRecords=()=>({cases:null,sourceIndex:null,recordsPhase:'idle' as const,recordMessage:'Load the current authorized case mappings to inspect original source metadata.'});
+const fresh = (): ViewState => Object.freeze({connected:false,phase:'disconnected',patient:null,created:null,message:'Connect a local synthetic credential to use the patient registry.',cases:null,sourceIndex:null,recordsPhase:'idle',recordMessage:'Open an authorized fictional patient in Overview first.',original:null,originalPhase:'idle',originalMessage:'Choose an exact source from a freshly authorized source index.'});
+const emptyRecords=()=>({cases:null,sourceIndex:null,recordsPhase:'idle' as const,recordMessage:'Load the current authorized case mappings to inspect original source metadata.',original:null,originalPhase:'idle' as const,originalMessage:'Choose an exact source from a freshly authorized source index.'});
 function exact(value: unknown, fields: string[]): value is Record<string,unknown> {
   return value !== null && typeof value==='object' && !Array.isArray(value) &&
     Object.keys(value).length===fields.length && fields.every(k=>Object.hasOwn(value,k));
 }
 function boundedKey(value: unknown): value is string { return typeof value==='string' && KEY.test(value); }
-async function json(response: Response): Promise<unknown> {
+async function json(response: Response,maxBytes=65536): Promise<unknown> {
   if(!/^application\/json(?:\s*;|$)/i.test(response.headers.get('Content-Type') || '')) throw Error('contract');
   const declared=response.headers.get('Content-Length');
-  if(declared && (!/^\d+$/.test(declared) || Number(declared)>65536)) throw Error('contract');
+  if(declared && (!/^\d+$/.test(declared) || Number(declared)>maxBytes)) throw Error('contract');
   // Bounded streaming read also covers absent or dishonest Content-Length.
   const reader=response.body?.getReader(); if(!reader)throw Error('contract');
   let size=0; const parts:Uint8Array[]=[];
   try {
     while(true){ const {done,value}=await reader.read();if(done)break;size+=value.byteLength;
-      if(size>65536){await reader.cancel();throw Error('contract');}parts.push(value); }
+      if(size>maxBytes){await reader.cancel();throw Error('contract');}parts.push(value); }
   } finally {reader.releaseLock();}
   const all=new Uint8Array(size);let offset=0;for(const p of parts){all.set(p,offset);offset+=p.length;}
   return JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(all));
@@ -133,7 +136,7 @@ export class RegistrySession {
       request===this.#records && this.#state.patient?.patient_id===patientId;
     const control=new AbortController();this.#controllers.add(control);
     const timeout=setTimeout(()=>control.abort(),10000);
-    this.#publish({cases:null,sourceIndex:null,recordsPhase:'loading-cases',recordMessage:'Checking current case mapping permissions…'});
+    this.#publish({cases:null,sourceIndex:null,original:null,originalPhase:'idle',originalMessage:'Choose an exact source from a freshly authorized source index.',recordsPhase:'loading-cases',recordMessage:'Checking current case mapping permissions…'});
     try{
       const res=await this.transport('/v1/patients/'+encodeURIComponent(patientId)+'/case-bindings',this.#init(control));
       if(!current())return;
@@ -165,7 +168,7 @@ export class RegistrySession {
       request===this.#records && this.#state.patient?.patient_id===patientId;
     const control=new AbortController();this.#controllers.add(control);
     const timeout=setTimeout(()=>control.abort(),10000);
-    this.#publish({sourceIndex:null,recordsPhase:'loading-sources',
+    this.#publish({sourceIndex:null,original:null,originalPhase:'idle',originalMessage:'Choose an exact source from a freshly authorized source index.',recordsPhase:'loading-sources',
       recordMessage:'Checking exact source versions and current permissions…'});
     try{
       const url='/v1/patients/'+encodeURIComponent(patientId)+'/cases/'+encodeURIComponent(caseId)+'/sources';
@@ -184,6 +187,48 @@ export class RegistrySession {
     }catch(_){
       if(current())this.#publish({cases:null,sourceIndex:null,recordsPhase:'error',
         recordMessage:'Source response failed validation or the service is unavailable. No sources are shown.'});
+    }finally{clearTimeout(timeout);this.#controllers.delete(control);}
+  }
+
+  /** Independently authorized exact original; checks both identifier and bytes.
+   * Prior results are cleared on every new read, patient selection, or case refresh.
+   */
+  async loadOriginal(sourceId:string):Promise<void>{
+    const patientId=this.#state.patient?.patient_id,index=this.#state.sourceIndex;
+    if(!patientId||!this.#token||this.#state.phase!=='ready'||!index||
+       !/^SRC-[0-9A-F]{32}$/.test(sourceId)||
+       !index.sources.some(s=>s.source_id===sourceId)){
+      this.#records++;
+      this.#publish({original:null,originalPhase:'error',
+        originalMessage:'Select an original from the latest authorized source list.'});
+      return;
+    }
+    const scope=this.#scope,read=this.#read,request=++this.#records;
+    const current=()=>scope===this.#scope&&read===this.#read&&
+      request===this.#records&&this.#state.patient?.patient_id===patientId&&
+      this.#state.sourceIndex===index;
+    const control=new AbortController();this.#controllers.add(control);
+    const timeout=setTimeout(()=>control.abort(),10000);
+    this.#publish({original:null,originalPhase:'loading',
+      originalMessage:'Checking original-read permission and verifying SHA-256…'});
+    try{
+      const url='/v1/patients/'+encodeURIComponent(patientId)+'/cases/'+
+        encodeURIComponent(index.case_id)+'/sources/'+encodeURIComponent(sourceId);
+      const response=await this.transport(url,this.#init(control));
+      if(!current())return;
+      if(response.status===401){this.#httpError(401);return;}
+      if(response.status!==200){
+        this.#publish({original:null,originalPhase:'error',
+          originalMessage:'Original bytes are unavailable under the current grant. Nothing is displayed.'});
+        return;
+      }
+      const original=await parseExactOriginal(await json(response,131072),index,sourceId);
+      if(!current())return;
+      this.#publish({original,originalPhase:'ready',
+        originalMessage:'Original bytes match the indexed SHA-256; source text is still unreviewed.'});
+    }catch(_){
+      if(current())this.#publish({original:null,originalPhase:'error',
+        originalMessage:'Original response, version or SHA-256 could not be verified. Refresh source history.'});
     }finally{clearTimeout(timeout);this.#controllers.delete(control);}
   }
 }
