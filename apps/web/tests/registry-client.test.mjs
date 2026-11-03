@@ -584,3 +584,166 @@ test('patient switching, navigation reset and disconnect invalidate durable ques
  t.disconnect();assert.equal(t.snapshot().questions,null);
  assert.equal(t.snapshot().savedQuestion,null);
 });
+
+
+const reviewReceiptId='REVIEW-'+'D'.repeat(32);
+const reviewFingerprint='c'.repeat(64);
+const reviewItem=(overrides={})=>({
+ question_id:savedQuestionId,patient_id:receiptPatient,case_id:receiptCase,
+ question:composerQuestion,source_id:receiptSource,source_line:8,source_sha256:sha256,
+ source_version:1,source_snapshot_sha256:'a'.repeat(64),
+ preflight_sha256:'b'.repeat(64),created_at:'2026-11-02T11:30:00Z',
+ kind:'source-question',queue_fingerprint:reviewFingerprint,
+ source_context_state:'current_unreviewed_question',
+ review_state:'awaiting_independent_verification',
+ current_return_receipt_id:null,return_count:0,prior_return_count:0,
+ clinical_approval:false,reviewer_identity_verified:false,...overrides
+});
+const reviewReceipt=()=>({
+ receipt_id:reviewReceiptId,question_id:savedQuestionId,
+ queue_fingerprint:reviewFingerprint,source_snapshot_sha256:'a'.repeat(64),
+ actor_label:'ACTOR-FICTIONAL',action:'returned',
+ reason:'Please independently verify this fictional source quotation and uncertainty.',
+ created_at:'2026-11-02T11:32:00Z',reviewer_identity_verified:false,
+ external_notification_sent:false,clinical_approval:false
+});
+const reviewQueue=(items=[reviewItem()],receipts=[])=>({
+ contract:'oi.synthetic-question-review-return-queue/1',
+ patient_id:receiptPatient,case_id:receiptCase,synthetic:true,items,receipts,
+ external_notification_sent:false,reviewer_identity_verified:false,
+ clinical_approval:false,review_completion_supported:false
+});
+const reviewPath='/v1/patients/'+receiptPatient+'/cases/'+receiptCase+'/review-queue';
+const reviewReturnPath='/v1/patients/'+receiptPatient+'/cases/'+receiptCase+
+ '/questions/'+savedQuestionId+'/return-for-verification';
+test('review queue stays unavailable without authorized patient and case context',async()=>{
+ let calls=0;const s=new RegistrySession(async()=>{calls++;return response(patient())});
+ s.connect(token);await s.loadReviewQueue(receiptCase);
+ assert.equal(calls,0);assert.equal(s.snapshot().reviewQueue,null);
+ await s.read(receiptPatient);await s.loadReviewQueue('../OTHER');
+ assert.equal(calls,1);assert.equal(s.snapshot().reviewPhase,'error');
+});
+test('review return is a distinct nonterminal authorization action and never calls model',async()=>{
+ const requests=[];
+ const s=new RegistrySession(async(url,opts)=>{
+  requests.push([url,opts]);
+  if(url===reviewPath)return response(reviewQueue());
+  if(url===reviewReturnPath)return response({
+   receipt_id:reviewReceiptId,question_id:savedQuestionId,duplicate:false
+  },201);
+  return response(patient());
+ });
+ s.connect(token);await s.read(receiptPatient);await s.loadReviewQueue(receiptCase);
+ assert.equal(s.snapshot().reviewPhase,'ready');
+ assert.equal(s.snapshot().reviewQueue.items[0].review_state,'awaiting_independent_verification');
+ assert.equal(s.snapshot().reviewReturn,null);
+ assert.equal(requests.length,2);
+ await s.returnReviewQuestion(savedQuestionId,reviewFingerprint,
+   'Please independently verify this fictional source quotation and uncertainty.');
+ assert.equal(s.snapshot().reviewReturn?.receipt_id,reviewReceiptId);
+ assert.equal(s.snapshot().reviewReturnPhase,'saved');
+ assert.equal(requests.length,3);
+ assert.equal(requests[2][0],reviewReturnPath);
+ assert.equal(requests[2][1].method,'POST');
+ assert.equal(requests[2][1].credentials,'omit');
+ assert.equal(requests[2][1].redirect,'error');
+ const sent=JSON.parse(requests[2][1].body);
+ assert.equal(sent.synthetic,true);
+ assert.equal(sent.expected_queue_fingerprint,reviewFingerprint);
+ assert.equal(sent.reason,'Please independently verify this fictional source quotation and uncertainty.');
+ assert.equal(typeof sent.request_key,'string');
+ assert.equal(s.snapshot().reviewQueue.clinical_approval,false);
+ assert.equal(s.snapshot().reviewQueue.review_completion_supported,false);
+});
+test('uncertain network return can retry with exact same durable request key',async()=>{
+ const requests=[];let attempts=0;
+ const s=new RegistrySession(async(url,opts)=>{
+  if(url===reviewPath)return response(reviewQueue());
+  if(url===reviewReturnPath){
+   requests.push(JSON.parse(opts.body));attempts++;
+   if(attempts===1)throw Error('response lost after commit');
+   return response({receipt_id:reviewReceiptId,question_id:savedQuestionId,duplicate:true});
+  }
+  return response(patient());
+ });
+ s.connect(token);await s.read(receiptPatient);await s.loadReviewQueue(receiptCase);
+ await s.returnReviewQuestion(savedQuestionId,reviewFingerprint);
+ assert.equal(s.snapshot().reviewReturn,null);
+ assert.equal(s.snapshot().reviewReturnPhase,'error');
+ await s.returnReviewQuestion(savedQuestionId,reviewFingerprint);
+ assert.equal(s.snapshot().reviewReturn?.duplicate,true);
+ assert.equal(requests.length,2);
+ assert.equal(requests[0].request_key,requests[1].request_key);
+ assert.deepEqual(requests[0],requests[1]);
+});
+test('review return is blocked for historical source and forged clinical approval',async()=>{
+ let calls=0;
+ const historical=reviewItem({
+  source_context_state:'source_reassessment_required',
+  review_state:'source_reassessment_required',queue_fingerprint:null,
+  prior_return_count:1
+ });
+ const s=new RegistrySession(async(url)=>{
+  calls++;
+  return response(url===reviewPath?reviewQueue([historical],[reviewReceipt()]):patient());
+ });
+ s.connect(token);await s.read(receiptPatient);await s.loadReviewQueue(receiptCase);
+ assert.equal(s.snapshot().reviewQueue.items[0].review_state,'source_reassessment_required');
+ await s.returnReviewQuestion(savedQuestionId,reviewFingerprint);
+ assert.equal(calls,2);assert.equal(s.snapshot().reviewReturn,null);
+ for(const bad of [
+  {...reviewQueue(),review_completion_supported:true},
+  {...reviewQueue(),clinical_approval:true},
+  {...reviewQueue(),patient_id:'PAT-OTHER-001'},
+  {...reviewQueue(),items:[reviewItem({clinical_approval:true})]},
+  {...reviewQueue(),items:[reviewItem({source_id:'SRC-'+'E'.repeat(31)})]},
+  {...reviewQueue(),items:[reviewItem({return_count:1})]},
+  {...reviewQueue(),items:[reviewItem({queue_fingerprint:null})]},
+ ]){
+  const t=new RegistrySession(async(url)=>response(url===reviewPath?bad:patient()));
+  t.connect(token);await t.read(receiptPatient);await t.loadReviewQueue(receiptCase);
+  assert.equal(t.snapshot().reviewQueue,null);assert.equal(t.snapshot().reviewPhase,'error');
+ }
+});
+test('review grant denial clears prior queue and opaque source references',async()=>{
+ let rejected=false;
+ const s=new RegistrySession(async(url)=>
+  response(url===reviewPath?rejected?{detail:'private source notes'}:reviewQueue():patient(),
+           rejected&&url===reviewPath?404:200));
+ s.connect(token);await s.read(receiptPatient);await s.loadReviewQueue(receiptCase);
+ assert.equal(s.snapshot().reviewQueue.items.length,1);
+ rejected=true;await s.loadReviewQueue(receiptCase);
+ assert.equal(s.snapshot().reviewQueue,null);
+ assert.equal(s.snapshot().reviewPhase,'error');
+ assert.ok(!JSON.stringify(s.snapshot()).includes('private source notes'));
+});
+test('patient switch and navigation reset block stale review queue or return responses',async()=>{
+ const late=deferred();
+ const s=new RegistrySession(async(url)=>{
+  if(url===reviewPath)return late.promise;
+  return response(patient(url.endsWith('PAT-EXAMPLE-002')?'PAT-EXAMPLE-002':receiptPatient));
+ });
+ s.connect(token);await s.read(receiptPatient);
+ const pending=s.loadReviewQueue(receiptCase);
+ await s.read('PAT-EXAMPLE-002');late.resolve(response(reviewQueue()));await pending;
+ assert.equal(s.snapshot().reviewQueue,null);
+ const t=new RegistrySession(async(url)=>response(url===reviewPath?reviewQueue():patient()));
+ t.connect(token);await t.read(receiptPatient);await t.loadReviewQueue(receiptCase);
+ assert.ok(t.snapshot().reviewQueue);
+ t.clearWorldModel();assert.equal(t.snapshot().reviewQueue,null);
+ t.disconnect();assert.equal(t.snapshot().reviewReturn,null);
+});
+test('returned receipt can be read as immutable history, never as a clinical decision',async()=>{
+ const received=reviewReceipt();
+ const item=reviewItem({
+  review_state:'returned_for_independent_verification',
+  current_return_receipt_id:reviewReceiptId,return_count:1
+ });
+ const s=new RegistrySession(async(url)=>
+  response(url===reviewPath?reviewQueue([item],[received]):patient()));
+ s.connect(token);await s.read(receiptPatient);await s.loadReviewQueue(receiptCase);
+ assert.equal(s.snapshot().reviewQueue.receipts.length,1);
+ assert.equal(s.snapshot().reviewQueue.items[0].review_state,'returned_for_independent_verification');
+ assert.equal(s.snapshot().reviewQueue.receipts[0].action,'returned');
+ assert.equal(s.snapshot().reviewQueue.receipts[0].clinical_approval,false);
+});
