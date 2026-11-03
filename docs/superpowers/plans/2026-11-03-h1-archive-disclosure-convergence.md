@@ -58,7 +58,7 @@ preparation, failed preparation and real deferred commit failure.
   changes and one missing-provider case still disclosed bytes; preparation
   failure returned 500; locks were free during preparation; deferred commit
   failure preceded preparation. Suspension-during-fetch and all inherited tests
-  passed. The six new tests are unchanged for the green candidate.
+  passed. The six new tests were unchanged for the first combined candidate.
 - Pre-flight interface: #261 optional archive feeds #253 original response
   callback. Preserve both: no transaction spans remote I/O; the fresh final
   transaction owns preparation, final authorization, receipt and commit.
@@ -74,3 +74,22 @@ preparation, failed preparation and real deferred commit failure.
   revalidation, exact-byte comparison, no-fallback behavior, preserved response
   headers and final-authority ordering. No separate reviewer tool is available;
   independent review remains pending, not silently claimed as complete.
+
+- First combined runtime `f22b1a9bf5dd9d48c4de7fa163ec658069148fc2`:
+  API run 41577320153 executed 228 tests; 227 passed and one failed only
+  because the new helper expected the registry error for a missing authority
+  provider. Actual HTTP was sanitized 503 `Access service unavailable`, the
+  existing `authenticate_request` contract. All other new disclosure/lock/commit
+  cases and all inherited tests passed. Subsequent workflow stages were skipped,
+  so this run is not full backend acceptance.
+- Correct only the test helper's exact expected detail for that provider case;
+  retain strict 503, JSON shape, no-store, no receipt header, no sensitive content
+  and unchanged database-event assertions. Keep registry-unavailable detail for
+  construction/commit failures. No runtime change. The original red run remains
+  valid: this provider case originally returned 200 before the status assertion.
+- Web run 41577320172 at the first combined head passed 51 client tests,
+  TypeScript/Vite and actual React/FastAPI/PostgreSQL browser journeys. Downloaded
+  artifact 13204470641 has ZIP SHA-256
+  `86a376b4b517b5883187a672c064e54868b0fc0871c6bc90f44349c0b0cbf1ed`;
+  commit.txt and all 280 source files match the candidate. This is historical
+  evidence; rerun both workflows on the test-corrected final head.

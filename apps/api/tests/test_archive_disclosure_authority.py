@@ -67,10 +67,10 @@ class ArchiveDisclosureAuthorityTests(SourceVersionFixture):
                 "WHERE event_type='image.original_read_authorized' ORDER BY id"
             )).scalars().all()
 
-    def withheld(self, result, status, before):
+    def withheld(self, result, status, before, *, unavailable_detail="Patient registry unavailable"):
         self.assertEqual(result[0], status)
         if status == 503:
-            self.assertEqual(result[1], {"detail": "Patient registry unavailable"})
+            self.assertEqual(result[1], {"detail": unavailable_detail})
         self.assertIsInstance(result[1], dict)
         self.assertEqual(set(result[1]), {"detail"})
         self.assertEqual(result[2]["Cache-Control"], "no-store")
@@ -139,7 +139,10 @@ class ArchiveDisclosureAuthorityTests(SourceVersionFixture):
             with self.preparing(self.access.unlink):
                 result = read_original(base, path)
             self.archive.read.assert_called_once()
-            self.withheld(result, 503, before)
+            # Authentication preserves its own sanitized provider-unavailable
+            # contract; this is not a database/response-construction failure.
+            self.withheld(result, 503, before,
+                          unavailable_detail="Access service unavailable")
 
     def test_failed_remote_response_construction_rolls_back_read_receipt(self):
         with running_server(create_app(self.settings, image_archive=self.archive)) as base:
