@@ -480,3 +480,41 @@ its PR body. No new hosted success is claimed at this local checkpoint; the web
 journey does not constitute a fresh standalone full API/backup-restore suite.
 Independently authored fictional inputs only; no external notification, model
 activation, real-patient processing, clinical approval, merge or deployment.
+
+## Follow-up history timestamp validity — 3 November 2026
+
+This bounded continuation extends OI-007/009/010 and the existing canonical
+question/follow-through work (#295/#121). Its base is #364
+`243d15fdaba112f93f7d3d258311d8b82e730015`. All 422 base source files were
+recovered from the verified artifact and matched to their Git blob identities.
+The existing patient-journey crosswalk and dependency-gate integration remain.
+
+The task client used `Date.parse` as timestamp validation. It accepted nonexistent
+calendar days, year zero, midnight rollover, minute-only timestamps and precision
+outside the task API's seconds/up-to-six-fractional-digit PostgreSQL format.
+A bad refreshed history therefore remained actionable. Sixteen independently
+fault-injected real-session controls reproduced this (ready instead of error);
+26 passing controls remained, including a valid timestamp preservation test.
+
+The task decoder now reuses the existing strict PostgreSQL-shaped citation
+validator. Both task creation and status-event timestamps must pass before the
+list is exposed. Valid offsets, leap dates and microseconds remain verbatim.
+Revision order is preserved; no clock-order assumption, timestamp rewriting,
+new patient ledger, dependency, backend, schema or authority change is introduced.
+
+Local validation: 72 task/attention/evidence-chronology controls and 13 filesystem
+rights controls passed, with zero failures/skips. Python browser-helper syntax and
+whitespace checks passed. Local TypeScript execution used Node's type stripping,
+not a compiler/build claim. The existing hosted workflow must run full `npm test`,
+TypeScript/Vite build, actual installed rights checks and PostgreSQL/API/Chromium
+acceptance on the published head.
+
+The browser regression corrupts only copies of actual authorized HTTP responses,
+retains original/injected values separately, and requires task history, attention
+counts and transition controls to disappear. Fresh valid reads must recover the
+unchanged original tasks with no additional write or grant change. It does not
+claim the genuine backend emits malformed timestamps. Exact hosted results belong
+in the draft PR description after execution; they are pending at this checkpoint.
+
+Independently authored fictional data only. No model activation, clinical
+approval, real-patient processing, merge or deployment.
