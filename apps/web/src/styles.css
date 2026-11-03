@@ -56,3 +56,12 @@
 .question-status.reassessment{background:#f2e7d9;color:#764b21}
 .question-receipt{padding:12px;background:#edf5ee;border-left:3px solid #638673}
 @media(max-width:600px){.question-history{padding:12px}.question-history-heading button{width:100%}.question-status-title{flex-direction:column;gap:8px}}
+
+/* Exact source quotation packet: literal text, bounded and clearly unreviewed. */
+.source-quote-inspection{padding:22px;border:1px solid #c1d2c7;border-left:4px solid #a88b5f;background:#fcfdf9;border-radius:8px;margin-top:18px;min-width:0}
+.source-quote-inspection h3{font-size:20px;margin:10px 0}.source-quote-inspection h4{font-size:16px;margin:16px 0}
+.source-quote-inspection p,.source-quote-inspection code{overflow-wrap:anywhere}
+.source-quote-inspection blockquote{margin:10px 0 16px;border-left:3px solid #8a9e90;padding:12px 15px;background:#eef4ed;white-space:pre-wrap;overflow-wrap:anywhere}
+.source-quote-inspection ul{padding-left:23px}.source-quote-inspection li{margin:10px 0}
+.source-quote-inspection .source-quote-limit{background:#f2ece0;border-left:3px solid #b69560;padding:15px;margin-top:18px}
+@media(max-width:600px){.source-quote-inspection{padding:15px}.question-items button[data-testid=source-quote-packet-open]{width:100%}}
