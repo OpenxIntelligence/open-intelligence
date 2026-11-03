@@ -41,7 +41,8 @@ def _image_id(value: object) -> str:
 
 
 class PostgresSourceImages:
-    def __init__(self, registry):
+    def __init__(self, registry, *, archive=None):
+        self.archive = archive
         self.sources = PostgresSourceVersions(registry)
         self.registry = registry
 
@@ -194,10 +195,44 @@ class PostgresSourceImages:
     def original(self, patient_id: str, case_id: str, source_id: str, image_id: str, *,
                  organization: str, actor: str, purpose: str,
                  recheck_authority: Callable[[], None],
-                 prepare_response: Callable[[bytes, str], PreparedResponse] | None = None) -> tuple[bytes, str] | PreparedResponse:
+                 prepare_response: Callable[[bytes, str], PreparedResponse] | None = None
+                 ) -> tuple[bytes, str] | PreparedResponse:
+        """Validate and prepare bounded original bytes before final authority.
+
+        Archive I/O never holds patient/case locks. After retrieval, a fresh
+        transaction revalidates custody and covers complete response preparation,
+        final authority and receipt commit. Preparation never streams.
+        """
         _image_id(image_id)
+        remote = None
+        if self.archive is not None:
+            # Preflight uses canonical custody and server-stored identifiers;
+            # callers cannot supply an upstream URL, credential or expected hash.
+            with self.registry.transaction():
+                revision, source, binding = self._scope(patient_id, case_id, source_id, organization, purpose)
+                values = self.registry._fetchone(
+                    "SELECT " + ",".join("o." + name for name in _FIELDS)
+                    + " FROM clinical_source.dicom_objects o JOIN clinical_source.source_image_links l "
+                    "ON l.image_id=o.image_id WHERE o.case_id=%s AND l.source_id=%s AND o.image_id=%s",
+                    (case_id, source_id, image_id))
+                if values is None:
+                    raise PatientRegistryDenied("Image unavailable")
+                row = dict(zip(_FIELDS, values))
+                expected = self._validated_object(row, source, binding)
+                preflight = (revision, source["sha256"], tuple(binding))
+                recheck_authority()
+            # Release all source-owner locks before any external network call.
+            # A configured archive failure is never a silent local fallback.
+            try:
+                remote = self.archive.read(row["study_uid"], row["series_uid"], row["sop_uid"])
+                if type(remote) is not bytes or remote != expected:
+                    raise ValueError()
+            except Exception:
+                raise ImageIntegrityError("Remote original unavailable") from None
         with self.registry.transaction():
             revision, source, binding = self._scope(patient_id, case_id, source_id, organization, purpose)
+            if self.archive is not None and preflight != (revision, source["sha256"], tuple(binding)):
+                raise PatientRegistryDenied("Image authority changed")
             values = self.registry._fetchone(
                 "SELECT " + ",".join("o." + name for name in _FIELDS)
                 + " FROM clinical_source.dicom_objects o JOIN clinical_source.source_image_links l "
@@ -207,14 +242,16 @@ class PostgresSourceImages:
                 raise PatientRegistryDenied("Image unavailable")
             row = dict(zip(_FIELDS, values))
             raw = self._validated_object(row, source, binding)
-            receipt = "ACCESS-" + uuid.uuid4().hex.upper()
-            # Preparing the bounded Response does not send it. Its return stays
-            # inside the transaction until final authority and audit commit.
-            prepared = (prepare_response(raw, receipt) if prepare_response is not None
-                        else (raw, receipt))
+            if remote is not None:
+                if remote != raw:
+                    raise ImageIntegrityError("Original changed during remote retrieval")
+                raw = remote
+            receipt_id = "ACCESS-" + uuid.uuid4().hex.upper()
+            prepared = (prepare_response(raw, receipt_id) if prepare_response is not None
+                        else (raw, receipt_id))
             self.sources._read_receipt(
                 patient_id, case_id, actor=actor, purpose=purpose, binding_revision=revision,
-                event="image.original_read_authorized", receipt_id=receipt,
+                event="image.original_read_authorized", receipt_id=receipt_id,
                 recheck_authority=recheck_authority,
                 source_id=source_id, source_version=source["version"], source_sha256=source["sha256"],
                 image_id=image_id, sha256=row["sha256"], byte_count=len(raw))
