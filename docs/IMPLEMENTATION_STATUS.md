@@ -30,8 +30,22 @@ Combined local verification passed: **398 Python/domain/HTTP tests** in 112.609s
 **64 JavaScript tests**, compilation/syntax, the no-patient-data workflow guard,
 and **80 offline research checks with 18 optional HDF5 checks skipped**.
 The clean environment used Python 3.12.14 and pypdf 6.21.4. The 398 include
-17 extractor, 12 PDF store, 8 PDF HTTP and 9 lifecycle tests. Browser acceptance
-remains pending on the published PDF head; local Chromium is unavailable.
+17 extractor, 12 PDF store, 8 PDF HTTP and 9 lifecycle tests.
+
+**Hosted acceptance passed for draft [PR #189](https://github.com/OpenxIntelligence/open-intelligence/pull/189)**
+at `afe89d390f665713acfca5cca58aae9d285ee1bb`:
+[exact-head run 41553904095](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41553904095)
+passed all 398 Python/HTTP, 64 JavaScript, 80 offline checks (18 optional skips)
+and five Chromium journeys. The new PDF journey verifies page 2 selection,
+source/Composer/report/review, amendment, preserved originals, 390 px layout,
+accessible labels and an actual server restart. Its report is human-authored;
+no live model is invoked. [UI run 41553903829](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41553903829)
+also passed the existing integrated, source-dialog race, keyboard and layout
+journeys on the generated merge. Artifact hashes were checked, PDF screenshots
+inspected, and all 213 archived source files matched before this receipt update.
+The initial invalid YAML failed before jobs; the block-scalar correction and
+successful rerun are documented in the intake contract. These are engineering
+results for an unmerged synthetic prototype, not deployment or clinical approval.
 
 The prior #173 baseline has now been verified: exact-head
 [run 41550282180](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41550282180)

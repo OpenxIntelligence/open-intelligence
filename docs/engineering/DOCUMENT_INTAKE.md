@@ -1,6 +1,7 @@
 # Reviewed text and bounded PDF document intake
 
-Status: PDF extension implemented and locally verified; hosted browser pending, 3 November 2026 UTC. Extends OI-006, OI-007,
+Status: PDF extension verified locally and in hosted Chromium on 3 November 2026 UTC;
+draft/unmerged in [PR #189](https://github.com/OpenxIntelligence/open-intelligence/pull/189). Extends OI-006, OI-007,
 OI-009 and OI-010; this is a bounded source-ingestion feature, not a new platform
 architecture or clinical release.
 
@@ -127,6 +128,46 @@ trusted identity/permissions through the canonical patient/adapter owners.
 
 ## Verification receipt
 
+### Hosted PDF acceptance
+
+Verified implementation/workflow head: `afe89d390f665713acfca5cca58aae9d285ee1bb`.
+
+- [Exact-head integration run 41553904095](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41553904095),
+  job `125647955743`: **success**. Checkout equals the authored PR head. Python
+  3.12.15, pypdf 6.21.4, Node 24.22.1, Chrome 156.0.8078.47.
+- **398 Python/HTTP tests passed** in 51.565s; **64 JavaScript tests passed**;
+  **80 offline checks passed, 18 optional HDF5 checks skipped**. The patient-data
+  workflow guard, compilation and syntax checks passed.
+- All five integration browser journeys passed: reviewed text/PDF intake;
+  source-bound Composer/replay; numeric lab tool; durable work; rights-qualified
+  broker. The new PDF journey selects physical page 2/global extraction line 3,
+  preserves manual `not-assessed` status, downloads exact originals with PDF MIME,
+  creates a source-linked human-authored report, records explicit demo review,
+  introduces an amendment, retains stale history, and restarts the actual server.
+  It verifies accessible page labels, a 390 px viewport and literal markup text.
+  This PDF journey invokes no model; the separate Composer regression uses
+  recorded replay. Neither is live-model or clinical validation.
+- [UI run 41553903829](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41553903829),
+  job `125647954254`: **success**, including 398 Python/HTTP tests and existing
+  integrated, source-dialog race, keyboard and layout browser checks. It tested
+  generated merge `d8fe55c55db86bbe342e20e8b8c44ac582d3ce45` into #173.
+- Integration artifact `13193373812`, SHA-256
+  `3ae9d98ddb2974c6db35427afa22a0a65592d53e7cba7652c1dfe5a97d779193`,
+  and UI artifact `13194100080`, SHA-256
+  `6cc0e3135a34fc692af78ff5549757c0a7c11fe5ca9d7d38888c37dd7b90ccc7`,
+  were downloaded and verified. The UI source archive matched all 213 workspace
+  files before this receipt update. PDF desktop/narrow screenshots were inspected.
+  The intake receipt records `status=passed`, `restart_verified=true`, exact
+  original download, two PDF versions, manual classification and no model call.
+
+The initial head `95f4fb9a384bb92ac1231cab1a86b48314134d5c` was rejected before
+jobs ran because the YAML plain scalar contained pip's `--only-binary=:all:`.
+[Failed configuration run 41553646603](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41553646603)
+remains inspectable. A workflow-only correction used block scalars; all seven
+workflow files parsed locally, and the successful runs above verified the fix.
+
+### Local PDF acceptance
+
 PDF extension local run: **398 Python/domain/HTTP tests passed in 112.609s**,
 including 17 extractor, 12 PDF store, 8 PDF HTTP and 9 lifecycle tests. All
 **64 JavaScript tests** passed (22 source-reader, 17 intake, 15 line-comparison,
@@ -140,8 +181,8 @@ frozen reads without a parser, idempotency, immutable review, forced child-inser
 rollback, amendment/model/snapshot staleness, every-consumer page provenance,
 worker resource/format failures and subsequent recovery. Review also found and
 fixed model-driven question closure and manual-measurement promotion into the
-qualified numeric tool. The hosted two-page PDF browser workflow remains
-pending on the feature head; code and unit tests alone do not establish it.
+qualified numeric tool. The hosted two-page PDF browser workflow is established
+by the separate execution receipt above.
 
 The existing text feature passed hosted exact-head run
 [41550282180](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41550282180)
@@ -152,8 +193,7 @@ and four Composer browser journeys. UI run
 also passed. The PDF extension adds independently authored PDF fixtures,
 worker-limit/format tests, source/API integration checks, source-view guards,
 and a real two-page upload → Composer → report → amendment → restart browser
-journey. Hosted verification is pending on the PDF feature head; the earlier
-receipt below applies only to the text baseline.
+journey. The earlier receipt below applies only to the text baseline.
 
 The #173 UI run tested generated merge `9477738cf5a9472747b6bf4e209fcf427c31fb2d`
 with Chromium 156.0.8078.47 and Python 3.13.17. The exact-head text artifact
