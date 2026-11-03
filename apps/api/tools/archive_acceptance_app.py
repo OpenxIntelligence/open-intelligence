@@ -166,8 +166,8 @@ def create_acceptance_app():
     async def lifespan(application):
         try:
             with socket_archive_service(backing, socket_path):
-                async with previous_lifespan(application):
-                    yield
+                async with previous_lifespan(application) as state:
+                    yield state
         finally:
             directory.cleanup()
 
