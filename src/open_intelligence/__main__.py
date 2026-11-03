@@ -166,6 +166,9 @@ class Handler(BaseHTTPRequestHandler):
             timeline = re.fullmatch(rf"/api/cases/{ID_PART}/timeline", path)
             if timeline:
                 return self._json(200, case_timeline(store, timeline[1]))
+            evidence_quality = re.fullmatch(rf"/api/cases/{ID_PART}/evidence-quality", path)
+            if evidence_quality:
+                return self._json(200, store.evidence_quality(evidence_quality[1]))
             inv_list = re.fullmatch(rf"/api/cases/{ID_PART}/investigations", path)
             if inv_list:
                 return self._json(200, {"investigations": store.list_investigations(inv_list[1])})
@@ -242,6 +245,12 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(201, {"assessment_id": store.assess_synthetic_evidence(
                         evidence_assessment[1], data.get("question_id"), data.get("evidence_version_id"),
                         data.get("relation"), data.get("applicability"), data.get("rationale"))})
+                evidence_quality = re.fullmatch(rf"/api/cases/{ID_PART}/evidence-quality", path)
+                if evidence_quality:
+                    return self._json(201, {"assessment_id": store.record_evidence_quality(
+                        evidence_quality[1], data.get("source_version_id"), data.get("assessor_label"),
+                        data.get("date_recorded"), data.get("completeness_note"),
+                        data.get("limitations_text"), data.get("conflict_note"))})
                 if path == "/api/discovery/imports":
                     raw = data.get("text")
                     if not isinstance(raw, str):
