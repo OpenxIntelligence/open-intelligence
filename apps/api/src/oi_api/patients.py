@@ -2,11 +2,14 @@
 
 from contextlib import contextmanager
 from datetime import datetime
+import hashlib
+import hmac
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import Field, StrictBool, field_validator
+from pydantic import Field, StrictBool, field_validator, model_validator
 
 from open_intelligence.patient_registry import (
     PatientRegistryConflict, PatientRegistryDenied, PatientRegistryError, _key,
@@ -20,8 +23,9 @@ from .record_requests import PostgresRecordRequests
 from .case_bindings import CanonicalCaseBindings
 from .sources import PostgresSourceVersions
 from .source_world_model import project_source_world_model
-from .composer_preflight import PostgresSourceComposerPreflight
+from .composer_preflight import PostgresSourceComposerPreflight, SHA256
 from .source_questions import PostgresSourceQuestions
+from .source_brief import MAX_ENVELOPE_BYTES, check_brief_size
 
 
 class CreatePatient(Contract):
@@ -437,6 +441,75 @@ class SourceQuestionsList(Contract):
     clinical_approval: Literal[False] = False
 
 
+class PrepareSourceQuestionBrief(Contract):
+    synthetic: StrictBool
+    source_snapshot_contract: Literal["oi.pg-source-world-model/1"]
+    expected_source_snapshot_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    expected_preflight_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @field_validator("synthetic")
+    @classmethod
+    def fictional_only(cls, value):
+        if value is not True:
+            raise ValueError("Only fictional source-question briefs are allowed")
+        return value
+
+    @field_validator("expected_source_snapshot_sha256", "expected_preflight_sha256")
+    @classmethod
+    def exact_fingerprint(cls, value):
+        if SHA256.fullmatch(value) is None:
+            raise ValueError("Expected fingerprint must be SHA-256")
+        return value
+
+
+class SourceQuestionBrief(Contract):
+    contract: Literal["oi.synthetic-source-brief/2"]
+    synthetic: Literal[True]
+    patient_id: str
+    case_id: str
+    source_snapshot_contract: Literal["oi.pg-source-world-model/1"]
+    source_snapshot_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    access_receipt_id: str = Field(pattern=r"^ACCESS-[0-9A-F]{32}$")
+    question: QuestionSourceState
+    selected_source: SelectedComposerSource
+    prepared_at: datetime
+    media_type: Literal["text/plain;charset=utf-8"]
+    body: str = Field(min_length=1)
+    body_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    clinical_approval: Literal[False]
+    model_executed: Literal[False]
+    biomedical_evidence_included: Literal[False]
+
+    @field_validator("prepared_at")
+    @classmethod
+    def aware_preparation(cls, value):
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("Preparation time requires a timezone")
+        return value
+
+    @model_validator(mode="after")
+    def exact_question_and_body(self):
+        question = self.question
+        source = self.selected_source
+        if (question.patient_id != self.patient_id or question.case_id != self.case_id
+                or question.source_snapshot_contract != self.source_snapshot_contract
+                or question.source_snapshot_sha256 != self.source_snapshot_sha256
+                or question.source_context_state != "current_unreviewed_question"
+                or (question.source_id, question.source_line,
+                    question.source_sha256, question.source_version)
+                != (source.source_id, source.line, source.sha256, source.version)):
+            raise ValueError("Brief must retain its current canonical question and source")
+        if not hmac.compare_digest(self.body_sha256, hashlib.sha256(self.body.encode("utf-8")).hexdigest()):
+            raise ValueError("Brief body digest does not match")
+        try:
+            # This is the complete JSON-mode DTO the HTTP response serializes,
+            # including nested source/question references and UTC timestamps.
+            check_brief_size(self.model_dump(mode="json"))
+        except PatientRegistryError:
+            raise ValueError("Source brief exceeds bounded response size") from None
+        return self
+
+
 def patient_router(database: Database, authentication: Authentication) -> APIRouter:
     router = APIRouter(prefix="/v1/patients", tags=["Synthetic patient registry"])
     bearer = HTTPBearer(auto_error=False, scheme_name="SyntheticFixture",
@@ -454,7 +527,7 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
                         return False
                     if action == "patient_create":
                         return subject == context.organization
-                    if action not in {"patient_read", "record_request_create", "record_request_read", "record_request_cancel", "record_request_receive", "case_binding_create", "case_binding_read", "case_binding_revoke", "source_import", "source_read", "source_original_read", "composer_context_read", "question_create", "question_read"} or subject not in context.patient_ids:
+                    if action not in {"patient_read", "record_request_create", "record_request_read", "record_request_cancel", "record_request_receive", "case_binding_create", "case_binding_read", "case_binding_revoke", "source_import", "source_read", "source_original_read", "composer_context_read", "question_create", "question_read", "source_brief_export"} or subject not in context.patient_ids:
                         return False
                     cursor = connection.cursor()
                     try:
@@ -660,6 +733,47 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
             raise PatientRegistryDenied("Source-question authority changed")
         for action in actions:
             records_authorized(patients, current, patient_id, action)
+
+    @router.post("/{patient_id}/cases/{case_id}/questions/{question_id}/brief",
+                 response_model=SourceQuestionBrief, responses=errors,
+                 operation_id="prepare_source_question_brief_v2")
+    def prepare_source_question_brief(request: Request, patient_id: str, case_id: str,
+                                      question_id: str, payload: PrepareSourceQuestionBrief,
+                                      context: Principal = Depends(principal)):
+        if context.purpose != "operations":
+            raise HTTPException(404, "Question brief unavailable")
+        try:
+            with registry(context) as patients:
+                actions = ("question_read", "source_read", "source_brief_export")
+                for action in actions:
+                    records_authorized(patients, context, patient_id, action)
+
+                def prepare_response(result):
+                    # Construct the actual wire bytes while the source locks
+                    # are held. A serializer failure cannot occur after the
+                    # source receipt commits and accidentally attest disclosure.
+                    brief = SourceQuestionBrief(**result)
+                    prepared = JSONResponse(
+                        content=brief.model_dump(mode="json"),
+                        headers={"X-Content-Type-Options": "nosniff"},
+                    )
+                    if len(prepared.body) > MAX_ENVELOPE_BYTES:
+                        raise ValueError("Source brief exceeds bounded response size")
+                    return prepared
+
+                return PostgresSourceQuestions(patients).prepare_brief(
+                    patient_id, case_id, question_id,
+                    organization=context.organization, actor=context.actor,
+                    purpose=context.purpose,
+                    source_snapshot_contract=payload.source_snapshot_contract,
+                    expected_source_snapshot_sha256=payload.expected_source_snapshot_sha256,
+                    expected_preflight_sha256=payload.expected_preflight_sha256,
+                    prepare_response=prepare_response,
+                    recheck_authority=lambda: final_question_authority(
+                        request, context, patients, patient_id, actions),
+                )
+        except PatientRegistryDenied:
+            raise HTTPException(404, "Question brief unavailable") from None
 
     @router.get("/{patient_id}/cases/{case_id}/questions",
                 response_model=SourceQuestionsList, responses=errors,
