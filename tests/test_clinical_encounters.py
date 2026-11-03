@@ -403,5 +403,33 @@ class ClinicalEncounterTests(unittest.TestCase):
         self.assertGreaterEqual(len(calls), 2, 'encounter index requires a final permission check')
 
 
+    def test_attestation_receipt_replay_rechecks_revoked_grant(self):
+        """A previous attestation is not authority to disclose a now-denied result."""
+        encounter_id = self.begin()['encounter_id']
+        self.ops.write_note('CASE-ONE', encounter_id, 'NOTE-001', 'Initial clinical draft',
+                            expected_version=0, request_key='req-before-attest-001', **self.actor)
+        original = self.ops.attest_note('CASE-ONE', encounter_id, 'NOTE-001',
+                                        expected_version=1, request_key='req-attest-replay-001',
+                                        **self.actor)
+        observed = []
+
+        def withdraw_during_replay(actor, case, action, purpose):
+            observed.append(action)
+            return len(observed) == 1 and self.authorized(actor, case, action, purpose)
+
+        reader = ClinicalEncounters(self.store, withdraw_during_replay)
+        with self.assertRaises(ClinicalAuthorizationError):
+            reader.attest_note('CASE-ONE', encounter_id, 'NOTE-001',
+                               expected_version=1, request_key='req-attest-replay-001',
+                               **self.actor)
+        self.assertGreaterEqual(len(observed), 2)
+        self.assertEqual(original['status'], 'attested')
+        self.assertEqual(len(self.ops.note_history('CASE-ONE', encounter_id, 'NOTE-001',
+                                                   **self.actor)), 2)
+        self.assertEqual(self.store.db.execute(
+            "SELECT COUNT(*) FROM clinical_encounter_commands WHERE request_key=?",
+            ('req-attest-replay-001',)).fetchone()[0], 1)
+
+
 if __name__ == '__main__':
     unittest.main()
