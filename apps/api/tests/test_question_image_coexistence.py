@@ -36,7 +36,7 @@ class QuestionImageCoexistenceTests(SourceVersionFixture):
         self.assertEqual(code, 200, model)
         fingerprint = model["snapshot_fingerprint"]
         observations = [o for o in model["observations"]
-                        if o["source_version_id"] == sid]
+                        if o["source_id"] == sid]
         self.assertEqual(len(observations), 1)
         line = observations[0]["source_line"]
         status, prepared, _ = request(
