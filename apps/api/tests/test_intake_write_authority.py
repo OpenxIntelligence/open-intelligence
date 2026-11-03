@@ -9,12 +9,15 @@ from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 import json
 from unittest.mock import patch
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
 
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from starlette.responses import JSONResponse
 
 from oi_api.app import create_app
+from oi_api.patients import OriginalSourceReceipt, ReceivedRecordRequest
 from oi_api.record_requests import PostgresRecordRequests
 from open_intelligence.postgres_registry import PostgresPatientRegistry
 
@@ -128,10 +131,30 @@ class IntakeWriteAuthorityTests(SourceVersionFixture):
                                            "case_id": "CASE-ALPHA", "source_id": source_id})
 
     def assert_refused_without_write(self, result, before, status=404):
-        self.assertEqual(result[0], status)
+        # Inspect the database even when the HTTP status is wrong. An error
+        # response after an accidental commit is a different failure from a
+        # refusal that rolled back as intended.
+        unchanged = self.durable_state() == before
+        self.assertEqual((result[0], unchanged), (status, True))
         self.assertEqual(set(result[1]), {"detail"})
         self.assertNotIn("PRIVATE-FIXTURE", json.dumps(result[1]))
-        self.assertEqual(self.durable_state(), before)
+
+    def raw_post(self, base, path, body):
+        """Inspect even an unexpected plaintext 500 without hiding rollback."""
+        req = Request(base + path, data=json.dumps(body).encode("utf-8"),
+                      headers={"Content-Type": "application/json",
+                               "Authorization": "Bearer " + TOKEN_A})
+        try:
+            response = urlopen(req, timeout=5)
+        except HTTPError as error:
+            response = error
+        with response:
+            raw = response.read().decode("utf-8")
+            try:
+                content = json.loads(raw)
+            except ValueError:
+                content = {"unparsed_error_body": raw}
+            return response.status, content, dict(response.headers)
 
     def test_import_final_grants_and_identity_are_independently_refreshed(self):
         changes = [
@@ -272,6 +295,52 @@ class IntakeWriteAuthorityTests(SourceVersionFixture):
                         result = operation()
                     self.assert_refused_without_write(result, before)
 
+    def test_final_recheck_follows_receipt_construction_for_both_commands(self):
+        with running_server(create_app(self.settings)) as base:
+            patient = self.setup_case(base)
+            source_id = self.ingest(base, patient)[1]["source_id"]
+            request_id = self.create_request(base, patient)
+            operations = [
+                (lambda: self.ingest(base, patient, ORIGINAL.replace("DOC-ONE", "DOC-TYPED")),
+                 OriginalSourceReceipt, "grant:source_import"),
+                (lambda: self.receive(base, patient, request_id, source_id),
+                 ReceivedRecordRequest, "grant:source_read"),
+            ]
+            for operation, model, change in operations:
+                with self.subTest(command=model.__name__):
+                    before = self.durable_state()
+                    construct = model.__init__
+                    def prepared(instance, **values):
+                        construct(instance, **values)
+                        self.change_authority(change)
+                    with self.restore_authority(), patch.object(model, "__init__", prepared):
+                        result = operation()
+                    self.assert_refused_without_write(result, before)
+
+    def test_receipt_construction_failure_rolls_back_both_commands(self):
+        with running_server(create_app(self.settings)) as base:
+            patient = self.setup_case(base)
+            source_id = self.ingest(base, patient)[1]["source_id"]
+            request_id = self.create_request(base, patient)
+            operations = [
+                (self.url(patient), {"synthetic": True,
+                                    "original_text": ORIGINAL.replace("DOC-ONE", "DOC-DTO")},
+                 OriginalSourceReceipt),
+                (f"/v1/patients/{patient}/record-requests/{request_id}/receive",
+                 {"synthetic": True, "case_id": "CASE-ALPHA", "source_id": source_id},
+                 ReceivedRecordRequest),
+            ]
+            for path, body, model in operations:
+                with self.subTest(command=model.__name__):
+                    before = self.durable_state()
+                    construct = model.__init__
+                    def broken(instance, **values):
+                        construct(instance, **values)
+                        raise ValueError("PRIVATE-FIXTURE-RECEIPT-FAILURE")
+                    with patch.object(model, "__init__", broken):
+                        result = self.raw_post(base, path, body)
+                    self.assert_refused_without_write(result, before, 503)
+
     def test_json_failure_rolls_back_both_commands(self):
         render = JSONResponse.render
         with running_server(create_app(self.settings)) as base:
@@ -279,10 +348,12 @@ class IntakeWriteAuthorityTests(SourceVersionFixture):
             source_id = self.ingest(base, patient)[1]["source_id"]
             request_id = self.create_request(base, patient)
             operations = [
-                (lambda: self.ingest(base, patient, ORIGINAL.replace("DOC-ONE", "DOC-SERIALIZE")), "result"),
-                (lambda: self.receive(base, patient, request_id, source_id), "request_id"),
+                (self.url(patient), {"synthetic": True,
+                                    "original_text": ORIGINAL.replace("DOC-ONE", "DOC-SERIALIZE")}, "result"),
+                (f"/v1/patients/{patient}/record-requests/{request_id}/receive",
+                 {"synthetic": True, "case_id": "CASE-ALPHA", "source_id": source_id}, "request_id"),
             ]
-            for operation, marker in operations:
+            for path, body, marker in operations:
                 with self.subTest(command=marker):
                     before = self.durable_state()
                     def broken(response, content):
@@ -291,18 +362,17 @@ class IntakeWriteAuthorityTests(SourceVersionFixture):
                             raise ValueError("PRIVATE-FIXTURE-SERIALIZATION-FAILURE")
                         return encoded
                     with patch.object(JSONResponse, "render", broken):
-                        result = operation()
+                        result = self.raw_post(base, path, body)
                     self.assert_refused_without_write(result, before, 503)
 
     def test_owner_case_lock_is_held_during_response_preparation(self):
-        render = JSONResponse.render
         observed = []
         with running_server(create_app(self.settings)) as base:
             patient = self.setup_case(base)
             request_id = self.create_request(base, patient)
-            def lock_probe(response, content):
-                encoded = render(response, content)
-                if "source_id" in content and ("result" in content or "request_id" in content):
+            def lock_probe(construct):
+                def prepared(instance, **values):
+                    construct(instance, **values)
                     with self.engine.connect() as other:
                         transaction = other.begin()
                         try:
@@ -313,8 +383,9 @@ class IntakeWriteAuthorityTests(SourceVersionFixture):
                             observed.append(exc.orig.args[0].get("C"))
                         finally:
                             transaction.rollback()
-                return encoded
-            with patch.object(JSONResponse, "render", lock_probe):
+                return prepared
+            with patch.object(OriginalSourceReceipt, "__init__", lock_probe(OriginalSourceReceipt.__init__)), \
+                    patch.object(ReceivedRecordRequest, "__init__", lock_probe(ReceivedRecordRequest.__init__)):
                 status, original, _ = self.ingest(base, patient)
                 self.assertEqual(status, 201)
                 result = self.receive(base, patient, request_id, original["source_id"])
