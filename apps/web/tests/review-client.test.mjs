@@ -1,6 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {RegistrySession} from '../.test-dist/registry-client.js';
+import {decodeReviewQueue} from '../.test-dist/review-queue-view.js';
 
 const token='fictional_test_credential_000000000001';
 const patientId='PAT-EXAMPLE-001',caseId='CASE-ALPHA';
@@ -50,6 +51,74 @@ function session(transport,readCases=()=>response(cases())){return new RegistryS
 async function opened(s){s.connect(token);await s.read(patientId);await s.loadCases();
  assert.equal(typeof s.loadReviewQueue,'function','The existing Review owner must connect to the current patient client');
  await s.loadReviewQueue(caseId);}
+
+const reviewTimestampCases=[
+ '2026-02-30T10:00:00Z','2025-02-29T10:00:00Z','2026-04-31T10:00:00Z',
+ '0000-01-01T00:00:00Z','2026-11-03T24:00:00Z','2026-11-03T10:60:00Z',
+ '2026-11-03T10:00:60Z','2026-11-03T10:00:00+24:00','2026-11-03T10:00:00+02:60',
+ '2026-11-03T10:00Z','2026-11-03T10:00:00.1234567Z','2026-11-03T10:00:00Z\n',
+];
+const returnedItem=(overrides={})=>item({return_count:1,current_return_receipt_id:receiptId,
+ review_state:'returned_for_independent_verification',...overrides});
+for(const field of ['question','history'])test('Review rejects impossible and out-of-contract '+field+' timestamps',()=>{
+ for(const created_at of reviewTimestampCases){
+  const packet=field==='question'?queue([item({created_at})]):queue([returnedItem()],[receipt({created_at})]);
+  assert.throws(()=>decodeReviewQueue(packet,patientId,caseId),/contract/,field+' '+created_at);
+ }
+});
+test('Review preserves valid calendar dates, offsets and microseconds without rewriting timestamps',()=>{
+ for(const created_at of ['0001-01-01T00:00:00Z','2000-02-29T23:59:59.999999+00:00',
+  '2026-11-03T10:00:00.1Z','2026-11-03T10:00:00.1234+05:30',
+  '2026-11-03T10:00:00.000001-04:00','9999-12-31T23:59:59.123456Z']){
+  const decoded=decodeReviewQueue(queue([returnedItem({created_at})],[receipt({created_at})]),patientId,caseId);
+  assert.equal(decoded.items[0].created_at,created_at);
+  assert.equal(decoded.receipts[0].created_at,created_at);
+ }
+});
+test('malformed Review question refresh clears prior content and prevents a new return until valid reread',async()=>{
+ let malformed=false,writes=0;
+ const s=session(async(url)=>{
+  if(url===queuePath)return response(queue([item({created_at:malformed?'2026-02-30T10:00:00Z':'2026-11-03T10:00:00.123456+05:30'})]));
+  assert.equal(url,returnPath);writes++;return response(saved(),201);
+ });
+ await opened(s);assert.equal(s.snapshot().reviewQueue.items[0].created_at,'2026-11-03T10:00:00.123456+05:30');
+ malformed=true;await s.loadReviewQueue(caseId);
+ assert.equal(s.snapshot().reviewQueue,null);assert.equal(s.snapshot().reviewPhase,'error');
+ assert.equal(s.snapshot().reviewReturnIntent,null);
+ await s.returnReviewQuestion(questionId,fingerprint,reason);
+ assert.equal(writes,0);assert.equal(s.snapshot().reviewReturn,null);
+ malformed=false;await s.loadReviewQueue(caseId);
+ assert.equal(s.snapshot().reviewPhase,'ready');
+ assert.equal(s.snapshot().reviewQueue.items[0].created_at,'2026-11-03T10:00:00.123456+05:30');
+ assert.equal(writes,0,'Rereading must not submit a return');
+ await s.returnReviewQuestion(questionId,fingerprint,reason);
+ assert.equal(writes,1);assert.equal(s.snapshot().reviewReturnPhase,'saved');
+});
+test('malformed Review history clears disclosure while retaining an uncertain return for exact recovery',async()=>{
+ let malformed=false;const bodies=[];
+ const s=session(async(url,init)=>{
+  if(url===queuePath)return response(queue([returnedItem()],[receipt({created_at:malformed?'2026-11-03T24:00:00Z':'2026-11-03T10:05:00.000001-04:00'})]));
+  assert.equal(url,returnPath);bodies.push(init.body);
+  return bodies.length===1?response({},503):response(saved(true),200);
+ });
+ await opened(s);await s.returnReviewQuestion(questionId,fingerprint,reason);
+ const captured=s.snapshot().reviewReturnIntent;
+ assert.equal(s.snapshot().reviewReturnPhase,'unknown');assert.equal(bodies.length,1);
+ malformed=true;await s.loadReviewQueue(caseId);
+ assert.equal(s.snapshot().reviewQueue,null);assert.equal(s.snapshot().reviewPhase,'error');
+ assert.equal(s.snapshot().reviewReturnPhase,'unknown');
+ assert.equal(s.snapshot().reviewReturnIntent,captured);assert.equal(captured.reason,reason);
+ await s.returnReviewQuestion(questionId,fingerprint,'A different fictional reason must not replace the captured return.');
+ assert.equal(bodies.length,1);
+ await s.retryReviewReturn();
+ assert.equal(bodies.length,2);assert.equal(bodies[1],bodies[0]);
+ assert.equal(s.snapshot().reviewReturnPhase,'saved');assert.equal(s.snapshot().reviewReturn.duplicate,true);
+ assert.equal(s.snapshot().reviewQueue,null,'Receipt recovery cannot restore an invalid inbox');
+ malformed=false;await s.loadReviewQueue(caseId);
+ assert.equal(s.snapshot().reviewPhase,'ready');
+ assert.equal(s.snapshot().reviewQueue.receipts[0].created_at,'2026-11-03T10:05:00.000001-04:00');
+ assert.equal(bodies.length,2,'Restoring a valid inbox must not create another write');
+});
 
 test('canonical review queue is scoped and exposes a distinct access receipt without invoking Composer',async()=>{
  const calls=[];const s=session(async(url,init)=>{calls.push([url,init]);return response(queue());});
