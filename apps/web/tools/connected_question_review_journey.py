@@ -91,6 +91,20 @@ def exercise(cd, patient_id, case_id, source_id, source_text,
 
         inspect_exact_quote()
         before = fresh_brief()
+        # Contextual question -> Review -> question navigation must invalidate prepared
+        # source disclosures, as the sidebar already does. The saved question stays.
+        cd.evaluate("document.querySelector('[data-testid=open-question-review]').click()")
+        cd.wait("Boolean(document.querySelector('[data-testid=review-workspace]'))",
+                'contextual entry to the verification inbox')
+        cd.evaluate("""[...document.querySelectorAll('[data-testid=review-workspace] button')]
+            .find(button => button.textContent.trim() === 'View source questions').click()""")
+        cd.wait("Boolean(document.querySelector('[data-testid=source-question-panel]'))",
+                'contextual return to source questions')
+        assert not cd.evaluate("Boolean(document.querySelector('[data-testid=source-quote-packet]'))"), \
+            'Contextual return must not resurrect a previously prepared source packet'
+        assert not cd.evaluate("Boolean(document.querySelector('[data-testid=source-brief-preview]'))"), \
+            'Contextual return must not resurrect a previously prepared source brief'
+        assert question_id in questions.history(custom), 'Saved question must survive context navigation'
         review = QuestionReviewChecks(cd, patient_id, case_id, question_id, source_id)
         review.navigate('Review')
 
