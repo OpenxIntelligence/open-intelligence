@@ -4,6 +4,7 @@ One canonical patient registry; one original-source owner; receipt in original
 identity domain events. No patient data, hospital contact, or clinical review.
 """
 import json
+from datetime import datetime
 import unittest
 from unittest.mock import patch
 
@@ -84,7 +85,7 @@ class ReceivedRecordHTTPTests(SourceFixture):
                         "WHERE patient_id=:patient AND event_type='record.request.received' "
                         "AND metadata_json->>'request_id'=:request_id"
                     ), {"patient": patient, "request_id": request_id}).scalar_one()
-                self.assertEqual(row["updated_at"], receipt_at.isoformat())
+                self.assertEqual(datetime.fromisoformat(row["updated_at"].replace("Z", "+00:00")), receipt_at)
                 self.assertFalse(row["external_request_sent"])
                 self.assertEqual(request(base, self.record_url(patient) + "/" +
                     request_id + "/cancel", token=TOKEN_A,
@@ -94,7 +95,7 @@ class ReceivedRecordHTTPTests(SourceFixture):
                 self.assertEqual(updated["receipt_status"],
                                  "source_superseded_reconciliation_required")
                 self.assertEqual(updated["source_reference"]["source_id"], source_id)
-                self.assertEqual(updated["updated_at"], receipt_at.isoformat())
+                self.assertEqual(datetime.fromisoformat(updated["updated_at"].replace("Z", "+00:00")), receipt_at)
                 # A historical receipt cannot be silently switched to the new
                 # source version, even after a correction was imported.
                 sources = request(base, self.url(patient), token=TOKEN_A)[1]["sources"]
