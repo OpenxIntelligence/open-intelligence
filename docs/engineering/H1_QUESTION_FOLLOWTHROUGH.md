@@ -34,12 +34,43 @@ The focused test-first run had 18 executions: seven existing tests passed and
 11 new assertions failed because the projection/card did not exist. After the
 implementation, all 18 focused tests and the complete client suite passed.
 
-Local PostgreSQL and Chromium are unavailable in this workspace. Exact-head
-hosted browser acceptance, screenshots and independent review are pending at
-this checkpoint. The existing browser journey now covers real tasks from two
-saved questions, empty/loading/denied reads, read-only refresh, unknown-write
-recovery, case switching and desktop/mobile layout. Separate backend/restore
-suites are not claimed as rerun for this UI-only change.
+### Verified Overview implementation checkpoint — draft PR #383
+
+[Draft PR #383](https://github.com/OpenxIntelligence/open-intelligence/pull/383)
+is verified at implementation/test commit
+[`8ad846c3b3e8d70c360cc6ea3d0f80551ae018cf`](https://github.com/OpenxIntelligence/open-intelligence/commit/8ad846c3b3e8d70c360cc6ea3d0f80551ae018cf),
+tree `8b914a34d59c32bda109195b9b3de3ac4659be85`.
+[Hosted run 41714223067](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41714223067)
+passed the complete 408-test client suite, production build, installed-package
+and wheel gates, and the actual React/FastAPI/PostgreSQL 16 Chromium journey.
+
+The new browser sequence uses four persisted tasks from two saved questions.
+It verifies the five counts, recorded owner, read-only refresh, held-response
+clearing, unchecked versus verified empty results, exact-intent recovery after
+a committed response is lost, denial that preserves question context, and a
+delayed prior-case response that cannot restore old task content. Existing source,
+review, evidence/report, import, restart, reading and session-boundary journeys
+also passed. Separate backend/restore suites are not claimed as rerun for this
+UI-only change; local PostgreSQL and Chromium were unavailable.
+
+[Artifact 13269696276](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41714223067/artifacts/13269696276)
+has SHA-256 `d438b9a5937ae414aa635cbea1001c9fc7c0fd4fd57081ed0fa8f9bd7b693d31`.
+Its commit receipt matches the verified head, and all **425** archived source
+blobs were byte-checked against remote Git and the local tested files. The
+desktop and 390px mobile Overview captures were visually inspected; the browser
+also verifies horizontal containment. Artifact retention ends 10 November 2026.
+
+Independent code review found **no Critical, Important or Minor issues** in
+the bounded diff. It inspected case/patient isolation, canonical counting,
+unavailable versus empty reads, unknown-write recovery, preview limits,
+semantic/responsive structure, tests and the repaired browser prerequisite.
+Hosted execution, artifact matching and screenshot inspection were separately
+verified by the implementation owner; this is not a screen-reader audit.
+
+This documentation-only receipt follows the verified implementation/test
+checkpoint above and changes no runtime, tests, dependencies or workflows.
+Status remains a synthetic-only draft, unmerged and undeployed; this does not
+complete OI-010 or establish production/clinical readiness.
 
 The historical checkpoint below belongs to its original commit and is not
 evidence for the new combined head.
