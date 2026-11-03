@@ -8,6 +8,14 @@ python3 run_open_intelligence.py
 
 Open **http://127.0.0.1:8765**. Python 3.10 or newer is required. The default database is `.local/workspace.sqlite`. Another port or path can be selected with `--port` and `--db`. `--with-examples` explicitly imports the existing fictional Alpha/Beta examples; the default starts empty.
 
+## Current clinical-branch integration boundary (draft PR #179)
+
+This review branch combines the **original empty-case/file-intake entry point** from #166 with the **source-linked clinical, Composer-v2, knowledge-rights, and report-to-review backend** from #175. The newly connected entry is a **loopback, independently fictional, development-only workspace**, not a patient login, a clinician portal or a deployable oncology system.
+
+The original #166 branch additionally offers automatic *model-run → review-draft preparation* through #158's source-owned workflow. That workflow is **not** included in the #175 clinical-source owner. Here the browser shows the existing Composer v2 source-bound preview and recorded model replay, then uses the **separate human-authored, source-linked draft form**. The historical replay remains an unreviewed hypothesis; an explicit human entry is needed to prepare the draft. The original source-owner browser test is preserved, and `tests/clinical_workspace_browser_journey.py` verifies the supported clinical-branch workflow without implying that the absent automatic feature has been delivered.
+
+The advanced #175 report/permission/append-only review APIs are currently **backend library contracts verified with fictional authority fixtures**; they are **not exposed to ordinary workspace users**, because verified patient identity, explicit content export rights and professional review authority are missing. The local browser's *Demo review acknowledgment* is not a clinical signature or the #175 authenticated review receipt. Do not interpret the green browser journey as verification of a production portal or rights-cleared scientific content.
+
 ## Complete development journey
 
 1. Create a workspace using a fictional alias and an uppercase reference. For the supplied authored examples, use `CASE-START`.
