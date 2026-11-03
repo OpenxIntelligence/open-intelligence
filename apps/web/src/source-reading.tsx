@@ -57,6 +57,7 @@ export function SourceReading({index, view, filters, onFiltersChange, busy, ques
               <blockquote data-testid="source-statement">{finding.source_statement}</blockquote>
               <small>Clinical review: not established · <code>{finding.source_id}</code></small>
               {item.state === 'current' && <div className="actions"><button type="button"
+                aria-label={`Ask about this statement: ${item.document_id}, version ${item.version}, line ${finding.source_line}, ${finding.finding_key}`}
                 data-testid="ask-source-question" disabled={busy || questionBusy}
                 onClick={() => onAskQuestion(finding.source_id, finding.source_line)}>Ask about this statement</button></div>}
             </li>)}</ul>
@@ -71,7 +72,7 @@ export function SourceReading({index, view, filters, onFiltersChange, busy, ques
               {item.supersedes_id && <div><dt>Supersedes</dt><dd><code>{item.supersedes_id}</code></dd></div>}
             </dl>
           </details>
-          <button data-testid="open-original" disabled={busy} onClick={event => onOpenOriginal(item.source_id, event.currentTarget)}>Inspect original v{item.version}</button>
+          <button aria-label={`Inspect original v${item.version}: ${item.document_id}`} data-testid="open-original" disabled={busy} onClick={event => onOpenOriginal(item.source_id, event.currentTarget)}>Inspect original v{item.version}</button>
         </li>;
       })}</ol>}
   </div>;

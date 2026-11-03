@@ -33,6 +33,20 @@ def exercise(cd, credentials, write_grants):
     assert cd.evaluate("Boolean(document.querySelector('#source-filter'))"), 'Loaded source versions need a response-scoped filter'
     assert cd.evaluate("Boolean(document.querySelector('#reading-view'))"), 'Patient and clinical reading layouts must share the existing session'
     assert cd.evaluate("document.querySelector('[data-testid=readiness]').getAttribute('role')==='status'"), 'Readiness needs noninterrupting status semantics'
+    # Inspect Chromium's computed names, not just the presence of ARIA attributes.
+    cd.command('Accessibility.enable', {})
+    ax = cd.command('Accessibility.getFullAXTree', {})['nodes']
+    names = [n.get('name', {}).get('value', '') for n in ax
+             if not n.get('ignored') and n.get('role', {}).get('value') == 'button']
+    assert 'Inspect original v1: DOC-ONE' in names
+    assert 'Inspect original v2: DOC-ONE' in names
+    expected_questions = cd.evaluate("[...document.querySelectorAll('[data-testid=source-finding]')].filter(e=>e.querySelector('[data-testid=ask-source-question]')).map(e=>{const heading=e.closest('[data-testid=source-version]').querySelector('h4').textContent;const [doc,version]=heading.split(' · v');const line=e.querySelector('p').textContent.match(/line (\\d+)/)[1];return 'Ask about this statement: '+doc+', version '+version+', line '+line+', '+e.querySelector('strong').textContent})")
+    assert expected_questions, 'Actual loaded quotations must expose question controls'
+    assert all(name in names for name in expected_questions), 'Computed button names must identify the exact visible quotation'
+    assert 'Ask about this statement' not in names, 'Repeated unqualified quotation controls must be disambiguated'
+    (out/'source-action-accessibility.json').write_text(json.dumps({'originals': [n for n in names if n.startswith('Inspect original')], 'questions': expected_questions}, indent=2))
+    cd.command('Accessibility.disable', {})
+    print('PASS SOURCE ACTION NAMES: Chromium computed names retain visible labels and identify document, original version and exact quotation line/key.')
     previous_original_actions = list(credentials[0]['actions'])
     credentials[0]['actions'] = sorted(set(previous_original_actions) | {'source_original_read'})
     write_grants()
