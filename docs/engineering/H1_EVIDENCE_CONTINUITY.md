@@ -1,6 +1,6 @@
 # H1 question evidence and patient follow-through convergence
 
-**Status:** implementation in draft #307; combined verification pending.
+**Status:** implemented and verified at the exact runtime below; draft #307, unmerged and undeployed.
 **Scope:** independently authored fictional engineering inputs only.
 **Product job:** keep one saved patient question, its citation discovery, separately
 authored comparisons/reports and follow-up work in the same governed application.
@@ -10,8 +10,11 @@ This is an integration of existing owners, not a new patient or evidence ledger.
 
 The live audit on 3 November 2026 found `main` at
 `24519839aa8ac1ea3aff88a956349ba72798a72a`. The owners below remained draft and
-unmerged. Existing Notion/Drive progress stopped at #298, so their proposed next
-passage/report implementation was already overtaken by #300. Accepted product,
+unmerged. At initial inspection, the existing Notion/Drive progress records stopped at
+#298, so their proposed next passage/report implementation was already overtaken
+by #300. A fresh read before publication found the later #302 restored-HTTP
+receipt; this integration retains that contribution and extends its same-question
+metadata/task coverage. Accepted product,
 rights, source, identity and clinical-authority constraints remain applicable.
 
 | Input | Pinned commit | Responsibility retained |
@@ -88,8 +91,8 @@ migration contract and same-question client/composition regressions.
   subcases before bounding offset hours/minutes. All 16 pure contract methods then
   passed, including unchanged legacy report hashes and valid timestamp bytes.
   This is a focused extension of #303, not normalization of stored timestamps.
-- The final combined candidate remains to be verified below. Donor success is not
-  substituted for a combined-head result. #303's first API attempt passed its
+- The final combined candidate is independently verified below. Donor success is
+  not substituted for a combined-head result. #303's first API attempt passed its
   database/reference suites but failed inherited Chrome startup; its unchanged
   rerun subsequently passed. That failure remains part of the donor record.
 
@@ -100,18 +103,130 @@ reset corrections. The transient 503 case still retains exact recovery intent
 without authorizing a retry before renewed access. No unauthorized server write
 was demonstrated. The corrected local Node runtime suite passes 258 non-render
 tests; it uses Node's type stripping and is not a TypeScript/React build claim.
-All 287 reference tests also pass locally. Full database/browser acceptance is
-still the required combined gate.
+All 287 reference tests also pass locally. The subsequent hosted acceptance below
+provides the actual combined database/browser result.
+
+## Published code and browser verification
+
+The combined runtime is `477f24826a8a102c7437c993d69877c1f250b951`, tree
+`cd8d909ad2844e7fbd37ae30a9a10b9123374666`, in
+[draft PR #307](https://github.com/OpenxIntelligence/open-intelligence/pull/307).
+
+[React/browser run 41658525265](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41658525265)
+checks out that exact feature commit. It passed **266 client tests, zero skips**,
+TypeScript checking, the production Vite build and the actual React/FastAPI/
+PostgreSQL 16 journey. Both original evidence journeys, source custody, questions,
+review returns, Overview, follow-through and cross-case clearing remain present.
+
+The new browser receipt records the same canonical patient, case, question,
+original source snapshot and preflight for a saved fictional citation and an
+immutable authored comparison report. Independent metadata-read and report-export
+denials returned 404; denied export created no Blob and did not change an earlier
+download. Metadata does not authorize content, and a report does not appraise a
+catalog entry. This browser callback does **not** establish a task on that same
+question; that belongs to the combined API/recovery acceptance.
+
+Downloaded browser artifact **13241475582** was verified against archive SHA-256
+`abe9604cb4adabfd542d3c9a7590adffb95ed5076fc4f24d83636a79264f0053`.
+All **398 tracked source files** in its source archive match the published commit
+byte for byte. Its actual original evidence download is 301 bytes, and its two
+report downloads are 3,859 and 3,860 bytes. The files' SHA-256 values match their
+respective stored receipts, including unchanged historical report bytes and
+literal Unicode quotation anchors. The archived receipt explicitly records
+`synthetic: true`, `model_executed: false` and `clinical_approval: false`.
+
+Desktop and 390 px screenshots were visually inspected. No blocking overlap or
+horizontal overflow was observed in the inspected captures. The narrow report
+uses nested vertical scrolling; those captures do not establish a complete
+accessibility or user study. Narrow-browser verification introduces no mobile-app
+commitment. Artifacts expire on **10 November 2026**; this receipt and the pinned
+source/tests retain the durable engineering evidence.
+
+[Inherited UI run 41658525058](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41658525058)
+passed **287 reference Python/HTTP tests**, **16 Node tests** and the original
+browser/layout/race journeys. Its actual checkout is temporary PR merge
+`5510bb874c323cb7177db7f14620c2725ef2b361`, whose Git tree was independently verified
+to equal `cd8d909ad2844e7fbd37ae30a9a10b9123374666`. It is not misreported as a direct
+feature-head checkout.
+
+The retained frontend dependency inventory has no scanner errors and records
+exact installed package notices. Its scope remains local fictional development;
+`commercial_release_cleared` and `native_object_linkage_reviewed` are false. The
+two uninstalled optional platform packages remain explicitly uninspected. This
+is a bounded inherited dependency gate, not a newly cleared production stack.
+
+## Actual PostgreSQL and complete recovery acceptance
+
+[API/PostgreSQL run 41658525044](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41658525044),
+job **125995235121**, attempt 1, completed successfully on the exact published
+runtime `477f24826a8a102c7437c993d69877c1f250b951`:
+
+- **414 API/PostgreSQL tests passed, zero skips**, in 466.419 seconds. Both
+  populated old evidence heads upgrade through the actual migrations while
+  preserving complete prior rows, sequences, report bytes and exact retries.
+  A genuine two-head state remains unready until the explicit merge.
+- **287 reference tests passed** in 12.186 seconds; inherited browser journeys
+  also passed. These are repeated regression checks, not independent clinical
+  cases or additional patient outcomes.
+- **All five recovery probes passed:** patient registry, original sources,
+  canonical review returns, follow-through with metadata, and authored evidence
+  with the combined same-question citation/report/task extension.
+- No timeout or deadlock occurred. A longer-than-base unit step was inspected;
+  no code, timeout or assertion was weakened in response.
+
+Downloaded recovery artifact **13240724729** matches ZIP SHA-256
+`8fc0c6b6e5baff42e2a821c40ac82e39efcc39909fe01170ac352d04ff1cd51c`.
+Its `oi.h1-evidence-recovery-acceptance/3` receipt records the exact merged schema,
+**18 tables and four sequence states**, with one patient, one canonical question,
+two source versions, four evidence versions, three assessments, two immutable
+reports, one metadata citation and one follow-through task. The record also
+retains their exact identifiers and report hashes.
+
+Actual HTTP is served against four independently restored checkpoints: readable
+originals/report; content-class restriction before withdrawal; withdrawn evidence
+plus amended patient source; and a revoked binding backed up from a recovered
+copy and restored again. `current_database()` verifies the serving target. The
+same citation, report and task survive restart/restore on their canonical
+question. Original report/retry identities remain intact; open work requires
+recheck after source amendment. Content withholding neither grants nor revokes
+independent metadata access.
+
+The receipt records **11 / 8 / 15** fresh access events in the readable,
+rights-restricted and withheld restored copies. The added citation read requires
+exactly one correctly scoped metadata-read event alongside source-read receipts;
+new business writes, changed business sequences, unexpected audit events and
+mutations to the original database remain rejected. A subsequently restored
+revoked binding denies originals, reports, citation/task reads and exact retries
+without durable effects. Both `clinical_approval` and `model_executed` are false.
+
+## Current-truth and next integration
+
+The final live branch recheck still found main at
+`24519839aa8ac1ea3aff88a956349ba72798a72a`; #307 is an open draft based on #298 and
+has not changed main. This cycle deeply inspected the selected API/web owners,
+published migrations, affected authorization boundaries, tests, workflows and
+artifact source. It is not a complete audit of every open branch or every
+technology category. No new patient-journey case research, publisher license,
+model evaluation or commercial technology clearance is claimed in this cycle.
+
+The next integration task is to reconcile the existing connected source-reading
+owners #305/#308/#309/#310 with this same canonical question/evidence path, after
+checking their then-current heads and conflicts. Preserve their ownership rather
+than recreating their UI. Separately qualify one real biomedical connector and
+its allowed operations before replacing fictional catalog retrieval. Production
+identity/delegation, clinical/PDF/annotation parity and professional review
+remain distinct backlog items; #306's fictional grant editor does not close
+production identity. Existing OI-004/007/008/009/010/013 remain open.
 
 ## Acceptance and remaining boundary
 
-The combined candidate must preserve one patient/source/question through metadata
-search/link, an independently imported authored original, literal comparison,
-immutable report, follow-through task, source amendment, historical reopening,
-independent permission denial and exact retry. Upgrade paths, actual restart and
-restored HTTP, current rights, case-switch clearing and both browser paths must
-also pass. Existing tests must remain effective; changing assertions to suppress
-a convergence defect is not acceptance.
+The combined candidate passed the bounded one-patient/source/question scenario
+through metadata search/link, independently imported authored originals, literal
+comparison, immutable reports, follow-through, source amendment, historical
+reopening, independent permission denial and exact retry. Populated upgrade paths,
+actual restart/restored HTTP, current rights, case-switch clearing and both
+browser paths also passed. These results apply to the pinned runtime and stated
+fictional contracts; later source changes require their own relevant acceptance.
 
 This remains deterministic, human-authored software verification. It does not
 establish live biomedical retrieval, model execution, scientific applicability,
