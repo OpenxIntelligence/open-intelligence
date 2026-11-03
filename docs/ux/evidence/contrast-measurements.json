@@ -1,7 +1,7 @@
 {
   "method": "WCAG 2.2 sRGB relative luminance: c<=0.04045 -> c/12.92, otherwise ((c+0.055)/1.055)^2.4; L=0.2126R+0.7152G+0.0722B; contrast=(Llighter+0.05)/(Ldarker+0.05). Threshold compared without rounding.",
   "source_css": "apps/web/src/styles.css",
-  "source_sha256": "43064340de6ff958af0ae4390553108b9768b58887f1342f11aeeb3bb47c7e02",
+  "source_sha256": "2f50b7c13589525ec261875a3b35a4b0c8b1c0fe797f202b19d1fe5b501b9d86",
   "scope": "Static declared stylesheet pairs; no DOM-computed cascade, alpha-compositing, user override, forced-colors, rasterization, screen reader, zoom or exhaustive state audit.",
   "date_user_timezone": "2026-11-02 America/New_York",
   "references": [

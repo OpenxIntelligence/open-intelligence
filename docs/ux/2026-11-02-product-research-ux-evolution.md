@@ -1,18 +1,19 @@
 # Open Intelligence — Product Research & UX Evolution
 
 **Research and design date:** 2 November 2026, America/New_York  
-**Scope:** frontend-only improvement of the existing H1 React workspace  
+**Scope:** frontend-only improvement of the selected #200 H1 React workspace snapshot
+
 **Original audit baseline:** [PR #200](https://github.com/OpenxIntelligence/open-intelligence/pull/200), commit `d8de9aaca352cc58b64e9e32440f4ea248b02cb8`, tree `f46b666e63dd1ae0d842f0480b5ab942dc16e8b9`  
 **Reconciled implementation parent:** `68935c9fc60ef229aa9ff6cc4238153dc01a9b91` (upstream unused-parser cleanup; final boundaries compare with this parent)  
-**Status:** research, inventory and implementation decision complete for this bounded cycle; local implementation has passed an initial verification run; final visual polish, independent review and final-head verification are pending.
+**Status:** research, source inventory, frontend implementation and final local verification complete for this bounded cycle; [draft PR #218](https://github.com/OpenxIntelligence/open-intelligence/pull/218) is published and unmerged. Hosted CI passed on the published implementation head in [run 41564125200](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41564125200); later documentation-head checks remain separately visible in [PR checks](https://github.com/OpenxIntelligence/open-intelligence/pull/218/checks). Existing-workspace documentation publication is in progress.
 
 ## Outcome and interpretation
 
 The useful next step is to make the existing H1 patient and source workflows easier to understand and inspect. The selected design keeps one canonical session/client and presents two reading layouts: a patient view with plain language and a clinical view with denser source context. A persistent selected-patient header separates identity from workspace navigation; a dedicated chart keeps source versions, literal reported statements and provenance together.
 
-This is an implemented frontend candidate over existing services, not a new account model or a completed clinical platform. H1 currently supports fictional identity creation, authorized identity reads, case mappings and read-only source history. Journey, Investigations and Review remain explicitly unconnected in this React lane. The broader reference application remains present in `web/`; this work does not remove or claim migration of its features.
+This is an implemented frontend increment over existing services, not a new account model or a completed clinical platform. The selected #200 source snapshot supports fictional identity creation, authorized identity reads, case mappings and read-only source history. Journey, Investigations and Review remain explicitly unconnected in this React lane. The broader reference application remains present in `web/`; this work does not remove or claim migration of its features. Parallel request and intake increments are identified separately in §14.
 
-The redesign adds no production or development dependency. It preserves React/Vite/TypeScript, the current native controls and existing browser harness. It does not change API contracts, schemas, authentication, authorization, validation, clinical rules or the source ledger. Final technical-integrity confirmation belongs to the completed diff review, recorded in §21.
+The redesign adds no production or development dependency. It preserves React/Vite/TypeScript, the current native controls and existing browser harness. The final scope comparison found all 198 protected files byte- and mode-identical to the reconciled parent, including API contracts, schemas, authentication, authorization, validation, clinical rules and the source ledger. The exact comparison and its limits are recorded in §21.
 
 ### Source baseline and upstream reconciliation
 
@@ -57,7 +58,7 @@ The requested 22 outputs are covered below and in the linked supporting research
 | 18 | Patient Chart Design | §18; source fields, states and absence limits |
 | 19 | Design Alternatives and Decision Log | §19; three considered alternatives and rationale |
 | 20 | Frontend Implementation Roadmap | §20; completed scope and remaining work |
-| 21 | QA and Regression Testing | §21; executed baseline/initial checks, final checks pending |
+| 21 | QA and Regression Testing | §21; executed baseline and final local checks, separate hosted CI status |
 | 22 | Final Product UX Evaluation | §22; bounded assessment and remaining evaluation |
 
 Supporting evidence:
@@ -186,7 +187,7 @@ Implemented conventions include semantic main/navigation landmarks, a skip link,
 
 The design uses 44px primary control heights as a product target. WCAG 2.2 AA's [target-size criterion](https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html) is 24×24 CSS pixels or an applicable exception; 44×44 is not falsely represented as the AA minimum. Responsive checks target 320, 390, 768 and 1440px. A 320px viewport check alone is not the complete equivalent of a manual 400% zoom assessment.
 
-Static color calculations against the actual stylesheet found all **25 sampled normal-text pairs above 4.5:1** and all **9 sampled enabled-control/focus/outer-state pairs meeting 3:1**. The stylesheet SHA-256 was `43064340de6ff958af0ae4390553108b9768b58887f1342f11aeeb3bb47c7e02`. The active navigation border is **2.49:1 against the selected interior fill** and **3.99:1 against the outer rail**; both values are retained for contextual review. Decorative separators and disabled controls were not treated as tested enabled-input boundaries. See the [verification index](evidence/README.md).
+Static color calculations against the final stylesheet found all **25 sampled normal-text pairs above 4.5:1** and all **9 sampled enabled-control/focus/outer-state pairs meeting 3:1**. The stylesheet SHA-256 is `2f50b7c13589525ec261875a3b35a4b0c8b1c0fe797f202b19d1fe5b501b9d86`. The active navigation border is **2.49:1 against the selected interior fill** and **3.99:1 against the outer rail**; both values are retained for contextual review. Decorative separators and disabled controls were not treated as tested enabled-input boundaries. See the [measurements and interpretation](evidence/contrast-measurements.md).
 
 Automated browser checks, static color calculations and screenshots do not establish complete conformance. Screen-reader behavior, comprehensive keyboard operation, zoom, forced colors, contrast in every dynamic state and inclusive user comprehension remain separately assessable. The exact executed checks are recorded in §21; unexecuted checks are not passed by implication.
 
@@ -242,7 +243,7 @@ Reusable presentation units are `RecordsPanel` and `SourceRow`, plus shared head
 
 Component rules: preserve original values and status vocabulary; render literal content through React text nodes; give each section a heading; use a definition list for key/value metadata; keep current source statements near their version; use native `details/summary` for optional provenance; preserve a direct clear/retry/return action. A source hash is never styled as a clinical validation badge.
 
-These token values describe the inspected candidate. The sampled contrast measurements in §10 apply to the recorded stylesheet hash; any later color change requires remeasurement of the affected pair. Final visual-polish changes must be reconciled with the final code before publication.
+These token values describe the verified implementation. The sampled contrast measurements in §10 apply to the final recorded stylesheet hash; any later color change requires remeasurement of the affected pair. The final long-identifier wrapping correction changes layout without introducing a new color or dependency.
 
 ## 14. Existing Application Audit
 
@@ -260,7 +261,9 @@ The baseline was archived from exact PR #200 before product changes. The applica
 
 The screenshot filenames above are indexed in the [durable screenshot location](screenshots/README.md); the accepted baseline audit and logs are indexed in [verification evidence](evidence/README.md). This is a heuristic audit of an executed synthetic workflow, not patient or clinician feedback. It found hierarchy/context opportunities, not measured clinical errors. No metadata overlap was measured and none is claimed.
 
-Documentation reconciliation preceded changes. Historical project documents described identity-only React #181 and proposed Next.js screens, while the selected source baseline #200 already connects Records and the accepted stack excludes Next.js. The new report uses the actual code for inventory and preserves older documents as dated history. It does not publish their private contents.
+Documentation reconciliation preceded changes. At the initial audit, historical project documents described identity-only React #181 and proposed Next.js screens, while the selected source baseline #200 already connects Records and the accepted stack excludes Next.js. This report uses the actual code for inventory and preserves older documents as dated history. It does not publish their private contents.
+
+**Concurrent feature branches:** a final documentation check identified [draft PR #205, Records to obtain](https://github.com/OpenxIntelligence/open-intelligence/pull/205) at `37e1b4d00aa9b9dd0bdbf2b0a121b2c87d72cad5` and [draft PR #209, inspect-before-import and original viewer](https://github.com/OpenxIntelligence/open-intelligence/pull/209) at `aa44084866451ac106de9dc117c7e20224b77032`. Public PR metadata confirmed both open, draft and unmerged on the same #200 parent. Their request-read and original-source features are separate from the inspected #200 workspace snapshot. This report does not attribute their functionality or test totals to this redesign. Combining the branches requires deliberate source-owner reconciliation and a fresh integrated browser run; the existing request, import and original-viewer work must be preserved.
 
 ## 15. Complete Feature Inventory
 
@@ -345,7 +348,7 @@ The baseline findings motivate concrete changes:
 | Finding | Evidence | Candidate response | Outcome still requiring evaluation |
 |---|---|---|---|
 | Technical setup/caveats push active source work down | Baseline Records desktop/mobile | Move selected identity up; concise scope note; metadata disclosure | Whether patients comprehend the shorter presentation |
-| Identity is absent while reading lower source history | Baseline source-history screenshot | Persistent patient context | Final sticky-header/focus behavior across widths |
+| Identity is absent while reading lower source history | Baseline source-history screenshot | Persistent patient context | Final sticky-header/focus checks passed at 320/390/768/1440px |
 | Working and unconnected areas have equal emphasis | Baseline entry/navigation | Separate working destinations from the “Not connected” disclosure | Discoverability of retained planned areas |
 | Hash/technical metadata precedes useful statement | Baseline source-history screenshot | Statement adjacent to version, provenance available on demand | Clinician ability to verify source without extra burden |
 | A single reading layout serves different tasks | Source inspection and existing blueprint mismatch | Shared patient/clinical layouts | Actual task performance for each audience |
@@ -402,7 +405,7 @@ Selection criteria were learnability, source-verification efficiency, accessibil
 | D-UX-07 Preserve historical quotation limit | Active parser accepts current-source assertions only | Explicit copy implemented |
 | D-UX-08 Preserve combined error causes | Actual RegistrySession contract; builder review | Required and documented |
 | D-UX-09 Filter loaded metadata only | Useful presentation improvement without backend search | Implemented |
-| D-UX-10 Retain all reference features | Current user boundary and source-owner architecture | Files retained; final diff verification pending |
+| D-UX-10 Retain all reference features | Current user boundary and source-owner architecture | Reference files identical to parent; 245 reference tests passed |
 | D-UX-11 Publish one cohesive report | Existing documentation already has owners and historical layers | Report assembled; external writes pending |
 
 ## 20. Frontend Implementation Roadmap
@@ -411,19 +414,17 @@ Selection criteria were learnability, source-verification efficiency, accessibil
 
 Research covered the named market, technology options and official healthcare/accessibility guidance. Existing Notion/Drive organization was inspected before proposing publication. The exact H1 baseline was run and captured; current source behavior and the retained reference app were inventoried. Alternatives were documented and a frontend-only design selected.
 
-The candidate reorganizes `main.tsx`, refines `styles.css`, extracts `records-panel.tsx`, and extends the existing browser journey with `workspace_ux_checks.py`. Initial client/build/browser verification has passed; final polish/review remains active.
+The implementation reorganizes `main.tsx`, refines `styles.css`, extracts `records-panel.tsx`, and extends the existing browser journey with `workspace_ux_checks.py`. Final local client, build, rights and actual browser verification passed after the independent review fixes and long-identifier wrapping correction. The retained reference suite also passed. Evidence and reviewed screenshots are indexed in §21.
 
 ### Remaining gates in this cycle
 
-1. Finish visual inspection at the requested widths and resolve findings.
-2. Complete independent review of patient context, source association, error presentation, focus and feature preservation.
-3. Run final client/build/rights/browser verification after the last product change.
-4. Record exact commit, files, screenshots, test evidence and technical-boundary comparison.
-5. Publish the reviewed report in the existing UX documentation area and append concise verification links to existing project records.
+1. Finish attaching the durable documentation and screenshot package to published draft PR #218, recording publication revisions and hosted CI separately from the completed local checks.
+2. Publish the reviewed report in the existing UX documentation area and append concise verification links to existing project records.
+3. Preserve the exact source/test hashes in the boundary report through any documentation-only publication update.
 
 ### Later product work, outside this frontend-only change
 
-Connect remaining H1 source intake, investigations and review through their existing domain owners; establish real account/consent/professional authority separately; research complete patient/clinician journeys with participants; evaluate source-scale performance; introduce complex components only for demonstrated requirements. This preserves the wider first-party oncology platform ambition without presenting absent functions as completed.
+Reconcile the existing request and source-intake branches into this workspace through their current owners; connect investigations and review through their domain owners; establish real account/consent/professional authority separately; research complete patient/clinician journeys with participants; evaluate source-scale performance; introduce complex components only for demonstrated requirements. This preserves the wider first-party oncology platform ambition without presenting absent functions as completed or commissioning duplicate intake work.
 
 ## 21. QA and Regression Testing
 
@@ -447,56 +448,61 @@ The baseline browser exercised connect, fictional creation, same-key retry, deni
 
 ### Initial implementation verification
 
-The implementing agent reports **24 client tests passed**, a successful TypeScript/Vite build and the expanded actual Chromium→FastAPI→PostgreSQL journey passed on the local candidate. This is an initial executed checkpoint. Visual polish and independent review are still in progress; these results are not represented as final-head evidence.
+The initial implementation passed **24 client tests**, a TypeScript/Vite build and an expanded actual Chromium→FastAPI→PostgreSQL journey. That checkpoint preceded the later review fixes; final results are recorded separately below.
 
-The expanded harness is designed to check reading-layout changes with no API request/data mutation, persistent patient context, retained unsubmitted patient-ID input, explicit unconnected destinations, heading focus, literal source association, provenance disclosure, filter/no-match/clear behavior, historical source handling, responsive containment at 320/390/768/1440px, skip-link operation and client-clearing behavior. The final report must reconcile the exact executed assertions and any fixes after the initial run.
+The expanded harness checks reading-layout changes with no API request/data mutation, persistent patient context, retained unsubmitted patient-ID input, explicit unconnected destinations, heading focus, literal source association, provenance disclosure, filter/no-match/clear behavior, historical source handling, responsive containment at 320/390/768/1440px, skip-link operation and client-clearing behavior. The final executed run additionally covers two-case source/filter isolation, stress-length identifiers and quotation text, sticky-focus geometry, and expiry after records were visibly loaded.
 
 ### Retained-reference regression and independent review
 
 The retained Python/SQLite reference suite was actually executed during this redesign cycle: **245 tests passed**, with the log reporting **131.713 seconds**. This checks existing reference code, not 245 new tests or 245 patient participants. It is separate from the 24 H1 client tests and the actual H1 browser/API journey; counts are not combined into a misleading single coverage number. The captured reference-log SHA-256 is `94652238ebc95a2445a3431d6213d47d5a747117e02c1b937a5726599dd239b0`. See the [reference result summary](evidence/reference-suite-summary.md).
 
-Independent source/interaction review identified three concrete issues for correction before final verification:
+Independent source/interaction review and targeted browser checks identified concrete issues that were corrected before final verification:
 
-| Finding | Consequence | Resolution state at this checkpoint |
+| Finding | Consequence | Final local resolution |
 |---|---|---|
-| Overview retains the identity-read status after source records are loaded | The message can falsely imply no clinical/source record is loaded | Presentation condition corrected in local code; final regression pending |
-| Clear filters removes its own currently focused button | Keyboard focus may fall to the document rather than remain at the filter | Explicit filter-input focus restoration implemented; final keyboard regression pending |
-| Existing expiry test did not require sources to be visible before expiry | A passing test could miss source-content clearing on the Records surface | Previously visible source precondition and expiry on Records added; final run pending |
+| Overview retains the identity-read status after source records are loaded | The message can falsely imply no clinical/source record is loaded | Presentation condition corrected; final regression passed |
+| Clear filters removes its own currently focused button | Keyboard focus may fall to the document rather than remain at the filter | Explicit filter-input focus restoration implemented; final keyboard regression passed |
+| Existing expiry test did not require sources to be visible before expiry | A passing test could miss source-content clearing on the Records surface | Previously visible source precondition and expiry on Records added; final clearing check passed |
+| Long case heading overflows at 320px | A valid opaque identifier can force horizontal page overflow | Heading children receive width limits and wrapping; final 320px stress check passed |
 
-The two presentation bugs were reproduced together in an actual browser assertion: “Clearing filters must return keyboard focus to the source filter; Overview must not claim no records are loaded while retaining source records.” Narrow local UI corrections restore focus to the source-filter input and suppress the stale identity-only message when a source response remains loaded. The expiry scenario now requires previously visible source content before exercising credential expiry. Final verification is pending.
+The first two presentation bugs were reproduced together in an actual browser assertion: “Clearing filters must return keyboard focus to the source filter; Overview must not claim no records are loaded while retaining source records.” Narrow UI corrections restore focus to the source-filter input and suppress the stale identity-only message when a source response remains loaded. The expiry scenario now requires previously visible source content before exercising credential expiry. The [failing review check](evidence/review-red-browser.txt) and [final passing run](evidence/browser-final.txt) preserve the reproduction and resolution.
+
+A separate [long-source failing check](evidence/long-source-red-browser.txt) found the case eyebrow extending to 354.95px in a 320px viewport. The correction applies `min-width`, `max-width` and `overflow-wrap` to the section-heading children. The final run passed with two cases, 40-character case/document identifiers, a 128-character organization identifier and a 1,200-character quotation. No truncation or semantic shortening of source content was introduced.
 
 An earlier targeted rerun timed out before real proxied API readiness; that earlier environment-startup failure did not itself reach or reproduce the defects. Preserve the distinction between that attempt, the later meaningful failing assertion and the final corrected run. These are engineering review findings, not claimed clinical incidents.
 
-A separate screenshot/contrast review found the selected identity visible in desktop and mobile source-reading captures and no newly obvious serious visual defect in those images. The mobile capture observer had programmatically placed part of a source row beneath the sticky header; the observer is being aligned before final capture. That screenshot artifact alone does not establish a normal keyboard-focus defect. The initial mobile page remains relatively tall, so improved task speed is not claimed.
+A separate screenshot/contrast review inspected all eight final images and found the selected identity visible in desktop and mobile source-reading captures, with no additional serious visual issue identified in those images. The 390px capture observer was aligned below the sticky header. The 320px stress capture is a scrolled state, so it demonstrates wrapping and persistent context rather than the entire source in one viewport. The initial mobile page remains relatively tall, so improved task speed is not claimed. See the [screenshot index](screenshots/README.md) and [review qualifications](evidence/contrast-measurements.md).
 
-### Final verification record — pending
+### Final local verification record
 
 | Gate | Current status |
 |---|---|
-| Final product commit/tree | Pending; reconciled parent `68935c9fc60ef229aa9ff6cc4238153dc01a9b91` |
-| Final 24-test client run | Pending after last product change |
-| Final TypeScript/Vite build and payloads | Pending |
-| Final unchanged rights gate | Pending |
-| Final actual browser journey and screenshots | Pending |
-| Independent code review / resolved findings | Two presentation bugs reproduced and corrected locally; expiry coverage strengthened; final verification pending |
-| Final runtime-console result | Pending |
-| Final contrast/keyboard/zoom findings | 25 text + 9 enabled control/focus/outer-state contrast samples measured; final keyboard checks pending; zoom/screen-reader/forced-colors not executed |
-| Changed-path and restricted-file comparison | Pending final diff |
-| Draft PR publication | Pending |
+| Validated local product-source checkpoint | Commit `0b741bf8ef7987ab4396474e3fbf0fa4b0f7e053`, tree `0ab810415d82f04bc8b37d5bea01ac214a63188d`; reconciled parent `68935c9fc60ef229aa9ff6cc4238153dc01a9b91`; later documentation-only publication has a separately recorded remote head |
+| Published implementation checkpoint | [Commit `4718c9003193bd936ecede16ae180adfbd41e9a9`](https://github.com/OpenxIntelligence/open-intelligence/commit/4718c9003193bd936ecede16ae180adfbd41e9a9) has the same validated tree `0ab810415d82f04bc8b37d5bea01ac214a63188d`; subsequent documentation-only commits and hosted runs are separate receipts |
+| Final client run | **24 passed, 0 failed, 0 skipped**; [client log](evidence/client-final.txt) |
+| Final TypeScript/Vite build | Passed; CSS **15.23 kB / 3.94 kB gzip**, JavaScript **258.12 kB / 78.93 kB gzip**, index **0.42 kB / 0.30 kB gzip**; [build log](evidence/build-final.txt) |
+| Final unchanged rights gate | **18 installed, 2 optional uninspected, errors `[]`**; [rights log](evidence/rights-final.txt) |
+| Final actual browser journey | Passed against actual FastAPI/PostgreSQL 16; identity/create/retry, current and amended source history, literal quotations, revocation, cross-organization isolation, two-case source/filter isolation, long-content reflow, expiry clearing previously visible records and reload; [browser log](evidence/browser-final.txt) |
+| Independent review / resolved findings | Stale Overview status, Clear filters focus and 320px long-heading overflow reproduced and corrected; stronger expiry precondition passed |
+| Final runtime-console result | No `Runtime.exceptionThrown` or `console.error` event observed during the executed journey |
+| Final contrast/keyboard/reflow findings | 25 text + 9 enabled control/focus/outer-state contrast samples measured; tested keyboard recovery, landmarks and sticky-focus geometry passed at 320/390/768/1440px; full zoom/screen-reader/forced-colors evaluation not executed |
+| Final screenshot review | Eight final fictional-data images inspected; [before/after evidence](screenshots/README.md) |
+| Changed-path and restricted-file comparison | **PASS: 198 protected files identical, no protected differences or unapproved changed paths**; [boundary report](evidence/boundary-report.json) |
+| Draft PR and hosted CI | [PR #218](https://github.com/OpenxIntelligence/open-intelligence/pull/218) is published, draft and unmerged; hosted CI passed on implementation head `4718c9003193bd936ecede16ae180adfbd41e9a9` in [run 41564125200](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41564125200), job 125681401811. Decoded job logs confirm the exact checkout, 24 passing client tests and actual PostgreSQL browser PASS. Artifact 13197808926 metadata was inspected; its archive was not downloaded. See [receipt](evidence/hosted-implementation.json) and [PR checks](https://github.com/OpenxIntelligence/open-intelligence/pull/218/checks) for later documentation-head verification |
 
 ### Technical integrity
 
-The permitted product files are frontend presentation/components/styles, frontend browser verification and documentation. The inspected candidate's changed tracked product paths are `apps/web/src/main.tsx`, `apps/web/src/styles.css`, and browser-test wiring, with new presentation and browser-helper files. No runtime dependency change is intended.
+The changed product/test files are `apps/web/src/main.tsx`, `apps/web/src/styles.css`, `apps/web/src/records-panel.tsx`, `apps/web/tools/browser_journey.py` and `apps/web/tools/workspace_ux_checks.py`. Remaining changes are documentation and evidence. No runtime or development dependency changed.
 
-The final comparison must explicitly confirm that `apps/api/**`, `src/**`, migrations, `registry-client.ts`, `source-contracts.ts`, dependency manifests/lockfiles and retained `web/**` match the reconciled parent `68935c9fc60ef229aa9ff6cc4238153dc01a9b91`. The upstream-deleted `source-model.ts` must remain absent. Until that final comparison is recorded, this section is a boundary requirement and observed candidate scope, not an unconditional completion claim.
+The [final local boundary comparison](evidence/boundary-report.json) confirms that `apps/api/**`, `src/**`, migrations, `registry-client.ts`, `source-contracts.ts`, dependency manifests/lockfiles, CI workflows and retained `web/**` match the reconciled parent `68935c9fc60ef229aa9ff6cc4238153dc01a9b91`. All 198 protected files are byte- and mode-identical, with no unapproved changed paths. The upstream-deleted `source-model.ts` remains absent. The report records SHA-256 values for the five changed product/test files; any later publication must preserve those values or regenerate the comparison. This is a source-boundary result, not clinical validation or proof of every possible runtime behavior.
 
 No patient or physician study, full screen-reader review, complete WCAG audit, clinical validation, production-load benchmark, merge or deployment is claimed.
 
 ## 22. Final Product UX Evaluation
 
-**Current assessment:** the candidate addresses the measured presentation opportunities while staying within the actual H1 feature set. It supplies different patient/clinical reading priorities, a persistent identity context, a dedicated source chart, source-adjacent statements, inspectable history and reversible filtering. It also keeps unsupported workflows honest and preserves the current contracts.
+**Current assessment:** the verified implementation addresses the observed presentation opportunities while staying within the actual H1 feature set. It supplies different patient/clinical reading priorities, a persistent identity context, a dedicated source chart, source-adjacent statements, inspectable history and reversible filtering. It also keeps unsupported workflows honest and preserves the current contracts. Final local engineering checks passed; they do not establish measured user benefit.
 
-**Still pending before this implementation is declared complete:** final visual/code review, final-head verification, exact boundary evidence and publication receipts. The broader mandate's two fully operational patient/clinician products cannot be completed through frontend changes alone while identity, clinical actions and several workflows are absent. This report distinguishes the functioning reading experiences from those product gaps.
+**Publication status:** the final local implementation, review fixes, screenshots and boundary evidence are complete. Draft PR #218 is published and unmerged, with its implementation tree matched to the validated local tree. Hosted CI passed on the published implementation checkpoint; [PR checks](https://github.com/OpenxIntelligence/open-intelligence/pull/218/checks) record any later documentation-head verification separately. Existing-workspace report publication is in progress. The broader mandate's two fully operational patient/clinician products cannot be completed through frontend changes alone while real account authority, clinical actions and several workflows are absent. This report distinguishes the functioning reading experiences from those product gaps.
 
 Future user evaluation should ask participants to identify the selected patient, find the current report, distinguish an earlier version, explain whether a quotation is clinically reviewed, inspect its source line/provenance, recover from no filter matches, and recover after access failure. Measure correct completion, consequential errors, backtracking, comprehension and actual time. Use appropriately authorized fictional study material; do not invent results or recruit/contact people without authorization.
 

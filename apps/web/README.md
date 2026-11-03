@@ -16,10 +16,11 @@ acceptance criteria.
 - Read only an explicitly granted identity under its persisted organization.
 - Clear the displayed patient on a new request, refusal, credential change,
   logout or expiry; discard late responses from older selections/sessions.
-- Overview connected; Journey, Records, Investigations and Review clearly marked
-  not connected. The old reference application remains available unchanged.
+- Overview and read-only Records connected; Journey, Investigations and Review
+  remain reachable and clearly marked not connected. The old reference
+  application remains available unchanged.
 
-No real account management, identity proofing, clinical records, source imports,
+No real account management, identity proofing, real-patient clinical records, source-import controls,
 caregiver delegation, consent, live model, biomedical retrieval or deployment is
 introduced. The backend remains responsible for authorization. An authorized
 request can complete after a later grant change; this UI is not a consent service.
@@ -103,9 +104,9 @@ This trades build speed for a smaller inspectable dependency surface; actual
 benchmark/performance qualification is still needed. WASM compiled contents and
 the complete host/toolchain still require deployment-specific rights review.
 
-## State
+## Initial integration history
 
-Initial client tests have been executed locally. Dependency acquisition/full TSX
+Initial client tests were executed locally. Dependency acquisition/full TSX
 build and actual API browser validation require their own exact-head CI evidence.
 The candidate lock was acquired through hosted CI, hash-checked and inspected. It
 is now committed; bootstrap resolution is removed. Subsequent runs use only
@@ -152,3 +153,32 @@ disappears.
 No result is claimed until the hosted job has passed on this branch's **final
 commit**. Keep parent #193, original frontend #181, patient workspace #179 and
 the separate UX source-owner branches in draft review; do not auto-merge.
+
+## Patient and clinical reading workspaces
+
+The frontend UX increment retains one unchanged `RegistrySession` and the same
+API contracts. **Patient view** uses a single source-reading column and simpler
+navigation labels; **Clinical view** exposes case mappings alongside source
+history on wide screens. This selector changes presentation, not identity,
+permissions, or available operations.
+
+Authorized patient identity remains visible while reading source history.
+Workspace navigation and the patient chart are separate. Local text/status
+filters apply only to the loaded response, reset when its scope changes, and
+show an explicit no-match state. Current source versions appear before
+superseded versions. Source quotations remain literal and tied to their exact
+source/version/line; historical rows explain that their quotations are not
+included by the current response. Native disclosures retain full source IDs,
+hashes, received dates, specimen IDs and supersession links.
+
+The real browser journey also checks reading-layout and navigation state,
+persistent identity, filter recovery, source-version association, case switching,
+long content, responsive wrapping, focus geometry, and expiry while previously
+visible records are on screen. It observes uncaught JavaScript and
+`console.error` events. Test grants remain operator-controlled fixtures.
+
+Research, implementation decisions, screenshots, exact verification evidence and
+remaining limitations are indexed in the
+[Product Research & UX Evolution report](../../docs/ux/2026-11-02-product-research-ux-evolution.md).
+These checks do not establish actual patient/clinician account behavior, full
+WCAG conformance, clinical validation or production release readiness.

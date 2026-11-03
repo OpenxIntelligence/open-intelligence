@@ -1,7 +1,8 @@
 {
   "status": "PASS",
-  "checked_at_utc": "2026-11-03T01:30:45.167407+00:00",
+  "checked_at_utc": "2026-11-03T01:39:25.505615+00:00",
   "comparison_parent": "68935c9fc60ef229aa9ff6cc4238153dc01a9b91",
+  "working_checkpoint": "0b741bf8ef7987ab4396474e3fbf0fa4b0f7e053",
   "historical_audit_baseline": "d8de9aaca352cc58b64e9e32440f4ea248b02cb8",
   "upstream_reconciliation": "The sole inherited upstream change deletes unused apps/web/src/source-model.ts. It is not a UX-authored parser or validation change.",
   "upstream_deleted_module_remains_absent": true,
@@ -59,9 +60,9 @@
   "working_product_test_sha256": {
     "apps/web/src/main.tsx": "195f83321d448ba6f8370cc290aaed159689529320c02ef405292b7d1728a604",
     "apps/web/src/records-panel.tsx": "0cd4e257d284cf7d1eb345ace3b9a3bc1c0c5c671cd8338b12906199c81531f1",
-    "apps/web/src/styles.css": "43064340de6ff958af0ae4390553108b9768b58887f1342f11aeeb3bb47c7e02",
-    "apps/web/tools/browser_journey.py": "555db75193cd34b5967bc24bb3274b7f0f08d79d91c07337d5eacb98a835d0b2",
-    "apps/web/tools/workspace_ux_checks.py": "0e909baf6a230b50d79bc8ed880ffe42f04fad968a865220eecbff18c18c31e9"
+    "apps/web/src/styles.css": "2f50b7c13589525ec261875a3b35a4b0c8b1c0fe797f202b19d1fe5b501b9d86",
+    "apps/web/tools/browser_journey.py": "990b083a541477e7e1336841b6c2d7f867d5764928991ea8735b189c4d85bc6f",
+    "apps/web/tools/workspace_ux_checks.py": "23eae47dc69393e6f13ed3c9ea759a9637dd2c8cccade4866e136272476f4b6b"
   },
   "changed_files_at_check": [
     "apps/web/src/main.tsx",
@@ -79,11 +80,16 @@
     "docs/ux/evidence/baseline-python-versions.json",
     "docs/ux/evidence/baseline-red-browser.txt",
     "docs/ux/evidence/boundary-report.json",
+    "docs/ux/evidence/browser-final.txt",
+    "docs/ux/evidence/build-final.txt",
+    "docs/ux/evidence/client-final.txt",
     "docs/ux/evidence/contrast-measurements.json",
     "docs/ux/evidence/contrast-measurements.md",
+    "docs/ux/evidence/long-source-red-browser.txt",
     "docs/ux/evidence/reference-suite-summary.md",
     "docs/ux/evidence/reference-suite.txt",
     "docs/ux/evidence/review-red-browser.txt",
+    "docs/ux/evidence/rights-final.txt",
     "docs/ux/evidence/upstream-reconciliation.md",
     "docs/ux/research/competitor-research.md",
     "docs/ux/research/competitor-sources.json",
@@ -91,13 +97,23 @@
     "docs/ux/research/guidance-sources.json",
     "docs/ux/research/healthcare_ux_guidance.md",
     "docs/ux/screenshots/README.md",
+    "docs/ux/screenshots/after/h1-desktop.png",
+    "docs/ux/screenshots/after/h1-mobile.png",
+    "docs/ux/screenshots/after/manifest.json",
+    "docs/ux/screenshots/after/ux-clinical-records.png",
+    "docs/ux/screenshots/after/ux-long-source-mobile.png",
+    "docs/ux/screenshots/after/ux-patient-records-mobile.png",
+    "docs/ux/screenshots/after/ux-patient-records.png",
+    "docs/ux/screenshots/after/ux-source-reading-desktop.png",
+    "docs/ux/screenshots/after/ux-source-reading-mobile.png",
     "docs/ux/screenshots/before/01-entry-desktop.png",
     "docs/ux/screenshots/before/02-patient-open-desktop.png",
     "docs/ux/screenshots/before/03-records-desktop.png",
     "docs/ux/screenshots/before/04-amendment-desktop.png",
     "docs/ux/screenshots/before/05-source-history-desktop.png",
     "docs/ux/screenshots/before/06-records-mobile.png",
-    "docs/ux/screenshots/before/h1-mobile.png"
+    "docs/ux/screenshots/before/h1-mobile.png",
+    "docs/ux/screenshots/before/manifest.json"
   ],
   "protected_files": [
     {
@@ -1897,18 +1913,23 @@
       "docs/ux/evidence/baseline-capture.txt",
       "docs/ux/evidence/baseline-python-versions.json",
       "docs/ux/evidence/baseline-red-browser.txt",
+      "docs/ux/evidence/browser-final.txt",
+      "docs/ux/evidence/build-final.txt",
+      "docs/ux/evidence/client-final.txt",
       "docs/ux/evidence/contrast-measurements.json",
       "docs/ux/evidence/contrast-measurements.md",
+      "docs/ux/evidence/long-source-red-browser.txt",
       "docs/ux/evidence/reference-suite-summary.md",
       "docs/ux/evidence/reference-suite.txt",
       "docs/ux/evidence/review-red-browser.txt",
+      "docs/ux/evidence/rights-final.txt",
       "docs/ux/evidence/upstream-reconciliation.md"
     ],
     "matches": [],
     "qualification": "Narrow pattern scan plus manual review; not proof of absence of every possible secret. Screenshot content was inspected and contains only independent fictional identifiers and source statements; no credential field value is exposed."
   },
   "qualifications": [
-    "Uncommitted worktree snapshot. No commit, push, merge, deployment, production authority, clinical validation or comprehensive accessibility claim is made by this report.",
+    "Worktree compared to explicit reconciled parent. Local source checkpoint is recorded separately; no hosted publication, merge, deployment, production authority, clinical validation or comprehensive accessibility claim is made by this report.",
     "Further documentation-only artifacts may be added after this inventory; final publication must retain these product/test hashes or regenerate the boundary report.",
     "No test counts are inferred from byte identity. Actual execution evidence is retained separately."
   ]

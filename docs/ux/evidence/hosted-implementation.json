@@ -1,0 +1,29 @@
+{
+  "verified_commit": "4718c9003193bd936ecede16ae180adfbd41e9a9",
+  "verified_tree": "0ab810415d82f04bc8b37d5bea01ac214a63188d",
+  "pull_request": "https://github.com/OpenxIntelligence/open-intelligence/pull/218",
+  "workflow_run": 41564125200,
+  "workflow_url": "https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41564125200",
+  "job_id": 125681401811,
+  "conclusion": "success",
+  "observed_log_checks": {
+    "checkout_matches_commit": true,
+    "client_tests": 24,
+    "client_pass": 24,
+    "client_fail": 0,
+    "rights_installed": 18,
+    "rights_optional_uninspected": 2,
+    "actual_postgresql_browser": "pass",
+    "uncaught_js_or_console_error_events": 0
+  },
+  "artifact": {
+    "id": 13197808926,
+    "name": "h1-web-verification-41564125200-1",
+    "size_in_bytes": 2613008,
+    "digest": "sha256:86a932166a2f37858f208758301d8b59a947e975bc7dd6d8ba9e9bff4824bc89",
+    "expires_at": "2026-11-10T02:08:04Z",
+    "inspection": "metadata inspected; archive not downloaded in this receipt"
+  },
+  "evidence_basis": "GitHub job status/steps plus decoded job log and artifact metadata; independent from local checks.",
+  "later_documentation_commits": "See pull-request checks for the final head. The five implementation/test file SHA-256 values in boundary-report.json identify the same validated source."
+}

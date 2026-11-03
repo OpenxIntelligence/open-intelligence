@@ -1,6 +1,6 @@
 # Frontend contrast measurements
 
-Stylesheet SHA-256: `43064340de6ff958af0ae4390553108b9768b58887f1342f11aeeb3bb47c7e02`.
+Stylesheet SHA-256: `2f50b7c13589525ec261875a3b35a4b0c8b1c0fe797f202b19d1fe5b501b9d86`.
 
 Calculated from the actual stylesheet; thresholds were compared without rounding. All 25 sampled normal-text pairs exceed 4.5:1. All 9 sampled control/focus/outer-state pairs meet 3:1. These measurements do not establish WCAG 2.2 compliance.
 
@@ -51,11 +51,11 @@ The decorative separator is not the visual boundary used to identify an input. I
 
 Text-size and color checks are only one part of accessibility. This review did not run a screen reader, test every focus target or zoom combination, evaluate forced colors, or inspect all possible dynamic states. It does not measure clinical comprehension or real-user task efficiency.
 
-## Initial implementation screenshot review (historical)
+## Final screenshot review
 
-Inspected `../screenshots/after/ux-clinical-records.png`, `ux-patient-records.png`, `ux-patient-records-mobile.png`, `ux-source-reading-desktop.png`, `ux-source-reading-mobile.png`, and `h1-mobile.png`. No new obvious serious visual defect was identified. Patient identity is visible in both the desktop and mobile scrolled source-reading images. Desktop clinical mode keeps case context alongside source history; patient mode uses a single reading column.
+Inspected the eight final images indexed in `../screenshots/README.md`. They show the final passing actual-API browser run, including patient and clinical reading views, persistent patient context during source reading, and narrow-screen handling of unusually long fictional identifiers. No additional serious visual issue was identified from these images.
 
-The mobile source-reading observer positions the source row partly behind the sticky header. Final capture acceptance belongs in the screenshot index; this initial observation is preserved as history. The existing screenshot alone does not establish a focus-navigation defect; the observer used programmatic scrolling outside normal navigation. The initial mobile screen remains relatively tall, with the selected-patient context now visible; this is a design tradeoff, not measured task-efficiency evidence.
+The 390px source-reading capture now places the source heading and filter below the sticky patient header. The 320px long-source stress capture intentionally shows a scrolled state; part of the long case eyebrow lies above the visible content edge, while the source heading, filter, document identity and persistent patient identity remain visible. It demonstrates wrapping, not the entire source in one viewport. Screenshot evidence does not replace the separate browser focus, reflow, scope and permission checks.
 
 ## Primary references
 

@@ -26,3 +26,7 @@ The new parent introduces no user-facing capability, endpoint, grant, validation
 5. Run the planned final build/client checks against the reconciled tree and label evidence with its actual parent/head. No browser replay or new backend tests were performed for this read-only drift analysis.
 
 Risk assessment: low integration risk; no expected functional conflict. The material risk is inaccurate scope/provenance reporting or accidentally restoring an upstream-deleted duplicate parser. No additional frontend functionality needs implementation because of this drift.
+
+## Recorded worktree reconciliation
+
+The working checkout advanced to parent `68935c9fc60ef229aa9ff6cc4238153dc01a9b91`, preserving the upstream deletion, before the final product checkpoint. The boundary report compares the final UX worktree to this explicit parent. Earlier analysis wording is preserved as history and does not relabel baseline executions.
