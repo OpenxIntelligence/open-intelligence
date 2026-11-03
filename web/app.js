@@ -18,6 +18,26 @@ function notice(message, error = false) {
   item.className = error ? 'notice error' : 'notice';
   item.hidden = false;
 }
+// Begin per-field error association (A11Y-031). The global notice bar stays as
+// the summary; an invalid field also gets its own error element referenced by
+// aria-describedby, following the "<field id>-error" naming convention.
+function setFieldError(fieldId, message) {
+  const error = el(fieldId + '-error');
+  if (!error) return;
+  error.textContent = message;
+  error.hidden = false;
+  el(fieldId).setAttribute('aria-invalid', 'true');
+  el(fieldId).setAttribute('aria-describedby', error.id);
+}
+function clearFieldError(fieldId) {
+  const error = el(fieldId + '-error');
+  if (!error) return;
+  error.textContent = '';
+  error.hidden = true;
+  el(fieldId).removeAttribute('aria-invalid');
+  el(fieldId).removeAttribute('aria-describedby');
+}
+// End per-field error association (A11Y-031).
 async function api(path, payload) {
   const response = await fetch(path, payload === undefined ? undefined : {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
@@ -34,6 +54,12 @@ function metric(number, label) {
   wrap.append(node('span', number, 'number'), node('span', label, 'name'));
   return wrap;
 }
+// A11Y-004 decision (2026-11-03): this Tab reroute is KEPT, not removed. It is
+// pinned by the "keyboard Tab reaches first workspace navigation link" check in
+// tests/browser_journey.py (Tab from the case picker must land on #overview),
+// whose comment records the reason: Tab must reach the navigation without
+// disappearing into a dead control. Removing the reroute needs that journey
+// contract updated first as an explicit lead decision.
 function focusOverviewFromCasePicker(event) {
   if (event.key !== 'Tab' || event.shiftKey || event.defaultPrevented) return;
   if (document.activeElement !== el('case-picker')) return;
@@ -71,8 +97,8 @@ async function initialize() {
       active = null; // Reject writes while the next case is loading.
       for (const id of ['question-text', 'report-text', 'evidence-rationale', 'draft-observations',
         'draft-summary', 'draft-assumptions']) el(id).value = '';
-      if (el('source-dialog').open) el('source-dialog').close();
-      if (el('compare-dialog').open) el('compare-dialog').close();
+      clearFieldError('draft-observations');
+      closeSourceViewsWithoutFocusReturn();
       refresh();
     });
     caseId = cases[0].case_id;
@@ -670,8 +696,38 @@ function showSourceView(dialogId) {
   for (const id of ['source-dialog', 'compare-dialog']) {
     if (id !== dialogId && el(id).open) el(id).close();
   }
-  if (!el(dialogId).open) el(dialogId).showModal();
+  if (!el(dialogId).open) {
+    rememberDialogOpener(dialogId);
+    el(dialogId).showModal();
+  }
 }
+// Begin dialog focus return (A11Y-002). Every dialog close returns focus to
+// the element that opened it. The close handler below only restores focus; it
+// never touches the source-read intent (see the cancel-listener note with the
+// dialog listeners), so queued closes cannot cancel a newer read.
+const dialogOpeners = new Map();
+function rememberDialogOpener(dialogId) {
+  const opener = (typeof HTMLElement !== 'undefined' &&
+    document.activeElement instanceof HTMLElement) ? document.activeElement : null;
+  dialogOpeners.set(dialogId, opener);
+}
+function restoreDialogFocus(dialogId) {
+  const opener = dialogOpeners.has(dialogId) ? dialogOpeners.get(dialogId) : null;
+  dialogOpeners.delete(dialogId);
+  if (opener && opener.isConnected && typeof opener.focus === 'function') opener.focus();
+}
+function closeSourceViewsWithoutFocusReturn() {
+  // Case switches close dialogs while focus already sits on the case picker;
+  // restoring focus to a stale opener would yank it away from the picker.
+  dialogOpeners.delete('source-dialog');
+  dialogOpeners.delete('compare-dialog');
+  for (const id of ['source-dialog', 'compare-dialog']) if (el(id).open) el(id).close();
+}
+function watchDialogFocusReturn() {
+  for (const id of ['source-dialog', 'compare-dialog'])
+    el(id).addEventListener('close', () => restoreDialogFocus(id));
+}
+// End dialog focus return (A11Y-002).
 function originalText(response) {
   if (!response || typeof response.text !== 'string')
     throw Error('Original source text is unavailable. No comparison was produced.');
@@ -753,10 +809,13 @@ async function downloadSnapshot(id) {
 }
 el('dialog-close').addEventListener('click', () => { cancelSourceRead(); el('source-dialog').close(); });
 el('compare-close').addEventListener('click', () => { cancelSourceRead(); el('compare-dialog').close(); });
-// Native Escape dispatches cancel before closing. Avoid a close-event handler:
-// queued programmatic close events must not cancel a newer read intent.
+// Native Escape dispatches cancel before closing. Avoid a close-event handler
+// for read intents: queued programmatic close events must not cancel a newer
+// read intent. (The focus-return close handler registered below never touches
+// the read intent, so it is exempt from that rule.)
 for (const id of ['source-dialog', 'compare-dialog'])
   el(id).addEventListener('cancel', cancelSourceRead);
+watchDialogFocusReturn();
 el('question-form').addEventListener('submit', async event => {
   event.preventDefault(); try {
     const requestedCase = readyCase();
@@ -769,10 +828,12 @@ el('draft-form').addEventListener('submit', async event => {
   event.preventDefault();
   const observations = el('draft-observations').value.trim();
   if (!observations) {
+    setFieldError('draft-observations', 'Add reported observations before saving.');
     el('draft-observations').focus();
     notice('Add reported observations before saving.', true);
     return;
   }
+  clearFieldError('draft-observations');
   try {
     const requestedCase = readyCase();
     const sources = [...el('source-choice').querySelectorAll('input:checked')].map(x => Number(x.value));
