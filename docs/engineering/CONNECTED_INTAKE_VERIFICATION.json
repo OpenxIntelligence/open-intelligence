@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "scope": "Synthetic connected intake/report integration; no clinical release",
+  "connected_parent": "9735414c947c211ab20154638179d0be8ff2db32",
+  "intake_parent": "f9ba8d66b56a7d6669ef0ffce902af6565e1b477",
+  "common_source_owner": "1d5cd0502b5789371165539149dcecad8df5e551",
+  "reviewed_application_digest_sha256": "2a52abe4bbbd537d681672f9b10d2c597da7b6e4a49b3472aa899bcb768ed61f",
+  "local_python_passed": 686,
+  "local_javascript_passed": 113,
+  "local_browser": "Failed before navigation: Chromium refused root startup with its normal sandbox. No new bypass added.",
+  "hosted_status_at_authoring": "Pending; exact candidate commit, tree, logs and subsequent PR receipts are authoritative.",
+  "counts_are_additive": false,
+  "clinical_validation": false,
+  "production_deployment": false
+}
