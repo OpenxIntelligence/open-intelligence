@@ -83,12 +83,18 @@ MAX_PROMPT_CHARS = 64000
 
 def _assertion_line(item: dict) -> str:
     if item.get("classification_origin") == "user_selected":
+        extracted_anchor = (
+            f"text_origin=pdf_extraction source_page={item.get('source_page')} "
+            f"page_line={item.get('page_line')} extraction_line={item.get('source_line')} "
+            f"extraction_sha256={item.get('extraction_sha256')} "
+            if item.get("text_origin") == "pdf_extraction" else "")
         return (f"- source_version_id={item.get('source_version_id')} "
                 f"finding={item.get('finding_key')} user_selected_status={item.get('certainty')} "
                 "classification_origin=user_selected "
                 f"annotation_method={item.get('annotation_method')} "
                 f"clinical_review={item.get('clinical_review')} "
                 f"transcription_review_sha256={item.get('transcription_review_sha256')} "
+                f"{extracted_anchor}"
                 f"quote={item.get('quote')!r}")
     return (f"- source_version_id={item.get('source_version_id')} "
             f"finding={item.get('finding_key')} certainty={item.get('certainty')} "

@@ -1,10 +1,12 @@
 """Guard tests for the submission safety packet.
 
 These assert load-bearing repository invariants the packet relies on:
-no third-party package manager files, only the three pinned CI actions,
+no unreviewed default package manifests, only the known pinned CI actions,
 no externally fetched web resources, and synthetic markers on every
 example file. They read the repository itself, so a merge that breaks
 an invariant fails here rather than silently invalidating the packet.
+The separately pinned optional PDF wheel is inventoried in the current SBOM;
+absence of these default manifest names is not a no-dependencies claim.
 """
 
 import re

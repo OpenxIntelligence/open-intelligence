@@ -153,7 +153,10 @@ function renderPatientView() {
     card.append(node('strong', 'Source says'), node('p', assertion.quote, 'quoted'),
       node('span', (manual ? 'User-selected status: ' : 'How certain the source is: ') +
         (CERTAINTY_PLAIN[assertion.certainty] || assertion.certainty) +
-        ' · Exact source version #' + assertion.source_version_id + ', line ' + assertion.source_line, 'ref'));
+        ' · Exact source version #' + assertion.source_version_id +
+        (assertion.text_origin === 'pdf_extraction'
+          ? ', page ' + assertion.source_page + ', extracted line ' + assertion.page_line
+          : ', line ' + assertion.source_line), 'ref'));
     if (manual) card.append(node('p', 'Passage manually selected. Clinical review not performed.', 'muted tiny'));
     el('patient-findings').append(card);
   }
@@ -412,7 +415,8 @@ function render() {
     const meta = node('div', null, 'source-meta');
     for (const text of [source.kind, 'Event ' + source.event_date, 'Issued ' + source.issued_at,
       'Received ' + source.received_at.substring(0, 10), 'SHA ' + source.sha256.slice(0, 12) + '…']) meta.append(node('span', text));
-    const button = node('button', 'View original text', 'button secondary minor');
+    const button = node('button', source.text_origin === 'pdf_extraction'
+      ? 'View extracted PDF text' : 'View original text', 'button secondary minor');
     button.type = 'button'; button.addEventListener('click', () => openSource(source));
     card.append(top, meta, button);
     if (source.document_intake) {
@@ -439,7 +443,10 @@ function render() {
     const supportingSource = active.sources.find(source =>
       Number(source.id) === Number(assertion.source_version_id));
     const sourceButton = node('button', supportingSource
-      ? 'Inspect ' + supportingSource.document_id + '@' + supportingSource.version + ', line ' + assertion.source_line
+      ? 'Inspect ' + supportingSource.document_id + '@' + supportingSource.version +
+        (assertion.text_origin === 'pdf_extraction'
+          ? ', page ' + assertion.source_page + ', extracted line ' + assertion.page_line
+          : ', line ' + assertion.source_line)
       : 'Exact source version unavailable', 'button secondary minor source-jump');
     sourceButton.type = 'button';
     sourceButton.disabled = !supportingSource;
@@ -699,6 +706,37 @@ function originalText(response) {
     throw Error('Original source text is unavailable. No comparison was produced.');
   return response.text;
 }
+function validatePdfSourceView(source, response) {
+  const expected = source.document_intake?.extraction_sha256;
+  if (response.text_origin !== 'pdf_extraction' || response.media_type !== 'application/pdf' ||
+      response.source_id !== source.id || response.original_sha256 !== source.sha256 ||
+      !/^[0-9a-f]{64}$/.test(expected || '') || response.extraction_sha256 !== expected ||
+      !Number.isInteger(response.page_count) || response.page_count < 1 || response.page_count > 20 ||
+      !Array.isArray(response.lines) || !response.lines.length || response.lines.length > 512 ||
+      response.lines.some((line, index) => !line || line.line !== index + 1 ||
+        typeof line.text !== 'string' || /[\r\n]/.test(line.text) ||
+        !Number.isInteger(line.page) || line.page < 1 || line.page > response.page_count ||
+        !Number.isInteger(line.page_line) || line.page_line < 1 || line.page_line > 512) ||
+      response.lines.map(line => line.text).join('\n') !== response.text)
+    throw Error('PDF extraction identity or page anchors are unavailable. Reload the source.');
+}
+function renderExtractedSource(response, lineNumber) {
+  const viewer = el('dialog-text');
+  viewer.replaceChildren();
+  let anchored = false;
+  for (const line of response.lines) {
+    if (line.line > 1) viewer.append(document.createTextNode('\n'));
+    viewer.append(node('span', 'Page ' + line.page + ' · extracted line ' + line.page_line + ': ', 'ref'));
+    if (line.line === lineNumber) {
+      const mark = node('mark', line.text, 'source-highlight');
+      mark.dataset.line = String(line.line);
+      mark.dataset.page = String(line.page);
+      mark.dataset.pageLine = String(line.page_line);
+      viewer.append(mark); anchored = true;
+    } else viewer.append(document.createTextNode(line.text));
+  }
+  return anchored;
+}
 async function openSource(requested, lineNumber = null) {
   let read;
   try {
@@ -707,13 +745,26 @@ async function openSource(requested, lineNumber = null) {
     const response = await api('/api/cases/' + read.caseId + '/sources/' + source.id);
     if (!sourceReadIsCurrent(read)) return;
     const text = originalText(response);
-    el('dialog-title').textContent = source.document_id + '@' + source.version + ', original UTF-8';
-    const anchored = renderOriginalSource(text, lineNumber);
-    el('dialog-context').textContent = anchored
-      ? 'Source-reported statement, highlighted original line ' + lineNumber + '. Not clinically reviewed.'
-      : lineNumber === null
-        ? 'Exact original report and source version. Not clinically reviewed.'
-        : 'Requested source line is not present in this version. Original text is preserved below.';
+    const pdf = source.document_intake?.media_type === 'application/pdf' || response.text_origin === 'pdf_extraction';
+    if (pdf) validatePdfSourceView(source, response);
+    el('dialog-title').textContent = source.document_id + '@' + source.version +
+      (pdf ? ', extracted PDF text' : ', original UTF-8');
+    const anchored = pdf ? renderExtractedSource(response, lineNumber) : renderOriginalSource(text, lineNumber);
+    if (pdf) {
+      const anchor = anchored ? response.lines[lineNumber - 1] : null;
+      el('dialog-context').textContent =
+        (anchor ? 'Highlighted physical page ' + anchor.page + ', extracted line ' + anchor.page_line + '. ' : '') +
+        'Text extracted from the preserved PDF; page line numbers describe the extraction. ' +
+        'Reading order, completeness and visible text require checking against the original download. ' +
+        'Passages and statuses are manually selected; clinical review not performed.';
+    } else {
+      const origin = source.classification_origin === 'user_selected' ? 'Manually selected passage' : 'Source-reported statement';
+      el('dialog-context').textContent = anchored
+        ? origin + ', highlighted original line ' + lineNumber + '. Not clinically reviewed.'
+        : lineNumber === null
+          ? 'Exact original report and source version. Not clinically reviewed.'
+          : 'Requested source line is not present in this version. Original text is preserved below.';
+    }
     showSourceView('source-dialog');
     if (anchored) el('dialog-text').querySelector('mark.source-highlight')?.scrollIntoView({block:'center'});
   } catch (err) {
@@ -737,11 +788,21 @@ async function openComparison(requestedPrevious, requestedCurrent) {
       api('/api/cases/' + read.caseId + '/sources/' + source.id)));
     if (!sourceReadIsCurrent(read)) return;
     const beforeText = originalText(before), afterText = originalText(after);
-    el('compare-title').textContent = current.document_id + ': original versions ' +
+    const hasPdf = before.text_origin === 'pdf_extraction' || after.text_origin === 'pdf_extraction';
+    for (const [source, response] of [[previous,before],[current,after]]) {
+      if (source.document_intake?.media_type === 'application/pdf' || response.text_origin === 'pdf_extraction')
+        validatePdfSourceView(source, response);
+    }
+    el('compare-title').textContent = current.document_id + (hasPdf ? ': readable text versions ' : ': original versions ') +
       previous.version + ' and ' + current.version;
     el('compare-before-title').textContent = previous.document_id + '@' + previous.version + ' · ' + previous.state;
     el('compare-after-title').textContent = current.document_id + '@' + current.version + ' · ' + current.state;
     renderReportLineComparison(beforeText, afterText);
+    if (hasPdf) el('compare-context').textContent =
+      'This comparison uses extracted PDF text where applicable. It does not compare original PDF bytes, page images or layout. ' +
+      'Line numbers identify the global extraction; inspect either source for page anchors and download its original. ' +
+      el('compare-context').textContent.replace('Both complete original texts', 'Both readable text renditions')
+        .replace('Exact source text', 'Readable text');
     showSourceView('compare-dialog');
   } catch (err) {
     if (!read || sourceReadIsCurrent(read)) notice(err.message, true);

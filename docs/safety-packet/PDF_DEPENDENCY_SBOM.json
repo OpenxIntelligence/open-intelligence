@@ -1,0 +1,79 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-11-03T00:26:52Z",
+    "properties": [
+      {
+        "name": "open-intelligence:scope",
+        "value": "Optional bounded PDF intake wheel on Python 3.12+ only; not a complete deployment or Python-runtime SBOM. No extras."
+      },
+      {
+        "name": "open-intelligence:status",
+        "value": "Source license, hash-required installation, installed metadata and notice inspected; synthetic qualification only."
+      }
+    ]
+  },
+  "components": [
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/pypdf@6.21.4",
+      "name": "pypdf",
+      "version": "6.21.4",
+      "purl": "pkg:pypi/pypdf@6.21.4",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "33e4fb41ca352810eb4e9838aa0d82d6888a5f8bf682f43e99cce5faa666255c"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pypi.org/project/pypdf/6.21.4/"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/py-pdf/pypdf/tree/b2c3fa2ee689f582a0de256a45e30bd96c68f807"
+        },
+        {
+          "type": "license",
+          "url": "https://github.com/py-pdf/pypdf/blob/b2c3fa2ee689f582a0de256a45e30bd96c68f807/LICENSE"
+        }
+      ],
+      "properties": [
+        {
+          "name": "open-intelligence:artifact",
+          "value": "pypdf-6.21.4-py3-none-any.whl"
+        },
+        {
+          "name": "open-intelligence:notice",
+          "value": "THIRD_PARTY_NOTICES/pypdf.txt"
+        },
+        {
+          "name": "open-intelligence:notice-sha256",
+          "value": "a97ac230e5f33ef10a5367a850eb01f91f1a0b064e34742c7794d2294557f524"
+        },
+        {
+          "name": "open-intelligence:conditional-dependency",
+          "value": "typing_extensions>=4.0 applies only below Python3.11; this adapter requiresPython3.12+."
+        }
+      ]
+    }
+  ],
+  "dependencies": [
+    {
+      "ref": "pkg:pypi/pypdf@6.21.4",
+      "dependsOn": []
+    }
+  ]
+}

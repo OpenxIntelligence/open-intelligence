@@ -1,6 +1,21 @@
 'use strict';
-// Ordinary text-file intake. All source text is rendered as text, never markup.
+// Text and bounded PDF intake. All displayed passages are literal text, never markup.
 (function (root) {
+  function validatePdfPreview(preview) {
+    const hash = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
+    const positive = value => Number.isSafeInteger(value) && value > 0;
+    if (preview.media_type !== 'application/pdf' || !hash(preview.sha256) ||
+        !hash(preview.extraction_sha256) || !positive(preview.page_count) ||
+        preview.extractor?.name !== 'pypdf' || typeof preview.extractor.version !== 'string' ||
+        !preview.extractor.version || !preview.extractor.configuration ||
+        preview.extraction_method !== 'pypdf-text-v1' ||
+        preview.annotation_method !== 'manual-exact-extraction-line-selection' ||
+        preview.clinical_review !== 'not_performed' || !Array.isArray(preview.lines) ||
+        !preview.lines.length || preview.lines.length > 512 ||
+        !preview.lines.every((line, index) => line.line === index + 1 && typeof line.text === 'string' &&
+          positive(line.page) && line.page <= preview.page_count && positive(line.page_line)))
+      throw Error('The PDF preview is missing its extraction identity or page anchors. Preview the file again.');
+  }
   function createSession({api, getCase, onChange = () => {}}) {
     let sequence = 0, payload = null;
     let current = {phase: 'idle', caseId: null, preview: null, result: null, error: ''};
@@ -19,8 +34,8 @@
         requestedCase = getCase();
         publish({phase: 'loading', caseId: requestedCase, preview: null, result: null, error: ''});
         if (!file || !file.size || file.size > 65536)
-          throw Error('Choose a nonempty UTF-8 text file up to 64 KiB.');
-        if (!/\.txt$/i.test(file.name)) throw Error('Choose a .txt file. PDF and image files are not supported yet.');
+          throw Error('Choose a nonempty text or PDF file up to 64 KiB.');
+        if (!/\.(txt|pdf)$/i.test(file.name)) throw Error('Choose a .txt file or a text-based .pdf file. Scans and images are not supported.');
         const bytes = new Uint8Array(await file.arrayBuffer());
         if (ticket !== sequence || !sameCase(requestedCase)) return;
         if (!bytes.length || bytes.length > 65536) throw Error('The file must be nonempty and at most 64 KiB.');
@@ -31,6 +46,8 @@
         const preview = await api('/api/cases/' + requestedCase + '/documents/preview', candidate);
         if (ticket !== sequence || !sameCase(requestedCase)) return;
         if (preview.case_id !== requestedCase) throw Error('Preview case does not match the selected case.');
+        if (/\.pdf$/i.test(file.name)) validatePdfPreview(preview);
+        else if (preview.media_type === 'application/pdf') throw Error('Preview format does not match the selected file.');
         payload = candidate;
         publish({phase: 'ready', preview, error: ''});
       } catch (error) {
@@ -49,6 +66,8 @@
           ...payload, metadata: {...metadata, manual_transcription_confirmed: true}, findings,
           expected_sha256: current.preview.sha256, confirmed_case_id: requestedCase,
         };
+        if (current.preview.media_type === 'application/pdf')
+          body.expected_extraction_sha256 = current.preview.extraction_sha256;
         if (new TextEncoder().encode(JSON.stringify(body)).length > 131072)
           throw Error('The record and selected passages exceed the 128 KiB upload envelope. Keep the original intact and select fewer or shorter exact passages.');
         publish({phase: 'saving', error: ''});
@@ -80,13 +99,23 @@
       el('intake-metadata-form').reset(); el('intake-passage-form').reset();
       el('intake-passages').replaceChildren(); el('intake-original-lines').replaceChildren();
       el('intake-success-actions').replaceChildren();
+      el('intake-passage-location').textContent = '';
+    }
+    function location(line, preview = shownPreview) {
+      return preview?.media_type === 'application/pdf'
+        ? 'page ' + line.page + ', extracted line ' + line.page_line : 'line ' + line.line;
+    }
+    function showLocation() {
+      const line = shownPreview?.lines.find(item => item.line === Number(el('intake-line').value));
+      el('intake-passage-location').textContent = line ? 'Selected from ' + location(line) + '.' : '';
     }
     function renderFindings() {
       const container = el('intake-passages'); container.replaceChildren();
       if (!findings.length) container.append(make('p', 'No passages selected. You can save the original without findings. Passage editing after saving is not available yet.', 'muted'));
       findings.forEach((finding, index) => {
         const card = make('article', undefined, 'intake-passage');
-        card.append(make('strong', finding.key + ' · ' + finding.state + ' · line ' + finding.line));
+        const line = shownPreview.lines.find(item => item.line === finding.line);
+        card.append(make('strong', finding.key + ' · User-selected: ' + finding.state + ' · ' + location(line)));
         card.append(make('p', finding.quote, 'quoted'));
         const remove = make('button', 'Remove passage', 'button secondary minor'); remove.type = 'button';
         remove.addEventListener('click', () => {
@@ -99,14 +128,29 @@
     }
     function showPreview(preview) {
       resetReview(); shownPreview = preview;
+      const pdf = preview.media_type === 'application/pdf';
       el('intake-document-id').value = 'DOC-' + preview.sha256.slice(0, 12).toUpperCase();
-      el('intake-file-summary').textContent = preview.filename + ' · ' + preview.byte_count + ' bytes · ' + preview.lines.length + ' lines';
-      el('intake-source-hash').textContent = 'SHA-256: ' + preview.sha256;
+      el('intake-review-heading').textContent = pdf ? 'Review the extracted text' : 'Review the original';
+      el('intake-file-summary').textContent = preview.filename + ' · ' + preview.byte_count + ' bytes · ' +
+        (pdf ? preview.page_count + ' pages · ' : '') + preview.lines.length + (pdf ? ' extracted lines' : ' lines');
+      el('intake-preview-help').textContent = pdf
+        ? 'This is extracted text, not the original PDF. Reading order, tables and visible content may be incomplete. Compare each passage with the original PDF before confirming. No OCR or clinical interpretation is performed.'
+        : 'Select a line number to choose a passage. You can shorten it to an exact excerpt of that line.';
+      el('intake-line-label').textContent = pdf ? 'Extraction line (across pages)' : 'Source line';
+      el('intake-quote-label').textContent = pdf ? 'Exact extracted passage' : 'Exact source passage';
+      el('intake-original-lines').setAttribute('aria-label', pdf
+        ? 'Extracted PDF text with selectable page and line references' : 'Uploaded original with selectable source lines');
+      el('intake-source-hash').textContent = 'Original SHA-256: ' + preview.sha256;
+      el('intake-extraction-details').textContent = pdf
+        ? 'Extracted-text SHA-256: ' + preview.extraction_sha256 + ' · ' + preview.extractor.name + ' ' + preview.extractor.version
+        : '';
       el('intake-case-label').textContent = preview.case_id;
       for (const line of preview.lines) {
-        const row = make('div', undefined, 'intake-source-line');
-        const select = make('button', String(line.line), 'intake-line-select'); select.type = 'button';
-        select.setAttribute('aria-label', 'Select passage from line ' + line.line);
+        const row = make('div', undefined, 'intake-source-line' + (pdf ? ' intake-source-line-pdf' : ''));
+        const select = make('button', pdf ? 'Page ' + line.page + '\nLine ' + line.page_line : String(line.line), 'intake-line-select'); select.type = 'button';
+        select.setAttribute('aria-label', 'Select passage from ' + location(line, preview));
+        select.setAttribute('data-line', line.line);
+        if (pdf) select.setAttribute('data-page', line.page);
         select.disabled = !line.text.trim();
         select.addEventListener('click', () => {
           if (busy()) return;
@@ -115,6 +159,7 @@
           el('intake-quote').value = line.text;
           el('intake-key').value = 'finding-' + (findings.length + 1);
           el('intake-status').value = '';
+          showLocation();
           el('intake-passage-message').textContent = line.text.length > 1200
             ? 'Shorten the passage to an exact excerpt of at most 1,200 characters.' : 'Choose a status for what this passage reports.';
           el('intake-quote').focus();
@@ -148,7 +193,7 @@
           try { return savedReceipt === state.result && shownCase === state.caseId && getCase() === state.caseId; }
           catch (_) { return false; }
         };
-        const view = make('button', 'Open original', 'button secondary'); view.type = 'button';
+        const view = make('button', state.preview.media_type === 'application/pdf' ? 'Read extracted text' : 'Open original', 'button secondary'); view.type = 'button';
         view.addEventListener('click', async () => {
           if (!stillCurrent()) return;
           try { await onSource(state.result.source_id); }
@@ -182,14 +227,16 @@
       const line = shownPreview.lines.find(item => item.line === finding.line);
       let error = '';
       if (findings.length >= 30) error = 'This record already has 30 selected passages.';
-      else if (!line || !finding.quote.trim() || !line.text.includes(finding.quote)) error = 'Choose an exact passage from the indicated original line.';
+      else if (!line || !finding.quote.trim() || !line.text.includes(finding.quote)) error = 'Choose an exact passage from the indicated line in this preview.';
       else if (finding.quote.length > 1200) error = 'Choose an exact passage of at most 1,200 characters.';
       else if (findings.some(item => item.key === finding.key)) error = 'Use a different finding tag for this passage.';
       if (error) { el('intake-passage-message').textContent = error; return; }
       findings.push(finding); el('intake-confirm').checked = false; renderFindings();
       el('intake-passage-form').reset();
+      showLocation();
       el('intake-passage-message').textContent = 'Passage added to this review. It will be saved with the record.';
     });
+    el('intake-line').addEventListener('input', showLocation);
     el('intake-metadata-form').addEventListener('input', event => {
       if (event.target !== el('intake-confirm')) el('intake-confirm').checked = false;
     });

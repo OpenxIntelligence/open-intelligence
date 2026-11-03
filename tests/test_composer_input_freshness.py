@@ -53,6 +53,14 @@ class ComposerInputFreshnessTest(unittest.TestCase):
             case, question, "evidence-summary", result, "replay",
             context_fingerprint=preview["fingerprint"])
 
+    def acknowledge_question(self, case, question):
+        source_id = next(s["id"] for s in self.store.state(case)["sources"]
+                         if s["state"] == "current")
+        snapshot_id = self.store.create_snapshot(
+            case, question, "A human-authored fictional source review.", [source_id])
+        self.store.acknowledge_demo_review(case, snapshot_id, "Synthetic reviewer")
+        self.assertEqual(self.question_state(case, question), "addressed")
+
     def stale(self, case, investigation_id):
         return bool(self.store.get_investigation(case, investigation_id)["stale"])
 
@@ -62,6 +70,8 @@ class ComposerInputFreshnessTest(unittest.TestCase):
                            b"Document: IMG-ALPHA-SECOND\n")
 
     def test_new_valid_source_stales_previous_case_model_and_reopens_question(self):
+        self.acknowledge_question("CASE-ALPHA", self.qa)
+        self.acknowledge_question("CASE-BETA", self.qb)
         aid = self.save_model("CASE-ALPHA", self.qa)
         bid = self.save_model("CASE-BETA", self.qb)
         before = build_composer_context(self.store, "CASE-ALPHA", self.qa)
@@ -75,6 +85,7 @@ class ComposerInputFreshnessTest(unittest.TestCase):
         self.assertEqual(self.question_state("CASE-BETA", self.qb), "addressed")
 
     def test_duplicate_and_quarantined_source_do_not_false_stale_model(self):
+        self.acknowledge_question("CASE-ALPHA", self.qa)
         run_id = self.save_model("CASE-ALPHA", self.qa)
         existing = (SYNTHETIC / "alpha-imaging.txt").read_bytes()
         self.assertEqual(
@@ -88,6 +99,8 @@ class ComposerInputFreshnessTest(unittest.TestCase):
     def test_new_assessment_reopens_only_its_question(self):
         other_question = self.store.add_question(
             "CASE-ALPHA", "What different source issue is still uncertain?")
+        self.acknowledge_question("CASE-ALPHA", self.qa)
+        self.acknowledge_question("CASE-ALPHA", other_question)
         aid = self.save_model("CASE-ALPHA", self.qa)
         other = self.save_model("CASE-ALPHA", other_question)
         e = self.store.import_synthetic_evidence(evidence())

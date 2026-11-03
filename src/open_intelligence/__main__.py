@@ -117,6 +117,8 @@ class Handler(BaseHTTPRequestHandler):
         required = {"filename", "content_base64"}
         if not preview:
             required |= {"metadata", "findings", "expected_sha256", "confirmed_case_id"}
+            if isinstance(data.get("filename"), str) and data["filename"].lower().endswith(".pdf"):
+                required.add("expected_extraction_sha256")
         if set(data) != required:
             raise InvalidInput("Document intake requires exactly the documented fields")
         encoded = data["content_base64"]
@@ -269,11 +271,13 @@ class Handler(BaseHTTPRequestHandler):
                 if not 1 <= source_id <= 9223372036854775807:
                     raise InvalidInput("Invalid source identifier")
                 document = store.source_document(source_download[1], source_id)
-                return self._send(200, document["raw"], "text/plain; charset=utf-8",
+                return self._send(200, document["raw"], document["media_type"],
                                   filename=document["filename"])
             source = re.fullmatch(rf"/api/cases/{ID_PART}/sources/([0-9]+)", path)
             if source:
-                return self._json(200, {"text": store.source_text(source[1], int(source[2]))})
+                if len(source[2]) > 19:
+                    raise InvalidInput("Invalid source identifier")
+                return self._json(200, store.source_view(source[1], int(source[2])))
             exported = re.fullmatch(rf"/api/cases/{ID_PART}/snapshots/([0-9]+)/export", path)
             if exported:
                 contents = store.export_markdown(exported[1], int(exported[2])).encode("utf-8")
@@ -325,7 +329,8 @@ class Handler(BaseHTTPRequestHandler):
                         document_upload[1], raw, data["filename"],
                         metadata=data["metadata"], findings=data["findings"],
                         expected_sha256=data["expected_sha256"],
-                        confirmed_case_id=data["confirmed_case_id"]))
+                        confirmed_case_id=data["confirmed_case_id"],
+                        expected_extraction_sha256=data.get("expected_extraction_sha256")))
                 if path == "/api/cases":
                     store.add_case(data.get("case_id"), data.get("label"))
                     return self._json(201, {"result": "created"})
@@ -484,8 +489,8 @@ class Handler(BaseHTTPRequestHandler):
                     if mode not in ("live", "replay"):
                         raise InvalidInput("Mode must be live or replay")
                     question_id = data.get("question_id")
-                    if type(question_id) is not int:
-                        raise InvalidInput("question_id must be an integer")
+                    if type(question_id) is not int or not 1 <= question_id <= 2**63 - 1:
+                        raise InvalidInput("question_id must be a positive integer within the supported range")
                     context_fingerprint = data.get("context_fingerprint")
                     if context_fingerprint is not None:
                         if (not isinstance(context_fingerprint, str) or

@@ -7,6 +7,8 @@ patient-data processor. It never writes an observation or a clinical decision.
 Only exact independently authored OI-LAB-VALUE/1 quotations inside *current*
 OI-SYNTHETIC-REPORT/1 laboratory sources are eligible. Rejected, missing,
 ambiguous and incompatible measurements prevent trend computation.
+Manually transcribed document intake remains ineligible, including PDF
+extractions; its provenance is retained in an explicit hold for review.
 """
 from __future__ import annotations
 
@@ -31,7 +33,7 @@ DISCLAIMER = (
 
 
 def _ref(source: dict, assertion: dict) -> dict:
-    return {
+    result = {
         "source_version_id": source["id"],
         "document_id": source["document_id"],
         "source_version": source["version"],
@@ -44,6 +46,14 @@ def _ref(source: dict, assertion: dict) -> dict:
         "received_at": source["received_at"],
         "specimen_id": source["specimen_id"],
     }
+    for key in ("classification_origin", "annotation_method", "clinical_review",
+                "transcription_review_sha256", "text_origin", "extraction_sha256",
+                "source_page", "page_line", "page_text_sha256"):
+        if key in assertion:
+            result[key] = assertion[key]
+    if source.get("document_intake") is not None or assertion.get("classification_origin") == "user_selected":
+        result["quote"] = assertion["quote"]
+    return result
 
 
 def _decimal_string(value: Decimal) -> str:
@@ -84,7 +94,12 @@ def build_lab_trend(state: dict, finding_key: str) -> dict:
     for source, assertion in matches:
         ref = _ref(source, assertion)
         failure = None
-        if assertion["certainty"] != "reported":
+        if source.get("document_intake") is not None or assertion.get("classification_origin") == "user_selected":
+            # The numeric tool's qualified input remains the authored
+            # synthetic report format. A selected quote and user-selected
+            # status must not silently expand that contract or lose origin.
+            failure = "manual_transcription_not_eligible"
+        elif assertion["certainty"] != "reported":
             failure = "source_state_not_reported"
         elif source["issued_at"] < source["event_date"]:
             failure = "issued_before_event"

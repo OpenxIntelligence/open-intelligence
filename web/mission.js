@@ -67,7 +67,9 @@
       element(
         "div",
         "ref",
-        `Source version #${item.source_version_id} · line ${item.source_line}`,
+        `Source version #${item.source_version_id}` + (item.text_origin === 'pdf_extraction'
+          ? ` · page ${item.source_page}, extracted line ${item.page_line}`
+          : ` · line ${item.source_line}`),
       ),
     );
     if (item.classification_origin === "user_selected")

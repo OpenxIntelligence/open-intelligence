@@ -5,6 +5,7 @@ on:
     branches:
       - integration/composer-evidence-run-freshness-20261102
       - integration/composer-rights-context-20261102
+      - feat/reviewed-document-intake-20261102
       - main
 
 permissions:
@@ -35,7 +36,10 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
-          python-version: '3.13'
+          python-version: '3.12'
+      - name: Install exact bounded PDF runtime without extras
+        run: |
+          python -m pip install --require-hashes --only-binary=:all: --no-deps -r requirements-pdf.lock
       - name: Verify head and available browser runtime
         run: |
           mkdir -p composer-broker-artifacts
@@ -99,7 +103,8 @@ jobs:
           browser = next((shutil.which(name) for name in (
               'google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser'
           ) if shutil.which(name)), None)
-          paths = {Path('tools/audit_ci_data_boundaries.py')}
+          paths = {Path('tools/audit_ci_data_boundaries.py'), Path('requirements-pdf.lock'),
+                   Path('THIRD_PARTY_NOTICES/pypdf.txt')}
           for directory, pattern in (
               ('src', '**/*.py'), ('web', '*.js'), ('tests', '*.py'), ('tools/research', '*.py'),
               ('tests', '*.js'), ('.github/workflows', '*.yml'), ('.github/workflows', '*.yaml')
@@ -119,6 +124,7 @@ jobs:
               'runner_arch': os.environ.get('RUNNER_ARCH'),
               'runner_image_version': os.environ.get('ImageVersion'),
               'python': platform.python_version(),
+              'pdf_extractor': __import__('importlib.metadata', fromlist=['version']).version('pypdf'),
               'node': version(['node', '--version']),
               'browser_path': browser,
               'browser_version': version([browser, '--version']),

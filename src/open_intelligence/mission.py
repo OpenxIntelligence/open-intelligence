@@ -45,8 +45,10 @@ def _known_statement(assertion: dict) -> dict:
     }
     if assertion.get("classification_origin") == "user_selected":
         for key in ("classification_origin", "annotation_method", "clinical_review",
-                    "transcription_review_sha256"):
-            result[key] = assertion[key]
+                    "transcription_review_sha256", "text_origin", "extraction_sha256",
+                    "source_page", "page_line", "page_text_sha256"):
+            if key in assertion:
+                result[key] = assertion[key]
     return result
 
 
