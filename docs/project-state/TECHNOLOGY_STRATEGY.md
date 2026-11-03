@@ -2,6 +2,8 @@
 
 **Assessment:** 3 November 2026. This is a supplementary decision rationale, not an adoption record, dependency change, replacement roadmap, or production qualification. Work remains tracked in [EXECUTION_BACKLOG.csv](../EXECUTION_BACKLOG.csv), principally OI-004, OI-005, OI-010, OI-013 and GH-112.
 
+The publication follow-up targets #355 at `6f836b451c2e8426e5c3b2be194408424f95c69f`, which already contains the approved runtime corrections. No dependency or architecture adoption occurs in this workflow/documentation continuation.
+
 ## Governing outcome
 
 Retain **React + Vite + TypeScript, Python + FastAPI, and PostgreSQL** for H1. The accepted decision excludes Next.js and vector retrieval from H1. Build a modular platform whose canonical patient, source, evidence, question and review owners support both interoperability and eventual standalone clinical workflows. Introduce infrastructure when a measured patient-facing or operational need justifies it. [Accepted precedence](https://app.notion.com/p/40a3866f77ef8154bf15c7bb53138c9f), [H1 decision](https://app.notion.com/p/40a3866f77ef81e08a12fd4921e19629), [architecture crosswalk](ARCHITECTURE_DECISIONS.md).
@@ -162,4 +164,64 @@ Before adding a candidate, record in the existing architecture/rights owners:
 4. Representative correctness, authority/isolation, accessibility, reliability and performance evidence, including failure/abstention behavior where relevant.
 5. Full operational cost, deployment complexity, export/exit path and boundaries that preserve independent patient/clinical ownership.
 
-**Verified continuation:** the bounded patient-authored question/exact-source packet integration into the existing review/brief/intake owners passed its hosted gates without a new library or infrastructure; see [implementation evidence](IMPLEMENTATION_EVIDENCE.md). The next integration should connect the existing evidence/report owners through explicit canonical H1 persistence and clinical-store adapters. Broader stack selection follows demonstrated need through the existing backlog, while real-data, identity/consent, clinical safety and deployment qualification remain explicit stages.
+**Current continuation:** #328 already connects fictional evidence originals, literal comparisons and immutable reports through the canonical H1 PostgreSQL owners. The local #330/#335/#339 composition preserves those owners and requires its own hosted acceptance; see [current state](PROJECT_STATE.md) and [continuity evidence](../engineering/H1_EVIDENCE_CONTINUITY.md). Reviewed PDF passages, DOI metadata and clinical-store adapters retain separate candidates. Broader stack selection follows demonstrated need through the existing backlog, while real-data, identity/consent, clinical safety and deployment qualification remain explicit stages.
+
+## Discovery expansion — capability-specific comparisons, 3 November 2026
+
+This source-level screen extends the existing atlas, OI-17 process and
+OI-004/005/006/008/009/010/013 work. It does not add dependencies or change the
+accepted H1 stack. Proposed experiments have not run. Existing source hashes,
+line anchors, retries, revocation, stale-response suppression and recovery tests
+are the comparison baseline, not newly discovered missing controls.
+
+| Candidate and official source | Current disposition | Bounded comparison and exit condition |
+| --- | --- | --- |
+| [UCUM-LHC](https://github.com/LHNCBC/ucum-lhc) | Research; artifact Hold | Compare a governed unit mapping on fictional values. Preserve original value/unit and version; reject incompatible dimensions and ambiguous substance-specific conversions. Adopt only for demonstrated coverage need. |
+| [HL7 FHIR Validator](https://github.com/hapifhir/org.hl7.fhir.core) | Research | Validate a read-only fictional adapter projection for a selected FHIR version/profile, including invalid cardinality, references and terminology. No second patient store or FHIR server is implied. |
+| [Docling](https://github.com/docling-project/docling) | Research; models Hold | Compare the existing manual/deterministic document path against fictional document classes, preserving original hashes, page/box/span locators and unresolved extraction. Separate code, model, native-parser and download rights. |
+| [Pandera](https://pandera.readthedocs.io/en/stable/lazy_validation.html) | Hold | Evaluate only for a concrete batch/table workload. Compare against current Pydantic/SQL/application rules, preserving rejected rows, missingness and source-row identity. |
+| [OpenLineage](https://openlineage.io/docs/spec/object-model/) | Hold for integration | Try a local JSON mapping of source, attempt, review and amendment events only when a consumer needs it. Canonical evidence history remains authoritative; no lineage server is selected. |
+| [OpenTelemetry Python](https://github.com/open-telemetry/opentelemetry-python) | Retain existing API; Hold expansion | The API artifact is already locked. Before adding instrumentation/export, prove an allowlisted diagnostic payload excludes fictional canaries in source text, headers, queries and exceptions. Audit history remains separate. |
+| [Temporal](https://docs.temporal.io/develop/python) | Hold | First run crash, duplicate, retry and revoked-authority scenarios against existing PostgreSQL commands. Compare an engine only for a demonstrated orchestration gap, retaining one canonical effect and current authority at commit. |
+| [Hypothesis](https://hypothesis.readthedocs.io/en/latest/stateful.html) | Research; artifact Hold | Start with an independent deterministic two-patient/delegate action oracle. Consider generated sequences only if they expose reproducible additional defects; do not reuse the production permission function as the oracle. |
+| [Schemathesis](https://schemathesis.readthedocs.io/en/latest/reference/checks/) | Research; artifact Hold | Compare malformed/authentication/stateful API cases using synthetic credentials, while retaining explicit patient, purpose and delegation assertions. Prove linked operations ran and failures reproduce. |
+| [PDF.js](https://mozilla.github.io/pdf.js/api/draft/api.js.html) | Research | Compare exact-version viewing using fictional originals and amendments. Require authorized initial/range fetches, stable page locators, worker teardown, keyboard/error behavior and no stale patient content after context change. |
+
+### Corrections that affect candidate qualification
+
+- `opentelemetry-api==1.45.2` already appears in the API lock and exact-wheel
+  inventory, SHA-256 `2cbd737377e710ee740d261c94e93fa0f08e6d037c18f17513cc0a2d94479a34`.
+  Targeted H1 source inspection found no application-level activation. API
+  presence does not establish an SDK/exporter/collector or telemetry pipeline.
+- [Hypothesis's root license](https://github.com/HypothesisWorks/hypothesis/blob/master/LICENSE.txt)
+  is MPL-2.0 with identified exceptions. Schemathesis has MIT root terms but its
+  [stateful path](https://schemathesis.readthedocs.io/en/stable/guides/stateful-testing/)
+  uses Hypothesis. Record the actual dependency closure and intended test scope.
+- [UCUM-LHC's notice](https://github.com/lhncbc/ucum-lhc/blob/master/LICENSE.md)
+  has BSD-based terms plus applicable UCUM and LOINC content conditions. A plain
+  BSD-3-Clause label is insufficient artifact evidence.
+- Docling distinguishes MIT code from individual model licenses. Its
+  [remote-service opt-in](https://docling-project.github.io/docling/usage/advanced_options/)
+  does not control model-weight downloads; a future offline evaluation needs
+  separate selected-model and acquisition evidence.
+- Temporal's documented
+  [regular-activity cancellation](https://docs.temporal.io/develop/python/workflows/cancellation)
+  depends on heartbeats. Cancellation is operational signaling; consequential
+  commits must still recheck current authority.
+
+### Maintain the existing discovery owners
+
+For each investigated capability, extend the existing atlas/register entry with
+the canonical domain and requirement IDs, implementation owner and source head,
+comparison baseline, exact candidate/artifact and rights status, observed test
+or benchmark result, acceptance/exit condition, accountable decision and next
+review trigger. A branch owner is not automatically the accountable reviewer.
+Deduplicate candidate URLs before adding rows. Most projects above are already
+catalogued; UCUM-LHC, Pandera, Hypothesis and Schemathesis were absent from the
+targeted OI-12/strategy search but still require registry-wide deduplication.
+
+The ongoing discovery mandate does not establish an operating scheduled job or
+approve automatic acquisition/adoption. Keep proposed experiments explicitly
+unexecuted until the relevant capability and artifact gates are met. No new
+service, model, package, outreach, real-person data acquisition or schedule was
+created by this research.

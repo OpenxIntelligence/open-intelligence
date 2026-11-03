@@ -1,11 +1,44 @@
 # Integration inventory — current contracts and unfinished connections
 
 **Assessment:** 3 November 2026 (America/New_York).  
-**Baselines:** reference main `24519839aa8ac1ea3aff88a956349ba72798a72a`; initial H1 assessment [#276](https://github.com/OpenxIntelligence/open-intelligence/pull/276) at `c154bfbc5f99f76801d37903959943659c0b6a71`; current verified draft integration [#298](https://github.com/OpenxIntelligence/open-intelligence/pull/298) at `f4750327537a5febf764d25f43873be50ac7265a`, based on #293. Other drafts are named separately.
+**Current publication base:** [#355](https://github.com/OpenxIntelligence/open-intelligence/pull/355) at `6f836b451c2e8426e5c3b2be194408424f95c69f`; the approved runtime composition is already present. This child adds shared-source CI coverage and reconciled documentation while preserving parent backlog/plan. Exact child hosted acceptance remains pending at this checkpoint.
+
+**Historical baselines:** reference main `24519839aa8ac1ea3aff88a956349ba72798a72a`; selected connected H1 draft [#328](https://github.com/OpenxIntelligence/open-intelligence/pull/328) at `5a188d4e18e4d80bc2ba1d662c966abc3096301f`, with locally verified #330/#335/#339 corrections. Earlier #276 and #293/#298 assessments are preserved below as historical checkpoints. Other drafts are named separately.
 
 **Status vocabulary:** the eight categories in [PRODUCT_REQUIREMENTS.md](PRODUCT_REQUIREMENTS.md) apply to bounded behavior, never to a whole clinical domain by implication.
 
-## Current integration checkpoint — 3 November 2026
+## Inherited integration scope — #328 plus bounded local corrections
+
+The [current project checkpoint](PROJECT_STATE.md) and
+[continuity evidence](../engineering/H1_EVIDENCE_CONTINUITY.md) supersede the
+#293/#298 selected-baseline and next-work statements below. The selected base is
+#328 at `5a188d4e18e4d80bc2ba1d662c966abc3096301f`; source, question, fictional
+evidence originals/citations, comparisons, reports and follow-through already
+share the canonical PostgreSQL owners. The locally composed #330/#335/#339
+candidate preserves those owners, dependencies and migrations. Its complete
+hosted browser acceptance and owner review remain pending.
+
+PDF/annotation #323, DOI #321, clinical/EHR/LIS and image/archive work retain
+their separate owners. At the audited heads, #321 and #323 introduce distinct
+migration revisions descending from `0011_evidence_convergence`; they cannot
+be combined by selecting one migration file and dropping the other. Their
+future union requires deliberate graph reconciliation, populated upgrades and
+restored HTTP acceptance. Separate passing workflows do not prove that union.
+
+Final source refresh at 16:34–16:37 UTC on 3 November also found these separate
+owners, which are not included in the local correction candidate:
+
+| Existing candidate | Current observed scope and acceptance boundary |
+| --- | --- |
+| [#348](https://github.com/OpenxIntelligence/open-intelligence/pull/348) at `297c9d4928105a77c9cf132a17b244409611c018` | Comparison-draft retention converged onto #335. The earlier `8d2ee0f` head passed, but current-head run 41675783452 was in progress; do not inherit that older result. |
+| [#349](https://github.com/OpenxIntelligence/open-intelligence/pull/349) at `75365e8532267ac31c4103cea8f9eea3b4591d24` | Tests-first PDF/text workspace acceptance, changing helpers, fixture and plan. Web run 41675233846 failed; this checkpoint does not establish product convergence. |
+| [#250](https://github.com/OpenxIntelligence/open-intelligence/pull/250) at `ef2949521911ecac8164aece851674d3df4e4965` | Reviewed passages already connect to the reference/CaseStore World Model, investigation and follow-through with extraction/page provenance. This capability is not absent from the repository; convergence into the selected H1 PostgreSQL path remains open. |
+| [#297](https://github.com/OpenxIntelligence/open-intelligence/pull/297), [#301](https://github.com/OpenxIntelligence/open-intelligence/pull/301) | Separate clinical PostgreSQL parity/integrity candidates. Their existence does not establish clinical-source/PWM publication, broad EHR/LIS operation or acceptance of another successor. |
+
+The selected #322/#328/#330/#335/#339 heads and pinned main were unchanged at
+that final refresh. This is a dated source observation, not a live status feed.
+
+## Historical #293/#298 integration checkpoint — 3 November 2026
 
 The selected runtime base is [draft #293](https://github.com/OpenxIntelligence/open-intelligence/pull/293) at commit 635f357048eb27e52e6ec5c3d7b6714215070127, tree 74c4a2ab65bf54a0908246199bb67c300ae2662b, preserving [#287](https://github.com/OpenxIntelligence/open-intelligence/pull/287) and its source base 247705700080052705817fee9e8f7b54afa8ffaa. The published tree matches the reconstructed local checkout. Its [e44f225e evidence-only follow-up](https://github.com/OpenxIntelligence/open-intelligence/commit/e44f225e3ce4953d754ad0e6e1409e22b696a29f) changes exactly five documentation files; those newer receipts are preserved here without changing the selected runtime. Main remains [24519839aa8ac1ea3aff88a956349ba72798a72a](https://github.com/OpenxIntelligence/open-intelligence/tree/24519839aa8ac1ea3aff88a956349ba72798a72a). The #276 assessment and separate-owner tables below remain historical checkpoints; this section supersedes only their selected-baseline and next-work statements.
 

@@ -1,5 +1,31 @@
 # H1 question evidence and patient follow-through convergence
 
+## Authorized publication follow-up — shared CI coverage and current documentation
+
+On 3 November 2026 the founder authorized the prepared candidate for publication
+and hosted verification. A fresh read found that [draft #355](https://github.com/OpenxIntelligence/open-intelligence/pull/355)
+at `6f836b451c2e8426e5c3b2be194408424f95c69f` already contains all 13 reviewed
+implementation/package/test/helper blobs from local candidate
+`c1484ed0ef6ac5a18359577446486e71a08845b6`, with identical modes and bytes.
+Its [web run 41677951355](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41677951355)
+passed on that exact head. This continuation therefore targets #355's branch
+`integration/h1-connected-evidence-safety-20261103` and carries only the remaining
+workflow and documentation contribution. #355's backlog and safety plan are
+preserved unchanged. The earlier #328 composition below is historical evidence.
+
+The workflow change includes shared `src/**`, `tests/**` and the boundary script
+in H1 web triggers, and executes the existing static data-boundary check before
+package acquisition. It preserves all existing dependency, build and actual
+PostgreSQL/API/Chromium steps. Runtime, tests, dependencies, migrations, authority
+and recovery owners are unchanged from #355.
+
+Fresh local checks on the identical approved runtime again passed 310 client
+tests, 13 rights controls (18 installed, two optional uninspected, no errors) and
+287 reference tests. These are local evidence. This child's own published-head
+API/PostgreSQL/browser/recovery results must be recorded in its PR verification
+receipt after publication; #355's success is not inherited as the child's result.
+Publication authorization does not authorize merge, deployment or clinical use.
+
 **Status:** original convergence in draft #307; subsequent combined acceptance
 is recorded below. All contributions remain subject to explicit review.
 **Scope:** independently authored fictional engineering inputs only.
@@ -317,3 +343,157 @@ with separately verified review-draft, reviewed-document, imaging/archive and
 live-evidence work reconciled through the existing contracts. These sibling
 capabilities are not claimed by this increment. All inputs remain independently
 fictional. The candidate is draft, unmerged and undeployed.
+
+
+## Client chronology continuation — 3 November 2026
+
+The report/follow-through work in the interrupted handoff had already shipped as
+draft #174. This continuation uses the later connected source-reading/report
+candidate #322 at `19b75317701ae01fc93844077ac94c351fd982bd`, preserving its source,
+question, evidence, report and task owners. It addresses OI-008/009/010: dates in
+evidence history and preserved reports must represent actual calendar instants.
+
+The client accepted February 30, hour 24 and year zero in evidence/report history
+because JavaScript date parsing normalizes some impossible values. Citation
+history also accepted precision forms excluded by its existing API. One shared
+calendar/clock validator now enforces each existing evidence contract without
+normalizing the input: authored timestamps retain minute precision and longer
+fractions; citation timestamps require seconds and at most six fractional digits.
+Nested question timestamps and date-only source/evidence fields receive the same
+calendar checks at the authored-evidence boundary. Other source consumers are not
+changed or claimed to be comprehensively audited.
+
+Preserved report bodies, original offsets, fractional strings, hashes, status
+covers, independent permissions and fresh download authorization remain intact.
+Invalid refreshed history clears a previously opened report and prevents export;
+an explicit valid refresh restores access to the unchanged body. No backend,
+database, migration, dependency, workflow or clinical state changes.
+
+Verification sequence:
+
+- Original #322 client baseline: 278 tests passed, no skips.
+- Tests-only baseline reproduction: 12 targeted tests, 7 expected failures and
+  5 passing controls. All failures were assertion failures in the actual client,
+  not setup errors. These include the blocked-download regression.
+- Automated read-only review found two further nested-date gaps. Both added
+  regressions failed on the first correction before being fixed. Review is
+  engineering feedback, not independent clinical validation.
+- Final local implementation `74088fef9c7efb7d9a83cfe4be38634da70fc6ca`:
+  all 288 client tests passed with no skips, TypeScript/Vite production build
+  passed, and the existing dependency gate reported no errors (18 installed,
+  two optional artifacts uninspected). The lock and dependency selection did
+  not change. The following documentation-only commit does not alter runtime.
+- Hosted browser results belong to the continuation PR's exact published head.
+  Earlier passing runs are not substituted for final combined acceptance.
+
+The candidate remains draft, unmerged and undeployed. It uses only independently
+authored fictional test records; real-patient operation and clinical qualification
+remain outside this correction.
+
+## Historical local reconciliation — c1484ed, 3 November 2026
+
+The direct founder instruction was to investigate the documentation and actual
+repository, identify missing scope, then take concrete action. The audit read the
+complete founding mandate, all unique uploaded discussion content, existing
+Notion/Drive owners, live GitHub metadata and actual source. Research is
+complementary to accepted decisions; the current H1 stack and canonical owners
+remain authoritative.
+
+### Pinned composition and changes
+
+- Base #328: `5a188d4e18e4d80bc2ba1d662c966abc3096301f`.
+- Chronology #330: `312ad9379311901f8a69a7c20d4ea09f98027481`.
+- Native intake disclosure #335: `9d173843f924b40becba3a7dffd71717c12afb5d`.
+- Installed-package identity/rights #339:
+  `d694db4ca12206e815d6045b73baa9b6f7394290`.
+
+The application and regression donors are preserved. Two #339 files
+(`package.json` and `license-gate.mjs`) have only an extra trailing blank line
+removed; their behavior is unchanged. The workflow also removes its extra
+trailing blank line and gains the explicit changes below. Historical continuity
+appendices from #330 and #335 are both preserved; neither donor's pass is labeled
+as the new combination's hosted acceptance.
+
+A concrete coverage gap was confirmed: H1 web CI imports shared `src` and
+`tests/browser_journey.py` while its pull-request path filter omitted both.
+`h1-web.yml` now watches `src/**`, `tests/**`, and the existing
+`tools/audit_ci_data_boundaries.py`, and runs that same boundary scan before
+package acquisition. The existing rights step from #339 is retained. No new
+package, backend behavior, schema, migration, permission or canonical ledger
+is introduced.
+
+### Actual local verification
+
+| Check | Observed result |
+|---|---|
+| Pristine archived #328 client baseline | 300 passed, no failures/skips |
+| Donor chronology tests on the unfixed #328 client | 14 tests: nine intended assertion failures, five passing controls |
+| Donor rights tests on the old gate | 13 tests: eight intended negative-control failures, five passing controls |
+| Combined `npm test` | 310 passed, no failures/skips |
+| Combined `npm run build` | TypeScript and Vite production build passed |
+| Combined `npm run rights` | 13 controls passed; actual installed gate: 18 inspected, two optional uninspected, zero errors |
+| Existing synthetic boundary scan | Passed; this source-pattern scan is not runtime network enforcement |
+| Browser helper compilation | Passed; compilation is not browser execution |
+| Donor/source preservation | Exact donor comparisons recorded; API/shared-domain/test/lock/migration/recovery runtime unchanged from #328; only API README wording changed in those directories |
+| Whitespace review | `git diff --cached --check` passed after trailing-blank-line normalization |
+
+The original checkout carried two untracked donor files from its reconstruction.
+Early broad test commands therefore were not treated as pristine baseline
+receipts. The clean baseline above was created using `git archive` of the exact
+#328 commit and passed all 300 inherited tests. Reproduction and combined runs
+were then assessed separately.
+
+Local tooling has no PostgreSQL server, Docker or Chromium installed, so this
+candidate has **no local combined PostgreSQL/browser or backup/restore execution
+receipt**. Parent #322's successful API/PostgreSQL/recovery workflow
+[41664891742](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41664891742)
+remains evidence for its unchanged backend source, not a new run of this head.
+A fresh hosted H1 web run is required after separately approved publication.
+Owner/parent-chain review and any changed backend/migration acceptance remain
+required before integration. No clinical or commercial release is established.
+
+### Audit-driven documentation and next implementation gates
+
+The existing API README, project state, requirements, integration inventory and
+gap assessment now recognize the already implemented H1 evidence/report/task
+owners and distinguish the complete 15-step founding MVP from this bounded
+synthetic milestone. The existing #339 30-domain crosswalk is reused. All 28
+founding documentation responsibilities have an existing owner, partial content
+or an indexed source; they need evidence and scoped decisions rather than 28
+new competing documents.
+
+The next product gates are: (1) connect the existing supported-document and
+reviewed-assertion owners to the World Model; (2) connect one permitted evidence
+source to governed investigation and version-specific human review; (3) qualify
+account/profile/caregiver/professional authority through existing ports; and
+(4) evaluate the complete journey, including access constraints and practical
+care handoffs. Preserve source truth, uncertainty, consent, current authority,
+recovery and the synthetic-only development decision at every boundary.
+
+Publishing this local candidate, modifying existing PRs, merging and deployment
+remain subject to the founder's earlier explicit approval boundary. The local
+work and documentation reconciliation do not imply those actions occurred.
+
+### Independent code review of the local composition
+
+A fresh read-only reviewer found no introduced Critical, Important or Minor
+runtime/test/workflow issue. It independently checked donor identities, calendar
+contracts, report invalidation, disclosure mounting/context reset, filesystem
+rights controls and shared-source CI coverage. This is automated engineering
+review, not human owner acceptance, clinical validation or merge approval.
+
+One inherited minor test weakness remains under OI-010: the intake browser helper
+waits for the source index to disappear, which can occur at load start before the
+denial response finishes. The unchanged reading-convergence helper separately
+waits for terminal denial and checks no protected content. No runtime authority
+defect was observed. A later bounded test-hardening change should make the intake
+assertion wait for the same terminal condition.
+
+The final documentation pass found no material inaccurate claim in the seven
+coordinator-updated API/project-state/continuity/plan files. The completed local
+reference command `PYTHONPATH=src python -m unittest discover -s tests -v`
+reported 287 tests and `OK`. That is additional reference evidence, not a
+substitute for combined PostgreSQL/API/browser or restore acceptance. The
+preservation receipt checks 193 files: 192 unchanged, with only the API README
+changed; backend/shared runtime, tests, locks, migrations and recovery inputs
+remain unchanged.

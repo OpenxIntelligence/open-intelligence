@@ -2,7 +2,29 @@
 
 Assessment checkpoint: **3 November 2026, America/New_York**. This assessment maps the existing [execution backlog](../EXECUTION_BACKLOG.csv); it does not create another backlog or replace source-owner specifications.
 
-## Evidence boundary
+## Current gap reconciliation — inherited #328 capabilities on #355
+
+The publication follow-up now targets #355, whose runtime matches the approved local composition. The full-product gaps below remain applicable. The [current project checkpoint](PROJECT_STATE.md) supersedes older absence
+claims below. At #328 (`5a188d4e18e4d80bc2ba1d662c966abc3096301f`), H1 source,
+question, fictional evidence originals/citations, human-authored comparisons,
+immutable reports and follow-through are already connected. The current local
+candidate composes existing #330/#335/#339 corrections; hosted acceptance of
+that combination is still required. Do not rebuild these existing owners.
+
+| Material remaining requirement | Current evidence | Next work in the existing owner |
+|---|---|---|
+| Representative document → reviewed structured information | #328 imports explicitly annotated synthetic text; ordinary PDF/annotation work exists in separate owners, including the newer #323 branch. Viewing/manual passage selection is not general clinical extraction or automatic inclusion in the World Model. | OI-006/007/009: preserve existing original custody, exact page/span, correction history and wrong-subject quarantine; connect reviewed assertions through the canonical source owner. |
+| Qualified evidence → investigation → human review | H1 reports contain human-authored comparisons and explicitly disclose no model execution, exhaustive search or clinical review. Preflight is not execution. | OI-004/008/011/014: reuse the existing evidence/Composer owners with one permitted live or frozen source, supporting/contradictory evidence, reproducible inputs, abstention and qualified scoped review. |
+| Patient accounts, profiles, caregiver authority and professional sign-off | Current authentication is a synthetic fixture adapter; reading layout and task owner labels do not verify people, consent or professional authority. | OI-012/013: qualify the existing authentication/authority ports, delegation and revocation; bind review to exact artifact, patient snapshot, scope and reviewer. |
+| Complete clinical context and multiple care settings | Source-only World Model has bounded exact-date/key/specimen logic. It is not a complete episode/lesion/assay/unit/medication record. | OI-002/006/009/016: preserve raw and normalized values, uncertain dates and missing states; add pediatric/guardian, hematologic, multimorbid, rural, disability, survivorship and palliative scenarios to existing evaluation owners. |
+| Practical support and external handoffs | Question-linked task history works, but records no sent notification or actual provider acceptance. | OI-007/012/018: distinguish request, acceptance, delivery, clinical acknowledgment, completion, failure and escalation through the existing task/event contracts. |
+| Operational and discovery maturity | Recovery probes and exact dependency gates exist. Complete release inventory, production operations, independent evaluation and maintained capability-to-evidence references remain incomplete. | OI-004/010/013/014/018: link exact revision, artifact, decision, owner, proof and next gate within existing registries. No automatic technology adoption or new recurring job follows. |
+
+See the exact [30-domain ownership mapping](../research/PATIENT_JOURNEY_CAPABILITY_CROSSWALK_2026-11-03.md)
+and [15-step MVP acceptance](PRODUCT_REQUIREMENTS.md). A domain label or green
+synthetic test count is not a percentage-complete measure.
+
+## Historical #276 evidence boundary
 
 The repository audit captured `main` at `24519839aa8ac1ea3aff88a956349ba72798a72a`. The selected integration starts at draft [#276](https://github.com/OpenxIntelligence/open-intelligence/pull/276), `c154bfbc5f99f76801d37903959943659c0b6a71`, and proposes importing the existing question/quotation owner [#280](https://github.com/OpenxIntelligence/open-intelligence/pull/280), `e8d851e5c7769c31f429a3d1649c26402aa9de12`, plus selected #278 review-response encoding and uncertain-return recovery fixes. No #278 image or migration scope is included. Integration and combined verification are **planned at this assessment checkpoint**, not claimed complete. Later result records must identify their own exact head.
 
@@ -21,7 +43,7 @@ The [Engineering Progress record](https://docs.google.com/document/d/1Zbn-8Z5fAB
 | Broken | Observed behavior fails its required contract. A suspicion or old audit finding alone is not labeled broken. |
 | Blocked by external dependencies | Progress requires a real outside dependency such as provider access, qualified authority, source rights or operational approval. |
 
-## Current gaps by patient outcome
+## Historical #276 gaps by patient outcome
 
 | Patient outcome / capability | Current classification | Existing evidence and what remains | Backlog |
 |---|---|---|---|
