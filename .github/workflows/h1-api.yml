@@ -20,7 +20,9 @@ concurrency:
 jobs:
   synthetic-postgres-contract:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    # The connected socket/report suite reached its final recovery PASS at the
+    # former 20-minute limit; retain every gate and allow inventory to complete.
+    timeout-minutes: 30
     env:
       PYTHONDONTWRITEBYTECODE: '1'
       PIP_DISABLE_PIP_VERSION_CHECK: '1'

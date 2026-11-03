@@ -10,6 +10,23 @@ draft #327 also connects source-bound original-image custody. All interpretation
 remain human-authored and clinically unreviewed; no model or live biomedical
 retrieval is enabled by this integration.
 
+### Connected archive verification continuation
+
+The socket/report continuation in [draft #361](https://github.com/OpenxIntelligence/open-intelligence/pull/361)
+uses the existing image, question, citation and authored-report owners. Its first
+[API run](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41687984400)
+reached the configured 20-minute job deadline: 615 API test executions and 287
+reference tests passed, and all six recovery helpers printed success, but the
+final recovery step was recorded as cancelled and the resolved container/package
+inventory did not execute. That run is **incomplete**, not a successful job.
+
+This follow-up gives the unchanged full job a bounded 30-minute budget. It keeps
+every existing test, no-skip rule, recovery assertion and rights check. New
+exact-head API and browser results are required before this continuation is
+qualified; see the [existing execution record](../../docs/superpowers/plans/2026-11-03-h1-socket-report-continuity.md).
+The same-process synthetic socket fixture does not establish production archive
+isolation, external-archive recovery, patient identity or clinical readiness.
+
 ## Question-scoped fictional evidence metadata
 
 Apply the current migration head (`0012_image_report_convergence`) explicitly:
