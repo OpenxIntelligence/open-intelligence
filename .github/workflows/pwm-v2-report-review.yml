@@ -1,0 +1,40 @@
+name: Authorized PWM Composer v2 report and review-receipt integration
+on:
+  push:
+    branches: [integration/pwm-v2-report-review-20261102]
+  pull_request:
+    branches: [integration/pwm-composer-v2-review-20261102]
+permissions:
+  contents: read
+
+jobs:
+  evidence-report-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout review candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.13'
+      - name: Compile first-party source and tests
+        run: PYTHONPATH=src python -m compileall -q src tests
+      - name: Original report rights and export negative tests
+        run: PYTHONPATH=src:tests:. python -m unittest discover -s tests -p 'test_evidence_review_report.py' -v
+      - name: Source-owned review queue and authorization regressions
+        run: PYTHONPATH=src:tests:. python -m unittest discover -s tests -p 'test_authorized_evidence_review_handoff.py' -v
+      - name: Original report-to-review composition and atomic receipt checks
+        run: PYTHONPATH=src:tests:. python -m unittest discover -s tests -p 'test_report_review_handoff.py' -v
+      - name: PWM and rights-broker v2 clinical review contracts
+        run: |
+          PYTHONPATH=src:tests:. python -m unittest discover -s tests -p 'test_patient_world_model_composer_v2.py' -v
+          PYTHONPATH=src:tests:. python -m unittest discover -s tests -p 'test_authorized_world_model_review.py' -v
+      - name: Complete existing synthetic HTTP and domain regression
+        run: PYTHONPATH=src:tests:. python -m unittest discover -s tests -v
+      - name: Existing synthetic browser and Patient Mission journeys
+        run: |
+          PYTHONPATH=src:tests:. python tests/browser_journey.py
+          PYTHONPATH=src:tests:. python tests/patient_mission_browser_journey.py
