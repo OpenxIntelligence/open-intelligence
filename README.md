@@ -20,12 +20,16 @@ The local prototype has **no real-patient authorization, verified clinician iden
 
 **Bounded implementation target:** Python/FastAPI/PostgreSQL with React/Vite/TypeScript; Next.js is excluded. This is the selected migration target, not the stack of the existing Python/SQLite prototype.
 
-**H1 API foundation candidate:** [`apps/api`](apps/api/README.md) adds the separate
-FastAPI/PostgreSQL 16 composition root for issue #112, with explicit migrations,
-typed health/version contracts and an exact-artifact dependency gate. It is a
-local synthetic shell; patient routes, authentication and the React workspace
-remain separate integration work. Its draft-branch and verification status must
-not be confused with a merged or deployed product.
+**H1 patient identity integration candidate:** [apps/api](apps/api/README.md)
+connects the existing canonical patient registry to FastAPI/PostgreSQL 16.
+Explicit migrations, idempotent synthetic creation, exact-patient/organization
+read checks and immutable creation receipts/events are implemented. The default
+denies patient access; the opt-in credential file is a synthetic fixture, not
+account verification or clinical consent. This unmerged integration preserves
+source owners #85/#148 and is stacked on #162/#137. Local verification passed
+49 API/migration/gate tests and 245 prototype tests; hosted container/recovery
+evidence belongs to the exact draft-PR head. Source/EHR/LIS/Composer migration,
+the React workspace and the complete patient investigation remain open.
 
 ## Start here
 

@@ -4,39 +4,70 @@
 
 ## Current audit — 2 November 2026
 
-### H1 API composition-root candidate — issue #112
+### H1 canonical patient identity integration — issue #112
 
-The separate [`apps/api`](../apps/api/README.md) candidate starts from
-`533afd3ca6dd0c011e2e47397d3d5cae04e62512` (draft PR #137), not a silently
-rewritten main. Live branch/PR inspection found active owners for patient-port,
-clinical-spine, composer and review integrations; this slice supplies their API
-composition boundary and leaves their domain models intact.
+The audited default main was
+[24519839aa8ac1ea3aff88a956349ba72798a72a](https://github.com/OpenxIntelligence/open-intelligence/commit/24519839aa8ac1ea3aff88a956349ba72798a72a).
+Existing domain work remains spread across unmerged drafts. Passing a source
+branch does not establish that its behavior is on main or combined with other
+branches.
 
-| Requirement/domain | Implementation location | Source/integration state | Verification boundary | Deployment / clinical validation | Missing work |
-|---|---|---|---|---|---|
-| Issue #112 / CMP-17, bounded CMP-15/CMP-19 | `apps/api/src/oi_api`, migrations, Compose and H1 workflow | Draft `feat/h1-fastapi-postgres-shell-20261102`, stacked on #137 | 26 API tests passed locally against actual PostgreSQL 16.15; 245 existing prototype tests passed. Hosted Compose/browser results belong to the exact PR-head run. | Local synthetic only; no production deployment or clinical validation | Canonical patient/domain migration and mounted domain contracts |
-| REQ-L-113 / local boundary | `apps/api/src/oi_api/app.py`, `__main__.py`, Compose | Loopback launch and Host validation; no auth claim | Rejected external Host, credential-safe errors, no patient endpoints | Not approved for non-local or real-patient operation | Authenticated identity, consent/purpose and professional authority |
-| Artifact rights / CMP-17 | `apps/api/dependency-license-inventory.json`, notices and gate | 24 pinned wheels, 99 supplier Rust entries, 13 embedded-runtime entries | Exact hashes/notices checked; approval restricted to local synthetic H1 development | Commercial distribution and complete image clearance remain held | Mako inherited-label review, link-map evidence, complete host/container inventory |
-| Patient World Model and evidence | Existing `CaseStore` and active integration branches | Existing prototype retained; no parallel ledger introduced | Existing synthetic regression remains a separate baseline | Not clinically validated | Reconcile reviewed canonical PostgreSQL port and source/evidence/review contracts |
-| Unified React/Vite experience | Issue #119 | Accepted target; no new frontend implementation in this slice | No React/browser-product completion claim from API health | Not deployed | Connect genuine patient-source APIs before extending the shell UI |
+The [apps/api integration](../apps/api/README.md) is based on #162 head
+62d2ad0dd2c2d581f9d13d7659f888265838a4f0, which itself depends on #137's
+synthetic-only safety correction. Its source-owned identity port comes unchanged
+from #148 at 19b1c1319ba543fd0e93744ea3425bd861b0f233. The API shell owner's
+concurrent network/startup corrections were retained; an overlapping local draft
+was discarded. No source branch is replaced or self-merged.
 
-This is **bounded audit coverage**, not a claim that every repository branch,
-architecture count, dependency, clinical domain or external source is fully
-audited. Historic patient-data outputs and retained artifacts remain outside the
-source-path review. #137 contains the existing safety correction; this branch
-does not merge it or independently certify historical artifacts.
+| Capability | Source / ownership | Actual state and verification | Remaining gap |
+|---|---|---|---|
+| Canonical patient registry | #85; unchanged patient_registry.py blob 7edade0e13d81eebc4ffeac1a19beeb6c241cb3e | Existing first-party domain reused, not reimplemented | Merge/review dependency remains |
+| PostgreSQL identity persistence | #148 at 19b1c131; original port and receipt SQL retained | Identity-only Alembic migration tested on PostgreSQL 16.15, including immutable receipts, atomic failure, downgrade/re-upgrade and collision refusal | Broader experimental #145 schema is not promoted |
+| H1 patient HTTP | New integration/h1-pg16-patient-registry-20261102 branch, stacked on #162 | 49/49 API/migration/gate tests, zero skips; create/retry/read, org/grant denial, expiry/revocation, bounded inputs, concurrent retries and connection-loss cleanup | Synthetic fixture authority only; no verified accounts, consent, RLS or production service-role qualification |
+| Existing source/evidence/investigation prototype | Preserved Python/SQLite application on #137 safety base | 245/245 existing tests passed on combined local checkout | These contracts are not yet mounted on H1 PostgreSQL |
+| EHR / LIS / event / clinical spine | #74 / #56 / #70 / #89 / #95 | Active source owners preserved; separately implemented/unmerged candidates | No claim of this H1 patient API being connected through encounters, orders, specimens, results or PWM |
+| Biomedical rights / Composer / source corrections / review | Existing #93 and integration branches | Existing implementations and research retained | No new live knowledge retrieval, model execution or clinical review through H1 |
+| Container persistence/recovery | H1 workflow and verify_registry_compose.py | Acceptance implements real HTTP, API + DB restart, dump/restore and revocation; hosted exact-head result must be read before claiming success | Docker/Chromium unavailable locally |
+| React/Vite workspace | #119 and existing UI candidates | Accepted frontend target; no new UI in this bounded backend integration | Bind existing UI to canonical patient/source APIs |
+| Artifact rights | Unchanged inventory, lock, notices and gate | 24 exact wheels checked; 99 supplier native and 13 embedded-runtime entries recorded as separate evidence scopes | Full image/distribution, Mako inherited label and native link-map holds remain |
 
-Technology discovery in this slice deeply qualifies the backend/driver and
-native-wheel dependencies needed for #112. Existing frontend, identity,
-documents/OCR, imaging/pathology, genomics, model weights, enterprise tooling and
-full deployment images remain separate discovery/qualification workstreams.
-NCCN content rights remain unresolved; current H1 permits only the separately
-defined metadata/version/link boundary. CIViC's official CC0/API documentation
-is a promising content input to research, not an implemented connector here.
+The source shell's final [hosted run #41530234376](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41530234376)
+passed its 26 API tests, 245 prototype tests, both Chromium journeys and
+health-only Compose/API-restart checks. Those results belong to #162; the new
+patient/restore acceptance requires its own exact-head run.
 
-Exact test counts, source commit and hosted execution evidence belong in the
-draft PR and its linked workflow. Do not mark all of M-H1-0, MRT-01, a useful
-patient MVP or real-patient release complete from this infrastructure shell.
+Independent review reproduced two defects before correction: a same-name weaker
+identity schema could be silently adopted, and rollback failure could bypass
+explicit connection release. The new migration preflight stops for reconciliation;
+nested cleanup guarantees close. Both meaningful regressions passed, and the
+reviewer confirmed the fixes. A Dockerfile-specific ignore also bounds build
+context after its move to the repository root.
+
+### Audit coverage and next connection
+
+GitHub remains the source of code/CI truth; the accepted Notion/Drive H1 decisions
+select PostgreSQL 16 and React/Vite/TypeScript. The #148 PostgreSQL 17/18 matrix
+is research evidence, not approval to change that H1 target. No new stack,
+patient ledger, task system or model gateway is introduced.
+
+This is bounded audit coverage. Historical patient-data artifacts were not
+opened or reproduced. Existing #137 safety controls and the static CI
+data-boundary scanner were retained. A passing scanner does not prove every
+historical artifact or arbitrary network behavior is safe. No identifiable
+patient record was acquired for this integration.
+
+The four rights registers remain separate. CIViC curated content, NLM/PubMed
+metadata/abstract distinctions, ClinicalTrials.gov access terms and NCI reuse
+rules are active research records, not implemented connectors or automatic
+commercial clearance. NCCN content remains disabled pending specific rights.
+
+**Next executable work:** reconcile canonical patient IDs and source bindings
+with #89/#95/#148, mount one scoped source acquisition/version contract in H1,
+and prove correct-patient binding, original/version preservation and bounded
+amendment invalidation before connecting the #119 React workspace. Existing
+EHR/LIS/events, PWM, evidence, Composer and review owners supply subsequent
+interfaces. Full M-H1-0, MRT-01, MVP, deployment and clinical validation remain
+incomplete.
 
 The dated slice reports below are preserved as history; their absence statements and next-step lists are not a current inventory. The inspected application baseline was main [`52ea683`](https://github.com/OpenxIntelligence/open-intelligence/commit/52ea683fbe3537b17a05066dceff2ba01f758c5d): **236 synthetic application tests passed locally**, with loopback HTTP servers and mocked/fixture external transports. Subsequent main [`24519839`](https://github.com/OpenxIntelligence/open-intelligence/commit/24519839) adds the no-personal-case-data policy and CI blocking changes; those changes do not establish a newly passing application baseline.
 

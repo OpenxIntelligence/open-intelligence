@@ -18,6 +18,7 @@ class Settings:
     database_url: str | None = field(default=None, repr=False)
     environment: str = "synthetic"
     connect_timeout_seconds: float = 2.0
+    access_file: str | None = field(default=None, repr=False)
 
     def __post_init__(self):
         if self.environment != "synthetic":
@@ -48,4 +49,5 @@ class Settings:
             database_url=values.get("OI_API_DATABASE_URL"),
             environment=values.get("OI_API_ENVIRONMENT", "synthetic"),
             connect_timeout_seconds=timeout,
+            access_file=values.get("OI_API_ACCESS_FILE"),
         )

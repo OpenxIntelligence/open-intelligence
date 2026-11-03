@@ -1,0 +1,61 @@
+"""Bound the small identity command before JSON parsing, including chunked HTTP."""
+
+import asyncio
+
+from starlette.responses import JSONResponse
+
+
+class PatientRequestLimit:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or scope["method"] != "POST" or scope["path"] != "/v1/patients":
+            await self.app(scope, receive, send)
+            return
+
+        async def reject(code, detail):
+            response = JSONResponse({"detail": detail}, status_code=code,
+                                    headers={"Cache-Control": "no-store", "Connection": "close"})
+            await response(scope, receive, send)
+
+        headers = dict(scope["headers"])
+        length = headers.get(b"content-length")
+        if length is not None:
+            try:
+                if int(length) < 0:
+                    raise ValueError()
+                if int(length) > 16_384:
+                    await reject(413, "Request body too large")
+                    return
+            except ValueError:
+                await reject(400, "Invalid request")
+                return
+        content = bytearray()
+        try:
+            async with asyncio.timeout(5):
+                while True:
+                    message = await receive()
+                    if message["type"] == "http.disconnect":
+                        return
+                    chunk = message.get("body", b"")
+                    if len(content) + len(chunk) > 16_384:
+                        await reject(413, "Request body too large")
+                        return
+                    content.extend(chunk)
+                    if not message.get("more_body", False):
+                        break
+        except TimeoutError:
+            await reject(408, "Request body timed out")
+            return
+
+        delivered = False
+
+        async def bounded_receive():
+            nonlocal delivered
+            if not delivered:
+                delivered = True
+                return {"type": "http.request", "body": bytes(content), "more_body": False}
+            return await receive()
+
+        await self.app(scope, bounded_receive, send)

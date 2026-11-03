@@ -1,0 +1,101 @@
+"""Trusted request-context port and a deliberately synthetic fixture adapter.
+
+This is not identity proofing, account management, caregiver delegation or
+consent. Missing, expired, ambiguous or unreadable configuration fails closed.
+"""
+
+from datetime import datetime, timezone
+import hashlib
+import hmac
+from pathlib import Path
+from typing import Literal, Protocol
+
+from pydantic import Field, ValidationError, field_validator, model_validator
+
+from open_intelligence.patient_registry import _key
+
+from .contracts import Contract
+
+
+class AccessUnavailable(Exception):
+    """The trusted context provider is unavailable; details are not public."""
+
+
+class Principal(Contract):
+    actor: str
+    organization: str
+    purpose: Literal["operations", "research"]
+    actions: frozenset[Literal["patient_create", "patient_read"]] = frozenset()
+    patient_ids: frozenset[str] = Field(default_factory=frozenset, max_length=256)
+    expires_at: datetime
+
+    @field_validator("actor", "organization")
+    @classmethod
+    def bounded_identity(cls, value):
+        return _key(value, "identity")
+
+    @field_validator("patient_ids")
+    @classmethod
+    def bounded_patients(cls, values):
+        for value in values:
+            _key(value, "patient_id")
+        return values
+
+    @field_validator("expires_at")
+    @classmethod
+    def aware_expiry(cls, value):
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("An explicit expiry timezone is required")
+        return value
+
+
+class Credential(Principal):
+    token_sha256: str = Field(pattern=r"^[0-9a-f]{64}$", repr=False)
+
+
+class AccessDocument(Contract):
+    version: Literal["oi.synthetic-access/1"]
+    credentials: list[Credential] = Field(max_length=64)
+
+    @model_validator(mode="after")
+    def unambiguous_tokens(self):
+        if len({item.token_sha256 for item in self.credentials}) != len(self.credentials):
+            raise ValueError("Duplicate credential digest")
+        return self
+
+
+class Authentication(Protocol):
+    def authenticate(self, token: str) -> Principal | None: ...
+
+
+class DenyAuthentication:
+    def authenticate(self, token: str) -> Principal | None:
+        return None
+
+
+class SyntheticFileAuthentication:
+    """Operator-controlled local fixture; reread every time, never cache grants.
+
+    File replacement takes effect on the next request. A synchronous operation
+    already authorized can finish; this is not distributed revocation atomicity.
+    No raw bearer token is stored in this file or returned in its parsed context.
+    """
+
+    def __init__(self, path: str):
+        self._path = Path(path)
+
+    def authenticate(self, token: str) -> Principal | None:
+        try:
+            with self._path.open("rb") as stream:
+                data = stream.read(65_537)
+            if len(data) > 65_536:
+                raise ValueError("Access fixture exceeds its bound")
+            document = AccessDocument.model_validate_json(data)
+        except (OSError, ValueError, ValidationError):
+            raise AccessUnavailable() from None
+        digest = hashlib.sha256(token.encode("ascii")).hexdigest()
+        now = datetime.now(timezone.utc)
+        for candidate in document.credentials:
+            if hmac.compare_digest(candidate.token_sha256, digest) and candidate.expires_at > now:
+                return Principal.model_validate(candidate.model_dump(exclude={"token_sha256"}))
+        return None
