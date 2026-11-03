@@ -38,6 +38,7 @@
           <a href="#assertions">Reported findings</a>
           <a href="#timeline">Timeline</a>
           <a href="#investigations">Investigation</a>
+          <a href="#scoped-review">Scoped review</a>
           <a href="#sources">Sources and findings</a>
           <a href="#evidence">Evidence review</a>
           <a href="#bibliography">Bibliography</a>
@@ -271,6 +272,39 @@
           </form>
           <div id="model-investigation-list" class="snapshots"></div>
         </section>
+      </section>
+
+      <section class="panel" id="scoped-review" aria-labelledby="scoped-review-heading">
+        <div class="panel-head">
+          <div><div class="eyebrow">SCOPED REVIEW · RECORD-STATE NOTES</div><h2 id="scoped-review-heading">Scoped review: what was looked at</h2></div>
+          <span class="pill pill-neutral">FICTIONAL REVIEWERS ONLY</span>
+        </div>
+        <p class="muted">Extraction notes (the source says what is recorded) stay separate from interpretation notes (a stated reading was noted). Notes describe record states only — not credential verification, not a clinical sign-off, and not a treatment decision. Disagreements stay visible beside the noted view; handoffs carry history forward without rewriting it.</p>
+        <div class="subhead">Review scope per investigation</div><div id="scoped-review-list" class="snapshots" aria-live="polite"></div>
+        <div class="subhead">Record a scope note</div>
+        <form id="scoped-decision-form">
+          <label for="scoped-decision-snapshot">Investigation</label><select id="scoped-decision-snapshot" required></select>
+          <label for="scoped-decision-reviewer">Reviewer label (fictional, unverified)</label><input id="scoped-decision-reviewer" type="text" maxlength="80" required placeholder="FICTIONAL-REVIEWER-B">
+          <label for="scoped-decision-scope">Scope</label>
+          <select id="scoped-decision-scope"><option value="extraction_accepted">Extraction recorded as matching the source</option><option value="interpretation_endorsed">Interpretation noted (a stated reading)</option><option value="left_open">Left open (explicitly unresolved)</option></select>
+          <label for="scoped-decision-note">Note (10–600 characters)</label><textarea id="scoped-decision-note" rows="2" minlength="10" maxlength="600" required placeholder="What was checked against which source version."></textarea>
+          <button class="button" type="submit">Record scope note</button>
+        </form>
+        <div class="subhead">Record a disagreement on one finding</div>
+        <form id="scoped-dissent-form">
+          <label for="scoped-dissent-snapshot">Investigation</label><select id="scoped-dissent-snapshot" required></select>
+          <label for="scoped-dissent-reviewer">Reviewer label (fictional, unverified)</label><input id="scoped-dissent-reviewer" type="text" maxlength="80" required placeholder="FICTIONAL-REVIEWER-C">
+          <label for="scoped-dissent-claim">Finding key (one claim from the investigation basis)</label><input id="scoped-dissent-claim" type="text" maxlength="60" required placeholder="marker-a">
+          <label for="scoped-dissent-rationale">Rationale (10–600 characters)</label><textarea id="scoped-dissent-rationale" rows="2" minlength="10" maxlength="600" required placeholder="What differs in this reading, and why."></textarea>
+          <button class="button" type="submit">Record disagreement</button>
+        </form>
+        <div class="subhead">Hand open items to another reviewer</div>
+        <form id="scoped-handoff-form">
+          <label for="scoped-handoff-snapshot">Investigation</label><select id="scoped-handoff-snapshot" required></select>
+          <label for="scoped-handoff-from">From reviewer label</label><input id="scoped-handoff-from" type="text" maxlength="80" required placeholder="FICTIONAL-REVIEWER-B">
+          <label for="scoped-handoff-to">To reviewer label</label><input id="scoped-handoff-to" type="text" maxlength="80" required placeholder="FICTIONAL-REVIEWER-C">
+          <button class="button" type="submit">Record handoff</button>
+        </form>
       </section>
 
       <div class="workspace">
