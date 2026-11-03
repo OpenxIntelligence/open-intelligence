@@ -15,6 +15,17 @@ sys.path.insert(0, str(ROOT / 'tests'))
 from browser_journey import ChromeSession, free_port, wait_for  # noqa: E402
 
 AMENDED = (ROOT / 'examples/synthetic/alpha-pathology-amended.txt').read_text(encoding='utf-8')
+# Independently authored fictional correction: one finding removed (comparison), one added.
+IMAGING_AMENDED = """OI-SYNTHETIC-REPORT/1
+Patient: CASE-ALPHA
+Document: IMG-ALPHA
+Type: imaging
+Event-Date: 2026-05-17
+Issued-At: 2026-05-20
+Amends: IMG-ALPHA@1
+Finding: lesion-size|reported|A fictional reference lesion was re-measured as 31 mm in the corrected report.
+Finding: new-lesion|pending|A fictional second area is listed for follow-up in the corrected report.
+"""
 EXPECTED_CARE_SECTIONS = ['incoming-board', 'overview', 'workspace-start', 'source-intake', 'metrics', 'patient-mission',
                           'timeline', 'sources', 'biological-assets', 'import', 'investigations', 'evidence',
                           'bibliography', 'changes-since-review', 'activity', 'options']
@@ -80,6 +91,26 @@ def main() -> None:
             cd.wait("!document.querySelector('#view-overview').hidden", 'existing in-page link routes to its tab')
             no_overflow('care team 1440')
 
+            def tab_from_picker() -> str:
+                cd.evaluate("document.querySelector('#case-picker').focus()")
+                for kind in ('keyDown', 'keyUp'):
+                    cd.command('Input.dispatchKeyEvent', {'type': kind, 'key': 'Tab', 'code': 'Tab', 'windowsVirtualKeyCode': 9})
+                return cd.evaluate("(() => { const a = document.activeElement; return a.id === 'case-picker' ? 'stuck' : a.offsetParent ? 'visible' : 'hidden'; })()")
+            assert tab_from_picker() == 'visible', 'care team: Tab leaves the case picker for a visible control'
+            # Only pills repeating the global fictional-data banner are hidden.
+            assert not visible('#incoming-board .panel-head .pill-warn'), 'duplicate FICTIONAL DEMO pill hidden'
+            assert cd.evaluate("[...document.querySelectorAll('#options .panel-head .pill-warn')].some(p => p.textContent.includes('DISCUSSION ONLY') && getComputedStyle(p).display !== 'none')"), \
+                'DISCUSSION ONLY boundary label stays visible'
+            assert visible('.rail .side-bottom'), 'rail boundary note stays visible'
+            # Inspector opened after scrolling keeps its title and Close button on screen.
+            cd.evaluate("document.querySelector('#view-nav a[data-tab=records]').click()")
+            cd.evaluate('scrollTo(0, 700)')
+            cd.evaluate("[...document.querySelectorAll('#source-list button')].find(b => b.offsetParent).click()")
+            cd.wait("document.querySelector('#source-dialog').open", 'source inspector after scrolling')
+            assert cd.evaluate("document.querySelector('#source-dialog').getBoundingClientRect().top >= 0 && document.querySelector('#dialog-close').getBoundingClientRect().top >= 0"), \
+                'inspector top and Close button are on screen'
+            cd.evaluate("document.querySelector('#dialog-close').click(); scrollTo(0, 0)")
+
             # Existing workflow: question -> recorded replay -> draft citing PATH-ALPHA v1.
             cd.evaluate("document.querySelector('#question-text').value='Was Marker A tested, and what did it show?';document.querySelector('#question-form').requestSubmit()")
             cd.wait("document.querySelector('#composer-context-fingerprint').value.length===64 && !document.querySelector('#model-investigation-run').disabled", 'composer context')
@@ -137,6 +168,38 @@ def main() -> None:
             cd.evaluate("document.querySelector('.view-role-group button[data-role=careteam]').click()")
             cd.wait("document.querySelectorAll('#view-nav a').length === 7", 'back to care team')
             no_overflow('care team 390')
+            cd.command('Emulation.setDeviceMetricsOverride', {'width': 1440, 'height': 1000, 'deviceScaleFactor': 1, 'mobile': False})
+
+            def post(path: str, payload: dict) -> dict:
+                req = Request(url + path.lstrip('/'), data=json.dumps(payload).encode(), headers={'Content-Type': 'application/json'})
+                with urlopen(req, timeout=5) as response:
+                    return json.load(response)
+
+            def load(role: str) -> None:
+                cd.command('Page.navigate', {'url': url + '?role=' + role})
+                cd.wait("document.querySelector('#case-heading')?.textContent === 'Fictional case Alpha' && document.querySelectorAll('#view-nav a').length > 0", role + ' reload')
+
+            load('patient')
+            assert tab_from_picker() != 'stuck', 'patient: Tab is not trapped on the case picker'
+
+            # A second correction after the first was reviewed: the comparison and the
+            # patient summary must follow the newest change, including added/removed results.
+            state = json.load(urlopen(url + 'api/cases/CASE-ALPHA/state', timeout=5))
+            question = next(q for q in state['questions'] if q['state'] == 'open')
+            current = [s['id'] for s in state['sources'] if s['state'] == 'current']
+            snapshot = post('/api/cases/CASE-ALPHA/snapshots', {'question_id': question['id'], 'summary': 'Fictional reviewed draft.', 'source_ids': current})['snapshot_id']
+            post(f'/api/cases/CASE-ALPHA/snapshots/{snapshot}/review', {'reviewer_label': 'Synthetic reviewer'})
+            assert post('/api/cases/CASE-ALPHA/imports', {'text': IMAGING_AMENDED})['result'] == 'imported'
+            load('careteam')
+            cd.wait("document.querySelector('#review-attention').dataset.state === 'needs-review' && !!document.querySelector('#view-compare-changed:not([hidden])')", 'second amendment needs review')
+            label = cd.evaluate("document.querySelector('#view-compare-changed').textContent")
+            assert 'IMG-ALPHA' in label, 'compare targets the newest correction, not the reviewed one: ' + label
+            load('patient')
+            cd.wait("document.querySelector('#pt-home .view-change')?.textContent.includes('IMG-ALPHA')", 'patient sees the imaging correction')
+            box = cd.evaluate("document.querySelector('#pt-home .view-change').innerText")
+            assert 'New lesion' in box and 'New in the corrected report' in box, box
+            assert 'Comparison' in box and 'No longer in the corrected report' in box, box
+            assert 'PATH-ALPHA' not in cd.evaluate("document.querySelector('#pt-home').innerText.split('My results')[0]"), 'reviewed correction no longer listed as new'
             print('PASS: grouped care-team tabs keep every original section; live patient window picks up the amendment; '
                   'needs review -> docked v1/v2 comparison; '
                   'patient view shows the change, results and reopened question read-only; no horizontal overflow at 1440/390.')

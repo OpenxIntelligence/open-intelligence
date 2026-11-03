@@ -122,7 +122,13 @@
   nav.setAttribute('aria-label', 'Workspace views');
   const oldMenu = document.querySelector('.rail .section-menu');
   oldMenu.before(nav);
-  oldMenu.hidden = true;
+  // Park (not just hide) the original section list: the owner's Tab handler
+  // looks for '.rail nav a[href="#overview"]' and must not find a hidden copy.
+  parking.append(oldMenu);
+  // Hide only header pills that repeat the global "FICTIONAL DEMO" banner;
+  // other boundary labels (e.g. "DISCUSSION ONLY") stay visible.
+  for (const pill of document.querySelectorAll('.panel-head .pill-warn'))
+    if (/FICTIONAL DEMO/i.test(pill.textContent)) pill.classList.add('view-dup-banner');
   const roleBox = make('div', null, 'view-role');
   const roleGroup = make('div', null, 'view-role-group');
   roleGroup.setAttribute('role', 'group');
@@ -223,7 +229,9 @@
 
   // Source inspector: dock the existing dialogs instead of opening them modally.
   const top = document.querySelector('.top');
-  const syncTop = () => document.documentElement.style.setProperty('--view-top', (top ? top.getBoundingClientRect().bottom : 0) + 'px');
+  // The header scrolls away; never place the inspector above the viewport.
+  const syncTop = () => document.documentElement.style.setProperty('--view-top',
+    Math.max(0, top ? top.getBoundingClientRect().bottom : 0) + 'px');
   const dialogs = ['source-dialog', 'compare-dialog'].map($);
   for (const dialog of dialogs) {
     dialog.classList.add('view-inspector');
@@ -254,9 +262,19 @@
   const reopened = state => new Set(state.snapshots
     .filter(s => s.state === 'stale' && state.questions.some(q => Number(q.id) === Number(s.question_id) && q.state === 'open'))
     .map(s => Number(s.question_id)));
+  // Amendments since the last review, from the owner's changes-since-review
+  // endpoint (loaded below); empty until it answers for this case.
+  const amendmentsFor = state => changesCase === state.case.case_id && changes ? changes.amendments || [] : [];
+  // The version pair to compare: the amendment that made a currently reopened
+  // investigation stale, else the most recent amendment since review.
   const amendedPair = state => {
-    const current = state.sources.find(s => s.state === 'current' && s.supersedes_id);
-    const previous = current && state.sources.find(s => s.id === current.supersedes_id);
+    const staleIds = new Set(state.snapshots.filter(s => s.state === 'stale' && reopened(state).has(Number(s.question_id)))
+      .map(s => Number(s.id)));
+    const items = amendmentsFor(state).slice().sort((a, b) => Number(b.event_id) - Number(a.event_id));
+    const item = items.find(a => (a.invalidated_snapshot_ids || []).some(id => staleIds.has(Number(id)))) || items[0];
+    if (!item) return null;
+    const current = state.sources.find(s => Number(s.id) === Number(item.source_id));
+    const previous = state.sources.find(s => Number(s.id) === Number(item.supersedes_source_id));
     return current && previous ? {previous, current} : null;
   };
   function viewSource(label, sourceId, line) {
@@ -278,6 +296,7 @@
       changes = data;
       changesCase = requested;
       paintHome(ready());
+      paintAttention(ready());
     } catch (_) { /* The existing Review & changes panel reports errors. */ }
   }
 
@@ -287,21 +306,27 @@
     if (!state) return;
     section.querySelector('h2').textContent = state.case.label.replace(/^Fictional case /, '');
     const pending = reopened(state).size;
-    const pair = amendedPair(state);
+    const amendments = amendmentsFor(state);
+    // "Updated" only while there are corrections since the last review.
     const status = make('p', pending ? 'A corrected report is waiting for your care team’s review'
-      : pair ? 'Your records were updated' : 'No changes waiting for review', 'view-status');
+      : amendments.length ? 'Your records were updated since the last review' : 'No changes waiting for review', 'view-status');
     if (pending) status.dataset.tone = 'attention';
     body.append(status);
-    const amendments = changesCase === state.case.case_id && changes ? changes.amendments || [] : [];
     for (const item of amendments) {
       const box = make('div', null, 'view-change');
       box.append(make('strong', item.document_id + ' was corrected (version ' + item.superseded_version + ' → ' + item.version + ')'));
-      for (const change of (item.finding_key_diff || {}).reported_state_changes || []) {
-        const row = make('div', null, 'view-change-row');
-        row.append(make('span', plainName(change.finding_key) + ':'), make('span', plainState(change.previous_reported_state), 'view-was'),
+      const diff = item.finding_key_diff || {};
+      const row = (...parts) => { const line = make('div', null, 'view-change-row'); line.append(...parts); box.append(line); };
+      for (const change of diff.reported_state_changes || [])
+        row(make('span', plainName(change.finding_key) + ':'), make('span', plainState(change.previous_reported_state), 'view-was'),
           make('span', '→'), make('span', plainState(change.reported_state), 'view-now'));
-        box.append(row);
+      for (const key of diff.added_finding_keys || []) {
+        const added = state.assertions.find(a => Number(a.source_version_id) === Number(item.source_id) && a.finding_key === key);
+        row(make('span', plainName(key) + ':'), make('span', 'New in the corrected report'),
+          make('span', added ? plainState(added.certainty) : '', 'view-now'));
       }
+      for (const key of diff.removed_finding_keys || [])
+        row(make('span', plainName(key) + ':'), make('span', 'No longer in the corrected report', 'view-was'));
       box.append(make('span', 'The earlier version is kept. Your care team reviews what this change means.', 'view-label'));
       body.append(box);
     }
@@ -331,7 +356,7 @@
     if (!state) return;
     const linked = new Set((state.evidence_assessments || []).map(a => Number(a.evidence_version_id)));
     const items = (state.evidence || []).filter(item => item.state === 'current');
-    body.append(make('p', 'Research your care team connected to this workspace. You can also look up publications yourself with the search below.', 'muted'));
+    body.append(make('p', 'Research your care team connected to this workspace. The public literature search below takes general topics only, never details from your records.', 'muted'));
     if (!items.length) { body.append(make('p', 'Your care team hasn’t connected any research yet.', 'muted')); return; }
     const list = make('ul', null, 'view-list');
     for (const item of items) {

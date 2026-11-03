@@ -31,9 +31,9 @@ body { background: var(--color-paper-2); }
 .hero { background: var(--color-paper); }
 h1, h2 { letter-spacing: -0.015em; }
 
-/* One demo banner in the header; repeated in-panel copies are visual noise. */
-.panel-head .pill-warn { display: none; }
-.rail .side-bottom { display: none; }
+/* One demo banner in the header: only in-panel pills that repeat it are hidden
+   (marked by views.js). Other boundary labels and the rail note stay. */
+.view-dup-banner { display: none; }
 /* Navigation now does the guide box's job ("inspect chronology", "browse documents"). */
 .glance-review .glance-guide { display: none; }
 
