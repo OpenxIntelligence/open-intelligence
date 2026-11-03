@@ -5,7 +5,35 @@ import {canPrepareSourceBrief,downloadSourceBrief} from './source-brief';
 export function SourceQuestionPanel({state,session,busy}:{state:ViewState;session:RegistrySession;busy:boolean}){
  const caseId=state.worldModel?.case_id??'';
  const brief=state.sourceBrief;
+ const draft=state.questionDraft;
+ const validDraft=!!draft&&draft.question.length>=8&&draft.question.length<=500&&
+   draft.question.trim()===draft.question&&
+   !Array.from(draft.question).some(ch=>ch.charCodeAt(0)<32||ch.charCodeAt(0)===127);
+ const unresolvedWrite=state.questionSaveMessage.startsWith('Save outcome unknown.');
  return <section data-testid="source-question-panel" aria-label="Source-linked question intake">
+   {draft&&<section className="question-draft" data-testid="question-draft-editor"
+       aria-labelledby="question-draft-heading">
+     <span className="step">FICTIONAL QUESTION · IN-MEMORY DRAFT</span>
+     <h3 id="question-draft-heading">Write your own source-linked question</h3>
+     <p><strong>Selected original:</strong> <code>{draft.source_id}</code> · line {draft.source_line}.
+       The source and case are fixed for this draft. Changing the question requires a new, independently authorized preflight.</p>
+     <label htmlFor="source-question-text">Question to investigate</label>
+     <textarea id="source-question-text" data-testid="question-draft" rows={3}
+       maxLength={500} spellCheck={false} autoComplete="off" value={draft.question}
+       disabled={busy||unresolvedWrite}
+       onChange={e=>session.changeQuestionDraft(e.target.value)}/>
+     <p className="muted" data-testid="question-draft-count">{draft.question.length}/500 characters. One question, 8–500 characters, no surrounding spaces or control characters. No medical conclusion or AI execution.</p>
+     <div className="actions">
+       <button type="button" className="primary" data-testid="prepare-custom-question"
+         disabled={busy||!validDraft||unresolvedWrite||state.composerPhase==='loading'}
+         onClick={()=>void session.prepareDraftQuestion()}>
+         {state.composerPhase==='loading'?'Checking source context…':'Prepare this question against current source'}
+       </button>
+       <button type="button" data-testid="discard-question-draft" disabled={busy||unresolvedWrite}
+         onClick={()=>session.discardQuestionDraft()}>Discard unsaved draft</button>
+     </div>
+     {unresolvedWrite&&<p role="note">The save result is unknown. Retry the same prepared question before replacing or discarding this draft, so an uncertain write is not duplicated.</p>}
+   </section>}
    <p className={'status '+(state.composerPhase==='error'?'error':'')}
       data-testid="composer-status" role="status" aria-live="polite">{state.composerMessage}</p>
    {state.composerPreview&&<section className="composer-preview" data-testid="composer-context"
@@ -83,6 +111,11 @@ export function SourceQuestionPanel({state,session,busy}:{state:ViewState;sessio
             onClick={()=>void session.prepareSourceBrief(item.question_id)}>Prepare source brief</button>
           {!canPrepareSourceBrief(item,state.worldModel)&&<p className="muted">
             Prepare a new question from the current source context before exporting a brief.</p>}
+          <button type="button" data-testid="source-quote-packet-open"
+           disabled={busy||state.sourceQuotePhase==='loading'}
+           onClick={()=>void session.loadQuestionSourcePacket(item.question_id)}>
+           Inspect verified source quote and evidence gaps
+          </button>
          </li>)}</ul>}
     </div>}
     <p data-testid="brief-status" role="status" aria-live="polite"
@@ -116,5 +149,55 @@ export function SourceQuestionPanel({state,session,busy}:{state:ViewState;sessio
       <p className="muted">Every download requests a new brief from the server. An earlier preview is never used when access is denied or the source changes.</p>
     </section>}
    </section>
+   <p role="status" aria-live="polite" data-testid="source-quote-packet-status"
+    className={'status '+(state.sourceQuotePhase==='error'?'error':'')}>
+    {state.sourceQuoteMessage}</p>
+   {state.sourceQuotePacket&&<section className="source-quote-inspection" data-testid="source-quote-packet"
+    aria-labelledby="source-quote-heading">
+    <span className="step">SOURCE QUOTATION / PROVENANCE INSPECTION</span>
+    <h3 id="source-quote-heading">Review prerequisites — not a clinical assessment</h3>
+    <p><strong>Saved question:</strong> {state.sourceQuotePacket.question}</p>
+    <p><strong>Question record:</strong> <code>{state.sourceQuotePacket.question_id}</code></p>
+    {state.sourceQuotePacket.selected_statement?<div>
+     <p><strong>Source-reported statement, exactly quoted:</strong></p>
+     <blockquote data-testid="source-quote-literal">{state.sourceQuotePacket.selected_statement.source_statement}</blockquote>
+     <p>Reported state: <strong>{state.sourceQuotePacket.selected_statement.reported_state}</strong>
+       {' '}· Document <code>{state.sourceQuotePacket.selected_statement.document_id}</code>
+       {' '}v{state.sourceQuotePacket.selected_statement.document_version},
+       line {state.sourceQuotePacket.selected_statement.source_line}</p>
+     <p>Reported event: {state.sourceQuotePacket.selected_statement.event_date}
+      {' '}· Specimen {state.sourceQuotePacket.selected_statement.specimen_id??'not specified'}</p>
+     <h4>Related authored statements ({state.sourceQuotePacket.related_statement_count_total})</h4>
+     {state.sourceQuotePacket.related_statements.length===0?
+       <p>No other current same-specimen/date/finding statements were returned. This is not an exhaustive evidence search.</p>:
+       <ul data-testid="source-quote-related">{state.sourceQuotePacket.related_statements.map(q=>
+        <li key={q.source_id+':'+q.source_line}>
+         <blockquote>{q.source_statement}</blockquote>
+         <p>{q.reported_state} · <code>{q.source_id}</code> line {q.source_line}</p>
+        </li>)}</ul>}
+     {state.sourceQuotePacket.related_statements_truncated&&
+       <p>Additional related statements exist. This bounded packet is not complete.</p>}
+    </div>:<p role="note" data-testid="source-quote-stale">
+     <strong>Historical source — reassessment required.</strong>
+     The original question and source identifiers are retained, but the outdated
+     quotation is not presented as current. Refresh sources and create a new
+     source-linked question before review.</p>}
+    <details><summary>Original source reference and packet integrity</summary>
+     <p>Original <code>{state.sourceQuotePacket.original_anchor.source_id}</code>,
+      version {state.sourceQuotePacket.original_anchor.source_version},
+      line {state.sourceQuotePacket.original_anchor.source_line}</p>
+     <p>Original SHA-256 <code>{state.sourceQuotePacket.original_anchor.source_sha256}</code></p>
+     <p>Current source snapshot <code>{state.sourceQuotePacket.current_source_snapshot_sha256}</code></p>
+     <p>Verified content packet SHA-256 <code>{state.sourceQuotePacket.packet_sha256}</code></p>
+     <p>Source-access preparation receipt <code>{state.sourceQuotePacket.source_access_receipt_id}</code>.
+      This is not proof of network delivery or a clinical authorization.</p>
+    </details>
+    <p role="note" className="source-quote-limit">
+     <strong>Outstanding independent review:</strong> Biomedical literature appraisal,
+     publisher rights, clinical relevance, professional identity, consent and
+     signed decisions are not established by this packet. No model was run,
+     treatment inferred or medical action authorized.
+    </p>
+   </section>}
  </section>;
 }
