@@ -1,0 +1,170 @@
+name: Pinned Rust PACS DICOMweb synthetic bake-off
+
+on:
+  push:
+    branches:
+      - experiment/pacsnode-dicomweb-eval-20261102
+    paths:
+      - 'tools/imaging/**'
+      - 'tests/test_pacsnode_probe_contract.py'
+      - '.github/workflows/pacsnode-standalone-evaluation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pacsnode-bakeoff-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      PYTHONPATH: src
+      CARGO_INCREMENTAL: '0'
+      CARGO_BUILD_JOBS: '2'
+      PACS_SOURCE_COMMIT: e9b4334477a66967d290add9e0b9afa068f59dc0
+      PIP_DISABLE_PIP_VERSION_CHECK: '1'
+    steps:
+      - name: Checkout first-party synthetic test code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Python 3.13
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.13'
+      - name: Offline evaluator contract tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p verification-artifacts
+          git rev-parse HEAD > verification-artifacts/oi-evaluator-commit.txt
+          python -m unittest discover -s tests -p 'test_pacsnode_probe_contract.py' -v 2>&1 |
+            tee verification-artifacts/pacsnode-harness-tests.txt
+      - name: Install only hash-pinned pydicom core for synthetic fixture generation
+        shell: bash
+        run: |
+          python -m pip install --only-binary=:all: --no-deps --require-hashes \
+            -r tools/imaging/requirements-pacsnode-research.txt
+      - name: DICOM serialization and integrity regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest discover -s tools/imaging -p 'test_pacsnode_probe_integration.py' -v 2>&1 |
+            tee verification-artifacts/pacsnode-dicom-regression-tests.txt
+      - name: Fetch exact upstream source into isolated evaluation directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init "$RUNNER_TEMP/oi-pacsnode-source"
+          git -C "$RUNNER_TEMP/oi-pacsnode-source" remote add origin https://github.com/knopkem/pacsnode.git
+          git -C "$RUNNER_TEMP/oi-pacsnode-source" fetch --depth 1 origin "$PACS_SOURCE_COMMIT"
+          git -C "$RUNNER_TEMP/oi-pacsnode-source" checkout --detach FETCH_HEAD
+          test "$(git -C "$RUNNER_TEMP/oi-pacsnode-source" rev-parse HEAD)" = "$PACS_SOURCE_COMMIT"
+          grep -q 'licensed under the MIT License' "$RUNNER_TEMP/oi-pacsnode-source/NOTICE"
+          grep -Eq 'license[[:space:]]*=[[:space:]]*"MIT"' "$RUNNER_TEMP/oi-pacsnode-source/Cargo.toml"
+          test -f "$RUNNER_TEMP/oi-pacsnode-source/Cargo.lock"
+          printf "%s\n" "$PACS_SOURCE_COMMIT" > verification-artifacts/pacsnode-upstream-commit.txt
+          sha256sum "$RUNNER_TEMP/oi-pacsnode-source/Cargo.lock" > verification-artifacts/pacsnode-cargo-lock-sha256.txt
+          # Do not run the default Docker Compose. That deployment's
+          # MinIO and image assets require a SEPARATE rights gate.
+          echo "MIT declared in NOTICE/Cargo.toml; no adoption or legal clearance."
+      - name: Record Rust compiler version and pin resolved crate declarations
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/oi-pacsnode-source"
+          rustc --version | tee "$GITHUB_WORKSPACE/verification-artifacts/rustc-version.txt"
+          cargo --version
+          cargo metadata --format-version 1 --locked > "$RUNNER_TEMP/pacs-metadata.json"
+          python - "$RUNNER_TEMP/pacs-metadata.json" "$GITHUB_WORKSPACE/verification-artifacts/cargo-license-snapshot.json" <<'PY'
+          import json,sys
+          from pathlib import Path
+          packages=json.loads(Path(sys.argv[1]).read_text())['packages']
+          entries=sorted(
+              ({'name':p['name'],'version':p['version'],
+                'license_declaration':p.get('license') or 'UNDECLARED'}
+               for p in packages),
+              key=lambda e:(e['name'],e['version']))
+          flags=[e for e in entries if e['license_declaration']=='UNDECLARED'
+                 or 'AGPL' in e['license_declaration']
+                 or 'GPL' in e['license_declaration']
+                 or 'SSPL' in e['license_declaration']]
+          receipt={'clearance':'HOLD: source and dependency declarations are not legal approval',
+                   'packages_seen':len(entries),
+                   'declared_license_flags':flags,
+                   'resolved_crates':entries}
+          Path(sys.argv[2]).write_text(json.dumps(receipt,indent=2)+'\n')
+          print(f"Recorded {len(entries)} crate declarations; {len(flags)} license flags")
+          PY
+      - name: Compile only the standalone SQLite and filesystem backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/oi-pacsnode-source"
+          cargo build --locked -p pacs-server --no-default-features --features standalone --bin pacsnode
+          test -x target/debug/pacsnode
+      - name: Run real STOW QIDO WADO synthetic SOP evaluation
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Persisted DB settings override bootstrap environment values upstream.
+          # Every evaluation therefore needs its own empty directory/database.
+          pacs_run_directory=$(mktemp -d "$RUNNER_TEMP/oi-pacsnode-run.XXXXXX")
+          cd "$pacs_run_directory"
+          # Checked upstream binary source at the pinned commit: the
+          # command writes config.toml in cwd and does not take --output.
+          "$RUNNER_TEMP/oi-pacsnode-source/target/debug/pacsnode" generate-config standalone
+          test -f config.toml
+          export PACS_SERVER__HTTP_PORT=18042
+          # Upstream default storage is HTJ2K-lossless (1.2.840.10008.1.2.4.201).
+          # For a byte-for-byte raw pixel test use ExplicitVRLittleEndian
+          # instead of comparing compressed PixelData bytes to uncompressed.
+          export PACS_SERVER__STORAGE_TRANSFER_SYNTAX=1.2.840.10008.1.2.1
+          printf '%s\n' "$PACS_SERVER__STORAGE_TRANSFER_SYNTAX" > "$GITHUB_WORKSPACE/verification-artifacts/pacsnode-test-storage-transfer-syntax.txt"
+          "$RUNNER_TEMP/oi-pacsnode-source/target/debug/pacsnode" \
+            > "$GITHUB_WORKSPACE/verification-artifacts/pacsnode-stdout.txt" 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          ready=0
+          for attempt in $(seq 1 90); do
+            if curl --silent --show-error --fail http://127.0.0.1:18042/health >/dev/null 2>&1; then
+              ready=1
+              break
+            fi
+            if ! kill -0 "$server_pid" 2>/dev/null; then
+              echo "Upstream PACS process ended before readiness" >&2
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ready" -ne 1 ]; then
+            echo "Upstream PACS health check never succeeded" >&2
+            tail -n 30 "$GITHUB_WORKSPACE/verification-artifacts/pacsnode-stdout.txt" || true
+            exit 1
+          fi
+          cd "$GITHUB_WORKSPACE"
+          python tools/imaging/pacsnode_live_probe.py \
+            --base-url http://127.0.0.1:18042 \
+            --output verification-artifacts/pacsnode-real-dicomweb.json
+      - name: Preserve only source and numerical receipts, no image objects
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: synthetic-pacsnode-source-and-roundtrip-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            verification-artifacts/oi-evaluator-commit.txt
+            verification-artifacts/pacsnode-harness-tests.txt
+            verification-artifacts/pacsnode-dicom-regression-tests.txt
+            verification-artifacts/pacsnode-upstream-commit.txt
+            verification-artifacts/pacsnode-cargo-lock-sha256.txt
+            verification-artifacts/rustc-version.txt
+            verification-artifacts/cargo-license-snapshot.json
+            verification-artifacts/pacsnode-real-dicomweb.json
+            verification-artifacts/pacsnode-test-storage-transfer-syntax.txt
+            verification-artifacts/pacsnode-stdout.txt
+          if-no-files-found: warn
+          retention-days: 7
