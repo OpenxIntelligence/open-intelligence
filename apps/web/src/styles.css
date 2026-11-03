@@ -17,3 +17,6 @@
 .finding-list blockquote{border-left:3px solid #aac1b4;margin:12px 0;padding:8px 12px;white-space:pre-wrap;overflow-wrap:anywhere}
 .finding-list small{color:#53685f}
 @media(max-width:600px){.source-metadata{grid-template-columns:1fr}.case-row,.source-list li,.finding-list li{padding:12px}}
+
+.exact-original{border-top:1px solid #dce3dc;margin-top:14px;padding-top:14px}
+.original-text{white-space:pre-wrap;overflow-wrap:anywhere;max-height:460px;overflow:auto;border:1px solid #d7e0d8;background:#f8faf7;border-radius:7px;padding:14px;font:13px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace}
