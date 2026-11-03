@@ -49,9 +49,10 @@ def state(url: str, case_id: str = "CASE-ALPHA") -> dict:
 def screenshot(session: ChromeSession, name: str, selector: str | None = None) -> None:
     params = {"format": "png", "captureBeyondViewport": True}
     if selector:
-        clip = session.evaluate("""(selector => {
+        clip = session.evaluate("""(async selector => {
           const element = document.querySelector(selector);
-          element.scrollIntoView({block: 'start'});
+          element.scrollIntoView({block: 'start', behavior: 'instant'});
+          await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
           const rect = element.getBoundingClientRect();
           return {x: rect.left + window.scrollX, y: rect.top + window.scrollY,
                   width: rect.width, height: rect.height, scale: 1};

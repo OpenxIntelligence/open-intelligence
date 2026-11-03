@@ -603,20 +603,23 @@ function renderOriginalSource(text, lineNumber) {
   // recorded source line; preserve all other characters and line breaks.
   const viewer = el('dialog-text');
   viewer.replaceChildren();
-  const lines = String(text).split('\n');
+  const lines = reportLineTokens(String(text));
   const anchored = Number.isInteger(lineNumber) && lineNumber > 0 && lineNumber <= lines.length;
   for (let index = 0; index < lines.length; index++) {
-    if (index) viewer.append(document.createTextNode('\n'));
+    const ending = lines[index].match(/\r\n$|[\r\n\v\f\x1c-\x1e\x85\u2028\u2029]$/)?.[0] || '';
+    const content = ending ? lines[index].slice(0, -ending.length) : lines[index];
     if (anchored && index + 1 === lineNumber)
-      viewer.append(node('mark', lines[index], 'source-highlight'));
-    else viewer.append(document.createTextNode(lines[index]));
+      viewer.append(node('mark', content, 'source-highlight'));
+    else viewer.append(document.createTextNode(content));
+    if (ending) viewer.append(document.createTextNode(ending));
   }
   return anchored;
 }
 // Begin source text comparison.
 function reportLineTokens(text) {
-  // Keep every character, including CRLF, blank lines and the final newline.
-  return text.match(/[^\n]*\n|[^\n]+$/g) || [];
+  // Match the parser's Python str.splitlines() boundaries while preserving
+  // every character. Unicode separators must not move an anchor to another finding.
+  return text.match(/[^\r\n\v\f\x1c-\x1e\x85\u2028\u2029]*(?:\r\n|[\r\n\v\f\x1c-\x1e\x85\u2028\u2029])|[^\r\n\v\f\x1c-\x1e\x85\u2028\u2029]+$/g) || [];
 }
 function compareReportLines(before, after) {
   if (typeof before !== 'string' || typeof after !== 'string')
