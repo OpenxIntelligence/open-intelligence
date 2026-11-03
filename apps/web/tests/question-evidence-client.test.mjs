@@ -138,6 +138,39 @@ test('disabled and unavailable DOI lookup clear earlier metadata, redact details
  }
 });
 
+test('known stale question context blocks provider lookup but preserves catalog and history inspection',async()=>{
+ for(const origin of ['question','search','history']){
+  let lookups=0;
+  const stale={source_context_state:'source_reassessment_required'};
+  const s=session(async(url)=>{
+   if(url.endsWith('/evidence-doi')){lookups++;return response(doiSearch());}
+   if(url.endsWith('/questions'))return response(questions([question(origin==='question'?stale:{})]));
+   if(url.endsWith('/evidence-search'))return response(search(undefined,origin==='search'?stale:{}));
+   if(url.endsWith('/evidence-links'))return response(links(undefined,origin==='history'?stale:{}));
+   return basic(url);
+  });
+  await ready(s);
+  if(origin==='search')await s.searchQuestionEvidence(qid,'fictional');
+  if(origin==='history')await s.loadQuestionEvidenceLinks(qid);
+  await s.lookupQuestionDoi(qid,doi,true);
+  assert.equal(lookups,0,origin+' reassessment must prevent a provider request');
+  assert.match(s.snapshot().evidenceSearchMessage,/source reassessment/i);
+  await s.searchQuestionEvidence(qid,'fictional');assert.equal(s.snapshot().evidenceSearchPhase,'ready');
+  await s.loadQuestionEvidenceLinks(qid);assert.equal(s.snapshot().evidenceLinksPhase,'ready');
+ }
+});
+
+test('DOI source conflict clears prior metadata and explains reassessment without exposing server detail',async()=>{
+ const s=session(async(url)=>url.endsWith('/evidence-doi')?response({detail:'private conflict diagnostic'},409):
+  url.endsWith('/evidence-search')?response(search()):basic(url));
+ await ready(s);await s.searchQuestionEvidence(qid,'fictional');await s.lookupQuestionDoi(qid,doi,true);
+ assert.equal(s.snapshot().evidenceSearch,null);assert.equal(s.snapshot().evidenceLinks,null);
+ assert.equal(s.snapshot().evidenceSearchPhase,'error');
+ assert.match(s.snapshot().evidenceSearchMessage,/source reassessment/i);
+ assert.match(s.snapshot().evidenceSearchMessage,/current source context/i);
+ assert.ok(!JSON.stringify(s.snapshot()).includes('private conflict diagnostic'));
+});
+
 test('late DOI responses cannot restore a changed patient, case, question or rights-restricted view',async()=>{
  for(const change of [s=>s.read('PAT-EXAMPLE-002'),s=>s.loadWorldModel(otherCase),
   s=>s.loadQuestionSourcePacket(otherQuestion),s=>s.disconnect(),s=>s.loadQuestionEvidenceLinks(qid)]){

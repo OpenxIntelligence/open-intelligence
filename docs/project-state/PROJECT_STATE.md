@@ -4,7 +4,7 @@
 
 This candidate composes DOI citation owner #321 (`bc931496`) with the verified
 source-reading, intake, report and follow-up workspace #335 (`9d173843`). Local
-310 client and 298 reference tests and the production build pass; local API
+312 client and 298 reference tests and the production build pass; local API
 discovery passes 105 checks and skips 331 requiring PostgreSQL. Initial timing
 failures and the unchanged rerun are recorded in the existing
 [Crossref boundary](../CROSSREF_METADATA_BOUNDARY.md#connected-reading-and-follow-up-continuation--3-november-2026).

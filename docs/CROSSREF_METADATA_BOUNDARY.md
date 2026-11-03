@@ -2,7 +2,8 @@
 
 ## Connected reading and follow-up continuation — 3 November 2026
 
-This candidate joins the existing #321 DOI owner to the verified #335 workspace
+This candidate ([draft #357](https://github.com/OpenxIntelligence/open-intelligence/pull/357))
+joins the existing #321 DOI owner to the verified #335 workspace
 (`9d173843f924b40becba3a7dffd71717c12afb5d`, tree
 `57165fc8b1c6305336752eb948710a437eda9cf9`), which retains #328 follow-up attention,
 #322 strict citation history/status-bearing downloads and source reading/intake.
@@ -56,6 +57,26 @@ because actual PostgreSQL was unavailable. No assertion or time limit was relaxe
 Those skips are not database acceptance. Independent review and hosted acceptance
 remain pending at this committed checkpoint; the continuation PR records their
 later exact outcomes against the published combined head.
+
+### Review follow-up
+
+Independent read-only review of local `75add1f1` found no Critical or Important
+defect and two Minor issues: a known stale question still offered DOI lookup,
+and README described the donor's source-reading scope as current. Three focused
+checks reproduced the stale-input, request and HTTP 409 guidance failures before
+repair. The final client now blocks known stale lookup, explains a server-side
+context conflict without exposing diagnostics, and leaves permitted catalog and
+citation-history reads available. README distinguishes the donor from this
+connected candidate. All **312 client tests and the production build passed**
+after repair. Backend, migrations, dependencies and browser assertions are unchanged.
+
+The initial combined head `0767e03a19bc8d62bc940865a02254f7cae8b3bb` already passed
+[the complete built-browser gate](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41678462495)
+with 310 client tests. Artifact `13250957911` matched SHA-256
+`dabb396b02cac6acb9b97b36cceaa1aea427752e7b40d7479fd69d9ca3133b35`;
+its recorded commit and all 413 archived source files/modes matched the tested
+tree. Desktop/mobile DOI views were inspected. Final-head hosted verification
+and the small review-follow-up assessment are recorded on #357 after completion.
 
 This is a synthetic, unmerged integration candidate. The provider fixture is
 explicitly labeled and has no live fallback. Existing clinical/commercial/source

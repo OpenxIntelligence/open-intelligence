@@ -918,6 +918,16 @@ export class RegistrySession {
     if(this.#state.evidenceLinkPhase==='unknown'){
       this.#publish({evidenceLinkMessage:'Resolve the earlier uncertain citation save before looking up or saving another citation.'});return;
     }
+    const question=this.#state.questions?.find(item=>item.question_id===questionId);
+    const stale=question?.source_context_state==='source_reassessment_required'||
+      (this.#state.evidenceQuestionId===questionId&&
+       (this.#state.evidenceSearch?.source_context_state==='source_reassessment_required'||
+        this.#state.evidenceLinks?.source_context_state==='source_reassessment_required'));
+    if(stale){
+      this.#focusSavedQuestion(questionId);this.#evidenceRead++;
+      this.#publish({evidenceQuestionId:questionId,evidenceSearchPhase:'error',
+        evidenceSearchMessage:'Source reassessment required. Prepare a question from current source context before looking up a DOI. Citation history and permitted catalog searches remain available.'});return;
+    }
     const normalized=normalizePublicDoi(doi);
     if(!normalized||publicDoiAcknowledged!==true){
       this.#evidenceRead++;
@@ -978,6 +988,7 @@ export class RegistrySession {
         }
         failed(doiLookup?(res.status===403?
           'Public DOI lookup is disabled or not permitted for this credential. No previous metadata is shown.':
+          res.status===409?'Source reassessment required. Refresh the source and prepare a question from current source context before looking up a DOI. No previous metadata is shown.':
           res.status===429?'Public DOI lookup is busy. Retry explicitly later; no result is assumed.':
           'Public DOI metadata is unavailable under current permissions or provider state. No previous metadata is shown.'):
           'Evidence metadata is unavailable under current permissions or service state. No previous titles or links are shown.');return;

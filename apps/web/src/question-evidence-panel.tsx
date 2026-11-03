@@ -101,18 +101,18 @@ export function QuestionEvidencePanel({question,state,session,busy}:{question:So
    <h4>Evidence citations for this question</h4>
    <p id={hintId}>Search the permitted catalog or explicitly look up a public DOI. Content is not appraised. No model runs or clinical approval is created.</p>
    {stale&&<p className="evidence-reassessment" role="note" data-testid="evidence-stale">
-    Source reassessment required. You can inspect citation history and search the catalog. Prepare a question from current source context before saving another link.
+    Source reassessment required. You can inspect citation history and search the catalog. Prepare a question from current source context before looking up a DOI or saving another link.
    </p>}
    <form className="evidence-search" aria-label="Public DOI lookup" onSubmit={event=>{event.preventDefault();void session.lookupQuestionDoi(question.question_id,doi,publicDoiAcknowledged);}}>
     <label htmlFor={doiId}>Public publication DOI</label>
     <input id={doiId} data-testid="evidence-doi-input" type="text" value={doi} maxLength={200}
-     autoComplete="off" spellCheck={false} disabled={blocked} aria-describedby={doiId+'-hint'}
+     autoComplete="off" spellCheck={false} disabled={blocked||stale} aria-describedby={doiId+'-hint'}
      placeholder="Enter a public DOI identifier" onChange={event=>{setDoi(event.target.value);setPublicDoiAcknowledged(false);}}/>
     <p id={doiId+'-hint'} className="muted">Only the DOI is sent to Crossref. Patient records and question text are never added automatically. Public lookup is disabled by default and requires a separate permission.</p>
     <label className="evidence-check"><input type="checkbox" data-testid="evidence-doi-acknowledge" checked={publicDoiAcknowledged}
-     disabled={blocked} onChange={event=>setPublicDoiAcknowledged(event.target.checked)}/>
+     disabled={blocked||stale} onChange={event=>setPublicDoiAcknowledged(event.target.checked)}/>
      <span>I confirm this is a public DOI identifier and contains no patient information.</span></label>
-    <button type="submit" data-testid="evidence-doi-lookup" disabled={blocked||reading||!publicDoiAcknowledged||!normalizePublicDoi(doi)}>Look up public DOI metadata</button>
+    <button type="submit" data-testid="evidence-doi-lookup" disabled={blocked||stale||reading||!publicDoiAcknowledged||!normalizePublicDoi(doi)}>Look up public DOI metadata</button>
    </form>
    <form className="evidence-search" onSubmit={event=>{event.preventDefault();void session.searchQuestionEvidence(question.question_id,query);}}>
     <label htmlFor={queryId}>Your catalog search terms</label>

@@ -47,6 +47,10 @@ test('stale source context disables the save control while retaining metadata in
   source_context_state:'source_reassessment_required',query:'fictional',records:[record]}}));
  assert.ok(html.includes(record.citation));assert.match(html,/<button[^>]*data-testid="evidence-save"[^>]*disabled/);
  assert.match(html,/reassessment/i);
+ assert.match(html,/<input[^>]*data-testid="evidence-doi-input"[^>]*disabled/);
+ assert.match(html,/<input[^>]*data-testid="evidence-doi-acknowledge"[^>]*disabled/);
+ assert.doesNotMatch(html,/<input[^>]*data-testid="evidence-query"[^>]*disabled/);
+ assert.match(html,/before looking up a DOI or saving another link/);
 });
 
 test('restricted citation history shows status and immutable identifiers without stale metadata',()=>{
