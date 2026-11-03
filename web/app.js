@@ -60,8 +60,11 @@ async function initialize() {
     await renderIncomingBoard(cases);
     picker.addEventListener('change', () => {
       // An unfinished narrative must never silently become attached to another case.
-      if ((['draft-observations', 'draft-summary', 'draft-assumptions', 'evidence-rationale',
-            'evidence-withdraw-reason', 'option-description'].some(id => el(id).value.trim()))) {
+      if ((['question-text', 'draft-observations', 'draft-summary', 'draft-assumptions',
+            'evidence-text', 'evidence-rationale', 'evidence-withdraw-reason',
+            'option-label', 'option-description', 'dependency-anchor',
+            'task-label', 'task-owner', 'threat-description', 'threat-anchor',
+            'reviewer-label', 'review-scope', 'report-text'].some(id => el(id).value.trim()))) {
         picker.value = caseId;
         notice('Save or explicitly clear the unfinished investigation draft before switching cases.', true);
         return;
@@ -69,8 +72,11 @@ async function initialize() {
       cancelSourceRead();
       caseId = picker.value;
       active = null; // Reject writes while the next case is loading.
-      for (const id of ['question-text', 'report-text', 'evidence-rationale', 'draft-observations',
-        'draft-summary', 'draft-assumptions']) el(id).value = '';
+      for (const id of ['question-text', 'draft-observations', 'draft-summary', 'draft-assumptions',
+        'evidence-text', 'evidence-rationale', 'evidence-withdraw-reason',
+        'option-label', 'option-description', 'dependency-anchor',
+        'task-label', 'task-owner', 'threat-description', 'threat-anchor',
+        'reviewer-label', 'review-scope', 'report-text']) el(id).value = '';
       if (el('source-dialog').open) el('source-dialog').close();
       if (el('compare-dialog').open) el('compare-dialog').close();
       refresh();
