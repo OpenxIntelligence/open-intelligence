@@ -1,5 +1,25 @@
 # H1 converged evidence — merge-readiness gate
 
+## Review chronology continuation of the document candidate — 3 November 2026
+
+The dependent continuation pins #377 at
+`b13dd4810342d6a7ef08bbad53745502e0950801` and selectively reuses #375 at
+`1bdc44ac8507ec3a05398c3965bed5fcae0d59eb`. Only its Review decoder, client
+regressions and real-response browser helper are added. Follow-through chronology
+and shared-path CI were already present; their current files are preserved.
+Question and return-history timestamps now use the existing strict validator.
+Malformed current Review disclosure cannot authorize a new return or resurrect
+an unsent reason; an uncertain captured return remains recoverable exactly.
+
+The complete document/main reconciliation below remains the base, including its
+reviewed-document denial and completed-but-delayed inbox probe. No backend,
+migration, grant, dependency, RegistrySession or workflow changes are introduced.
+The [bounded plan](../superpowers/plans/2026-11-03-document-review-chronology.md)
+records source pins and reproduced failures; the dependent PR records its own
+final published head, review and hosted browser/artifact results. Earlier
+whole-stack successes remain evidence for their own heads. This does not
+complete manual-document question/report provenance or authorize merge/release.
+
 ## Current pinned-main reconciliation of the document candidate — 3 November 2026
 
 **Prepublication source checkpoint: prepared synthetic integration; combined hosted acceptance and human owner review are required.** This section supersedes the selected-candidate and pending-check statements in the historical checkpoints below. The candidate's own PR receipt records the final published head and subsequent hosted outcomes without rewriting tested source. This checkpoint does not authorize a main-branch merge or release.

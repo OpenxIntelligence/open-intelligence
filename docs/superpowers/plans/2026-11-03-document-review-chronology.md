@@ -49,9 +49,16 @@ browser-helper order and existing migration graph intact.
   passing controls, zero skips. Reproduced invalid question/history acceptance,
   retained disclosure after invalid refresh, and uncertain-return recovery
   against the unchanged base runtime before adopting the fix.
-- [ ] Reuse the existing strict validator and browser helper; verify donor bytes.
-- [ ] Run all client tests, production build, rights controls, syntax, boundary
-  and protected-path checks; obtain separate read-only review.
+- [x] Reuse the existing strict validator and browser helper. All three selected
+  files match their pinned donor blobs exactly. Tests-first local commit:
+  `bb1ce2b` (full source/tree identity is recorded in the PR).
+- [x] Local checks: all 420 compiled client tests and 13 filesystem controls pass
+  with zero failures/skips; TypeScript/Vite production build passes. Installed
+  dependency evidence: 18 inspected, two optional artifacts uninspected, zero
+  errors. Browser helper syntax, static synthetic-boundary audit, whitespace
+  and eight-column/21-data-row backlog checks pass. All 456 other existing source
+  files retain their bytes and executable modes; six paths change in total.
+- [ ] Obtain separate read-only review and resolve material findings.
 - [ ] Publish a draft child of #377 and require its own exact-head hosted web
   acceptance, retained source/chronology/document/report receipts and inspection.
 
