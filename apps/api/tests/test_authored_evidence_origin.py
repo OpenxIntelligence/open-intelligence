@@ -17,7 +17,7 @@ from oi_api.evidence_report import render_evidence_report
 from oi_api.migrate import migrate
 from test_authored_evidence_postgres import EvidenceFixture
 
-HEAD = "0012_reviewed_documents"
+HEAD = "0014_manual_report_context"
 
 
 class EvidenceOriginPostgresTests(EvidenceFixture):

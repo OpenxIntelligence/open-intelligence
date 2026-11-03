@@ -57,7 +57,7 @@ class EvidenceConvergenceContractTests(unittest.TestCase):
         config = Config()
         config.set_main_option("script_location", str(Path(__file__).resolve().parents[1] / "migrations"))
         script = ScriptDirectory.from_config(config)
-        self.assertEqual(script.get_heads(), ["0012_reviewed_documents"],
+        self.assertEqual(script.get_heads(), ["0014_manual_report_context"],
                          "The converged app needs one explicit head, not one abandoned owner")
         self.assertEqual(script.get_revision("0012_reviewed_documents").down_revision, MERGED_REVISION)
         self.assertEqual(set(script.get_revision(MERGED_REVISION).down_revision),

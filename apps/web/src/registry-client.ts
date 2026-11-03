@@ -147,13 +147,22 @@ function created(value: unknown): CreatedPatient {
 }
 export class RegistrySession {
   async documentRequest(caseId:string,path:string,body?:string):Promise<import('./reviewed-documents').DocumentReply>{
-    if(!/^CASE-[A-Z0-9-]{1,35}$/.test(caseId)||!/^$|^\/preview$|^\/SRC-[A-F0-9]{32}(?:\/(?:original|annotations))?$/.test(path))throw Error('Invalid document path');
+    if(!/^CASE-[A-Z0-9-]{1,35}$/.test(caseId)||!/^$|^\/preview$|^\/SRC-[A-F0-9]{32}(?:\/(?:original|annotations)|\/selections\/ANN-[A-F0-9]{32}\/[a-z][a-z0-9_-]{0,59})?$/.test(path))throw Error('Invalid document path');
+    return this.#caseContentRequest(caseId,'/documents'+path,body);
+  }
+  async questionPassageRequest(caseId:string,questionId:string,body?:string):Promise<import('./reviewed-documents').DocumentReply>{
+    if(!/^CASE-[A-Z0-9-]{1,35}$/.test(caseId)||!/^QUESTION-[A-F0-9]{32}$/.test(questionId))throw Error('Invalid question passage path');
+    const q=this.#state.questions?.find(q=>q.question_id===questionId&&q.case_id===caseId);
+    if(!q||q.patient_id!==this.#state.patient?.patient_id)throw Error('Recheck current question access');
+    return this.#caseContentRequest(caseId,'/questions/'+questionId+'/manual-passages',body);
+  }
+  async #caseContentRequest(caseId:string,path:string,body?:string):Promise<import('./reviewed-documents').DocumentReply>{
     const scope=this.#scope,read=this.#read,records=this.#records,patient=this.#state.patient?.patient_id;
     const current=()=>scope===this.#scope&&read===this.#read&&records===this.#records&&patient===this.#state.patient?.patient_id&&this.#state.sourceIndex?.case_id===caseId;
     if(!patient||!this.#token||!current())throw Error('Recheck patient and case access');
     const control=new AbortController();this.#controllers.add(control);
     try{
-      const response=await this.transport('/v1/patients/'+encodeURIComponent(patient)+'/cases/'+encodeURIComponent(caseId)+'/documents'+path,this.#init(control,body));
+      const response=await this.transport('/v1/patients/'+encodeURIComponent(patient)+'/cases/'+encodeURIComponent(caseId)+path,this.#init(control,body));
       if(!current()){
         void response.body?.cancel().catch(()=>{});
         throw Error('Patient or case changed');
@@ -180,8 +189,9 @@ export class RegistrySession {
         value=await json(response,32*1024*1024);
       }
       if(!current())throw Error('Patient or case changed');
-      if(body===undefined&&response.status===200&&path!=='/preview'&&!path.endsWith('/original')&&
-        (!value||typeof value!=='object'||(value as {patient_id?:string}).patient_id!==patient||(value as {case_id?:string}).case_id!==caseId))throw Error('Wrong document scope');
+      const contentScope=path.includes('/selections/')&&value&&typeof value==='object'?(value as {anchor?:unknown}).anchor:value;
+      if(body===undefined&&response.status===200&&path!=='/documents/preview'&&!path.endsWith('/original')&&
+        (!contentScope||typeof contentScope!=='object'||(contentScope as {patient_id?:string}).patient_id!==patient||(contentScope as {case_id?:string}).case_id!==caseId))throw Error('Wrong document scope');
       return{status:response.status,body:value,headers:response.headers};
     }finally{this.#controllers.delete(control);}
   }
@@ -213,7 +223,7 @@ export class RegistrySession {
   importQuestionEvidence=(questionId:string,text:string,item:ContentItem,permissions:Permissions)=>this.#evidenceSession.import(questionId,text,item,permissions);
   assessQuestionEvidence=(questionId:string,evidenceId:string,quote:string,relation:Relation,applicability:Applicability,rationale:string)=>this.#evidenceSession.assess(questionId,evidenceId,quote,relation,applicability,rationale);
   withdrawQuestionEvidence=(questionId:string,evidenceId:string,reason:string)=>this.#evidenceSession.withdraw(questionId,evidenceId,reason);
-  prepareEvidenceReport=(questionId:string,assessmentIds:readonly string[])=>this.#evidenceSession.prepareReport(questionId,assessmentIds);
+  prepareEvidenceReport=(questionId:string,assessmentIds:readonly string[],manualContextSha256?:string)=>this.#evidenceSession.prepareReport(questionId,assessmentIds,manualContextSha256);
   readEvidenceReport=(questionId:string,reportId:string)=>this.#evidenceSession.readReport(questionId,reportId);
   loadEvidenceOriginal=(questionId:string,evidenceId:string)=>this.#evidenceSession.original(questionId,evidenceId);
   retryEvidenceWrite=()=>this.#evidenceSession.retry();

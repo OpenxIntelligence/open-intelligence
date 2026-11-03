@@ -4,6 +4,8 @@ import {declaredPermissions,downloadEvidenceOriginal,downloadEvidenceReport,visi
 import type {ContentItem,Permission,Relation,Applicability} from './authored-evidence';
 import {activeComparisonDraft,evidenceSelectionMode} from './authored-evidence-session';
 import './authored-evidence.css';
+import {QuestionPassagesPanel} from './question-passages-panel';
+import type {ManualContext} from './question-passages';
 
 const relationLabel={supports:'Proposed support',contradicts:'Proposed contradiction',context:'Context only',unknown:'Relation unknown'};
 const stateLabel={current_unreviewed:'Current proposal · unreviewed',reassessment_required:'Reassessment required',content_withheld:'Content withheld',historical_reassessment_required:'Historical preparation · reassessment required'};
@@ -12,6 +14,8 @@ const stateLabel={current_unreviewed:'Current proposal · unreviewed',reassessme
 export function AuthoredEvidencePanel({session,state,busy}:{session:RegistrySession;state:ViewState;busy:boolean}){
  const packet=state.evidencePacket,report=state.evidenceReport;
  const q=packet?.question??state.questions?.find(q=>q.question_id===report?.question_id);
+ const [manualContext,setManualContext]=useState<ManualContext|null>(null);
+ const inspectedManual=manualContext?.question_id===q?.question_id&&manualContext?.patient_id===q?.patient_id&&manualContext?.case_id===q?.case_id?manualContext:null;
  const [original,setOriginal]=useState(''),[fileName,setFileName]=useState(''),[fileMessage,setFileMessage]=useState('');
  const [fictional,setFictional]=useState(false),[item,setItem]=useState<ContentItem>('abstract');
  const [display,setDisplay]=useState<Permission>('allowed'),[redistribute,setRedistribute]=useState<Permission>('allowed');
@@ -88,6 +92,8 @@ export function AuthoredEvidencePanel({session,state,busy}:{session:RegistrySess
    <p className="evidence-question"><strong>{q.question}</strong></p>
    <p>Case-owned authored records and human-proposed comparisons. Scientific appraisal, publisher clearance and clinical review have not been performed. No model was run.</p>
    {packet&&<>
+    <QuestionPassagesPanel key={q.patient_id+':'+q.case_id+':'+q.question_id} session={session} scope={q} busy={locked}
+      onContext={setManualContext} onSaved={()=>void session.loadQuestionEvidence(q.question_id)}/>
     {!current&&<p className="evidence-notice" role="note">The source context changed. Earlier comparisons are retained as history. Prepare a new question from current source context before creating a new assessment or report.</p>}
     <section className="evidence-import" aria-labelledby="evidence-import-heading">
      <h4 id="evidence-import-heading">Add authored evidence or an amendment</h4>
@@ -146,7 +152,7 @@ export function AuthoredEvidencePanel({session,state,busy}:{session:RegistrySess
       <details><summary>Comparison references</summary><p>Evidence <code>{a.evidence_id}</code> · character offset {a.quote_start??'withheld'}</p><p>Assessment <code>{a.assessment_id}</code></p><p>Recorded {a.created_at} by unverified fixture label <code>{a.actor_label}</code>.</p></details>
       <label className="evidence-check"><input type="checkbox" data-testid="evidence-report-select" checked={chosen.includes(a.assessment_id)} disabled={locked||!current||a.state!=='current_unreviewed'} onChange={e=>setChosen(ids=>e.target.checked?[...ids,a.assessment_id]:ids.filter(id=>id!==a.assessment_id))}/><span>Include this current proposal in a report</span></label>
      </li>)}</ul>}
-     <button type="button" className="primary" data-testid="evidence-report-prepare" disabled={locked||!current||chosen.length<1||chosen.length>20} onClick={()=>void session.prepareEvidenceReport(q.question_id,chosen)}>Prepare selected comparison report ({chosen.length})</button>
+     <button type="button" className="primary" data-testid="evidence-report-prepare" disabled={locked||!current||chosen.length<1||chosen.length>20||!inspectedManual||inspectedManual.state!=='current_unreviewed'} onClick={()=>void session.prepareEvidenceReport(q.question_id,chosen,inspectedManual?.revision_id?inspectedManual.context_sha256:undefined)}>Prepare selected comparison report ({chosen.length})</button>
      <p className="muted">Selection is explicit and limited to 20 current proposals. Excluded or missing counterevidence is not evidence of absence.</p>
     </section>
     <section aria-labelledby="evidence-reports-heading"><h4 id="evidence-reports-heading">Saved report preparations ({packet.reports.length})</h4>

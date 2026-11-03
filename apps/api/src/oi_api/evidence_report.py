@@ -66,11 +66,13 @@ def _quoted(value: object) -> str:
 
 
 def render_evidence_report(snapshot: dict, *, renderer: str = "oi.h1-evidence-text/2") -> str:
-    if renderer not in {"oi.h1-evidence-text/1", "oi.h1-evidence-text/2"}:
+    if renderer not in {"oi.h1-evidence-text/1", "oi.h1-evidence-text/2", "oi.h1-evidence-text/3"}:
         raise PatientRegistryError("Unknown evidence report renderer")
-    from .authored_evidence_contracts import ReportSnapshot
+    from .authored_evidence_contracts import checked_report_snapshot
     try:
-        value = ReportSnapshot(**snapshot).model_dump(mode="json")
+        value = checked_report_snapshot(snapshot)
+        if ('manual_passages' in value) != (renderer == 'oi.h1-evidence-text/3'):
+            raise ValueError('Report renderer does not match snapshot version')
     except (ValueError, TypeError) as exc:
         raise PatientRegistryError("Report snapshot provenance is invalid") from exc
     question, source = value["question"], value["selected_source"]
@@ -93,6 +95,24 @@ def render_evidence_report(snapshot: dict, *, renderer: str = "oi.h1-evidence-te
         f"Source-reported state: {source['reported_state']}",
         f"Literal source statement: {_quoted(source['statement'])}",
     ]
+    if renderer == 'oi.h1-evidence-text/3':
+        context=value['manual_passages']
+        lines.extend(['','ADDITIONAL MANUAL RECORD CONTEXT — USER-SELECTED, CLINICAL REVIEW NOT PERFORMED',
+            'These passages are supplementary record context. The comparisons below concern the primary structured observation.',
+            f"Context revision: {context['revision_id']} | {context['revision']} | SHA-256: {context['context_sha256']}",
+            f"Attached by unverified actor label: {_quoted(context['attached_by'])} | {context['attached_at']}"])
+        if not context['passages']:
+            lines.append('The user explicitly selected no additional manual passages in this revision.')
+        for passage in context['passages']:
+            a=passage['anchor']
+            lines.extend([
+                f"Original: {a['source_id']} | Document {a['document_id']} v{a['source_version']} | line {a['line']} | physical page {a['page'] if a['page'] is not None else 'not applicable'}",
+                f"Original SHA-256: {a['original_sha256']} | Extraction: {a['extraction_method']} | SHA-256: {a['extraction_sha256'] or 'not applicable'}",
+                f"Annotation: {a['annotation_revision_id']} | revision {a['annotation_revision']} | key {a['selection_key']} | review SHA-256 {a['review_sha256']}",
+                f"User-selected state: {a['selected_state']} | Unverified selecting actor: {_quoted(a['selected_by'])} | {a['selected_at']}",
+                f"Exact manual quotation: {_quoted(a['quote'])}",
+                f"Anchor SHA-256: {passage['anchor_sha256']}",
+            ])
     groups = (("supports", "PROPOSED SUPPORT"), ("contradicts", "PROPOSED CONTRADICTION"),
               ("context", "PROPOSED CONTEXT"), ("unknown", "PROPOSED UNKNOWN RELATION"))
     for relation, title in groups:
@@ -114,7 +134,7 @@ def render_evidence_report(snapshot: dict, *, renderer: str = "oi.h1-evidence-te
                 f"Exact quotation: {_quoted(assessment['quote'])}",
                 f"Human-authored rationale: {_quoted(assessment['rationale'])}",
             ])
-            if renderer == "oi.h1-evidence-text/2":
+            if renderer in {"oi.h1-evidence-text/2", "oi.h1-evidence-text/3"}:
                 lines.append("Frozen declared permissions (not independently verified):")
                 for item in ("metadata", evidence["content_item"]):
                     for use in ("store", "display", "redistribute", "ml_use"):
