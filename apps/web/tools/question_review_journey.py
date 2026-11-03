@@ -8,6 +8,128 @@ body or status. It is restored before the remainder of the browser journey.
 import base64
 from contextlib import contextmanager
 import json
+import re
+
+
+_HOLD_SOURCE_READS = r"""(paths) => {
+  if (window.__oiNavigationSourceHold) throw Error('Source navigation hold already installed');
+  const actualFetch=window.fetch;
+  const state={held:{},releases:{},restored:false,failed:false};
+  state.restore=()=>{
+    state.restored=true;window.fetch=actualFetch;
+    for(const release of Object.values(state.releases))release();
+    delete window.__oiNavigationSourceHold;
+  };
+  window.__oiNavigationSourceHold=state;
+  window.fetch=async (input,init)=>{
+    const path=new URL(input instanceof Request?input.url:input,location.href).pathname;
+    const kind=Object.keys(paths).find(key=>paths[key]===path);
+    if(!kind)return actualFetch.call(window,input,init);
+    const startedAt=performance.now();
+    const signal=init?.signal??(input instanceof Request?input.signal:null);
+    try{
+      const response=await actualFetch.call(window,input,init);
+      const body=await response.clone().json();
+      const observed={status:response.status,contract:body.contract,
+        patient:body.patient_id,case:body.case_id,
+        question:body.question_id??body.question?.question_id,
+        source:body.original_anchor?.source_id??body.selected_source?.source_id,
+        receipt:body.source_access_receipt_id??body.access_receipt_id};
+      if(!state.restored){
+        if(state.held[kind])throw Error('Unexpected duplicate held source request');
+        await new Promise(resolve=>{
+          state.held[kind]={observed,startedAt,signal,delivered:false};
+          state.releases[kind]=resolve;
+        });
+        state.held[kind].delivered=true;delete state.releases[kind];
+      }
+      return response;
+    }catch(error){state.failed=true;throw error;}
+  };
+  return true;
+}"""
+
+
+def exercise_source_navigation_races(cd, patient_id, case_id, question_id, source_id, questions):
+    """Discard actual late quotation and brief responses in mounted Questions."""
+    row = '.question-items li[data-question-id="' + question_id + '"]'
+    fingerprint = cd.evaluate("document.querySelector('[data-testid=world-fingerprint]').textContent")
+    authored = cd.evaluate("document.querySelector('[data-testid=question-draft]').value")
+    expected_ids = cd.evaluate("[...document.querySelectorAll('.question-items li')].map(e=>e.dataset.questionId)")
+    assert cd.evaluate("Boolean(document.querySelector('[data-testid=source-quote-packet]'))"
+                       " && Boolean(document.querySelector('[data-testid=source-brief-preview]'))"), \
+        'Begin with both actual prepared readers, so navigation clearing is observable'
+
+    def contextual_round_trip():
+        cd.evaluate("document.querySelector('[data-testid=open-question-review]').click()")
+        cd.wait("Boolean(document.querySelector('[data-testid=review-queue-result]'))", 'contextual handoff to actual Review')
+        cd.evaluate("[...document.querySelectorAll('[data-testid=review-workspace] button')]"
+                    ".find(e=>e.textContent==='View source questions').click()")
+        cd.wait("Boolean(document.querySelector('[data-testid=source-question-panel]'))", 'contextual return remounts Questions')
+
+    def discarded():
+        assert cd.evaluate("Boolean(document.querySelector('[data-testid=source-question-panel]'))")
+        assert cd.evaluate("!document.querySelector('[data-testid=source-quote-packet]')"
+                           " && !document.querySelector('[data-testid=source-brief-preview]')"), \
+            'Contextual or same-section navigation must invalidate both prepared readers'
+        assert cd.evaluate('!document.querySelector(' + json.dumps(row + ' [data-testid=source-quote-packet-open]') + ').disabled')
+        assert cd.evaluate('!document.querySelector(' + json.dumps(row + ' [data-testid=brief-prepare]') + ').disabled')
+        assert cd.evaluate("document.querySelector('[data-testid=question-draft]').value") == authored
+        assert cd.evaluate("document.querySelector('[data-testid=world-fingerprint]').textContent") == fingerprint
+        assert cd.evaluate("[...document.querySelectorAll('.question-items li')].map(e=>e.dataset.questionId)") == expected_ids
+
+    contextual_round_trip()
+    discarded()
+    root = '/v1/patients/' + patient_id + '/cases/' + case_id + '/questions/' + question_id
+    paths = {'packet': root + '/source-review-packet', 'brief': root + '/brief'}
+    evidence = []
+    for transition in ('contextual_round_trip', 'same_section'):
+        cd.evaluate(f'({_HOLD_SOURCE_READS})({json.dumps(paths)})')
+        try:
+            cd.evaluate('document.querySelector(' + json.dumps(row + ' [data-testid=source-quote-packet-open]') + ').click()')
+            cd.evaluate('document.querySelector(' + json.dumps(row + ' [data-testid=brief-prepare]') + ').click()')
+            cd.wait('window.__oiNavigationSourceHold.failed || Object.keys(window.__oiNavigationSourceHold.held).length===2',
+                    'actual completed quotation and brief responses held before delivery')
+            assert not cd.evaluate('window.__oiNavigationSourceHold.failed')
+            observed = cd.evaluate('Object.fromEntries(Object.entries(window.__oiNavigationSourceHold.held).map(([k,v])=>[k,v.observed]))')
+            for kind, contract in (('packet', 'oi.synthetic-question-source-review-packet/1'),
+                                   ('brief', 'oi.synthetic-source-brief/2')):
+                actual = observed[kind]
+                assert actual['status'] == 200 and actual['contract'] == contract
+                assert actual['patient'] == patient_id and actual['case'] == case_id
+                assert actual['question'] == question_id and actual['source'] == source_id
+                assert re.fullmatch(r'ACCESS-[0-9A-F]{32}', actual['receipt'])
+            if transition == 'contextual_round_trip':
+                contextual_round_trip()
+            else:
+                questions.navigate('Investigations')
+                cd.wait("document.querySelector('h1')===document.activeElement", 'same-section navigation retains heading focus')
+            discarded()
+            # Release before the client's own timeout. A deadline or aborted
+            # request must not masquerade as successful navigation invalidation.
+            cd.evaluate("""(()=>{const h=window.__oiNavigationSourceHold;
+              for(const value of Object.values(h.held)){
+                if(!value.signal||value.signal.aborted||performance.now()-value.startedAt>=10000)
+                  throw Error('Source navigation race exceeded the client request deadline');
+              }
+              for(const release of Object.values(h.releases))release();
+            })()""")
+            cd.wait('Object.values(window.__oiNavigationSourceHold.held).every(value=>value.delivered)',
+                    'both completed server responses delivered after navigation')
+            cd.evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))')
+            discarded()
+            evidence.append({'transition': transition, 'actual_responses': observed,
+                             'questions_mounted_after_delivery': True, 'prepared_readers_restored': False})
+        finally:
+            cd.evaluate('window.__oiNavigationSourceHold?.restore()')
+    (questions.artifacts/'source-navigation-races.json').write_text(json.dumps({
+        'contract': 'oi.synthetic-source-navigation-race-acceptance/1',
+        'patient_id': patient_id, 'case_id': case_id, 'question_id': question_id,
+        'world_fingerprint': fingerprint, 'scenarios': evidence,
+    }, indent=2) + '\n', encoding='utf-8')
+    print('PASS SOURCE NAVIGATION RACES: prepared quotation and brief cleared; actual 200 responses '
+          'held across contextual roundtrip and same-section navigation, delivered before timeout '
+          'into mounted Questions and discarded; literal draft, saved questions and World Model retained.')
 
 
 class QuestionReviewChecks:
@@ -54,6 +176,18 @@ class QuestionReviewChecks:
         self.cd.evaluate("document.querySelector('[data-testid=open-question-review]').click()")
         self.cd.wait("Boolean(document.querySelector('[data-testid=review-queue-result]'))",
                      'saved canonical question opens the existing Review workspace')
+        # Exercise the contextual handoff in both directions, not only the
+        # global navigation whose clearing behavior was already implemented.
+        self.cd.evaluate("[...document.querySelectorAll('[data-testid=review-workspace] button')].find(e=>e.textContent==='View source questions').click()")
+        self.cd.wait("Boolean(document.querySelector('[data-testid=source-question-panel]'))",
+                     'contextual review link returns to the same source questions')
+        assert self.cd.evaluate("!document.querySelector('[data-testid=source-quote-packet]')"), \
+            'Contextual navigation must invalidate the prepared source packet'
+        assert self.cd.evaluate("!document.querySelector('[data-testid=source-brief-preview]')"), \
+            'Contextual navigation must invalidate the prepared brief'
+        self.cd.evaluate("document.querySelector('[data-testid=open-question-review]').click()")
+        self.cd.wait("Boolean(document.querySelector('[data-testid=review-queue-result]'))",
+                     'same canonical question returns to independent verification')
         assert self.cd.evaluate("document.querySelectorAll('[data-testid=review-workspace]').length===1")
         assert self.cd.evaluate("document.querySelector('[data-testid=review-case-id]').textContent") == self.case_id
         assert self.cd.evaluate('document.querySelector(' + json.dumps(self.item()) + ').dataset.sourceId') == self.source_id

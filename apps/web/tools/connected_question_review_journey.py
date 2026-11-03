@@ -8,7 +8,8 @@ operator grants, Chromium, FastAPI and PostgreSQL; no backend response is mocked
 import hashlib
 import json
 
-from question_review_journey import QuestionReviewChecks
+from overview_verification_journey import overview_counts
+from question_review_journey import QuestionReviewChecks, exercise_source_navigation_races
 
 
 def exercise(cd, patient_id, case_id, source_id, source_text,
@@ -48,7 +49,12 @@ def exercise(cd, patient_id, case_id, source_id, source_text,
         cd.wait("document.querySelector('[data-testid=question-draft]').value===" + json.dumps(custom),
                 'literal patient-authored question')
         questions.navigate('Records')
-        questions.navigate('Investigations')
+        questions.navigate('Overview')
+        cd.wait("document.querySelector('[data-testid=continuity-draft]')?.dataset.state==='unsaved'",
+                'Overview offers the same unfinished authored question')
+        cd.evaluate("document.querySelector('[data-testid=continuity-resume]').click()")
+        cd.wait("Boolean(document.querySelector('[data-testid=question-draft]'))",
+                'Overview resumes the existing question editor')
         assert cd.evaluate("document.querySelector('[data-testid=question-draft]').value") == custom
         cd.evaluate("document.querySelector('[data-testid=prepare-custom-question]').click()")
         cd.wait("document.querySelector('[data-testid=composer-context]')?.textContent.includes("
@@ -61,6 +67,7 @@ def exercise(cd, patient_id, case_id, source_id, source_text,
         assert sorted(cd.evaluate("[...document.querySelectorAll('.question-items li')].map(e=>e.dataset.questionId)")) == expected_ids
         row = '.question-items li[data-question-id="' + question_id + '"]'
         assert 'Clinical approval: none' in cd.evaluate('document.querySelector(' + json.dumps(row) + ').textContent')
+        overview_counts(cd, current=3, reassessment=1)
 
         def inspect_exact_quote():
             questions.inspect_quote(question_id, current=True, expected_text=statement)
@@ -91,6 +98,7 @@ def exercise(cd, patient_id, case_id, source_id, source_text,
 
         inspect_exact_quote()
         before = fresh_brief()
+        exercise_source_navigation_races(cd, patient_id, case_id, question_id, source_id, questions)
         review = QuestionReviewChecks(cd, patient_id, case_id, question_id, source_id)
         review.navigate('Review')
 
@@ -130,17 +138,40 @@ def exercise(cd, patient_id, case_id, source_id, source_text,
         verify_return()
         questions.navigate('Investigations')
         assert question_id in questions.history(custom)
+        overview_counts(cd, current=3, reassessment=1)
         inspect_exact_quote()
         after = fresh_brief()
         assert after['selected_source'] == before['selected_source']
         assert after['source_snapshot_sha256'] == before['source_snapshot_sha256']
         assert after['access_receipt_id'] != before['access_receipt_id']
-        _, downloaded = questions.download_brief(question_id)
+        download_path, downloaded = questions.download_brief(question_id)
         assert custom.encode('utf-8') in downloaded and b'Clinical approval: false' in downloaded
         review.navigate('Review')
         verify_return()
         review.navigate('Journey')
         assert cd.evaluate('localStorage.length===0 && sessionStorage.length===0')
+        (questions.artifacts/'patient-continuity-workflow.json').write_text(json.dumps({
+            'contract': 'oi.synthetic-patient-continuity-acceptance/1',
+            'patient_id': patient_id, 'case_id': case_id,
+            'question_id': question_id, 'question': custom,
+            'question_ids': expected_ids, 'return_receipt_id': receipt_id,
+            'return_reason': reason, 'selected_source': after['selected_source'],
+            'source_snapshot_sha256': after['source_snapshot_sha256'],
+            'brief_access_before_return': before['access_receipt_id'],
+            'brief_access_after_return': after['access_receipt_id'],
+            'download_receipt': 'source-brief-' + question_id + '.json',
+            'download_relative_path': str(download_path.relative_to(questions.artifacts)),
+            'download_sha256': hashlib.sha256(downloaded).hexdigest(),
+            'download_bytes': len(downloaded),
+            'overview_current_unreviewed': 3, 'overview_reassessment_required': 1,
+            'draft_resumed_through_overview': True,
+            'clinical_approval': after['clinical_approval'],
+            'model_executed': after['model_executed'],
+            'biomedical_evidence_included': after['biomedical_evidence_included'],
+        }, indent=2) + '\n', encoding='utf-8')
+        print('PASS PATIENT CONTINUITY: Overview resumes the literal authored question, '
+              'preserves scoped current/reassessment counts before and after its verification '
+              'return, and connects the exact original to the actual fresh brief download.')
         print('PASS CONNECTED QUESTION REVIEW: literal authored question, exact original quotation, '
               'fresh source brief and actual download, explicit durable verification-return reason, '
               'same question and provenance after revisit; no clinical approval or model execution.')

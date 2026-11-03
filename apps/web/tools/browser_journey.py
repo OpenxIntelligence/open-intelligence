@@ -132,6 +132,8 @@ def main():
             from question_review_journey import exercise as exercise_question_review
             from followthrough_journey import exercise as exercise_followthrough, exercise_case_switch
             from connected_question_review_journey import exercise as exercise_connected_question_review
+            from overview_verification_journey import exercise as exercise_overview_verification, exercise_history_states
+            exercise_history_states(cd,credentials,write_grants)
             with exercise_source_questions(cd,original_id,credentials,write_grants) as questions, \
                  exercise_question_review(cd,pid,case,questions.original_question_id,original_id,
                      credentials,write_grants) as reviews, \
@@ -191,6 +193,8 @@ def main():
                 # Add the fourth question only after both three-question checks.
                 connected_question = exercise_connected_question_review(cd,pid,case,new_receipt['source_id'],amended,
                     credentials,write_grants,questions)
+                exercise_overview_verification(cd,pid,case,connected_question['return_receipt_id'],
+                    pending_question_id=authored_question_id,artifacts=questions.artifacts)
             # Current source metadata access is independent from the historical original bytes.
             # World Model recheck must clear the old view after source-read grant withdrawal.
             credentials[0]['actions'].remove('source_read');write_grants()
@@ -223,14 +227,18 @@ def main():
                 current_question_id=connected_question['question_id'])
             credentials[0]['patient_ids']=[];write_grants();read()
             cd.wait("!document.querySelector('[data-testid=patient-card]') && document.querySelector('[data-testid=status]').textContent.includes('Patient unavailable')",'revoked read removes prior view')
+            assert cd.evaluate("!document.querySelector('[data-testid=patient-continuity]')"), 'Revoked patient access must withhold Overview continuity'
             credentials[0]['expires_at']=(datetime.now(timezone.utc)-timedelta(seconds=1)).isoformat();write_grants();read()
             cd.wait("Boolean(document.querySelector('#credential'))",'expired credential clears session')
+            assert cd.evaluate("!document.querySelector('[data-testid=patient-continuity]')"), 'Expired session must withhold Overview continuity'
             credentials[1]['patient_ids']=[pid];write_grants();connect(1);value('#patient-id',pid);read()
             cd.wait("document.querySelector('[data-testid=status]').textContent.includes('Patient unavailable')",'cross-organization read denied')
+            assert cd.evaluate("!document.querySelector('[data-testid=patient-continuity]')"), 'Denied patient scope must withhold Overview continuity'
             cd.command('Page.reload');cd.wait("Boolean(document.querySelector('#credential'))",'reload forgets credential')
             assert cd.evaluate("document.querySelector('#credential').value==='' && document.querySelector('#patient-id').value==='' && localStorage.length===0 && sessionStorage.length===0")
             from reading_convergence_journey import exercise_session_reset
             exercise_session_reset(cd,pid,case,tokens[0],credentials,write_grants)
+            assert cd.evaluate("!document.querySelector('[data-testid=patient-continuity]')"), 'Disconnected session must withhold Overview continuity'
             print('PASS: React/Vite -> actual FastAPI/PostgreSQL 16; identity/create/retry; exact case/source read, immutable amendment history, unreviewed quoted text and rights revocation; cross-organization isolation, credential expiry/reload, keyboard landmarks and mobile layout. Independently fictional records only; no clinical workflow or production identity claim.')
         finally:
             if cd:cd.close()
