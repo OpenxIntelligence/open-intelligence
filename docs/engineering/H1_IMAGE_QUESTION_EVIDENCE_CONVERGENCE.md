@@ -2,12 +2,14 @@
 
 ## Preserved owners
 
-This integration joins two existing first-party H1 owners:
+This integration joins two existing first-party H1 owners and adopts their existing
+bounded citation-history correction:
 
 | Owner | Exact remote head | Preserved responsibility |
 | --- | --- | --- |
 | [#298](https://github.com/OpenxIntelligence/open-intelligence/pull/298) | `89f98824610e23a26d2904a845ed1d930207bd76` | Canonical patient/source/question, source packet/brief, verification return, follow-through and governed metadata/citation history |
 | [#278](https://github.com/OpenxIntelligence/open-intelligence/pull/278) | `b72560ac0f5e5005040b0fc660ce1650343611cf` | Exact image custody, original source/image links, complete image/review response preparation and restored image/question/return HTTP |
+| [#311](https://github.com/OpenxIntelligence/open-intelligence/pull/311) | `8f7ad6a80dcb5312bc63480339d9142376883a4a` | Exact two-file correction for visible, actual-calendar citation timestamps with explicit valid offsets |
 
 The patient remains the organizing center. This joins information and work that
 already belong to the same qualified case. It does not introduce another chart,
@@ -67,7 +69,8 @@ and case-binding revocation retain redaction/denial without new effects.
 The #298 source archive's 356 files reproduced tree
 `30e40fd60b4f42d65732bfcebe6233ad602ad955`; its current API, React and
 inherited UI workflows passed before adoption. All 51 frontend files remain
-identical to that owner, as do its seven task/evidence modules. Thirteen selected
+identical to that owner. Six of its seven task/evidence modules remain unchanged;
+`evidence_contracts.py` and its contract tests now match #311 exactly. Thirteen selected
 image, parser, dependency/container and rights-gate files match #278 exactly.
 The locked code-only pydicom 3.0.2 preparation remains inherited; no new dependency
 is adopted. The two parents' individual results are not combined acceptance.
@@ -79,6 +82,58 @@ workflow results, artifact identity and review findings are recorded in the draf
 PR and canonical Notion/Drive engineering records after execution. Local database
 skips are never counted as acceptance.
 
+## Executed verification and current receipt
+
+[Draft PR #313](https://github.com/OpenxIntelligence/open-intelligence/pull/313)
+preserves the actual remote #298 and #278 parents. GitHub comparisons confirm both
+are ancestors of the initial combined runtime
+`895561f6ca7e1271e8401604c77c95635c28274f`, tree
+`1df1532f23891a8e9f2af42de579fd3375512552`.
+
+| Initial combined-runtime gate | Observed result |
+| --- | --- |
+| [API/PostgreSQL 41659051682](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41659051682) | 464 API/contract/database tests passed, zero skips; 282 reference tests and both original browser journeys passed. |
+| Five Compose gates in that API run | Patient, source, combined image/question/return/task/citation, review and follow-through recovery passed. The API served actual restored databases; new read receipts existed only there, original rows remained unchanged, and revoked rights/bindings remained enforced. |
+| [React/browser 41659051340](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41659051340) | 219 client tests passed, zero failures/skips; production build and actual PostgreSQL/FastAPI/built-React/Chromium acceptance passed. |
+| [Artifact 13241720289](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41659051340/artifacts/13241720289) | Downloaded digest, recorded commit, all 391 source blobs and exact lockfile matched. Populated citation desktop and task mobile captures were inspected. |
+
+Artifact SHA-256:
+`363e84b5a0b63c6aaa54426c23dffdc6563d594eaca4ec1a1264c4b60219f1bc`.
+Retention ends 10 November 2026. Existing dependency gates passed; frontend license
+inventory errors and reported audit vulnerabilities were both zero.
+
+Fresh independent whole-change review found no material issue. The eight new
+populated migration cases and three new connected HTTP/PostgreSQL cases each ran
+successfully. Local discovery had explicitly skipped 333 database tests; those
+skips were not used as acceptance. The standalone legacy UI workflow did not
+trigger because its `web`, `src`, `tests` and workflow inputs are byte-identical
+to #298. Its inherited reference regression and the two original browser journeys
+ran in the exact-head API gate.
+
+### Current-source correction from #311
+
+The final source reconciliation found the directly applicable citation timestamp
+correction in the existing owner. The two donor files are preserved exactly:
+`evidence_contracts.py` blob `30f215155508914f7b1c0de83e7632c03baf4c98` and
+`test_question_evidence_contracts.py` blob
+`8a0506bb4da62ac1bab390a92cdfc7ec77d194fe`. Its actual remote history is retained
+in the follow-up publication.
+
+Before adopting the implementation, the donor tests reproduced **20 failures**
+against the initial combined runtime: 19 invalid timestamp values plus refusal
+at complete response preparation. After exact adoption, **22 focused contract
+and API tests passed with zero skips**. Visible syntax, real calendar dates,
+explicit timezone bounds, bounded precision and strict string type are enforced;
+valid stored timestamp strings remain unchanged. OpenAPI now exposes the added
+length bounds. This is an outgoing-contract regression and preparation-helper
+check, not evidence of malformed dates entering normal PostgreSQL `timestamptz`
+rows through a public request.
+
+The initial 464-test result above predates this two-file adoption. The current
+combined-head results, focused delta review, final artifact identity and canonical
+Notion/Drive receipt are recorded in PR #313 after fresh execution. Parent results
+alone do not establish the combined candidate.
+
 ## Remaining scope
 
 All fixtures are independently authored fiction. Citation identity establishes
@@ -87,12 +142,25 @@ Verification returns and task completion do not establish clinical approval or
 external delivery. Receipts establish authorized preparation, not network
 delivery or atomic distributed credential revocation.
 
-Preserve #300's distinct authored-evidence/comparison/report owner and its active
-#302/#303/#304 continuations, #277's optional archive/disclosure owner, and the
-separate first-party clinical EHR/LIS ports. They require their own explicit
-semantic and persistence convergence. The complete patient-centered healthcare
-and biomedical platform remains the destination. This candidate is draft,
-unmerged and undeployed.
+The refreshed continuation owners are [#307](https://github.com/OpenxIntelligence/open-intelligence/pull/307)
+at `c35219dc5eb244874a7df6e9bf00cfbfda18251f` (verified runtime
+`477f24826a8a102c7437c993d69877c1f250b951`) for metadata, authored evidence,
+reports and follow-through, and [#312](https://github.com/OpenxIntelligence/open-intelligence/pull/312)
+at `9cd218210099c69d04b023ef77f9051a32206fc4` for #277's archive behavior joined
+to #278. #307 preserves the contributions of #300/#302/#303/#304; #312 preserves
+its image/archive predecessors. Those joins have their own verified receipts.
+Their reconciliation with this candidate remains future work, as do the separate
+first-party clinical EHR/LIS ports. Neither is included by implication here.
+The complete patient-centered healthcare and biomedical platform remains the
+destination. This candidate is draft, unmerged and undeployed.
+
+## Preserved concurrent closeout of the initial runtime
+
+The following receipt from remote commit `a68628ccf8689340c786e7d2702b2d97994f7f7e`
+is retained verbatim. Its execution-session limits and continuation table describe
+the initial `895561f6` runtime. The current-source section above now adopts #311;
+#307 and #312 remain separate. This preserves the concurrent documentation work
+without treating its historical next-step statement as the current adoption state.
 
 ## Hosted acceptance completed — 3 November 2026
 
