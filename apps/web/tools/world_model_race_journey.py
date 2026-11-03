@@ -117,6 +117,10 @@ def exercise(cd, *, patient_id, case_id, source_id, original, fingerprint,
             assert cd.evaluate("!document.querySelector('[data-testid=world-projection]') && document.querySelector('[data-testid=world-load]').disabled")
 
             navigate('Records')
+            assert cd.evaluate("!document.querySelector('[data-testid=open-original]').disabled"), (
+                'Original source must remain inspectable during a held derived World Model read')
+            assert cd.evaluate("document.querySelector('[data-testid=source-to-question]').disabled"), (
+                'A new source-question handoff must not compete with a held derived read')
             open_original() if action == 'opening' else close_original()
             navigate('Journey')
             idle = ("!document.querySelector('[data-testid=world-projection]') && "
