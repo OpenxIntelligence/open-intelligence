@@ -116,10 +116,12 @@ class PostgresQuestionEvidence:
                 patient_id, case_id, organization=organization, actor=actor, purpose=purpose,
                 prepare_response=prepare, recheck_authority=recheck)
             if needs_original:
+                audited_references=prepared_context.get('manual_reads', [])
                 self.registry.append_event(patient_id, 'investigation.report_manual_context_access_prepared',
                     case_id=case_id, question_id=question_id, actor=actor,
                     receipt_id=prepared_context['index']['access_receipt_id'],
-                    references=prepared_context.get('manual_reads', []))
+                    reference_count=len(audited_references),
+                    references_sha256=canonical_hash(audited_references))
             recheck()
             return response
 
