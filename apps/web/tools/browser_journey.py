@@ -104,10 +104,10 @@ def main():
                 'kind':'pathology','record_label':'Fictional pathology report',
                 'source_organization':'Unverified fictional institution'})
             assert status==201
-            raw=('OI-SYNTHETIC-REPORT/1\\nPatient: CASE-ALPHA\\n'
-                 'Document: DOC-ONE\\nType: pathology\\nEvent-Date: 2026-01-10\\n'
-                 'Issued-At: 2026-01-11\\nSpecimen: SPECIMEN-ONE\\n'
-                 'Finding: marker|not-reported|Independently fictional browser source.\\n')
+            raw=('OI-SYNTHETIC-REPORT/1\nPatient: CASE-ALPHA\n'
+                 'Document: DOC-ONE\nType: pathology\nEvent-Date: 2026-01-10\n'
+                 'Issued-At: 2026-01-11\nSpecimen: SPECIMEN-ONE\n'
+                 'Finding: marker|not-reported|Independently fictional browser source.\n')
             status,imported=post(root+'/cases/CASE-ALPHA/sources',{
                 'synthetic':True,'original_text':raw})
             assert status==201 and imported['source_id'].startswith('SRC-')
@@ -185,7 +185,6 @@ def main():
                 'revoked case binding hides original while retaining operational receipt history')
             assert cd.evaluate("!document.querySelector('[data-testid=view-original]') && !document.querySelector('[data-testid=original-report]')")
             assert sid not in cd.evaluate('document.querySelector("[data-testid=record-requests]").textContent')
-            cd.evaluate("document.querySelector('.rail nav button[aria-current=page]').textContent.includes('Records')")
             cd.evaluate("document.querySelectorAll('.rail nav button')[0].click()")
             cd.wait("Boolean(document.querySelector('#patient-id'))",
                 'return to Overview without changing selected patient')
