@@ -463,6 +463,20 @@ class FollowthroughChecks:
         assert any(row['state'] == 'source_reassessment_required' for row in agenda)
         assert self.cd.evaluate("document.querySelector('[data-testid=second-opinion-agenda-coverage]').textContent.includes('Showing 3 of 3 saved questions')")
         assert self.cd.evaluate("!document.querySelector('[data-testid=second-opinion-agenda-unavailable]')")
+        # The same separately authorized task read supplies the question-specific
+        # status; no new request, task owner, or independent authorization is made.
+        question_work = self.cd.evaluate("[...document.querySelectorAll('[data-testid=second-opinion-agenda-item]')].map(e=>({question:e.dataset.questionId,work:e.querySelector('[data-testid=second-opinion-question-work]')?.dataset.workState,recorded:Number(e.querySelector('[data-testid=second-opinion-question-work-summary]')?.dataset.recordedCount??0),open:Number(e.querySelector('[data-testid=second-opinion-question-work-summary]')?.dataset.openCount??0),history:Number(e.querySelector('[data-testid=second-opinion-question-work-summary]')?.dataset.historyCount??0),tasks:[...e.querySelectorAll('[data-testid=second-opinion-question-task]')].map(x=>x.dataset.taskId),text:e.textContent}))")
+        work_by_question = {row['question']: row for row in question_work}
+        assert len(work_by_question) == 3 and all(row['work'] == 'ready' for row in question_work)
+        first_work = work_by_question[self.question_id]
+        second_work = work_by_question[current_question_id]
+        assert (first_work['recorded'], first_work['open'], first_work['history']) == (3, 1, 2)
+        assert (second_work['recorded'], second_work['open'], second_work['history']) == (1, 1, 0)
+        assert first_work['tasks'] == [self.task_ids[TITLE_OPEN]]
+        assert second_work['tasks'] == [second]
+        assert 'Source changed: recorded work requires reassessment.' in first_work['text']
+        assert 'Fictional second question coordinator' in second_work['text']
+        assert any(row['recorded'] == 0 for row in question_work)
         second_opinion_text = self.cd.evaluate("document.querySelector('[data-testid=second-opinion-preparation]').textContent")
         assert 'create a referral' in second_opinion_text and 'confirm an appointment' in second_opinion_text
         assert 'Do not treat the earlier preparation as current.' in second_opinion_text
@@ -511,6 +525,8 @@ class FollowthroughChecks:
         assert self.cd.evaluate("document.querySelector('[data-testid=continuity-followthrough-status]').dataset.phase") == 'error'
         assert self.cd.evaluate("!document.querySelector('[data-testid=continuity-followthrough-count-all]') && !document.querySelector('[data-testid=continuity-followthrough-task]')")
         assert self.cd.evaluate("Boolean(document.querySelector('[data-testid=continuity-reassessment]'))"), 'Independent task denial must preserve readable question context'
+        assert self.cd.evaluate("document.querySelectorAll('[data-testid=second-opinion-question-task]').length===0"), 'A denied task read must not expose any earlier question-linked task'
+        assert self.cd.evaluate("document.querySelectorAll('[data-testid=second-opinion-question-work-unavailable]').length===3"), 'Independent task denial must not turn question work into empty counts'
         card = self.cd.evaluate("document.querySelector('[data-testid=continuity-followthrough]').textContent")
         for row in value['tasks']:
             assert row['title'] not in card and row['task_id'] not in card
