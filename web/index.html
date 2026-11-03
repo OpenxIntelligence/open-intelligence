@@ -36,6 +36,7 @@
           <a href="#patient-mission">Patient Mission</a>
           <a href="#assertions">Reported findings</a>
           <a href="#timeline">Timeline</a>
+          <a href="#journey">Whole journey</a>
           <a href="#investigations">Investigation</a>
           <a href="#sources">Sources and findings</a>
           <a href="#evidence">Evidence review</a>
@@ -156,6 +157,16 @@
           <p class="muted panel-note">Compare original report text and inspect which saved investigations used an earlier version. A textual amendment is not automatically a new biological event or a clinical change.</p>
           <div id="source-change-list" class="change-list"></div>
         </section>
+      </section>
+
+      <section class="panel" id="journey" aria-labelledby="journey-heading">
+        <div class="panel-head">
+          <div><p class="view-question">WHOLE JOURNEY · READ-ONLY</p><h2 id="journey-heading">Whole-journey timeline</h2></div>
+          <span class="pill pill-warn">FICTIONAL DEMO DATA — not a real patient</span>
+        </div>
+        <p class="muted panel-note">Whole-journey view in the order recorded: fictional imports, amendments, questions, drafts, and demo reviews. Superseded versions stay visible as history. This list reports ledger entries only and does not interpret clinical meaning.</p>
+        <p id="journey-count" class="muted" role="status" aria-live="polite">Loading whole-journey timeline…</p>
+        <ol id="journey-list" class="timeline-events" aria-label="Whole-journey timeline in recorded order"></ol>
       </section>
 
       <section class="panel panel-investigation" id="investigations" aria-labelledby="investigation-heading">

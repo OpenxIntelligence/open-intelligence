@@ -69,6 +69,8 @@ async function initialize() {
       cancelSourceRead();
       caseId = picker.value;
       active = null; // Reject writes while the next case is loading.
+      clear('journey-list');
+      el('journey-count').textContent = 'Loading whole-journey timeline…';
       for (const id of ['question-text', 'report-text', 'evidence-rationale', 'draft-observations',
         'draft-summary', 'draft-assumptions']) el(id).value = '';
       if (el('source-dialog').open) el('source-dialog').close();
@@ -553,6 +555,7 @@ function render() {
   }
   loadModelInvestigations();
   loadChangesSinceReview();
+  loadJourney();
   clear('quarantine-list');
   for (const entry of active.quarantines) {
     el('quarantine-list').append(node('div', 'Quarantined #' + entry.id + ': declared ' + entry.declared_patient_id + ', not ' + caseId + ', no assertions imported', 'quarantine'));
@@ -1225,6 +1228,52 @@ function renderChangesSinceReview(data) {
     row.append(node('p', 'Q' + item.question_id + ': ' + item.question),
       node('p', 'Event #' + item.event_id + ' · State: ' + item.state + ' · Created ' + item.created_at, 'muted'));
     el('changes-questions').append(row);
+  }
+}
+async function loadJourney() {
+  const requested = caseId;
+  const countEl = el('journey-count');
+  if (countEl) countEl.textContent = 'Loading whole-journey timeline…';
+  clear('journey-list');
+  try {
+    const data = await api('/api/cases/' + requested + '/journey');
+    if (requested !== caseId || !active || active.case.case_id !== requested) return;
+    renderJourney(data);
+  } catch (err) {
+    if (requested !== caseId) return;
+    if (countEl) countEl.textContent = 'Whole-journey timeline unavailable: ' + err.message;
+    empty(el('journey-list'), 'Whole-journey timeline unavailable.');
+  }
+}
+function renderJourney(data) {
+  clear('journey-list');
+  const entries = data.entries || [];
+  const count = typeof data.count === 'number' ? data.count : entries.length;
+  el('journey-count').textContent = count + ' fictional journey ' + (count === 1 ? 'entry' : 'entries') +
+    ' in recorded order. ' + (data.disclaimer || '');
+  if (!entries.length) {
+    empty(el('journey-list'), 'No timeline entries recorded yet');
+    return;
+  }
+  for (const entry of entries) {
+    const item = node('li', null, 'timeline-entry');
+    const head = node('div', null, 'timeline-head');
+    const when = node('time', entry.occurred_at || 'Time unavailable', 'timeline-date');
+    if (entry.occurred_at) when.dateTime = entry.occurred_at;
+    head.append(when, pill(entry.kind || 'event'),
+      pill(entry.status || 'recorded', entry.status === 'superseded' || entry.status === 'stale' ? 'pill-alert' : 'pill-neutral'),
+      pill('FICTIONAL', 'pill-warn'));
+    item.append(head);
+    item.append(node('p', entry.description || 'Fictional ledger entry recorded.'));
+    const metaBits = ['Event #' + entry.event_id];
+    if (entry.source_ref) metaBits.push('Source ' + entry.source_ref + ' (#' + entry.source_version_id + ')');
+    else if ((entry.source_refs || []).length) metaBits.push('Sources ' + entry.source_refs.join(', '));
+    else metaBits.push('No source version for this entry');
+    if (entry.supersedes_event_id) metaBits.push('Replaces event #' + entry.supersedes_event_id);
+    if (entry.superseded_by_event_id) metaBits.push('Superseded — see newer event #' + entry.superseded_by_event_id);
+    else if (entry.status === 'superseded' || entry.status === 'stale') metaBits.push('Superseded history stays visible');
+    item.append(node('p', metaBits.join(' · '), 'snapshot-meta'));
+    el('journey-list').append(item);
   }
 }
 el('model-investigation-form').addEventListener('submit', async event => {
