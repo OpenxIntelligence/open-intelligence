@@ -204,6 +204,7 @@ const originalSession=(originalResponse=()=>response(originalPayload()))=>{
     if(url.endsWith('/case-bindings'))return response(caseList());
     if(url.endsWith('/sources'))return response(indexedOriginal());
     if(url.endsWith('/'+sourceId))return originalResponse();
+    if(url.endsWith('/PAT-OTHER'))return response(patient('PAT-OTHER'));
     return response(patient());
   });
   return {s,seen};
