@@ -1,0 +1,24 @@
+name: Imaging source transfer verification
+on:
+  push:
+    branches: [build/h1-authorized-imaging-20261102]
+    paths:
+      - tools/imaging-bootstrap/**
+      - .github/workflows/h1-imaging-transfer.yml
+permissions:
+  contents: read
+jobs:
+  transfer:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - run: sha256sum tools/imaging-bootstrap/part*.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: imaging-transfer-${{ github.run_id }}
+          path: tools/imaging-bootstrap/part*.txt
+          if-no-files-found: error
+          retention-days: 1
