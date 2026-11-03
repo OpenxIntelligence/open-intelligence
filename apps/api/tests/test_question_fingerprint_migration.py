@@ -78,6 +78,9 @@ class QuestionFingerprintMigrationTests(SourceVersionFixture):
         # identity, actor/purpose and creation time; the upgrade must not rehash.
         self.assertEqual(migrated, before)
 
+        # Preserve the original0007 proof above, then satisfy the current API's
+        # later convergence readiness gate before testing the same behavior.
+        migrate(self.admin, "upgrade", "head")
         self.creds[0]["actions"].extend((
             "composer_context_read", "question_create", "question_read",
         ))

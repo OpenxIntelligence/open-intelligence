@@ -56,3 +56,26 @@
 .question-status.reassessment{background:#f2e7d9;color:#764b21}
 .question-receipt{padding:12px;background:#edf5ee;border-left:3px solid #638673}
 @media(max-width:600px){.question-history{padding:12px}.question-history-heading button{width:100%}.question-status-title{flex-direction:column;gap:8px}}
+
+/* Existing source-question review owner; same patient workspace and typography. */
+.question-review-action{margin:14px 0}
+.review-panel h3{font-size:17px;margin:24px 0 12px}
+.review-panel h4{font-size:15px;margin:0;max-width:65ch}
+.review-items,.review-history{display:grid;gap:16px;list-style:none;padding:0;margin:14px 0 24px}
+.review-item,.review-history li{padding:18px;border:1px solid #d5e1d9;background:#f8fbf8;border-radius:8px;min-width:0;overflow-wrap:anywhere}
+.review-item p,.review-history p{margin:10px 0;font-size:13px}
+.review-item details,.review-history details,.review-access{margin:14px 0}
+.review-panel code{word-break:break-word;overflow-wrap:anywhere}
+.review-return-form{border-top:1px solid #d7e0d8;margin-top:16px;padding-top:16px}
+.review-return-form label{font-size:14px}
+.review-return-form textarea{display:block;width:100%;max-width:100%;resize:vertical;font:inherit;font-size:14px;line-height:1.5;padding:11px 12px;border:1px solid #a9b6b3;border-radius:6px;color:inherit;background:#fff;margin:8px 0 12px}
+.review-return-form textarea:focus{outline:3px solid #ba8639;outline-offset:3px}
+.review-return-form textarea:disabled{background:#edf0ed;color:#52635d}
+.review-result,.review-recovery{margin:16px 0;padding:16px;border-left:3px solid #638673;background:#edf5ee;overflow-wrap:anywhere}
+.review-recovery{border-color:#b28b52;background:#f8f3e9}
+.review-recovery h3{margin-top:0}
+@media(max-width:600px){.review-item,.review-history li{padding:13px}.review-panel button{max-width:100%;white-space:normal;overflow-wrap:anywhere}.review-panel .actions button{width:100%}}
+.source-brief-preview{border-top:1px solid #d6e1d9;margin-top:18px;padding-top:16px;min-width:0}
+.source-brief-preview blockquote{margin:12px 0;border-left:3px solid #879d91;padding:10px 12px;white-space:pre-wrap;overflow-wrap:anywhere}
+.source-brief-preview pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:36rem;overflow:auto;padding:14px;border:1px solid #d7e0d8;border-radius:6px;background:#fcfdfb;font:inherit;font-size:13px}
+.source-brief-preview button,.question-items button{max-width:100%;white-space:normal;overflow-wrap:anywhere}

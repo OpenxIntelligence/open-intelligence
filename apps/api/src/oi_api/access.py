@@ -27,7 +27,7 @@ class Principal(Contract):
     actor: str
     organization: str
     purpose: Literal["operations", "research"]
-    actions: frozenset[Literal["patient_create", "patient_read", "record_request_create", "record_request_read", "record_request_cancel", "record_request_receive", "case_binding_create", "case_binding_read", "case_binding_revoke", "source_import", "source_read", "source_original_read", "composer_context_read", "question_create", "question_read"]] = frozenset()
+    actions: frozenset[Literal["patient_create", "patient_read", "record_request_create", "record_request_read", "record_request_cancel", "record_request_receive", "case_binding_create", "case_binding_read", "case_binding_revoke", "source_import", "source_read", "source_original_read", "composer_context_read", "question_create", "question_read", "review_queue_read", "review_return", "source_brief_export"]] = frozenset()
     patient_ids: frozenset[str] = Field(default_factory=frozenset, max_length=256)
     expires_at: datetime
 

@@ -56,6 +56,17 @@ reassessment and OI-013 authorization/recovery. This slice adds no model,
 licensed knowledge, clinical review owner or new dependency. Clinical evidence
 investigation and report/review convergence remain separate.
 
+### Saved-question brief continuation
+
+The next bounded consumer is the
+[source-linked brief](H1_SOURCE_LINKED_BRIEF.md). It reads this same immutable
+question and canonical snapshot, recomputes the saved preflight under the
+source-owner locks, and requires a separate `source_brief_export` grant before
+returning literal source context. It adds no question, report or approval store.
+Downloads repeat that authorized preparation. Legacy or stale questions retain
+their original history and require reassessment; this brief does not submit
+clinical review or supply a biomedical answer.
+
 ## Patient value and exact scope
 
 A patient/care-team member using the synthetic React Investigations workspace

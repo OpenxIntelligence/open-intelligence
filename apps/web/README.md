@@ -16,12 +16,13 @@ acceptance criteria.
 - Read only an explicitly granted identity under its persisted organization.
 - Clear the displayed patient on a new request, refusal, credential change,
   logout or expiry; discard late responses from older selections/sessions.
-- Overview connected; Journey, Records, Investigations and Review clearly marked
-  not connected. The old reference application remains available unchanged.
+- Overview, Records, Journey, Investigations and Review connect to the same
+  canonical fictional patient/source context. Review records only nonterminal
+  source-verification returns. The old reference application remains unchanged.
 
-No real account management, identity proofing, clinical records, source imports,
+No real account management, identity proofing, identifiable clinical records,
 caregiver delegation, consent, live model, biomedical retrieval or deployment is
-introduced. The backend remains responsible for authorization. An authorized
+introduced. Source inputs are independently authored fictional reports. The backend remains responsible for authorization. An authorized
 request can complete after a later grant change; this UI is not a consent service.
 
 ## Development setup
@@ -168,6 +169,52 @@ Legacy fingerprint rows remain visibly in need of reassessment. Nothing in this
 workspace executes a model, grants clinical approval or creates another patient
 or source store.
 
+### Connected verification-return inbox
+
+Review derives its inbox from the same persisted source questions. Each item
+shows its question, source context and verification state; a bounded reason
+belongs to its selected question. Protocol versions, hashes and source-access
+receipts remain available in disclosure details. A return records an operational
+request for independent verification; it does not notify a person, approve a
+finding or establish reviewer credentials.
+
+Current and historical receipts retain their source/queue provenance. A source
+amendment moves an old return into history and requires a new current question.
+Legacy contracts cannot masquerade as current canonical work. Queue reads and
+return writes use separate server-side grants.
+
+After an uncertain write response, **Retry this exact return** preserves the
+captured question, reason, fingerprint and request key. Navigation and a
+successful same-case source refresh retain that minimal in-memory intent, so an
+already committed historical return can be recovered after amendment. Editing
+that uncertain intent is disabled; a stale/conflicting 409 response stops the operation
+without creating a replacement key. Patient, case or credential changes and
+authoritative permission denial clear it. Late requests cannot restore another
+case's queue or unlock a newer in-flight return. No browser storage is used.
+
+The new browser journey exercises the actual PostgreSQL/API/React source question
+→ return → source amendment → preserved history → new question/return workflow,
+independent grant denial and recovery, and captures a populated desktop view.
+Its fake-response-free workflow is separate from client-module tests that inject
+network errors to verify retry mechanics. See
+[the review integration record](../../docs/engineering/H1_SOURCE_QUESTION_REVIEW_RETURN.md).
+
+### Saved-question brief and fresh download
+
+The existing question panel can prepare a readable brief for a current canonical
+question. The question and exact source-reported statement remain distinct from
+clinical interpretation. An independent `source_brief_export` grant is required
+in addition to patient, question and source reads. The brief includes source
+versions, dates, uncertainty and historical context; technical identifiers are
+available in a disclosure.
+
+Download repeats preparation on the server and verifies the new UTF-8 body hash
+before creating a file. A cached preview cannot substitute for this check.
+Patient, case, credential or source-context changes invalidate in-flight work,
+including delayed digest calculation. An amended source preserves the old
+question with reassessment status and prevents a new export of that stale intent.
+See the [contract, acceptance and limits](../../docs/engineering/H1_SOURCE_LINKED_BRIEF.md).
+
 ### Verification (exact branch head required)
 
 The existing reviewed H1 web workflow now targets this integration branch and
@@ -184,6 +231,12 @@ Model HTTP response, opens and closes an original, releases the late response,
 and verifies that only an explicit retry restores the view. It preserves the
 actual response body, status, access receipt and content fingerprint; it does
 not replace the server with a mocked successful response.
+
+The extended question journey also prepares the brief, downloads actual bytes,
+checks them against the freshly returned body, withdraws export permission,
+preserves stale question history after amendment and prepares a new question.
+The client suite covers exact contracts, source/body tampering and context
+changes during both the request and asynchronous hash verification.
 
 No result is claimed until the hosted job has passed on this branch's **final
 commit**. Keep parent #193, original frontend #181, patient workspace #179 and
