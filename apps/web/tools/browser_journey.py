@@ -149,6 +149,19 @@ def main():
             assert "LINE 8" in original_view
             assert "Review not established" in original_view
             assert "Clinical approval" not in original_view
+            # The preflight requires its own grant; source_read alone must
+            # never authorize clinical Composer execution.
+            credentials[0]['actions'].append('composer_context_read')
+            write_grants()
+            assert cd.evaluate("!document.querySelector('[data-testid=composer-context]')")
+            cd.evaluate("document.querySelector('[data-testid=composer-preflight]').click()")
+            cd.wait("document.querySelector('[data-testid=composer-context]')?.textContent.includes('Independently fictional browser source.')",
+                    'authorized non-executing Composer source preflight')
+            preview=cd.evaluate("document.querySelector('[data-testid=composer-context]').textContent")
+            assert sid in preview and "line 8" in preview and "version 1" in preview
+            assert "No question has been saved" in preview
+            assert "no model executed" in preview
+            assert "no clinician has approved" in preview
 
             # A correction after receipt must never silently replace the
             # previously pinned original or describe it as current.
@@ -160,6 +173,12 @@ def main():
             status,correction=post(root+'/cases/CASE-ALPHA/sources',{
                 'synthetic':True,'original_text':amended})
             assert status==201 and correction['version']==2 and correction['source_id']!=sid
+            # A previously displayed source preview must fail its exact
+            # source-set fingerprint after a corrected original is imported.
+            cd.evaluate("document.querySelector('[data-testid=composer-preflight]').click()")
+            cd.wait("document.querySelector('[data-testid=composer-status]').textContent.includes('original source changed')",
+                    'stale original fingerprint blocks the Composer preflight')
+            assert cd.evaluate("!document.querySelector('[data-testid=composer-context]') && !document.querySelector('[data-testid=world-model-result]')")
             cd.evaluate("document.querySelector('[data-testid=world-refresh]').click()")
             cd.wait("document.querySelector('[data-testid=world-model-result]')?.textContent.includes('Amended fictional marker is negative.')",
                     'corrected PostgreSQL source replaces only current observations')
@@ -169,6 +188,19 @@ def main():
             assert "Superseded source versions" in current_view
             assert "Independently fictional browser source." not in current_view
             assert "Clinical review is not connected" in current_view
+            assert cd.evaluate("!document.querySelector('[data-testid=composer-context]')")
+            cd.evaluate("document.querySelector('[data-testid=composer-preflight]').click()")
+            cd.wait("document.querySelector('[data-testid=composer-context]')?.textContent.includes('Amended fictional marker is negative.')",
+                    'fresh corrected source and line 9 can prepare a new limited context')
+            prepared=cd.evaluate("document.querySelector('[data-testid=composer-context]').textContent")
+            assert correction['source_id'] in prepared and "line 9" in prepared
+            assert sid not in prepared
+            credentials[0]['actions'].remove('composer_context_read')
+            write_grants()
+            cd.evaluate("document.querySelector('[data-testid=composer-preflight]').click()")
+            cd.wait("document.querySelector('[data-testid=composer-status]').textContent.includes('Composer context unavailable')",
+                    'separate Composer-context permission can be revoked')
+            assert cd.evaluate("!document.querySelector('[data-testid=composer-context]') && !document.querySelector('[data-testid=world-model-result]')")
             cd.evaluate("document.querySelector('[data-testid=records-nav]').click()")
             cd.wait("Boolean(document.querySelector('[data-testid=load-records]'))",
                     'return to records without losing patient selection')
