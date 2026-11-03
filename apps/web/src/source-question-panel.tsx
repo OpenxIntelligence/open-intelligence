@@ -75,8 +75,63 @@ export function SourceQuestionPanel({state,session,busy}:{state:ViewState;sessio
            <p><strong>Preflight hash:</strong> <code>{item.preflight_sha256}</code></p>
           </details>
           <p className="muted">Human review not submitted. Clinical approval: none.</p>
+          <button type="button" data-testid="source-quote-packet-open"
+           disabled={busy||state.sourceQuotePhase==='loading'}
+           onClick={()=>void session.loadQuestionSourcePacket(item.question_id)}>
+           Inspect verified source quote and evidence gaps
+          </button>
          </li>)}</ul>}
     </div>}
    </section>
+   <p role="status" aria-live="polite" data-testid="source-quote-packet-status"
+    className={'status '+(state.sourceQuotePhase==='error'?'error':'')}>
+    {state.sourceQuoteMessage}</p>
+   {state.sourceQuotePacket&&<section className="source-quote-inspection" data-testid="source-quote-packet"
+    aria-labelledby="source-quote-heading">
+    <span className="step">SOURCE QUOTATION / PROVENANCE INSPECTION</span>
+    <h3 id="source-quote-heading">Review prerequisites — not a clinical assessment</h3>
+    <p><strong>Saved question:</strong> {state.sourceQuotePacket.question}</p>
+    <p><strong>Question record:</strong> <code>{state.sourceQuotePacket.question_id}</code></p>
+    {state.sourceQuotePacket.selected_statement?<div>
+     <p><strong>Source-reported statement, exactly quoted:</strong></p>
+     <blockquote data-testid="source-quote-literal">{state.sourceQuotePacket.selected_statement.source_statement}</blockquote>
+     <p>Reported state: <strong>{state.sourceQuotePacket.selected_statement.reported_state}</strong>
+       {' '}· Document <code>{state.sourceQuotePacket.selected_statement.document_id}</code>
+       {' '}v{state.sourceQuotePacket.selected_statement.document_version},
+       line {state.sourceQuotePacket.selected_statement.source_line}</p>
+     <p>Reported event: {state.sourceQuotePacket.selected_statement.event_date}
+      {' '}· Specimen {state.sourceQuotePacket.selected_statement.specimen_id??'not specified'}</p>
+     <h4>Related authored statements ({state.sourceQuotePacket.related_statement_count_total})</h4>
+     {state.sourceQuotePacket.related_statements.length===0?
+       <p>No other current same-specimen/date/finding statements were returned. This is not an exhaustive evidence search.</p>:
+       <ul data-testid="source-quote-related">{state.sourceQuotePacket.related_statements.map(q=>
+        <li key={q.source_id+':'+q.source_line}>
+         <blockquote>{q.source_statement}</blockquote>
+         <p>{q.reported_state} · <code>{q.source_id}</code> line {q.source_line}</p>
+        </li>)}</ul>}
+     {state.sourceQuotePacket.related_statements_truncated&&
+       <p>Additional related statements exist. This bounded packet is not complete.</p>}
+    </div>:<p role="note" data-testid="source-quote-stale">
+     <strong>Historical source — reassessment required.</strong>
+     The original question and source identifiers are retained, but the outdated
+     quotation is not presented as current. Refresh sources and create a new
+     source-linked question before review.</p>}
+    <details><summary>Original source reference and packet integrity</summary>
+     <p>Original <code>{state.sourceQuotePacket.original_anchor.source_id}</code>,
+      version {state.sourceQuotePacket.original_anchor.source_version},
+      line {state.sourceQuotePacket.original_anchor.source_line}</p>
+     <p>Original SHA-256 <code>{state.sourceQuotePacket.original_anchor.source_sha256}</code></p>
+     <p>Current source snapshot <code>{state.sourceQuotePacket.current_source_snapshot_sha256}</code></p>
+     <p>Verified content packet SHA-256 <code>{state.sourceQuotePacket.packet_sha256}</code></p>
+     <p>Source-access preparation receipt <code>{state.sourceQuotePacket.source_access_receipt_id}</code>.
+      This is not proof of network delivery or a clinical authorization.</p>
+    </details>
+    <p role="note" className="source-quote-limit">
+     <strong>Outstanding independent review:</strong> Biomedical literature appraisal,
+     publisher rights, clinical relevance, professional identity, consent and
+     signed decisions are not established by this packet. No model was run,
+     treatment inferred or medical action authorized.
+    </p>
+   </section>}
  </section>;
 }
