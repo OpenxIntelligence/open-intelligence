@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "apps/web/tools/browser_journey.py", line 171, in <module>
+    if __name__=='__main__':main()
+                            ^^^^^^
+  File "apps/web/tools/browser_journey.py", line 75, in main
+    check_workspace_navigation(cd,pid)
+  File "apps/web/tools/workspace_ux_checks.py", line 35, in check_workspace_navigation
+    assert cd.evaluate("Boolean(document.querySelector('[data-testid=patient-context]'))"), 'Selected patient needs a persistent chart header'
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Selected patient needs a persistent chart header

@@ -1,0 +1,57 @@
+{
+  "source_checkpoint": "d8de9aaca352cc58b64e9e32440f4ea248b02cb8",
+  "source_checkpoint_kind": "historical hosted baseline",
+  "records": "independently fictional",
+  "capture": "actual Chromium over built React, FastAPI and PostgreSQL16",
+  "files": [
+    {
+      "file": "01-entry-desktop.png",
+      "sha256": "fa1e6e6d79a5e914ef15dcb93ea54311301b65c8b307ad711aa5659249625ea3",
+      "width": 1440,
+      "height": 1100,
+      "visually_inspected": true
+    },
+    {
+      "file": "02-patient-open-desktop.png",
+      "sha256": "db1b487501c86c5463a21ae5e70e7fcdf58c357e07bc67ecb6efcaa1cb1fb19e",
+      "width": 1440,
+      "height": 1100,
+      "visually_inspected": true
+    },
+    {
+      "file": "03-records-desktop.png",
+      "sha256": "eeeb7f904bf6f45d5d92654de05af06e1b64a48d19edcc7853c9b5eff6a65901",
+      "width": 1440,
+      "height": 1100,
+      "visually_inspected": true
+    },
+    {
+      "file": "04-amendment-desktop.png",
+      "sha256": "4235347c9cb8ea56677372db6d8c61aa78de02b0b3c9e005037c211ea820974d",
+      "width": 1440,
+      "height": 1100,
+      "visually_inspected": true
+    },
+    {
+      "file": "05-source-history-desktop.png",
+      "sha256": "eac8acc2735dbe4990502e07e8a8638b69d2df5d1dcea3ac73bbeaff83ef2b18",
+      "width": 1440,
+      "height": 1100,
+      "visually_inspected": true
+    },
+    {
+      "file": "06-records-mobile.png",
+      "sha256": "6d1dbc2f75432fa8294a6dd506cbebcce3a3d2d2c8ff4f155e311c34893d5532",
+      "width": 390,
+      "height": 844,
+      "visually_inspected": true
+    },
+    {
+      "file": "h1-mobile.png",
+      "sha256": "70d40f6a54866be8ab0027aa70aa05f344c70620387e440482ef365884b070cc",
+      "width": 390,
+      "height": 844,
+      "visually_inspected": true
+    }
+  ]
+}

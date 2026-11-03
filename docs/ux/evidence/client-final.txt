@@ -1,0 +1,37 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> open-intelligence-h1-web@0.1.0 test
+> tsc -p tsconfig.client.json && node --test tests/registry-client.test.mjs
+
+✔ default session has no authority and does not call transport (3.275704ms)
+✔ credential is absent from public state; session replacement clears patient (56.095882ms)
+✔ create is explicit synthetic and does not auto-read or grant patient access (5.129013ms)
+✔ unconfirmed and malformed request keys never reach backend (0.641439ms)
+✔ fetch sends credential only to fixed same-origin API with no cookies or redirects (1.337768ms)
+✔ HTTP 404 clears prior patient without exposing server detail (2.619602ms)
+✔ HTTP 401 expires session and removes old patient and creation receipt (1.058897ms)
+✔ late old patient response cannot replace a newer selection (2.233366ms)
+✔ old response after disconnect/reconnect is discarded even for same patient (1.042367ms)
+✔ mismatched or extra response fields and malformed values are withheld (4.185343ms)
+✔ explicit retry uses same request key; no hidden automatic retry (0.575706ms)
+✔ concurrent create clicks do not produce extra network calls (0.43512ms)
+✔ response after read grant failure cannot restore stale content (0.600419ms)
+✔ oversized or non-JSON data is rejected without retaining content (2.281304ms)
+✔ invalid replacement credential clears any earlier session (0.317349ms)
+✔ terminal newline cannot pass opaque identifier or credential validation (0.439829ms)
+✔ creating a different identity clears prior selection and invalidates an older pending read (0.507558ms)
+✔ read-only Records requests use exact canonical patient/case URLs and no local clinical authority (5.951443ms)
+✔ unbound case, revoked case or fabricated case ID never generates source request (2.083855ms)
+✔ mismatched patient, forged authority and wrong-case source evidence fail closed (4.616858ms)
+✔ renewed patient selection clears old case and source data immediately (4.022255ms)
+✔ late source response after patient switch cannot restore wrong-patient findings (1.12122ms)
+✔ source-read denial, contract failure and credential expiry erase prior source state (1.736811ms)
+✔ new identity creation cannot retain old patient source versions (0.702904ms)
+ℹ tests 24
+ℹ suites 0
+ℹ pass 24
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 235.289782

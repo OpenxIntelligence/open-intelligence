@@ -1,0 +1,1936 @@
+{
+  "status": "PASS",
+  "checked_at_utc": "2026-11-03T01:39:25.505615+00:00",
+  "comparison_parent": "68935c9fc60ef229aa9ff6cc4238153dc01a9b91",
+  "working_checkpoint": "0b741bf8ef7987ab4396474e3fbf0fa4b0f7e053",
+  "historical_audit_baseline": "d8de9aaca352cc58b64e9e32440f4ea248b02cb8",
+  "upstream_reconciliation": "The sole inherited upstream change deletes unused apps/web/src/source-model.ts. It is not a UX-authored parser or validation change.",
+  "upstream_deleted_module_remains_absent": true,
+  "allowed_product_and_test_paths": [
+    "apps/web/src/main.tsx",
+    "apps/web/src/records-panel.tsx",
+    "apps/web/src/styles.css",
+    "apps/web/tools/browser_journey.py",
+    "apps/web/tools/workspace_ux_checks.py"
+  ],
+  "allowed_documentation_scope": [
+    "docs/**",
+    "apps/web/README.md"
+  ],
+  "protected_group_results": [
+    {
+      "group": "backend_api_all",
+      "count": 43,
+      "all_identical": true
+    },
+    {
+      "group": "retained_reference_services",
+      "count": 13,
+      "all_identical": true
+    },
+    {
+      "group": "retained_reference_frontend",
+      "count": 6,
+      "all_identical": true
+    },
+    {
+      "group": "existing_reference_tests",
+      "count": 38,
+      "all_identical": true
+    },
+    {
+      "group": "ci_workflows",
+      "count": 9,
+      "all_identical": true
+    },
+    {
+      "group": "frontend_session_and_active_contracts",
+      "count": 2,
+      "all_identical": true
+    },
+    {
+      "group": "frontend_dependencies_and_build_contract",
+      "count": 7,
+      "all_identical": true
+    }
+  ],
+  "protected_file_count": 198,
+  "protected_differences": [],
+  "unapproved_changed_paths": [],
+  "working_product_test_sha256": {
+    "apps/web/src/main.tsx": "195f83321d448ba6f8370cc290aaed159689529320c02ef405292b7d1728a604",
+    "apps/web/src/records-panel.tsx": "0cd4e257d284cf7d1eb345ace3b9a3bc1c0c5c671cd8338b12906199c81531f1",
+    "apps/web/src/styles.css": "2f50b7c13589525ec261875a3b35a4b0c8b1c0fe797f202b19d1fe5b501b9d86",
+    "apps/web/tools/browser_journey.py": "990b083a541477e7e1336841b6c2d7f867d5764928991ea8735b189c4d85bc6f",
+    "apps/web/tools/workspace_ux_checks.py": "23eae47dc69393e6f13ed3c9ea759a9637dd2c8cccade4866e136272476f4b6b"
+  },
+  "changed_files_at_check": [
+    "apps/web/src/main.tsx",
+    "apps/web/src/records-panel.tsx",
+    "apps/web/src/styles.css",
+    "apps/web/tools/browser_journey.py",
+    "apps/web/tools/workspace_ux_checks.py",
+    "docs/superpowers/plans/2026-11-02-h1-workspace-ux.md",
+    "docs/ux/2026-11-02-h1-workspace-design.md",
+    "docs/ux/2026-11-02-product-research-ux-evolution.md",
+    "docs/ux/evidence/README.md",
+    "docs/ux/evidence/baseline-audit.md",
+    "docs/ux/evidence/baseline-browser.txt",
+    "docs/ux/evidence/baseline-capture.txt",
+    "docs/ux/evidence/baseline-python-versions.json",
+    "docs/ux/evidence/baseline-red-browser.txt",
+    "docs/ux/evidence/boundary-report.json",
+    "docs/ux/evidence/browser-final.txt",
+    "docs/ux/evidence/build-final.txt",
+    "docs/ux/evidence/client-final.txt",
+    "docs/ux/evidence/contrast-measurements.json",
+    "docs/ux/evidence/contrast-measurements.md",
+    "docs/ux/evidence/long-source-red-browser.txt",
+    "docs/ux/evidence/reference-suite-summary.md",
+    "docs/ux/evidence/reference-suite.txt",
+    "docs/ux/evidence/review-red-browser.txt",
+    "docs/ux/evidence/rights-final.txt",
+    "docs/ux/evidence/upstream-reconciliation.md",
+    "docs/ux/research/competitor-research.md",
+    "docs/ux/research/competitor-sources.json",
+    "docs/ux/research/frontend_technology_evaluation.md",
+    "docs/ux/research/guidance-sources.json",
+    "docs/ux/research/healthcare_ux_guidance.md",
+    "docs/ux/screenshots/README.md",
+    "docs/ux/screenshots/after/h1-desktop.png",
+    "docs/ux/screenshots/after/h1-mobile.png",
+    "docs/ux/screenshots/after/manifest.json",
+    "docs/ux/screenshots/after/ux-clinical-records.png",
+    "docs/ux/screenshots/after/ux-long-source-mobile.png",
+    "docs/ux/screenshots/after/ux-patient-records-mobile.png",
+    "docs/ux/screenshots/after/ux-patient-records.png",
+    "docs/ux/screenshots/after/ux-source-reading-desktop.png",
+    "docs/ux/screenshots/after/ux-source-reading-mobile.png",
+    "docs/ux/screenshots/before/01-entry-desktop.png",
+    "docs/ux/screenshots/before/02-patient-open-desktop.png",
+    "docs/ux/screenshots/before/03-records-desktop.png",
+    "docs/ux/screenshots/before/04-amendment-desktop.png",
+    "docs/ux/screenshots/before/05-source-history-desktop.png",
+    "docs/ux/screenshots/before/06-records-mobile.png",
+    "docs/ux/screenshots/before/h1-mobile.png",
+    "docs/ux/screenshots/before/manifest.json"
+  ],
+  "protected_files": [
+    {
+      "path": ".github/workflows/crossref-metadata.yml",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "73abd256a69c703498583d5d7decf7e133163d2a",
+      "working_git_blob": "73abd256a69c703498583d5d7decf7e133163d2a",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": ".github/workflows/h1-api.yml",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "1316863424ea21ad1cd5418c6a21b6c3b6d28b68",
+      "working_git_blob": "1316863424ea21ad1cd5418c6a21b6c3b6d28b68",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": ".github/workflows/h1-web.yml",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "02bc80398f5c0791cd6d6e16b2c702db438e8a9d",
+      "working_git_blob": "02bc80398f5c0791cd6d6e16b2c702db438e8a9d",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": ".github/workflows/offline-scientific-safety.yml",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "ec25db44f438563ff67fa1a8a6d2625236b24525",
+      "working_git_blob": "ec25db44f438563ff67fa1a8a6d2625236b24525",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": ".github/workflows/public-research.yml",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "f08717236d20cb297155037cbeafa01e89d73714",
+      "working_git_blob": "f08717236d20cb297155037cbeafa01e89d73714",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": ".github/workflows/rna-analysis.yml",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "2698223dbee1d042b45ec51f1d9329f2c37825b5",
+      "working_git_blob": "2698223dbee1d042b45ec51f1d9329f2c37825b5",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": ".github/workflows/single-cell-analysis.yml",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "14681276f30a2f4b5949cf85648afac0d6acfa95",
+      "working_git_blob": "14681276f30a2f4b5949cf85648afac0d6acfa95",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": ".github/workflows/synthetic-tests.yml",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "a3bae59be32795065bbe875884092bb5ed3ceaae",
+      "working_git_blob": "a3bae59be32795065bbe875884092bb5ed3ceaae",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": ".github/workflows/ui-glance.yml",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "00c026cdc4ecca5f3f3e6ac3484d70c9f323c68f",
+      "working_git_blob": "00c026cdc4ecca5f3f3e6ac3484d70c9f323c68f",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": ".gitignore",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "d538cdeb1626004858205e69531cfdc1d2915886",
+      "working_git_blob": "d538cdeb1626004858205e69531cfdc1d2915886",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "AGENTS.md",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "316384281cda339b1f0bc932736a8eddf24c7423",
+      "working_git_blob": "316384281cda339b1f0bc932736a8eddf24c7423",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "README.md",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "2105e0b386a10a6c9ea91a0398e5fb0751912852",
+      "working_git_blob": "2105e0b386a10a6c9ea91a0398e5fb0751912852",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "README_IMPLEMENTATION.md",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "02939c833e4b2e29538081c0af5bdd08d9d2a9fd",
+      "working_git_blob": "02939c833e4b2e29538081c0af5bdd08d9d2a9fd",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/api/.dockerignore",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "502dd9bc90f3fd1062b4ea1503459c9081a6d208",
+      "working_git_blob": "502dd9bc90f3fd1062b4ea1503459c9081a6d208",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/api/Dockerfile",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "02f3b6b46aed39ea8655b50d3b9c722f6eda7d1a",
+      "working_git_blob": "02f3b6b46aed39ea8655b50d3b9c722f6eda7d1a",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/api/Dockerfile.dockerignore",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "262cd906ac6ffdffb22ca20da0635e50ece95eea",
+      "working_git_blob": "262cd906ac6ffdffb22ca20da0635e50ece95eea",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/api/README.md",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "878ae4afc68a43e9a92b61118f63bbb276e96b95",
+      "working_git_blob": "878ae4afc68a43e9a92b61118f63bbb276e96b95",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/api/THIRD_PARTY_NOTICES.md",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "6d76b0aa7d2727e9f6b3ced335a5c7882b898238",
+      "working_git_blob": "6d76b0aa7d2727e9f6b3ced335a5c7882b898238",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/api/alembic.ini",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "a923dabf3b20fde86527d0df2596f4bb45deeadd",
+      "working_git_blob": "a923dabf3b20fde86527d0df2596f4bb45deeadd",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/api/compose.synthetic-access.yaml",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "f56da255780519aa8d50fca21945ef3d12ef1c39",
+      "working_git_blob": "f56da255780519aa8d50fca21945ef3d12ef1c39",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/api/compose.yaml",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "0d8e4305af93e54fdb1eb06d2761ad9862862a8e",
+      "working_git_blob": "0d8e4305af93e54fdb1eb06d2761ad9862862a8e",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/api/dependency-license-inventory.json",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "c919eaf062944ece42b6407b7f440fe486222837",
+      "working_git_blob": "c919eaf062944ece42b6407b7f440fe486222837",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/api/migrations/env.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "09878dcc4216c0351b2b9406ce7b0f813469a220",
+      "working_git_blob": "09878dcc4216c0351b2b9406ce7b0f813469a220",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/api/migrations/script.py.mako",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "46057d6ba861ab8e92c1c2df22935ada3317e724",
+      "working_git_blob": "46057d6ba861ab8e92c1c2df22935ada3317e724",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/api/migrations/versions/0001_h1_shell.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "0c336e40538a70a5669607cc919d36799c479f11",
+      "working_git_blob": "0c336e40538a70a5669607cc919d36799c479f11",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/api/migrations/versions/0002_patient_registry.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "e8526300bda9ab856a27601d4305e428735a8325",
+      "working_git_blob": "e8526300bda9ab856a27601d4305e428735a8325",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/api/migrations/versions/0003_record_acquisition.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "a8e8d3e12d99c3223276f76da92d1400982b304b",
+      "working_git_blob": "a8e8d3e12d99c3223276f76da92d1400982b304b",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/api/migrations/versions/0004_case_binding.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "bd567c8523f498c3ead59e17c1d6c1ad7517140c",
+      "working_git_blob": "bd567c8523f498c3ead59e17c1d6c1ad7517140c",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/api/migrations/versions/0005_source_versions.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "44175fc29ac79c753f1bce76dbbf6635f1fe2102",
+      "working_git_blob": "44175fc29ac79c753f1bce76dbbf6635f1fe2102",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/api/requirements.in",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "69cbcca08114ed7cb25d399523ce6323ff1c5d5f",
+      "working_git_blob": "69cbcca08114ed7cb25d399523ce6323ff1c5d5f",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/api/requirements.lock",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "c42993484215f1fad9f3322d6946e99443887b9a",
+      "working_git_blob": "c42993484215f1fad9f3322d6946e99443887b9a",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/api/src/oi_api/__init__.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "7df72a9beeab4d571eed20e302d952e5d56d63ad",
+      "working_git_blob": "7df72a9beeab4d571eed20e302d952e5d56d63ad",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/api/src/oi_api/__main__.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "e1ebbc754c0d3a7464716fa65a57f6b4d2b93091",
+      "working_git_blob": "e1ebbc754c0d3a7464716fa65a57f6b4d2b93091",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/api/src/oi_api/access.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "68afa5d7e95b9dc00f2ca129eda3deca2cb1cc1f",
+      "working_git_blob": "68afa5d7e95b9dc00f2ca129eda3deca2cb1cc1f",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/api/src/oi_api/app.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "ff2f718c7fb0b266549cfcb2a735a951e73d716d",
+      "working_git_blob": "ff2f718c7fb0b266549cfcb2a735a951e73d716d",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/api/src/oi_api/case_bindings.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "90160bba2de4a579cba1b65da9c7b272c653d63d",
+      "working_git_blob": "90160bba2de4a579cba1b65da9c7b272c653d63d",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/api/src/oi_api/config.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "ee8e71f5937df86cdfd290dca189905f04fd822d",
+      "working_git_blob": "ee8e71f5937df86cdfd290dca189905f04fd822d",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/api/src/oi_api/contracts.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "ef3d25748cd87557f80f5df812990757c60efa7e",
+      "working_git_blob": "ef3d25748cd87557f80f5df812990757c60efa7e",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/api/src/oi_api/database.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "2dd6ec550b8b61d7e8ff587a28e63edf2d7ff545",
+      "working_git_blob": "2dd6ec550b8b61d7e8ff587a28e63edf2d7ff545",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/api/src/oi_api/migrate.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "6ea6e7b9da368f7585adff85dfabf2473766554d",
+      "working_git_blob": "6ea6e7b9da368f7585adff85dfabf2473766554d",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/api/src/oi_api/patients.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "9b9de26a3a6aee4b4573570ae0537a952573c66f",
+      "working_git_blob": "9b9de26a3a6aee4b4573570ae0537a952573c66f",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/api/src/oi_api/record_requests.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "74f9a698e639dc57b82e18606f9200dc5d9b148b",
+      "working_git_blob": "74f9a698e639dc57b82e18606f9200dc5d9b148b",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/api/src/oi_api/request_limits.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "a553cdbe2d859ed3977eaa2216005e91b69c74e2",
+      "working_git_blob": "a553cdbe2d859ed3977eaa2216005e91b69c74e2",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/api/src/oi_api/sources.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "57e38bb164da69dac1dd0113648d76ec0ab86eaa",
+      "working_git_blob": "57e38bb164da69dac1dd0113648d76ec0ab86eaa",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/api/tests/http_support.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "efdec929058fa7e7521c7c211aed944c5056f3d5",
+      "working_git_blob": "efdec929058fa7e7521c7c211aed944c5056f3d5",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/api/tests/test_case_bindings.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "50b87993ad1cf6c43cbc0c2e7f4205ddf27b4eaf",
+      "working_git_blob": "50b87993ad1cf6c43cbc0c2e7f4205ddf27b4eaf",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/api/tests/test_contracts.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "98e4923e869dfbfa2ffbd370daf71a13776d18b2",
+      "working_git_blob": "98e4923e869dfbfa2ffbd370daf71a13776d18b2",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/api/tests/test_dependency_gate.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "b75bc2831c77e6abe2c93dab472ee3b92bf46087",
+      "working_git_blob": "b75bc2831c77e6abe2c93dab472ee3b92bf46087",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/api/tests/test_migrations.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "56e73f4ed38f58b1995c6ddc02d07a837756b578",
+      "working_git_blob": "56e73f4ed38f58b1995c6ddc02d07a837756b578",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/api/tests/test_patients.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "35879b908719c2742598dc0bb56f793b9d165e14",
+      "working_git_blob": "35879b908719c2742598dc0bb56f793b9d165e14",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/api/tests/test_received_record_requests.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "b0018781b953e89e214895bf9e60ff35947a399f",
+      "working_git_blob": "b0018781b953e89e214895bf9e60ff35947a399f",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/api/tests/test_record_requests.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "f8ce62da5ac5576b18b7f70868726a49414330ae",
+      "working_git_blob": "f8ce62da5ac5576b18b7f70868726a49414330ae",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/api/tests/test_registry_migrations.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "f0ddc5b20bc6ed5651c981d2f31086bd915d7258",
+      "working_git_blob": "f0ddc5b20bc6ed5651c981d2f31086bd915d7258",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/api/tests/test_source_versions.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "64cefcba6f010d71f78cb34d161901d1b0678340",
+      "working_git_blob": "64cefcba6f010d71f78cb34d161901d1b0678340",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/api/tools/check_dependencies.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "ed12792580f9a9e0a8dfa6ee0cd0ce3f6a06ee2a",
+      "working_git_blob": "ed12792580f9a9e0a8dfa6ee0cd0ce3f6a06ee2a",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/api/tools/verify_registry_compose.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "64e9624c6a702b864922b74f397ebdbf96602c00",
+      "working_git_blob": "64e9624c6a702b864922b74f397ebdbf96602c00",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/web/.gitignore",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "846f54837f0a7e0938055f988e8bb18246a664ec",
+      "working_git_blob": "846f54837f0a7e0938055f988e8bb18246a664ec",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/web/index.html",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "25be6fb473e653d1724e53364964ffab5ca4b5e6",
+      "working_git_blob": "25be6fb473e653d1724e53364964ffab5ca4b5e6",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/web/package-lock.json",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "5fde6b11a97f71461e1c1b22248c2930641da134",
+      "working_git_blob": "5fde6b11a97f71461e1c1b22248c2930641da134",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/web/package.json",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "3a469cfaf6a10319fc3334ecbf450a6514cc13d6",
+      "working_git_blob": "3a469cfaf6a10319fc3334ecbf450a6514cc13d6",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/web/src/assets.d.ts",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "35306c6fc9aed088a742e2337d44bbf877c6ae8e",
+      "working_git_blob": "35306c6fc9aed088a742e2337d44bbf877c6ae8e",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/web/src/registry-client.ts",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "f879e68b4e9f361312898c558d76ba3ab5366374",
+      "working_git_blob": "f879e68b4e9f361312898c558d76ba3ab5366374",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/web/src/source-contracts.ts",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "72132df0706069ad0ea69409ce4b85939c1dbbe2",
+      "working_git_blob": "72132df0706069ad0ea69409ce4b85939c1dbbe2",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/web/tests/registry-client.test.mjs",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "3224669bba71a63f1d313621cdc12ee8a76dff56",
+      "working_git_blob": "3224669bba71a63f1d313621cdc12ee8a76dff56",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/web/tools/license-gate.mjs",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "487e717d7bbb9aaa66d0b94add46580aca33d8e5",
+      "working_git_blob": "487e717d7bbb9aaa66d0b94add46580aca33d8e5",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/web/tsconfig.client.json",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "06a443f7aaf1ad2032d5386a9597f9d7b4b0d2bc",
+      "working_git_blob": "06a443f7aaf1ad2032d5386a9597f9d7b4b0d2bc",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/web/tsconfig.json",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "4471965953d4a9a4adba8a0a443f70b91be82e03",
+      "working_git_blob": "4471965953d4a9a4adba8a0a443f70b91be82e03",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "apps/web/vite.config.mjs",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "22790de3afeeccd063988940e5ea7168ec6c4350",
+      "working_git_blob": "22790de3afeeccd063988940e5ea7168ec6c4350",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "examples/patient-access/EXPECTED_RESULTS.json",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "900632734d3c3ead31e6beff5fc720a6b92a36d5",
+      "working_git_blob": "900632734d3c3ead31e6beff5fc720a6b92a36d5",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "examples/patient-access/oi017-collision-wrong-binding.txt",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "11423528565f95681da486a11aff4330dbb5db38",
+      "working_git_blob": "11423528565f95681da486a11aff4330dbb5db38",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "examples/patient-access/oi017-encounter-inst-a.txt",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "f49265287be3ffa6e7a812f932c4732f63f14efc",
+      "working_git_blob": "f49265287be3ffa6e7a812f932c4732f63f14efc",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "examples/patient-access/oi017-imaging-report-only.txt",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "d69390193fc55269d220988961e9ed65c7bea1fb",
+      "working_git_blob": "d69390193fc55269d220988961e9ed65c7bea1fb",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "examples/patient-access/oi017-medications-inst-a.txt",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "a3dd0a98b1d4bfd0f852fe8d9c2b0dbd326e4992",
+      "working_git_blob": "a3dd0a98b1d4bfd0f852fe8d9c2b0dbd326e4992",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "examples/patient-access/oi017-pathology-specimen-a-amended.txt",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "1f4e9f3b8df861613c03662c6fb5aef4a056c81a",
+      "working_git_blob": "1f4e9f3b8df861613c03662c6fb5aef4a056c81a",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "examples/patient-access/oi017-pathology-specimen-a.txt",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "7ee6d30012bf7da712381160838bf5aad3a08876",
+      "working_git_blob": "7ee6d30012bf7da712381160838bf5aad3a08876",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "examples/patient-access/oi017-pathology-specimen-b.txt",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "b2f71a4bff98804058667b670be1e2697734640b",
+      "working_git_blob": "b2f71a4bff98804058667b670be1e2697734640b",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "examples/synthetic/alpha-imaging.txt",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "200cdc768c182272b6311a636fa3bbcdd260ab47",
+      "working_git_blob": "200cdc768c182272b6311a636fa3bbcdd260ab47",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "examples/synthetic/alpha-pathology-amended.txt",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "ef0fa7a34b28ba57adb763b471e06f63abf94662",
+      "working_git_blob": "ef0fa7a34b28ba57adb763b471e06f63abf94662",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "examples/synthetic/alpha-pathology-original.txt",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "42c7a1976773b39b1a77f864d86e6cedafb81869",
+      "working_git_blob": "42c7a1976773b39b1a77f864d86e6cedafb81869",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "examples/synthetic/beta-pathology.txt",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "34a2c9550ea6ca232b2fbe44c783c956c0f98bc7",
+      "working_git_blob": "34a2c9550ea6ca232b2fbe44c783c956c0f98bc7",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "examples/synthetic/crossref-metadata-fixture.json",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "cd6f8732fecaa06e33fb5fa5b31d58d3217247fc",
+      "working_git_blob": "cd6f8732fecaa06e33fb5fa5b31d58d3217247fc",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "examples/synthetic/demo-evidence.txt",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "150fda351be3016ea5b2d34135562a16197a54d5",
+      "working_git_blob": "150fda351be3016ea5b2d34135562a16197a54d5",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "examples/synthetic/demo-investigation.json",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "4aa0b1c9b4b433b0a5f4d93f1b24163b4635b0a7",
+      "working_git_blob": "4aa0b1c9b4b433b0a5f4d93f1b24163b4635b0a7",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "examples/synthetic/discovery-literature-001.txt",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "40ee4cf2e7e09de0ca3ecdfab732fc04ef728e06",
+      "working_git_blob": "40ee4cf2e7e09de0ca3ecdfab732fc04ef728e06",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "examples/synthetic/discovery-trial-001.txt",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "3d09848d8716dcba545a7821046fdea6ca007c26",
+      "working_git_blob": "3d09848d8716dcba545a7821046fdea6ca007c26",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "examples/synthetic/oi019-a-t0-imaging.txt",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "cfbc6df7037f464eba3d7cf41b34761252bf1d9d",
+      "working_git_blob": "cfbc6df7037f464eba3d7cf41b34761252bf1d9d",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "examples/synthetic/oi019-a-t0-pathology.txt",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "24736034ce23f435198220ea7da13400a05d4e47",
+      "working_git_blob": "24736034ce23f435198220ea7da13400a05d4e47",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "examples/synthetic/oi019-a-t1-clinical.txt",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "e51daa55eb648fc83086cb40a8c0d22a72cac4cc",
+      "working_git_blob": "e51daa55eb648fc83086cb40a8c0d22a72cac4cc",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "examples/synthetic/oi019-a-t2-clinical-amended.txt",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "2c0374f6e707d824023d0d4d2758ad4dee5354ee",
+      "working_git_blob": "2c0374f6e707d824023d0d4d2758ad4dee5354ee",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "examples/synthetic/oi019-b-t0-imaging.txt",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "ace74aef08727aafd610b5b97092be022377b3ba",
+      "working_git_blob": "ace74aef08727aafd610b5b97092be022377b3ba",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "examples/synthetic/oi019-b-t0-pathology.txt",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "69b88867b112f58790beb2c5a777e6830bd3323b",
+      "working_git_blob": "69b88867b112f58790beb2c5a777e6830bd3323b",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "examples/synthetic/oi019-b-t1-clinical.txt",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "915e653fc01662cba2ff83ff6b286b697f7f79d4",
+      "working_git_blob": "915e653fc01662cba2ff83ff6b286b697f7f79d4",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "examples/synthetic/oi019-b-t2-clinical-amended.txt",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "6350337bbc4bcb81943274dab53216ccc4c3fab9",
+      "working_git_blob": "6350337bbc4bcb81943274dab53216ccc4c3fab9",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "examples/synthetic/oi019-evidence-control.txt",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "8332c840bf553afec40f12fa1e0905387c6954dc",
+      "working_git_blob": "8332c840bf553afec40f12fa1e0905387c6954dc",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "examples/synthetic/oi019-evidence-discussion.txt",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "926b8cd295129f3caa9bd4d0869171e1eb32e5a5",
+      "working_git_blob": "926b8cd295129f3caa9bd4d0869171e1eb32e5a5",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "examples/synthetic/oi019-evidence-hypothetical.txt",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "af3859158c0d76e3aa08a510b4be0f0f92e96d03",
+      "working_git_blob": "af3859158c0d76e3aa08a510b4be0f0f92e96d03",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "examples/synthetic/oi019-evidence-invalid.txt",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "de380db02bee882c69540809646f0b563cc36d25",
+      "working_git_blob": "de380db02bee882c69540809646f0b563cc36d25",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "examples/synthetic/oi019-readme.md",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "1f4f89b79628925a363b8c5f71886f12e7394af1",
+      "working_git_blob": "1f4f89b79628925a363b8c5f71886f12e7394af1",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "examples/synthetic/oi019-wrong-patient.txt",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "77a11e4717efd30fabee9d3d6e225e2ead3723a9",
+      "working_git_blob": "77a11e4717efd30fabee9d3d6e225e2ead3723a9",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "examples/synthetic/wrong-patient.txt",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "242ecc95be3dfa772adf6d3e4303516c0b303e9a",
+      "working_git_blob": "242ecc95be3dfa772adf6d3e4303516c0b303e9a",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "src/open_intelligence/__init__.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "bbb782d8044f66db34b4ba51633d4d7b566b9227",
+      "working_git_blob": "bbb782d8044f66db34b4ba51633d4d7b566b9227",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "src/open_intelligence/__main__.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "434cfc6a408397731f433c5b3d98514841887fd0",
+      "working_git_blob": "434cfc6a408397731f433c5b3d98514841887fd0",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "src/open_intelligence/changes.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "430f7998c43a8a210c747baff1b4a88eb9945443",
+      "working_git_blob": "430f7998c43a8a210c747baff1b4a88eb9945443",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "src/open_intelligence/discovery.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "3bfb3c6f39f36bf92f38eb67a96eb48c7f8818cf",
+      "working_git_blob": "3bfb3c6f39f36bf92f38eb67a96eb48c7f8818cf",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "src/open_intelligence/investigation.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "d29f70d65e4d48a45fedc4cebd5e045a074f665e",
+      "working_git_blob": "d29f70d65e4d48a45fedc4cebd5e045a074f665e",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "src/open_intelligence/mission.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "4fc444d026552768a6008ee291aa2eaff41144ad",
+      "working_git_blob": "4fc444d026552768a6008ee291aa2eaff41144ad",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "src/open_intelligence/patient_access.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "d288aa36d9dd45a021381d363066452c86cd3080",
+      "working_git_blob": "d288aa36d9dd45a021381d363066452c86cd3080",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "src/open_intelligence/patient_registry.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "7edade0e13d81eebc4ffeac1a19beeb6c241cb3e",
+      "working_git_blob": "7edade0e13d81eebc4ffeac1a19beeb6c241cb3e",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "src/open_intelligence/postgres_registry.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "f0f59af9792c7ba8f36911c5768bae5bd7483cfd",
+      "working_git_blob": "f0f59af9792c7ba8f36911c5768bae5bd7483cfd",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "src/open_intelligence/rights.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "32cf33dc7261255dc1f7b7fe218b1c29903681e0",
+      "working_git_blob": "32cf33dc7261255dc1f7b7fe218b1c29903681e0",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "src/open_intelligence/sql/patient_registry_postgres.sql",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "f4ab70255583e1a1a233536ff4a83ee33bb31512",
+      "working_git_blob": "f4ab70255583e1a1a233536ff4a83ee33bb31512",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "src/open_intelligence/store.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "6ebcb55de2919e0dc6f2d5d70d01ef3dd1dc6e03",
+      "working_git_blob": "6ebcb55de2919e0dc6f2d5d70d01ef3dd1dc6e03",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "src/open_intelligence/timeline.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "f5f77d918fc4c126053ba5d62f77a726c5897de5",
+      "working_git_blob": "f5f77d918fc4c126053ba5d62f77a726c5897de5",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tests/browser_journey.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "a0bf2e7e94b7a25de1bc922a92f9ace098bc7890",
+      "working_git_blob": "a0bf2e7e94b7a25de1bc922a92f9ace098bc7890",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tests/browser_source_dialogs.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "9d3be7be8ce6907bfa840c3d5b13eeb6e954e16a",
+      "working_git_blob": "9d3be7be8ce6907bfa840c3d5b13eeb6e954e16a",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tests/browser_text_changes.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "117a65ab016c22189b075fa88273175aabaf5e88",
+      "working_git_blob": "117a65ab016c22189b075fa88273175aabaf5e88",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tests/patient_mission_browser_journey.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "c481ae5bfa08e4c628b57b82e7462f8ace7b3de5",
+      "working_git_blob": "c481ae5bfa08e4c628b57b82e7462f8ace7b3de5",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tests/test_biological_assets.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "3aeaa756034687f6b4effb976ab82ae8651b7f7e",
+      "working_git_blob": "3aeaa756034687f6b4effb976ab82ae8651b7f7e",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tests/test_changes.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "e0ce8e72d0e5374ecdaad034fc99849de8c6f291",
+      "working_git_blob": "e0ce8e72d0e5374ecdaad034fc99849de8c6f291",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tests/test_changes_http.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "471b690a6478005beb6930399a9b2f18fe0e4075",
+      "working_git_blob": "471b690a6478005beb6930399a9b2f18fe0e4075",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tests/test_ci_data_boundaries.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "28db186ab011eec2c107825c653622c2fdd86f77",
+      "working_git_blob": "28db186ab011eec2c107825c653622c2fdd86f77",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tests/test_crossref_metadata.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "7aff424398863b7f0750990785866fd91071e9fb",
+      "working_git_blob": "7aff424398863b7f0750990785866fd91071e9fb",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tests/test_discovery.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "ed47fd5cc8986812ac26be9ae165bf46cf9a66b0",
+      "working_git_blob": "ed47fd5cc8986812ac26be9ae165bf46cf9a66b0",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tests/test_discovery_rights.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "6228bb223e0d5f5b39e057d9d38227222db76fe4",
+      "working_git_blob": "6228bb223e0d5f5b39e057d9d38227222db76fe4",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tests/test_evaluation_packet.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "adc7e8338b76cd35a8913ea521e868c869949ca8",
+      "working_git_blob": "adc7e8338b76cd35a8913ea521e868c869949ca8",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tests/test_evaluation_packet_json_boundary.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "51774c7d2aa185e6551fedbc1750780ca667b8aa",
+      "working_git_blob": "51774c7d2aa185e6551fedbc1750780ca667b8aa",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tests/test_evaluation_preflight.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "15305730b232ad3359a4916189fdadcd8b7e1b44",
+      "working_git_blob": "15305730b232ad3359a4916189fdadcd8b7e1b44",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tests/test_evidence.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "1a640d337c81fb7fe26407a766c691d26ca2ef19",
+      "working_git_blob": "1a640d337c81fb7fe26407a766c691d26ca2ef19",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tests/test_evidence_http.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "5838e0543eddcfcad63b9f88d02bdecc9a60b613",
+      "working_git_blob": "5838e0543eddcfcad63b9f88d02bdecc9a60b613",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tests/test_http.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "0cdedd44564d96d1b08e14845cef2251275f5701",
+      "working_git_blob": "0cdedd44564d96d1b08e14845cef2251275f5701",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tests/test_investigation.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "80101f9477ec45bdcc89e6fa8f3b30a9ed345430",
+      "working_git_blob": "80101f9477ec45bdcc89e6fa8f3b30a9ed345430",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tests/test_iv01_evidence_replay.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "aad5cca9eca29b2afd08cab0bf62d9586b558b50",
+      "working_git_blob": "aad5cca9eca29b2afd08cab0bf62d9586b558b50",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tests/test_iv01_store.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "ea0ddda2cb6ddc25b1af8e6f6f5a6a6c6323633b",
+      "working_git_blob": "ea0ddda2cb6ddc25b1af8e6f6f5a6a6c6323633b",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tests/test_iv02_iv03_contract.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "7f97477c99dca7d9243b3f8f3accbe0f65d62683",
+      "working_git_blob": "7f97477c99dca7d9243b3f8f3accbe0f65d62683",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tests/test_model_investigation_panel.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "6fc35c928d84c6d8e670480e50a6eab127b29fbe",
+      "working_git_blob": "6fc35c928d84c6d8e670480e50a6eab127b29fbe",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tests/test_option_preservation.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "285a83351182fe55305678d2668445b691cd2c67",
+      "working_git_blob": "285a83351182fe55305678d2668445b691cd2c67",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tests/test_option_review_regressions.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "d863c7e490f3da6f63c66de485279d8a1ad3dbb2",
+      "working_git_blob": "d863c7e490f3da6f63c66de485279d8a1ad3dbb2",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tests/test_options.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "0cee8afc64c0e71c16f020b45152baf50b3c383c",
+      "working_git_blob": "0cee8afc64c0e71c16f020b45152baf50b3c383c",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tests/test_patient_access.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "b1831ea7f51f95000d9f0aeb171cdbb1e913000b",
+      "working_git_blob": "b1831ea7f51f95000d9f0aeb171cdbb1e913000b",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tests/test_patient_mission.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "fa24251ee6b588d3c3c375e7edbea51462fa7311",
+      "working_git_blob": "fa24251ee6b588d3c3c375e7edbea51462fa7311",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tests/test_patient_mission_http.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "b8cafb0e7d6140f969a57254bb05197927359ec8",
+      "working_git_blob": "b8cafb0e7d6140f969a57254bb05197927359ec8",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tests/test_patient_mission_ui.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "9c2815c5869afec2bcbf345d49ee1ce9f3ac0885",
+      "working_git_blob": "9c2815c5869afec2bcbf345d49ee1ce9f3ac0885",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tests/test_rights_broker.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "910996453bd020efa55808de9a01f390a3e85858",
+      "working_git_blob": "910996453bd020efa55808de9a01f390a3e85858",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tests/test_safety_packet.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "3d709c06915b15ceeafb343d382fea058889bd70",
+      "working_git_blob": "3d709c06915b15ceeafb343d382fea058889bd70",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tests/test_source_dialogs.js",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "607701b3f4d507b688fc3ae80cfc94dac2fe6560",
+      "working_git_blob": "607701b3f4d507b688fc3ae80cfc94dac2fe6560",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tests/test_source_line_diff.js",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "f3150e7badefc9c0a685ab832ac223795db60252",
+      "working_git_blob": "f3150e7badefc9c0a685ab832ac223795db60252",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tests/test_store.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "4eb1a5227e2ad86dfcda62a56ed8f6b4f6fa3847",
+      "working_git_blob": "4eb1a5227e2ad86dfcda62a56ed8f6b4f6fa3847",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tests/test_text_changes.js",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "c1bb93d9e7a3d066fd72a0386b149206cbd0eb90",
+      "working_git_blob": "c1bb93d9e7a3d066fd72a0386b149206cbd0eb90",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tests/test_timeline.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "56c2d26034a28b80d6c0f1e54b0f3b3b74238ec9",
+      "working_git_blob": "56c2d26034a28b80d6c0f1e54b0f3b3b74238ec9",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tests/test_timeline_http.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "d71c31e24c78ad381384cea74c238a70dc6b112e",
+      "working_git_blob": "d71c31e24c78ad381384cea74c238a70dc6b112e",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tests/ui_glance_journey.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "896152e6291b7b2a4ca3650b48e9c2ae406ee371",
+      "working_git_blob": "896152e6291b7b2a4ca3650b48e9c2ae406ee371",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tools/__init__.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "94a600d59472e9818b6a1c83a0c3f38f12d0d513",
+      "working_git_blob": "94a600d59472e9818b6a1c83a0c3f38f12d0d513",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tools/audit_ci_data_boundaries.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "7407664ed0d2f6352fe95fa12f8430b66814efa4",
+      "working_git_blob": "7407664ed0d2f6352fe95fa12f8430b66814efa4",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tools/crossref_metadata.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "7546143c9a20d72791c7e4a984805514e03d6cb7",
+      "working_git_blob": "7546143c9a20d72791c7e4a984805514e03d6cb7",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tools/evaluation_packet.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "7f1b492c7bcaab9674f723f0423b7226161cd1e8",
+      "working_git_blob": "7f1b492c7bcaab9674f723f0423b7226161cd1e8",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tools/evaluation_preflight.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "204da26a91f420f239bc0c51185e6f52e52264ab",
+      "working_git_blob": "204da26a91f420f239bc0c51185e6f52e52264ab",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tools/research/clinical_semantics_probe.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "3a8275f8aa10db09395e22f82249d1cd78b61220",
+      "working_git_blob": "3a8275f8aa10db09395e22f82249d1cd78b61220",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tools/research/data_policy.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "901ecead450e7e575faabe3baae1e2ead12d2ce5",
+      "working_git_blob": "901ecead450e7e575faabe3baae1e2ead12d2ce5",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tools/research/gdc_projection_probe.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "bf58d9a3e7a734b03422b0417a27f68f5a248c00",
+      "working_git_blob": "bf58d9a3e7a734b03422b0417a27f68f5a248c00",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tools/research/postgres_bakeoff/002_registry_port.sql",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "ff4d5ad6f0c9870b955711eee87c0df9d3a121e0",
+      "working_git_blob": "ff4d5ad6f0c9870b955711eee87c0df9d3a121e0",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tools/research/public_case_intake.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "85ca8f9f65855cd559fcb017935716f626467a5f",
+      "working_git_blob": "85ca8f9f65855cd559fcb017935716f626467a5f",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tools/research/public_evidence_probe.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "5a9e3483304d635979e1a9f9cc6f4bd2ae634322",
+      "working_git_blob": "5a9e3483304d635979e1a9f9cc6f4bd2ae634322",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tools/research/requirements.lock",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "b235f6203fe10e39e5467eb32dbfa12687f3302b",
+      "working_git_blob": "b235f6203fe10e39e5467eb32dbfa12687f3302b",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tools/research/rna_expression_probe.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "93c4608f5a1dfd6320fe2e6554975ab1245ef74b",
+      "working_git_blob": "93c4608f5a1dfd6320fe2e6554975ab1245ef74b",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tools/research/runtime_probe.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "9a75c4553a0a4bf1475fd85ba1cc16a1d1a7e27f",
+      "working_git_blob": "9a75c4553a0a4bf1475fd85ba1cc16a1d1a7e27f",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tools/research/single_cell_probe.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "3596c891ee3aa9e346367b13e07ba2708dc35bbb",
+      "working_git_blob": "3596c891ee3aa9e346367b13e07ba2708dc35bbb",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tools/research/test_clinical_semantics_probe.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "1d45f68831f398beff12c2671f92dbb2f15e1bf1",
+      "working_git_blob": "1d45f68831f398beff12c2671f92dbb2f15e1bf1",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tools/research/test_gdc_projection_probe.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "a49f2e56bd12df614e72ffbf18ce6d830a1a0b3a",
+      "working_git_blob": "a49f2e56bd12df614e72ffbf18ce6d830a1a0b3a",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tools/research/test_public_case_intake.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "f317f8502ed2fdbee13d2da6a7e62a12923310a9",
+      "working_git_blob": "f317f8502ed2fdbee13d2da6a7e62a12923310a9",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tools/research/test_public_evidence_probe.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "354d945b2d57e653913fc074e4a15a6f7a924d1c",
+      "working_git_blob": "354d945b2d57e653913fc074e4a15a6f7a924d1c",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tools/research/test_restricted_research_entrypoints.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "c7a7c3de6a70adc235b731bd17ae2c1bfc8ca727",
+      "working_git_blob": "c7a7c3de6a70adc235b731bd17ae2c1bfc8ca727",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tools/research/test_rna_expression_probe.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "10ef2ac5ad3e3fb2114227277e1014f4e7f591f2",
+      "working_git_blob": "10ef2ac5ad3e3fb2114227277e1014f4e7f591f2",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tools/research/test_semantic_evidence.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "5483656966db8e8c7770a343987ddd4dbaac970c",
+      "working_git_blob": "5483656966db8e8c7770a343987ddd4dbaac970c",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tools/research/test_sid_case_data_disabled.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "cd5a0ceca4792b997b6df9024e54e6e11ae4871d",
+      "working_git_blob": "cd5a0ceca4792b997b6df9024e54e6e11ae4871d",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tools/research/test_single_cell_probe.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "f454bd30a92d90308311dc370469ad54adea3a01",
+      "working_git_blob": "f454bd30a92d90308311dc370469ad54adea3a01",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tools/research/test_trial_screening_probe.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "af38e6a645d6c096734a3dfb09a379d134858acb",
+      "working_git_blob": "af38e6a645d6c096734a3dfb09a379d134858acb",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "tools/research/trial_screening_probe.py",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "108a01888aae10c48315b9ba8dd5dae8ffb055fd",
+      "working_git_blob": "108a01888aae10c48315b9ba8dd5dae8ffb055fd",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "validation/iv01/ADJUDICATION.md",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "d88c190e06e215dd8e857b36e22a8914344f899e",
+      "working_git_blob": "d88c190e06e215dd8e857b36e22a8914344f899e",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "validation/iv01/BASELINE.md",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "fb76d4727a1f7d754dc8017af77ae55f0552e054",
+      "working_git_blob": "fb76d4727a1f7d754dc8017af77ae55f0552e054",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "validation/iv01/README.md",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "d3f6b9c1b2d710b2b8db8a6be93ac5b66f57f078",
+      "working_git_blob": "d3f6b9c1b2d710b2b8db8a6be93ac5b66f57f078",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "validation/iv01/SCORING.md",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "fb20da08248f61d5a3fab8a13c802261445dbf82",
+      "working_git_blob": "fb20da08248f61d5a3fab8a13c802261445dbf82",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "validation/iv01/cases.json",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "a124b0435f2297e542125ca122119ca6d33a613c",
+      "working_git_blob": "a124b0435f2297e542125ca122119ca6d33a613c",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "validation/iv01/coordinator_key.json",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "981bea98f113a45d010643ccb7e711412ad26dd3",
+      "working_git_blob": "981bea98f113a45d010643ccb7e711412ad26dd3",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "validation/iv01/protocol.json",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "0361d7a9508f512aa7cf98a35309be5190ab1acc",
+      "working_git_blob": "0361d7a9508f512aa7cf98a35309be5190ab1acc",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "validation/iv01/results_template.csv",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "4b4ea758d17db963422d17d6f3a40314ba619c43",
+      "working_git_blob": "4b4ea758d17db963422d17d6f3a40314ba619c43",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "validation/iv01/run_record_template.json",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "595bf1b9cff75a0d30d2f62fb028c7fbb8f6439e",
+      "working_git_blob": "595bf1b9cff75a0d30d2f62fb028c7fbb8f6439e",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "validation/iv04/ACTIVATION_CHECKLIST.md",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "2447da2c1733e4f3434fe6c20ca95ebcba9dca2d",
+      "working_git_blob": "2447da2c1733e4f3434fe6c20ca95ebcba9dca2d",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "validation/iv04/INDEPENDENCE_AND_ROLES.md",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "1038a2cd1f20ef15b8d04558082581c05acc9d01",
+      "working_git_blob": "1038a2cd1f20ef15b8d04558082581c05acc9d01",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "validation/iv04/INVITATION_BRIEF.md",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "f71a573b98d4681372675daf673cbd0720f5fd09",
+      "working_git_blob": "f71a573b98d4681372675daf673cbd0720f5fd09",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "validation/iv04/README.md",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "48a4d66ebb1ef3cc7f8b07f1eec05e50ddaf11c5",
+      "working_git_blob": "48a4d66ebb1ef3cc7f8b07f1eec05e50ddaf11c5",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "validation/iv04/decision_template.json",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "de52e15859554e451916baa6250f9381045ccc12",
+      "working_git_blob": "de52e15859554e451916baa6250f9381045ccc12",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "validation/iv04/register_template.json",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "3e56a3c20b88a921eb317bea9038ef37f2d5dd1e",
+      "working_git_blob": "3e56a3c20b88a921eb317bea9038ef37f2d5dd1e",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "web/app.js",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "d5cdcebeba59ddd0590d3cd34419809d11182535",
+      "working_git_blob": "d5cdcebeba59ddd0590d3cd34419809d11182535",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "web/base.css",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "0cf885c54bde2a7fc85f7c87c8dd9a76a6d60b3a",
+      "working_git_blob": "0cf885c54bde2a7fc85f7c87c8dd9a76a6d60b3a",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "web/index.html",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "d77af91b37a12e690e95256edf9dae3b87d7a6c1",
+      "working_git_blob": "d77af91b37a12e690e95256edf9dae3b87d7a6c1",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "web/mission.js",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "13364906ab0d3a920691a2cf865039f9340a36a3",
+      "working_git_blob": "13364906ab0d3a920691a2cf865039f9340a36a3",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "web/style.css",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "17b6e9e2da008bf037608c4089a25b6698e40553",
+      "working_git_blob": "17b6e9e2da008bf037608c4089a25b6698e40553",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    },
+    {
+      "path": "web/tokens.css",
+      "mode": "100644",
+      "type": "blob",
+      "base_git_blob": "969752d7511ffbeefe73831bb85c9b047bd41d81",
+      "working_git_blob": "969752d7511ffbeefe73831bb85c9b047bd41d81",
+      "working_mode": "100644",
+      "byte_and_mode_identical": true
+    }
+  ],
+  "evidence_secret_scan": {
+    "patterns": [
+      "private_key",
+      "github_token",
+      "aws_access_key",
+      "literal_bearer_token"
+    ],
+    "files_checked": [
+      "docs/ux/evidence/README.md",
+      "docs/ux/evidence/baseline-audit.md",
+      "docs/ux/evidence/baseline-browser.txt",
+      "docs/ux/evidence/baseline-capture.txt",
+      "docs/ux/evidence/baseline-python-versions.json",
+      "docs/ux/evidence/baseline-red-browser.txt",
+      "docs/ux/evidence/browser-final.txt",
+      "docs/ux/evidence/build-final.txt",
+      "docs/ux/evidence/client-final.txt",
+      "docs/ux/evidence/contrast-measurements.json",
+      "docs/ux/evidence/contrast-measurements.md",
+      "docs/ux/evidence/long-source-red-browser.txt",
+      "docs/ux/evidence/reference-suite-summary.md",
+      "docs/ux/evidence/reference-suite.txt",
+      "docs/ux/evidence/review-red-browser.txt",
+      "docs/ux/evidence/rights-final.txt",
+      "docs/ux/evidence/upstream-reconciliation.md"
+    ],
+    "matches": [],
+    "qualification": "Narrow pattern scan plus manual review; not proof of absence of every possible secret. Screenshot content was inspected and contains only independent fictional identifiers and source statements; no credential field value is exposed."
+  },
+  "qualifications": [
+    "Worktree compared to explicit reconciled parent. Local source checkpoint is recorded separately; no hosted publication, merge, deployment, production authority, clinical validation or comprehensive accessibility claim is made by this report.",
+    "Further documentation-only artifacts may be added after this inventory; final publication must retain these product/test hashes or regenerate the boundary report.",
+    "No test counts are inferred from byte identity. Actual execution evidence is retained separately."
+  ]
+}

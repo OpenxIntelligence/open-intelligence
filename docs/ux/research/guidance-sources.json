@@ -1,0 +1,1317 @@
+{
+  "project": "Open Intelligence",
+  "scope": "Frontend-only UX redesign complementary research",
+  "research_date": "2026-11-02",
+  "research_timezone": "America/New_York",
+  "internal_baseline": {
+    "candidate_sha": "d8de9aaca352cc58b64e9e32440f4ea248b02cb8",
+    "head_selection": "Selected repository baseline; listed files inspected locally for this research.",
+    "files": [
+      "AGENTS.md",
+      "README.md",
+      "docs/FIRST_PRINCIPLES_PLAN.md",
+      "docs/EXECUTION_BACKLOG.csv",
+      "apps/web/package.json",
+      "apps/web/README.md",
+      "apps/web/src/main.tsx"
+    ]
+  },
+  "sources": [
+    {
+      "source_id": "G001",
+      "topic": "SAFER guide currency",
+      "title": "ONC SAFER Guides overview",
+      "url": "https://healthit.gov/clinical-quality-and-safety/safer-guides/",
+      "publication_date": null,
+      "date_note": "Page explicitly last updated February 27, 2026; guides are labeled 2025.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "official_guidance",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "The current set has eight 2025 SAFER Guides; implementation is not legal-compliance proof.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Use as a cited research input; apply only to existing frontend behavior.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "healthcare_ux_guidance.md"
+      ]
+    },
+    {
+      "source_id": "G002",
+      "topic": "EHR display fragmentation",
+      "title": "Finding the Safer Way: Novel Interaction Design Approaches to Health IT Safety — Final Report",
+      "url": "https://digital.ahrq.gov/sites/default/files/docs/citation/r01hs023708-senathirajah-final-report-2021.pdf",
+      "publication_date": "2021",
+      "date_note": "AHRQ-funded report; project dates July 2015–April 2021.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "original_research_report",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Laboratory and simulation research supports investigating reduced display fragmentation, with stated sample/training/technical limitations.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Use as a cited research input; apply only to existing frontend behavior.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "healthcare_ux_guidance.md"
+      ]
+    },
+    {
+      "source_id": "G003",
+      "topic": "Patient identification",
+      "title": "2025 SAFER Guide: Patient Identification",
+      "url": "https://healthit.gov/wp-content/uploads/2025/01/Safer-Guide-6.-Patient-Identification-Final.pdf",
+      "publication_date": "2025",
+      "date_note": "2025 guide edition; PDF footers say August 2024.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "official_guidance",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Practices 1.2–1.3 address patient-list differentiation and identity visibility across EHR interfaces.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Use as a cited research input; apply only to existing frontend behavior.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "healthcare_ux_guidance.md"
+      ]
+    },
+    {
+      "source_id": "G004",
+      "topic": "Result state and display",
+      "title": "2025 SAFER Guide: Test Results Reporting and Follow-Up",
+      "url": "https://healthit.gov/wp-content/uploads/2025/06/SAFER-Guide-8.-Test-Results-Reporting-Final.pdf",
+      "publication_date": "2025",
+      "date_note": "2025 guide edition; PDF footers say August 2024.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "official_guidance",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Guidance distinguishes lifecycle status, amendments, responsible clinicians and clear result display.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Use as a cited research input; apply only to existing frontend behavior.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "healthcare_ux_guidance.md"
+      ]
+    },
+    {
+      "source_id": "G005",
+      "topic": "Patient portals and clinical communication",
+      "title": "2025 SAFER Guide: Clinician Communication",
+      "url": "https://healthit.gov/wp-content/uploads/2025/06/SAFER-Guide-1.-Clinical-Communication-Final.pdf",
+      "publication_date": "2025",
+      "date_note": "2025 guide edition; PDF footers say August 2024.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "official_guidance",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Patient portal navigation, communication expectations and inbox organization are covered by practices 1.4 and 2.1.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Use as a cited research input; apply only to existing frontend behavior.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "healthcare_ux_guidance.md"
+      ]
+    },
+    {
+      "source_id": "G006",
+      "topic": "Provenance and resource versions",
+      "title": "FHIR R4 v4.0.1 — Provenance",
+      "url": "https://hl7.org/fhir/R4/provenance.html",
+      "publication_date": null,
+      "date_note": "Version-pinned R4 specification; no new FHIR integration is proposed.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "official_standard",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Provenance describes activity, entities and agents associated with creation/revision of a resource version.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Use as a cited research input; apply only to existing frontend behavior.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "healthcare_ux_guidance.md"
+      ]
+    },
+    {
+      "source_id": "G007",
+      "topic": "Privacy and contextual access",
+      "title": "HHS Minimum Necessary Requirement",
+      "url": "https://www.hhs.gov/hipaa/for-professionals/privacy/guidance/minimum-necessary-requirement/index.html",
+      "publication_date": null,
+      "date_note": "No publication date established; current page retrieved.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "official_regulatory_guidance",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Minimum necessary guidance includes role-based workforce considerations and explicit treatment/individual-disclosure exceptions.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Use as a cited research input; apply only to existing frontend behavior.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "healthcare_ux_guidance.md"
+      ]
+    },
+    {
+      "source_id": "G008",
+      "topic": "Accessibility",
+      "title": "Web Content Accessibility Guidelines (WCAG) 2.2",
+      "url": "https://www.w3.org/TR/WCAG22/",
+      "publication_date": "2024-12-12",
+      "date_note": "Retrieved recommendation is dated December 12, 2024.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "normative_standard",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Normative WCAG 2.2 success criteria and conformance framework.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Use as a cited research input; apply only to existing frontend behavior.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "healthcare_ux_guidance.md"
+      ]
+    },
+    {
+      "source_id": "G009",
+      "topic": "Accessibility",
+      "title": "WCAG 2.2 Understanding: Keyboard 2.1.1",
+      "url": "https://www.w3.org/WAI/WCAG22/Understanding/keyboard.html",
+      "publication_date": null,
+      "date_note": "Informative companion to WCAG 2.2; page publication date not established.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "official_informative_standard_guidance",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Explanation of the named WCAG criterion, exceptions and intent; not a standalone complete-conformance test.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Use as a cited research input; apply only to existing frontend behavior.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "healthcare_ux_guidance.md"
+      ]
+    },
+    {
+      "source_id": "G010",
+      "topic": "Accessibility",
+      "title": "WCAG 2.2 Understanding: Focus Visible 2.4.7",
+      "url": "https://www.w3.org/WAI/WCAG22/Understanding/focus-visible.html",
+      "publication_date": null,
+      "date_note": "Informative companion to WCAG 2.2; page publication date not established.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "official_informative_standard_guidance",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Explanation of the named WCAG criterion, exceptions and intent; not a standalone complete-conformance test.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Use as a cited research input; apply only to existing frontend behavior.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "healthcare_ux_guidance.md"
+      ]
+    },
+    {
+      "source_id": "G011",
+      "topic": "Accessibility",
+      "title": "WCAG 2.2 Understanding: Focus Not Obscured 2.4.11",
+      "url": "https://www.w3.org/WAI/WCAG22/Understanding/focus-not-obscured-minimum.html",
+      "publication_date": null,
+      "date_note": "Informative companion to WCAG 2.2; page publication date not established.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "official_informative_standard_guidance",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Explanation of the named WCAG criterion, exceptions and intent; not a standalone complete-conformance test.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Use as a cited research input; apply only to existing frontend behavior.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "healthcare_ux_guidance.md"
+      ]
+    },
+    {
+      "source_id": "G012",
+      "topic": "Accessibility",
+      "title": "WCAG 2.2 Understanding: Contrast 1.4.3",
+      "url": "https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html",
+      "publication_date": null,
+      "date_note": "Informative companion to WCAG 2.2; page publication date not established.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "official_informative_standard_guidance",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Explanation of the named WCAG criterion, exceptions and intent; not a standalone complete-conformance test.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Use as a cited research input; apply only to existing frontend behavior.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "healthcare_ux_guidance.md"
+      ]
+    },
+    {
+      "source_id": "G013",
+      "topic": "Accessibility",
+      "title": "WCAG 2.2 Understanding: Non-text Contrast 1.4.11",
+      "url": "https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast.html",
+      "publication_date": null,
+      "date_note": "Informative companion to WCAG 2.2; page publication date not established.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "official_informative_standard_guidance",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Explanation of the named WCAG criterion, exceptions and intent; not a standalone complete-conformance test.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Use as a cited research input; apply only to existing frontend behavior.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "healthcare_ux_guidance.md"
+      ]
+    },
+    {
+      "source_id": "G014",
+      "topic": "Accessibility",
+      "title": "WCAG 2.2 Understanding: Use of Color 1.4.1",
+      "url": "https://www.w3.org/WAI/WCAG22/Understanding/use-of-color.html",
+      "publication_date": null,
+      "date_note": "Informative companion to WCAG 2.2; page publication date not established.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "official_informative_standard_guidance",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Explanation of the named WCAG criterion, exceptions and intent; not a standalone complete-conformance test.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Use as a cited research input; apply only to existing frontend behavior.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "healthcare_ux_guidance.md"
+      ]
+    },
+    {
+      "source_id": "G015",
+      "topic": "Accessibility",
+      "title": "WCAG 2.2 Understanding: Target Size 2.5.8",
+      "url": "https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html",
+      "publication_date": null,
+      "date_note": "Informative companion to WCAG 2.2; page publication date not established.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "official_informative_standard_guidance",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Explanation of the named WCAG criterion, exceptions and intent; not a standalone complete-conformance test.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Use as a cited research input; apply only to existing frontend behavior.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "healthcare_ux_guidance.md"
+      ]
+    },
+    {
+      "source_id": "G016",
+      "topic": "Accessibility",
+      "title": "WCAG 2.2 Understanding: Reflow 1.4.10",
+      "url": "https://www.w3.org/WAI/WCAG22/Understanding/reflow.html",
+      "publication_date": null,
+      "date_note": "Informative companion to WCAG 2.2; page publication date not established.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "official_informative_standard_guidance",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Explanation of the named WCAG criterion, exceptions and intent; not a standalone complete-conformance test.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Use as a cited research input; apply only to existing frontend behavior.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "healthcare_ux_guidance.md"
+      ]
+    },
+    {
+      "source_id": "G017",
+      "topic": "Accessibility",
+      "title": "WCAG 2.2 Understanding: Error Identification 3.3.1",
+      "url": "https://www.w3.org/WAI/WCAG22/Understanding/error-identification.html",
+      "publication_date": null,
+      "date_note": "Informative companion to WCAG 2.2; page publication date not established.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "official_informative_standard_guidance",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Explanation of the named WCAG criterion, exceptions and intent; not a standalone complete-conformance test.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Use as a cited research input; apply only to existing frontend behavior.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "healthcare_ux_guidance.md"
+      ]
+    },
+    {
+      "source_id": "G018",
+      "topic": "Accessibility",
+      "title": "WCAG 2.2 Understanding: Labels or Instructions 3.3.2",
+      "url": "https://www.w3.org/WAI/WCAG22/Understanding/labels-or-instructions.html",
+      "publication_date": null,
+      "date_note": "Informative companion to WCAG 2.2; page publication date not established.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "official_informative_standard_guidance",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Explanation of the named WCAG criterion, exceptions and intent; not a standalone complete-conformance test.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Use as a cited research input; apply only to existing frontend behavior.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "healthcare_ux_guidance.md"
+      ]
+    },
+    {
+      "source_id": "G019",
+      "topic": "Accessibility",
+      "title": "WCAG 2.2 Understanding: Status Messages 4.1.3",
+      "url": "https://www.w3.org/WAI/WCAG22/Understanding/status-messages.html",
+      "publication_date": null,
+      "date_note": "Informative companion to WCAG 2.2; page publication date not established.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "official_informative_standard_guidance",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Explanation of the named WCAG criterion, exceptions and intent; not a standalone complete-conformance test.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Use as a cited research input; apply only to existing frontend behavior.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "healthcare_ux_guidance.md"
+      ]
+    },
+    {
+      "source_id": "G020",
+      "topic": "Accessibility",
+      "title": "WCAG 2.2 Understanding: Accessible Authentication 3.3.8",
+      "url": "https://www.w3.org/WAI/WCAG22/Understanding/accessible-authentication-minimum.html",
+      "publication_date": null,
+      "date_note": "Informative companion to WCAG 2.2; page publication date not established.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "official_informative_standard_guidance",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Explanation of the named WCAG criterion, exceptions and intent; not a standalone complete-conformance test.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Use as a cited research input; apply only to existing frontend behavior.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "healthcare_ux_guidance.md"
+      ]
+    },
+    {
+      "source_id": "G021",
+      "topic": "Accessibility validation limits",
+      "title": "Playwright — Accessibility testing",
+      "url": "https://playwright.dev/docs/accessibility-testing",
+      "publication_date": null,
+      "date_note": "No publication date established; current page retrieved.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "official_documentation",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Automated checks detect only some accessibility issues; manual and inclusive testing remain necessary.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Use as a cited research input; apply only to existing frontend behavior.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "healthcare_ux_guidance.md",
+        "frontend_technology_evaluation.md"
+      ]
+    },
+    {
+      "source_id": "G022",
+      "topic": "React",
+      "title": "React upstream license",
+      "url": "https://raw.githubusercontent.com/react/react/main/LICENSE",
+      "publication_date": null,
+      "date_note": "No publication date established; current page retrieved.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "upstream_license_text",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Upstream file declares MIT; this observation does not clear exact versions, transitive dependencies or bundled assets.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Retain current qualified dependencies; do not adopt a new package solely on this declaration.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "frontend_technology_evaluation.md"
+      ]
+    },
+    {
+      "source_id": "G023",
+      "topic": "Incremental frontend integration",
+      "title": "React — Add React to an Existing Project",
+      "url": "https://react.dev/learn/add-react-to-an-existing-project",
+      "publication_date": null,
+      "date_note": "No publication date established; current page retrieved.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "official_documentation",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Documented capability or guidance, summarized with scope and limits in linked research documents.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Use as a cited research input; apply only to existing frontend behavior.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "frontend_technology_evaluation.md"
+      ]
+    },
+    {
+      "source_id": "G024",
+      "topic": "Next.js",
+      "title": "Next.js upstream license",
+      "url": "https://raw.githubusercontent.com/vercel/next.js/canary/license.md",
+      "publication_date": null,
+      "date_note": "No publication date established; current page retrieved.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "upstream_license_text",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Upstream file declares MIT; this observation does not clear exact versions, transitive dependencies or bundled assets.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Retain current qualified dependencies; do not adopt a new package solely on this declaration.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "frontend_technology_evaluation.md"
+      ]
+    },
+    {
+      "source_id": "G025",
+      "topic": "TypeScript",
+      "title": "TypeScript upstream license",
+      "url": "https://raw.githubusercontent.com/microsoft/TypeScript/main/LICENSE.txt",
+      "publication_date": null,
+      "date_note": "No publication date established; current page retrieved.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "upstream_license_text",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Upstream file declares Apache-2.0; this observation does not clear exact versions, transitive dependencies or bundled assets.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Retain current qualified dependencies; do not adopt a new package solely on this declaration.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "frontend_technology_evaluation.md"
+      ]
+    },
+    {
+      "source_id": "G026",
+      "topic": "Tailwind CSS",
+      "title": "Tailwind CSS upstream license",
+      "url": "https://raw.githubusercontent.com/tailwindlabs/tailwindcss/main/LICENSE",
+      "publication_date": null,
+      "date_note": "No publication date established; current page retrieved.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "upstream_license_text",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Upstream file declares MIT; this observation does not clear exact versions, transitive dependencies or bundled assets.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Retain current qualified dependencies; do not adopt a new package solely on this declaration.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "frontend_technology_evaluation.md"
+      ]
+    },
+    {
+      "source_id": "G027",
+      "topic": "Styling build integration",
+      "title": "Tailwind CSS — Installing with Vite",
+      "url": "https://tailwindcss.com/docs/installation/using-vite",
+      "publication_date": null,
+      "date_note": "No publication date established; current page retrieved.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "official_documentation",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Documented capability or guidance, summarized with scope and limits in linked research documents.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Use as a cited research input; apply only to existing frontend behavior.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "frontend_technology_evaluation.md"
+      ]
+    },
+    {
+      "source_id": "G028",
+      "topic": "Existing build-tool styling support",
+      "title": "Vite — Features / CSS Modules",
+      "url": "https://vite.dev/guide/features.html#css-modules",
+      "publication_date": null,
+      "date_note": "No publication date established; current page retrieved.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "official_documentation",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Documented capability or guidance, summarized with scope and limits in linked research documents.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Use as a cited research input; apply only to existing frontend behavior.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "frontend_technology_evaluation.md"
+      ]
+    },
+    {
+      "source_id": "G029",
+      "topic": "shadcn/ui",
+      "title": "shadcn/ui upstream license",
+      "url": "https://raw.githubusercontent.com/shadcn-ui/ui/main/LICENSE.md",
+      "publication_date": null,
+      "date_note": "No publication date established; current page retrieved.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "upstream_license_text",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Upstream file declares MIT; this observation does not clear exact versions, transitive dependencies or bundled assets.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Retain current qualified dependencies; do not adopt a new package solely on this declaration.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "frontend_technology_evaluation.md"
+      ]
+    },
+    {
+      "source_id": "G030",
+      "topic": "Editable component source distribution",
+      "title": "shadcn/ui — Introduction",
+      "url": "https://ui.shadcn.com/docs",
+      "publication_date": null,
+      "date_note": "No publication date established; current page retrieved.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "official_documentation",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Documented capability or guidance, summarized with scope and limits in linked research documents.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Use as a cited research input; apply only to existing frontend behavior.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "frontend_technology_evaluation.md"
+      ]
+    },
+    {
+      "source_id": "G031",
+      "topic": "Radix Primitives",
+      "title": "Radix Primitives upstream license",
+      "url": "https://github.com/radix-ui/primitives/blob/main/LICENSE",
+      "publication_date": null,
+      "date_note": "No publication date established; current page retrieved.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "upstream_license_text",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Upstream file declares MIT; this observation does not clear exact versions, transitive dependencies or bundled assets.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Retain current qualified dependencies; do not adopt a new package solely on this declaration.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "frontend_technology_evaluation.md"
+      ]
+    },
+    {
+      "source_id": "G032",
+      "topic": "Accessible interaction primitives",
+      "title": "Radix Primitives — Introduction",
+      "url": "https://www.radix-ui.com/primitives/docs/overview/introduction",
+      "publication_date": null,
+      "date_note": "No publication date established; current page retrieved.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "official_documentation",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Documented capability or guidance, summarized with scope and limits in linked research documents.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Use as a cited research input; apply only to existing frontend behavior.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "frontend_technology_evaluation.md"
+      ]
+    },
+    {
+      "source_id": "G033",
+      "topic": "Material UI Core",
+      "title": "Material UI Core upstream license",
+      "url": "https://raw.githubusercontent.com/mui/material-ui/master/LICENSE",
+      "publication_date": null,
+      "date_note": "No publication date established; current page retrieved.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "upstream_license_text",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Upstream file declares MIT; this observation does not clear exact versions, transitive dependencies or bundled assets.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Retain current qualified dependencies; do not adopt a new package solely on this declaration.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "frontend_technology_evaluation.md"
+      ]
+    },
+    {
+      "source_id": "G034",
+      "topic": "React component ecosystem",
+      "title": "Material UI — Overview",
+      "url": "https://mui.com/material-ui/getting-started/",
+      "publication_date": null,
+      "date_note": "No publication date established; current page retrieved.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "official_documentation",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Documented capability or guidance, summarized with scope and limits in linked research documents.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Use as a cited research input; apply only to existing frontend behavior.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "frontend_technology_evaluation.md"
+      ]
+    },
+    {
+      "source_id": "G035",
+      "topic": "Commercial versus permissive extensions",
+      "title": "MUI X Licensing",
+      "url": "https://mui.com/x/introduction/licensing/",
+      "publication_date": null,
+      "date_note": "No publication date established; current page retrieved.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "official_documentation",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Community packages are MIT; Pro/Premium features require commercial licensing.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Use as a cited research input; apply only to existing frontend behavior.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "frontend_technology_evaluation.md"
+      ]
+    },
+    {
+      "source_id": "G036",
+      "topic": "Ant Design",
+      "title": "Ant Design upstream license",
+      "url": "https://raw.githubusercontent.com/ant-design/ant-design/master/LICENSE",
+      "publication_date": null,
+      "date_note": "No publication date established; current page retrieved.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "upstream_license_text",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Upstream file declares MIT; this observation does not clear exact versions, transitive dependencies or bundled assets.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Retain current qualified dependencies; do not adopt a new package solely on this declaration.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "frontend_technology_evaluation.md"
+      ]
+    },
+    {
+      "source_id": "G037",
+      "topic": "React component ecosystem",
+      "title": "Ant Design of React — Introduction",
+      "url": "https://ant.design/docs/react/introduce/",
+      "publication_date": null,
+      "date_note": "No publication date established; current page retrieved.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "official_documentation",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Documented capability or guidance, summarized with scope and limits in linked research documents.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Use as a cited research input; apply only to existing frontend behavior.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "frontend_technology_evaluation.md"
+      ]
+    },
+    {
+      "source_id": "G038",
+      "topic": "Adobe React Spectrum / React Aria",
+      "title": "Adobe React Spectrum / React Aria upstream license",
+      "url": "https://raw.githubusercontent.com/adobe/react-spectrum/main/LICENSE",
+      "publication_date": null,
+      "date_note": "No publication date established; current page retrieved.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "upstream_license_text",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Upstream file declares Apache-2.0; this observation does not clear exact versions, transitive dependencies or bundled assets.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Retain current qualified dependencies; do not adopt a new package solely on this declaration.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "frontend_technology_evaluation.md"
+      ]
+    },
+    {
+      "source_id": "G039",
+      "topic": "Accessible custom-styled React components",
+      "title": "Adobe React Aria",
+      "url": "https://react-aria.adobe.com/",
+      "publication_date": null,
+      "date_note": "No publication date established; current page retrieved.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "official_documentation",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Documented capability or guidance, summarized with scope and limits in linked research documents.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Use as a cited research input; apply only to existing frontend behavior.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "frontend_technology_evaluation.md"
+      ]
+    },
+    {
+      "source_id": "G040",
+      "topic": "TanStack Table",
+      "title": "TanStack Table upstream license",
+      "url": "https://raw.githubusercontent.com/TanStack/table/main/LICENSE",
+      "publication_date": null,
+      "date_note": "No publication date established; current page retrieved.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "upstream_license_text",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Upstream file declares MIT; this observation does not clear exact versions, transitive dependencies or bundled assets.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Retain current qualified dependencies; do not adopt a new package solely on this declaration.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "frontend_technology_evaluation.md"
+      ]
+    },
+    {
+      "source_id": "G041",
+      "topic": "Headless table logic",
+      "title": "TanStack Table",
+      "url": "https://tanstack.com/table/latest",
+      "publication_date": null,
+      "date_note": "No publication date established; current page retrieved.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "official_documentation",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Documented capability or guidance, summarized with scope and limits in linked research documents.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Use as a cited research input; apply only to existing frontend behavior.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "frontend_technology_evaluation.md"
+      ]
+    },
+    {
+      "source_id": "G042",
+      "topic": "Recharts",
+      "title": "Recharts upstream license",
+      "url": "https://raw.githubusercontent.com/recharts/recharts/main/LICENSE",
+      "publication_date": null,
+      "date_note": "No publication date established; current page retrieved.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "upstream_license_text",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Upstream file declares MIT; this observation does not clear exact versions, transitive dependencies or bundled assets.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Retain current qualified dependencies; do not adopt a new package solely on this declaration.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "frontend_technology_evaluation.md"
+      ]
+    },
+    {
+      "source_id": "G043",
+      "topic": "Chart accessibility",
+      "title": "Recharts upstream Keyboard Accessibility documentation",
+      "url": "https://github.com/recharts/recharts/blob/main/storybook/stories/API/Accessibility.mdx",
+      "publication_date": null,
+      "date_note": "No publication date established; current page retrieved.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "official_documentation",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Recharts 3.x documentation describes accessibilityLayer enabled by default; exact feature composition still needs testing.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Use as a cited research input; apply only to existing frontend behavior.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "frontend_technology_evaluation.md"
+      ]
+    },
+    {
+      "source_id": "G044",
+      "topic": "Apache ECharts",
+      "title": "Apache ECharts upstream license",
+      "url": "https://raw.githubusercontent.com/apache/echarts/master/LICENSE",
+      "publication_date": null,
+      "date_note": "No publication date established; current page retrieved.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "upstream_license_text",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Upstream file declares Apache-2.0; this observation does not clear exact versions, transitive dependencies or bundled assets.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Retain current qualified dependencies; do not adopt a new package solely on this declaration.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "frontend_technology_evaluation.md"
+      ]
+    },
+    {
+      "source_id": "G045",
+      "topic": "Chart accessibility",
+      "title": "Apache ECharts Handbook — Web Accessibility",
+      "url": "https://echarts.apache.org/handbook/en/best-practices/aria/",
+      "publication_date": null,
+      "date_note": "No publication date established; current page retrieved.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "official_documentation",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Documented ARIA module/configuration must be enabled; it is not automatic in every chart build.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Use as a cited research input; apply only to existing frontend behavior.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "frontend_technology_evaluation.md"
+      ]
+    },
+    {
+      "source_id": "G046",
+      "topic": "React Hook Form",
+      "title": "React Hook Form upstream license",
+      "url": "https://github.com/react-hook-form/react-hook-form/blob/master/LICENSE",
+      "publication_date": null,
+      "date_note": "No publication date established; current page retrieved.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "upstream_license_text",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Upstream file declares MIT; this observation does not clear exact versions, transitive dependencies or bundled assets.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Retain current qualified dependencies; do not adopt a new package solely on this declaration.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "frontend_technology_evaluation.md"
+      ]
+    },
+    {
+      "source_id": "G047",
+      "topic": "Form state and validation",
+      "title": "React Hook Form — Get Started",
+      "url": "https://react-hook-form.com/get-started",
+      "publication_date": null,
+      "date_note": "No publication date established; current page retrieved.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "official_documentation",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Documented capability or guidance, summarized with scope and limits in linked research documents.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Use as a cited research input; apply only to existing frontend behavior.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "frontend_technology_evaluation.md"
+      ]
+    },
+    {
+      "source_id": "G048",
+      "topic": "Zod",
+      "title": "Zod upstream license",
+      "url": "https://github.com/colinhacks/zod/blob/main/LICENSE",
+      "publication_date": null,
+      "date_note": "No publication date established; current page retrieved.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "upstream_license_text",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Upstream file declares MIT; this observation does not clear exact versions, transitive dependencies or bundled assets.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Retain current qualified dependencies; do not adopt a new package solely on this declaration.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "frontend_technology_evaluation.md"
+      ]
+    },
+    {
+      "source_id": "G049",
+      "topic": "Runtime schema validation",
+      "title": "Zod — Introduction",
+      "url": "https://zod.dev/",
+      "publication_date": null,
+      "date_note": "No publication date established; current page retrieved.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "official_documentation",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Documented capability or guidance, summarized with scope and limits in linked research documents.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Use as a cited research input; apply only to existing frontend behavior.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "frontend_technology_evaluation.md"
+      ]
+    },
+    {
+      "source_id": "G050",
+      "topic": "Storybook",
+      "title": "Storybook upstream license",
+      "url": "https://raw.githubusercontent.com/storybookjs/storybook/next/LICENSE",
+      "publication_date": null,
+      "date_note": "No publication date established; current page retrieved.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "upstream_license_text",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Upstream file declares MIT; this observation does not clear exact versions, transitive dependencies or bundled assets.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Retain current qualified dependencies; do not adopt a new package solely on this declaration.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "frontend_technology_evaluation.md"
+      ]
+    },
+    {
+      "source_id": "G051",
+      "topic": "Component development and documentation",
+      "title": "Storybook — Get started",
+      "url": "https://storybook.js.org/docs",
+      "publication_date": null,
+      "date_note": "No publication date established; current page retrieved.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "official_documentation",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Documented capability or guidance, summarized with scope and limits in linked research documents.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Use as a cited research input; apply only to existing frontend behavior.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "frontend_technology_evaluation.md"
+      ]
+    },
+    {
+      "source_id": "G052",
+      "topic": "Playwright",
+      "title": "Playwright upstream license",
+      "url": "https://raw.githubusercontent.com/microsoft/playwright/main/LICENSE",
+      "publication_date": null,
+      "date_note": "No publication date established; current page retrieved.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "upstream_license_text",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Upstream file declares Apache-2.0; this observation does not clear exact versions, transitive dependencies or bundled assets.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Retain current qualified dependencies; do not adopt a new package solely on this declaration.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "frontend_technology_evaluation.md"
+      ]
+    },
+    {
+      "source_id": "G053",
+      "topic": "Vitest",
+      "title": "Vitest upstream license",
+      "url": "https://github.com/vitest-dev/vitest/blob/main/LICENSE",
+      "publication_date": null,
+      "date_note": "No publication date established; current page retrieved.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "upstream_license_text",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Upstream file declares MIT; this observation does not clear exact versions, transitive dependencies or bundled assets.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Retain current qualified dependencies; do not adopt a new package solely on this declaration.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "frontend_technology_evaluation.md"
+      ]
+    },
+    {
+      "source_id": "G054",
+      "topic": "Vitest",
+      "title": "Vitest upstream license",
+      "url": "https://github.com/vitest-dev/vitest/blob/main/packages/vitest/LICENSE.md",
+      "publication_date": null,
+      "date_note": "No publication date established; current page retrieved.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "upstream_license_text",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Upstream file declares MIT; this observation does not clear exact versions, transitive dependencies or bundled assets.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Retain current qualified dependencies; do not adopt a new package solely on this declaration.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "frontend_technology_evaluation.md"
+      ]
+    },
+    {
+      "source_id": "G055",
+      "topic": "Test runner",
+      "title": "Vitest — Getting Started",
+      "url": "https://vitest.dev/guide/",
+      "publication_date": null,
+      "date_note": "No publication date established; current page retrieved.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "official_documentation",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Documented capability or guidance, summarized with scope and limits in linked research documents.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Use as a cited research input; apply only to existing frontend behavior.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "frontend_technology_evaluation.md"
+      ]
+    },
+    {
+      "source_id": "G056",
+      "topic": "React Testing Library",
+      "title": "React Testing Library upstream license",
+      "url": "https://github.com/testing-library/react-testing-library/blob/main/LICENSE",
+      "publication_date": null,
+      "date_note": "No publication date established; current page retrieved.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "upstream_license_text",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Upstream file declares MIT; this observation does not clear exact versions, transitive dependencies or bundled assets.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Retain current qualified dependencies; do not adopt a new package solely on this declaration.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "frontend_technology_evaluation.md"
+      ]
+    },
+    {
+      "source_id": "G057",
+      "topic": "DOM-based user-centered tests",
+      "title": "Testing Library — Guiding Principles",
+      "url": "https://testing-library.com/docs/guiding-principles/",
+      "publication_date": null,
+      "date_note": "No publication date established; current page retrieved.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "official_documentation",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Documented capability or guidance, summarized with scope and limits in linked research documents.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Use as a cited research input; apply only to existing frontend behavior.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "frontend_technology_evaluation.md"
+      ]
+    },
+    {
+      "source_id": "G058",
+      "topic": "axe-core",
+      "title": "axe-core upstream license",
+      "url": "https://raw.githubusercontent.com/dequelabs/axe-core/develop/LICENSE",
+      "publication_date": null,
+      "date_note": "No publication date established; current page retrieved.",
+      "research_date": "2026-11-02",
+      "research_timezone": "America/New_York",
+      "source_type": "upstream_license_text",
+      "verification": "verified source content",
+      "confidence_in_source_claim": "high",
+      "finding": "Upstream file declares MPL-2.0; this observation does not clear exact versions, transitive dependencies or bundled assets.",
+      "design_relevance": "See linked document for the bounded Open Intelligence mapping; recommendations are design inferences, not clinical validation.",
+      "recommended_action": "Do not add under the current permissive gate; MPL-2.0 is distinct from permissive licenses.",
+      "implementation_status": "Research input; bounded adoption and verification are mapped in ../2026-11-02-product-research-ux-evolution.md.",
+      "referenced_by": [
+        "frontend_technology_evaluation.md"
+      ]
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "F01",
+      "topic": "Identity context",
+      "finding": "Stable visible patient identity is supported by SAFER; use supplied patient ID and organization because current H1 lacks demographics.",
+      "source_ids": [
+        "G003"
+      ],
+      "research_date": "2026-11-02",
+      "confidence": "high source confidence; moderate design-application confidence",
+      "verified_or_inferred": "Verified source facts with explicitly inferred frontend recommendations",
+      "recommended_action": "Use existing identity fields in the patient chart; no invented names or DOB.",
+      "implementation_status": "Recommended; researcher has not executed product tests"
+    },
+    {
+      "finding_id": "F02",
+      "topic": "Fragmentation",
+      "finding": "Original AHRQ-funded research supports investigating related information together and fewer screen transitions; it has explicit study limitations.",
+      "source_ids": [
+        "G002"
+      ],
+      "research_date": "2026-11-02",
+      "confidence": "moderate applicability",
+      "verified_or_inferred": "Verified source facts with explicitly inferred frontend recommendations",
+      "recommended_action": "Keep document/version/quotation context adjacent and measure task behavior.",
+      "implementation_status": "Recommended; researcher has not executed product tests"
+    },
+    {
+      "finding_id": "F03",
+      "topic": "Result state",
+      "finding": "Result lifecycle, amendments, event/issue dates and current/historical states must not be collapsed into clinical verification.",
+      "source_ids": [
+        "G004",
+        "G006"
+      ],
+      "research_date": "2026-11-02",
+      "confidence": "high source confidence",
+      "verified_or_inferred": "Verified source facts with explicitly inferred frontend recommendations",
+      "recommended_action": "Show existing API state/provenance without adding clinical interpretation.",
+      "implementation_status": "Recommended; researcher has not executed product tests"
+    },
+    {
+      "finding_id": "F04",
+      "topic": "Patient understanding",
+      "finding": "Patient-facing navigation should be understandable and preserve review/uncertainty status.",
+      "source_ids": [
+        "G005"
+      ],
+      "research_date": "2026-11-02",
+      "confidence": "high source confidence; design inference",
+      "verified_or_inferred": "Verified source facts with explicitly inferred frontend recommendations",
+      "recommended_action": "Use plain labels and progressive disclosure without adding missing portal services.",
+      "implementation_status": "Recommended; researcher has not executed product tests"
+    },
+    {
+      "finding_id": "F05",
+      "topic": "Accessibility",
+      "finding": "WCAG 2.2 includes keyboard, visible/unobscured focus, reflow, contrast, target-size, form and status criteria.",
+      "source_ids": [
+        "G008",
+        "G009",
+        "G010",
+        "G011",
+        "G012",
+        "G013",
+        "G014",
+        "G015",
+        "G016",
+        "G017",
+        "G018",
+        "G019",
+        "G020"
+      ],
+      "research_date": "2026-11-02",
+      "confidence": "high",
+      "verified_or_inferred": "Verified source facts with explicitly inferred frontend recommendations",
+      "recommended_action": "Apply scoped acceptance criteria and manual checks; do not infer full conformance from automation.",
+      "implementation_status": "Recommended; researcher has not executed product tests"
+    },
+    {
+      "finding_id": "F06",
+      "topic": "Privacy nuance",
+      "finding": "Minimum necessary is not an unconditional prohibition on full record access; official guidance has treatment and individual exceptions.",
+      "source_ids": [
+        "G007"
+      ],
+      "research_date": "2026-11-02",
+      "confidence": "high",
+      "verified_or_inferred": "Verified source facts with explicitly inferred frontend recommendations",
+      "recommended_action": "Preserve authorization behavior; avoid using interface hiding as access control or a compliance claim.",
+      "implementation_status": "Recommended; researcher has not executed product tests"
+    },
+    {
+      "finding_id": "F07",
+      "topic": "Dependency scope",
+      "finding": "H1 is React/Vite/TypeScript with an exact dependency gate and a working CDP harness; a migration is not required to redesign the frontend.",
+      "source_ids": [],
+      "research_date": "2026-11-02",
+      "confidence": "high for inspected repository files; design choice",
+      "verified_or_inferred": "Verified source facts with explicitly inferred frontend recommendations",
+      "recommended_action": "Keep existing dependencies and harness; add authored tokens and presentation components.",
+      "implementation_status": "Recommended; researcher has not executed product tests"
+    },
+    {
+      "finding_id": "F08",
+      "topic": "License exceptions",
+      "finding": "axe-core is MPL-2.0, while MUI X Pro/Premium use commercial terms.",
+      "source_ids": [
+        "G035",
+        "G058"
+      ],
+      "research_date": "2026-11-02",
+      "confidence": "high",
+      "verified_or_inferred": "Verified source facts with explicitly inferred frontend recommendations",
+      "recommended_action": "Do not classify all benchmarked UI/test tools as permissive or silently add them.",
+      "implementation_status": "Recommended; researcher has not executed product tests"
+    },
+    {
+      "finding_id": "F09",
+      "topic": "Design alternatives",
+      "finding": "Purpose-specific entry with a shared patient chart is preferable to a universal technical explorer for the current patient-centered scope.",
+      "source_ids": [],
+      "research_date": "2026-11-02",
+      "confidence": "heuristic design recommendation, untested with users",
+      "verified_or_inferred": "Verified source facts with explicitly inferred frontend recommendations",
+      "recommended_action": "Use technical metadata disclosure within the same chart; keep reading-mode choice separate from permission.",
+      "implementation_status": "Recommended; researcher has not executed product tests"
+    }
+  ],
+  "limitations": [
+    "No real patient data or interviews used.",
+    "No product tests or exact dependency qualification executed by research agent.",
+    "No external documentation, backend, database, API, auth or product files modified.",
+    "Upstream license files are observed branch records; pinned integrations require existing exact artifact gate."
+  ]
+}

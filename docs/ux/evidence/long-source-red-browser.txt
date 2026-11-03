@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "apps/web/tools/browser_journey.py", line 202, in <module>
+    if __name__=='__main__':main()
+                            ^^^^^^
+  File "apps/web/tools/browser_journey.py", line 146, in main
+    check_case_switch(cd,add_synthetic,root)
+  File "apps/web/tools/workspace_ux_checks.py", line 175, in check_case_switch
+    assert cd.evaluate('document.documentElement.scrollWidth<=window.innerWidth+1'),f'Long source content must reflow at 320px: {overflow}'
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Long source content must reflow at 320px: [{'tag': 'DIV', 'class': '', 'right': 354.953125, 'width': 338.953125}, {'tag': 'P', 'class': 'eyebrow', 'right': 354.953125, 'width': 338.953125}, {'tag': 'H3', 'class': '', 'right': 354.953125, 'width': 338.953125}]

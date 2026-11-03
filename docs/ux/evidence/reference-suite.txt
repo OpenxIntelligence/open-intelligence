@@ -1,0 +1,113 @@
+----------------------------------------------------------------------
+Ran 245 tests in 131.713s
+
+OK
+CASE-ALPHA alpha-pathology-original.txt imported
+CASE-ALPHA alpha-imaging.txt imported
+CASE-BETA beta-pathology.txt imported
+[local demo] "GET /api/cases/CASE-ALPHA/changes-since-review HTTP/1.1" 200 -
+[local demo] "GET /api/cases/CASE-ALPHA/state HTTP/1.1" 200 -
+[local demo] "GET /api/cases/CASE-ALPHA/changes-since-review?since_event_id=1 HTTP/1.1" 200 -
+[local demo] "GET /api/cases/CASE-NOPE/changes-since-review HTTP/1.1" 422 -
+[local demo] "GET /api/cases/CASE-ALPHA/changes-since-review?since_event_id=abc HTTP/1.1" 422 -
+[local demo] "GET /api/cases/CASE-ALPHA/changes-since-review?since_event_id=999999 HTTP/1.1" 422 -
+PASS: no known patient-case download entrypoints in current workflows
+CASE-ALPHA alpha-pathology-original.txt imported
+CASE-ALPHA alpha-imaging.txt imported
+CASE-BETA beta-pathology.txt imported
+[local demo] "POST /api/discovery/imports HTTP/1.1" 200 -
+[local demo] "POST /api/discovery/imports HTTP/1.1" 422 -
+[local demo] "GET /api/discovery HTTP/1.1" 200 -
+[local demo] "POST /api/cases/CASE-ALPHA/questions HTTP/1.1" 201 -
+[local demo] "POST /api/cases/CASE-ALPHA/discovery-links HTTP/1.1" 201 -
+[local demo] "GET /api/cases/CASE-ALPHA/discovery HTTP/1.1" 200 -
+CASE-ALPHA alpha-pathology-original.txt imported
+CASE-ALPHA alpha-imaging.txt imported
+CASE-BETA beta-pathology.txt imported
+[local demo] "POST /api/rights/sources HTTP/1.1" 201 -
+[local demo] "POST /api/discovery/imports HTTP/1.1" 200 -
+[local demo] "GET /api/discovery HTTP/1.1" 200 -
+[local demo] "POST /api/cases/CASE-ALPHA/questions HTTP/1.1" 201 -
+[local demo] "POST /api/cases/CASE-ALPHA/broker-links HTTP/1.1" 201 -
+[local demo] "POST /api/cases/CASE-ALPHA/discovery-links HTTP/1.1" 201 -
+[local demo] "GET /api/cases/CASE-ALPHA/discovery HTTP/1.1" 200 -
+[local demo] "POST /api/rights/sources/1/revoke HTTP/1.1" 200 -
+[local demo] "GET /api/cases/CASE-ALPHA/discovery HTTP/1.1" 200 -
+[local demo] "POST /api/cases/CASE-ALPHA/questions HTTP/1.1" 201 -
+[local demo] "POST /api/cases/CASE-ALPHA/discovery-links HTTP/1.1" 422 -
+CASE-ALPHA alpha-pathology-original.txt imported
+CASE-ALPHA alpha-imaging.txt imported
+CASE-BETA beta-pathology.txt imported
+[local demo] "GET /api/examples/evidence HTTP/1.1" 200 -
+[local demo] "POST /api/evidence/imports HTTP/1.1" 200 -
+[local demo] "GET /api/evidence/1 HTTP/1.1" 200 -
+[local demo] "GET /api/cases/CASE-ALPHA/state HTTP/1.1" 200 -
+[local demo] "POST /api/cases/CASE-ALPHA/questions HTTP/1.1" 201 -
+[local demo] "POST /api/cases/CASE-ALPHA/evidence-assessments HTTP/1.1" 201 -
+[local demo] "POST /api/cases/CASE-ALPHA/snapshots HTTP/1.1" 201 -
+[local demo] "GET /api/cases/CASE-ALPHA/state HTTP/1.1" 200 -
+[local demo] "POST /api/evidence/1/withdraw HTTP/1.1" 200 -
+[local demo] "GET /api/cases/CASE-ALPHA/state HTTP/1.1" 200 -
+[local demo] "POST /api/evidence/imports HTTP/1.1" 422 -
+[local demo] "POST /api/evidence/imports HTTP/1.1" 422 -
+CASE-ALPHA alpha-pathology-original.txt imported
+CASE-ALPHA alpha-imaging.txt imported
+CASE-BETA beta-pathology.txt imported
+[local demo] "GET /api/bibliography/status HTTP/1.1" 200 -
+[local demo] "GET /api/bibliography/example HTTP/1.1" 200 -
+[local demo] "POST /api/bibliography/lookup HTTP/1.1" 403 -
+[local demo] "POST /api/bibliography/lookup HTTP/1.1" 200 -
+[local demo] "POST /api/bibliography/lookup HTTP/1.1" 429 -
+[local demo] "POST /api/cases/CASE-ALPHA/questions HTTP/1.1" 201 -
+[local demo] "GET /api/cases/CASE-ALPHA/state HTTP/1.1" 200 -
+[local demo] "POST /api/cases/CASE-ALPHA/questions HTTP/1.1" 403 -
+[local demo] "GET /api/cases/CASE-ALPHA/state HTTP/1.1" 200 -
+[local demo] "GET /api/cases/CASE-ALPHA/sources/1 HTTP/1.1" 200 -
+[local demo] "GET /api/cases/CASE-BETA/sources/1 HTTP/1.1" 422 -
+[local demo] "GET / HTTP/1.1" 200 -
+[local demo] "GET /style.css HTTP/1.1" 200 -
+[local demo] "GET /tokens.css HTTP/1.1" 200 -
+[local demo] "GET /base.css HTTP/1.1" 200 -
+[local demo] "GET /api/cases HTTP/1.1" 403 -
+[local demo] "POST /api/cases/CASE-ALPHA/questions HTTP/1.1" 403 -
+[local demo] "GET /api/examples/wrong-patient HTTP/1.1" 200 -
+CASE-ALPHA alpha-pathology-original.txt imported
+CASE-ALPHA alpha-imaging.txt imported
+CASE-BETA beta-pathology.txt imported
+[local demo] "POST /api/cases/CASE-ALPHA/questions HTTP/1.1" 201 -
+[local demo] "POST /api/cases/CASE-ALPHA/investigations HTTP/1.1" 503 -
+[local demo] "POST /api/cases/CASE-ALPHA/questions HTTP/1.1" 201 -
+[local demo] "POST /api/cases/CASE-ALPHA/investigations HTTP/1.1" 201 -
+[local demo] "GET /api/cases/CASE-ALPHA/investigations HTTP/1.1" 200 -
+[local demo] "GET /api/investigations/templates HTTP/1.1" 200 -
+[local demo] "POST /api/cases/CASE-ALPHA/questions HTTP/1.1" 201 -
+[local demo] "POST /api/cases/CASE-ALPHA/investigations HTTP/1.1" 422 -
+CASE-ALPHA alpha-pathology-original.txt imported
+CASE-ALPHA alpha-imaging.txt imported
+CASE-BETA beta-pathology.txt imported
+[local demo] "GET / HTTP/1.1" 200 -
+[local demo] "POST /api/cases/CASE-ALPHA/questions HTTP/1.1" 201 -
+[local demo] "POST /api/cases/CASE-ALPHA/investigations HTTP/1.1" 201 -
+[local demo] "GET /api/cases/CASE-ALPHA/investigations HTTP/1.1" 200 -
+[local demo] "GET /api/cases/CASE-ALPHA/investigations/1 HTTP/1.1" 200 -
+CASE-ALPHA alpha-pathology-original.txt imported
+CASE-ALPHA alpha-imaging.txt imported
+CASE-BETA beta-pathology.txt imported
+[local demo] "GET /api/cases/CASE-ALPHA/mission HTTP/1.1" 200 -
+[local demo] "GET /api/cases/CASE-ALPHA/mission HTTP/1.1" 403 -
+[local demo] "GET /api/cases/CASE-UNKNOWN/mission HTTP/1.1" 422 -
+CASE-ALPHA alpha-pathology-original.txt imported
+CASE-ALPHA alpha-imaging.txt imported
+CASE-BETA beta-pathology.txt imported
+[local demo] "POST /api/rights/sources HTTP/1.1" 201 -
+[local demo] "POST /api/cases/CASE-ALPHA/questions HTTP/1.1" 201 -
+[local demo] "POST /api/cases/CASE-ALPHA/broker-links HTTP/1.1" 201 -
+[local demo] "GET /api/rights/sources HTTP/1.1" 200 -
+[local demo] "POST /api/rights/sources/1/revoke HTTP/1.1" 200 -
+[local demo] "POST /api/cases/CASE-ALPHA/broker-links HTTP/1.1" 422 -
+CASE-ALPHA alpha-pathology-original.txt imported
+CASE-ALPHA alpha-imaging.txt imported
+CASE-BETA beta-pathology.txt imported
+[local demo] "GET /api/cases/CASE-ALPHA/timeline HTTP/1.1" 200 -
+[local demo] "GET /api/cases/CASE-BETA/timeline HTTP/1.1" 200 -
+[local demo] "GET /api/cases/CASE-NOPE/timeline HTTP/1.1" 422 -

@@ -1,0 +1,64 @@
+{
+  "source_checkpoint": "0b741bf8ef7987ab4396474e3fbf0fa4b0f7e053",
+  "source_checkpoint_kind": "local implementation checkpoint; publication commit may differ in documentation only",
+  "records": "independently fictional",
+  "capture": "actual Chromium over built React, FastAPI and PostgreSQL16",
+  "files": [
+    {
+      "file": "h1-desktop.png",
+      "sha256": "d9ecee25efa83d97ff6975e1a473a001019fedf40962e05aa010f9a1420ab60a",
+      "width": 1440,
+      "height": 1100,
+      "visually_inspected": true
+    },
+    {
+      "file": "h1-mobile.png",
+      "sha256": "eda74f0e160a1cbdf325191fda646d228c933b81a41714bb02cafedbb4a70fe5",
+      "width": 390,
+      "height": 844,
+      "visually_inspected": true
+    },
+    {
+      "file": "ux-clinical-records.png",
+      "sha256": "9dbd36510672615fe84b32d3fa86ba59db5c1c3f5d9acd1aaf187b6da0871c74",
+      "width": 1440,
+      "height": 1100,
+      "visually_inspected": true
+    },
+    {
+      "file": "ux-long-source-mobile.png",
+      "sha256": "1fb5bf998d6252b39406ae1e03a7cb2a0c041989feb9b65a09df4fc32f1c329f",
+      "width": 320,
+      "height": 900,
+      "visually_inspected": true
+    },
+    {
+      "file": "ux-patient-records-mobile.png",
+      "sha256": "0661ee7170f8d973043758be5a66004724b4940df868bf6a3e9e82e81eecc8ba",
+      "width": 390,
+      "height": 900,
+      "visually_inspected": true
+    },
+    {
+      "file": "ux-patient-records.png",
+      "sha256": "36f9867254d6413eb6827ff2f45845be58047e0c1e9241cd836e3bef364d121e",
+      "width": 1440,
+      "height": 1100,
+      "visually_inspected": true
+    },
+    {
+      "file": "ux-source-reading-desktop.png",
+      "sha256": "b7e4c17ffd4f7e4aa4f2673803b577d755e337639a23ad6563583ac0882a72ca",
+      "width": 1440,
+      "height": 1100,
+      "visually_inspected": true
+    },
+    {
+      "file": "ux-source-reading-mobile.png",
+      "sha256": "2f1ba7639b1212b5522a82e739a02014ba25d7aefd6e6ab5625f50ad04c18c99",
+      "width": 390,
+      "height": 900,
+      "visually_inspected": true
+    }
+  ]
+}

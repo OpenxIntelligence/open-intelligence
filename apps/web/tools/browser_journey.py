@@ -19,6 +19,23 @@ from urllib.request import Request,urlopen
 ROOT=Path(__file__).resolve().parents[3]
 sys.path.insert(0,str(ROOT/'tests'))
 from browser_journey import ChromeSession,free_port,wait_for
+from workspace_ux_checks import check_workspace_navigation,check_source_presentation,check_case_switch,check_cleared_context,navigate,set_value
+from workspace_reading_checks import check_reading_workspace,check_readiness_states,assert_reading_checks
+
+
+class CheckedChromeSession(ChromeSession):
+    """Observe runtime failures without changing the shared CDP transport."""
+    def __init__(self, websocket_url):
+        super().__init__(websocket_url)
+        self.runtime_errors=[]
+
+    def receive_frame(self):
+        frame=super().receive_frame()
+        event=json.loads(frame)
+        method=event.get('method')
+        if method=='Runtime.exceptionThrown' or (method=='Runtime.consoleAPICalled' and event.get('params',{}).get('type')=='error'):
+            self.runtime_errors.append(method)
+        return frame
 
 
 def main():
@@ -46,9 +63,9 @@ def main():
             port=free_port()
             browser=subprocess.Popen([chrome,'--headless=new','--disable-gpu','--disable-dev-shm-usage','--disable-background-networking','--no-first-run','--disable-extensions','--no-default-browser-check','--remote-allow-origins=*',f'--remote-debugging-port={port}',f'--user-data-dir={directory}/chrome','about:blank'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
             targets=wait_for(lambda:json.load(urlopen(f'http://127.0.0.1:{port}/json/list',timeout=2)),'Chromium target',30)
-            cd=ChromeSession(next(t['webSocketDebuggerUrl'] for t in targets if t['type']=='page'))
+            cd=CheckedChromeSession(next(t['webSocketDebuggerUrl'] for t in targets if t['type']=='page'))
             cd.command('Page.enable');cd.command('Runtime.enable');cd.command('Page.navigate',{'url':'http://127.0.0.1:4173'})
-            cd.wait("document.querySelector('[data-testid=readiness]')?.textContent==='PostgreSQL API ready'",'real proxied API readiness')
+            cd.wait("(()=>{const e=document.querySelector('[data-testid=readiness]');return e?.classList.contains('ready')&&Boolean(e.textContent.trim());})()",'real proxied API readiness')
             def value(selector,text):
                 # React tracks controlled input setters. Use the native setter plus a real input event.
                 cd.evaluate(f"(()=>{{const e=document.querySelector({json.dumps(selector)});Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,{json.dumps(text)});e.dispatchEvent(new Event('input',{{bubbles:true}}));}})()")
@@ -71,6 +88,7 @@ def main():
             credentials[0]['patient_ids']=[pid];write_grants();read()
             cd.wait("Boolean(document.querySelector('[data-testid=patient-card]'))",'separate grant permits canonical patient read')
             assert cd.evaluate("document.querySelector('[data-testid=patient-card]').textContent").count(pid)==1
+            check_workspace_navigation(cd,pid)
             assert cd.evaluate('localStorage.length===0 && sessionStorage.length===0')
             assert tokens[0] not in cd.evaluate('document.documentElement.outerHTML')
             # Add only operator-controlled fictional grants; no UI self-authorization.
@@ -99,7 +117,7 @@ def main():
                 'synthetic':True,'original_text':original})
             assert status==201 and receipt['result']=='imported'
             original_id=receipt['source_id']
-            cd.evaluate("Array.from(document.querySelectorAll('nav[aria-label=\"Patient workspace\"] button')).find(b=>b.textContent.includes('Records')).click()")
+            navigate(cd,'Records')
             cd.wait("Boolean(document.querySelector('[data-testid=records-workspace]'))",'actual read-only Records screen')
             assert pid in cd.evaluate("document.querySelector('[data-testid=records-patient]').textContent")
             cd.evaluate("document.querySelector('[data-testid=load-cases]').click()")
@@ -110,6 +128,7 @@ def main():
             assert cd.evaluate("document.querySelector('[data-testid=source-statement]').textContent.includes('<script>literal</script>')")
             assert cd.evaluate("document.querySelectorAll('[data-testid=source-statement] script').length===0")
             assert cd.evaluate("document.querySelector('[data-testid=source-index]').textContent.includes('not established')")
+            check_source_presentation(cd,pid,1)
             amended=(
                 'OI-SYNTHETIC-REPORT/1\nPatient: CASE-ALPHA\nDocument: DOC-ONE\n'
                 'Type: pathology\nEvent-Date: 2026-01-10\nIssued-At: 2026-01-12\n'
@@ -119,19 +138,45 @@ def main():
             status,new_receipt=add_synthetic(root+'/cases/'+case+'/sources',{
                 'synthetic':True,'original_text':amended})
             assert status==201 and new_receipt['version']==2
-            cd.evaluate("document.querySelector('[data-testid=load-sources]').click()")
+            cd.evaluate("document.querySelector('[data-testid=refresh-sources]').click()")
             cd.wait("document.querySelectorAll('[data-testid=source-version]').length===2",'versioned amendment history')
             assert cd.evaluate("document.querySelector('[data-testid=source-index]').textContent.includes('superseded')")
             assert cd.evaluate("document.querySelector('[data-testid=source-index]').textContent.includes('Amended fictional marker is reported negative.')")
             assert cd.evaluate("document.querySelectorAll('[data-testid=source-statement]').length===1")
+            check_source_presentation(cd,pid,2)
+            check_case_switch(cd,add_synthetic,root)
+            reading_checks=check_reading_workspace(cd)
             # Read rights must be checked afresh; a denied refresh discards earlier findings.
             credentials[0]['actions'].remove('source_read');write_grants()
-            cd.evaluate("document.querySelector('[data-testid=load-sources]').click()")
+            cd.evaluate("document.querySelector('[data-testid=refresh-sources]').click()")
             cd.wait("document.querySelector('[data-testid=records-status]').textContent.includes('Sources unavailable')",'revoked source permission erases stale view')
             assert cd.evaluate("!document.querySelector('[data-testid=source-index]')")
             credentials[0]['actions'].append('source_read');write_grants()
-            cd.evaluate("Array.from(document.querySelectorAll('nav[aria-label=\"Patient workspace\"] button')).find(b=>b.textContent.includes('Overview')).click()")
+            cd.evaluate("document.querySelector('[data-testid=load-cases]').click()")
+            cd.wait("Boolean(document.querySelector('[data-testid=load-sources]'))",'restored case access')
+            cd.evaluate("document.querySelector('[data-testid=load-sources]').click()")
+            cd.wait("document.querySelectorAll('[data-testid=source-version]').length===2 && document.querySelectorAll('[data-testid=source-statement]').length===1",'visible source history before session expiry')
+            set_value(cd,'#source-filter','DOC-ONE');set_value(cd,'#source-state','current')
+            cd.wait("document.querySelector('#source-filter').value==='DOC-ONE' && document.querySelector('#source-state').value==='current' && document.querySelectorAll('[data-testid=source-version]').length===1",'active filter sentinel before session expiry')
+            # Expiry may occur on a chart destination, not only on Overview.
+            # The original client clears identity; the presentation must expose
+            # reconnection and the truthful error without retaining old sources.
+            credentials[0]['expires_at']=(datetime.now(timezone.utc)-timedelta(seconds=1)).isoformat();write_grants()
+            cd.evaluate("document.querySelector('[data-testid=refresh-sources]').click()")
+            cd.wait("Boolean(document.querySelector('#credential'))",'expired Records session exposes reconnect form')
+            check_cleared_context(cd)
+            assert cd.evaluate("document.querySelector('[data-testid=status]').textContent.includes('expired')")
+            credentials[0]['expires_at']=(datetime.now(timezone.utc)+timedelta(hours=1)).isoformat();write_grants()
+            navigate(cd,'Overview')
+            connect();value('#patient-id',pid);read()
             cd.wait("Boolean(document.querySelector('[data-testid=patient-card]'))",'return to patient identity after governed records inspection')
+            navigate(cd,'Records')
+            cd.evaluate("document.querySelector('[data-testid=load-cases]').click()")
+            cd.wait("document.querySelectorAll('[data-testid=case-row]').length===2",'restored session independently reloads authorized cases')
+            cd.evaluate("document.querySelector('button[aria-label=\"Inspect source versions for CASE-ALPHA\"]').click()")
+            cd.wait("document.querySelectorAll('[data-testid=source-version]').length===2",'fresh source response after reconnect')
+            assert cd.evaluate("document.querySelector('#source-filter').value==='' && document.querySelector('#source-state').value==='all'"),'An active filter from the expired session must not return after reconnect'
+            navigate(cd,'Overview')
             cd.command('Accessibility.enable');tree=cd.command('Accessibility.getFullAXTree')['nodes']
             assert any(n.get('role',{}).get('value')=='main' for n in tree)
             assert any(n.get('role',{}).get('value')=='navigation' for n in tree)
@@ -145,13 +190,17 @@ def main():
             image=cd.command('Page.captureScreenshot',{'format':'png'});(out/'h1-mobile.png').write_bytes(base64.b64decode(image['data']))
             credentials[0]['patient_ids']=[];write_grants();read()
             cd.wait("!document.querySelector('[data-testid=patient-card]') && document.querySelector('[data-testid=status]').textContent.includes('Patient unavailable')",'revoked read removes prior view')
+            check_cleared_context(cd)
             credentials[0]['expires_at']=(datetime.now(timezone.utc)-timedelta(seconds=1)).isoformat();write_grants();read()
             cd.wait("Boolean(document.querySelector('#credential'))",'expired credential clears session')
             credentials[1]['patient_ids']=[pid];write_grants();connect(1);value('#patient-id',pid);read()
             cd.wait("document.querySelector('[data-testid=status]').textContent.includes('Patient unavailable')",'cross-organization read denied')
             cd.command('Page.reload');cd.wait("Boolean(document.querySelector('#credential'))",'reload forgets credential')
             assert cd.evaluate("document.querySelector('#credential').value==='' && document.querySelector('#patient-id').value==='' && localStorage.length===0 && sessionStorage.length===0")
-            print('PASS: React/Vite -> actual FastAPI/PostgreSQL 16; identity/create/retry; exact case/source read, immutable amendment history, unreviewed quoted text and rights revocation; cross-organization isolation, credential expiry/reload, keyboard landmarks and mobile layout. Independently fictional records only; no clinical workflow or production identity claim.')
+            reading_checks.extend(check_readiness_states(cd))
+            assert_reading_checks(reading_checks)
+            assert not cd.runtime_errors,f'Unexpected uncaught JavaScript or console.error events: {cd.runtime_errors}'
+            print('PASS: React/Vite -> actual FastAPI/PostgreSQL 16; identity/create/retry; exact case/source read, immutable amendment history, unreviewed quoted text and rights revocation; two-case source/filter isolation; long case/document/organization/quotation reflow; cross-organization isolation; expiry clears previously visible records; reload; keyboard filter recovery, landmarks, sticky focus and 320/390/768/1440px layout; no uncaught JavaScript or console.error events. Independently fictional records only; no clinical workflow or production identity claim.')
         finally:
             if cd:cd.close()
             for process in (browser,web,api):
