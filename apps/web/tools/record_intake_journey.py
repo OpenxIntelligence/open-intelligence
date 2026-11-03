@@ -36,9 +36,26 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, screen
         cd.evaluate("[...document.querySelectorAll('nav button')].find(e=>e.textContent.startsWith('Records')).click()")
         cd.wait("Boolean(document.querySelector('[data-testid=load-cases]'))", 'existing Records workspace')
         cd.evaluate("document.querySelector('[data-testid=load-cases]').click()")
-        cd.wait("Boolean(document.querySelector('[data-testid=load-sources]'))", 'authorized case mapping')
-        cd.evaluate("[...document.querySelectorAll('[data-testid=case-row]')].find(e=>e.textContent.includes('CASE-WEB-INTAKE')).querySelector('[data-testid=load-sources]').click()")
-        cd.wait("Boolean(document.querySelector('[data-testid=source-index]'))", 'authorized source index')
+        cd.wait("document.querySelectorAll('[data-testid=case-row]').length===2 && !document.querySelector('[data-testid=load-sources]').disabled", 'both authorized case mappings ready')
+        # Choose from computed names, as a screen reader or speech-input user
+        # would, then activate the named DOM control with the native keyboard.
+        cd.command('Accessibility.enable')
+        try:
+            tree=cd.command('Accessibility.getFullAXTree')['nodes']
+            buttons=[node for node in tree if not node.get('ignored') and node.get('role',{}).get('value')=='button']
+            for case_id in ('CASE-ALPHA', 'CASE-WEB-INTAKE'):
+                expected='Inspect source versions for '+case_id
+                matches=[node for node in buttons if node.get('name',{}).get('value')==expected]
+                assert len(matches)==1, 'One independently identifiable source action required for '+case_id
+            target=next(node for node in buttons if node.get('name',{}).get('value')=='Inspect source versions for CASE-WEB-INTAKE')
+            cd.command('DOM.focus', {'backendNodeId':target['backendDOMNodeId']})
+            cd.command('Input.dispatchKeyEvent', {'type':'rawKeyDown','key':'Enter','code':'Enter','windowsVirtualKeyCode':13})
+            cd.command('Input.dispatchKeyEvent', {'type':'char','key':'Enter','text':'\r','windowsVirtualKeyCode':13})
+            cd.command('Input.dispatchKeyEvent', {'type':'keyUp','key':'Enter','code':'Enter','windowsVirtualKeyCode':13})
+        finally:
+            cd.command('Accessibility.disable')
+        cd.wait("document.querySelector('#sources-heading')?.textContent==='Source history for CASE-WEB-INTAKE'", 'named action opens its own case source index')
+        print('PASS CASE ACTION NAMES: two authorized cases have unique computed names; keyboard activation opens the named case.')
 
     records()
     assert len(operator(index_path)['sources']) == 0
