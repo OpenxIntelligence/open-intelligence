@@ -1,4 +1,6 @@
 import {decodeOriginal,decodeRecordRequests} from './record-views.js';
+import {decodeSourceWorldModel} from './world-model-views.js';
+import type {SourceWorldModel} from './world-model-views.js';
 import type {OriginalSource,RecordRequest} from './record-views.js';
 /** Transient UI state over the canonical patient API; never an authority or ledger. */
 export type Patient = Readonly<{
@@ -13,6 +15,8 @@ export type ViewState = Readonly<{
   recordsPhase:'idle'|'loading'|'ready'|'error'; recordsMessage:string;
   original:OriginalSource|null;
   originalPhase:'idle'|'loading'|'ready'|'error'; originalMessage:string;
+  worldModel:SourceWorldModel|null;
+  worldPhase:'idle'|'loading'|'ready'|'error';worldMessage:string;
 }>;
 export type Transport = (input: string, init: RequestInit) => Promise<Response>;
 const KEY = /^[A-Za-z0-9][A-Za-z0-9_.:-]{2,127}$/;
@@ -32,6 +36,7 @@ const fresh = (): ViewState => Object.freeze({
   message:'Connect a local synthetic credential to use the patient registry.',
   records:null,recordsPhase:'idle',recordsMessage:'Open an authorized patient to inspect record requests.',
   original:null,originalPhase:'idle',originalMessage:'Original text is never loaded automatically.',
+  worldModel:null,worldPhase:'idle',worldMessage:'Open an authorized patient and select a source case.',
 });
 function exact(value: unknown, fields: string[]): value is Record<string,unknown> {
   return value !== null && typeof value==='object' && !Array.isArray(value) &&
@@ -65,19 +70,26 @@ function created(value: unknown): CreatedPatient {
   return Object.freeze(value as CreatedPatient);
 }
 export class RegistrySession {
-  #token=''; #scope=0; #read=0; #recordsRead=0; #originalRead=0; #state:ViewState=fresh();
+  #token=''; #scope=0; #read=0; #recordsRead=0; #originalRead=0; #worldRead=0; #state:ViewState=fresh();
   #listeners=new Set<()=>void>(); #controllers=new Set<AbortController>(); #creating=false;
   constructor(private readonly transport:Transport=(url,init)=>fetch(url,init)) {}
   snapshot=():ViewState=>this.#state;
   subscribe=(listener:()=>void):(()=>void)=>{this.#listeners.add(listener);return()=>this.#listeners.delete(listener);};
   #publish(patch:Partial<ViewState>){this.#state=Object.freeze({...this.#state,...patch});for(const listener of this.#listeners)listener();}
+  #resetWorld(){
+    this.#worldRead++;
+    this.#publish({worldModel:null,worldPhase:'idle',worldMessage:
+      'Open an authorized patient and select a source case.'});
+  }
+  clearWorldModel=()=>this.#resetWorld();
   #resetRecords(){
-    this.#recordsRead++;this.#originalRead++;
+    this.#recordsRead++;this.#originalRead++;this.#worldRead++;
     this.#publish({records:null,recordsPhase:'idle',recordsMessage:'Open an authorized patient to inspect record requests.',
-      original:null,originalPhase:'idle',originalMessage:'Original text is never loaded automatically.'});
+      original:null,originalPhase:'idle',originalMessage:'Original text is never loaded automatically.',
+      worldModel:null,worldPhase:'idle',worldMessage:'Open an authorized patient and select a source case.'});
   }
   disconnect=()=>{
-    this.#scope++;this.#read++;this.#recordsRead++;this.#originalRead++;this.#token='';this.#creating=false;
+    this.#scope++;this.#read++;this.#recordsRead++;this.#originalRead++;this.#worldRead++;this.#token='';this.#creating=false;
     for(const c of this.#controllers)c.abort();this.#controllers.clear();
     this.#state=fresh();for(const listener of this.#listeners)listener();
   };
@@ -113,6 +125,43 @@ export class RegistrySession {
     }catch(_){if(current())this.#publish({patient:null,phase:'error',message:'The patient response could not be verified. No cached patient is shown.'});}
     finally{clearTimeout(timeout);this.#controllers.delete(control);}
   }
+  async loadWorldModel(caseId:string):Promise<void>{
+    const patientId=this.#state.patient?.patient_id;
+    const query=++this.#worldRead,scope=this.#scope,selection=this.#read;
+    // Every new read clears previous source observations before the request.
+    this.#publish({worldModel:null,worldPhase:'idle',
+      worldMessage:'Source observations must be reauthorized for this patient and case.'});
+    if(!patientId||!this.#token||!/^CASE-[A-Z0-9-]{1,35}$/.test(caseId)){
+      this.#publish({worldPhase:'error',worldMessage:
+        'An authorized patient and exact CASE-* identifier are required.'});
+      return;
+    }
+    const current=()=>query===this.#worldRead&&scope===this.#scope&&
+      selection===this.#read&&this.#state.patient?.patient_id===patientId;
+    const control=new AbortController();this.#controllers.add(control);
+    const timeout=setTimeout(()=>control.abort(),10000);
+    this.#publish({worldPhase:'loading',worldMessage:'Checking canonical source-read grant and original versions…'});
+    try{
+      const url='/v1/patients/'+encodeURIComponent(patientId)+'/cases/'+
+        encodeURIComponent(caseId)+'/world-model';
+      const res=await this.transport(url,this.#init(control));
+      if(!current())return;
+      if(res.status===401){this.#httpError(res.status);return;}
+      if(res.status!==200){
+        this.#publish({worldPhase:'error',worldModel:null,worldMessage:
+          messages[res.status]||'Source observation access unavailable; no prior observations shown.'});
+        return;
+      }
+      const result=decodeSourceWorldModel(await json(res),patientId,caseId);
+      if(!current())return;
+      this.#publish({worldModel:result,worldPhase:'ready',
+        worldMessage:'Read-only, current source-reported observations. No clinical reasoning or model execution.'});
+    }catch(_){
+      if(current())this.#publish({worldModel:null,worldPhase:'error',worldMessage:
+        'Unable to verify the source projection. No previous observation is displayed.'});
+    }finally{clearTimeout(timeout);this.#controllers.delete(control);}
+  }
+
   async loadRecords():Promise<void>{
     const patientId=this.#state.patient?.patient_id;
     if(!patientId||!this.#token){
@@ -121,7 +170,7 @@ export class RegistrySession {
       return;
     }
     const scope=this.#scope,selection=this.#read,query=++this.#recordsRead;
-    this.#originalRead++;
+    this.#originalRead++;this.#resetWorld();
     const current=()=>scope===this.#scope && selection===this.#read &&
       query===this.#recordsRead && this.#state.patient?.patient_id===patientId;
     const control=new AbortController();this.#controllers.add(control);

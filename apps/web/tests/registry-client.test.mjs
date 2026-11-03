@@ -163,3 +163,127 @@ test('historical receipts remain explicit and cannot be silently promoted',async
  assert.equal(s.snapshot().records[0].receipt_status,'source_superseded_reconciliation_required');
  assert.equal(s.snapshot().original,null);
 });
+
+
+const worldSource=()=>({
+ source_version_id:receiptSource,document_id:'DOC-ONE',version:1,
+ source_sha256:sha256,kind:'pathology',specimen_id:'SPECIMEN-ONE',
+ event_date:'2026-01-10',issued_at:'2026-01-11',
+ received_at:'2026-11-02T11:00:00Z',state:'current',supersedes_source_id:null
+});
+const worldObservation=()=>({
+ assertion_id:1,finding_key:'marker',reported_state:'not-reported',
+ source_statement:'Independently fictional example.',source_line:8,
+ source_version_id:receiptSource,document_id:'DOC-ONE',document_version:1,
+ source_sha256:sha256,source_kind:'pathology',specimen_id:'SPECIMEN-ONE',
+ event_date:'2026-01-10',issued_at:'2026-01-11',
+ received_at:'2026-11-02T11:00:00Z',review_state:'not_established',clinical_meaning:null
+});
+const worldFixture=()=>{
+ const observation=worldObservation();
+ return {
+ contract:'oi.synthetic-postgres-world-model-sources/1',synthetic:true,
+ patient_id:receiptPatient,case_id:receiptCase,source_snapshot_sha256:'a'.repeat(64),
+ authority:'source_report_only_unreviewed',clinical_interpretation:'not_generated',
+ clinical_approval:false,review_workflow_connected:false,
+ summary:{current_sources:1,superseded_sources:0,current_observations:1,
+  unresolved_observations:1,source_disagreements:0},
+ current_sources:[worldSource()],history:[],observations:[observation],
+ unresolved:[observation],conflicts:[],
+ limitations:['Synthetic authored observations only; not medical evidence.']
+ };
+};
+test('source World Model read requires authorized selected patient and exact case ID',async()=>{
+ const paths=[];
+ const s=new RegistrySession(async(url)=>{paths.push(url);return response(patient())});
+ s.connect(token);await s.loadWorldModel(receiptCase);assert.equal(paths.length,0);
+ await s.read(receiptPatient);await s.loadWorldModel('../other');assert.equal(paths.length,1);
+ assert.equal(s.snapshot().worldModel,null);
+ assert.equal(s.snapshot().worldPhase,'error');
+});
+test('source World Model is read only, scoped and anchored to original source UUIDs',async()=>{
+ const paths=[],options=[];
+ const s=new RegistrySession(async(url,opts)=>{
+  paths.push(url);options.push(opts);
+  return response(url.endsWith('/world-model')?worldFixture():patient());
+ });
+ s.connect(token);await s.read(receiptPatient);
+ await s.loadWorldModel(receiptCase);
+ assert.equal(s.snapshot().worldPhase,'ready');
+ assert.equal(s.snapshot().worldModel.observations[0].source_version_id,receiptSource);
+ assert.equal(s.snapshot().worldModel.summary.unresolved_observations,1);
+ assert.equal(s.snapshot().worldModel.review_workflow_connected,false);
+ assert.equal(s.snapshot().original,null);
+ assert.equal(paths[1],'/v1/patients/'+receiptPatient+'/cases/'+receiptCase+'/world-model');
+ assert.equal(options[1].method,'GET');assert.equal(options[1].credentials,'omit');
+ assert.equal(options[1].headers.Authorization,'Bearer '+token);
+});
+test('mismatched patient, case, source hash and fabricated model authority fail closed',async()=>{
+ const bad=[
+ {...worldFixture(),patient_id:'PAT-OTHER-999'},
+ {...worldFixture(),case_id:'CASE-BETA'},
+ {...worldFixture(),clinical_approval:true},
+ {...worldFixture(),observations:[{...worldObservation(),source_sha256:'0'.repeat(64)}]},
+ {...worldFixture(),observations:[{...worldObservation(),source_version_id:'SRC-'+'B'.repeat(32)}]},
+ {...worldFixture(),summary:{...worldFixture().summary,current_observations:2}},
+ ];
+ for(const fixture of bad){
+  const s=new RegistrySession(async(url)=>response(url.endsWith('/world-model')?fixture:patient()));
+  s.connect(token);await s.read(receiptPatient);await s.loadWorldModel(receiptCase);
+  assert.equal(s.snapshot().worldModel,null);
+  assert.equal(s.snapshot().worldPhase,'error');
+ }
+});
+test('world model permission denial clears prior observations and does not echo provider details',async()=>{
+ let deny=false;
+ const s=new RegistrySession(async(url)=>url.endsWith('/world-model')?
+  deny?response({detail:'sensitive model content'},404):response(worldFixture()):
+  response(patient()));
+ s.connect(token);await s.read(receiptPatient);await s.loadWorldModel(receiptCase);
+ assert.ok(s.snapshot().worldModel);
+ deny=true;await s.loadWorldModel(receiptCase);
+ assert.equal(s.snapshot().worldModel,null);
+ assert.equal(s.snapshot().worldPhase,'error');
+ assert.ok(!JSON.stringify(s.snapshot()).includes('sensitive model content'));
+});
+test('source correction refresh changes fingerprint, never silently promotes old observation',async()=>{
+ let corrected=false;
+ const correctedId='SRC-'+'C'.repeat(32);
+ const base=worldFixture();
+ const replacement={
+  ...base,source_snapshot_sha256:'b'.repeat(64),
+  summary:{...base.summary,superseded_sources:1,unresolved_observations:0},
+  current_sources:[{...worldSource(),source_version_id:correctedId,version:2,
+                   supersedes_source_id:receiptSource}],
+  history:[{...worldSource(),state:'superseded'}],
+  observations:[{...worldObservation(),source_version_id:correctedId,
+    document_version:2,reported_state:'negative',assertion_id:2}],
+  unresolved:[],
+ };
+ const s=new RegistrySession(async(url)=>url.endsWith('/world-model')?
+  response(corrected?replacement:base):response(patient()));
+ s.connect(token);await s.read(receiptPatient);await s.loadWorldModel(receiptCase);
+ assert.equal(s.snapshot().worldModel.observations[0].source_version_id,receiptSource);
+ corrected=true;await s.loadWorldModel(receiptCase);
+ assert.equal(s.snapshot().worldModel.source_snapshot_sha256,'b'.repeat(64));
+ assert.equal(s.snapshot().worldModel.observations[0].source_version_id,correctedId);
+ assert.equal(s.snapshot().worldModel.history[0].source_version_id,receiptSource);
+});
+test('late world model response cannot restore another patient after selection or disconnect',async()=>{
+ const a=deferred();let calls=0;
+ const s=new RegistrySession(async(url)=>{
+  calls++;return url.endsWith('/world-model')?a.promise:
+    response(patient(url.endsWith('PAT-EXAMPLE-002')?'PAT-EXAMPLE-002':receiptPatient));
+ });
+ s.connect(token);await s.read(receiptPatient);
+ const pending=s.loadWorldModel(receiptCase);
+ await s.read('PAT-EXAMPLE-002');
+ a.resolve(response(worldFixture()));await pending;
+ assert.equal(s.snapshot().worldModel,null);
+ assert.equal(s.snapshot().patient.patient_id,'PAT-EXAMPLE-002');
+ const b=deferred();
+ const t=new RegistrySession(async(url)=>url.endsWith('/world-model')?b.promise:response(patient()));
+ t.connect(token);await t.read(receiptPatient);const old=t.loadWorldModel(receiptCase);
+ t.disconnect();b.resolve(response(worldFixture()));await old;
+ assert.equal(t.snapshot().worldModel,null);
+});

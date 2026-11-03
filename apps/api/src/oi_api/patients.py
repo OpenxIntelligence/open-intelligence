@@ -20,6 +20,7 @@ from .database import Database
 from .record_requests import PostgresRecordRequests
 from .case_bindings import CanonicalCaseBindings
 from .sources import PostgresSourceVersions
+from .world_model_read import PostgresWorldModelRead
 
 TOKEN = re.compile(r"[A-Za-z0-9._~-]{32,256}\Z")
 
@@ -269,6 +270,84 @@ class OriginalSource(Contract):
     clinical_review_state: Literal["not_established"]
 
 
+
+class WorldModelSource(Contract):
+    source_version_id: str
+    document_id: str
+    version: int = Field(ge=1)
+    source_sha256: str
+    kind: Literal["clinical", "pathology", "laboratory", "imaging", "molecular", "other"]
+    specimen_id: str | None
+    event_date: str
+    issued_at: str
+    received_at: datetime
+    state: Literal["current", "superseded"]
+    supersedes_source_id: str | None
+
+
+class WorldModelObservation(Contract):
+    assertion_id: int = Field(ge=1)
+    finding_key: str
+    reported_state: Literal["reported", "negative", "pending", "indeterminate",
+                            "not-reported", "not-assessed", "conflicting"]
+    source_statement: str
+    source_line: int = Field(ge=1)
+    source_version_id: str
+    document_id: str
+    document_version: int = Field(ge=1)
+    source_sha256: str
+    source_kind: Literal["clinical", "pathology", "laboratory", "imaging", "molecular", "other"]
+    specimen_id: str | None
+    event_date: str
+    issued_at: str
+    received_at: datetime
+    review_state: Literal["not_established"]
+    clinical_meaning: None
+
+
+class WorldModelObservationRef(Contract):
+    assertion_id: int = Field(ge=1)
+    source_version_id: str
+    source_line: int = Field(ge=1)
+
+
+class WorldModelConflict(Contract):
+    specimen_id: str
+    event_date: str
+    finding_key: str
+    status: Literal["unresolved_source_disagreement"]
+    reported_states: list[Literal["reported", "negative"]]
+    observation_refs: list[WorldModelObservationRef]
+    clinical_interpretation: Literal["not_performed"]
+
+
+class WorldModelSummary(Contract):
+    current_sources: int = Field(ge=0)
+    superseded_sources: int = Field(ge=0)
+    current_observations: int = Field(ge=0)
+    unresolved_observations: int = Field(ge=0)
+    source_disagreements: int = Field(ge=0)
+
+
+class WorldModelSourceRead(Contract):
+    contract: Literal["oi.synthetic-postgres-world-model-sources/1"]
+    synthetic: Literal[True]
+    patient_id: str
+    case_id: str
+    source_snapshot_sha256: str
+    authority: Literal["source_report_only_unreviewed"]
+    clinical_interpretation: Literal["not_generated"]
+    clinical_approval: Literal[False]
+    review_workflow_connected: Literal[False]
+    summary: WorldModelSummary
+    current_sources: list[WorldModelSource]
+    history: list[WorldModelSource]
+    observations: list[WorldModelObservation]
+    unresolved: list[WorldModelObservation]
+    conflicts: list[WorldModelConflict]
+    limitations: list[str]
+
+
 def patient_router(database: Database, authentication: Authentication) -> APIRouter:
     router = APIRouter(prefix="/v1/patients", tags=["Synthetic patient registry"])
     bearer = HTTPBearer(auto_error=False, scheme_name="SyntheticFixture",
@@ -488,6 +567,24 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
             raise HTTPException(404, "Patient unavailable") from None
         return CaseBindingReceipt(**result)
 
+
+
+    @router.get("/{patient_id}/cases/{case_id}/world-model",
+                response_model=WorldModelSourceRead, responses=errors,
+                operation_id="read_source_world_model_v1")
+    def read_source_world_model(patient_id: str, case_id: str,
+                                context: Principal = Depends(principal)):
+        try:
+            with registry(context) as patients:
+                # A patient-readable identity does not confer source access.
+                # The source owner serializes this derived view with imports
+                # and case-binding revocation via its original row lock.
+                records_authorized(patients, context, patient_id, "source_read")
+                result = PostgresWorldModelRead(patients).read(
+                    patient_id, case_id, organization=context.organization)
+                return WorldModelSourceRead(**result)
+        except PatientRegistryDenied:
+            raise HTTPException(404, "Source unavailable") from None
 
     @router.get("/{patient_id}/cases/{case_id}/sources", response_model=OriginalSourceIndex,
                 responses=errors, operation_id="list_original_sources_v1")

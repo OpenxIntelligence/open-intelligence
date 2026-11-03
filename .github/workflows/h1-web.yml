@@ -1,9 +1,9 @@
 name: H1 React patient workspace (fictional only)
 on:
   push:
-    branches: [feat/h1-react-patient-entry-20261102]
+    branches: [feat/h1-react-patient-entry-20261102, integration/h1-postgres-world-model-20261102]
   pull_request:
-    paths: ['apps/web/**', '.github/workflows/h1-web.yml']
+    paths: ['apps/web/**', 'apps/api/src/oi_api/**', 'apps/api/tests/test_world_model_source_read.py', 'apps/api/tests/test_contracts.py', 'src/open_intelligence/world_model.py', '.github/workflows/h1-web.yml']
 permissions:
   contents: read
 jobs:
@@ -65,6 +65,15 @@ jobs:
           python apps/api/tools/check_dependencies.py --wheel-dir /tmp/oi-h1-wheels --sbom /tmp/oi-h1-sbom.json
           python -m pip install --no-index --find-links /tmp/oi-h1-wheels --require-hashes -r apps/api/requirements.lock
           python -m pip check
+      - name: Verify authorized PostgreSQL source World Model and typed API contracts
+        shell: bash
+        env:
+          OI_API_RUN_DATABASE_TESTS: '1'
+          OI_API_TEST_DATABASE_URL: postgresql+pg8000://oi_api:oi_h1_synthetic_only@127.0.0.1:5432/oi_api_test_web
+        run: |
+          set -o pipefail
+          python -m unittest discover -s apps/api/tests -p test_contracts.py -v 2>&1 | tee verification-web/world-model-contracts.txt
+          python -m unittest discover -s apps/api/tests -p test_world_model_source_read.py -v 2>&1 | tee verification-web/world-model-postgres.txt
       - name: Actual PostgreSQL API and built React browser journey
         shell: bash
         run: |

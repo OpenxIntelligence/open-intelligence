@@ -16,3 +16,26 @@
 .original-custody{padding:20px;border:1px solid #a7bdb1;background:#f7faf8;border-radius:10px;margin-top:12px}
 .original-custody pre{font-size:12px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;background:#fff;border:1px solid #dce6e0;padding:16px;overflow:auto;max-height:420px}
 @media(max-width:600px){.record-item,.original-custody{padding:14px}.record-reference{padding:10px}.record-toolbar button,.record-reference button{width:100%}}
+
+/* Source observations are inspectable provenance, not clinical conclusions. */
+.world-panel{max-width:1100px}
+.world-case-form{border-top:1px solid #d7e0d8;border-bottom:1px solid #d7e0d8;padding:16px 0;margin:18px 0}
+.world-case-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.world-case-controls input{max-width:360px;flex:1;min-width:170px;margin:8px 0}
+.world-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:18px 0}
+.world-summary>div{background:#eef3f0;border-radius:8px;padding:13px;min-width:0;display:flex;flex-direction:column;gap:5px}
+.world-summary strong{font-size:24px;font-weight:650;color:#214c43}
+.world-summary span{font-size:12px;color:#445f54}
+.world-fingerprint{display:flex;flex-direction:column;gap:8px;overflow-wrap:anywhere}
+.world-fingerprint code{font-size:12px;word-break:break-word}
+.world-panel h3{font-size:18px;font-weight:650;margin:20px 0 10px}
+.world-observations{list-style:none;padding:0;margin:0;display:grid;gap:12px}
+.world-observation{border:1px solid #d6e1d9;border-radius:8px;padding:16px;min-width:0;background:#fcfdfb}
+.world-observation .step{margin:0 0 8px}
+.world-observation blockquote{margin:6px 0 16px;padding:9px 13px;border-left:3px solid #729184;background:#edf3ee;font-style:normal;font-size:15px;white-space:pre-wrap;overflow-wrap:anywhere}
+.world-observation dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;font-size:12px}
+.world-observation dt{color:#566e65}
+.world-observation dd{margin:4px 0 0;overflow-wrap:anywhere;word-break:break-word;font-weight:600}
+.world-boundary{border-left:3px solid #aa8950;background:#f1eddf;padding:14px 16px;margin:22px 0 0}
+@media(max-width:900px){.world-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){.world-case-controls button{width:100%}.world-case-controls input{max-width:none}.world-observation dl{grid-template-columns:1fr}.world-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
