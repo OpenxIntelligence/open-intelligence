@@ -49,6 +49,19 @@ The panel automatically follows the selected synthetic case and refreshes after 
 
 This slice does **not** add identity, consent, patient goals, PHI support, medication intelligence, acute-safety escalation, diagnostic inference, literature appraisal, trial matching, treatment selection, therapeutic development, care coordination, outcome interpretation, or platform learning. It is a source-grounded workflow orientation surface for the synthetic engineering reference only.
 
+## Plain-language patient/caregiver report
+
+The portal includes a read-only **Plain-language report** view, reachable from the workspace navigation and from the patient view. It renders five sections — overview, timeline highlights, open questions, option portfolio status, goals — deterministically from the current recorded case state. No model is called and no new inference is performed; templates and recorded data only.
+
+```text
+GET /api/cases/{CASE-ID}/patient-report          # JSON
+GET /api/cases/{CASE-ID}/patient-report?format=text  # printable plain text
+```
+
+Behavior contract: every section names its source for each entry or states plainly that it has none; pending, unknown, stale, and quarantined states stay visibly unsettled and are never smoothed over; the report's own voice carries no clinical interpretation, recommendation, or directive language (fixed templates checked by a language guard at build time, with recorded entries shown verbatim as attributed quotations); the ledger has no goals entity, so the goals section reports that absence instead of inferring goals. The report and its UI are labeled fictional/demo throughout, and the view offers Print plus a plain-text download.
+
+This slice does **not** add patient goals tracking, clinical interpretation, recommendations, or any new ledger state. It is a presentation projection over the existing case record for the synthetic engineering reference only.
+
 ## Fictional evidence and case applicability slice
 
 The evidence form supports only the explicit `OI-SYNTHETIC-EVIDENCE/1` format with `Rights: original-synthetic`. Use the bundled `examples/synthetic/demo-evidence.txt` text. That declaration is not legal clearance for arbitrary user-supplied text. No third-party paper, article body, guideline, or real oncology data is retrieved or reused.
@@ -56,6 +69,50 @@ The evidence form supports only the explicit `OI-SYNTHETIC-EVIDENCE/1` format wi
 The UI can register an original fictional evidence item, attach a manually-authored relationship and applicability assessment to a case-specific question, include selected assessments when drafting an investigation, inspect the exact source text/line/hash, and withdraw a fictional item. An explicit `Amends: EVIDENCE-ID@LATEST-VERSION` replacement or withdrawal flags every dependent investigation in every affected synthetic case as stale, while retaining older source versions for audit. Assessments for superseded/withdrawn evidence cannot be included in new drafts.
 
 The labels `supports`, `contradicts`, and `applicable` are human-entered **fictional engineering data**, not determinations of evidence quality, clinical benefit, trial eligibility, or clinical relevance. The prototype has no clinician identity verification or legal rights-verification service. Never use real patient records or copyrighted publication text. Run the unit/HTTP tests before reviewing the UI; browser execution requires a separate interactive verification.
+
+## Clinician review queue and sign-off receipts
+
+The case workspace includes a **Review queue** panel (nav link and case-overview button, `#review-queue`). It is a derived projection over the existing ledger — human investigation drafts, model investigations, amended source versions, held or re-review discussion options, and fictional evidence assessments — with age and status, oldest first. It creates no second ledger.
+
+```text
+GET  /api/cases/{CASE-ID}/review-queue
+POST /api/cases/{CASE-ID}/review-queue/receipts
+```
+
+A receipt posts `{"queue_key": "...", "action": "reviewed|acknowledged|returned", "reviewer_label": "...", "reason": "..."}`. Reviewed and acknowledged resolve the current version of the item; returned requires a 10–600 character reason and keeps the item visibly queued with that reason. Receipts are append-only: there is no update or delete path, and a second terminal decision for the same version is rejected.
+
+Each item carries a fingerprint of the ledger state it was reviewed against, so an amendment or evidence withdrawal reopens the item with its earlier decisions preserved as history instead of silently carrying them forward. The existing demo acknowledgment and option-review routes append a matching queue receipt in the same transaction, so no item leaves the queue without a recorded decision. Nothing is auto-approved, auto-dismissed, or removed because of age.
+
+A sign-off records that a person looked; it never approves, authorizes, or recommends any treatment, test, or procedure. Recommendation/order/eligibility language is rejected in reviewer labels and reasons. Reviewer labels are unverified demo text, not credentialed identity. This slice covers evidence assessments as new evidence; broker and discovery links are not yet queued.
+## Longitudinal biological explanation slice
+
+The case view links to a **Biological explanation** panel for human-authored, source-anchored context records: each explanation ties one question to a fictional episode, specimen, lesion, and clinical time point, and each assay observation ties one fictional assay to exactly one tissue block (or explicitly unknown), a matched-control state (`recorded`, `missing`, or `unknown`), and a reference kind (`patient_normal`, `external_population`, or `unknown`). Competing explanations for one question survive side by side; a recorded specimen that contradicts its anchored source is rejected rather than merged; and both tables go stale anchor-exactly on source amendment. Authored text rejects staging, grading, variant-interpretation, response/progression, eligibility, and treatment language. See `docs/BIOLOGICAL_EXPLANATION.md` and `tests/test_bio_explanation.py`. This slice states no clinical meaning for any variant, stage, grade, or response, and is not evidence of benefit or a basis for administering anything.
+## Counterevidence and safety-uncertainty surfacing (options)
+
+The options panel can record, per option, append-only **counterevidence**
+(`hold` or `invalidate`, with a plain-words reason and exactly one
+triggering source version or evidence assessment) and **safety uncertainty**
+flags (`expression_only`, `tracer_only`, `preclinical_only`,
+`cross_modal_gap`, `other`, each with a server-issued plain-language
+label). Both stay visible in the derived option view even after later
+amendments supersede their triggers, and both block promotion: a held,
+invalidated, or safety-flagged option cannot be approved or reconfirmed,
+and promotion scopes claiming established benefit/toxicity or a patient
+response/permission are refused. A new proposal on current inputs is the
+only path forward. Single-modality notes never read as established benefit
+or toxicity; preclinical notes always read as preclinical only, never as an
+observed patient response or permission to administer. Routes:
+
+```text
+POST /api/cases/{CASE-ID}/options/{ID}/counterevidence
+POST /api/cases/{CASE-ID}/options/{ID}/safety-flags
+```
+
+All records are fictional engineering data for clinician review; the
+platform surfaces uncertainty and never resolves it by itself. See
+`tests/test_counterevidence_safety.py`. Wording guards are narrow
+pattern checks, not classifiers, and human-authored descriptions outside
+these fields are not policed.
 
 ## Bibliographic metadata panel
 
@@ -142,3 +199,58 @@ Follow-through panel with a visible overdue/due-soon attention box plus
 separate open, deferred, and completed-history lists. See
 `tests/test_followthrough.py` for the lifecycle, history-preservation,
 overdue-derivation, amendment-flag, and no-auto-execution checks.
+## Patient goals and lived experience (fictional patient words)
+
+The case workspace includes a **Patient goals** panel for goals the
+fictional patient states in their own words (with stated date, review
+trigger, and optional review date), lived-experience notes, and symptom
+notes. Each record is durable, versioned, and amendable; old versions
+are preserved with `record_state='superseded'` and never deleted. A
+goal can be set, amended, and marked `achieved`, `changed`, or
+`abandoned` with a required plain-language reason; each change creates
+a new version.
+
+```text
+POST /api/cases/{CASE-ID}/patient-goals
+POST /api/cases/{CASE-ID}/patient-goals/{goal_id}/amendments
+POST /api/cases/{CASE-ID}/patient-goals/{goal_id}/status
+POST /api/cases/{CASE-ID}/patient-notes
+POST /api/cases/{CASE-ID}/patient-notes/{note_id}/amendments
+```
+
+Current goals and notes with full history appear in
+`GET /api/cases/{CASE-ID}/state` as `patient_goals` and `patient_notes`.
+Patient words stay patient words: these endpoints accept no diagnosis,
+staging, or response fields, create no assertions or investigations,
+and leave the mission projection unchanged. Every surface labels them
+fictional, patient-reported, and never a clinical interpretation. See
+`tests/test_patient_goals.py` for the acceptance checks.
+## Option portfolio surface (authored, awaiting reviewer verification)
+
+An evidence-backed portfolio over the existing option ledger. It adds
+append-only records only; no existing table, route, or review contract
+changed meaning:
+
+- `option_flags`: documented objections, deferrals, and reservations, each
+  with a reason, a recorder label, and at most one current same-case source
+  or evidence premise. An open flag holds the option: approval and
+  reconfirmation are refused until the reason is resolved, and resolving or
+  reopening the reason reopens review of the option and its followers. A
+  source amendment or evidence withdrawal also reopens options whose open
+  flags cite the changed premise.
+- `option_dimension_notes`: reviewable notes on the four portfolio
+  dimensions — scientific plausibility, technical feasibility, access,
+  clinical authorization. Each note carries an anchor, an optional premise,
+  and stays `pending` until a clinician acknowledges it. Acknowledgment is a
+  record of review, never a declaration of eligibility, benefit, or
+  authorization; author-controlled text making such claims is rejected.
+- `GET /api/cases/{case}/portfolio` (also embedded in case state) projects
+  every option ever proposed: prerequisites, objections, access notes,
+  readiness, lead-time uncertainty, and expiration/review triggers.
+  Deferred, rejected, and reserved entries stay visible with their reasons
+  and counts; nothing is silently dropped.
+- The case workspace renders this as an "Option portfolio" section linked
+  from the case navigation, in plain language with fictional labels.
+- Tests: `tests/test_option_portfolio.py` (store behavior plus HTTP route
+  coverage through the existing live-server pattern), including the held
+  reason-change review flow and rejected-entry preservation.

@@ -305,6 +305,8 @@ class NoRedirect(HTTPRedirectHandler):
 
 
 def fetch_catalog() -> tuple[bytes, dict]:
+    # The catalog contains case-specific patient data. No manual or CI opt-in is allowed.
+    raise PermissionError('Sid case data catalog access disabled: use public narrative accounts to study workflows, never patient data.')
     url = validate_fetch_url(CATALOG_URL)
     opener = build_opener(NoRedirect())
     for attempt in range(2):

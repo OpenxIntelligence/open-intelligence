@@ -110,8 +110,11 @@ def parse_discovery(raw: bytes) -> ParsedDiscovery:
     if not 4 <= len(title) <= 180:
         raise DiscoveryInputError("Discovery title must have 4-180 characters")
     issued_at = values["Issued-At"]
-    if not DATE_PATTERN.fullmatch(issued_at):
-        raise DiscoveryInputError("Dates must use YYYY-MM-DD")
+    from .store import valid_date
+    try:
+        valid_date(issued_at)
+    except ValueError:
+        raise DiscoveryInputError("Dates must use YYYY-MM-DD") from None
     summary = values["Summary"]
     if not 10 <= len(summary) <= 600:
         raise DiscoveryInputError("Discovery summary must have 10-600 characters")
