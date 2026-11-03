@@ -51,7 +51,14 @@ class WorkspaceRedesignTests(unittest.TestCase):
         for form, contract in baseline.items():
             with self.subTest(form=form):
                 self.assertIn(form, page.forms)
-                self.assertEqual(page.forms[form], contract)
+                expected = {**contract, 'controls': dict(contract['controls'])}
+                if form == 'source-upload-form':
+                    # The original manifest stays unchanged. This one explicit
+                    # local-only action must never become a submit control.
+                    expected['controls']['source-discard-button'] = {
+                        'tag': 'button', 'attributes': {'type': 'button'},
+                    }
+                self.assertEqual(page.forms[form], expected)
 
     def test_both_served_pages_have_unique_ids_and_the_original_dialogs(self):
         for html in [(ROOT / 'web/index.html').read_text(), workspace_html()]:

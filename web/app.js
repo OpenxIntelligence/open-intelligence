@@ -12,10 +12,12 @@ function node(tag, text, className = '') {
   return item;
 }
 function clear(id) { el(id).replaceChildren(); }
-function notice(message, error = false) {
+function notice(message, error = false, ownerCase = null) {
   const item = el('notice');
   item.textContent = message;
   item.className = error ? 'notice error' : 'notice';
+  if (ownerCase) item.dataset.caseId = ownerCase;
+  else delete item.dataset.caseId;
   item.hidden = false;
 }
 async function api(path, payload) {
@@ -34,6 +36,12 @@ function metric(number, label) {
   wrap.append(node('span', number, 'number'), node('span', label, 'name'));
   return wrap;
 }
+function hasUnfinishedCaseWork() {
+  return Boolean(el('source-file')?.files?.length) ||
+    ['question-text', 'report-text', 'draft-observations', 'draft-summary',
+     'draft-assumptions', 'evidence-rationale', 'evidence-withdraw-reason',
+     'option-description'].some(id => el(id)?.value.trim());
+}
 async function initialize() {
   try {
     const cases = await api('/api/cases');
@@ -50,23 +58,40 @@ async function initialize() {
     }
     await renderIncomingBoard(cases);
     picker.addEventListener('change', () => {
-      // An unfinished narrative must never silently become attached to another case.
-      if ((['draft-observations', 'draft-summary', 'draft-assumptions', 'evidence-rationale',
-            'evidence-withdraw-reason', 'option-description'].some(id => el(id).value.trim()))) {
+      // Reopening a ready chart preserves drafts. Reopening an unavailable
+      // chart retries its existing state owner without resetting local inputs.
+      if (picker.value === caseId) {
+        try { readyCase(); } catch (_) { refresh(); }
+        return;
+      }
+      // A selected File is unfinished work even before its original bytes finish
+      // loading. Use this same guard for the connected workspace creation flow.
+      if (hasUnfinishedCaseWork()) {
         picker.value = caseId;
-        notice('Save or explicitly clear the unfinished investigation draft before switching cases.', true);
+        notice('Save or explicitly clear the unfinished investigation draft, question or pasted record, or discard the selected source before switching cases.', true, caseId);
         return;
       }
       cancelSourceRead();
+      // Saved-report actions and switch warnings belong to the original chart.
+      // Unrelated global notices keep their existing lifetime.
+      if (el('notice').dataset.caseId === caseId) {
+        el('notice').replaceChildren();
+        el('notice').hidden = true;
+        delete el('notice').dataset.caseId;
+      }
       caseId = picker.value;
       active = null; // Reject writes while the next case is loading.
       for (const id of ['question-text', 'report-text', 'evidence-rationale', 'draft-observations',
         'draft-summary', 'draft-assumptions']) el(id).value = '';
       if (el('source-dialog').open) el('source-dialog').close();
       if (el('compare-dialog').open) el('compare-dialog').close();
+      // Notify consumers only after the canonical selection has been accepted.
+      // Native select events can run microtasks between their individual listeners.
+      document.dispatchEvent(new Event('oi:case-selection-changed'));
       refresh();
     });
     caseId = cases[0].case_id;
+    document.dispatchEvent(new Event('oi:case-selection-changed'));
     await refresh();
   } catch (err) { notice(err.message, true); }
 }
@@ -804,7 +829,7 @@ el('draft-form').addEventListener('submit', async event => {
     });
     if (requestedCase !== caseId) return;
     for (const id of ['draft-observations', 'draft-summary', 'draft-assumptions']) el(id).value = '';
-    notice('Draft #' + created.snapshot_id + ' saved with exact source versions.');
+    notice('Draft #' + created.snapshot_id + ' saved with exact source versions.', false, requestedCase);
     const reportLink = node('a', 'View saved report', 'notice-action');
     reportLink.href = '#snapshot-' + created.snapshot_id;
     el('notice').append(' ', reportLink);
@@ -1425,7 +1450,6 @@ const workspacePresentation = (() => {
   let pendingTarget = null;
   let syncQueued = false;
   let navigationCase = null;
-  let lastReadyCase = null;
 
   function register(id, content) {
     if (!content) return;
@@ -1630,15 +1654,6 @@ const workspacePresentation = (() => {
     if (!current) return;
     let ready = false;
     try { ready = Boolean(readyCase()); } catch (_) { /* Retain the original readiness guard. */ }
-    if (ready) {
-      // A successful, different case load resolves the earlier switch veto.
-      // Leave unrelated request errors and all current draft values untouched.
-      if (lastReadyCase && lastReadyCase !== caseId && el('notice').textContent ===
-          'Save or explicitly clear the unfinished investigation draft before switching cases.') {
-        el('notice').hidden = true;
-      }
-      lastReadyCase = caseId;
-    }
     const emptyState = document.body.dataset.workspaceState === 'empty';
     if (emptyState && views.has('workspace-start') && current.id !== 'workspace-start' && current.id !== 'bibliography') {
       navigate('workspace-start', { replace: true, focus: false });
@@ -1746,7 +1761,7 @@ const workspacePresentation = (() => {
   mobile.addEventListener('change', () => setMenu(false));
   el('case-search').addEventListener('input', filterCases);
   el('document-search').addEventListener('input', filterDocuments);
-  el('case-picker').addEventListener('change', scheduleSync);
+  document.addEventListener('oi:case-selection-changed', scheduleSync);
   const observer = new MutationObserver(scheduleSync);
   for (const id of ['case-heading', 'source-list', 'question-list', 'snapshot-list', 'incoming-list', 'notice'])
     observer.observe(el(id), { childList: true, subtree: true });

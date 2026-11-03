@@ -12,6 +12,7 @@ Open **http://127.0.0.1:8765**. Python 3.10 or newer is required. The default da
 
 1. Create a workspace using a fictional alias and an uppercase reference. For the supplied authored examples, use `CASE-START`.
 2. Add `examples/synthetic/workspace-start-original.txt` through **Add original records**. Inspect the unchanged source text and confirm it is fictional before import. Source identity, original bytes, timeline, findings and missingness use the existing ledger.
+   An unfinished question, pasted original, investigation draft or selected original blocks a change to another case. Use **Discard selected source** to clear only an unsubmitted local file and its preview; imported source versions and report history remain untouched. Opening the same selected chart preserves unfinished work.
 3. Add a question in **Investigate a question**, inspect its source-bound Composer context, and run **Replay**. Replay is a recorded demonstration, not a live model.
 4. Select **Prepare review draft** on the run. The existing backend creates a versioned report with its original source dependencies; generation does not constitute review.
 5. Inspect the report and use its explicit **Demo review acknowledgment**. This is not clinician credentialing or a clinical signature.

@@ -3,13 +3,11 @@
 // Does not create another case/source store, parser, investigation or review flow.
 (() => {
   const $ = id => document.getElementById(id);
-  const dirty = () => ['draft-observations','draft-summary','draft-assumptions',
-    'evidence-rationale','evidence-withdraw-reason','option-description']
-    .some(id => $(id)?.value.trim());
+  const dirty = hasUnfinishedCaseWork;
   const current = () => {
     try { return readyCase(); } catch (_) { return null; }
   };
-  let refreshQueued=false;
+  let refreshQueued=false, lastScopedCase=null, lastPresentedCase=null;
   const intake=globalThis.OIIntake.mount({
     api,
     getCase:current,
@@ -46,7 +44,16 @@
     },
   });
   function renderIntakePresentation(state) {
+    const id=state?.case?.case_id || null;
+    const route=document.body.dataset.view;
+    const disclosure=['source-intake','workspace-start'].includes(route) ? $(route) : null;
+    const keepOpen=disclosure?.open;
     intake.render(state);
+    // Intake's source-count defaults must not collapse the user's active page.
+    // A new ready chart opens its selected destination; ordinary same-case
+    // updates retain an intentionally opened or closed native disclosure.
+    if(disclosure)disclosure.open=(Boolean(id) && id!==lastPresentedCase) || keepOpen;
+    lastPresentedCase=id;
     // The original progress calculation is unchanged. Its formerly shared
     // investigation section now has separate question and report destinations.
     const destinations={'3. Questions':'#questions','5. Review & updates':'#reports'};
@@ -55,7 +62,16 @@
   }
   function sync() {
     refreshQueued=false;
-    if(current()) {
+    // The canonical owner notifies us after accepting a selection. Raw native
+    // picker listeners can run before that decision, with microtasks between them.
+    if(caseId!==lastScopedCase) {
+      lastScopedCase=caseId;
+      intake.resetScope();
+    }
+    const selected=current(), unavailable=Boolean(caseId) && !selected;
+    $('journey-steps').hidden=unavailable;
+    $('source-intake-case').hidden=unavailable;
+    if(selected) {
       document.body.dataset.workspaceState='ready';
       $('case-picker').disabled=false;
       renderIntakePresentation(active);
@@ -68,6 +84,8 @@
       const message=$('notice');
       if(message.textContent.includes('seed before opening')) {message.hidden=true;message.textContent='';}
       renderIntakePresentation(null);
+    } else if(unavailable) {
+      document.body.dataset.workspaceState='loading';
     }
   }
   function schedule() {
@@ -77,9 +95,7 @@
   const observer=new MutationObserver(schedule);
   for(const id of ['case-heading','source-list','question-list','snapshot-list'])
     observer.observe($(id),{childList:true,subtree:true});
-  $('case-picker').addEventListener('change',()=>{
-    intake.resetScope();document.body.dataset.workspaceState='loading';schedule();
-  });
+  document.addEventListener('oi:case-selection-changed',schedule);
   $('new-workspace-button').addEventListener('click',()=>{
     workspacePresentation.navigate('workspace-start');
     $('workspace-start').open=true;$('new-case-panel').open=true;

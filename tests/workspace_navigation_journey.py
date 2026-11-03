@@ -477,7 +477,7 @@ def exercise_connected(j: Journey) -> None:
     j.select('#case-picker', 'CASE-BETA')
     j.cd.wait("document.querySelector('#case-picker').value === 'CASE-ALPHA'", 'original dirty-case veto')
     j.check(j.draft_values() == unfinished, 'Dirty-case veto preserves the Alpha draft')
-    j.check(j.visible('#notice') and 'Save or explicitly clear the unfinished investigation draft before switching cases.'
+    j.check(j.visible('#notice') and 'Save or explicitly clear the unfinished investigation draft, question or pasted record, or discard the selected source before switching cases.'
             in j.cd.evaluate("document.querySelector('#notice').textContent"),
             'Unfinished-draft veto remains visibly explained while the case switch is blocked')
     j.go('incoming-board')
