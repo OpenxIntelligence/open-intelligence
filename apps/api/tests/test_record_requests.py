@@ -105,11 +105,11 @@ class RecordRequestHTTPTests(unittest.TestCase):
             status, rows, _ = self.list(base, patient)
             self.assertEqual(status, 200)
             self.assertEqual(rows["patient_id"], patient)
-            self.assertFalse(rows["source_receipts_enabled"])
+            self.assertTrue(rows["source_receipts_enabled"])
             self.assertFalse(rows["external_request_sent"])
             self.assertEqual((rows["requests"][0]["status"], rows["requests"][0]["revision"]), ("requested", 1))
             self.assertEqual(rows["requests"][0]["receipt_status"],
-                             "unavailable_until_canonical_source_contract")
+                             "not_received")
             path = f"/v1/patients/{patient}/record-requests/{request_id}/cancel"
             self.assertEqual(request(base, path, token=TOKEN_A, body={
                 "synthetic": True, "reason": "No longer needed in fictional exercise"
