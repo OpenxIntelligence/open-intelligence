@@ -45,8 +45,14 @@ function focusOverviewFromCasePicker(event) {
 // Intake reuses the canonical case API and existing switch/unsaved-work guards.
 let caseSelectionTask = Promise.resolve();
 function hasUnsavedCaseWork() {
-  return ['draft-observations', 'draft-summary', 'draft-assumptions', 'evidence-rationale',
+  // Source-linked questions and pasted reports are just as case-specific as
+  // investigation drafts. Selected files must not be silently discarded when
+  // intake.js resets its file input after a switch. Mirror the question guard
+  // already established by upstream PR #163 without adding another draft store.
+  const unsavedText = ['question-text', 'report-text', 'draft-observations',
+    'draft-summary', 'draft-assumptions', 'evidence-rationale',
     'evidence-withdraw-reason', 'option-description'].some(id => el(id)?.value.trim());
+  return unsavedText || Boolean(el('intake-files')?.files?.length);
 }
 function populateCasePicker(cases) {
   const picker = el('case-picker');
@@ -79,7 +85,7 @@ async function initialize() {
       const allowed = document.dispatchEvent(new CustomEvent('oi:before-case-switch', {cancelable:true}));
       if (!allowed || hasUnsavedCaseWork()) {
         picker.value = caseId || '';
-        if (allowed) notice('Save or explicitly clear the unfinished investigation draft before switching cases.', true);
+        if (allowed) notice('Save or explicitly clear the unfinished question, source file, or investigation draft before switching cases.', true);
         return;
       }
       cancelSourceRead();

@@ -1,0 +1,51 @@
+name: Case-scoped unsaved intake guards (fictional-only)
+
+on:
+  pull_request:
+    branches:
+      - feat/case-intake-end-to-end-20261102
+      - main
+    paths:
+      - 'web/app.js'
+      - 'tests/intake_browser_journey.py'
+      - '.github/workflows/intake-draft-guards.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PYTHONPATH: src
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.13'
+      - name: Syntax and original intake behavior
+        run: |
+          python -m compileall -q src tests
+          node --check web/app.js
+          node --check web/intake.js
+          node --test tests/test_intake.js
+      - name: Existing exact source and HTTP regression
+        run: python -m unittest discover -s tests -p 'test_*.py' -q
+      - name: Real empty-case to report Chromium intake and cross-case draft guard
+        run: python tests/intake_browser_journey.py
+      - name: Reproducible exact checkout
+        if: always()
+        run: |
+          mkdir -p verification-artifacts
+          git rev-parse HEAD > verification-artifacts/commit.txt
+          git archive --format=zip --output=verification-artifacts/source-under-test.zip HEAD
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: intake-case-draft-guard-${{ github.run_id }}-${{ github.run_attempt }}
+          path: verification-artifacts/
+          if-no-files-found: error
+          retention-days: 7
