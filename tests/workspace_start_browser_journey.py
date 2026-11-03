@@ -121,6 +121,17 @@ def main():
    cd.evaluate("[...document.querySelectorAll('#model-investigation-list button')].find(b=>b.textContent==='Prepare review draft').click()")
    cd.wait("document.querySelectorAll('#snapshot-list .snapshot').length===2",'new report; original history untouched')
    cd.command('Page.reload')
+   cd.wait("document.querySelector('#case-picker')?.options.length===2",'both cases restored after browser reload')
+   # A multi-case workspace may initially choose another case. Explicitly
+   # reselect the original before checking its preserved report history.
+   cd.evaluate("""(() => {
+     const picker=document.querySelector('#case-picker');
+     if(picker.value!=='CASE-START') {
+       picker.value='CASE-START';
+       picker.dispatchEvent(new Event('change'));
+     }
+   })()""")
+   cd.wait("document.querySelector('#case-heading').textContent==='Fictional case Start'",'original case restored after browser reload')
    cd.wait("document.querySelectorAll('#snapshot-list .snapshot').length===2",'persistent case and reports after browser reload')
    assert len(json.load(urlopen(url+'api/cases')))==2
    assert json.load(urlopen(url+'api/cases/CASE-OTHER/state'))['sources']==[]
