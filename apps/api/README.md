@@ -1,9 +1,61 @@
 # Open Intelligence H1 patient registry API
 
 This is the FastAPI/PostgreSQL 16 composition root for [issue #112](https://github.com/OpenxIntelligence/open-intelligence/issues/112).
-It now mounts the existing canonical patient registry through two scoped HTTP
-operations, with domain-owned migrations and durable creation receipts/events.
+It mounts the existing canonical patient registry and a small synthetic record-request operational domain, with migrations and durable event receipts.
 The Python/SQLite prototype remains the source/evidence/investigation oracle.
+
+## PostgreSQL record-acquisition continuation (draft, synthetic only)
+
+The H1 API now includes a **source-independent pending-record request** domain.
+It uses the same patient identifier in `identity.identity_patients`, the same
+`identity.identity_domain_events` append-only history and explicit actor,
+organization, purpose and exact-patient policy. The accepted clinical source
+ledger is **not** yet migrated into this API; therefore the H1 record request
+is intentionally limited to **requested/cancelled**, and the received/source
+version workflow demonstrated in SQLite [PR #171](https://github.com/OpenxIntelligence/open-intelligence/pull/171)
+remains unavailable here. Do not treat an unlinked request as a received clinical
+document and do not invent a parallel source table to enable it.
+
+The explicitly applied `0003_record_acquisition` migration creates only
+`coordination.record_requests` with a foreign key to the existing canonical
+patient and immutable identity-bound request fields. Its database trigger allows
+only requested → cancelled with revision increment; deletion and id/subject
+rewrites are denied. Both changes add events through the existing identity event
+owner in the same transaction. A stable patient-scoped request key prevents
+duplicate tasks and conflicting intent. No external provider is contacted.
+
+Additional synthetic-only HTTP endpoints:
+- `GET /v1/patients/{patient_id}/record-requests` — requires both `patient_read` and
+  `record_request_read`, an exact patient grant and persisted organization match.
+- `POST /v1/patients/{patient_id}/record-requests` — requires `patient_read` plus
+  `record_request_create`; body includes `synthetic:true`, stable `request_key`,
+  `kind`, `record_label` and `source_organization`. 201 new, 200 identical retry.
+- `POST /v1/patients/{patient_id}/record-requests/{request_id}/cancel` — requires
+  `patient_read` plus `record_request_cancel` and an explicit fictional reason.
+- There is **no receive route**. Request views return
+  `source_receipts_enabled:false` and `external_request_sent:false`.
+
+All request commands use the existing 16 KiB/5-second bounded JSON ingress.
+The local access fixture and `patient_ids` list are **test authorization only**,
+not real consent, patient verification, clinician signoff, or PHI authorization.
+A denied patient is returned as the same 404 for missing, unauthorized and
+cross-organization requests. Source distribution rights, model access and
+untrusted third-party content remain separate and unavailable.
+
+The real PostgreSQL 16 acceptance includes creation, idempotency, cancellation,
+event atomicity, immutable-schema enforcement, patient/org/grant isolation,
+credential revocation, patient suspension, restart and explicit refusal to
+mark records received before canonical source persistence exists. Use only
+`oi_api_test_*` disposable databases with the documented explicit test flag.
+
+### Migration integration follow-up
+
+To implement actual receipt in H1, first reconcile the source-owning clinical
+ledger from the original patient/EHR/LIS implementation, preserving one
+canonical patient→case→source binding. Only then introduce a
+foreign-key-backed receipt or reference contract, source-version/amendment
+checks and approved access policy, with a cross-domain transaction or safe
+compensating mechanism. Until that stage passes, receipt is disabled.
 
 ## Product and release boundary
 
