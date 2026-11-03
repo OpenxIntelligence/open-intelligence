@@ -25,6 +25,7 @@ from .investigation import (
 )
 from .mission import build_patient_mission
 from .store import CaseStore, InvalidInput, MAX_SOURCE_BYTES
+from .synthetic_metrics import fixture_run
 from .timeline import case_timeline
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -183,6 +184,18 @@ class Handler(BaseHTTPRequestHandler):
             if exported:
                 contents = store.export_markdown(exported[1], int(exported[2])).encode("utf-8")
                 return self._send(200, contents, "text/markdown; charset=utf-8")
+            metrics = re.fullmatch(r"/api/metrics/synthetic", path)
+            if metrics:
+                query = parse_qs(urlsplit(self.path).query)
+
+                def _manifest(values: list[str] | None) -> list[str]:
+                    names: list[str] = []
+                    for value in values or []:
+                        names.extend(part.strip() for part in value.split(","))
+                    return [name for name in names if name]
+
+                return self._json(200, fixture_run(
+                    store, _manifest(query.get("dev")), _manifest(query.get("held_out"))))
             return self._json(404, {"error": "Route not found"})
         except InvalidInput as error:
             return self._json(422, {"error": str(error)})

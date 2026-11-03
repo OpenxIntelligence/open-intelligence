@@ -1241,6 +1241,77 @@ el('model-investigation-form').addEventListener('submit', async event => {
     await refresh();
   } catch (err) { notice(err.message, true); }
 });
+function renderMetricsAggregate(containerId, block) {
+  // Descriptive fixture counts only; every value arrives as a number or a
+  // fixed label string, rendered via textContent-only node().
+  clear(containerId);
+  const container = el(containerId);
+  const aggregate = (block && block.aggregate) || {};
+  const corrections = aggregate.corrections || {};
+  const lag = (aggregate.stale_lag && aggregate.stale_lag.summary) || {};
+  container.append(
+    metric(aggregate.case_count || 0, 'Cases in set'),
+    metric(corrections.total || 0, 'Corrections (amendments + evidence changes)'),
+    metric(aggregate.abstention_entries || 0, 'Abstention entries'),
+    metric(aggregate.guard_drop_entries || 0, 'Guard-drop entries'),
+    metric(aggregate.invalidated_total || 0, 'Invalidated items'),
+    metric(aggregate.untouched_total || 0, 'Untouched items'));
+  const lagText = 'Stale-item lag over ' + (lag.resolved || 0) + ' resolved correction(s)' +
+    ', ' + (lag.pending || 0) + ' pending' +
+    (lag.resolved ? ': min ' + lag.min_seconds + 's, median ' + lag.median_seconds +
+      's, max ' + lag.max_seconds + 's (ledger timestamps).' : ' (ledger timestamps).');
+  container.append(node('p', lagText, 'muted'));
+  const abstentions = aggregate.abstentions_by_reason || {};
+  const drops = aggregate.guard_drops_by_reason || {};
+  const reasons = Object.keys(abstentions).sort()
+    .map(reason => reason + ': ' + abstentions[reason]).join('; ') || 'none recorded';
+  const dropReasons = Object.keys(drops).sort()
+    .map(reason => reason + ': ' + drops[reason]).join('; ') || 'none recorded';
+  container.append(node('p', 'Abstentions by reason — ' + reasons, 'muted tiny'));
+  container.append(node('p', 'Guard drops by reason — ' + dropReasons, 'muted tiny'));
+}
+function renderSyntheticMetrics(data) {
+  const run = data.run || {};
+  const manifest = run.manifest || {};
+  el('metrics-status').textContent = 'Run ' + (run.run_id || 'unknown') +
+    ' as of ledger time ' + (run.as_of_ledger_time || 'unknown') +
+    '. Dev: ' + (manifest.dev_cases || []).join(', ') +
+    '. Held-out: ' + ((manifest.held_out_cases || []).join(', ') || 'none') +
+    '. Synthetic fixtures only — non-transferable.';
+  el('metrics-disclaimer').textContent = ((data.dev && data.dev.labels) || []).join('. ') +
+    '. ' + ((data.dev && data.dev.disclaimer) || '');
+  renderMetricsAggregate('metrics-dev', data.dev);
+  renderMetricsAggregate('metrics-heldout', data.held_out);
+  clear('metrics-run');
+  const runBox = el('metrics-run');
+  const card = node('article', null, 'source-card');
+  const positions = run.ledger_positions || {};
+  card.append(node('p', 'Run id ' + (run.run_id || 'unknown') +
+    ' reflects ledger positions ' + Object.keys(positions).sort()
+      .map(name => name + ' @ event #' + positions[name].latest_event_id).join('; ') +
+    '. Recompute any time: derived values come from the ledger, not from a stored metric history.'));
+  runBox.append(card);
+}
+async function loadSyntheticMetrics() {
+  const devRaw = el('metrics-dev-input').value;
+  const heldOutRaw = el('metrics-heldout-input').value;
+  el('metrics-status').textContent = 'Computing fixture metrics…';
+  try {
+    const data = await api('/api/metrics/synthetic?dev=' + encodeURIComponent(devRaw) +
+      '&held_out=' + encodeURIComponent(heldOutRaw));
+    // The manifest may change while a response is in flight; never render
+    // counts underneath a manifest they were not computed for.
+    if (el('metrics-dev-input').value !== devRaw || el('metrics-heldout-input').value !== heldOutRaw) return;
+    renderSyntheticMetrics(data);
+  } catch (err) {
+    if (el('metrics-dev-input').value !== devRaw || el('metrics-heldout-input').value !== heldOutRaw) return;
+    el('metrics-status').textContent = 'Fixture metrics unavailable: ' + err.message;
+  }
+}
+el('metrics-form').addEventListener('submit', event => {
+  event.preventDefault();
+  loadSyntheticMetrics();
+});
 initialize();
 initializeBibliography();
 loadModelTemplates();

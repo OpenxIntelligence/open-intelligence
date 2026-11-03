@@ -44,6 +44,7 @@
           <a href="#activity">Activity</a>
           <a href="#changes-since-review">What changed</a>
           <a href="#options">Options &amp; dependencies</a>
+          <a href="#synthetic-metrics">Fixture metrics</a>
         </nav>
       </details>
       <div class="side-bottom">
@@ -374,6 +375,25 @@
         <div class="subhead">Amendments since the anchor</div><div id="changes-amendments" class="cards" aria-live="polite"></div>
         <div class="subhead">Stale investigations with cause</div><div id="changes-stale" class="snapshots" aria-live="polite"></div>
         <div class="subhead">New questions since the anchor</div><div id="changes-questions" class="questions" aria-live="polite"></div>
+      </section>
+
+      <section class="panel" id="synthetic-metrics" aria-labelledby="metrics-heading">
+        <div class="panel-head"><div><div class="eyebrow">WORKFLOW COUNTS · SYNTHETIC FIXTURES</div><h2 id="metrics-heading">Synthetic fixture metrics</h2></div><span class="pill pill-warn">SYNTHETIC FIXTURES ONLY — NON-TRANSFERABLE</span></div>
+        <p class="muted">Descriptive counts computed from the fictional fixture ledger: corrections, stale-item lag, abstentions, guard drops, and invalidated-vs-untouched items. These counts describe the synthetic fixtures only and do not describe real-case or clinical performance. Name dev cases and held-out cases explicitly; the two sets are reported separately with no shared counts.</p>
+        <p class="muted tiny" id="metrics-disclaimer">Synthetic fixtures only. Non-transferable: success on fixtures does not imply real-case performance. Metric computation calls no model and writes no proposal or ledger row.</p>
+        <form id="metrics-form">
+          <label for="metrics-dev-input">Dev case ids (comma-separated)</label>
+          <input id="metrics-dev-input" type="text" spellcheck="false" placeholder="CASE-ALPHA">
+          <label for="metrics-heldout-input">Held-out case ids (comma-separated)</label>
+          <input id="metrics-heldout-input" type="text" spellcheck="false" placeholder="CASE-BETA">
+          <div class="actions">
+            <button class="button" type="submit">Compute fixture metrics</button>
+          </div>
+        </form>
+        <p id="metrics-status" class="muted" role="status" aria-live="polite">No fixture run computed yet.</p>
+        <div class="subhead">Dev aggregate</div><div id="metrics-dev" class="metrics" aria-live="polite"></div>
+        <div class="subhead">Held-out aggregate</div><div id="metrics-heldout" class="metrics" aria-live="polite"></div>
+        <div class="subhead">Run record</div><div id="metrics-run" class="cards" aria-live="polite"></div>
       </section>
 
       <footer>Open Intelligence is an original, dependency-free reference implementation. No real patient information, patient login, credentialed clinical review, automated clinical inference, treatment recommendations, or regulatory clearance.</footer>
