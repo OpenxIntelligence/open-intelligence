@@ -5,6 +5,7 @@ import unittest
 
 from open_intelligence.lab_trends import build_lab_trend, case_lab_trend
 from open_intelligence.store import CaseStore, InvalidInput
+from pdf_fixtures import text_pdf
 
 
 def report(document, day, value="10.0", unit="g/dL", qc="passed",
@@ -37,6 +38,77 @@ class LabTrendToolTests(unittest.TestCase):
 
     def put(self, *args, **kwargs):
         return self.store.import_report("CASE-ALPHA", report(*args, **kwargs))
+
+    def put_manual(self, document, day, value, *, pdf=False, key="hemoglobin"):
+        quote = f"OI-LAB-VALUE/1;value={value};unit=g/dL;qc=passed"
+        text = "Independently authored fictional laboratory passage."
+        raw = text_pdf([[text], [quote]]) if pdf else f"{text}\n{quote}\n".encode()
+        filename = document + (".pdf" if pdf else ".txt")
+        preview = self.store.preview_document("CASE-ALPHA", raw, filename)
+        result = self.store.import_document("CASE-ALPHA", raw, filename,
+            {"document_id": document, "kind": "laboratory", "event_date": day,
+             "issued_at": day, "manual_transcription_confirmed": True},
+            [{"key": key, "state": "reported", "quote": quote, "line": 2}],
+            preview["sha256"], "CASE-ALPHA", preview.get("extraction_sha256"))
+        return result, preview, quote
+
+    def test_manual_text_holds_computation_without_discarding_qualified_points(self):
+        self.put("LAB-A1", "2026-05-01", "10.0")
+        self.put("LAB-A2", "2026-06-01", "11.0")
+        source, preview, quote = self.put_manual("MANUAL-A3", "2026-07-01", "12.0")
+        before = tuple(self.store.db.iterdump())
+        result = case_lab_trend(self.store, "CASE-ALPHA", "hemoglobin")
+        self.assertEqual(tuple(self.store.db.iterdump()), before)
+        self.assertEqual(result["status"], "held")
+        self.assertFalse(result["analysis_executed"])
+        self.assertIsNone(result["delta"])
+        self.assertIsNone(result["direction"])
+        self.assertEqual(len(result["points"]), 2)
+        self.assertEqual(len(result["holds"]), 1)
+        hold = result["holds"][0]
+        self.assertEqual(hold["reason"], "manual_transcription_not_eligible")
+        self.assertEqual(hold["source"]["source_version_id"], source["source_id"])
+        self.assertEqual(hold["source"]["source_sha256"], preview["sha256"])
+        self.assertEqual(hold["source"]["classification_origin"], "user_selected")
+        self.assertEqual(hold["source"]["clinical_review"], "not_performed")
+        self.assertEqual(hold["source"]["quote"], quote)
+        self.assertEqual(hold["source"]["source_line"], 2)
+        self.assertTrue(hold["source"]["transcription_review_sha256"])
+
+    def test_manual_pdf_values_hold_with_original_extraction_and_page_provenance(self):
+        originals = [self.put_manual("PDF-A1", "2026-05-01", "10.0", pdf=True),
+                     self.put_manual("PDF-A2", "2026-06-01", "11.0", pdf=True)]
+        before = tuple(self.store.db.iterdump())
+        result = case_lab_trend(self.store, "CASE-ALPHA", "hemoglobin")
+        self.assertEqual(tuple(self.store.db.iterdump()), before)
+        self.assertEqual(result["status"], "held")
+        self.assertFalse(result["analysis_executed"])
+        self.assertIsNone(result["delta"])
+        self.assertEqual(result["points"], [])
+        self.assertEqual(len(result["holds"]), 2)
+        for hold, (source, preview, quote) in zip(result["holds"], originals):
+            self.assertEqual(hold["reason"], "manual_transcription_not_eligible")
+            anchor = hold["source"]
+            self.assertEqual(anchor["source_version_id"], source["source_id"])
+            self.assertEqual(anchor["source_sha256"], preview["sha256"])
+            self.assertEqual(anchor["classification_origin"], "user_selected")
+            self.assertEqual(anchor["clinical_review"], "not_performed")
+            self.assertEqual(anchor["quote"], quote)
+            self.assertEqual(anchor["text_origin"], "pdf_extraction")
+            self.assertEqual(anchor["source_line"], 2)
+            self.assertEqual(anchor["source_page"], 2)
+            self.assertEqual(anchor["page_line"], 1)
+            self.assertEqual(anchor["extraction_sha256"], preview["extraction_sha256"])
+            self.assertEqual(anchor["page_text_sha256"], preview["pages"][1]["sha256"])
+
+    def test_manual_other_analyte_does_not_block_the_selected_qualified_series(self):
+        self.put("LAB-A1", "2026-05-01", "10.0")
+        self.put("LAB-A2", "2026-06-01", "11.0")
+        self.put_manual("MANUAL-OTHER", "2026-07-01", "12.0", key="other-marker")
+        result = case_lab_trend(self.store, "CASE-ALPHA", "hemoglobin")
+        self.assertEqual(result["status"], "computed")
+        self.assertEqual(result["delta"], "1.0")
+        self.assertEqual(result["holds"], [])
 
     def test_two_source_anchored_values_compute_exact_decimal_difference(self):
         self.put("LAB-A1", "2026-05-01", "10.2")

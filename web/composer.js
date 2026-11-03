@@ -60,8 +60,10 @@
     for (const anchor of anchors.slice(0, 6)) {
       const entry = document.createElement('li');
       const button = el('button',
-        anchor.document_id + '@' + anchor.version + ', line ' +
-        anchor.source_line + ' · ' +
+        anchor.document_id + '@' + anchor.version +
+        (anchor.text_origin === 'pdf_extraction'
+          ? ', page ' + anchor.source_page + ', extracted line ' + anchor.page_line
+          : ', line ' + anchor.source_line) + ' · ' +
         (anchor.classification_origin === 'user_selected' ? 'User-selected: ' : '') + anchor.reported_state);
       button.type = 'button';
       button.className = 'button secondary';

@@ -93,7 +93,19 @@ class CrossBranchComposerIntegration(unittest.TestCase):
         return next(row["state"] for row in self.store.state(case)["questions"]
                     if row["id"] == question)
 
+    def acknowledge_question(self, case, question):
+        source_id = next(s["id"] for s in self.store.state(case)["sources"]
+                         if s["state"] == "current")
+        snapshot_id = self.store.create_snapshot(
+            case, question, "A human-authored fictional source review.", [source_id])
+        self.store.acknowledge_demo_review(case, snapshot_id, "Synthetic reviewer")
+        self.assertEqual(self.question_status(case, question), "addressed")
+
     def test_new_accepted_source_stales_model_and_completed_run_together(self):
+        self.store.import_report(
+            "CASE-BETA", lab_report("CASE-BETA", "LAB-BETA-REVIEW", "2026-06-01", "8.8"))
+        self.acknowledge_question("CASE-ALPHA", self.question)
+        self.acknowledge_question("CASE-BETA", self.beta_question)
         model = self.model()
         beta_model = self.model("CASE-BETA", self.beta_question)
         done = self.completed_numeric_work()
@@ -120,6 +132,8 @@ class CrossBranchComposerIntegration(unittest.TestCase):
     def test_new_question_assessment_invalidates_only_that_model_and_its_run(self):
         second_question = self.store.add_question(
             "CASE-ALPHA", "Which other unresolved source fact exists?")
+        self.acknowledge_question("CASE-ALPHA", self.question)
+        self.acknowledge_question("CASE-ALPHA", second_question)
         a = self.model()
         b = self.model(question_id=second_question)
         work = self.completed_numeric_work()
@@ -158,6 +172,7 @@ class CrossBranchComposerIntegration(unittest.TestCase):
         self.assertEqual(len(self.runs.get("CASE-ALPHA", done["run_id"])["events"]), 4)
 
     def test_duplicate_and_cross_patient_quarantine_leave_current_work_unchanged(self):
+        self.acknowledge_question("CASE-ALPHA", self.question)
         model_id = self.model()
         done = self.completed_numeric_work("INTEG-RUN-0003")
         self.assertEqual(self.store.import_report("CASE-ALPHA", self.first)["result"], "duplicate")

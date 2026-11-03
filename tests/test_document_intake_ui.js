@@ -19,6 +19,79 @@ function harness() {
 const preview = (name = 'record.txt') => ({case_id: 'CASE-ALPHA', filename: name,
   sha256: 'a'.repeat(64), byte_count: 22, text: 'Independently fictional.',
   lines: [{line: 1, text: 'Independently fictional.'}]});
+const pdfPreview = () => ({...preview('record.pdf'), media_type: 'application/pdf',
+  extraction_sha256: 'b'.repeat(64), extractor: {name: 'pypdf', version: '6.21.4', configuration: {mode: 'plain'}},
+  page_count: 2, text: 'Independent fictional PDF\nMarker P was not assessed.',
+  lines: [{line: 1, text: 'Independent fictional PDF', page: 1, page_line: 1},
+    {line: 2, text: 'Marker P was not assessed.', page: 2, page_line: 1}],
+  extraction_method: 'pypdf-text-v1', annotation_method: 'manual-exact-extraction-line-selection',
+  clinical_review: 'not_performed'});
+
+test('PDF save binds original bytes and extraction identity while retaining global passage anchors', async () => {
+  const h = harness(), bytes = Buffer.from([37, 80, 68, 70, 45, 49, 46, 55, 10, 255, 0]);
+  const pending = h.session.previewFile(file('record.pdf', bytes)); await turn();
+  assert.equal(h.calls.length, 1, 'PDF file must reach the existing preview route');
+  assert.deepEqual(Buffer.from(h.calls[0].body.content_base64, 'base64'), bytes);
+  h.calls[0].resolve(pdfPreview()); await pending;
+  const findings = [{key: 'marker-p', state: 'not-assessed', quote: 'Marker P was not assessed.', line: 2}];
+  const save = h.session.save({metadata: {document_id: 'DOC-PDF'}, findings, confirmed: true});
+  assert.equal(h.calls[1].body.expected_sha256, 'a'.repeat(64));
+  assert.equal(h.calls[1].body.expected_extraction_sha256, 'b'.repeat(64));
+  assert.equal(h.calls[1].body.content_base64, h.calls[0].body.content_base64);
+  assert.deepEqual(h.calls[1].body.findings, findings);
+  assert.equal(h.calls[1].body.metadata.manual_transcription_confirmed, true);
+  h.calls[1].resolve({result: 'imported', source_id: 2, version: 1}); await save;
+  assert.equal(h.session.state().phase, 'saved');
+});
+
+for (const [name, change] of [
+  ['missing extraction hash', p => { delete p.extraction_sha256; }],
+  ['invalid extraction hash', p => { p.extraction_sha256 = 'not-a-hash'; }],
+  ['wrong media type', p => { p.media_type = 'text/plain; charset=utf-8'; }],
+  ['page outside PDF', p => { p.lines[1].page = 3; }],
+  ['absent page anchor', p => { delete p.lines[1].page_line; }],
+  ['duplicate global line', p => { p.lines[1].line = 1; }],
+  ['missing extractor identity', p => { delete p.extractor; }],
+  ['false clinical approval', p => { p.clinical_review = 'approved'; }],
+]) {
+  test(`unusable PDF preview (${name}) cannot be confirmed or saved`, async () => {
+    const h = harness(), pending = h.session.previewFile(file('record.pdf', '%PDF-1.7\nfictional'));
+    await turn(); assert.equal(h.calls.length, 1, 'PDF preview request is required');
+    const response = pdfPreview(); change(response); h.calls[0].resolve(response); await pending;
+    assert.equal(h.session.state().phase, 'idle');
+    assert.equal(h.session.state().preview, null);
+    assert.match(h.session.state().error, /preview|PDF|extract/i);
+    await h.session.save({metadata: {}, findings: [], confirmed: true});
+    assert.equal(h.calls.length, 1);
+  });
+}
+
+test('late PDF extraction cannot replace a newer text preview or a discarded case', async () => {
+  const h = harness(), old = h.session.previewFile(file('record.pdf', '%PDF-1.7\nfictional'));
+  await turn(); assert.equal(h.calls.length, 1);
+  const current = h.session.previewFile(file('record.txt', 'Independent fictional text')); await turn();
+  h.calls[1].resolve(preview()); await current;
+  h.calls[0].resolve(pdfPreview()); await old;
+  assert.equal(h.session.state().preview.filename, 'record.txt');
+  const save = h.session.save({metadata: {}, findings: [], confirmed: true});
+  assert.equal(Object.hasOwn(h.calls[2].body, 'expected_extraction_sha256'), false);
+  h.calls[2].resolve({result: 'imported', source_id: 3, version: 1}); await save;
+  const discarded = h.session.previewFile(file('record.pdf', '%PDF-1.7\nfictional')); await turn();
+  h.select('CASE-BETA'); h.session.discard(); h.select('CASE-ALPHA');
+  h.calls[3].resolve(pdfPreview()); await discarded;
+  assert.equal(h.session.state().preview, null);
+});
+
+test('PDF parser failure remains unsaved and a later file can be previewed', async () => {
+  const h = harness(), failed = h.session.previewFile(file('record.pdf', '%PDF-1.7\nfictional'));
+  await turn(); assert.equal(h.calls.length, 1);
+  h.calls[0].reject(Error('No extractable text was found. Scanned records are not supported.')); await failed;
+  assert.equal(h.session.hasDraft(), false); assert.equal(h.session.state().preview, null);
+  assert.match(h.session.state().error, /No extractable text/);
+  const next = h.session.previewFile(file('record.txt', 'Independent fictional text')); await turn();
+  h.calls[1].resolve(preview()); await next;
+  assert.equal(h.session.state().phase, 'ready');
+});
 
 test('original file bytes survive browser transport, including BOM, CRLF and unicode', async () => {
   const h = harness(), original = '\ufeffFictional report\r\nMarker α is pending.\r\n';
@@ -31,6 +104,7 @@ test('original file bytes survive browser transport, including BOM, CRLF and uni
   assert.equal(h.calls[1].route, '/api/cases/CASE-ALPHA/documents');
   assert.equal(h.calls[1].body.content_base64, h.calls[0].body.content_base64);
   assert.equal(h.calls[1].body.expected_sha256, 'a'.repeat(64));
+  assert.equal(Object.hasOwn(h.calls[1].body, 'expected_extraction_sha256'), false);
   assert.equal(h.calls[1].body.confirmed_case_id, 'CASE-ALPHA');
   assert.equal(h.calls[1].body.metadata.manual_transcription_confirmed, true);
   h.calls[1].resolve({result: 'imported', source_id: 1, version: 1}); await save;

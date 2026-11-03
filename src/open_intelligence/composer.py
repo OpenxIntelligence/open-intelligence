@@ -25,7 +25,9 @@ ASSERTION_KEYS = ("id", "source_version_id", "finding_key", "certainty",
 ASSESSMENT_KEYS = ("id", "evidence_version_id", "relation", "applicability",
                    "rationale", "sha256")
 INTAKE_PROVENANCE_KEYS = ("classification_origin", "annotation_method",
-                          "clinical_review", "transcription_review_sha256")
+                          "clinical_review", "transcription_review_sha256",
+                          "text_origin", "extraction_sha256", "source_page",
+                          "page_line", "page_text_sha256")
 
 
 def _fields(row: dict, keys: tuple[str, ...], *, include_intake: bool = False) -> dict:
@@ -93,8 +95,8 @@ def composer_context_fingerprint(store: CaseStore, case_id: str,
 
 def _composer_fingerprint_in_snapshot(store: CaseStore, case_id: str, question_id: int) -> str:
     store._case(case_id)
-    if type(question_id) is not int or question_id < 1:
-        raise InvalidInput("Composer question ID must be a positive integer")
+    if type(question_id) is not int or not 1 <= question_id <= 2**63 - 1:
+        raise InvalidInput("Composer question ID must be a positive integer within the supported range")
     question = store.db.execute(
         "SELECT id,question,state FROM questions WHERE id=? AND case_id=?",
         (question_id, case_id)).fetchone()
@@ -127,9 +129,7 @@ def _composer_fingerprint_in_snapshot(store: CaseStore, case_id: str, question_i
     for source in source_rows:
         if source["id"] in intake_by_source:
             source.update(classification_provenance(intake_by_source[source["id"]]))
-    for assertion in assertion_rows:
-        if assertion["source_version_id"] in intake_by_source:
-            assertion.update(classification_provenance(intake_by_source[assertion["source_version_id"]]))
+    store._annotate_source_assertions(assertion_rows, intake_by_source)
     return _fingerprint(
         case_id, dict(question), source_rows,
         assertion_rows, [dict(row) for row in assessments],
@@ -144,8 +144,8 @@ def build_composer_context(store: CaseStore, case_id: str,
     amendment raced the subsequent fingerprint calculation, retry rather than
     presenting a preview with a mismatching token. No database writes.
     """
-    if type(question_id) is not int or question_id < 1:
-        raise InvalidInput("Composer question ID must be a positive integer")
+    if type(question_id) is not int or not 1 <= question_id <= 2**63 - 1:
+        raise InvalidInput("Composer question ID must be a positive integer within the supported range")
     for _ in range(3):
         state = store.state(case_id)
         facts = store.investigation_facts(case_id, question_id)

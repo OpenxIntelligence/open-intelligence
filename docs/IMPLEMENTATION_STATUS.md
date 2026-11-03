@@ -1,16 +1,54 @@
 # Implementation slice 01 — source and investigation ledger
 
+## Bounded PDF intake checkpoint — 3 November 2026 UTC
+
+This unmerged extension starts from reviewed text intake PR #173, implementation
+`fe8a6368245bb52944e6ebc7f3e6f5b43daf69d0`, and incorporates its documentation-only
+follow-up `243bfec0fb36121868714dd36c6dd591243114da` as the branch parent. It adds a constrained born-digital
+PDF adapter to the existing source owner, APIs, manual-review UI, Composer and
+report path. Original bytes remain in `source_versions`; the source-owned
+`source_text_renditions` child stores frozen per-page text, global extraction
+lines, extractor/configuration provenance and hashes in the same transaction.
+Preview and save bind both original and extraction identity. Reads and exports
+never rerun the parser. The existing amendment transaction preserves earlier
+originals and invalidates dependent work. Manual statuses remain explicit.
+
+The inherited model-attempt lifecycle defect is corrected: generating or
+abstaining from an unreviewed investigation does not address its question.
+Explicit demo review remains a separate state transition.
+
+PDF support uses the hash-pinned BSD-3-Clause pypdf 6.21.4 wheel, with its exact
+notice retained and no optional extras. Extraction is bounded to 64 KiB input,
+20 pages, 512 lines, 64 KiB extracted text, one concurrent worker, 5 CPU seconds,
+10 elapsed seconds and 512 MiB address space. These are prototype limits, not
+capacity benchmarks or production security certification. No OCR, automated
+clinical interpretation, post-save annotation correction, real patient data,
+trusted professional authority or clinical deployment is introduced.
+
+Verification is recorded in the maintained [intake contract](engineering/DOCUMENT_INTAKE.md).
+Combined local verification passed: **398 Python/domain/HTTP tests** in 112.609s,
+**64 JavaScript tests**, compilation/syntax, the no-patient-data workflow guard,
+and **80 offline research checks with 18 optional HDF5 checks skipped**.
+The clean environment used Python 3.12.14 and pypdf 6.21.4. The 398 include
+17 extractor, 12 PDF store, 8 PDF HTTP and 9 lifecycle tests. Browser acceptance
+remains pending on the published PDF head; local Chromium is unavailable.
+
+The prior #173 baseline has now been verified: exact-head
+[run 41550282180](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41550282180)
+passed 349 Python/HTTP tests, 80 offline data-boundary checks with 18 optional
+dependency skips, 47 JavaScript tests,
+the reviewed-text intake browser journey and four Composer browser journeys.
+Its separate [UI run 41550282107](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41550282107)
+also passed. The older pending statements below describe earlier checkpoints.
+
 ## Document intake checkpoint — 2 November 2026
 
-**Hosted verification update — 3 November 2026:** [PR #173](https://github.com/OpenxIntelligence/open-intelligence/pull/173)
-implementation head `fe8a6368245bb52944e6ebc7f3e6f5b43daf69d0` passed
-[dedicated exact-head run 41550282180](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41550282180):
-349 Python/HTTP tests, 47 JavaScript cases, 80 offline checks plus 18 optional
-skips, and five Chromium journeys including real record intake through
-question/draft/export/amendment. [UI run 41550282107](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41550282107)
-also passed its existing browser/keyboard/race checks on the generated merge.
-The initial mobile overflow failure was corrected without weakening the gate.
-Verified artifacts and source hashes are in the linked intake contract.
+**Hosted verification update — 3 November 2026:** PR #173 implementation
+`fe8a6368245bb52944e6ebc7f3e6f5b43daf69d0` passed exact-head run 41550282180
+and generated-merge UI run 41550282107. The final documentation follow-up
+`243bfec0fb36121868714dd36c6dd591243114da` passed integration run 41550696219
+and UI run 41550696421. The initial 14 px mobile overflow was fixed without
+weakening the gate. Source/artifact receipts are retained in the intake contract.
 
 The current feature adds ordinary UTF-8 `.txt` file upload, read-only preview,
 manual exact-line passage selection, confirmed metadata, original-byte download,

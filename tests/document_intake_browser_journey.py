@@ -1,4 +1,4 @@
-"""Actual browser journey from a fictional .txt upload to a reviewable amendment.
+"""Actual browser journeys from fictional text/PDF uploads to reviewable amendments.
 
 Uses the existing standard-library CDP harness and first-party local app. The
 files are independently authored here; no model, patient data or remote source
@@ -20,6 +20,7 @@ from urllib.request import urlopen
 
 from browser_journey import ChromeSession, free_port, wait_for
 from open_intelligence.store import CaseStore
+from pdf_fixtures import text_pdf
 
 ROOT = Path(__file__).resolve().parents[1]
 ARTIFACTS = ROOT / "composer-broker-artifacts"
@@ -107,11 +108,12 @@ def select_passage(session: ChromeSession, quote: str) -> None:
                  "exact passage selected for manual transcription")
 
 
-def confirm_metadata(session: ChromeSession, *, amendment: bool = False) -> None:
+def confirm_metadata(session: ChromeSession, *, amendment: bool = False,
+                     document_id: str = DOCUMENT_ID) -> None:
     if amendment:
         session.evaluate("document.querySelector('#intake-amends').closest('details').open = true")
     set_fields(session, {
-        "intake-document-id": DOCUMENT_ID, "intake-kind": "clinical",
+        "intake-document-id": document_id, "intake-kind": "clinical",
         "intake-event-date": "2026-08-01",
         "intake-issued-date": "2026-08-03" if amendment else "2026-08-02",
         "intake-amends": "1" if amendment else "",
@@ -120,9 +122,9 @@ def confirm_metadata(session: ChromeSession, *, amendment: bool = False) -> None
     assert session.evaluate("document.querySelector('#intake-confirm').checked")
 
 
-def submit_record(session: ChromeSession, version: int) -> None:
+def submit_record(session: ChromeSession, version: int, document_id: str = DOCUMENT_ID) -> None:
     session.evaluate("document.querySelector('#intake-metadata-form').requestSubmit()")
-    expected = DOCUMENT_ID + " @" + str(version)
+    expected = document_id + " @" + str(version)
     session.wait(
         "[...document.querySelectorAll('#source-list .source-card')].some(card => "
         "card.querySelector('.source-title')?.textContent === " + json.dumps(expected) + ") && "
@@ -169,6 +171,126 @@ def assert_mobile_intake(session: ChromeSession) -> None:
     })()""")
     assert bounds["scroll"] <= bounds["client"] + 1 and not bounds["outliers"], (
         "New intake panel overflows the 390px viewport: " + json.dumps(bounds))
+
+
+def pdf_journey(session: ChromeSession, url: str, work: Path, downloads: Path, db: str) -> dict:
+    """Use the same intake/source/Composer owners on the still-empty Beta case."""
+    document_id = "DOC-PDF-INTAKE"
+    original_quote, amended_quote = "Marker P was not assessed.", "Marker P remains pending."
+    original = text_pdf([["Independently fictional PDF record.", "No patient information."],
+                         [original_quote, LITERAL_MARKUP]])
+    amended = text_pdf([["Independently fictional amended PDF record.", "No patient information."],
+                        [amended_quote, LITERAL_MARKUP]])
+    original_path, amended_path = work / "fictional-record.pdf", work / "fictional-record-amended.pdf"
+    original_path.write_bytes(original)
+    amended_path.write_bytes(amended)
+    before = ledger(db)
+    upload_preview(session, original_path, original)
+    assert ledger(db) == before, "PDF extraction preview wrote case state"
+    assert session.evaluate("document.querySelector('#intake-review-heading').textContent") == "Review the extracted text"
+    assert session.evaluate("document.querySelector('#intake-file-summary').textContent.includes('2 pages')")
+    assert session.evaluate("document.querySelector('#intake-preview-help').textContent.includes('not the original PDF')")
+    assert session.evaluate("document.querySelector('#intake-preview-help').textContent.includes('No OCR')")
+    assert session.evaluate("document.querySelector('#intake-original-lines img, #intake-original-lines script') === null && window.oiIntakeMarkupExecuted !== true")
+    extraction_hash = session.evaluate("document.querySelector('#intake-extraction-details').textContent.match(/[a-f0-9]{64}/)[0]")
+
+    def select_pdf_passage(quote: str, status: str) -> int:
+        row = "[...document.querySelectorAll('#intake-original-lines .intake-source-line')].find(row => row.querySelector('span')?.textContent === " + json.dumps(quote) + ")"
+        session.wait(row + " !== undefined", "PDF passage appears as literal extracted text")
+        assert session.evaluate(row + ".querySelector('button').dataset.page") == "2"
+        line = int(session.evaluate(row + ".querySelector('button').dataset.line"))
+        session.evaluate(row + ".querySelector('button').click()")
+        assert session.evaluate("document.querySelector('#intake-quote').value") == quote
+        assert session.evaluate("document.querySelector('#intake-passage-location').textContent.includes('page 2, extracted line 1')")
+        set_fields(session, {"intake-key": "marker-p", "intake-status": status})
+        session.evaluate("document.querySelector('#intake-passage-form').requestSubmit()")
+        session.wait("document.querySelector('#intake-passages').textContent.includes('page 2, extracted line 1')",
+                     "selected passage retains its physical page and extraction line")
+        assert session.evaluate("document.querySelector('#intake-passages').textContent.includes('User-selected: " + status + "')")
+        return line
+
+    global_line = select_pdf_passage(original_quote, "not-assessed")
+    confirm_metadata(session, document_id=document_id)
+    session.command("Accessibility.enable")
+    names = {(node.get("role", {}).get("value"), node.get("name", {}).get("value", ""))
+             for node in session.command("Accessibility.getFullAXTree").get("nodes", [])}
+    assert ("button", "Select passage from page 2, extracted line 1") in names
+    screenshot(session, "document-intake-pdf-desktop.png", "#import")
+    assert_mobile_intake(session)
+    screenshot(session, "document-intake-pdf-mobile.png", "#import")
+    session.command("Emulation.setDeviceMetricsOverride", {
+        "width": 1440, "height": 1000, "deviceScaleFactor": 1, "mobile": False,
+    })
+    submit_record(session, 1, document_id)
+    saved = state(url, "CASE-BETA")
+    source = next(source for source in saved["sources"] if source["document_id"] == document_id)
+    source_id = source["id"]
+    assertion = next(item for item in saved["assertions"] if item["source_version_id"] == source_id)
+    assert assertion["quote"] == original_quote and assertion["certainty"] == "not-assessed"
+    assert assertion["source_line"] == global_line and assertion["classification_origin"] == "user_selected"
+    assert assertion["clinical_review"] == "not_performed"
+    session.evaluate("[...document.querySelectorAll('#intake-success-actions button')].find(button => button.textContent === 'Read extracted text').click()")
+    session.wait("document.querySelector('#source-dialog').open", "saved PDF extraction reopens through existing source reader")
+    assert original_quote in session.evaluate("document.querySelector('#dialog-text').textContent")
+    assert "extract" in session.evaluate("document.querySelector('#dialog-context').textContent").lower()
+    assert session.evaluate("document.querySelector('#dialog-text img, #dialog-text script') === null && window.oiIntakeMarkupExecuted !== true")
+    session.evaluate("document.querySelector('#dialog-close').click()")
+    session.evaluate("document.querySelector('#source-list a[download]').click()")
+    downloaded = downloads / original_path.name
+    wait_for(lambda: downloaded.exists() and downloaded.read_bytes() == original,
+             "PDF download preserves original binary bytes")
+    with urlopen(url + f"api/cases/CASE-BETA/sources/{source_id}/download", timeout=5) as response:
+        assert response.headers["Content-Type"] == "application/pdf"
+        assert response.headers["X-Content-Type-Options"] == "nosniff"
+        assert response.headers["Cache-Control"] == "no-store"
+        assert response.read() == original
+
+    set_fields(session, {"question-text": "What does the fictional PDF record say about Marker P?"})
+    session.evaluate("document.querySelector('#question-form').requestSubmit()")
+    session.wait("document.querySelectorAll('#question-list .question').length === 1",
+                 "PDF investigation question persists in existing workspace")
+    session.wait("document.querySelector('#composer-context button[data-source-id=\"" + str(source_id) + "\"]') !== null && "
+                 "document.querySelector('#composer-context').textContent.includes('User-selected: not-assessed')",
+                 "Composer preserves PDF source identity and manual missingness classification")
+    prior_context = session.evaluate("document.querySelector('#composer-context-fingerprint').value")
+    session.evaluate("[...document.querySelectorAll('#source-choice input')].forEach(input => {input.checked = input.value === " + json.dumps(str(source_id)) + ";})")
+    set_fields(session, {"draft-observations": "Manually selected on page 2: " + original_quote,
+        "draft-summary": "The fictional extracted text requires human review; no clinical conclusion is proposed.",
+        "draft-assumptions": "The original PDF and extracted text are distinct; reading order is not validated."})
+    session.evaluate("document.querySelector('#draft-form').requestSubmit()")
+    session.wait("document.querySelectorAll('#snapshot-list .snapshot').length === 1", "PDF source-linked human report saved")
+    session.evaluate("[...document.querySelectorAll('#snapshot-list button')].find(button => button.textContent === 'Demo review acknowledgment').click()")
+    session.wait("document.querySelector('#snapshot-list .pill').textContent === 'reviewed_in_demo'", "PDF report demonstration acknowledgment")
+    snapshot_id = state(url, "CASE-BETA")["snapshots"][0]["id"]
+    session.evaluate("[...document.querySelectorAll('#snapshot-list button')].find(button => button.textContent === 'Export with sources').click()")
+    exported = downloads / f"synthetic-investigation-{snapshot_id}.md"
+    wait_for(lambda: exported.exists() and original_quote in exported.read_text(), "PDF source-linked report downloads")
+    report = exported.read_text()
+    assert "extract" in report.lower() and extraction_hash in report
+    assert hashlib.sha256(original).hexdigest() in report
+    assert "classification_origin=user_selected" in report and "clinical_review=not_performed" in report
+
+    before_amendment = ledger(db)
+    upload_preview(session, amended_path, amended)
+    assert ledger(db) == before_amendment, "PDF amendment preview altered saved investigation state"
+    select_pdf_passage(amended_quote, "pending")
+    confirm_metadata(session, amendment=True, document_id=document_id)
+    submit_record(session, 2, document_id)
+    after = state(url, "CASE-BETA")
+    current = next(item for item in after["sources"] if item["document_id"] == document_id and item["state"] == "current")
+    assert current["version"] == 2 and current["sha256"] == hashlib.sha256(amended).hexdigest()
+    assert after["snapshots"][0]["state"] == "stale" and after["questions"][0]["state"] == "open"
+    session.wait("document.querySelector('#composer-context-fingerprint').value !== " + json.dumps(prior_context) +
+                 " && document.querySelector('#composer-context button[data-source-id=\"" + str(current["id"]) + "\"]') !== null",
+                 "PDF amendment refreshes Composer and preserves prior report")
+    for identifier, expected in ((source_id, original), (current["id"], amended)):
+        with urlopen(url + f"api/cases/CASE-BETA/sources/{identifier}/download", timeout=5) as response:
+            assert response.read() == expected
+    return {"original_id": source_id, "current_id": current["id"], "snapshot_id": snapshot_id,
+            "original_sha256": hashlib.sha256(original).hexdigest(),
+            "amended_sha256": hashlib.sha256(amended).hexdigest(), "extraction_sha256": extraction_hash,
+            "physical_page": 2, "global_extraction_line": global_line, "source_versions": 2,
+            "download_mime": "application/pdf", "manual_classification": True}
 
 
 def main() -> None:
@@ -354,13 +476,38 @@ def main() -> None:
             assert beta["sources"] == [] and beta["questions"] == [] and beta["snapshots"] == []
             assert not session.evaluate("document.querySelector('#source-list').textContent.includes(" + json.dumps(DOCUMENT_ID) + ")")
             assert session.evaluate("document.querySelector('#intake-original-lines').children.length === 0")
+            receipt["pdf"] = pdf_journey(session, url, work, downloads, db)
+            # Restart the actual application process, then reload the same browser.
+            # Reopening a second store connection alone is not restart evidence.
+            persisted = state(url, "CASE-BETA")
+            server.terminate()
+            server.wait(timeout=5)
+            server = subprocess.Popen(
+                [sys.executable, "-m", "open_intelligence", "serve", "--db", db,
+                 "--port", str(app_port)], cwd=ROOT, env=env,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            wait_for(lambda: urlopen(url, timeout=1).status == 200, "restarted intake application")
+            assert state(url, "CASE-BETA") == persisted, "Restart changed persisted PDF state or audit history"
+            session.command("Page.reload")
+            session.wait("document.querySelector('#case-heading')?.textContent === 'Fictional case Alpha'",
+                         "workspace reloaded after application restart")
+            switch_case(session, "CASE-BETA")
+            session.wait("document.querySelector('#source-list').textContent.includes('DOC-PDF-INTAKE @2')",
+                         "PDF current version restored after restart")
+            session.wait("document.querySelector('#snapshot-list .pill-alert')?.textContent === 'stale'",
+                         "PDF report history retained after restart")
+            for key, digest in (("original_id", "original_sha256"), ("current_id", "amended_sha256")):
+                with urlopen(url + f"api/cases/CASE-BETA/sources/{receipt['pdf'][key]}/download", timeout=5) as response:
+                    assert response.headers["Content-Type"] == "application/pdf"
+                    assert hashlib.sha256(response.read()).hexdigest() == receipt["pdf"][digest]
+            receipt["pdf"]["restart_verified"] = True
             receipt.update(status="passed", source_versions=2, question_count=1,
                            historical_snapshot_state="stale", original_download_exact=True,
                            mobile_width=390, case_transition_checked=True)
-            print("PASS: real text-file upload, read-only preview, exact manual source selection, "
+            print("PASS: real text/PDF file upload, read-only preview, exact manual source selection, "
                   "safe original rendering/download, existing question/Composer/draft/export, "
                   "amendment staleness, original preservation, 390px intake layout, "
-                  "accessible labels and delayed case-switch isolation")
+                  "accessible labels, delayed case-switch isolation, PDF page anchors and application restart")
         except BaseException as error:
             receipt.update(status="failed", failure=str(error))
             if session is not None:

@@ -78,9 +78,19 @@ def changes_since_review(store: CaseStore, case_id: str, since_event_id: int | N
             return dict(row) if row else None
 
         def findings_for(source_id: int) -> list[dict]:
-            return [dict(row) for row in store.db.execute(
-                "SELECT finding_key,certainty,quote,source_line FROM assertions WHERE source_version_id=? ORDER BY finding_key",
+            findings = [dict(row) for row in store.db.execute(
+                "SELECT source_version_id,finding_key,certainty,quote,source_line FROM assertions WHERE source_version_id=? ORDER BY finding_key",
                 (source_id,)).fetchall()]
+            store._annotate_source_assertions(findings, intake_receipts)
+            return findings
+
+        def reported_finding(item: dict) -> dict:
+            result = {"finding_key": item["finding_key"], "reported_state": item["certainty"],
+                      **provenance(item["source_version_id"])}
+            if item.get("text_origin") == "pdf_extraction":
+                result.update({key: item[key] for key in
+                               ("quote", "source_line", "source_page", "page_line", "page_text_sha256")})
+            return result
 
         new_sources: list[dict] = []
         amendments: list[dict] = []
@@ -105,8 +115,7 @@ def changes_since_review(store: CaseStore, case_id: str, since_event_id: int | N
                         "issued_at": row["issued_at"],
                         "received_at": row["received_at"],
                         "reported_findings": [
-                            {"finding_key": f["finding_key"], "reported_state": f["certainty"],
-                             **provenance(row["id"])}
+                            reported_finding(f)
                             for f in findings
                         ],
                     })

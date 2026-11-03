@@ -357,12 +357,12 @@
 
           <section class="panel" id="import">
             <div class="panel-head"><div><div class="eyebrow">RECORDS · INTAKE</div><h2>Add a record</h2></div></div>
-            <p class="muted">Upload a text record, check its details, and choose the passages you want to track. The original stays available alongside your entries.</p>
-            <p class="muted tiny">Development workspace: independently fictional records only. UTF-8 .txt files up to 64 KiB; PDF and image support are not available yet.</p>
+            <p class="muted">Upload a record, check its details, and choose the passages you want to track. The original stays available alongside your entries.</p>
+            <p class="muted tiny">Development workspace: independently fictional records only. UTF-8 .txt and text-based .pdf files up to 64 KiB. Scans, images and OCR are not supported.</p>
             <form id="intake-upload-form">
               <fieldset id="intake-upload-fields" class="intake-fields">
-                <label for="intake-file">Text record</label>
-                <input id="intake-file" type="file" accept=".txt,text/plain" required aria-describedby="intake-upload-help">
+                <label for="intake-file">Text or PDF record</label>
+                <input id="intake-file" type="file" accept=".txt,text/plain,.pdf,application/pdf" required aria-describedby="intake-upload-help">
                 <p id="intake-upload-help" class="muted tiny">Previewing a file does not add it to the case.</p>
                 <button id="intake-preview-button" class="button" type="submit">Preview record</button>
               </fieldset>
@@ -371,28 +371,30 @@
             <p id="intake-message" class="muted" role="status" aria-live="polite"></p>
             <div id="intake-success-actions" class="actions"></div>
             <div id="intake-review" hidden>
-              <h3>Review the original</h3>
+              <h3 id="intake-review-heading">Review the original</h3>
               <p id="intake-file-summary" class="muted"></p>
-              <p class="muted tiny">Select a line number to choose a passage. You can shorten it to an exact excerpt of that line.</p>
+              <p id="intake-preview-help" class="muted tiny">Select a line number to choose a passage. You can shorten it to an exact excerpt of that line.</p>
               <div id="intake-original-lines" class="intake-original" tabindex="0" role="region" aria-label="Uploaded original with selectable source lines"></div>
-              <details class="intake-provenance"><summary>Original file fingerprint</summary><p id="intake-source-hash" class="muted tiny"></p></details>
+              <details class="intake-provenance"><summary>File and text provenance</summary><p id="intake-source-hash" class="muted tiny"></p><p id="intake-extraction-details" class="muted tiny"></p></details>
 
               <form id="intake-passage-form">
                 <fieldset id="intake-passage-fields" class="intake-fields">
                   <legend>Passages to track (optional)</legend>
                   <div class="intake-field-grid">
-                    <div><label for="intake-line">Source line</label><input id="intake-line" type="number" min="1" max="512" required></div>
+                    <div><label id="intake-line-label" for="intake-line">Source line</label><input id="intake-line" type="number" min="1" max="512" required aria-describedby="intake-passage-location"></div>
                     <div><label for="intake-key">Finding tag</label><input id="intake-key" type="text" pattern="[a-z][a-z0-9_-]{0,59}" maxlength="60" placeholder="marker-a" required aria-describedby="intake-tag-help"></div>
                   </div>
+                  <p id="intake-passage-location" class="muted tiny" aria-live="polite"></p>
                   <p id="intake-tag-help" class="muted tiny">Use the same tag when an amended record updates a finding.</p>
-                  <label for="intake-quote">Exact source passage</label><textarea id="intake-quote" rows="3" maxlength="1200" required spellcheck="false"></textarea>
-                  <label for="intake-status">What does this passage report?</label>
+                  <label id="intake-quote-label" for="intake-quote">Exact source passage</label><textarea id="intake-quote" rows="3" maxlength="1200" required spellcheck="false"></textarea>
+                  <label for="intake-status">Your classification of this passage</label>
                   <select id="intake-status" required>
                     <option value="">Choose a status</option><option value="reported">Reported observation</option>
                     <option value="negative">Explicit negative result</option><option value="pending">Pending</option>
                     <option value="indeterminate">Indeterminate</option><option value="not-reported">Not reported</option>
                     <option value="not-assessed">Not assessed</option><option value="conflicting">Conflicting information</option>
                   </select>
+                  <p class="muted tiny">The selected status is your entry. It does not establish a clinical finding or professional review.</p>
                   <button id="intake-add-passage" class="button secondary" type="submit">Add passage to review</button>
                   <p id="intake-passage-message" class="muted tiny" role="status" aria-live="polite"></p>
                 </fieldset>
@@ -453,7 +455,7 @@
         <div class="subhead">New questions since the anchor</div><div id="changes-questions" class="questions" aria-live="polite"></div>
       </section>
 
-      <footer>Open Intelligence is an original, dependency-free reference implementation. No real patient information, patient login, credentialed clinical review, automated clinical inference, treatment recommendations, or regulatory clearance.</footer>
+      <footer>Open Intelligence is a local reference implementation for independently fictional records. PDF text extraction uses pypdf. No real patient information, patient login, credentialed clinical review, automated clinical inference, treatment recommendations, or regulatory clearance.</footer>
     </main>
   </div>
   <dialog id="source-dialog" aria-labelledby="dialog-title" aria-describedby="dialog-context">

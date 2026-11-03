@@ -24,6 +24,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
+      - name: Install exact bounded PDF runtime without extras
+        run: python -m pip install --require-hashes --only-binary=:all: --no-deps -r requirements-pdf.lock
       - name: Compile and JavaScript syntax
         run: |
           python -m compileall -q src tests

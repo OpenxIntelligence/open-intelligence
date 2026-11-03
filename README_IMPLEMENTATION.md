@@ -1,6 +1,14 @@
 ## Running the first implementation locally
 
-This is an **original, dependency-free Python 3.11+** experimental implementation. No clinical backend, model, hosted API, third-party UI library, or professional license is required for the synthetic-only exercise.
+This is an **original Python/SQLite synthetic prototype**. The text-only path uses the standard library. Bounded PDF intake adds the optional, exact-pinned `pypdf==6.21.4` dependency on Python 3.12+ and POSIX resource controls. No clinical backend, hosted model, or third-party UI library is required for this exercise.
+
+For PDF intake and the complete test suite, first create a clean Python 3.12+ environment:
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install --require-hashes --only-binary=:all: --no-deps -r requirements-pdf.lock
+. .venv/bin/activate
+```
 
 ```bash
 PYTHONPATH=src python -m open_intelligence seed
@@ -23,10 +31,10 @@ The browser journeys require an installed Chrome or Chromium executable. GitHub 
 
 For the demonstration: create a question in `CASE-ALPHA`, save an investigation draft linked to the pathology document, acknowledge it in demo mode, load the example amendment, and import it. The prior investigation becomes `stale`, the question reopens, and the original source remains accessible. Draft a replacement against the amended document. `CASE-BETA` remains unaffected.
 
-### Add an ordinary text record
+### Add an ordinary text or born-digital PDF record
 
 The **Add a record** section accepts UTF-8 `.txt` files without a custom report
-header. Use `examples/synthetic/plaintext-record.txt`, which is independently
+header, and bounded `.pdf` files with extractable text. Use `examples/synthetic/plaintext-record.txt`, which is independently
 fictional. Preview the file, select exact source passages if needed, enter the
 record's document reference/type/dates, and confirm its case and transcription.
 The original bytes, including BOM and CRLF if present, remain unchanged. The
@@ -39,9 +47,17 @@ with clinical review not performed, throughout patient views, AI inputs and
 exports. They are not inferred or verified clinical facts. The existing
 structured fixture importer is retained under **Structured development fixtures**.
 
-This increment supports text up to 64 KiB, 512 lines and 30 selected single-line
-passages within a 128 KiB request. PDF/OCR and post-save annotation editing are
-not implemented. Saving an original with no passages does not allow adding
+The original file limit remains 64 KiB, with 512 lines and 30 selected single-line
+passages within a 128 KiB request. PDFs additionally permit at most 20 physical
+pages and 64 KiB of extracted UTF-8 text. The source reader distinguishes PDF
+extraction from original text, shows page/extraction-line anchors, and retains
+both the original-byte hash and extraction hash. A restricted worker parses
+outside the server and database transaction; historical reads use the persisted
+extraction without reparsing. Encrypted, unreadable, image-only, interactive-form
+and over-limit inputs fail explicitly. Compare selected passages with the
+original: reading order, tables, hidden text and visual completeness are not
+established by extraction. OCR and post-save annotation editing are not
+implemented. Saving an original with no passages does not allow adding
 passages afterward in this version. See the [intake contract and verification
 record](docs/engineering/DOCUMENT_INTAKE.md) for API, source ownership and limits.
 

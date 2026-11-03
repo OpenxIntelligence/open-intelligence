@@ -1,5 +1,32 @@
 # Open Intelligence — reusable technology audit addendum
 
+## Scoped implementation update — 3 November 2026 UTC
+
+The PDF intake branch now extends the existing source owner with **pypdf 6.21.4**
+as one optional, bounded parser dependency. This is a concrete update to the
+earlier research-only state below. The companion JSON atlas carries the exact
+candidate entry; [DOCUMENT_INTAKE.md](../engineering/DOCUMENT_INTAKE.md) records
+the integration, primary sources, restrictions and verification.
+
+The official wheel is hash-pinned (`33e4fb41ca352810eb4e9838aa0d82d6888a5f8bf682f43e99cce5faa666255c`),
+its source commit is `b2c3fa2ee689f582a0de256a45e30bd96c68f807`, and its
+BSD-3-Clause license is retained verbatim in `THIRD_PARTY_NOTICES/pypdf.txt`.
+Hash-required installation and wheel metadata/notice inspection were executed
+in a clean Python 3.12.14 environment. No extras, model weights, training data,
+OCR packages, source PDFs or bundled font/image assets were adopted. The base
+wheel declares no unconditional runtime dependency on that Python version.
+
+**Recommendation: EXTEND for the scoped synthetic PDF workflow.** Original
+files, immutable page/extraction provenance, manual passage review and source
+amendment remain owned by the existing platform contracts. The restricted
+worker is not an OS sandbox, and parsing is not proof of visible-text fidelity,
+scientific correctness or clinical approval. This update does not clear the
+full platform for distribution or change its selected stack. The component's
+machine-readable inventory is [PDF_DEPENDENCY_SBOM.json](../safety-packet/PDF_DEPENDENCY_SBOM.json).
+
+The 2-Nov research receipt below remains historical; its statement that no
+software was installed applies to that research pass.
+
 **Research date:** 2 November 2026. **Status:** complementary evidence and recommendations, not an accepted architecture or adoption decision. This appendix supports the existing OI-17 decision register, the 125-resource register, and PR #125/#127 research; it does not replace them. No third-party software was installed, no patient data was retrieved, no model was run, and no remote write or outreach was performed in this pass. New development excludes Next.js.
 
 ## Outcome and next useful decision

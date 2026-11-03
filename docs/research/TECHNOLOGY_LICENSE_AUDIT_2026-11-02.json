@@ -559,6 +559,35 @@
       "assessed_at": "2026-11-02",
       "decision_status": "Research recommendation only; not adopted or release-cleared",
       "dependency_clearance": "NOT_ESTABLISHED"
+    },
+    {
+      "name": "pypdf",
+      "category": "Medical document text extraction",
+      "repository": "https://github.com/py-pdf/pypdf",
+      "purpose_and_capabilities": "Bounded born-digital PDF text extraction with preserved physical-page provenance; no OCR or clinical assertions.",
+      "technology": "Python; fresh POSIX worker under resource limits.",
+      "version_or_commit": "6.21.4; source b2c3fa2ee689f582a0de256a45e30bd96c68f807; wheel sha256 33e4fb41ca352810eb4e9838aa0d82d6888a5f8bf682f43e99cce5faa666255c",
+      "source_license": "BSD-3-Clause",
+      "commercial_use": "Source license permits commercial use subject to notice and non-endorsement conditions; document and asset rights remain separate.",
+      "modification": "Permitted with required notices retained.",
+      "self_hosting": "Local extraction; no required external service.",
+      "verification": "Exact LICENSE blob ab327d0312875458ba74983867f1b2622b6de39d inspected; hash-required wheel installed in clean Python3.12.14; installed notice matches retained notice. No extras or runtime dependencies on this Python version.",
+      "recommendation": "extend",
+      "fit": "OI-006/007/009/010 bounded synthetic document intake.",
+      "integration_boundary": "Existing CaseStore source_versions owns original bytes; immutable source_text_renditions child owns derived text/page/configuration hashes; existing human passage review and amendment transaction remain authoritative.",
+      "maturity": "Established upstream parser; this selected adapter is an unmerged synthetic prototype with executed adversarial extraction tests.",
+      "limitations": "64KiB original,20pages,512lines,64KiB extraction; rejects encrypted/image-only/forms/actions/annotations/attachments. Reading order, hidden text, mixed-image completeness and clinical meaning unverified. No post-save annotation revisions.",
+      "code_model_data_asset_dependency_boundaries": "Code only. Keep BSD notice. No optional extras, OCR/model weights, datasets, source documents, embedded fonts or images adopted; code license grants no rights to them.",
+      "sources": [
+        "https://pypi.org/project/pypdf/6.21.4/",
+        "https://github.com/py-pdf/pypdf/blob/b2c3fa2ee689f582a0de256a45e30bd96c68f807/LICENSE",
+        "https://github.com/py-pdf/pypdf/blob/b2c3fa2ee689f582a0de256a45e30bd96c68f807/pyproject.toml",
+        "https://pypdf.readthedocs.io/en/6.21.4/user/extract-text.html"
+      ],
+      "existing_backlog_or_contract": "OI-006, OI-007, OI-009, OI-010; docs/engineering/DOCUMENT_INTAKE.md",
+      "assessed_at": "2026-11-03",
+      "decision_status": "Scoped implementation in draft synthetic PDF branch; not production/release/legal/clinical approval.",
+      "dependency_clearance": "EXACT_BASE_WHEEL_INSPECTED_PYTHON_3_12_NO_EXTRAS"
     }
   ],
   "local_evidence": [
