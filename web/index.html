@@ -54,6 +54,7 @@
           <a href="#timeline">Timeline</a>
           <a href="#provenance">Provenance</a>
           <a href="#investigations">Investigation</a>
+          <a href="#workspace-investigations">Investigation workspace</a>
           <a href="#synthesis">Claim synthesis</a>
           <a href="#scoped-review">Scoped review</a>
           <a href="#sources">Sources and findings</a>
@@ -476,6 +477,45 @@
         </section>
       </section>
 
+      <section class="panel" id="workspace-investigations" aria-labelledby="workspace-investigations-heading">
+        <div class="panel-head">
+          <div><div class="eyebrow">INVESTIGATION WORKSPACE · DURABLE QUESTIONS</div><h2 id="workspace-investigations-heading">Investigations</h2></div>
+          <span class="pill pill-warn">FICTIONAL DEMO QUESTIONS ONLY</span>
+        </div>
+        <p class="muted">Durable questions stay with the case and keep their links when a report is corrected. Questions are never answered by the system: only a recorded human status change with a reason moves a question, and a corrected linked report reopens an answered question for another human review. Unreviewed ideas stay hypotheses, separate from reported facts.</p>
+        <form id="workspace-question-form">
+          <label for="workspace-question-text">New investigation question (fictional)</label>
+          <textarea id="workspace-question-text" rows="2" maxlength="500" required placeholder="What should the next review check against the sources?"></textarea>
+          <button type="submit" class="button">Add investigation question</button>
+        </form>
+        <div class="subhead">Link a source version</div>
+        <form id="workspace-link-form">
+          <label for="workspace-link-question">Question</label>
+          <select id="workspace-link-question" required></select>
+          <label for="workspace-link-source">Current source version</label>
+          <select id="workspace-link-source" required></select>
+          <button type="submit" class="button">Link source version</button>
+        </form>
+        <div class="subhead">Record a status change</div>
+        <form id="workspace-status-form">
+          <label for="workspace-status-question">Question</label>
+          <select id="workspace-status-question" required></select>
+          <label for="workspace-status-value">New status</label>
+          <select id="workspace-status-value">
+            <option value="open">Open</option>
+            <option value="in_progress">In progress</option>
+            <option value="answered">Answered (needs an answer below)</option>
+            <option value="needs_review">Needs review</option>
+          </select>
+          <label for="workspace-status-reason">Reason for the change (required)</label>
+          <textarea id="workspace-status-reason" rows="2" minlength="5" maxlength="600" required placeholder="Why is this status change being recorded?"></textarea>
+          <label for="workspace-status-answer">Recorded answer (only when marking answered)</label>
+          <textarea id="workspace-status-answer" rows="3" maxlength="3000" placeholder="Only fill this in when the new status is answered."></textarea>
+          <button type="submit" class="button">Record status change</button>
+        </form>
+        <div class="subhead">Questions, links, and history</div>
+        <div id="workspace-question-list" class="questions" aria-live="polite"></div>
+      </section>
       <section class="panel" id="synthesis" aria-labelledby="synthesis-heading">
         <div class="panel-head"><div><div class="eyebrow">SYNTHESIS · SUPPORT AND CONTRADICT SIDE BY SIDE</div><h2 id="synthesis-heading">Claim synthesis and bounded reports</h2></div><span class="pill pill-warn">FICTIONAL DEMO DATA — not a real patient</span></div>
         <p class="muted">Each question's human-entered assessments and rights-gated links are grouped by their relation label: supporting, contradicting, context, and unknown or limited. Supporting and contradicting items stay side by side and are never merged into one verdict. Limitation notes are human-entered; this surface computes no quality number. A report whose basis changed is marked REVIEW-PENDING and reads as history.</p>
