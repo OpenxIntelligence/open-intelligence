@@ -27,7 +27,7 @@ export function SourceReading({index, view, filters, onFiltersChange, busy, ques
     onFiltersChange(emptySourceFilters);
     input.current?.focus();
   }
-  if (index.sources.length === 0) return <p>No imported original sources for this case.</p>;
+  if (index.sources.length === 0) return <p>No structured report sources for this case. Text and PDF originals are available in their section above.</p>;
   return <div className={'source-reading ' + view}>
     <div className="source-filters" role="search" aria-label="Filter loaded source versions">
       <div><label htmlFor="source-filter">Filter loaded sources</label><input id="source-filter" ref={input} type="search"

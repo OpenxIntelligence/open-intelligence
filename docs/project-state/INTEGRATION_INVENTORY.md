@@ -5,6 +5,15 @@
 
 **Status vocabulary:** the eight categories in [PRODUCT_REQUIREMENTS.md](PRODUCT_REQUIREMENTS.md) apply to bounded behavior, never to a whole clinical domain by implication.
 
+## Reviewed document continuation — draft #323
+
+[Contract and evidence](../engineering/H1_REVIEWED_DOCUMENTS.md): #323 builds on
+#315 after evidence convergence, adding source-owned text/PDF preview, original
+custody and immutable manual-selection corrections to Records. No new patient or
+source owner is introduced. Manual-provenance propagation into World Model,
+questions and reports remains open. Final commit-specific results are in the PR;
+older checkpoints below are retained as historical evidence.
+
 ## Current integration checkpoint — 3 November 2026
 
 The selected runtime base is [draft #293](https://github.com/OpenxIntelligence/open-intelligence/pull/293) at commit 635f357048eb27e52e6ec5c3d7b6714215070127, tree 74c4a2ab65bf54a0908246199bb67c300ae2662b, preserving [#287](https://github.com/OpenxIntelligence/open-intelligence/pull/287) and its source base 247705700080052705817fee9e8f7b54afa8ffaa. The published tree matches the reconstructed local checkout. Its [e44f225e evidence-only follow-up](https://github.com/OpenxIntelligence/open-intelligence/commit/e44f225e3ce4953d754ad0e6e1409e22b696a29f) changes exactly five documentation files; those newer receipts are preserved here without changing the selected runtime. Main remains [24519839aa8ac1ea3aff88a956349ba72798a72a](https://github.com/OpenxIntelligence/open-intelligence/tree/24519839aa8ac1ea3aff88a956349ba72798a72a). The #276 assessment and separate-owner tables below remain historical checkpoints; this section supersedes only their selected-baseline and next-work statements.

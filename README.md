@@ -41,6 +41,10 @@ Live biomedical retrieval, model execution, professional review, clinical/PDF/
 annotation parity and production identity remain separate capabilities. This is
 an unmerged engineering candidate, with no clinical approval or deployment claim.
 
+**Reviewed document continuation:** [draft #323](https://github.com/OpenxIntelligence/open-intelligence/pull/323) adds ordinary text/PDF preview, exact original custody, immutable passage corrections and Records downloads on #315. [Scope and verification](docs/engineering/H1_REVIEWED_DOCUMENTS.md) distinguish this implemented intake from the remaining manual-provenance integration into questions and reports.
+
+**Connected document candidate:** [draft #349](https://github.com/OpenxIntelligence/open-intelligence/pull/349) composes #323 with #335's source reading, evidence reports and follow-up. Text/PDF originals have a separate, initially collapsed Records control that retains local selections while collapsed. The [continuity record](docs/engineering/H1_EVIDENCE_CONTINUITY.md) and PR distinguish the tests-first failure, combined verification and remaining boundaries. Manual selections remain separately attributed and excluded from structured-source investigation snapshots.
+
 ## Start here
 
 | Document | Purpose |

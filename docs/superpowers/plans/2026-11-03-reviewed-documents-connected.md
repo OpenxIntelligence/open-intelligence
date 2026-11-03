@@ -14,8 +14,8 @@ Carry the donor's source-owned document tables, immutable original bytes, frozen
 
 - [x] Inspect the pinned inputs, authority, existing owners and dependencies; isolate a new worktree.
 - [x] Verify base client tests, build and dependency-rights gate: 300 passed, zero skipped; build and rights passed.
-- [ ] Add actual-browser assertions first and observe the missing disclosure on the unmodified product.
-- [ ] Compose the donor with the current main application and browser journey; add the small mounted disclosure.
+- [x] Add actual-browser assertions first and observe the missing disclosure on the unmodified product.
+- [x] Compose the donor with the current main application and browser journey; add the small mounted disclosure.
 - [ ] Verify client tests, build, rights, PostgreSQL API, reference implementation, connected browser and recovery on the published combined head.
 - [ ] Complete independent review and inspect hosted screenshots and retained evidence.
 - [ ] Update the existing continuity/backlog records and the draft PR with exact results and limits.
@@ -33,3 +33,7 @@ Carry the donor's source-owned document tables, immutable original bytes, frozen
 ## Verification record
 
 The final PR records the tests-first failure, immutable combined commit, run attempts, artifact identity, independent review, and unresolved limitations. Synthetic engineering results do not establish real-patient authorization, extraction quality on unfamiliar documents, scientific validity, professional review, or production readiness.
+
+- Tests-first published commit `75365e8532267ac31c4103cea8f9eea3b4591d24`, [React run 41675233846](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41675233846), attempt 1, job 126053951348: 300 client tests, build and dependency gates passed; actual PG/API/Chromium failed specifically with `AssertionError: Reviewed originals start collapsed beside the structured import` before production composition.
+- The inherited structured-intake denial test now waits for the completed denied response before later journeys restore grants. The document journey explicitly opens native details and checks visible controls, avoiding hidden programmatic-click false positives.
+- A synthetic structured source and reviewed PDF share the same case. The browser compares the structured index before and after manual annotation correction; it must remain unchanged.
