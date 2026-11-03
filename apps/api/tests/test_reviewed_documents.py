@@ -8,6 +8,7 @@ from urllib.request import Request, ProxyHandler, build_opener
 
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 from oi_api.app import create_app
 from http_support import running_server
 from test_patients import request, TOKEN_A, TOKEN_B
@@ -105,9 +106,12 @@ class ReviewedDocumentTests(SourceVersionFixture):
             doc=request(base,path,token=TOKEN_A)[1]
             self.assertEqual([r['revision'] for r in doc['revisions']],[1,2])
             self.assertEqual(doc['revisions'][0]['findings'],payload['findings'])
-            with self.engine.begin() as c:
-                with self.assertRaises(Exception):
+            # Catch outside the transaction so a rejected mutation rolls back;
+            # pg8000 correctly refuses to commit an already failed transaction.
+            with self.assertRaisesRegex(DBAPIError, 'OI-IDENTITY-HISTORY-IMMUTABLE'):
+                with self.engine.begin() as c:
                     c.execute(text("UPDATE clinical_source.annotation_revisions SET reason='rewrite'"))
+            self.assertEqual(request(base,path,token=TOKEN_A)[1]['revisions'],doc['revisions'])
 
     def test_amendment_preserves_historical_original_and_correction_history(self):
         with running_server(create_app(self.settings)) as base:
