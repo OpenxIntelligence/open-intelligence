@@ -72,7 +72,7 @@ def navigate(cd, section):
                 + json.dumps(section) + ")).click()")
     selectors = {'Investigations': '[data-view=investigations]',
                  'Journey': '[data-view=journey]', 'Records': '[data-testid=records-workspace]',
-                 'Overview': '[data-testid=patient-card]'}
+                 'Overview': '[data-testid=patient-card]', 'Review': '[data-testid=review-workspace]'}
     cd.wait('Boolean(document.querySelector(' + json.dumps(selectors[section]) + '))',
             section + ' workspace for follow-through')
 
@@ -133,6 +133,7 @@ class FollowthroughChecks:
         self.task_ids = {}
         self.before_amendment = None
         self.first_write = None
+        self.draft_checks = {}
 
     def row(self, task_id):
         return '[data-testid=followthrough-task][data-task-id="' + task_id + '"]'
@@ -234,7 +235,7 @@ class FollowthroughChecks:
         assert write['body']['expected_revision'] == revision - 1
         assert write['payload']['revision'] == revision
 
-    def start(self):
+    def start(self, credentials, write_grants):
         navigate(self.cd, 'Investigations')
         click(self.cd, '[data-testid=load-source-questions]')
         self.cd.wait("document.querySelector('[data-testid=source-question-history]')?.textContent.includes("
@@ -260,6 +261,68 @@ class FollowthroughChecks:
         fill(self.cd, question + ' [data-testid=followthrough-detail]', draft_detail)
         before_transitions = self.cd.evaluate('window.__oiFollowthroughChecks.writes.length')
 
+        # Leaving the question to inspect its source must not discard an unsent
+        # coordination draft or silently record it. These are real UI inputs.
+        draft_fields = {'title': draft_title, 'detail': draft_detail,
+                        'owner': 'Fictional navigation coordinator',
+                        'due-date': '2026-12-09',
+                        'trigger': 'After inspecting the fictional original',
+                        'reason': 'Keep the exact unsent coordination plan.'}
+        for name, value in draft_fields.items():
+            fill(self.cd, question + ' [data-testid=followthrough-' + name + ']', value)
+        for section in ('Journey', 'Records', 'Overview', 'Review'):
+            navigate(self.cd, section)
+            if section == 'Overview':
+                self.assert_preparation_uses_saved_work(completed, draft_fields.values())
+                self.refresh_overview(expected_count=1)
+                self.assert_preparation_uses_saved_work(completed, draft_fields.values())
+            navigate(self.cd, 'Investigations')
+            self.cd.evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve(true))))')
+            for name, expected in draft_fields.items():
+                actual = self.cd.evaluate('document.querySelector(' + json.dumps(
+                    question + ' [data-testid=followthrough-' + name + ']') + ')?.value')
+                assert actual == expected, 'Same-case navigation discarded unsent follow-up ' + name
+            assert self.cd.evaluate('window.__oiFollowthroughChecks.writes.length') == before_transitions
+
+        # Actually reload the original source index and the same World Model,
+        # then obtain a fresh authorized question read before restoring inputs.
+        navigate(self.cd, 'Records')
+        self.cd.evaluate("[...document.querySelectorAll('[data-testid=load-sources]')].find(e=>"
+                         "e.closest('li').textContent.includes(" + json.dumps(self.case_id) + ")).click()")
+        self.cd.wait("Boolean(document.querySelector('[data-testid=source-index]'))", 'fresh source index')
+        navigate(self.cd, 'Investigations')
+        select_case(self.cd, self.case_id)
+        click(self.cd, '[data-testid=load-source-questions]')
+        self.cd.wait('Boolean(document.querySelector(' + json.dumps(question + ' [data-testid=followthrough-title]')
+                     + '))', 'same-source unsent task restored after fresh reads')
+        for name, expected in draft_fields.items():
+            assert self.cd.evaluate('document.querySelector(' + json.dumps(
+                question + ' [data-testid=followthrough-' + name + ']') + ').value') == expected
+        assert self.cd.evaluate('window.__oiFollowthroughChecks.writes.length') == before_transitions
+
+        # Separate task access denial clears the retained form; permission
+        # restoration must not bring the discarded input back.
+        credentials[0]['actions'].remove('followthrough_read')
+        write_grants()
+        click(self.cd, '[data-testid=followthrough-refresh]')
+        self.cd.wait("document.querySelector('[data-testid=followthrough-status]')?.dataset.phase==='error'",
+                     'fresh denied task read clears unsent fields')
+        assert self.cd.evaluate('!document.querySelector(' + json.dumps(question + ' [data-testid=followthrough-title]') + ')')
+        credentials[0]['actions'].append('followthrough_read')
+        write_grants()
+        self.refresh(expected_count=1)
+        click(self.cd, question + ' [data-testid=followthrough-open-create]')
+        assert self.cd.evaluate('document.querySelector(' + json.dumps(question + ' [data-testid=followthrough-title]') + ').value') == ''
+        for name, value in draft_fields.items():
+            fill(self.cd, question + ' [data-testid=followthrough-' + name + ']', value)
+        self.draft_checks = {'same_case_navigation': True, 'fresh_source_question_reads': True,
+                             'denied_read_cleared_draft': True, 'navigation_writes': 0,
+                             'preparation_refresh_preserves_unsent_creation': True}
+        self.cd.evaluate('document.querySelector(' + json.dumps(question + ' [data-testid=followthrough-create-form]')
+                         + ").scrollIntoView({block:'center'})")
+        image = self.cd.command('Page.captureScreenshot', {'format': 'png'})
+        (artifacts_directory() / 'h1-followthrough-unsent-draft.png').write_bytes(base64.b64decode(image['data']))
+
         def assert_creation_draft_survives(status):
             # Let committed receipt rendering and its React effects settle;
             # an eventually closed form must not accidentally pass this check.
@@ -272,7 +335,36 @@ class FollowthroughChecks:
                 assert self.cd.evaluate('document.querySelector(' + json.dumps(selector) + ').value') == expected, (
                     'Successful existing-task ' + status + ' changed the unsaved creation ' + name)
 
+        transition_fields = {'owner': 'Fictional proposed coordinator',
+                             'reason': 'Keep this unsent assignment reason during source inspection.'}
+        for name, value in transition_fields.items():
+            fill(self.cd, self.row(completed) + ' [data-testid=followthrough-transition-' + name + ']', value)
+        for section in ('Journey', 'Records', 'Overview', 'Review'):
+            navigate(self.cd, section)
+            if section == 'Overview':
+                self.assert_preparation_uses_saved_work(completed, transition_fields.values())
+                self.refresh_overview(expected_count=1)
+                self.assert_preparation_uses_saved_work(completed, transition_fields.values())
+            navigate(self.cd, 'Investigations')
+            for name, expected in transition_fields.items():
+                actual = self.cd.evaluate('document.querySelector(' + json.dumps(
+                    self.row(completed) + ' [data-testid=followthrough-transition-' + name + ']') + ')?.value')
+                assert actual == expected, 'Same-case navigation discarded unsent transition ' + name
+            assert self.cd.evaluate('window.__oiFollowthroughChecks.writes.length') == before_transitions
+        self.refresh(expected_count=1)
+        for name, expected in transition_fields.items():
+            assert self.cd.evaluate('document.querySelector(' + json.dumps(
+                self.row(completed) + ' [data-testid=followthrough-transition-' + name + ']') + ').value') == expected
+        click(self.cd, self.row(completed) + ' [data-testid=followthrough-clear-transition]')
+        for name in transition_fields:
+            expected = next(row for row in self.projection()['tasks'] if row['task_id'] == completed)['owner_label'] if name == 'owner' else ''
+            assert self.cd.evaluate('document.querySelector(' + json.dumps(
+                self.row(completed) + ' [data-testid=followthrough-transition-' + name + ']') + ').value') == expected
+        assert self.cd.evaluate('window.__oiFollowthroughChecks.writes.length') == before_transitions
+        assert_creation_draft_survives('clearing an unsent status change')
         self.transition(completed, 'assigned', 2, 'Fictional coordinator')
+        assert self.cd.evaluate('document.querySelector(' + json.dumps(
+            self.row(completed) + ' [data-testid=followthrough-transition-reason]') + ').value') == ''
         assert_creation_draft_survives('assignment')
         assert self.cd.evaluate('!document.querySelector(' + json.dumps(self.row(completed)
                                 + ' [data-testid=followthrough-complete]') + ')')
@@ -284,8 +376,13 @@ class FollowthroughChecks:
         assert self.cd.evaluate('window.__oiFollowthroughChecks.writes.length') == before_transitions + 2
         assert len(self.projection()['tasks']) == 1, 'An unsaved draft must not create a task'
         self.transition(completed, 'completed', 4)
-        self.create(TITLE_OPEN)
+        open_task = self.create(TITLE_OPEN)
+        amendment_reason = 'Unsent status change tied to the original source state.'
+        fill(self.cd, self.row(open_task) + ' [data-testid=followthrough-transition-owner]', 'Fictional proposed recheck owner')
+        fill(self.cd, self.row(open_task) + ' [data-testid=followthrough-transition-reason]', amendment_reason)
         deferred = self.create(TITLE_DEFERRED)
+        assert self.cd.evaluate('document.querySelector(' + json.dumps(
+            self.row(open_task) + ' [data-testid=followthrough-transition-reason]') + ').value') == amendment_reason
         self.transition(deferred, 'deferred', 2)
         self.transition(deferred, 'assigned', 3, 'Fictional later coordinator')
         self.transition(deferred, 'deferred', 4)
@@ -302,15 +399,27 @@ class FollowthroughChecks:
             history = self.cd.evaluate('document.querySelector(' + json.dumps(selector) + ').textContent')
             assert all(event['event_id'] in history and event['reason'] in history for event in row['history'])
         assert self.before_amendment[self.task_ids[TITLE_OPEN]]['is_overdue'] is True
+        self.draft_checks['status_change_navigation_and_matching_refresh'] = True
+        self.draft_checks['preparation_keeps_recorded_owner_and_preserves_unsent_transition'] = True
+        self.draft_checks['explicit_status_draft_clear_without_writes'] = True
+        self.draft_checks['unrelated_creation_preserves_status_draft'] = True
+        click(self.cd, question + ' [data-testid=followthrough-open-create]')
+        fill(self.cd, question + ' [data-testid=followthrough-title]', 'Draft bound to the original fictional source')
 
     def after_amendment(self, replacement_source_id):
         navigate(self.cd, 'Investigations')
         select_case(self.cd, self.case_id)
+        click(self.cd, '[data-testid=load-source-questions]')
+        original_question = '.question-items li[data-question-id="' + self.question_id + '"]'
+        self.cd.wait('Boolean(document.querySelector(' + json.dumps(original_question) + '))',
+                     'historical question rendered after source amendment')
         self.assert_amendment(replacement_source_id)
         navigate(self.cd, 'Records')
 
     def assert_amendment(self, replacement_source_id):
         value = self.refresh()
+        assert self.cd.evaluate("!document.querySelector('[data-testid=followthrough-create-form]')"), 'Amendment must clear source-bound unsent task fields'
+        assert self.cd.evaluate("[...document.querySelectorAll('[data-testid=followthrough-transition-reason]')].every(e=>e.value==='')"), 'Amendment must clear unsent status-change reasons'
         for row in value['tasks']:
             before = self.before_amendment[row['task_id']]
             for field in ('source_id', 'source_line', 'source_sha256', 'source_version', 'question_id',
@@ -433,6 +542,20 @@ class FollowthroughChecks:
         assert self.cd.evaluate('window.__oiFollowthroughChecks.reads.at(-1).path') == (
             '/v1/patients/' + self.patient_id + '/cases/' + self.case_id + '/followthrough')
         return value
+
+    def assert_preparation_uses_saved_work(self, task_id, unsent_values):
+        """Unsent form state must not enter the saved-question work projection."""
+        selector = '[data-testid=second-opinion-agenda-item][data-question-id="' + self.question_id + '"]'
+        self.cd.wait('Boolean(document.querySelector(' + json.dumps(selector) + '))', 'saved preparation question')
+        item = self.cd.evaluate('(()=>{const e=document.querySelector(' + json.dumps(selector) + ');return {'
+                               'text:e.textContent,recorded:Number(e.querySelector("[data-testid=second-opinion-question-work-summary]")?.dataset.recordedCount),'
+                               'tasks:[...e.querySelectorAll("[data-testid=second-opinion-question-task]")].map(t=>t.dataset.taskId)}})()')
+        assert item['recorded'] == 1 and item['tasks'] == [task_id]
+        recorded = next(task for task in self.projection()['tasks'] if task['task_id'] == task_id)
+        assert recorded['title'] in item['text']
+        if recorded['owner_label']:
+            assert recorded['owner_label'] in item['text']
+        assert all(value not in item['text'] for value in unsent_values if value), 'Unsent fields appeared as recorded preparation work'
 
     def assert_overview_work(self, current_question_id, screenshots):
         """Two real questions share one case summary without changing task ownership."""
@@ -568,6 +691,7 @@ class FollowthroughChecks:
         (screenshots / 'h1-followthrough-receipts.json').write_text(json.dumps({
             'patient_id': self.patient_id, 'case_id': self.case_id, 'question_id': self.question_id,
             'first_create_receipt': self.first_write['payload'],
+            'unsent_draft_checks': self.draft_checks,
             'timestamp_fault_injection': self.cd.evaluate('window.__oiFollowthroughChecks.timestampFaults'),
             'task_summary': [{'task_id': row['task_id'], 'status': row['status'], 'revision': row['revision'],
                               'source_id': row['source_id'], 'needs_recheck': row['needs_recheck'],
@@ -575,6 +699,12 @@ class FollowthroughChecks:
             'synthetic': True, 'clinical_approval': False,
         }, indent=2) + '\n', encoding='utf-8')
         navigate(self.cd, 'Journey')
+        print('PASS FOLLOWTHROUGH DRAFTS: six literal fields survive four same-case workspace round trips '
+              'and fresh source/question reads without writes; denied access clears retained input; '
+              'existing-task transitions preserve it; explicit clear and source amendment remove it.')
+        print('PASS FOLLOWTHROUGH STATUS DRAFTS: reason and proposed owner survive four same-case round trips '
+              'and matching task refresh without writes; explicit clearing and confirmed submission consume '
+              'only the selected draft; unrelated creation preserves it; source reassessment clears old input.')
         print('PASS FOLLOWTHROUGH: actual saved question to PostgreSQL tasks; lost committed response '
               'recovered with the exact request and one receipt; assignment, acknowledgment, completion, '
               'deferral and reassignment history; a second-task draft survives existing-task assignment '
@@ -593,7 +723,7 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials, write
         write_grants()
         cd.evaluate('(' + _OBSERVE + ')()')
         checks = FollowthroughChecks(cd, patient_id, case_id, question_id, source_id)
-        checks.start()
+        checks.start(credentials, write_grants)
         yield checks
     except Exception:
         capture_failure(cd, 'h1-followthrough-failure')
@@ -630,6 +760,9 @@ def exercise_case_switch(cd, patient_id, case_id, second_case_id, credentials, w
         click(cd, current)
         draft_title = 'Unsaved fictional Alpha coordination draft'
         fill(cd, '[data-testid=followthrough-title]', draft_title)
+        open_row = next(row for row in value['tasks'] if row['status'] == 'created')
+        fill(cd, checks.row(open_row['task_id']) + ' [data-testid=followthrough-transition-reason]',
+             'Unsent status change must not return after a case switch.')
         cd.evaluate('window.__oiFollowthroughChecks.holdNextRead=true')
         click(cd, '[data-testid=followthrough-refresh]')
         cd.wait('window.__oiFollowthroughChecks.held', 'real first-case read held before client delivery')
@@ -657,9 +790,21 @@ def exercise_case_switch(cd, patient_id, case_id, second_case_id, credentials, w
         assert cd.evaluate("!document.querySelector('[data-testid=followthrough-title]') && "
                            "!document.querySelector('[data-testid=followthrough-retry]')")
         assert cd.evaluate('window.__oiFollowthroughChecks.writes.length===0')
+        select_case(cd, case_id)
+        click(cd, '[data-testid=load-source-questions]')
+        cd.wait('Boolean(document.querySelector(' + json.dumps(current) + '))', 'original question reloaded after case round trip')
+        assert cd.evaluate("!document.querySelector('[data-testid=followthrough-title]')"), 'Case round trip must not resurrect an unsent task'
+        click(cd, current)
+        assert cd.evaluate("document.querySelector('[data-testid=followthrough-title]').value") == ''
+        click(cd, '[data-testid=followthrough-cancel]')
+        checks.case_id = case_id
+        checks.refresh()
+        assert cd.evaluate("[...document.querySelectorAll('[data-testid=followthrough-transition-reason]')].every(e=>e.value==='')")
+        assert cd.evaluate('localStorage.length===0 && sessionStorage.length===0')
         (screenshots / 'h1-followthrough-case-switch.json').write_text(json.dumps({
             'patient_id': patient_id, 'first_case_id': case_id, 'second_case_id': second_case_id,
             'unsaved_draft_question_id': current_question_id,
+            'case_roundtrip_draft_cleared': True, 'browser_storage_empty': True,
             'delayed_real_read_discarded': True, 'second_case_tasks': empty['tasks'],
         }, indent=2) + '\n', encoding='utf-8')
         navigate(cd, 'Overview')
