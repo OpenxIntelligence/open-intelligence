@@ -89,11 +89,12 @@ def upgrade():
         CREATE FUNCTION coordination.guard_question_followthrough_task_insert()
         RETURNS trigger LANGUAGE plpgsql AS $oi_followthrough_task$
         BEGIN
-            -- Match the established patient -> binding lock order, including
-            -- direct SQL writers, before validating an immutable question origin.
+            -- Match the source owner's patient SHARE -> binding UPDATE locks.
+            -- SHARE still prevents suspension, without upgrading a patient lock
+            -- while another writer holds SHARE and waits for the case binding.
             PERFORM 1 FROM identity.identity_patients p
                 WHERE p.patient_id=NEW.patient_id AND p.origin_org=NEW.origin_org
-                  AND p.status='active' FOR UPDATE;
+                  AND p.status='active' FOR SHARE;
             IF NOT FOUND THEN RAISE EXCEPTION 'OI-FOLLOWTHROUGH-PATIENT-BOUNDARY'; END IF;
             PERFORM 1 FROM coordination.patient_case_bindings b
                 WHERE b.case_id=NEW.case_id AND b.patient_id=NEW.patient_id
@@ -136,7 +137,7 @@ def upgrade():
             END IF;
             PERFORM 1 FROM identity.identity_patients p
                 WHERE p.patient_id=NEW.patient_id AND p.origin_org=NEW.origin_org
-                  AND p.status='active' FOR UPDATE;
+                  AND p.status='active' FOR SHARE;
             IF NOT FOUND THEN RAISE EXCEPTION 'OI-FOLLOWTHROUGH-PATIENT-BOUNDARY'; END IF;
             PERFORM 1 FROM coordination.patient_case_bindings b
                 WHERE b.case_id=NEW.case_id AND b.patient_id=NEW.patient_id

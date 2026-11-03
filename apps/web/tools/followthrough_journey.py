@@ -73,18 +73,23 @@ def fill(cd, selector, value):
 
 
 def click(cd, selector):
-    cd.wait('Boolean(document.querySelector(' + json.dumps(selector) + '))', 'task control exists')
-    assert cd.evaluate('!document.querySelector(' + json.dumps(selector) + ').disabled'), selector
+    # An earlier real request may still be settling after workspace navigation.
+    # Use the harness's bounded wait, including disabled ancestor fieldsets.
+    cd.wait('(()=>{const e=document.querySelector(' + json.dumps(selector)
+            + ");return Boolean(e)&&!e.matches(':disabled');})()", 'enabled task control ' + selector)
     cd.evaluate('document.querySelector(' + json.dumps(selector) + ').click()')
 
 
 def select_case(cd, case_id):
     expression = ("[...document.querySelectorAll('.world-cases li')].find(e=>"
                   "e.querySelector('code')?.textContent===" + json.dumps(case_id) + ")")
-    cd.wait('Boolean(' + expression + ')', 'authorized existing case ' + case_id)
+    cd.wait('(()=>{const e=' + expression
+            + ";const button=e?.querySelector('[data-testid=world-load]');"
+            + "return Boolean(button)&&!button.matches(':disabled');})()",
+            'enabled authorized case ' + case_id)
     cd.evaluate(expression + ".querySelector('[data-testid=world-load]').click()")
-    cd.wait("document.querySelector('[data-testid=world-projection]')?.textContent.includes("
-            + json.dumps(case_id) + ")", 'current case World Model')
+    cd.wait("document.querySelector('[data-testid=world-projection] > p code')?.textContent==="
+            + json.dumps(case_id), 'current case World Model')
 
 
 def artifacts_directory():
@@ -142,6 +147,7 @@ class FollowthroughChecks:
         previous = self.cd.evaluate('window.__oiFollowthroughChecks.reads.length')
         click(self.cd, '[data-testid=followthrough-refresh]')
         self.cd.wait('window.__oiFollowthroughChecks.reads.length===' + str(previous + 1)
+                     + " && document.querySelector('[data-testid=followthrough-status]')?.dataset.phase==='ready'"
                      + " && document.querySelectorAll('[data-testid=followthrough-task]').length==="
                      + str(expected_count), 'fresh authorized task projection')
         return self.projection()

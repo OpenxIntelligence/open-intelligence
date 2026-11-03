@@ -27,6 +27,7 @@ from oi_api.composer_preflight import SOURCE_SNAPSHOT_CONTRACT
 from oi_api.migrate import migrate
 from http_support import running_server
 from test_canonical_review_flow import create_question
+from test_patients import TOKEN_A, request
 from test_source_versions import SourceVersionFixture, AMENDED
 
 
@@ -200,7 +201,14 @@ class FollowthroughPostgresTests(SourceVersionFixture):
             code, source, _ = self.ingest(base, self.patient)
             self.assertEqual(code, 201, source)
             self.source_id = source["source_id"]
-            self.question, self.preflight = create_question(self, base, self.patient, self.source_id)
+            self.question, snapshot = create_question(self, base, self.patient, self.source_id)
+            code, questions, _ = request(
+                base, f"/v1/patients/{self.patient}/cases/{CASE}/questions", token=TOKEN_A)
+            self.assertEqual(code, 200, questions)
+            saved = [row for row in questions["questions"] if row["question_id"] == self.question]
+            self.assertEqual(len(saved), 1, questions)
+            self.preflight = saved[0]
+            self.assertEqual(self.preflight["source_snapshot_sha256"], snapshot)
 
     @contextmanager
     def service(self):

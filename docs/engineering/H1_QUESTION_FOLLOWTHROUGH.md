@@ -187,6 +187,27 @@ History: `event_id`, `revision`, `previous_status` (null on creation),
 - Upstream #287's completed evidence-only follow-up
   `247705700080052705817fee9e8f7b54afa8ffaa` was inspected and preserved; its four
   documentation changes do not alter the verified parent runtime.
+- The first hosted API run `41631363377` completed 326 test executions with one
+  failure and ten errors before its job was cancelled by the next candidate.
+  The failure exposed a real concurrent-retry deadlock: the new trigger upgraded
+  the already-held patient `FOR SHARE` lock to `FOR UPDATE` after taking the case
+  binding lock, while another caller held the shared patient lock waiting for
+  that binding. Both new trigger patient locks now match the established
+  `FOR SHARE` → binding `FOR UPDATE` sequence; patient suspension remains blocked
+  and event task locking is unchanged. The existing HTTP 200/201 concurrency
+  assertion is retained without retries or exception suppression.
+- The ten storage errors came from treating an existing fixture helper's source
+  fingerprint string as a preflight object. Setup now obtains both digests from
+  the exact saved-question API row and checks that the helper fingerprint agrees.
+  Seven local logic/migration-graph checks pass; actual database acceptance is
+  still required after these corrections.
+- Browser run `41631874629` proved the creation-draft repair and the complete
+  task lifecycle, amendment, revoked-read and inherited question/review/brief
+  flows. Its final case-switch step exposed a harness timing error while the
+  preceding record read still disabled controls. The helper now waits within the
+  existing bounded timeout for an enabled control; it also checks the exact case
+  and waits for a decoded `ready` empty list. Every cross-case and delayed-response
+  assertion remains active. The entire browser gate must pass on the new head.
 - Current limits: independently authored synthetic fixtures only; no external
   notifications, professional clinical approval, real identity/delegation,
   patient-data authorization, model execution or biomedical evidence appraisal.
