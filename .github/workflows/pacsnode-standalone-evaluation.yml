@@ -218,12 +218,8 @@ jobs:
           for name in ('pacsnode-real-dicomweb.json', 'imaging-release-hold-assessment.json',
                        'pacsnode-test-config-sha256.txt', 'pacsnode-test-storage-transfer-syntax.txt'):
               assert (Path('verification-artifacts') / name).stat().st_size > 0, name
-          build = json.loads(Path('verification-artifacts/pacsnode-derived-build.json').read_text())
-          for name in ('pacsnode-real-dicomweb.json', 'imaging-release-hold-assessment.json'):
-              path = Path('verification-artifacts') / name
-              receipt = json.loads(path.read_text())
-              receipt['evaluation_build'] = build
-              path.write_text(json.dumps(receipt, indent=2, sort_keys=True) + '\n')
+          # The confined process owns its raw receipts. Keep them unchanged;
+          # derived-source provenance is retained in the separate build receipt.
           d=json.loads(Path('verification-artifacts/imaging-release-hold-assessment.json').read_text())
           assert d['classification']=='HOLD_NOT_APPROVED'
           assert d['approval_automatically_granted'] is False
@@ -254,9 +250,8 @@ jobs:
           d = json.loads(Path('verification-artifacts/pacsnode-lifecycle.json').read_text())
           status = int(sys.argv[1])
           build = json.loads(Path('verification-artifacts/pacsnode-derived-build.json').read_text())
-          d['evaluation_build'] = build
-          Path('verification-artifacts/pacsnode-lifecycle.json').write_text(
-              json.dumps(d, indent=2, sort_keys=True) + '\n')
+          # Read the process-owned receipt without rewriting it. Bind this
+          # observation to the separate derived-build receipt by binary digest.
           assert status == 0 and status == acceptance_exit_code(d)
           assert d['evaluation_completed'] is True
           assert d['evaluation_network_namespace_confined'] is True
