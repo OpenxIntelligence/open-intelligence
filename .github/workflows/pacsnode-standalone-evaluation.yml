@@ -44,7 +44,10 @@ jobs:
           python -m unittest discover -s tests -p 'test_pacsnode_probe_contract.py' -v 2>&1 |
             tee verification-artifacts/pacsnode-harness-tests.txt
       - name: Install only hash-pinned pydicom core for synthetic fixture generation
-        run: python -m pip install --only-binary=:all: --no-deps --require-hashes -r tools/imaging/requirements-pacsnode-research.txt
+        shell: bash
+        run: |
+          python -m pip install --only-binary=:all: --no-deps --require-hashes \
+            -r tools/imaging/requirements-pacsnode-research.txt
       - name: Fetch exact upstream source into isolated evaluation directory
         shell: bash
         run: |
