@@ -102,8 +102,8 @@ def exercise(cd, patient_id, token, credentials, write_grants, directory, artifa
         return results[-1]
 
     def source_row(source_id):
-        return ("[...document.querySelectorAll('[data-testid=source-version]')].find(e=>e.textContent.includes("
-                + json.dumps(source_id) + '))')
+        return ("[...document.querySelectorAll('[data-testid=source-version]')].find(e=>e.querySelector("
+                "'[data-testid=source-verify] code')?.textContent===" + json.dumps(source_id) + ')')
 
     def press_enter():
         cd.command('Input.dispatchKeyEvent', {'type':'rawKeyDown','key':'Enter','code':'Enter','windowsVirtualKeyCode':13})
@@ -308,6 +308,11 @@ def exercise(cd, patient_id, token, credentials, write_grants, directory, artifa
         assert operator(case_path + '/sources/' + source_id + '/images/' + image_id)[0] == 404
         assert operator(case_path + '/sources/' + current_source + '/images/' + image_id)[0] == 404
         records(current_source);inspect_images(current_source, expected_count=0)
+        for selected_source, expected_state in ((source_id, 'superseded'), (current_source, 'current')):
+            selected = cd.evaluate('(()=>{const row=' + source_row(selected_source)
+                + ";return row?{source_id:row.querySelector('[data-testid=source-verify] code')?.textContent,"
+                  "state:row.querySelector('.record-state')?.textContent}:null;})()")
+            assert selected == {'source_id': selected_source, 'state': expected_state}
         assert cd.evaluate('!(' + source_row(source_id) + ").querySelector('[data-testid=source-images-open]')")
         row = question_workspace(question_id)
         cd.wait('document.querySelector(' + json.dumps(row) + ")?.textContent.includes('Source changed — reassessment required')", 'old imaging question requires reassessment')
