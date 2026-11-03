@@ -111,3 +111,18 @@
 .finding-provenance summary{min-height:44px;display:list-item;align-content:center;color:#174b48;font-size:13px}
 .finding-provenance .source-metadata{margin:8px 0 0}
 .finding-list li>small{display:block;margin-top:8px}
+
+/* UX-06: source question status and provenance, without a second clinical state model. */
+.question-flow{border-bottom:1px solid #d7e0d8;padding:0 0 14px;margin:0 0 18px}
+.question-flow h3{font-size:16px;margin:0 0 10px}
+.question-flow ol{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;list-style:none;padding:0;margin:0}
+.question-flow li{border:1px solid #d7e0d8;border-radius:7px;padding:10px;min-width:0;display:flex;flex-direction:column;gap:4px;font-size:12px}
+.question-flow li strong{font-weight:600;color:#173a3b}
+.question-flow li span{color:#52635d}
+.question-flow li[data-stage=current],.question-flow li[data-stage=attention]{border-color:#a27b48}
+.question-flow li[data-stage=complete]{background:#f3f7f3}
+.question-flow>p{font-size:12px;margin:10px 0 0;color:#52635d}
+.question-technical{margin:10px 0;border-top:1px solid #dce3dc;padding:5px 0}
+.question-technical summary{min-height:44px;display:list-item;align-content:center;font-size:13px;color:#174b48}
+.question-technical p{overflow-wrap:anywhere}
+@media(max-width:600px){.question-flow ol{grid-template-columns:1fr}.question-flow li{padding:8px 10px}}
