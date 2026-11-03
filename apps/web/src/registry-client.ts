@@ -1,5 +1,7 @@
 import {decodeOriginal,decodeRecordRequests} from './record-views.js';
 import {decodeSourceWorldModel} from './world-model-views.js';
+import {decodeComposerPreflight,DEFAULT_SOURCE_QUESTION} from './composer-preflight-view.js';
+import type {ComposerPreflight} from './composer-preflight-view.js';
 import type {SourceWorldModel} from './world-model-views.js';
 import type {OriginalSource,RecordRequest} from './record-views.js';
 /** Transient UI state over the canonical patient API; never an authority or ledger. */
@@ -17,6 +19,8 @@ export type ViewState = Readonly<{
   originalPhase:'idle'|'loading'|'ready'|'error'; originalMessage:string;
   worldModel:SourceWorldModel|null;
   worldPhase:'idle'|'loading'|'ready'|'error';worldMessage:string;
+  composerPreview:ComposerPreflight|null;
+  composerPhase:'idle'|'loading'|'ready'|'error';composerMessage:string;
 }>;
 export type Transport = (input: string, init: RequestInit) => Promise<Response>;
 const KEY = /^[A-Za-z0-9][A-Za-z0-9_.:-]{2,127}$/;
@@ -37,6 +41,8 @@ const fresh = (): ViewState => Object.freeze({
   records:null,recordsPhase:'idle',recordsMessage:'Open an authorized patient to inspect record requests.',
   original:null,originalPhase:'idle',originalMessage:'Original text is never loaded automatically.',
   worldModel:null,worldPhase:'idle',worldMessage:'Open an authorized patient and select a source case.',
+  composerPreview:null,composerPhase:'idle',
+  composerMessage:'Select an exact current source observation to prepare a non-executing context.',
 });
 function exact(value: unknown, fields: string[]): value is Record<string,unknown> {
   return value !== null && typeof value==='object' && !Array.isArray(value) &&
@@ -70,26 +76,30 @@ function created(value: unknown): CreatedPatient {
   return Object.freeze(value as CreatedPatient);
 }
 export class RegistrySession {
-  #token=''; #scope=0; #read=0; #recordsRead=0; #originalRead=0; #worldRead=0; #state:ViewState=fresh();
+  #token=''; #scope=0; #read=0; #recordsRead=0; #originalRead=0; #worldRead=0; #composerRead=0; #state:ViewState=fresh();
   #listeners=new Set<()=>void>(); #controllers=new Set<AbortController>(); #creating=false;
   constructor(private readonly transport:Transport=(url,init)=>fetch(url,init)) {}
   snapshot=():ViewState=>this.#state;
   subscribe=(listener:()=>void):(()=>void)=>{this.#listeners.add(listener);return()=>this.#listeners.delete(listener);};
   #publish(patch:Partial<ViewState>){this.#state=Object.freeze({...this.#state,...patch});for(const listener of this.#listeners)listener();}
   #resetWorld(){
-    this.#worldRead++;
+    this.#worldRead++;this.#composerRead++;
     this.#publish({worldModel:null,worldPhase:'idle',worldMessage:
-      'Open an authorized patient and select a source case.'});
+      'Open an authorized patient and select a source case.',
+      composerPreview:null,composerPhase:'idle',composerMessage:
+      'Select an exact current source observation to prepare a non-executing context.'});
   }
   clearWorldModel=()=>this.#resetWorld();
   #resetRecords(){
-    this.#recordsRead++;this.#originalRead++;this.#worldRead++;
+    this.#recordsRead++;this.#originalRead++;this.#worldRead++;this.#composerRead++;
     this.#publish({records:null,recordsPhase:'idle',recordsMessage:'Open an authorized patient to inspect record requests.',
       original:null,originalPhase:'idle',originalMessage:'Original text is never loaded automatically.',
-      worldModel:null,worldPhase:'idle',worldMessage:'Open an authorized patient and select a source case.'});
+      worldModel:null,worldPhase:'idle',worldMessage:'Open an authorized patient and select a source case.',
+      composerPreview:null,composerPhase:'idle',composerMessage:
+        'Select an exact current source observation to prepare a non-executing context.'});
   }
   disconnect=()=>{
-    this.#scope++;this.#read++;this.#recordsRead++;this.#originalRead++;this.#worldRead++;this.#token='';this.#creating=false;
+    this.#scope++;this.#read++;this.#recordsRead++;this.#originalRead++;this.#worldRead++;this.#composerRead++;this.#token='';this.#creating=false;
     for(const c of this.#controllers)c.abort();this.#controllers.clear();
     this.#state=fresh();for(const listener of this.#listeners)listener();
   };
@@ -128,8 +138,11 @@ export class RegistrySession {
   async loadWorldModel(caseId:string):Promise<void>{
     const patientId=this.#state.patient?.patient_id;
     const query=++this.#worldRead,scope=this.#scope,selection=this.#read;
-    // Every new read clears previous source observations before the request.
-    this.#publish({worldModel:null,worldPhase:'idle',
+    this.#composerRead++;
+    // Every new read clears previous source observations and preflights.
+    this.#publish({composerPreview:null,composerPhase:'idle',
+      composerMessage:'Source context must be re-prepared after a source refresh.',
+      worldModel:null,worldPhase:'idle',
       worldMessage:'Source observations must be reauthorized for this patient and case.'});
     if(!patientId||!this.#token||!/^CASE-[A-Z0-9-]{1,35}$/.test(caseId)){
       this.#publish({worldPhase:'error',worldMessage:
@@ -159,6 +172,63 @@ export class RegistrySession {
     }catch(_){
       if(current())this.#publish({worldModel:null,worldPhase:'error',worldMessage:
         'Unable to verify the source projection. No previous observation is displayed.'});
+    }finally{clearTimeout(timeout);this.#controllers.delete(control);}
+  }
+
+  async prepareSourceContext(sourceId:string,sourceLine:number,
+                             question:string=DEFAULT_SOURCE_QUESTION):Promise<void>{
+    const model=this.#state.worldModel;
+    const patientId=this.#state.patient?.patient_id;
+    const observation=model?.observations.find(o=>
+      o.source_version_id===sourceId&&o.source_line===sourceLine);
+    const query=++this.#composerRead,scope=this.#scope,selection=this.#read,
+      worldQuery=this.#worldRead;
+    // An old preview is never a durable permission or context for a new run.
+    this.#publish({composerPreview:null,composerPhase:'idle',
+      composerMessage:'Preparing source context requires an independent authorization.'});
+    if(!patientId||!model||!observation||this.#state.worldPhase!=='ready'||!this.#token||
+       typeof question!=='string'||question.trim()!==question||
+       question.length<8||question.length>500){
+      this.#publish({composerPhase:'error',composerMessage:
+        'Select an authorized current source statement and valid question first.'});
+      return;
+    }
+    const current=()=>scope===this.#scope&&selection===this.#read&&
+      worldQuery===this.#worldRead&&query===this.#composerRead&&
+      this.#state.patient?.patient_id===patientId&&
+      this.#state.worldModel?.source_snapshot_sha256===model.source_snapshot_sha256;
+    const control=new AbortController();this.#controllers.add(control);
+    const timeout=setTimeout(()=>control.abort(),10000);
+    this.#publish({composerPhase:'loading',composerMessage:
+      'Rechecking exact source version and separate Composer-context grant…'});
+    try{
+      const url='/v1/patients/'+encodeURIComponent(patientId)+'/cases/'+
+        encodeURIComponent(model.case_id)+'/composer/source-preflight';
+      const payload={synthetic:true,
+        expected_source_snapshot_sha256:model.source_snapshot_sha256,
+        source_id:sourceId,source_line:sourceLine,question};
+      const res=await this.transport(url,this.#init(control,JSON.stringify(payload)));
+      if(!current())return;
+      if(res.status===401){this.#httpError(res.status);return;}
+      if(res.status!==200){
+        // A failed preflight must not leave stale patient observations visible
+        // as though they remained currently permitted.
+        this.#resetWorld();
+        this.#publish({composerPhase:'error',composerMessage:res.status===409?
+          'The original source changed. Refresh Investigations before preparing a new context.':
+          'Composer context unavailable under current authority. Source observations were cleared.'});
+        return;
+      }
+      const prepared=decodeComposerPreflight(await json(res),model,observation,question);
+      if(!current())return;
+      this.#publish({composerPreview:prepared,composerPhase:'ready',composerMessage:
+        'Source-only preflight prepared. It cannot execute a model, save a question or approve clinical work.'});
+    }catch(_){
+      if(current()){
+        this.#resetWorld();
+        this.#publish({composerPreview:null,composerPhase:'error',composerMessage:
+          'The Composer preflight failed validation. Refresh current source context.'});
+      }
     }finally{clearTimeout(timeout);this.#controllers.delete(control);}
   }
 

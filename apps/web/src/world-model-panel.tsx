@@ -1,5 +1,6 @@
 import {useState} from 'react';
 import type {RegistrySession,ViewState} from './registry-client';
+import {DEFAULT_SOURCE_QUESTION} from './composer-preflight-view';
 
 /** Source-provenanced inspection; no model inference, question write or approval. */
 export function WorldModelPanel({state,session}:{state:ViewState;session:RegistrySession}){
@@ -30,6 +31,28 @@ export function WorldModelPanel({state,session}:{state:ViewState;session:Registr
    </form>
    <p className={'status '+(state.worldPhase==='error'?'error':'')}
       data-testid="world-status" role="status" aria-live="polite">{state.worldMessage}</p>
+   <p className={'status '+(state.composerPhase==='error'?'error':'')}
+      data-testid="composer-status" role="status" aria-live="polite">{state.composerMessage}</p>
+   {state.composerPreview&&<section className="composer-preview" data-testid="composer-context"
+       aria-labelledby="composer-context-heading">
+     <span className="step">SOURCE-PINNED COMPOSER PREFLIGHT · NO EXECUTION</span>
+     <h3 id="composer-context-heading">Prepared source context</h3>
+     <p><strong>Standard source question (not submitted):</strong>
+       {state.composerPreview.question}</p>
+     <blockquote>{state.composerPreview.selected_source.statement}</blockquote>
+     <p><strong>Exact original:</strong>
+       <code>{state.composerPreview.selected_source.source_id}</code>,
+       line {state.composerPreview.selected_source.line},
+       version {state.composerPreview.selected_source.version}.</p>
+     <p><strong>Snapshot fingerprint:</strong>
+       <code>{state.composerPreview.source_snapshot_sha256}</code></p>
+     <p><strong>Preflight receipt hash (not a credential):</strong>
+       <code>{state.composerPreview.preflight_sha256}</code></p>
+     <p role="note"><strong>Not a clinical review.</strong> No question has been saved,
+       no model executed, no biomedical source rights established, and no
+       clinician has approved this context. A future action must recheck
+       the original source version and current permissions.</p>
+   </section>}
    {model&&<div data-testid="world-model-result">
     <div className="world-summary" aria-label="Source-only summary">
      <div><strong>{model.summary.current_sources}</strong><span>Current source versions</span></div>
@@ -54,6 +77,11 @@ export function WorldModelPanel({state,session}:{state:ViewState;session:Registr
         <div><dt>Original SHA-256</dt><dd><code>{o.source_sha256}</code></dd></div>
        </dl>
        <p className="muted">Review not established. No clinical meaning inferred.</p>
+       <button type="button" data-testid="composer-preflight" disabled={state.composerPhase==='loading'}
+         onClick={()=>void session.prepareSourceContext(
+           o.source_version_id,o.source_line,DEFAULT_SOURCE_QUESTION)}>
+         Prepare source-only Composer context
+       </button>
       </li>)}</ul>}
     {model.conflicts.length>0&&<section aria-labelledby="world-conflicts">
      <h3 id="world-conflicts">Unresolved source disagreements</h3>

@@ -39,3 +39,12 @@
 .world-boundary{border-left:3px solid #aa8950;background:#f1eddf;padding:14px 16px;margin:22px 0 0}
 @media(max-width:900px){.world-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:600px){.world-case-controls button{width:100%}.world-case-controls input{max-width:none}.world-observation dl{grid-template-columns:1fr}.world-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* A non-executing preflight is deliberately not styled as an approved report. */
+.composer-preview{border:1px solid #9aafa5;border-left:4px solid #b28b52;border-radius:9px;padding:18px;background:#f8f8f2;margin:18px 0}
+.composer-preview h3{margin:7px 0 14px}
+.composer-preview code{word-break:break-word;overflow-wrap:anywhere}
+.composer-preview blockquote{font-size:14px;font-style:normal;white-space:pre-wrap;overflow-wrap:anywhere;background:#fff;border-left:3px solid #879d91;padding:12px;margin:12px 0}
+.composer-preview p[role=note]{background:#f1ebda;padding:12px;border-left:2px solid #b28b52}
+.world-observation button{margin-top:5px}
+@media(max-width:600px){.composer-preview{padding:13px}.world-observation button{width:100%}}
