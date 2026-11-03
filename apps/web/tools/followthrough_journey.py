@@ -452,14 +452,16 @@ class FollowthroughChecks:
         # These questions were saved through the real canonical PostgreSQL API.
         # Verify the read-only agenda uses their exact IDs and does not turn
         # source reassessment into a reviewed clinical recommendation.
-        self.cd.wait("document.querySelectorAll('[data-testid=second-opinion-agenda-item]').length===2",
-                     'both saved questions are visible in the second-opinion agenda')
+        self.cd.wait("document.querySelectorAll('[data-testid=second-opinion-agenda-item]').length===3",
+                     'all three saved questions are visible in the second-opinion agenda')
         agenda = self.cd.evaluate("[...document.querySelectorAll('[data-testid=second-opinion-agenda-item]')].map(e=>({id:e.dataset.questionId,state:e.dataset.sourceContext,question:e.querySelector('.second-opinion-agenda-question')?.textContent,provenance:e.textContent}))")
-        assert {row['id'] for row in agenda} == {self.question_id, current_question_id}
+        assert {self.question_id, current_question_id}.issubset({row['id'] for row in agenda})
+        assert len(agenda) == 3 and sum(row['state'] == 'source_reassessment_required' for row in agenda) == 1
+        assert sum(row['state'] == 'current_unreviewed_question' for row in agenda) == 2
         assert all(row['question'] and row['question'].strip() for row in agenda)
         assert all('Original source version' in row['provenance'] for row in agenda)
         assert any(row['state'] == 'source_reassessment_required' for row in agenda)
-        assert self.cd.evaluate("document.querySelector('[data-testid=second-opinion-agenda-coverage]').textContent.includes('Showing 2 of 2 saved questions')")
+        assert self.cd.evaluate("document.querySelector('[data-testid=second-opinion-agenda-coverage]').textContent.includes('Showing 3 of 3 saved questions')")
         assert self.cd.evaluate("!document.querySelector('[data-testid=second-opinion-agenda-unavailable]')")
         second_opinion_text = self.cd.evaluate("document.querySelector('[data-testid=second-opinion-preparation]').textContent")
         assert 'create a referral' in second_opinion_text and 'confirm an appointment' in second_opinion_text
