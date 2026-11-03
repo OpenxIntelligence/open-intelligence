@@ -20,7 +20,7 @@ def exercise(cd):
         cd.evaluate("(()=>{const e=document.querySelector(" + json.dumps(selector) + ");e.value=" + json.dumps(text) + ";e.dispatchEvent(new Event('change',{bubbles:true}));})()")
 
     def key(name, code):
-        cd.command('Input.dispatchKeyEvent', {'type': 'keyDown', 'key': name, 'code': name, 'windowsVirtualKeyCode': code})
+        cd.command('Input.dispatchKeyEvent', {'type': 'keyDown', 'key': name, 'code': name, 'windowsVirtualKeyCode': code, 'text': '\r' if name == 'Enter' else ''})
         cd.command('Input.dispatchKeyEvent', {'type': 'keyUp', 'key': name, 'code': name, 'windowsVirtualKeyCode': code})
 
     cd.command('Emulation.setDeviceMetricsOverride', {'width':1280,'height':1000,'deviceScaleFactor':1,'mobile':False})
@@ -49,7 +49,9 @@ def exercise(cd):
         value('#source-filter', 'NO-MATCH-FICTIONAL')
         cd.wait("Boolean(document.querySelector('[data-testid=source-no-match]'))", 'explicit no-match recovery')
         cd.evaluate("document.querySelector('[data-testid=clear-source-filters]').focus()")
+        assert cd.evaluate("document.activeElement.dataset.testid==='clear-source-filters'")
         key('Enter', 13)
+        cd.wait("document.querySelectorAll('[data-testid=source-version]').length===2", 'keyboard clear restores loaded versions')
         cd.wait("document.activeElement===document.querySelector('#source-filter')", 'clear filters returns focus to the filter')
         assert cd.evaluate("document.querySelectorAll('[data-testid=source-version]').length===2")
         cd.evaluate("document.querySelector('[data-testid=source-verify] summary').focus()")
