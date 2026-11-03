@@ -188,3 +188,16 @@ The test database user is a superuser; tests do not prove least-privilege
 service roles, row-level security, real identity consent, PHI encryption,
 clinical audit access, interoperability, actual hospital records or
 licensed guidelines. All ancestor branches remain draft/unmerged.
+
+
+### Connected authoring, inspection and brief candidate
+
+The #264-based convergence imports #268's memory-only custom question editor and
+#266's separately authorized source quotation packet without changing this
+question service, its snapshot contract, schema or migration history. The same
+literal saved question now feeds both source inspection and fresh text export.
+Mixed-question delayed responses are rejected by a shared client selection;
+server authority remains independent per operation. Local and exact-head hosted
+results belong to the [maintained brief record](H1_SOURCE_LINKED_BRIEF.md), not
+this original #244 acceptance. Biomedical evidence, professional review and
+clinical authority remain unconnected.

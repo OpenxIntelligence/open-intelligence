@@ -47,6 +47,9 @@ class SourceQuestionChecks:
         self.cd = cd
         self.original_source_id = source_id
         self.original_question_id = None
+        self.replacement_question_id = None
+        self.authored_question_id = None
+        self.authored_question_text = None
         root = Path(__file__).resolve().parents[3]
         self.artifacts = Path(os.environ.get('OI_WEB_ARTIFACT_DIR', root/'apps/web/.evidence'))
         self.artifacts.mkdir(parents=True, exist_ok=True)
@@ -124,6 +127,16 @@ class SourceQuestionChecks:
         self.history('Current source context')
         self.prepare_brief(self.original_question_id)
 
+    def overview_counts(self, *, current, reassessment):
+        self.navigate('Overview')
+        self.cd.wait("Boolean(document.querySelector('[data-testid=patient-continuity]'))",
+                     'patient preparation overview')
+        assert self.cd.evaluate("document.querySelector('[data-testid=continuity-current]').textContent") == str(current)
+        assert self.cd.evaluate("document.querySelector('[data-testid=continuity-reassessment]').textContent") == str(reassessment)
+        assert 'last successful reads' in self.cd.evaluate("document.querySelector('[data-testid=patient-continuity]').textContent")
+        self.cd.evaluate("document.querySelector('[data-testid=continuity-open-questions]').click()")
+        self.cd.wait("Boolean(document.querySelector('[data-view=investigations]'))", 'return to existing questions')
+
     def navigate(self, section):
         self.cd.evaluate("[...document.querySelectorAll('nav button')].find(e=>e.textContent.startsWith("
                          + json.dumps(section) + ")).click()")
@@ -158,24 +171,71 @@ class SourceQuestionChecks:
                      + json.dumps(expected) + ")", 'authorized question history and current source state')
         return self.cd.evaluate("document.querySelector('[data-testid=source-question-history]').textContent")
 
+    def inspect_quote(self, question_id, *, current, expected_text=''):
+        # These are actual built React responses from the current canonical PG
+        # source owner; no fabricated quote, status, or HTTP response.
+        self.cd.evaluate(
+          "Array.from(document.querySelectorAll('.question-items li')).find(e=>e.textContent.includes("
+          +json.dumps(question_id)
+          +")).querySelector('[data-testid=source-quote-packet-open]').click()")
+        if current:
+            self.cd.wait(
+                "document.querySelector('[data-testid=source-quote-literal]')?.textContent.includes("
+                +json.dumps(expected_text)+") && document.querySelector('[data-testid=source-quote-packet]')?.textContent.includes("
+                +json.dumps(question_id)+")",
+                'authorized literal original quotation for selected current question')
+            panel=self.cd.evaluate(
+                "document.querySelector('[data-testid=source-quote-packet]').textContent")
+            assert question_id in panel
+            assert 'not a clinical assessment' in panel
+            assert 'Biomedical literature appraisal' in panel
+            assert 'signed decisions are not established' in panel
+            assert self.cd.evaluate("document.querySelectorAll('[data-testid=source-quote-literal] script').length===0")
+        else:
+            self.cd.wait(
+                "Boolean(document.querySelector('[data-testid=source-quote-stale]')) && document.querySelector('[data-testid=source-quote-packet]')?.textContent.includes("
+                +json.dumps(question_id)+")",
+                'historical question remains inspectable without stale quote')
+            assert self.cd.evaluate(
+                "!document.querySelector('[data-testid=source-quote-literal]')")
+            assert self.original_source_id in self.cd.evaluate(
+                "document.querySelector('[data-testid=source-quote-packet]').textContent")
+
     def start(self, credentials, write_grants):
         self.navigate('Investigations')
         assert self.cd.evaluate("!document.querySelector('[data-testid=composer-context]')")
         self.prepare(self.original_source_id, 8)
+        initial_question = 'Which original fictional source supports this marker statement, and what still requires verification?'
+        self.cd.evaluate("""(() => {
+          const input=document.querySelector('[data-testid=question-draft]');
+          Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(input,
+          """ + json.dumps(initial_question) + """);
+          input.dispatchEvent(new Event('input',{bubbles:true}));
+        })()""")
+        self.cd.wait("document.querySelector('[data-testid=question-draft]').value==="
+                     + json.dumps(initial_question), 'patient authors the first source-linked question')
+        self.cd.evaluate("document.querySelector('[data-testid=prepare-custom-question]').click()")
+        self.cd.wait("document.querySelector('[data-testid=composer-context]')?.textContent.includes("
+                     + json.dumps(initial_question) + ")", 'authored first question receives its own preflight')
         self.original_question_id = self.save()
         history = self.history('Current source context')
         assert self.original_question_id in history and self.original_source_id in history
+        assert initial_question in history
         assert 'Clinical approval: none' in history
+        self.overview_counts(current=1, reassessment=0)
         preview = self.prepare_brief(self.original_question_id)
         assert 'Fictional café <script>literal</script>.' in preview['body']
         self.original_download, self.original_download_bytes = self.download_brief(self.original_question_id)
         self.revoked_export(credentials, write_grants)
+        self.inspect_quote(self.original_question_id,current=True,
+            expected_text='Fictional café <script>literal</script>.')
 
     def after_amendment(self, replacement_source_id):
         self.navigate('Investigations')
         history = self.history('Source changed')
         assert self.original_question_id in history and self.original_source_id in history
         assert replacement_source_id not in history
+        self.overview_counts(current=0, reassessment=1)
         assert self.original_download.read_bytes() == self.original_download_bytes
         assert not self.cd.evaluate("Boolean(document.querySelector('[data-testid=source-brief-preview]'))")
         stale = f'.question-items li[data-question-id="{self.original_question_id}"] [data-testid=brief-prepare]'
@@ -186,6 +246,7 @@ class SourceQuestionChecks:
         self.cd.evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve(true))))')
         assert self.cd.evaluate('window.__oiBriefChecks.reads.length') == count
         assert self.cd.evaluate('window.__oiBriefChecks.blobs') == blobs
+        self.inspect_quote(self.original_question_id,current=False)
         # The unchanged displayed v1 observation must be rejected by the server's fresh fingerprint.
         self.cd.evaluate("document.querySelector('[data-testid=composer-preflight]').click()")
         self.cd.wait("document.querySelector('[data-testid=composer-status]').textContent.includes('original source changed')",
@@ -197,6 +258,7 @@ class SourceQuestionChecks:
         self.navigate('Investigations')
         self.prepare(replacement_source_id, 9)
         replacement_question = self.save()
+        self.replacement_question_id = replacement_question
         assert replacement_question != self.original_question_id
         history = self.history('Current source context')
         assert self.cd.evaluate("document.querySelectorAll('.question-items li').length===2")
@@ -211,6 +273,104 @@ class SourceQuestionChecks:
         assert self.original_source_id in prepared['body'], 'Earlier original must remain explicitly historical'
         self.download_brief(replacement_question)
         assert self.original_download.read_bytes() == self.original_download_bytes
+        self.inspect_quote(self.original_question_id,current=False)
+        self.inspect_quote(replacement_question,current=True,
+            expected_text='Amended fictional marker is reported negative.')
+        # The independently granted quote-packet action can be revoked while
+        # ordinary question history remains separately readable.
+        credentials[0]['actions'].remove('review_packet_read')
+        write_grants()
+        self.cd.evaluate(
+          "Array.from(document.querySelectorAll('.question-items li')).find(e=>e.textContent.includes("
+          +json.dumps(replacement_question)
+          +")).querySelector('[data-testid=source-quote-packet-open]').click()")
+        self.cd.wait(
+          "document.querySelector('[data-testid=source-quote-packet-status]').textContent.includes('unavailable')",
+          'source-quote privilege revoked, no residual quote')
+        assert self.cd.evaluate("!document.querySelector('[data-testid=source-quote-packet]')")
+        assert replacement_question in self.history('Current source context')
+        credentials[0]['actions'].append('review_packet_read')
+        write_grants()
+        self.inspect_quote(replacement_question,current=True,
+            expected_text='Amended fictional marker is reported negative.')
+        self.prepare_brief(replacement_question)
+
+        # Patient-authored question: the original source/case are fixed by the
+        # current World Model, but the question text is intentionally editable.
+        # One session draft must survive same-patient navigation; no upload,
+        # localStorage, extra clinical ledger or model execution is involved.
+        custom = 'Which original fictional report and line support this recorded marker status?'
+        self.cd.evaluate("document.querySelector('[data-testid=choose-question-draft]').click()")
+        self.cd.wait("Boolean(document.querySelector('[data-testid=question-draft-editor]'))",
+                     'authoring form bound to the current source observation')
+        self.cd.evaluate("""(() => {
+          const input = document.querySelector('[data-testid=question-draft]');
+          const set = Object.getOwnPropertyDescriptor(
+            HTMLTextAreaElement.prototype,'value').set;
+          set.call(input, """ + json.dumps(custom) + """);
+          input.dispatchEvent(new Event('input',{bubbles:true}));
+        })()""")
+        self.cd.wait("document.querySelector('[data-testid=question-draft]').value==="
+                     + json.dumps(custom), 'literal editable question received')
+        self.navigate('Records')
+        self.navigate('Overview')
+        self.cd.wait("document.querySelector('[data-testid=continuity-draft]')?.dataset.state==='unsaved'",
+                     'patient overview preserves and offers the unfinished question')
+        self.cd.evaluate("document.querySelector('[data-testid=continuity-resume]').click()")
+        self.cd.wait("Boolean(document.querySelector('[data-testid=question-draft]'))",
+                     'overview resumes the existing question editor')
+        assert self.cd.evaluate("document.querySelector('[data-testid=question-draft]').value==="
+                                + json.dumps(custom))
+        assert self.cd.evaluate("!document.querySelector('[data-testid=composer-context]')")
+        self.cd.evaluate("document.querySelector('[data-testid=prepare-custom-question]').click()")
+        self.cd.wait("document.querySelector('[data-testid=composer-context]')?.textContent.includes("
+                     + json.dumps(custom) + ")",
+                     'exact custom text returned through existing source preflight')
+        assert self.cd.evaluate("document.querySelector('[data-testid=composer-context]').textContent.includes("
+                                + json.dumps(replacement_source_id) + ")")
+        custom_question = self.save()
+        self.authored_question_id = custom_question
+        self.authored_question_text = custom
+        assert custom_question not in (self.original_question_id,replacement_question)
+        custom_history = self.history(custom)
+        assert custom_question in custom_history
+        assert self.cd.evaluate("document.querySelectorAll('.question-items li').length===3")
+        assert 'Clinical approval: none' in custom_history
+        self.overview_counts(current=2, reassessment=1)
+        assert self.cd.evaluate("localStorage.length===0 && sessionStorage.length===0")
+
+        # One authored question must reach BOTH independently authorized readers
+        # and the actual downloaded file. Separate feature passes cannot prove
+        # that these three owners preserve the same selection when combined.
+        self.inspect_quote(custom_question,current=True,
+            expected_text='Amended fictional marker is reported negative.')
+        quote_panel = self.cd.evaluate(
+            "document.querySelector('[data-testid=source-quote-packet]').textContent")
+        assert custom in quote_panel and custom_question in quote_panel
+        assert replacement_source_id in quote_panel
+        authored_brief = self.prepare_brief(custom_question)
+        assert authored_brief['question']['question'] == custom
+        assert authored_brief['selected_source']['source_id'] == replacement_source_id
+        assert authored_brief['selected_source']['version'] == 2
+        assert authored_brief['selected_source']['line'] == 9
+        assert custom in authored_brief['body']
+        assert self.cd.evaluate(
+            "document.querySelector('[data-testid=source-quote-packet]').textContent.includes("
+            + json.dumps(custom_question) + ")")
+        _, authored_bytes = self.download_brief(custom_question)
+        assert custom.encode('utf-8') in authored_bytes
+        assert self.original_download.read_bytes() == self.original_download_bytes
+
+        # Switching to an older saved question clears the now-inapplicable
+        # brief synchronously; reselecting the authored question restores only
+        # its own current source. Delayed-response races are separately tested
+        # with controlled client transport, not claimed from this browser step.
+        self.inspect_quote(self.original_question_id,current=False)
+        assert self.cd.evaluate("!document.querySelector('[data-testid=source-brief-preview]')")
+        self.prepare_brief(custom_question)
+        assert self.cd.evaluate("!document.querySelector('[data-testid=source-quote-packet]')")
+        self.inspect_quote(custom_question,current=True,
+            expected_text='Amended fictional marker is reported negative.')
 
         screenshots.mkdir(parents=True, exist_ok=True)
         self.cd.command('Emulation.setDeviceMetricsOverride', {'width':1440,'height':1100,'deviceScaleFactor':1,'mobile':False})
@@ -222,6 +382,9 @@ class SourceQuestionChecks:
         })()""")
         image = self.cd.command('Page.captureScreenshot', {'format':'png','captureBeyondViewport':True,'clip':clip})
         (screenshots/'h1-source-questions-desktop.png').write_bytes(base64.b64decode(image['data']))
+        self.cd.evaluate("document.querySelector('[data-testid=source-quote-packet]').scrollIntoView({block:'start'})")
+        image = self.cd.command('Page.captureScreenshot', {'format':'png'})
+        (screenshots/'h1-connected-question-desktop.png').write_bytes(base64.b64decode(image['data']))
         self.cd.command('Emulation.setDeviceMetricsOverride', {'width':390,'height':844,'deviceScaleFactor':1,'mobile':False})
         self.cd.wait('window.innerWidth===390', 'question panel narrow viewport')
         assert self.cd.evaluate('document.documentElement.scrollWidth<=window.innerWidth+1')
@@ -230,6 +393,22 @@ class SourceQuestionChecks:
         image = self.cd.command('Page.captureScreenshot', {'format':'png'})
         (screenshots/'h1-source-brief-mobile.png').write_bytes(base64.b64decode(image['data']))
         self.cd.command('Emulation.setDeviceMetricsOverride', {'width':1440,'height':1100,'deviceScaleFactor':1,'mobile':False})
+
+        self.navigate('Overview')
+        self.cd.wait("document.querySelector('[data-testid=continuity-draft]')?.dataset.state==='saved'",
+                     'confirmed save is not presented as an unsaved draft')
+        self.cd.evaluate("document.querySelector('[data-testid=patient-continuity]').scrollIntoView({block:'start'})")
+        image = self.cd.command('Page.captureScreenshot', {'format':'png'})
+        (screenshots/'h1-patient-continuity-desktop.png').write_bytes(base64.b64decode(image['data']))
+        self.cd.command('Emulation.setDeviceMetricsOverride', {'width':390,'height':844,'deviceScaleFactor':1,'mobile':False})
+        self.cd.wait('window.innerWidth===390', 'patient continuity narrow viewport')
+        assert self.cd.evaluate('document.documentElement.scrollWidth<=window.innerWidth+1')
+        self.cd.evaluate("document.querySelector('[data-testid=continuity-open-questions]').focus()")
+        assert self.cd.evaluate("document.activeElement.dataset.testid==='continuity-open-questions'")
+        image = self.cd.command('Page.captureScreenshot', {'format':'png'})
+        (screenshots/'h1-patient-continuity-mobile.png').write_bytes(base64.b64decode(image['data']))
+        self.cd.command('Emulation.setDeviceMetricsOverride', {'width':1440,'height':1100,'deviceScaleFactor':1,'mobile':False})
+        self.navigate('Investigations')
 
         # History has its own permission, independent of Composer context access.
         credentials[0]['actions'].remove('composer_context_read')
@@ -254,8 +433,43 @@ class SourceQuestionChecks:
         self.cd.evaluate("document.querySelector('[data-testid=world-load]').click()")
         self.cd.wait("Boolean(document.querySelector('[data-testid=world-projection]'))", 'fresh canonical source view restored')
         self.navigate('Journey')
-        print('PASS SOURCE QUESTIONS: canonical source-line preflight; durable question and history; amendment requires reassessment without moving original anchor; explicit v2 context/question; independent question-read and Composer denial; actual desktop panel capture and narrow containment; no model execution or clinical approval.')
+        print('PASS SOURCE QUESTIONS: canonical source-line preflight; durable question and history; amendment requires reassessment without moving original anchor; explicit v2 context/question and patient-authored third question; independent question-read and Composer denial; desktop and narrow containment; no model execution or clinical approval.')
         print('PASS SOURCE BRIEF: current saved question to literal brief; fresh authenticated text download and exact UTF-8/hash bytes; independent export revocation produces no Blob or file; amended question cannot export; fresh v2 question retains historical original; unchanged prior downloaded bytes; export works independently of Composer grant; source-only/no clinical approval.')
+        print('PASS CONNECTED QUESTION: authored literal text -> persisted canonical question -> separately authorized exact original quotation -> freshly authorized actual text download; same question/source/version/line throughout; historical selection clears current brief and reselecting clears the other packet; inspection-grant withdrawal does not grant or revoke export authority; no scientific appraisal or clinical approval.')
+
+    def after_verification_return(self, receipt_id):
+        """A recorded operational return cannot promote the source-only brief."""
+        self.navigate('Investigations')
+        self.history('Current source context')
+        self.overview_counts(current=2, reassessment=1)
+        self.inspect_quote(self.authored_question_id, current=True,
+            expected_text='Amended fictional marker is reported negative.')
+        prepared = self.prepare_brief(self.authored_question_id)
+        assert prepared['question']['question'] == self.authored_question_text
+        assert not prepared['clinical_approval'] and not prepared['biomedical_evidence_included']
+        assert not prepared['model_executed']
+        # Use a separate directory so an earlier real download cannot satisfy
+        # the completion check for this newly authorized post-return download.
+        previous_artifacts = self.artifacts
+        try:
+            self.artifacts = previous_artifacts/'after-verification-return'
+            self.artifacts.mkdir(parents=True, exist_ok=True)
+            _, actual = self.download_brief(self.authored_question_id)
+        finally:
+            self.artifacts = previous_artifacts
+        assert self.authored_question_text.encode('utf-8') in actual
+        assert self.original_download.read_bytes() == self.original_download_bytes
+        (self.artifacts/'patient-continuity-return-brief.json').write_text(json.dumps({
+            'question_id': self.authored_question_id, 'return_receipt_id': receipt_id,
+            'source_id': prepared['selected_source']['source_id'],
+            'source_version': prepared['selected_source']['version'],
+            'source_line': prepared['selected_source']['line'],
+            'download_sha256': hashlib.sha256(actual).hexdigest(),
+            'clinical_approval': False, 'model_executed': False,
+            'biomedical_evidence_included': False,
+        }, indent=2)+'\n', encoding='utf-8')
+        self.navigate('Journey')
+        print('PASS PATIENT CONTINUITY: Overview resume and exact authored question; source inspection, operational return and freshly authorized actual download retain one source/question identity; return does not confer clinical approval; amendment preserves the first authored question, original receipt and downloaded bytes.')
 
 
 @contextmanager
@@ -263,7 +477,7 @@ def exercise(cd, source_id, credentials, write_grants):
     previous_actions = list(credentials[0]['actions'])
     try:
         credentials[0]['actions'] = sorted(set(previous_actions) |
-            {'composer_context_read','question_create','question_read','source_brief_export'})
+            {'composer_context_read','question_create','question_read','source_brief_export','review_packet_read'})
         write_grants()
         cd.evaluate(f'({_OBSERVE_BRIEFS})()')
         checks = SourceQuestionChecks(cd, source_id)

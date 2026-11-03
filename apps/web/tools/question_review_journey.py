@@ -18,6 +18,7 @@ class QuestionReviewChecks:
         self.question_id = question_id
         self.source_id = source_id
         self.receipt_id = None
+        self.authored_receipt_id = None
         self.reason = 'Independently verify the fictional marker wording and its unresolved status.'
 
     def navigate(self, section):
@@ -54,6 +55,18 @@ class QuestionReviewChecks:
         self.cd.evaluate("document.querySelector('[data-testid=open-question-review]').click()")
         self.cd.wait("Boolean(document.querySelector('[data-testid=review-queue-result]'))",
                      'saved canonical question opens the existing Review workspace')
+        # Exercise the contextual handoff in both directions, not only the
+        # global navigation whose clearing behavior was already implemented.
+        self.cd.evaluate("[...document.querySelectorAll('[data-testid=review-workspace] button')].find(e=>e.textContent==='View source questions').click()")
+        self.cd.wait("Boolean(document.querySelector('[data-testid=source-question-panel]'))",
+                     'contextual review link returns to the same source questions')
+        assert self.cd.evaluate("!document.querySelector('[data-testid=source-quote-packet]')"), \
+            'Contextual navigation must invalidate the prepared source packet'
+        assert self.cd.evaluate("!document.querySelector('[data-testid=source-brief-preview]')"), \
+            'Contextual navigation must invalidate the prepared brief'
+        self.cd.evaluate("document.querySelector('[data-testid=open-question-review]').click()")
+        self.cd.wait("Boolean(document.querySelector('[data-testid=review-queue-result]'))",
+                     'same canonical question returns to independent verification')
         assert self.cd.evaluate("document.querySelectorAll('[data-testid=review-workspace]').length===1")
         assert self.cd.evaluate("document.querySelector('[data-testid=review-case-id]').textContent") == self.case_id
         assert self.cd.evaluate('document.querySelector(' + json.dumps(self.item()) + ').dataset.sourceId') == self.source_id
@@ -119,7 +132,8 @@ class QuestionReviewChecks:
         assert self.receipt_id in history and self.reason in history
         self.navigate('Records')
 
-    def finish(self, replacement_source_id, credentials, write_grants, screenshots):
+    def finish(self, replacement_source_id, credentials, write_grants, screenshots,
+               *, replacement_question_id, authored_question_id, authored_question_text):
         previous_actions = list(credentials[0]['actions'])
         self.navigate('Review')
         try:
@@ -127,10 +141,12 @@ class QuestionReviewChecks:
             credentials[0]['actions'] = [a for a in previous_actions if a != 'composer_context_read']
             write_grants()
             self.refresh(self.receipt_id)
-            assert self.cd.evaluate("document.querySelectorAll('[data-testid=review-queue-item]').length===2")
+            observed_questions = self.cd.evaluate("[...document.querySelectorAll('[data-testid=review-queue-item]')].map(e=>e.dataset.questionId)")
+            assert sorted(observed_questions) == sorted([
+                self.question_id, replacement_question_id, authored_question_id])
             assert self.cd.evaluate('document.querySelector(' + json.dumps(self.item()) + ').dataset.state') == 'source_reassessment_required'
-            new_question = self.cd.evaluate("[...document.querySelectorAll('[data-testid=review-queue-item]')].find(e=>e.dataset.sourceId==="
-                                            + json.dumps(replacement_source_id) + ').dataset.questionId')
+            new_question = replacement_question_id
+            assert self.cd.evaluate('document.querySelector(' + json.dumps(self.item(new_question)) + ').dataset.sourceId') == replacement_source_id
             assert new_question != self.question_id
             assert 'version 2, line 9' in self.cd.evaluate('document.querySelector(' + json.dumps(self.item(new_question)) + ').textContent')
             current_reason = 'Independently verify the amended fictional marker against its new source version.'
@@ -169,6 +185,22 @@ class QuestionReviewChecks:
                 credentials[0]['actions'].append(action)
                 write_grants()
                 self.refresh(new_receipt)
+
+            authored_row = self.cd.evaluate('document.querySelector(' + json.dumps(self.item(authored_question_id)) + ').textContent')
+            assert authored_question_text in authored_row and 'version 2, line 9' in authored_row
+            assert self.cd.evaluate('document.querySelector(' + json.dumps(self.item(authored_question_id)) + ').dataset.sourceId') == replacement_source_id
+            authored_reason = 'Independently verify the exact original supporting this patient-authored question.'
+            self.reason_value(authored_question_id, authored_reason)
+            self.submit(authored_question_id)
+            self.cd.wait("document.querySelector('[data-testid=review-return-status]')?.dataset.phase==='saved'",
+                         'same authored question receives an operational verification return')
+            self.authored_receipt_id = self.cd.evaluate("document.querySelector('[data-testid=review-return-id]').textContent")
+            assert self.authored_receipt_id not in (self.receipt_id, new_receipt)
+            self.refresh(self.authored_receipt_id)
+            assert self.cd.evaluate('document.querySelector(' + json.dumps(self.item(authored_question_id)) + ').dataset.state') == 'returned_for_independent_verification'
+            history = self.cd.evaluate("document.querySelector('[data-testid=review-return-history]').textContent")
+            assert all(value in history for value in (self.receipt_id, new_receipt,
+                self.authored_receipt_id, self.reason, current_reason, authored_reason))
 
             screenshots.mkdir(parents=True, exist_ok=True)
             self.cd.command('Emulation.setDeviceMetricsOverride', {'width':1440,'height':1100,'deviceScaleFactor':1,'mobile':False})

@@ -161,7 +161,11 @@ def main():
                 questions.finish(new_receipt['source_id'],credentials,write_grants,
                     Path(os.environ.get('OI_WEB_ARTIFACT_DIR',ROOT/'apps/web/.evidence')))
                 reviews.finish(new_receipt['source_id'],credentials,write_grants,
-                    Path(os.environ.get('OI_WEB_ARTIFACT_DIR',ROOT/'apps/web/.evidence')))
+                    Path(os.environ.get('OI_WEB_ARTIFACT_DIR',ROOT/'apps/web/.evidence')),
+                    replacement_question_id=questions.replacement_question_id,
+                    authored_question_id=questions.authored_question_id,
+                    authored_question_text=questions.authored_question_text)
+                questions.after_verification_return(reviews.authored_receipt_id)
             # Current source metadata access is independent from the historical original bytes.
             # World Model recheck must clear the old view after source-read grant withdrawal.
             credentials[0]['actions'].remove('source_read');write_grants()
