@@ -64,6 +64,65 @@ original intents, and checks that new HTTP receipts exist only in the restored
 database. The original database must remain unchanged. Restored metadata-rights
 and case-binding revocation retain redaction/denial without new effects.
 
+## Archive and original-source continuation
+
+This continuation starts from corrected #313 at
+`f6132e894a21a326f72660c3399499ccbf251831`, preserving #311's timestamp
+validation and all published migration bytes. It reuses #312 at
+`9cd218210099c69d04b023ef77f9051a32206fc4` for optional archive reads, the
+three existing archive regression modules and the explicit test-only file
+archive. The older verification and continuation receipts below remain history;
+their statement that #312 is separate describes those earlier checkpoints.
+
+An injected archive receives only canonical stored Study/Series/SOP identifiers
+after the existing patient/source/image preflight. Source-owner locks are released
+during I/O. A fresh transaction validates the source, binding and exact original
+bytes, prepares the complete response, refreshes authority and commits the access
+receipt before returning. Missing, altered or non-byte results withhold content;
+valid local originals do not authorize a fallback. Default local custody remains
+the ordinary application path. No new patient, source, image, task or evidence
+owner, route, permission, setting, dependency or migration is introduced.
+
+The audit also identified #304's existing original-source disclosure correction
+at `6532e394411f66272c88bce63002dcd40ffbcd37`. Its response-preparation pattern
+is selectively applied to `PostgresSourceVersions.original` and the one original
+route, preserving this branch's shared `_validated_original` implementation.
+The owner allocates one receipt ID, prepares the complete OriginalSource JSON,
+then performs its existing final-authority/receipt/commit protocol. Its four
+exact donor HTTP/PostgreSQL regression methods are retained. This does not import
+the separate authored-evidence/report owner's other routes or schema.
+
+New connected HTTP/PostgreSQL tests combine archive reads with #313's questions,
+verification returns, task transitions and metadata citations. They verify old
+anchors and retry identities after amendment, explicit image relinking, fresh v2
+work, restricted metadata, independent grants and unchanged sibling history when
+archive retrieval fails. The existing archive regressions retain late-authority,
+unlocked-I/O, response-preparation and deferred-commit checks. The original local
+ordering double explicitly selects `archive=None`; its assertions are unchanged.
+
+The five existing Compose gates remain. The combined image gate first exercises
+populated default-custody restarts, then restores PostgreSQL and recreates the API
+with the bounded file archive. Canonical identifier traces prove invocation;
+fresh original-image receipts must exist only in the restored database. Task,
+question, return and citation IDs and exact retry receipts remain stable. Revoked
+metadata stays redacted. Missing and changed archive objects must leave the full
+database snapshot unchanged, with no new read receipt, despite valid local bytes.
+Archive-enabled API/database restarts preserve the same history. Restored revoked
+bindings deny access before archive invocation, and neither restored-copy work
+nor its retries may mutate the original database.
+
+The fixture module and two independently authored originals are read-only
+acceptance mounts; only a synthetic identifier trace is writable. It is absent
+from the default runtime image and has no environment-based activation. This
+qualifies a controlled application seam only. #320 remains the separate concrete
+transport owner; live-PACS isolation, external-archive recovery and the #248
+adoption HOLD are unchanged. #307 and its report/reading/intake continuations,
+professional review and clinical release remain separately governed.
+
+Final combined hosted results belong to this continuation's draft PR and the
+existing canonical engineering records. Parent passes, local syntax checks and
+database skips are not evidence that the new combined workflow executed.
+
 ## Source preservation and verification
 
 The #298 source archive's 356 files reproduced tree

@@ -7,6 +7,9 @@ The returned receipts attest prepared disclosure, not delivery to a client.
 All populated domains are reopened through the API after real pg_restore.
 Metadata uses the existing independently fictional catalog and rights owner.
 Tasks and verification returns are operational records, without clinical approval.
+The restored API uses the explicitly injected, bounded file archive from #312.
+Archive calls, no fallback and shared history are verified; no live PACS or
+external-archive backup qualification is claimed.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -128,6 +131,59 @@ def main():
         metadata_rights_revoked = False
         source_access_receipts = set()
         active_database = "oi_api_synthetic"
+        archive_enabled = False
+        archive_directory = access / "archive-originals"
+        archive_calls = access / "archive-calls.jsonl"
+
+        def archive_history():
+            if not archive_calls.exists():
+                return []
+            raw = archive_calls.read_bytes()
+            assert len(raw) <= 100_000, "Acceptance archive trace exceeded its bound"
+            rows = [json.loads(line) for line in raw.decode("utf-8").splitlines()]
+            for row in rows:
+                assert set(row) == {"study_uid", "series_uid", "sop_uid"}
+                assert (row["study_uid"], row["series_uid"]) == (STUDY, SERIES)
+                assert row["sop_uid"] in SOPS, "Archive received noncanonical identifiers"
+            return rows
+
+        def use_archive_fixture():
+            nonlocal archive_enabled
+            archive_directory.mkdir()
+            archive_directory.chmod(0o755)
+            entries = []
+            for index, (sop, raw) in enumerate(zip(SOPS, originals)):
+                filename = f"{index:02}.dcm"
+                path = archive_directory / filename
+                path.write_bytes(raw)
+                path.chmod(0o644)
+                entries.append({"study_uid": STUDY, "series_uid": SERIES,
+                                "sop_uid": sop, "filename": filename})
+            manifest = archive_directory / "manifest.json"
+            manifest.write_text(json.dumps({"contract": "oi.synthetic-archive-acceptance/1",
+                                            "independently_authored": True, "objects": entries}))
+            manifest.chmod(0o644)
+            archive_calls.write_text("")
+            # The container's unprivileged UID may append this synthetic trace
+            # only. The fixture module and original objects are separate RO binds.
+            archive_calls.chmod(0o666)
+            override = access / "archive-api.compose.json"
+            override.write_text(json.dumps({"services": {"api": {
+                "command": ["python", "-m", "uvicorn",
+                            "archive_acceptance_app:create_acceptance_app", "--factory",
+                            "--host", "0.0.0.0", "--port", "8000", "--no-access-log",
+                            "--no-proxy-headers"],
+                "volumes": [
+                    {"type": "bind", "source": str(ROOT / "apps/api/tools/archive_acceptance_app.py"),
+                     "target": "/app/archive_acceptance_app.py", "read_only": True},
+                    {"type": "bind", "source": str(archive_directory),
+                     "target": "/run/oi-acceptance-archive", "read_only": True},
+                    {"type": "bind", "source": str(archive_calls),
+                     "target": "/run/oi-acceptance-archive-calls.jsonl", "read_only": False},
+                ],
+            }}}))
+            compose.extend(("--file", str(override)))
+            archive_enabled = True
 
         def save_access():
             pending = access / "access.new"
@@ -674,14 +730,22 @@ finally:
                 metadata(by_id[image_id], source_id, index)
 
         def read_originals(source_id):
+            before = archive_history()
+            receipts = []
             for index, image_id in enumerate(image_ids):
                 status, raw, headers = request(collection(source_id) + "/" + image_id)
                 assert status == 200 and headers.get_content_type() == "application/dicom"
                 assert type(raw) is bytes and raw == originals[index], "Original DICOM bytes changed"
                 remember(headers.get("X-OI-Access-Receipt"), "image.original_read_authorized")
+                receipts.append(headers.get("X-OI-Access-Receipt"))
+            expected = [{"study_uid": STUDY, "series_uid": SERIES, "sop_uid": sop}
+                        for sop in SOPS] if archive_enabled else []
+            assert archive_history() == before + expected, "Original HTTP bypassed the selected archive path"
+            return receipts
 
         def denied(source_id, *, index=True, original=True, ingest=False, authenticated=True):
             before = check_history()
+            calls_before = archive_history()
             requests = []
             if index:
                 requests.append((collection(source_id), None))
@@ -696,6 +760,28 @@ finally:
                 assert type(value) is dict and set(value) == {"detail"}
                 assert headers.get("X-OI-Access-Receipt") is None
             assert history() == before, "Denied image request minted an access receipt"
+            assert archive_history() == calls_before, "Denied image request invoked the archive"
+
+        def archive_failure(source_id, *, missing):
+            path = archive_directory / "00.dcm"
+            before = snapshot()
+            calls_before = archive_history()
+            try:
+                if missing:
+                    path.unlink()
+                else:
+                    path.write_bytes(originals[0][:-1] + bytes([originals[0][-1] ^ 1]))
+                status, value, headers = request(collection(source_id) + "/" + image_ids[0])
+                assert (status, value) == (503, {"detail": "Patient registry unavailable"})
+                assert headers.get("X-OI-Access-Receipt") is None
+                assert snapshot() == before, "Archive failure committed a receipt or changed durable custody"
+                assert archive_history() == calls_before + [
+                    {"study_uid": STUDY, "series_uid": SERIES, "sop_uid": SOPS[0]}]
+            finally:
+                path.write_bytes(originals[0])
+                path.chmod(0o644)
+            verify_stored_originals()
+
 
         def snapshot(database=None):
             # Existing owner rows and exact content digests; neither image
@@ -1153,6 +1239,9 @@ finally:
             assert len(before["review_receipts"]) == 2
             assert len(before["tasks"]) == len(before["evidence_links"]) == 2
             assert len(before["task_events"]) == 6 and len(before["evidence_rights"]) == 3
+            # Default custody has already passed populated restart checks.
+            # The restored API now explicitly selects the existing archive port.
+            use_archive_fixture()
             use_restored_database(restored_database)
             assert snapshot() == before, "Recreated API changed restored data before reads"
             restored_receipt = read_questions()
@@ -1187,7 +1276,15 @@ finally:
             retry_returns()
             retry_followthrough_and_evidence()
             read_images(source_two)
-            read_originals(source_two)
+            restored_image_receipts = read_originals(source_two)
+            for image_receipt in restored_image_receipts:
+                image_receipt_query = (
+                    "SELECT to_json(count(*)) FROM identity.identity_domain_events "
+                    "WHERE event_type='image.original_read_authorized' AND metadata_json->>'receipt_id'='"
+                    + image_receipt + "'"
+                )
+                assert query(image_receipt_query) == 1, "Archive HTTP lacks a restored image receipt"
+                assert query(image_receipt_query, source_database) == 0, "Archive HTTP wrote to the source DB"
             denied(source_one, ingest=True)
             _, prepared = prepare_question(source_two, 2, AMENDED,
                                            expected_fingerprint=second_fingerprint)
@@ -1222,7 +1319,46 @@ finally:
             check_history()
             check_question_history()
             assert snapshot(source_database) == before, "Restored HTTP mutated the pre-restore database"
-            print("Active restored API reopened exact v1/v2 questions/returns/tasks/citations, original images and same-key retries; revoked title/URL stayed redacted")
+            print("Active restored API reopened exact v1/v2 questions/returns/tasks/citations, archive originals and same-key retries; revoked title/URL stayed redacted")
+
+            # A valid local original remains available throughout each failure.
+            # Failure must not mint a receipt, alter any sibling owner or fallback.
+            for missing in (False, True):
+                archive_failure(source_two, missing=missing)
+                read_originals(source_two)
+                read_followthrough()
+                read_citations()
+                check_restricted_metadata(question_two)
+                retry_followthrough_and_evidence()
+            credential["actions"] = [action for action in actions if action != "image_original_read"]
+            save_access()
+            denied(source_two, index=False)
+            read_questions()
+            read_review_queue()
+            read_followthrough()
+            read_citations()
+            credential["actions"] = list(actions)
+            save_access()
+            for service in ("api", "db"):
+                state = snapshot()
+                command(["restart", service])
+                ready()
+                assert snapshot() == state, "Restart changed archive-enabled restored history"
+                read_originals(source_two)
+                read_questions()
+                read_review_queue()
+                read_followthrough()
+                read_citations()
+                retry_questions()
+                retry_returns()
+                retry_followthrough_and_evidence()
+                check_restricted_metadata(question_two)
+                denied(source_one)
+                check_history()
+                check_question_history()
+            assert snapshot(source_database) == source_database_snapshot, "Archive checks mutated the source database"
+            print("Restored archive HTTP preserved exact images, question/return/task/citation history and restricted metadata; "
+                  "missing/changed originals refused without fallback; grants, retries and API/DB restarts preserved")
 
             status, revoked, _ = request(patient_path + "/case-bindings/" + CASE + "/revoke", {
                 "synthetic": True, "reason": "Withdraw the independently fictional image Compose binding"})
@@ -1265,10 +1401,12 @@ finally:
             assert snapshot() == before, "Restored revoked access changed durable history"
             assert snapshot(restored_database) == before, "Revoked-copy HTTP mutated its source database"
             assert snapshot(source_database) == source_database_snapshot, "Restored revocation/retries mutated the original database"
+            assert archive_history(), "Archive-enabled recovery never invoked the archive"
             print("PASS: canonical v1/v2 questions, immutable verification returns, task events, citations and exact DICOM originals; "
                   "independent grants, immutable anchors, distinct receipts, API/DB restart, "
                   "amendment reassessment, explicit same-object relinking, active restored HTTP/retries, "
-                  "metadata rights redaction, original DB unchanged, and revoked restored denial "
+                  "archive-enabled restored HTTP without fallback, metadata rights redaction, original DB unchanged, "
+                  "and revoked restored denial before archive invocation "
                   "through actual PostgreSQL dump/restore; no clinical approval or evidence appraisal")
         except Exception:
             command(["logs", "--no-color", "--tail", "80"], check=False)

@@ -23,6 +23,24 @@ citation owners retain their own locks, rights checks and immutable history.
 An image relink cannot make an amended question current, and a metadata citation
 cannot confer permission to read image bytes or establish clinical claim support.
 
+The archive continuation reuses #312 on the corrected #313 owner, including its
+existing #311 citation validation. A trusted optional archive is used only for
+original-image retrieval. Canonical custody and authority are checked before
+I/O and again in a fresh transaction; exact bytes, prepared response and receipt
+commit are required. Configured archive failure never falls back to local bytes.
+The #304 original-source correction is also selectively preserved: complete
+OriginalSource JSON preparation precedes final authority and receipt commit,
+while the shared original-validation helper remains the image/source owner.
+No schema, dependency, permission, public API or production setting changes.
+
+The existing combined recovery probe now selects #312's bounded test-only file
+archive after actual PostgreSQL restore. It verifies image receipts in the
+restored database, immutable question/return/task/citation identities, redacted
+metadata, missing/changed originals, independent grants, retries and populated
+restarts. This does not qualify live PACS transport or external-archive backup.
+The separate #320 transport and #307 evidence/report continuations retain their
+own review and integration requirements.
+
 See [the preserving integration design](../../docs/superpowers/specs/2026-11-03-h1-image-question-evidence-design.md)
 and [execution plan](../../docs/superpowers/plans/2026-11-03-h1-image-question-evidence.md).
 Final exact-head acceptance is recorded in the draft PR and existing engineering
@@ -486,7 +504,7 @@ single frame, 16-bit MONOCHROME2. The parser validates file framing, lengths,
 unique ordered tags, file-meta identity, identifiers, date and pixel geometry
 before using the typed parser; it performs no pixel decoding or clinical
 interpretation. Unsupported syntax, sequences and malformed input fail closed.
-Maximum input is 2 MiB, with 256 originals/64 MiB per case and no archives.
+Maximum input is 2 MiB, with 256 originals/64 MiB per case and no bundled-file uploads.
 These are development limits, not a claim of general CT-study ingestion.
 
 Read receipts contain opaque IDs, hashes and counts, not raw image identifiers,
@@ -549,7 +567,7 @@ URLs, SQL, source text and rejected validation inputs.
 | Route | Behavior |
 |---|---|
 | GET /health | Process liveness; 200 even if the database is unavailable. |
-| GET /health/ready | 200 only for PostgreSQL major 16 at the single revision 0009_image_review_merge; bounded 503 otherwise. |
+| GET /health/ready | 200 only for PostgreSQL major 16 at the single revision 0011_image_evidence_merge; bounded 503 otherwise. |
 | GET /v1 | Reports synthetic_patient_registry stage, implemented synthetic capabilities and the configured authentication mode. |
 | GET /v1/openapi.json | Local typed contract, including bearer security; no CDN documentation UI. |
 | POST /v1/patients | Authenticated synthetic creation; trusted actor/org/purpose; 201 for new identity or 200 for identical retry. |
