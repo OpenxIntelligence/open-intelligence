@@ -6,11 +6,13 @@ on:
       - experiment/pacsnode-dicomweb-eval-20261102
       - test/pacsnode-source-bound-wado-20261102
       - test/pacsnode-direct-access-observation-20261102
+      - test/pacsnode-oidc-native-access-20261102
     paths:
       - 'tools/imaging/**'
       - 'tests/test_pacsnode_probe_contract.py'
       - 'tests/test_source_bound_wado.py'
       - 'tests/test_pacsnode_direct_access_gate.py'
+      - 'tests/test_pacsnode_oidc_probe.py'
       - '.github/workflows/pacsnode-standalone-evaluation.yml'
   workflow_dispatch:
 
@@ -52,6 +54,8 @@ jobs:
             tee verification-artifacts/pacsnode-source-bound-wado-tests.txt
           python -m unittest discover -s tests -p 'test_pacsnode_direct_access_gate.py' -v 2>&1 |
             tee verification-artifacts/pacsnode-direct-access-tests.txt
+          python -m unittest discover -s tests -p 'test_pacsnode_oidc_probe.py' -v 2>&1 |
+            tee verification-artifacts/pacsnode-oidc-tests.txt
       - name: Install only hash-pinned pydicom core for synthetic fixture generation
         shell: bash
         run: |
@@ -165,6 +169,57 @@ jobs:
             --base-url http://127.0.0.1:18042 \
             --prior-receipt verification-artifacts/pacsnode-real-dicomweb.json \
             --output verification-artifacts/pacsnode-anonymous-access.json
+          # Shut down the permissive baseline; keep the same fictional
+          # SQLite filesystem instance for a *native* PACS auth experiment.
+          kill "$server_pid"
+          wait "$server_pid" || true
+          for attempt in $(seq 1 20); do
+            if ! curl --silent --show-error --max-time 1 http://127.0.0.1:18042/health >/dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+          # Keys are ephemeral, scoped to this one runner, and NEVER exported.
+          # No fixture secrets are checked in or uploaded as artifacts.
+          umask 077
+          oidc_private_key="$RUNNER_TEMP/oi-pacs-oidc-private.pem"
+          oidc_public_key="$RUNNER_TEMP/oi-pacs-oidc-public.pem"
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 \
+            -out "$oidc_private_key" >/dev/null 2>&1
+          openssl pkey -in "$oidc_private_key" -pubout \
+            -out "$oidc_public_key" >/dev/null 2>&1
+          python - "$pacs_run_directory/config.toml" "$oidc_public_key" <<'PY'
+          from pathlib import Path
+          from sys import argv
+          from tools.imaging.pacsnode_oidc_probe import prepare_oidc_config
+          prepare_oidc_config(Path(argv[1]), Path(argv[2]))
+          print("Enabled pinned upstream OIDC mode with ephemeral public key.")
+          PY
+          cd "$pacs_run_directory"
+          "$RUNNER_TEMP/oi-pacsnode-source/target/debug/pacsnode" \
+            > "$RUNNER_TEMP/oi-pacsnode-oidc-startup.txt" 2>&1 &
+          server_pid=$!
+          ready=0
+          for attempt in $(seq 1 90); do
+            if curl --silent --show-error --fail http://127.0.0.1:18042/health >/dev/null 2>&1; then
+              ready=1
+              break
+            fi
+            if ! kill -0 "$server_pid" 2>/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ready" -ne 1 ]; then
+            echo "HOLD: secured pinned PACS failed readiness (see internal runner logs)" >&2
+            exit 1
+          fi
+          cd "$GITHUB_WORKSPACE"
+          python -m tools.imaging.pacsnode_oidc_probe \
+            --base-url http://127.0.0.1:18042 \
+            --prior-receipt verification-artifacts/pacsnode-real-dicomweb.json \
+            --private-key "$oidc_private_key" \
+            --output verification-artifacts/pacsnode-oidc-receipt.json
       - name: Preserve only source and numerical receipts, no image objects
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -175,6 +230,7 @@ jobs:
             verification-artifacts/pacsnode-harness-tests.txt
             verification-artifacts/pacsnode-source-bound-wado-tests.txt
             verification-artifacts/pacsnode-direct-access-tests.txt
+            verification-artifacts/pacsnode-oidc-tests.txt
             verification-artifacts/pacsnode-dicom-regression-tests.txt
             verification-artifacts/pacsnode-upstream-commit.txt
             verification-artifacts/pacsnode-cargo-lock-sha256.txt
@@ -182,6 +238,7 @@ jobs:
             verification-artifacts/cargo-license-snapshot.json
             verification-artifacts/pacsnode-real-dicomweb.json
             verification-artifacts/pacsnode-anonymous-access.json
+            verification-artifacts/pacsnode-oidc-receipt.json
             verification-artifacts/pacsnode-test-storage-transfer-syntax.txt
             verification-artifacts/pacsnode-stdout.txt
           if-no-files-found: warn
