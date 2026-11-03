@@ -28,8 +28,18 @@ denies patient access; the opt-in credential file is a synthetic fixture, not
 account verification or clinical consent. This unmerged integration preserves
 source owners #85/#148 and is stacked on #162/#137. Local verification passed
 49 API/migration/gate tests and 245 prototype tests; hosted container/recovery
-evidence belongs to the exact draft-PR head. Source/EHR/LIS/Composer migration,
-the React workspace and the complete patient investigation remain open.
+evidence belongs to the exact draft-PR head. Those counts describe the historical
+identity milestone, before the subsequent connected workspace.
+
+**Current unmerged H1 continuation:** [draft #307](https://github.com/OpenxIntelligence/open-intelligence/pull/307)
+converges #298's metadata citations and follow-through with #300's case-owned
+fictional originals, human-authored comparisons and immutable reports on the same
+canonical question. Both rights boundaries and migration histories remain intact.
+Its [bounded convergence and verification record](docs/engineering/H1_EVIDENCE_CONTINUITY.md)
+distinguishes implementation, exact combined test evidence and remaining work.
+Live biomedical retrieval, model execution, professional review, clinical/PDF/
+annotation parity and production identity remain separate capabilities. This is
+an unmerged engineering candidate, with no clinical approval or deployment claim.
 
 ## Start here
 

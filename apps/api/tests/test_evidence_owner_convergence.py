@@ -160,6 +160,27 @@ class EvidenceConvergenceHTTPTests(SourceVersionFixture):
             self.assertNotIn(record["citation"], report["body"])
             self.assertFalse(report["clinical_approval"])
             self.assertFalse(report["model_executed"])
+            # Convergence must not turn one owner's grant into another's.
+            for missing, expected in (
+                ("evidence_read", (404, 200, 200, 200)),
+                ("authored_evidence_read", (200, 404, 404, 200)),
+                ("evidence_report_export", (200, 200, 404, 200)),
+                ("followthrough_read", (200, 200, 200, 404)),
+            ):
+                with self.subTest(independent_grant=missing):
+                    self.creds[0]["actions"].remove(missing)
+                    self.write()
+                    try:
+                        observed = (
+                            request(base, question_path + "/evidence-links", token=TOKEN_A)[0],
+                            request(base, question_path + "/evidence", token=TOKEN_A)[0],
+                            request(base, report_path, token=TOKEN_A)[0],
+                            request(base, case_path + "/followthrough", token=TOKEN_A)[0],
+                        )
+                        self.assertEqual(observed, expected)
+                    finally:
+                        self.creds[0]["actions"].append(missing)
+                        self.write()
             self.assertEqual(self.ingest(base, patient, AMENDED)[0], 201)
             code, historical, _ = request(base, report_path, token=TOKEN_A)
             self.assertEqual(code, 200, historical)

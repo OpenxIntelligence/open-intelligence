@@ -2,6 +2,7 @@ import type {RegistrySession,ViewState} from './registry-client';
 import {canPrepareSourceBrief,downloadSourceBrief} from './source-brief';
 import {FollowthroughCreate,FollowthroughPanel} from './followthrough-panel';
 import {QuestionEvidencePanel,QuestionEvidenceRecovery} from './question-evidence-panel';
+import {AuthoredEvidencePanel} from './authored-evidence-panel';
 
 /** Reuses the source-question intake panel from PR238 over the canonical World Model. */
 export function SourceQuestionPanel({state,session,busy,onReview}:{state:ViewState;session:RegistrySession;busy:boolean;onReview?:()=>void}){
@@ -120,6 +121,7 @@ export function SourceQuestionPanel({state,session,busy,onReview}:{state:ViewSta
             Prepare a new question from the current source context before exporting a brief.</p>}
           <FollowthroughCreate key={item.question_id+':'+item.preflight_sha256}
             question={item} state={state} session={session} busy={busy}/>
+          <button type="button" data-testid="authored-evidence-open" disabled={busy||state.evidencePhase==='loading'} onClick={()=>void session.loadQuestionEvidence(item.question_id)}>Inspect evidence and human comparisons</button>
           <button type="button" data-testid="source-quote-packet-open"
            disabled={busy||state.sourceQuotePhase==='loading'}
            onClick={()=>void session.loadQuestionSourcePacket(item.question_id)}>
@@ -214,5 +216,6 @@ export function SourceQuestionPanel({state,session,busy,onReview}:{state:ViewSta
      treatment inferred or medical action authorized.
     </p>
    </section>}
+   <AuthoredEvidencePanel session={session} state={state} busy={busy}/>
  </section>;
 }

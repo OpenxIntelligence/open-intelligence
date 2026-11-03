@@ -129,3 +129,38 @@ restart and restored-database HTTP acceptance. It adds durable recorded task
 ownership, revisit basis and attributed history to the same saved questions.
 Clinical accountability, scientific evidence appraisal and real external
 coordination remain separate unfinished capabilities. The draft is unmerged.
+
+## Subsequent authored-evidence continuation — historical #300 checkpoint
+
+The next increment extends verified #288's canonical patient/question workflow
+with case-owned fictional evidence originals, human-authored supporting and
+contradictory comparisons, and immutable comparison reports. It reuses #249's
+exact pure content-rights module and the already identical evidence parser, while
+porting storage to the existing PostgreSQL case transaction. The distinct new
+`authored_evidence_*` actions do not expand metadata-citation read permissions.
+
+The [bounded implementation and verification record](../engineering/H1_AUTHORED_EVIDENCE_REPORTS.md)
+and [source manifest](../engineering/H1_AUTHORED_EVIDENCE_SOURCE_REUSE.json)
+identify exact owners, acceptance, historical disclosure and migration boundaries.
+Draft [#300](https://github.com/OpenxIntelligence/open-intelligence/pull/300)
+is implemented. The repaired runtime at `e1170ddd69af5169027a35d1996163f959bbb503`
+has passed 206 client tests, the production build and the complete built-browser
+journey. Its hosted API workflow passed 347 tests without failures or skips,
+250 retained reference tests, both original browser journeys and all four actual
+Compose recovery probes. Complete rows across thirteen tables and four sequence
+states matched after PostgreSQL dump/restore. Independent
+backend/client correction reviews found no remaining blocking issue. The saved
+browser artifact matches all 352 source files, four retained source-only briefs,
+one original evidence download and two distinct report downloads. The exact
+runtime, run IDs, archive checksums, failed-check repairs and recovery boundary are
+recorded in the linked receipt. This bounded authored-evidence workflow is fully
+implemented and tested within its fictional-data contract. The final documentation
+commit retains the runtime and its exact-head results belong to draft #300. Local
+database skips are never counted as hosted acceptance.
+
+Newly published #298 owns complementary metadata search/citation linkage;
+#293 owns follow-through and its distinct migration head. Those changes are not
+silently copied, replaced or claimed integrated here. Clinical/PDF/annotation
+parity, authenticated production identity, publisher clearance and professional
+review remain separate integration and validation work. No merge or deployment
+is authorized by these software checks.

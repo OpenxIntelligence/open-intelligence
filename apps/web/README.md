@@ -41,6 +41,21 @@ source-only brief workflow from #287. [The task contract](../../docs/engineering
 records exact acceptance evidence and limits. An owner label does not grant
 access, task completion is not clinical approval, and no notification is sent.
 
+## One question, distinct evidence permissions
+
+[Draft #307](../../docs/engineering/H1_EVIDENCE_CONTINUITY.md) composes the existing
+fictional metadata discovery/citation controls with the independently authored
+original/comparison/report panel on a canonical saved question. Citation and
+comparison writes retain separate exact retry identities. Metadata permission
+cannot reveal an authored quotation, and report permission cannot grant metadata
+access. Patient/case/credential changes and common authority denial clear both
+views; specific evidence grants retain their own boundaries.
+
+The two original browser helpers remain separate, with distinct selectors and
+observer state. The combined journey also checks one question through a citation,
+report and independent permission changes. See the linked record for actual
+combined-head verification; implemented controls alone do not prove that gate.
+
 ## Development setup
 
 The backend instructions and exact Python dependency gate remain in

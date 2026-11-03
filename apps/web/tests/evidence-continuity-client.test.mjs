@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {RegistrySession} from '../.test-dist/registry-client.js';
 import {ready,transportFor,response,packet,questionId,patientId,caseId,evidenceId,assessmentId,
- reportId,report,preflightHash,fingerprint} from './authored-evidence-fixtures.mjs';
+ reportId,report,preflightHash,fingerprint,cases,original,permissions} from './authored-evidence-fixtures.mjs';
 
 // Only HTTP is replaced. These checks exercise one real session, its two
 // independently authorized evidence paths and its exact-write recovery state.
@@ -99,4 +99,88 @@ test('uncertain citation and comparison writes retain distinct exact intents acr
  assert.equal(s.snapshot().evidenceReceipt.assessment_id,assessmentId);
  assert.equal(linkBodies.length,2);assert.equal(linkBodies[1],linkBodies[0]);
  assert.equal(assessmentBodies.length,2);assert.equal(assessmentBodies[1],assessmentBodies[0]);
+});
+
+for(const endpoint of ['/case-bindings','/world-model','/questions']){
+ test('common '+endpoint+' denial clears both evidence recovery scopes',async()=>{
+  let denied=false;
+  const fallback=transportFor((url,init)=>{
+   if(url.endsWith('/evidence-search'))return response(search());
+   if(init.method==='POST')throw Error('delivery lost after a possible commit');
+   return response(packet());
+  });
+  const s=new RegistrySession((url,init)=>denied&&url.endsWith(endpoint)?response({detail:'PRIVATE SCOPE'},403):fallback(url,init));
+  await ready(s);await s.searchQuestionEvidence(questionId,'fictional');await s.saveQuestionEvidence(questionId,record.citation);
+  await s.loadQuestionEvidence(questionId);
+  await s.assessQuestionEvidence(questionId,evidenceId,'café experiment','supports','limited','Independently fictional proposal remains uncertain.');
+  assert.equal(s.snapshot().evidenceLinkPhase,'unknown');assert.equal(s.snapshot().evidenceWritePhase,'unknown');
+  denied=true;
+  if(endpoint==='/case-bindings')await s.loadCases();
+  if(endpoint==='/world-model')await s.loadWorldModel(caseId);
+  if(endpoint==='/questions')await s.loadSavedQuestions(caseId);
+  assert.equal(s.snapshot().evidenceLinkIntent,null);
+  assert.equal(s.snapshot().evidenceWriteIntent,null,'a shared patient/source/question denial must clear authored recovery as well');
+  assert.equal(s.snapshot().evidencePacket,null);assert.equal(s.snapshot().evidenceReport,null);
+  assert.ok(!JSON.stringify(s.snapshot()).includes('PRIVATE SCOPE'));
+ });
+}
+
+test('a successful binding refresh without the previous case removes both uncertain evidence intents',async()=>{
+ let removed=false;
+ const fallback=transportFor((url,init)=>{
+  if(url.endsWith('/evidence-search'))return response(search());
+  if(init.method==='POST')throw Error('delivery lost');
+  return response(packet());
+ });
+ const s=new RegistrySession((url,init)=>removed&&url.endsWith('/case-bindings')?
+  response({...cases(),mappings:cases().mappings.filter(row=>row.case_id!==caseId)}):fallback(url,init));
+ await ready(s);await s.searchQuestionEvidence(questionId,'fictional');await s.saveQuestionEvidence(questionId,record.citation);
+ await s.loadQuestionEvidence(questionId);
+ await s.assessQuestionEvidence(questionId,evidenceId,'café experiment','supports','limited','Independently fictional proposal remains uncertain.');
+ assert.equal(s.snapshot().evidenceWritePhase,'unknown');removed=true;await s.loadCases();
+ assert.equal(s.snapshot().evidenceLinkIntent,null);
+ assert.equal(s.snapshot().evidenceWriteIntent,null,'an unavailable case cannot retain an authored-content recovery payload');
+});
+
+for(const status of [403,404]){
+ test('same-patient '+status+' recheck clears protected evidence intent and cannot retry',async()=>{
+  let denied=false,writes=0;
+  const fallback=transportFor((url,init)=>{
+   if(url.endsWith('/evidence-search'))return response(search());
+   if(init.method==='POST'){writes++;throw Error('response lost after possible commit');}
+   return response(packet());
+  });
+  const s=new RegistrySession((url,init)=>denied&&url==='/v1/patients/'+patientId?
+   response({detail:'PRIVATE IDENTITY'},status):fallback(url,init));
+  await ready(s);await s.searchQuestionEvidence(questionId,'fictional');await s.saveQuestionEvidence(questionId,record.citation);
+  await s.loadQuestionEvidence(questionId);await s.importQuestionEvidence(questionId,original,'abstract',permissions());
+  assert.equal(s.snapshot().evidenceLinkPhase,'unknown');assert.equal(s.snapshot().evidenceWritePhase,'unknown');
+  assert.ok(s.snapshot().evidenceWriteIntent.body.includes('Fictional comparison manuscript'));
+  denied=true;await s.read(patientId);
+  assert.equal(s.snapshot().patient,null);assert.equal(s.snapshot().phase,'error');
+  assert.equal(s.snapshot().evidenceLinkIntent,null);
+  assert.equal(s.snapshot().evidenceWriteIntent,null,'explicit patient denial cannot retain protected original bytes in retry state');
+  assert.ok(!JSON.stringify(s.snapshot()).includes('Fictional comparison manuscript'));
+  assert.ok(!JSON.stringify(s.snapshot()).includes('PRIVATE IDENTITY'));
+  const before=writes;await s.retryEvidenceWrite();await s.retryQuestionEvidenceLink();
+  assert.equal(writes,before,'denied patient scope cannot send either earlier write');
+ });
+}
+
+test('temporary same-patient service failure preserves exact authored recovery without authorizing retry',async()=>{
+ let unavailable=false,writes=0;
+ const fallback=transportFor((url,init)=>{
+  if(init.method==='POST'){writes++;throw Error('delivery lost after possible commit');}
+  return response(packet());
+ });
+ const s=new RegistrySession((url,init)=>unavailable&&url==='/v1/patients/'+patientId?
+  response({detail:'temporarily unavailable'},503):fallback(url,init));
+ await ready(s);await s.loadQuestionEvidence(questionId);await s.importQuestionEvidence(questionId,original,'abstract',permissions());
+ const intent=s.snapshot().evidenceWriteIntent;assert.equal(s.snapshot().evidenceWritePhase,'unknown');
+ unavailable=true;await s.read(patientId);
+ assert.equal(s.snapshot().patient,null);assert.equal(s.snapshot().evidencePacket,null);
+ assert.equal(s.snapshot().evidenceWriteIntent,intent);assert.equal(s.snapshot().evidenceWritePhase,'unknown');
+ await s.retryEvidenceWrite();assert.equal(writes,1,'temporary failure is not a current patient or case grant');
+ unavailable=false;await s.read(patientId);await s.loadCases();
+ assert.equal(s.snapshot().evidenceWriteIntent,intent,'successful scoped recheck retains the exact recovery key');
 });
