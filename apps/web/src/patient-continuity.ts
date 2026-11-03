@@ -19,5 +19,14 @@ export function patientContinuity(state:ViewState){
   state.questionDraft.snapshot_fingerprint===model?.snapshot_fingerprint;
  const draft=draftMatches?(state.questionSavePhase==='saved'&&state.savedQuestion?'saved':
   state.questionSavePhase==='saving'?'saving':state.questionSavePhase==='error'?'needs_attention':'unsaved'):null;
- return {patientId:patient.patient_id,caseId,questions,draft} as const;
+ // Retain a neutral path back to an *uncertain* return even if refreshing
+ // original sources removed the World Model. The exact return's own captured
+ // patient and case must still match an actively mapped patient/case.
+ // A different selected case never silently reuses the older return.
+ const intent=state.reviewReturnIntent;
+ const recoveryCaseId=state.reviewReturnPhase==='unknown'&&intent&&
+   intent.patient_id===patient.patient_id&&(!caseId||caseId===intent.case_id)&&
+   state.cases?.some(c=>c.patient_id===patient.patient_id&&c.case_id===intent.case_id&&c.status==='active')
+   ?intent.case_id:null;
+ return {patientId:patient.patient_id,caseId,questions,draft,recoveryCaseId} as const;
 }
