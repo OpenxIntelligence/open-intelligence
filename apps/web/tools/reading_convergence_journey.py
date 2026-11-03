@@ -70,6 +70,7 @@ def exercise(cd, credentials, write_grants):
                 assert cd.evaluate("document.activeElement.scrollHeight>document.activeElement.clientHeight"), 'Enlarged original must exercise internal scrolling'
                 key('PageDown',34)
                 cd.wait("document.querySelector('[data-testid=server-original]').scrollTop>0", 'keyboard scrolls enlarged original text')
+                cd.wait("(()=>{const r=document.activeElement.getBoundingClientRect();const h=document.querySelector('.topbar');return r.bottom<=innerHeight&&r.top>=(h.dataset.sticky==='false'?0:h.getBoundingClientRect().bottom)})()", 'entire focused original text area is visible below patient context')
                 (out/'original-keyboard-scroll-390.png').write_bytes(base64.b64decode(cd.command('Page.captureScreenshot', {'format':'png'})['data']))
                 cd.evaluate("document.querySelector('[data-testid=server-original]').style.removeProperty('font-size')")
             cd.command('Input.dispatchKeyEvent', {'type':'rawKeyDown','key':'Tab','code':'Tab','windowsVirtualKeyCode':9,'modifiers':8})
