@@ -95,6 +95,10 @@ class Journey:
             'deviceScaleFactor': 1, 'mobile': False,
         })
         self.cd.wait(f'innerWidth === {width}', f'{width}px viewport')
+        # CDP can acknowledge metrics before the media-query change event runs.
+        # Let the browser render the resized navigation before testing its real
+        # pointer and keyboard reachability, including when the hash is unchanged.
+        self.cd.evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
 
     def capture(self, name: str) -> None:
         self.cd.evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')

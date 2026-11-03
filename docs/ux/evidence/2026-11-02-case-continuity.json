@@ -142,5 +142,166 @@
     "No authenticated patient/clinician role implementation",
     "No clinical validation or deployment",
     "No separately delayed already-submitted HTTP import response"
-  ]
+  ],
+  "first_hosted_continuation": {
+    "run_id": 41562190081,
+    "head_sha": "fcc56ff73a02c9c71defd83757e0fa9c6479a1d0",
+    "source_tree": "b554875440bc0a1ed4afe5b5e0ff3cf137e96016",
+    "conclusion": "failure",
+    "python_tests_passed": 347,
+    "named_javascript_tests_passed": 80,
+    "established_browser_journeys_passed": 7,
+    "responsive_navigation_failed_check": 394,
+    "later_focused_journeys": "Skipped after navigation failure",
+    "cause": "The innerWidth-only harness wait advanced before the 390px-to-768px media-query change event revealed the desktop rail.",
+    "latest_hosted_status": "See the latest published head and hosted run in PR #183."
+  },
+  "viewport_wait_correction": {
+    "runtime_files_changed": false,
+    "existing_assertions_retained": true,
+    "legacy_wait_reproduction": {
+      "attempts": 7,
+      "failure": "Navigate to incoming-board is reachable by pointer: {'visible': False}",
+      "immediate": {
+        "width": 768,
+        "mobile": false,
+        "railHidden": true,
+        "toggleDisplay": "none",
+        "view": "incoming-board",
+        "events": [
+          {
+            "mobile": true,
+            "time": 289.19999999925494
+          },
+          {
+            "mobile": false,
+            "time": 318.5
+          },
+          {
+            "mobile": true,
+            "time": 369
+          },
+          {
+            "mobile": false,
+            "time": 385.80000000074506
+          },
+          {
+            "mobile": true,
+            "time": 420.5999999977648
+          },
+          {
+            "mobile": false,
+            "time": 435.69999999925494
+          },
+          {
+            "mobile": true,
+            "time": 489
+          },
+          {
+            "mobile": false,
+            "time": 634.6999999992549
+          },
+          {
+            "mobile": true,
+            "time": 669.0999999977648
+          },
+          {
+            "mobile": false,
+            "time": 685.6999999992549
+          },
+          {
+            "mobile": true,
+            "time": 702.6999999992549
+          },
+          {
+            "mobile": false,
+            "time": 718.8999999985099
+          },
+          {
+            "mobile": true,
+            "time": 752.1999999992549
+          }
+        ]
+      },
+      "after_render": {
+        "width": 768,
+        "mobile": false,
+        "railHidden": false,
+        "toggleDisplay": "none",
+        "view": "incoming-board",
+        "events": [
+          {
+            "mobile": true,
+            "time": 289.19999999925494
+          },
+          {
+            "mobile": false,
+            "time": 318.5
+          },
+          {
+            "mobile": true,
+            "time": 369
+          },
+          {
+            "mobile": false,
+            "time": 385.80000000074506
+          },
+          {
+            "mobile": true,
+            "time": 420.5999999977648
+          },
+          {
+            "mobile": false,
+            "time": 435.69999999925494
+          },
+          {
+            "mobile": true,
+            "time": 489
+          },
+          {
+            "mobile": false,
+            "time": 634.6999999992549
+          },
+          {
+            "mobile": true,
+            "time": 669.0999999977648
+          },
+          {
+            "mobile": false,
+            "time": 685.6999999992549
+          },
+          {
+            "mobile": true,
+            "time": 702.6999999992549
+          },
+          {
+            "mobile": false,
+            "time": 718.8999999985099
+          },
+          {
+            "mobile": true,
+            "time": 752.1999999992549
+          },
+          {
+            "mobile": false,
+            "time": 770.5
+          }
+        ]
+      },
+      "browser_errors": []
+    },
+    "render_wait_reproduction": {
+      "attempts": 100,
+      "failure": null,
+      "browser_errors": []
+    },
+    "full_navigation_reverification": {
+      "started_at": "2026-11-03T01:54:11.106739+00:00",
+      "finished_at": "2026-11-03T01:54:23.377546+00:00",
+      "checks_passed": 792,
+      "screenshots": 22,
+      "both_launchers": true,
+      "browser_errors": []
+    }
+  }
 }

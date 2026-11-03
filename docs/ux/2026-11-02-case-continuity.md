@@ -1,8 +1,11 @@
 # Healthcare redesign: case continuity and recovery
 
-**Work package:** OI-010, preserving the existing investigation workflow through the frontend redesign.  
-**Baseline:** PR #183 at `1cd5a17f8def6c13c7be230fb56fbfa748a3f24a`, source tree `9532038cbd653d8081d5d2e09154eabfc11fbc3a`.  
-**Project date:** 2 November 2026 (America/New_York; execution receipts may use 3 November UTC).  
+**Work package:** OI-010, preserving the existing investigation workflow through the frontend redesign.
+
+**Baseline:** PR #183 at `1cd5a17f8def6c13c7be230fb56fbfa748a3f24a`, source tree `9532038cbd653d8081d5d2e09154eabfc11fbc3a`.
+
+**Project date:** 2 November 2026 (America/New_York; execution receipts may use 3 November UTC).
+
 **Status:** implemented and locally verified. See PR #183 for the published revision's hosted verification status.
 
 ## Why this follow-up is needed
@@ -68,6 +71,14 @@ Runtime changes in this increment are limited to `web/app.js`, `web/intake.js`, 
 The initial unfinished-work run had 13 failing scenarios and one passing successful-import control. The initial disclosure/scope journey recorded nine failed assertions. Independent review then caught a same-case retry regression; its real worklist check failed before the correction. A further trusted keyboard test reproduced four assertions failing because a native event can execute microtasks between listeners. The canonical-owner notification corrected that path, and the final keyboard and recovery runs passed.
 
 One intermediate browser scenario timed out while initializing the viewport, before application checks. That unsuccessful environment attempt is preserved in the archive; the final complete native-keyboard run passed. The earlier redesign's documented intermittent backend conditions were not modified or claimed fixed.
+
+### Hosted responsive-navigation correction
+
+The first hosted continuation run, [41562190081](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41562190081), verified the exact published tree and runtime fingerprints. Its 347 Python tests, 80 JavaScript tests and seven established browser journeys passed. The responsive navigation journey stopped at check 394, while changing from 390px to 768px; the two later focused journeys were consequently skipped.
+
+A focused real-browser reproduction confirmed that CDP acknowledged the new viewport width before delivering the media-query change event. At the failed click, the mobile toggle already had desktop styling while the rail still had its previous mobile `hidden` state. The next rendering opportunity delivered the event and revealed the rail without changing the application or route. The same-hash worklist navigation had correctly left the route unchanged, so it did not incidentally synchronize the pending resize.
+
+The browser harness now waits for rendering frames after confirming the requested viewport width. All existing pointer, visibility, keyboard and overflow assertions remain intact. The pre-repair wait reproduced the failure again on resize attempt 7; the corrected wait completed 100 consecutive transitions. The full navigation journey then passed all 792 assertions across both launchers, with 22 captures and no captured application JavaScript errors. This correction changes no product runtime file. The archive preserves the initial hosted log, controlled pre-repair and corrected probe receipts, probe script and final navigation report. The latest published revision's complete hosted outcome is recorded in PR #183.
 
 ### Reproduction
 
