@@ -18,6 +18,7 @@ from .access import Authentication, Principal
 from .contracts import Contract
 from .database import Database
 from .record_requests import PostgresRecordRequests
+from .case_bindings import CanonicalCaseBindings
 
 TOKEN = re.compile(r"[A-Za-z0-9._~-]{32,256}\Z")
 
@@ -144,7 +145,7 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
                         return False
                     if action == "patient_create":
                         return subject == context.organization
-                    if action not in {"patient_read", "record_request_create", "record_request_read", "record_request_cancel"} or subject not in context.patient_ids:
+                    if action not in {"patient_read", "record_request_create", "record_request_read", "record_request_cancel", "case_binding_create", "case_binding_read", "case_binding_revoke"} or subject not in context.patient_ids:
                         return False
                     cursor = connection.cursor()
                     try:
