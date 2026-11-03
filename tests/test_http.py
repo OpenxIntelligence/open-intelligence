@@ -33,6 +33,8 @@ class HttpTests(unittest.TestCase):
 
     def request(self, path, data=None, headers=None):
         values = {'Content-Type': 'application/json'} if data is not None else {}
+        # B-01: case routes require a fictional actor; seed() grants this one.
+        values.setdefault('X-Fictional-Actor', 'FICTIONAL-NAVIGATOR-A')
         values.update(headers or {})
         request = Request(f'http://127.0.0.1:{self.port}{path}',
                           data=None if data is None else json.dumps(data).encode(), headers=values)
