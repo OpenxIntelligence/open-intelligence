@@ -162,6 +162,8 @@ def main():
                 assert cd.evaluate("document.querySelector('[data-testid=source-index]').textContent.includes('superseded')")
                 assert cd.evaluate("document.querySelector('[data-testid=source-index]').textContent.includes('Amended fictional marker is reported negative.')")
                 assert cd.evaluate("document.querySelectorAll('[data-testid=source-statement]').length===1")
+                from reading_convergence_journey import exercise as exercise_reading
+                exercise_reading(cd)
                 cd.evaluate("Array.from(document.querySelectorAll('nav[aria-label=\"Patient workspace\"] button')).find(b=>b.textContent.includes('Journey')).click()")
                 cd.evaluate("document.querySelector('[data-testid=world-load]').click()")
                 cd.wait("document.querySelector('[data-testid=world-history-count]')?.textContent==='1'",'world model retains superseded source')
