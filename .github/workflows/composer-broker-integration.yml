@@ -38,7 +38,8 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install exact bounded PDF runtime without extras
-        run: python -m pip install --require-hashes --only-binary=:all: --no-deps -r requirements-pdf.lock
+        run: |
+          python -m pip install --require-hashes --only-binary=:all: --no-deps -r requirements-pdf.lock
       - name: Verify head and available browser runtime
         run: |
           mkdir -p composer-broker-artifacts
