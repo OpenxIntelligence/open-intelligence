@@ -140,6 +140,17 @@ def changes_since_review(store: CaseStore, case_id: str, since_event_id: int | N
                         "evidence_version_id": details.get("evidence_version_id"),
                         "snapshot_id": snapshot_id,
                     })
+            elif event["kind"] == "broker_invalidated":
+                for snapshot_id in details.get("invalidated_snapshots", []):
+                    stale_causes.append({
+                        "event_id": event["id"],
+                        "occurred_at": event["occurred_at"],
+                        "cause": "broker_change",
+                        "reason": details.get("reason"),
+                        "rights_source_id": details.get("rights_source_id"),
+                        "broker_link_id": details.get("broker_link_id"),
+                        "snapshot_id": snapshot_id,
+                    })
         new_questions: list[dict] = []
         for event in after:
             if event["kind"] != "question_created":

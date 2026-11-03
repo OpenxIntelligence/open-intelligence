@@ -15,7 +15,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from open_intelligence import CaseStore, InvalidInput
-from open_intelligence.__main__ import Handler, seed
+from open_intelligence.__main__ import FICTIONAL_ACTOR_HEADER, Handler, seed
 
 ROOT = Path(__file__).resolve().parents[1]
 SAMPLE = ROOT / 'examples' / 'synthetic'
@@ -321,9 +321,12 @@ class PortfolioHttpTests(unittest.TestCase):
         cls.tmp.cleanup()
 
     def request(self, path, data=None):
+        headers = {FICTIONAL_ACTOR_HEADER: 'FICTIONAL-NAVIGATOR-A'}
+        if data is not None:
+            headers['Content-Type'] = 'application/json'
         request = Request(f'http://127.0.0.1:{self.port}{path}',
                           data=None if data is None else json.dumps(data).encode(),
-                          headers={'Content-Type': 'application/json'} if data is not None else {})
+                          headers=headers)
         try:
             with urlopen(request, timeout=5) as response:
                 content = response.read()
