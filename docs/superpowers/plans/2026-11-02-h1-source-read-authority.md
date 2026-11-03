@@ -94,3 +94,13 @@ revalidation, downstream investigation invalidation, and the earlier nullable
 terminal-reason CHECK expressions in acquisition/binding migrations (inspection
 finding, not changed or claimed fixed here). The write source/receipt owner,
 identity and source schema definitions remain with their existing PRs.
+
+The first exact-head hosted run [41562209884](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41562209884)
+failed one of 91 tests: the response model serialized UTC `+00:00` as `Z` after
+the index receipt digest had been calculated. The local server's non-UTC values
+did not expose this difference. A deterministic contract test reproduced all
+three UTC fractional-second cases locally. The source projection now uses the
+same existing Pydantic datetime serializer before hashing; the new test covers
+UTC and two non-UTC offsets, each with zero/millisecond/microsecond precision.
+This fixes the implementation rather than relaxing the receipt comparison.
+The subsequent hosted result must be checked at the corrected head.

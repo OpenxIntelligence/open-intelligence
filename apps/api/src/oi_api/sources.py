@@ -11,6 +11,9 @@ import hashlib
 import json
 import uuid
 from collections.abc import Callable
+from datetime import datetime
+
+from pydantic import TypeAdapter
 
 from open_intelligence.patient_registry import (
     PatientRegistryConflict, PatientRegistryDenied, PatientRegistryError, _key,
@@ -21,6 +24,8 @@ from open_intelligence.store import InvalidInput, parse_report
 from .case_bindings import _case_id
 from .record_requests import PostgresRecordRequests
 from .source_integrity import validate_original
+
+_TIMESTAMP_JSON = TypeAdapter(datetime)
 
 
 def _source_id(value: object) -> str:
@@ -80,7 +85,10 @@ class PostgresSourceVersions:
         return [
             {"source_id": r[0], "document_id": r[1], "version": r[2],
              "sha256": r[3], "kind": r[4], "event_date": r[5].isoformat(),
-             "issued_at": r[6].isoformat(), "received_at": r[7].isoformat(),
+             "issued_at": r[6].isoformat(),
+             # Use the same datetime serialization as the HTTP response model:
+             # UTC becomes Z rather than +00:00 before the audit digest is made.
+             "received_at": _TIMESTAMP_JSON.dump_python(r[7], mode="json"),
              "specimen_id": r[8], "state": r[9], "supersedes_id": r[10]}
             for r in rows
         ]
