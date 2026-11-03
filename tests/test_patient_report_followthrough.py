@@ -223,6 +223,57 @@ class PatientReportFollowthroughTests(unittest.TestCase):
         self.assertEqual(state, untouched)
         self.assertIn('"Préparer notes\\nFORGED HEADER"', item["text"])
 
+    def test_recorded_case_label_cannot_disrupt_report_or_its_voice_guard(self):
+        # add_case permits Unicode, newlines and clinical words in a label.
+        # The case's stored label must remain unchanged, but its report
+        # presentation must neither forge a new line nor block report output.
+        label = "Fictional therapy\nFORGED REVIEW APPROVAL\u202e"
+        self.store.add_case("CASE-GAMMA", label)
+        state = self.store.state("CASE-GAMMA")
+        report = build_patient_report(state)
+        exported = render_text(report)
+        safe = r"Fictional therapy\nFORGED REVIEW APPROVAL\u202e"
+        self.assertEqual(report["case_label"], safe)
+        self.assertIn(safe, exported)
+        self.assertNotIn("\nFORGED REVIEW APPROVAL", exported)
+        self.assertNotIn("\u202e", exported)
+        self.assertEqual(self.store.state("CASE-GAMMA")["case"]["label"], label)
+
+    def test_recorded_findings_questions_options_and_source_ids_render_literally(self):
+        # Exercise the projection boundary independently of parser-specific
+        # restrictions. The report never mutates its original case snapshot.
+        state = self.store.state("CASE-ALPHA")
+        state["assertions"][0]["quote"] = "Marker not measured\nFORGED CLINICIAN SIGNOFF\u202e"
+        state["assertions"][0]["finding_key"] = "finding\rINJECTED KEY"
+        state["sources"][0]["document_id"] = "PATH-ALPHA\nINJECTED DOCUMENT"
+        state["sources"][0]["specimen_id"] = "SPEC\u2028INJECTED SPECIMEN"
+        state["questions"][0]["question"] = "What is known?\nINJECTED QUESTION"
+        state["options"] = [{
+            "id": 9876, "label": "Option\u202eINJECTED LABEL",
+            "description": "See a source\nINJECTED OPTION",
+        }]
+        untouched = copy.deepcopy(state)
+        report = build_patient_report(state)
+        exported = render_text(report)
+        for escaped in (
+            r"Marker not measured\nFORGED CLINICIAN SIGNOFF\u202e",
+            r"finding\rINJECTED KEY",
+            r"PATH-ALPHA\nINJECTED DOCUMENT",
+            r"SPEC\u2028INJECTED SPECIMEN",
+            r"What is known?\nINJECTED QUESTION",
+            r"Option\u202eINJECTED LABEL",
+            r"See a source\nINJECTED OPTION",
+        ):
+            self.assertIn(escaped, exported)
+        for control in ("\r", "\u202e", "\u2028"):
+            self.assertNotIn(control, exported)
+        for spoofed_heading in (
+            "\nFORGED CLINICIAN SIGNOFF", "\nINJECTED DOCUMENT",
+            "\nINJECTED QUESTION", "\nINJECTED OPTION",
+        ):
+            self.assertNotIn(spoofed_heading, exported)
+        self.assertEqual(state, untouched)
+
     def test_new_report_framing_preserves_existing_language_guard(self):
         task_id = self.create_task()
         self.transition(task_id, "deferred")
