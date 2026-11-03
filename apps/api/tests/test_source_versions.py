@@ -149,7 +149,7 @@ class SourceVersionHTTPTests(unittest.TestCase):
                              ["superseded", "current"])
             self.assertEqual(after["sources"][1]["supersedes_id"], first["source_id"])
             self.assertEqual(after["source_reported_assertions"][0]["reported_state"], "negative")
-            self.assertEqual(after["source_reported_assertions"][0]["source_line"], 8)
+            self.assertEqual(after["source_reported_assertions"][0]["source_line"], 9)
             self.assertEqual(request(base, original_url, token=TOKEN_A)[1]["original_text"], ORIGINAL)
         with running_server(create_app(self.settings)) as restarted:
             self.assertEqual(request(restarted, self.url(patient), token=TOKEN_A)[1]["sources"][0]["sha256"],
