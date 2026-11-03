@@ -1,8 +1,7 @@
 """HTTP composition of the existing canonical patient registry, synthetic only."""
 
 from contextlib import contextmanager
-from datetime import datetime, timezone
-import re
+from datetime import datetime
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -14,15 +13,12 @@ from open_intelligence.patient_registry import (
 )
 from open_intelligence.postgres_registry import PostgresPatientRegistry
 
-from .access import Authentication, Principal
+from .access import Authentication, Principal, authenticate_request
 from .contracts import Contract
 from .database import Database
 from .record_requests import PostgresRecordRequests
 from .case_bindings import CanonicalCaseBindings
 from .sources import PostgresSourceVersions
-
-TOKEN = re.compile(r"[A-Za-z0-9._~-]{32,256}\Z")
-
 
 class CreatePatient(Contract):
     synthetic: StrictBool
@@ -219,6 +215,7 @@ class OriginalSourceIndex(Contract):
     contract: Literal["oi.synthetic-original-sources/1"]
     patient_id: str
     case_id: str
+    access_receipt_id: str
     sources: list[SourceVersion]
     source_reported_assertions: list[SourceFinding]
     synthetic: Literal[True]
@@ -229,6 +226,7 @@ class OriginalSourceIndex(Contract):
 class OriginalSource(Contract):
     source_id: str
     case_id: str
+    access_receipt_id: str
     document_id: str
     version: int
     state: Literal["current", "superseded"]
@@ -244,24 +242,7 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
                         description="Local synthetic fixture credential. Not a patient account or clinical consent.")
 
     def principal(request: Request, credentials: HTTPAuthorizationCredentials | None = Depends(bearer)) -> Principal:
-        values = request.headers.getlist("authorization")
-        if len(values) != 1:
-            raise HTTPException(401, "Authentication required", headers={"WWW-Authenticate": "Bearer"})
-        scheme, _, token = values[0].partition(" ")
-        if scheme.lower() != "bearer" or not TOKEN.fullmatch(token):
-            raise HTTPException(401, "Authentication required", headers={"WWW-Authenticate": "Bearer"})
-        try:
-            context = authentication.authenticate(token)
-        except Exception:
-            # Auth provider errors never grant authority or expose config/keys.
-            raise HTTPException(503, "Access service unavailable") from None
-        if context is None:
-            raise HTTPException(401, "Authentication required", headers={"WWW-Authenticate": "Bearer"})
-        if not isinstance(context, Principal):
-            raise HTTPException(503, "Access service unavailable")
-        if context.expires_at <= datetime.now(timezone.utc):
-            raise HTTPException(401, "Authentication required", headers={"WWW-Authenticate": "Bearer"})
-        return context
+        return authenticate_request(request, authentication)
 
     @contextmanager
     def registry(context: Principal):
@@ -429,15 +410,25 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
         return CaseBindingReceipt(**result)
 
 
+    def refresh_source_authority(request, initial, patients, patient_id, action):
+        current = authenticate_request(request, authentication)
+        if (current.actor, current.organization, current.purpose) != (
+                initial.actor, initial.organization, initial.purpose):
+            raise PatientRegistryDenied("Source authority changed")
+        records_authorized(patients, current, patient_id, action)
+
     @router.get("/{patient_id}/cases/{case_id}/sources", response_model=OriginalSourceIndex,
                 responses=errors, operation_id="list_original_sources_v1")
-    def list_original_sources(patient_id: str, case_id: str,
+    def list_original_sources(request: Request, patient_id: str, case_id: str,
                               context: Principal = Depends(principal)):
         try:
             with registry(context) as patients:
                 records_authorized(patients, context, patient_id, "source_read")
                 result = PostgresSourceVersions(patients).list(
-                    patient_id, case_id, organization=context.organization)
+                    patient_id, case_id, organization=context.organization,
+                    actor=context.actor, purpose=context.purpose,
+                    recheck_authority=lambda: refresh_source_authority(
+                        request, context, patients, patient_id, "source_read"))
                 return OriginalSourceIndex(**result)
         except PatientRegistryDenied:
             raise HTTPException(404, "Source unavailable") from None
@@ -464,13 +455,16 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
     @router.get("/{patient_id}/cases/{case_id}/sources/{source_id}",
                 response_model=OriginalSource, responses=errors,
                 operation_id="read_exact_original_source_v1")
-    def original_source(patient_id: str, case_id: str, source_id: str,
+    def original_source(request: Request, patient_id: str, case_id: str, source_id: str,
                         context: Principal = Depends(principal)):
         try:
             with registry(context) as patients:
                 records_authorized(patients, context, patient_id, "source_original_read")
                 result = PostgresSourceVersions(patients).original(
-                    patient_id, case_id, source_id, organization=context.organization)
+                    patient_id, case_id, source_id, organization=context.organization,
+                    actor=context.actor, purpose=context.purpose,
+                    recheck_authority=lambda: refresh_source_authority(
+                        request, context, patients, patient_id, "source_original_read"))
                 return OriginalSource(**result)
         except PatientRegistryDenied:
             raise HTTPException(404, "Source unavailable") from None
