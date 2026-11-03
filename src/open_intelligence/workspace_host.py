@@ -16,12 +16,22 @@ def workspace_html() -> str:
     edits={
         '<link rel="stylesheet" href="/style.css">': '<link rel="stylesheet" href="/style.css">\n  <link rel="stylesheet" href="/intake.css">',
         '<script src="/app.js" defer></script>': '<script src="/intake.js" defer></script>\n  <script src="/app.js" defer></script>',
-        '<script src="/literature.js" defer></script>': '<script src="/literature.js" defer></script>\n  <script src="/workspace-entry.js" defer></script>',
         '<body>': '<body data-workspace-state="loading">',
         '<p class="muted tiny">Fictional case data stays': '<button class="button secondary" type="button" id="new-workspace-button">Create workspace</button>\n      <p class="muted tiny">Fictional case data stays',
         '<a href="#sources">Sources and findings</a>': '<a href="#source-intake">Add original records</a>\n          <a href="#sources">Sources and findings</a>',
         '      <div class="metrics" id="metrics" aria-live="polite"></div>': (WEB/'workspace-entry.html').read_text(encoding='utf-8')+'      <div class="metrics" id="metrics" aria-live="polite"></div>',
     }
+    # The clinical-core parent does not enable the optional literature panel.
+    # Attach after the latest existing owned script, not a fabricated feature.
+    # If neither known version of the page exists, fail closed for review.
+    late_scripts = (
+        '<script src="/literature.js" defer></script>',
+        '<script src="/mission.js" defer></script>',
+    )
+    late = next((script for script in late_scripts if html.count(script) == 1), None)
+    if late is None:
+        raise ValueError('Workspace script slot missing; reconcile owner template.')
+    edits[late] = late + '\n  <script src="/workspace-entry.js" defer></script>'
     for old,new in edits.items():
         if html.count(old)!=1:
             raise ValueError('Workspace owner template changed; entry requires reconciliation.')
