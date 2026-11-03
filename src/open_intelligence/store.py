@@ -233,6 +233,14 @@ CREATE TABLE IF NOT EXISTS assertions (
   source_line INTEGER NOT NULL,
   UNIQUE(source_version_id,finding_key)
 );
+CREATE TABLE IF NOT EXISTS document_intake_metadata (
+  source_version_id INTEGER PRIMARY KEY REFERENCES source_versions(id),
+  filename TEXT NOT NULL, media_type TEXT NOT NULL,
+  extraction_method TEXT NOT NULL, annotation_method TEXT NOT NULL,
+  manual_transcription_confirmed INTEGER NOT NULL CHECK(manual_transcription_confirmed=1),
+  clinical_review TEXT NOT NULL CHECK(clinical_review='not_performed'),
+  review_sha256 TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS questions (
   id INTEGER PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(case_id),
   question TEXT NOT NULL, state TEXT NOT NULL CHECK(state IN ('open','addressed')),
@@ -593,98 +601,169 @@ class CaseStore:
         digest = hashlib.sha256(raw).hexdigest()
         with self.db:
             self.db.execute("BEGIN IMMEDIATE")
-            if report.patient_id != case_id:
-                # Idempotent quarantine across repeated wrong-case deliveries.
-                existing = self.db.execute(
-                    "SELECT id FROM quarantine WHERE target_case_id=? AND sha256=? ORDER BY id LIMIT 1",
-                    (case_id, digest)).fetchone()
-                if existing:
-                    return {"result": "quarantined", "reason": "patient_mismatch",
-                            "quarantine_id": existing["id"], "duplicate": True}
-                cur = self.db.execute(
-                    "INSERT INTO quarantine (target_case_id,declared_patient_id,sha256,raw,reason,received_at) VALUES (?,?,?,?,?,?)",
-                    (case_id, report.patient_id, digest, raw, "patient_mismatch", now_utc()))
-                self._event(case_id, "source_quarantined", quarantine_id=cur.lastrowid, reason="patient_mismatch")
-                return {"result": "quarantined", "reason": "patient_mismatch", "quarantine_id": cur.lastrowid}
+            return self._import_report_in_transaction(case_id, raw, report, digest)
+
+    def preview_document(self, case_id: str, raw: bytes, filename: str) -> dict:
+        """Read-only plain-text preview; no inferred assertions or persistent upload."""
+        from .document_intake import preview_text
+        case_id = self._case(case_id)
+        return {"case_id": case_id, **preview_text(raw, filename)}
+
+    def _document_intake_receipts(self, case_id: str) -> dict[int, dict]:
+        """Read existing source-linked receipts inside the caller snapshot."""
+        rows = self._dicts(self.db.execute(
+            """SELECT d.* FROM document_intake_metadata d
+            JOIN source_versions s ON s.id=d.source_version_id WHERE s.case_id=?""",
+            (case_id,)).fetchall())
+        receipts = {}
+        for row in rows:
+            source_id = row.pop("source_version_id")
+            row["manual_transcription_confirmed"] = bool(row["manual_transcription_confirmed"])
+            receipts[source_id] = row
+        return receipts
+
+    def import_document(self, case_id: str, raw: bytes, filename: str,
+                        metadata: dict, findings: list[dict],
+                        expected_sha256: str, confirmed_case_id: str) -> dict:
+        """Commit explicitly confirmed manual transcription to the original ledger.
+
+        The reviewed annotations are immutable for a given original. A filename
+        change is an idempotent retry, retaining the original upload filename.
+        All source, freshness, event and intake receipt writes share one lock.
+        """
+        from .document_intake import review_text
+        case_id = self._case(case_id)
+        report, receipt = review_text(case_id, raw, filename, metadata, findings,
+                                      expected_sha256, confirmed_case_id)
+        digest = hashlib.sha256(raw).hexdigest()
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            # Check the original across this case, so changing a document ID
+            # cannot silently reuse identical bytes with different annotations.
             duplicate = self.db.execute(
-                "SELECT id,version FROM source_versions WHERE case_id=? AND document_id=? AND sha256=?",
-                (case_id, report.document_id, digest)).fetchone()
-            if duplicate:
+                """SELECT s.id,s.version,d.review_sha256 FROM source_versions s
+                LEFT JOIN document_intake_metadata d ON d.source_version_id=s.id
+                WHERE s.case_id=? AND s.sha256=? ORDER BY s.id LIMIT 1""",
+                (case_id, digest)).fetchone()
+            if duplicate is not None:
+                if duplicate["review_sha256"] != receipt["review_sha256"]:
+                    raise InvalidInput("Original bytes already exist with different metadata or findings")
                 return {"result": "duplicate", "source_id": duplicate["id"], "version": duplicate["version"]}
-            previous = self.db.execute(
-                "SELECT id,version,kind,event_date,specimen_id FROM source_versions WHERE case_id=? AND document_id=? ORDER BY version DESC LIMIT 1",
-                (case_id, report.document_id)).fetchone()
-            if previous and report.amends != (report.document_id, previous["version"]):
-                raise InvalidInput("Changed document requires Amends: DOCUMENT-ID@LATEST-VERSION")
-            if not previous and report.amends is not None:
-                raise InvalidInput("First document version cannot have Amends")
-            if previous and (previous["kind"], previous["event_date"], previous["specimen_id"]) != (report.kind, report.event_date, report.specimen_id):
-                raise InvalidInput("Amendment cannot change report type, event date, or specimen; create a distinct document")
-            version = previous["version"] + 1 if previous else 1
-            if previous:
-                self.db.execute("UPDATE source_versions SET state='superseded' WHERE id=?", (previous["id"],))
+            result = self._import_report_in_transaction(case_id, raw, report, digest)
+            self.db.execute(
+                """INSERT INTO document_intake_metadata
+                (source_version_id,filename,media_type,extraction_method,annotation_method,
+                 manual_transcription_confirmed,clinical_review,review_sha256)
+                VALUES (?,?,?,?,?,?,?,?)""",
+                (result["source_id"], receipt["filename"], receipt["media_type"],
+                 receipt["extraction_method"], receipt["annotation_method"],
+                 int(receipt["manual_transcription_confirmed"]), receipt["clinical_review"],
+                 receipt["review_sha256"]))
+            self._event(case_id, "document_transcription_confirmed",
+                        source_id=result["source_id"], sha256=digest,
+                        review_sha256=receipt["review_sha256"],
+                        extraction_method=receipt["extraction_method"],
+                        annotation_method=receipt["annotation_method"],
+                        clinical_review="not_performed")
+            return result
+
+    def _import_report_in_transaction(self, case_id: str, raw: bytes,
+                                      report: ParsedReport, digest: str) -> dict:
+        """Shared source/version/assertion persistence under the caller write lock."""
+        if not self.db.in_transaction:
+            raise InvalidInput("Source import requires its owning write transaction")
+        if report.patient_id != case_id:
+            # Idempotent quarantine across repeated wrong-case deliveries.
+            existing = self.db.execute(
+                "SELECT id FROM quarantine WHERE target_case_id=? AND sha256=? ORDER BY id LIMIT 1",
+                (case_id, digest)).fetchone()
+            if existing:
+                return {"result": "quarantined", "reason": "patient_mismatch",
+                        "quarantine_id": existing["id"], "duplicate": True}
             cur = self.db.execute(
-                """INSERT INTO source_versions
-                (case_id,document_id,version,sha256,raw,kind,event_date,issued_at,received_at,specimen_id,state,supersedes_id)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (case_id, report.document_id, version, digest, raw, report.kind, report.event_date,
-                 report.issued_at, now_utc(), report.specimen_id, "current", previous["id"] if previous else None))
-            source_id = cur.lastrowid
-            for finding in report.findings:
-                self.db.execute("""INSERT INTO assertions
-                    (case_id,source_version_id,finding_key,certainty,quote,source_line)
-                    VALUES (?,?,?,?,?,?)""",
-                    (case_id, source_id, finding.key, finding.state, finding.quote, finding.line))
-            invalidated = []
-            invalidated_options = []
-            if previous:
-                invalidated = [row[0] for row in self.db.execute(
-                    """SELECT snapshots.id FROM snapshots JOIN snapshot_sources
-                    ON snapshots.id=snapshot_sources.snapshot_id
-                    WHERE snapshots.case_id=? AND snapshot_sources.source_version_id=? AND snapshots.state!='stale'""",
-                    (case_id, previous["id"])).fetchall()]
-                if invalidated:
-                    marks = ",".join("?" for _ in invalidated)
-                    self.db.execute(f"UPDATE snapshots SET state='stale' WHERE id IN ({marks})", invalidated)
-                    self.db.execute(f"""UPDATE questions SET state='open' WHERE case_id=? AND id IN
-                        (SELECT question_id FROM snapshots WHERE id IN ({marks}))""", [case_id, *invalidated])
-                    # An amendment changes freshness for investigations too:
-                    # they cite the superseded source's facts, so mark them stale
-                    # rather than silently leaving them current.
-                    self.db.execute("UPDATE investigations SET stale=1 WHERE case_id=? AND stale=0", (case_id,))
-                # OI-021, same transaction: only options in THIS case that
-                # cite the superseded version or a stale snapshot reopen.
-                invalidated_options = self._invalidate_options(
-                    snapshot_ids=set(invalidated), source_version_ids={previous["id"]},
-                    evidence_version_ids=set())
-                if invalidated_options:
-                    self._event(case_id, "option_review_reopened",
-                                source_version_id=previous["id"],
-                                invalidated_options=invalidated_options)
-            invalidated_inventory = []
-            if previous:
-                # Anchor-exact, like snapshots: only assertions citing the
-                # superseded version go stale. Assertions on other versions,
-                # assets themselves, and all historic rows are preserved.
-                # Deliberate scope boundary (OI-020): staleness does NOT
-                # propagate transitively to derivative assets; each child's
-                # own assertion anchor and parent chain stay visible, so a
-                # reader can see a parent's assertions went stale.
-                invalidated_inventory = [row[0] for row in self.db.execute(
-                    """SELECT id FROM biological_inventory_assertions
-                    WHERE case_id=? AND source_version_id=? AND state='current'""",
-                    (case_id, previous["id"])).fetchall()]
-                if invalidated_inventory:
-                    marks = ",".join("?" for _ in invalidated_inventory)
-                    self.db.execute(f"UPDATE biological_inventory_assertions SET state='stale' WHERE id IN ({marks})",
-                                    invalidated_inventory)
-            self._event(case_id, "source_imported", document_id=report.document_id,
-                        version=version, source_id=source_id, amends_id=previous["id"] if previous else None,
-                        invalidated_snapshots=invalidated, invalidated_options=invalidated_options,
-                        invalidated_inventory_assertions=invalidated_inventory)
-            return {"result": "imported", "source_id": source_id, "version": version,
-                    "invalidated_snapshots": invalidated, "invalidated_options": invalidated_options,
-                    "invalidated_inventory_assertions": invalidated_inventory}
+                "INSERT INTO quarantine (target_case_id,declared_patient_id,sha256,raw,reason,received_at) VALUES (?,?,?,?,?,?)",
+                (case_id, report.patient_id, digest, raw, "patient_mismatch", now_utc()))
+            self._event(case_id, "source_quarantined", quarantine_id=cur.lastrowid, reason="patient_mismatch")
+            return {"result": "quarantined", "reason": "patient_mismatch", "quarantine_id": cur.lastrowid}
+        duplicate = self.db.execute(
+            "SELECT id,version FROM source_versions WHERE case_id=? AND document_id=? AND sha256=?",
+            (case_id, report.document_id, digest)).fetchone()
+        if duplicate:
+            return {"result": "duplicate", "source_id": duplicate["id"], "version": duplicate["version"]}
+        previous = self.db.execute(
+            "SELECT id,version,kind,event_date,specimen_id FROM source_versions WHERE case_id=? AND document_id=? ORDER BY version DESC LIMIT 1",
+            (case_id, report.document_id)).fetchone()
+        if previous and report.amends != (report.document_id, previous["version"]):
+            raise InvalidInput("Changed document requires Amends: DOCUMENT-ID@LATEST-VERSION")
+        if not previous and report.amends is not None:
+            raise InvalidInput("First document version cannot have Amends")
+        if previous and (previous["kind"], previous["event_date"], previous["specimen_id"]) != (report.kind, report.event_date, report.specimen_id):
+            raise InvalidInput("Amendment cannot change report type, event date, or specimen; create a distinct document")
+        version = previous["version"] + 1 if previous else 1
+        if previous:
+            self.db.execute("UPDATE source_versions SET state='superseded' WHERE id=?", (previous["id"],))
+        cur = self.db.execute(
+            """INSERT INTO source_versions
+            (case_id,document_id,version,sha256,raw,kind,event_date,issued_at,received_at,specimen_id,state,supersedes_id)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (case_id, report.document_id, version, digest, raw, report.kind, report.event_date,
+             report.issued_at, now_utc(), report.specimen_id, "current", previous["id"] if previous else None))
+        source_id = cur.lastrowid
+        for finding in report.findings:
+            self.db.execute("""INSERT INTO assertions
+                (case_id,source_version_id,finding_key,certainty,quote,source_line)
+                VALUES (?,?,?,?,?,?)""",
+                (case_id, source_id, finding.key, finding.state, finding.quote, finding.line))
+        invalidated = []
+        invalidated_options = []
+        if previous:
+            invalidated = [row[0] for row in self.db.execute(
+                """SELECT snapshots.id FROM snapshots JOIN snapshot_sources
+                ON snapshots.id=snapshot_sources.snapshot_id
+                WHERE snapshots.case_id=? AND snapshot_sources.source_version_id=? AND snapshots.state!='stale'""",
+                (case_id, previous["id"])).fetchall()]
+            if invalidated:
+                marks = ",".join("?" for _ in invalidated)
+                self.db.execute(f"UPDATE snapshots SET state='stale' WHERE id IN ({marks})", invalidated)
+                self.db.execute(f"""UPDATE questions SET state='open' WHERE case_id=? AND id IN
+                    (SELECT question_id FROM snapshots WHERE id IN ({marks}))""", [case_id, *invalidated])
+                # An amendment changes freshness for investigations too:
+                # they cite the superseded source's facts, so mark them stale
+                # rather than silently leaving them current.
+                self.db.execute("UPDATE investigations SET stale=1 WHERE case_id=? AND stale=0", (case_id,))
+            # OI-021, same transaction: only options in THIS case that
+            # cite the superseded version or a stale snapshot reopen.
+            invalidated_options = self._invalidate_options(
+                snapshot_ids=set(invalidated), source_version_ids={previous["id"]},
+                evidence_version_ids=set())
+            if invalidated_options:
+                self._event(case_id, "option_review_reopened",
+                            source_version_id=previous["id"],
+                            invalidated_options=invalidated_options)
+        invalidated_inventory = []
+        if previous:
+            # Anchor-exact, like snapshots: only assertions citing the
+            # superseded version go stale. Assertions on other versions,
+            # assets themselves, and all historic rows are preserved.
+            # Deliberate scope boundary (OI-020): staleness does NOT
+            # propagate transitively to derivative assets; each child's
+            # own assertion anchor and parent chain stay visible, so a
+            # reader can see a parent's assertions went stale.
+            invalidated_inventory = [row[0] for row in self.db.execute(
+                """SELECT id FROM biological_inventory_assertions
+                WHERE case_id=? AND source_version_id=? AND state='current'""",
+                (case_id, previous["id"])).fetchall()]
+            if invalidated_inventory:
+                marks = ",".join("?" for _ in invalidated_inventory)
+                self.db.execute(f"UPDATE biological_inventory_assertions SET state='stale' WHERE id IN ({marks})",
+                                invalidated_inventory)
+        self._event(case_id, "source_imported", document_id=report.document_id,
+                    version=version, source_id=source_id, amends_id=previous["id"] if previous else None,
+                    invalidated_snapshots=invalidated, invalidated_options=invalidated_options,
+                    invalidated_inventory_assertions=invalidated_inventory)
+        return {"result": "imported", "source_id": source_id, "version": version,
+                "invalidated_snapshots": invalidated, "invalidated_options": invalidated_options,
+                "invalidated_inventory_assertions": invalidated_inventory}
 
 
     # ---- OI-021: reviewed option/dependency view (derived projection) ----
@@ -2167,6 +2246,11 @@ class CaseStore:
             FROM assertions JOIN source_versions ON source_versions.id=assertions.source_version_id
             WHERE assertions.case_id=? AND source_versions.state='current' ORDER BY assertions.id""",
             (case_id,)).fetchall())
+        from .document_intake import classification_provenance
+        intake_by_source = self._document_intake_receipts(case_id)
+        for assertion in assertions:
+            if assertion["source_version_id"] in intake_by_source:
+                assertion.update(classification_provenance(intake_by_source[assertion["source_version_id"]]))
         assessments = self._dicts(self.db.execute(
             """SELECT a.id,a.relation,a.applicability,a.rationale,v.statement
             FROM evidence_assessments a JOIN evidence_versions v ON v.id=a.evidence_version_id
@@ -2235,11 +2319,21 @@ class CaseStore:
                 """SELECT id,document_id,version,sha256,kind,event_date,issued_at,received_at,
                 specimen_id,state,supersedes_id FROM source_versions WHERE case_id=?
                 ORDER BY event_date,document_id,version""", (case_id,)).fetchall())
+            from .document_intake import classification_provenance
+            intake_by_source = self._document_intake_receipts(case_id)
+            for source in source_rows:
+                if source["id"] in intake_by_source:
+                    receipt = intake_by_source[source["id"]]
+                    source["document_intake"] = receipt
+                    source.update(classification_provenance(receipt))
             assert_rows = self._dicts(self.db.execute(
                 """SELECT assertions.id,source_version_id,finding_key,certainty,quote,source_line
                 FROM assertions JOIN source_versions ON source_versions.id=assertions.source_version_id
                 WHERE assertions.case_id=? AND source_versions.state='current' ORDER BY assertions.id""",
                 (case_id,)).fetchall())
+            for assertion in assert_rows:
+                if assertion["source_version_id"] in intake_by_source:
+                    assertion.update(classification_provenance(intake_by_source[assertion["source_version_id"]]))
             snapshot_rows = self._dicts(self.db.execute(
                 "SELECT * FROM snapshots WHERE case_id=? ORDER BY id DESC", (case_id,)).fetchall())
             for snapshot in snapshot_rows:
@@ -2316,6 +2410,30 @@ class CaseStore:
             raise InvalidInput("Source not in this case")
         return bytes(row["raw"]).decode("utf-8")
 
+    def source_document(self, case_id: str, source_id: int) -> dict:
+        """Retrieve exact original bytes and safe download metadata for one case."""
+        self._case(case_id)
+        if type(source_id) is not int or not 1 <= source_id <= 9223372036854775807:
+            raise InvalidInput("Source ID must be a bounded positive integer")
+        row = self.db.execute(
+            """SELECT s.id,s.document_id,s.version,s.raw,s.sha256,d.filename,d.media_type,
+            d.extraction_method,d.annotation_method,d.manual_transcription_confirmed
+            FROM source_versions s LEFT JOIN document_intake_metadata d ON d.source_version_id=s.id
+            WHERE s.case_id=? AND s.id=?""", (case_id, source_id)).fetchone()
+        if row is None:
+            raise InvalidInput("Source not in this case")
+        raw = bytes(row["raw"])
+        return {
+            "source_id": row["id"], "document_id": row["document_id"], "version": row["version"],
+            "raw": raw, "sha256": row["sha256"], "byte_count": len(raw),
+            "filename": row["filename"] or f"{row['document_id']}-v{row['version']}.txt",
+            "media_type": row["media_type"] or "text/plain; charset=utf-8",
+            "extraction_method": row["extraction_method"] or "synthetic-authored-format-v1",
+            "annotation_method": row["annotation_method"] or "source-authored-finding-lines",
+            "manual_transcription_confirmed": bool(row["manual_transcription_confirmed"]),
+            "clinical_review": "not_performed",
+        }
+
     def export_markdown(self, case_id: str, snapshot_id: int) -> str:
         self._case(case_id)
         # Explicit read transaction keeps status and source/evidence versions
@@ -2328,6 +2446,7 @@ class CaseStore:
                 raise InvalidInput("Investigation not in this case")
             sources = self.db.execute("""SELECT v.* FROM source_versions v JOIN snapshot_sources ss ON ss.source_version_id=v.id
                 WHERE ss.snapshot_id=? ORDER BY v.document_id,v.version""", (snapshot_id,)).fetchall()
+            intake_by_source = self._document_intake_receipts(case_id)
             lines = ["# Open Intelligence — synthetic investigation", "",
                      "> Research demonstration only. No clinical review or patient-specific treatment recommendation.", "",
                      f"Case: `{case_id}` | Investigation: {snapshot_id} | State: **{snapshot['state']}**",
@@ -2340,8 +2459,17 @@ class CaseStore:
                 longest = max((len(run) for run in re.findall(r"`+", raw_text)), default=0)
                 fence = "`" * max(3, longest + 1)
                 lines.extend([f"### {source['document_id']}@{source['version']} — {source['state']}", "",
-                              f"SHA-256: `{source['sha256']}` | Event: {source['event_date']} | Issued: {source['issued_at']}", "",
-                              fence + "text", raw_text, fence, ""])
+                              f"SHA-256: `{source['sha256']}` | Event: {source['event_date']} | Issued: {source['issued_at']}", ""])
+                if source["id"] in intake_by_source:
+                    receipt = intake_by_source[source["id"]]
+                    lines.extend([
+                        "Manual transcription provenance: `classification_origin=user_selected` | "
+                        f"`annotation_method={receipt['annotation_method']}` | `clinical_review=not_performed`",
+                        f"Transcription review SHA-256: `{receipt['review_sha256']}`",
+                        "The literal quote is primary; user-selected classifications are not source-authored "
+                        "or clinically verified. Transcription confirmation is not clinical approval.", "",
+                    ])
+                lines.extend([fence + "text", raw_text, fence, ""])
             evidence = self.db.execute("""SELECT a.*,v.evidence_key,v.version,v.state AS evidence_state,
                 v.title,v.sha256,v.raw,v.rights,v.statement_line FROM snapshot_evidence se
                 JOIN evidence_assessments a ON a.id=se.assessment_id

@@ -23,6 +23,28 @@ The browser journeys require an installed Chrome or Chromium executable. GitHub 
 
 For the demonstration: create a question in `CASE-ALPHA`, save an investigation draft linked to the pathology document, acknowledge it in demo mode, load the example amendment, and import it. The prior investigation becomes `stale`, the question reopens, and the original source remains accessible. Draft a replacement against the amended document. `CASE-BETA` remains unaffected.
 
+### Add an ordinary text record
+
+The **Add a record** section accepts UTF-8 `.txt` files without a custom report
+header. Use `examples/synthetic/plaintext-record.txt`, which is independently
+fictional. Preview the file, select exact source passages if needed, enter the
+record's document reference/type/dates, and confirm its case and transcription.
+The original bytes, including BOM and CRLF if present, remain unchanged. The
+saved source appears in the existing timeline, source reader, question/draft
+workspace and Composer. Download retrieves the original file, not generated
+text. An amendment uses the same document reference and latest version number.
+
+Selected passages and their statuses are explicitly labeled as manual entries,
+with clinical review not performed, throughout patient views, AI inputs and
+exports. They are not inferred or verified clinical facts. The existing
+structured fixture importer is retained under **Structured development fixtures**.
+
+This increment supports text up to 64 KiB, 512 lines and 30 selected single-line
+passages within a 128 KiB request. PDF/OCR and post-save annotation editing are
+not implemented. Saving an original with no passages does not allow adding
+passages afterward in this version. See the [intake contract and verification
+record](docs/engineering/DOCUMENT_INTAKE.md) for API, source ownership and limits.
+
 **Scope and warnings:** this is local-only software with no authentication, no access controls suitable for PHI, no clinical inference, no live literature or trials, and no clinical review. Never insert real patient data. The supported structured test format is `OI-SYNTHETIC-REPORT/1`, not a general-purpose clinical document parser. Source statements are author-supplied within report bytes. There is no treatment recommender, trial matching, or AI agent. The demo reviewer acknowledgment cannot attest professional credentials. The engineering controls are not evidence of medical safety or regulatory status.
 
 The project distribution license remains undecided. Public source visibility is not an open-source license grant. All test reports and UI code are independently authored for this repository.
