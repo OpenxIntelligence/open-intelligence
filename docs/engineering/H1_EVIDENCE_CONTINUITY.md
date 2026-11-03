@@ -480,3 +480,114 @@ its PR body. No new hosted success is claimed at this local checkpoint; the web
 journey does not constitute a fresh standalone full API/backup-restore suite.
 Independently authored fictional inputs only; no external notification, model
 activation, real-patient processing, clinical approval, merge or deployment.
+
+## Follow-up history timestamp validity — 3 November 2026
+
+This bounded continuation extends OI-007/009/010 and the existing canonical
+question/follow-through work (#295/#121). Its base is #364
+`243d15fdaba112f93f7d3d258311d8b82e730015`. All 422 base source files were
+recovered from the verified artifact and matched to their Git blob identities.
+The existing patient-journey crosswalk and dependency-gate integration remain.
+
+The task client used `Date.parse` as timestamp validation. It accepted nonexistent
+calendar days, year zero, midnight rollover, minute-only timestamps and precision
+outside the task API's seconds/up-to-six-fractional-digit PostgreSQL format.
+A bad refreshed history therefore remained actionable. Sixteen independently
+fault-injected real-session controls reproduced this (ready instead of error);
+26 passing controls remained, including a valid timestamp preservation test.
+
+The task decoder now reuses the existing strict PostgreSQL-shaped citation
+validator. Both task creation and status-event timestamps must pass before the
+list is exposed. Valid offsets, leap dates and microseconds remain verbatim.
+Revision order is preserved; no clock-order assumption, timestamp rewriting,
+new patient ledger, dependency, backend, schema or authority change is introduced.
+
+Local validation: 72 task/attention/evidence-chronology controls and 13 filesystem
+rights controls passed, with zero failures/skips. Python browser-helper syntax and
+whitespace checks passed. Local TypeScript execution used Node's type stripping,
+not a compiler/build claim. The existing hosted workflow must run full `npm test`,
+TypeScript/Vite build, actual installed rights checks and PostgreSQL/API/Chromium
+acceptance on the published head.
+
+The browser regression corrupts only copies of actual authorized HTTP responses,
+retains original/injected values separately, and requires task history, attention
+counts and transition controls to disappear. Fresh valid reads must recover the
+unchanged original tasks with no additional write or grant change. It does not
+claim the genuine backend emits malformed timestamps. Exact hosted results belong
+in the draft PR description after execution; they are pending at this checkpoint.
+
+Independently authored fictional data only. No model activation, clinical
+approval, real-patient processing, merge or deployment.
+
+## Connected Review and follow-up chronology — 3 November 2026
+
+This continuation extends OI-007/009/010/013 on the verified Review-draft owner
+#368 `2d62b05357ad64524d561c2e05c903674cd4e54c`. Its source was recovered from
+artifact `13265501154`; the downloaded SHA-256
+`d0fa908782025a76312430cca3597ec691c2cb65ae83d2e9259ac04f74b174ed` matched,
+and all 423 blobs and modes reproduced tree
+`0544f4a2d58cf95fd48973adf4f68a475121f0b7`.
+
+The composition retains #368's exact unsent Review-reason ownership and combines
+#369 `3c028ddfb4b408571b36140a5e5b52115c7bd790` without overlapping application
+edits. Its three task decoder/test/browser files are reused exactly. The H1 web
+workflow is reused exactly from #367
+`bbf56762e73f50fbe6432768deb605ed03edf09b`, blob
+`0052ad3c134b55f681838b617db6df94835aa70f`: changes to shared source, reference
+tests and the existing data-boundary audit now trigger web acceptance, and that
+audit runs before package acquisition. It is a known-entrypoint source audit,
+not an egress sandbox or general patient-data scanner.
+
+The intended merge parents are #368, #369 and #360
+`f200dd107871d89703267ee0d1a14b2d1ca64d36`, in that order. The third parent
+preserves the original #330/#339 ancestry. Their runtime corrections and the
+patient-journey crosswalk remain represented; the current ledger retains the
+newer intake, draft and receipt-recovery history rather than copying every older
+paragraph verbatim. #367's other documentation changes remain a separate
+reconciliation. Existing contributor branches are not rewritten or retargeted.
+
+Independent boundary review identified an inherited Review decoder gap: question
+and return-history `created_at` fields accepted impossible calendar dates, year
+zero and hour-24 rollover through `Date.parse`. This is a client contract and
+disclosure defect, not evidence that the PostgreSQL owner emits invalid dates.
+The decoder now reuses the same existing strict, timezone-bearing
+seconds/up-to-six-fractional-digit validator as task and citation history. No
+date is rewritten, no new review owner is introduced, and the three-field
+immediate return receipt contract remains unchanged.
+
+Observed local reproduction: the 54 existing Review client tests passed. Adding
+five regressions produced four expected failures and 55 passing controls before
+the decoder change. The minimal correction passes all 59 Review tests, with
+zero failures, skips or cancellations. Tests cover both date fields, literal
+valid offsets/leap dates/microseconds, withholding a malformed refreshed inbox,
+preventing a new return, and retaining an uncertain return's exact reason/key
+and identical retry body. Receipt recovery cannot restore an invalid inbox;
+only a later valid read restores its projection. These local executions use
+Node's TypeScript transform, not a pinned compiler or production-build claim.
+The 13 filesystem rights controls and the existing data-boundary audit also pass.
+
+The actual-browser regression corrupts copies of authorized Review responses,
+retains the original values separately and checks removal of the queue, history
+and new-return controls without additional writes. Fresh valid reads must restore
+the original question/receipt identities, source anchors and timestamp text.
+Full composed client/build/rights and PostgreSQL/FastAPI/React/Chromium acceptance
+remains required at the published candidate. The draft PR receipt will record
+that exact head, run and artifact without changing this source checkpoint.
+
+Operational backend, migrations, shared source, reference tests, dependencies,
+permissions and the API workflow are unchanged. The recent full backend evidence
+on #365 and #367 remains separately attributed to its tested heads and identical
+backend inputs; it is not a new standalone API/backup-restore run here.
+
+The parent-chain review also found an omitted, test-only #193 method,
+`ReceivedRecordHTTPTests.test_amended_original_before_first_receipt_cannot_satisfy_request`,
+from commit `b00989c1887f094a1de03a4c6d9d6b8758260fb8`. Its production guard is
+already present; the exact 28-line regression should be reconciled in the next
+backend/whole-chain integration. Main changed shared source and browser inputs
+during this review (observed `c4798ae85004713593f83458abd2102be6729095` at
+14:38 EST). A future main composition needs a fresh pin and combined API,
+reference/browser and H1 web acceptance, plus the scoped owner/merge decision.
+
+Independently authored fictional inputs only. This bounded candidate is a draft;
+it does not establish human owner acceptance, clinical validation, production
+identity, whole-product commercial clearance, merge or deployment.
