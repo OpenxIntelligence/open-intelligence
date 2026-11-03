@@ -1,3 +1,8 @@
+/** Patient Mission read-only projection (vanilla IIFE, no build, no dependencies).
+ * Patterns: textContent-only rendering via element(); requestSequence +
+ * picker-value guard discards stale responses (same discipline as app.js
+ * refreshSequence); a MutationObserver on #event-list refreshes after the
+ * canonical workspace changes — the one documented cross-panel coupling. */
 (() => {
   "use strict";
 
@@ -177,6 +182,8 @@
     renderGuardrails(mission);
   }
 
+  /** Reload the mission projection for the picked case; stale responses render
+   * nothing. Failures leave honest empty states, never partial facts. */
   async function refreshMission() {
     const caseId = picker.value;
     if (!caseId) return;

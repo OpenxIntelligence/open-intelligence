@@ -43,3 +43,62 @@
   --radius-panel: 6px;
   --rule-hair: 1px;
 }
+
+/* Semantic aliases (additive; 2026-11-03). Primitives above stay the single
+   source of truth for literal values. Aliases below name MEANING, never a
+   component, and reference primitives via var() so a future contrast fix
+   changes one primitive, not per-component overrides.
+   Governance: add a token only with two consuming selectors named in the
+   change description; no literal color/spacing outside this file except in
+   color-mix() derivations with a comment. Contrast ratios are UNKNOWN until
+   the reviewer measures them — record tool + date when done.
+   Freshness-vs-error discipline (the reason this block exists):
+   - FRESHNESS is a review state ("needs another look"): calm amber family.
+   - SYSTEM ERROR is a failure state ("something failed"): red family.
+   Never swap them. "Stale" is never red; a failed request is never amber.
+   Fresh-is-not-good discipline: "current" means no review flag is set — it
+   never means clinically validated, complete, or correct. Current-state
+   aliases are deliberately neutral, never green; --color-success is reserved
+   and must NOT be used for fresh/current. */
+:root {
+  /* Freshness family — review attention only, never system failure.
+     Covers pill-warn (13% paper, accent-ink text), pill-alert (10% paper,
+     soft ink text), review-attention needs-review wash (8%), and the
+     source-line highlight (26%). Percentages match style.css exactly. */
+  --color-freshness: var(--color-accent);
+  --color-freshness-ink: var(--color-accent-ink);
+  --color-freshness-ink-soft: var(--color-ink-2);
+  --color-freshness-border: color-mix(in oklab, var(--color-accent) 55%, var(--color-rule));
+  --color-freshness-paper: color-mix(in oklab, var(--color-accent) 13%, var(--color-paper));
+  --color-freshness-paper-subtle: color-mix(in oklab, var(--color-accent) 10%, var(--color-paper));
+  --color-freshness-wash: color-mix(in oklab, var(--color-accent) 8%, var(--color-paper));
+  --color-freshness-highlight: color-mix(in oklab, var(--color-accent) 26%, var(--color-paper));
+
+  /* System-error family — system failure ONLY, never staleness.
+     Covers .notice.error (border/paper/ink). No other red exists. */
+  --color-system-error: var(--color-error);
+  --color-system-error-ink: var(--color-error);
+  --color-system-error-paper: var(--color-error-paper);
+  --color-system-error-border: color-mix(in oklab, var(--color-error) 45%, var(--color-rule));
+
+  /* Current-state family — "no review flag set", deliberately neutral.
+     Covers the default .pill. Never green: current is not approval. */
+  --color-current-paper: var(--color-paper-2);
+  --color-current-ink: var(--color-ink-2);
+  --color-current-border: var(--color-rule);
+
+  /* Info family — neutral system messaging, never review urgency.
+     Covers .notice (border/paper/ink). */
+  --color-info: var(--color-source);
+  --color-info-ink: var(--color-source-ink);
+  --color-info-paper: color-mix(in oklab, var(--color-source) 8%, var(--color-paper));
+  --color-info-border: color-mix(in oklab, var(--color-source) 45%, var(--color-rule));
+
+  /* Review prose + dialog + geometry aliases. Values match current use. */
+  --color-review-ink: var(--color-ink-2);
+  --color-dialog-backdrop: var(--color-backdrop);
+  --space-dialog-pad: var(--space-5);
+  --radius-card: var(--radius-panel);
+  --focus-width: 2px;
+  --focus-offset: 3px;
+}

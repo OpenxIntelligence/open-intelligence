@@ -1,23 +1,49 @@
 'use strict';
 // All displayed data is from local, synthetic records. No third-party scripts.
+/** Clinician workspace UI (vanilla JS, no build, no dependencies).
+ * Established patterns, documented 2026-11-03 (see docs/frontend-patterns.md):
+ * 1. textContent-only rendering — node() is the single helper; innerHTML and
+ *    friends are forbidden, imported bytes never become markup.
+ * 2. Case-switch sequence guards — refreshSequence and sourceReadSequence
+ *    discard stale async responses; caseId is re-checked before every render.
+ * 3. Dialog open/close contract — showSourceView() opens one dialog at a time;
+ *    Close buttons and native Esc (cancel) both cancelSourceRead().
+ * 4. Notice-bar usage — notice() is the single user-message channel; one
+ *    message at a time, errors flagged, never a toast stack.
+ * @typedef {object} CaseStatePayload the GET /state response: case, sources,
+ * assertions, questions, snapshots, evidence, evidence_assessments,
+ * biological_assets, biological_inventory_assertions, quarantines, events,
+ * options, option_disclaimer. Shapes are owned by the server; this file only
+ * reads them. Documented, not enforced (no runtime type check). */
 let caseId = null;
 let active = null;
 let refreshSequence = 0;
 let renderedCaseId = null;
+/** Shorthand for document.getElementById. @param {string} id @returns {HTMLElement} */
 const el = (id) => document.getElementById(id);
+/** Create an element with textContent-only text (pattern 1: never innerHTML).
+ * @param {string} tag element tag @param {*} text stringified into textContent
+ * @param {string} [className] @returns {HTMLElement} */
 function node(tag, text, className = '') {
   const item = document.createElement(tag);
   if (text !== undefined && text !== null) item.textContent = String(text);
   if (className) item.className = className;
   return item;
 }
+/** Empty a container before re-render. @param {string} id */
 function clear(id) { el(id).replaceChildren(); }
+/** Single user-message channel (pattern 4: one notice at a time, #notice
+ * live region). Errors use .notice.error styling; never a toast stack.
+ * @param {string} message @param {boolean} [error] */
 function notice(message, error = false) {
   const item = el('notice');
   item.textContent = message;
   item.className = error ? 'notice error' : 'notice';
   item.hidden = false;
 }
+/** Relative-path JSON fetch; POST when payload given, throws Error(data.error).
+ * Only local /api/... targets are allowed (safety-packet guard enforces it).
+ * @param {string} path @param {object} [payload] @returns {Promise<*>} parsed body */
 async function api(path, payload) {
   const response = await fetch(path, payload === undefined ? undefined : {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
@@ -27,13 +53,22 @@ async function api(path, payload) {
   if (!response.ok) throw Error(data.error || 'Request failed');
   return data;
 }
+/** Status pill; style is '' | pill-warn (freshness) | pill-alert (freshness) |
+ * pill-neutral. Freshness only — system errors use notice(error), never a pill.
+ * @param {string} value word shown beside the color, never color alone
+ * @param {string} [style] @returns {HTMLElement} */
 function pill(value, style = '') { return node('span', value, 'pill ' + style); }
+/** Empty-state line for a container. @param {HTMLElement} container @param {string} text */
 function empty(container, text) { container.append(node('p', text, 'empty')); }
+/** Metric card: tabular number + label; zero never implies completeness.
+ * @param {number|string} number @param {string} label @returns {HTMLElement} */
 function metric(number, label) {
   const wrap = node('div', null, 'metric');
   wrap.append(node('span', number, 'number'), node('span', label, 'name'));
   return wrap;
 }
+/** Keyboard nicety: Tab from the case picker moves focus to the overview nav
+ * link. @param {KeyboardEvent} event */
 function focusOverviewFromCasePicker(event) {
   if (event.key !== 'Tab' || event.shiftKey || event.defaultPrevented) return;
   if (document.activeElement !== el('case-picker')) return;
@@ -42,6 +77,8 @@ function focusOverviewFromCasePicker(event) {
   event.preventDefault();
   overviewLink.focus();
 }
+/** Entry point: populate the case picker, wire the case-switch guard, render
+ * the first case. Runs once at load. @returns {Promise<void>} */
 async function initialize() {
   try {
     const cases = await api('/api/cases');
@@ -58,6 +95,8 @@ async function initialize() {
       return;
     }
     await renderIncomingBoard(cases);
+    // Case-switch guard (pattern 2): block the switch while a narrative draft
+    // is unfinished, else cancel reads, clear drafts/dialogs, and reload.
     picker.addEventListener('change', () => {
       // An unfinished narrative must never silently become attached to another case.
       if ((['draft-observations', 'draft-summary', 'draft-assumptions', 'evidence-rationale',
@@ -79,6 +118,8 @@ async function initialize() {
     await refresh();
   } catch (err) { notice(err.message, true); }
 }
+/** Render the fictional worklist (recency order, no triage inference).
+ * @param {Array} cases @returns {Promise<void>} */
 async function renderIncomingBoard(cases) {
   const list = el('incoming-list');
   clear('incoming-list');
@@ -128,6 +169,8 @@ const CERTAINTY_PLAIN = {
   conflicting: 'different reports disagree', 'not-reported': 'not reported',
   'not-assessed': 'not assessed',
 };
+/** Render the plain-words projection of the same record (read-only).
+ * @returns {void} */
 function renderPatientView() {
   clear('patient-timeline'); clear('patient-findings'); clear('patient-questions'); clear('patient-uncertainty');
   if (!active) return;
@@ -168,6 +211,8 @@ function renderPatientView() {
   }
 }
 
+/** Reload /state and re-render; stale in-flight responses are discarded via
+ * refreshSequence + caseId (pattern 2). @returns {Promise<void>} */
 async function refresh() {
   const requestedCase = caseId;
   const sequence = ++refreshSequence;
@@ -183,11 +228,15 @@ async function refresh() {
     if (sequence === refreshSequence && requestedCase === caseId) notice(err.message, true);
   }
 }
+/** Throw unless the selected case finished loading; returns the safe case id
+ * every write path must capture before its request. @returns {string} */
 function readyCase() {
   if (!active || !caseId || active.case.case_id !== caseId || renderedCaseId !== caseId)
     throw Error('The selected case is still loading. Try again after it finishes.');
   return caseId;
 }
+/** Render current-assessment checkboxes for the chosen question; preserves
+ * already-checked ids so a refresh never silently rebinds evidence. @returns {void} */
 function renderEvidenceChoices() {
   const previouslySelected = new Set([...el('evidence-choice').querySelectorAll('input:checked')]
     .map(x => Number(x.value)));
@@ -207,6 +256,9 @@ function renderEvidenceChoices() {
   }
 }
 
+/** Group source versions by document/event/kind/specimen; an amendment stays
+ * attached to its event, never a new biological event.
+ * @param {Array} sources @returns {Array} groups with sorted versions */
 function groupedTimeline(sources) {
   const groups = new Map();
   for (const source of sources) {
@@ -226,6 +278,7 @@ function groupedTimeline(sources) {
   }).sort((a, b) => b.eventDate.localeCompare(a.eventDate) ||
     a.documentId.localeCompare(b.documentId));
 }
+/** Render the <ol> chronology honoring the record-type filter. @returns {void} */
 function renderTimeline() {
   clear('timeline-events');
   if (!active) return;
@@ -271,6 +324,7 @@ function renderTimeline() {
   }
 }
 
+/** Render amendment cards with impact counts and compare/open actions. @returns {void} */
 function renderSourceChanges() {
   clear('source-change-list');
   const revisions = active.sources.filter(s => s.supersedes_id !== null && s.supersedes_id !== undefined)
@@ -314,6 +368,7 @@ function renderSourceChanges() {
   }
 }
 
+/** Render one card per asset (never merged) with inventory assertions. @returns {void} */
 function renderBiologicalAssets() {
   clear('asset-list');
   const assets = active.biological_assets || [];
@@ -355,6 +410,9 @@ function renderBiologicalAssets() {
     el('asset-list').append(card);
   }
 }
+/** Entry point: full re-render from `active` state. Each panel clears its
+ * container first; same-case input selections are preserved, cross-case
+ * selections are dropped. Never renders a stale case (see refresh). @returns {void} */
 function render() {
   const sameCase = renderedCaseId === caseId;
   const priorQuestion = sameCase ? el('question-choice').value : null;
@@ -566,6 +624,9 @@ function render() {
   renderOptions();
   renderedCaseId = caseId;
 }
+/** Paint original source text with textContent only (pattern 1); highlight
+ * just the anchored line via a <mark>. @param {string} text
+ * @param {number|null} lineNumber @returns {boolean} anchored */
 function renderOriginalSource(text, lineNumber) {
   // Imported source text must never become HTML. Highlight only the exact
   // recorded source line; preserve all other characters and line breaks.
@@ -582,10 +643,15 @@ function renderOriginalSource(text, lineNumber) {
   return anchored;
 }
 // Begin source text comparison.
+/** Split text into line tokens keeping every char incl. CRLF/final newline.
+ * @param {string} text @returns {string[]} */
 function reportLineTokens(text) {
   // Keep every character, including CRLF, blank lines and the final newline.
   return text.match(/[^\n]*\n|[^\n]+$/g) || [];
 }
+/** Bounded LCS line diff; oversized inputs return {status:'limited'} with both
+ * originals intact, never truncated. @param {string} before @param {string} after
+ * @returns {{status:string,beforeLines:number[],afterLines:number[]}} */
 function compareReportLines(before, after) {
   if (typeof before !== 'string' || typeof after !== 'string')
     throw Error('Original source text is required for comparison.');
@@ -614,6 +680,9 @@ function compareReportLines(before, after) {
   }
   return {status: 'compared', beforeLines, afterLines};
 }
+/** Paint both originals with changed lines marked; context line reports the
+ * mechanical diff honestly (no clinical mapping). @param {string} before
+ * @param {string} after @returns {{status:string,beforeLines:number[],afterLines:number[]}} */
 function renderReportLineComparison(before, after) {
   const difference = compareReportLines(before, after);
   const paint = (id, text, changed, label) => {
@@ -649,15 +718,24 @@ function renderReportLineComparison(before, after) {
 // One read intent across report, evidence and comparison views. Checking only
 // caseId misses same-case reordering and a case A -> B -> A round trip.
 let sourceReadSequence = 0;
+/** Invalidate every outstanding source/evidence/comparison read. */
 function cancelSourceRead() { sourceReadSequence++; }
+/** Start one read intent: captures the ready case + fresh sequence number.
+ * @returns {{caseId:string,sequence:number}} */
 function beginSourceRead() {
   const selectedCase = readyCase();
   return {caseId: selectedCase, sequence: ++sourceReadSequence};
 }
+/** True only if the read is the latest intent AND the case/view still match
+ * (catches same-case reorder and A→B→A round trips). @param {{caseId:string,
+ * sequence:number}} read @returns {boolean} */
 function sourceReadIsCurrent(read) {
   return read.sequence === sourceReadSequence && read.caseId === caseId &&
     active?.case.case_id === caseId && renderedCaseId === caseId;
 }
+/** Resolve a request against the ACTIVE case records (caller labels ignored,
+ * forged ids rejected before any fetch). @param {Array} records
+ * @param {{id:number}} requested @param {string} label @returns {object} */
 function sourceReadRecord(records, requested, label) {
   if (!requested || !Number.isSafeInteger(requested.id) || requested.id <= 0)
     throw Error('Invalid ' + label + ' identifier.');
@@ -666,17 +744,24 @@ function sourceReadRecord(records, requested, label) {
   // Labels and lineage come from the active case response, not caller objects.
   return record;
 }
+/** Dialog contract (pattern 3): close the other dialog, then showModal this
+ * one. Native <dialog> only — no custom modal divs. @param {string} dialogId */
 function showSourceView(dialogId) {
   for (const id of ['source-dialog', 'compare-dialog']) {
     if (id !== dialogId && el(id).open) el(id).close();
   }
   if (!el(dialogId).open) el(dialogId).showModal();
 }
+/** Extract response.text or throw (never render a non-string body).
+ * @param {{text:string}} response @returns {string} */
 function originalText(response) {
   if (!response || typeof response.text !== 'string')
     throw Error('Original source text is unavailable. No comparison was produced.');
   return response.text;
 }
+/** Entry point: open one source version in #source-dialog with optional line
+ * anchor. Stale reads render nothing and raise no notice. @param {{id:number}}
+ * requested @param {number|null} [lineNumber] @returns {Promise<void>} */
 async function openSource(requested, lineNumber = null) {
   let read;
   try {
@@ -698,6 +783,9 @@ async function openSource(requested, lineNumber = null) {
     if (!read || sourceReadIsCurrent(read)) notice(err.message, true);
   }
 }
+/** Entry point: compare two CONSECUTIVE versions of one report+specimen in
+ * #compare-dialog. Lineage is verified before any fetch. @param {{id:number}}
+ * requestedPrevious @param {{id:number}} requestedCurrent @returns {Promise<void>} */
 async function openComparison(requestedPrevious, requestedCurrent) {
   let read;
   try {
@@ -725,6 +813,8 @@ async function openComparison(requestedPrevious, requestedCurrent) {
     if (!read || sourceReadIsCurrent(read)) notice(err.message, true);
   }
 }
+/** Entry point: open fictional evidence text in #source-dialog (shares the one
+ * read intent with source views). @param {{id:number}} requested @returns {Promise<void>} */
 async function openEvidence(requested) {
   let read;
   try {
@@ -741,6 +831,8 @@ async function openEvidence(requested) {
     if (!read || sourceReadIsCurrent(read)) notice(err.message, true);
   }
 }
+/** Entry point: export one investigation as markdown via object URL; drops the
+ * download if the case changed mid-request. @param {number} id @returns {Promise<void>} */
 async function downloadSnapshot(id) {
   try {
     const requestedCase = readyCase();
@@ -751,12 +843,18 @@ async function downloadSnapshot(id) {
     document.body.append(link); link.click(); link.remove(); URL.revokeObjectURL(url);
   } catch (err) { notice(err.message, true); }
 }
+/** Dialog close contract (pattern 3): every close path cancels the read intent
+ * first, so a late response never reopens/overwrites. Esc uses 'cancel'
+ * (not 'close') so queued programmatic closes cannot cancel a newer read. */
 el('dialog-close').addEventListener('click', () => { cancelSourceRead(); el('source-dialog').close(); });
 el('compare-close').addEventListener('click', () => { cancelSourceRead(); el('compare-dialog').close(); });
 // Native Escape dispatches cancel before closing. Avoid a close-event handler:
 // queued programmatic close events must not cancel a newer read intent.
 for (const id of ['source-dialog', 'compare-dialog'])
   el(id).addEventListener('cancel', cancelSourceRead);
+/** Form pattern (all handlers below): preventDefault → readyCase() → api() →
+ * re-check requestedCase === caseId → clear inputs → notice() → refresh().
+ * Errors surface via notice(err.message, true); never innerHTML. */
 el('question-form').addEventListener('submit', async event => {
   event.preventDefault(); try {
     const requestedCase = readyCase();
@@ -933,6 +1031,8 @@ el('option-review-form').addEventListener('submit', async event => {
 });
 
 
+/** Render the derived option/dependency/task/threat/review view (read + form
+ * selects); epistemic vs operational status stay separate pills. @returns {void} */
 function renderOptions() {
   el('option-disclaimer').textContent = active.option_disclaimer || '';
   const options = active.options || [];
@@ -999,6 +1099,8 @@ function renderOptions() {
     el('option-list').append(box);
   }
 }
+/** Render one DOI metadata card; only https://doi.org/ links are followed
+ * (defence in depth over the server-validated URL). @param {object} record @returns {void} */
 function renderBibliography(record) {
   clear('bibliography-result');
   const card = node('article', null, 'source-card');
@@ -1026,6 +1128,8 @@ function renderBibliography(record) {
     'Unrecognized record type; do not treat this as clinical evidence.', 'muted tiny'));
   el('bibliography-result').append(card);
 }
+/** Entry point: set live/offline bibliography mode; live stays disabled on any
+ * failure. @returns {Promise<void>} */
 async function initializeBibliography() {
   try {
     const status = await api('/api/bibliography/status');
@@ -1059,6 +1163,7 @@ el('bibliography-form').addEventListener('submit', async event => {
   } catch (err) { notice(err.message, true); }
 });
 el('timeline-filter').addEventListener('change', renderTimeline);
+/** Load fixed investigation templates into the model form select. @returns {Promise<void>} */
 async function loadModelTemplates() {
   try {
     const data = await api('/api/investigations/templates');
@@ -1069,6 +1174,8 @@ async function loadModelTemplates() {
     }
   } catch (err) { notice(err.message, true); }
 }
+/** Load and render model investigations for the current case; each detail
+ * response re-checks the case before render. @returns {Promise<void>} */
 async function loadModelInvestigations() {
   const requested = caseId;
   try {
@@ -1108,6 +1215,8 @@ async function loadModelInvestigations() {
     if (requested === caseId) notice(err.message, true);
   }
 }
+/** Load the ledger-facts change listing since the review anchor; failures
+ * leave honest per-panel empty states, never partial facts. @returns {Promise<void>} */
 async function loadChangesSinceReview() {
   const requested = caseId;
   const anchorEl = el('changes-anchor');
@@ -1127,6 +1236,9 @@ async function loadChangesSinceReview() {
     empty(el('changes-questions'), 'Change listing unavailable.');
   }
 }
+/** Render the anchor line plus new-source/amendment/stale/question panels.
+ * Ledger facts only — finding-key diffs are mechanical, never interpreted.
+ * @param {object} data @returns {void} */
 function renderChangesSinceReview(data) {
   // Ledger facts only. Reported states are quoted verbatim; the finding-key
   // diff is a mechanical comparison, never an interpretation of significance.
@@ -1245,6 +1357,8 @@ initialize();
 initializeBibliography();
 loadModelTemplates();
 
+/** Workspace nav: sync aria-current with the hash; collapse the section menu
+ * on narrow viewports and after a nav tap. Static wiring, runs once. */
 const sectionMenu = document.querySelector('.section-menu');
 const workspaceNav = document.querySelector('#workspace-nav');
 if (workspaceNav) {
