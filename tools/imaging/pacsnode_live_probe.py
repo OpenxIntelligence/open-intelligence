@@ -190,14 +190,23 @@ def _uid_value(row: dict, tag: str) -> str:
     return ids[0]
 
 
-def _qido_list(url: str) -> list[dict]:
+def _qido_list(url: str) -> tuple[list[dict], str]:
+    """Keep syntactic QIDO data checks distinct from media-type conformance.
+
+    pacsnode currently uses axum::Json (application/json), which is a
+    material deviation from PS3.18 application/dicom+json; the receipt MUST
+    retain that fact. We still inspect its claimed DICOM JSON values to
+    learn whether the open-source backend actually stores/retrieves them.
+    """
     status, content_type, body = _request(url, accept="application/dicom+json")
-    if status != 200 or not content_type.lower().startswith("application/dicom+json"):
-        raise InvalidInput("QIDO response not DICOM JSON")
+    media_type = content_type.split(";", 1)[0].strip().lower()
+    if status != 200 or media_type not in ("application/dicom+json", "application/json"):
+        raise InvalidInput("QIDO response status/media incompatible: "
+                           + str(status) + " " + media_type[:80])
     data = json.loads(body)
     if not isinstance(data, list):
         raise InvalidInput("QIDO results must be a list")
-    return data
+    return data, media_type
 
 
 def run_evaluation(base_url: str) -> dict:
@@ -223,13 +232,13 @@ def run_evaluation(base_url: str) -> dict:
             )
             if status not in (200, 201, 202):
                 raise InvalidInput("STOW did not acknowledge objects")
-            study_rows = _qido_list(base + "/wado/studies?" + urlencode({
+            study_rows, study_mime = _qido_list(base + "/wado/studies?" + urlencode({
                 "StudyInstanceUID": IMAGE_STUDY_UID
             }))
             if not any(_uid_value(row, "0020000D") == IMAGE_STUDY_UID
                        for row in study_rows):
                 raise InvalidInput("Stored study not discoverable by QIDO")
-            instance_rows = _qido_list(
+            instance_rows, instance_mime = _qido_list(
                 base + "/wado/studies/" + IMAGE_STUDY_UID
                 + "/series/" + IMAGE_SERIES_UID + "/instances"
             )
@@ -306,7 +315,9 @@ def run_evaluation(base_url: str) -> dict:
                 raise InvalidInput("Source amendment did not invalidate adapter binding")
 
             return {
-                "evaluation_status": "technical_roundtrip_observed",
+                "evaluation_status": ("technical_roundtrip_observed"
+                                      if study_mime == instance_mime == "application/dicom+json"
+                                      else "technical_roundtrip_with_qido_mime_deviation"),
                 "candidate": "knopkem/pacsnode standalone",
                 "source_commit": "e9b4334477a66967d290add9e0b9afa068f59dc0",
                 "backend_url": "127.0.0.1 loopback only",
@@ -316,6 +327,14 @@ def run_evaluation(base_url: str) -> dict:
                 "series_count": checked["series_count"],
                 "stow_http_status": status,
                 "stow_content_type": stow_type,
+                "qido_media_types": {
+                    "study": study_mime,
+                    "instance": instance_mime,
+                },
+                "qido_media_type_conformant": (
+                    study_mime == instance_mime == "application/dicom+json"
+                ),
+                "standards_conformance_verified": False,
                 "stow_response_sha256": sha256(stow_body).hexdigest(),
                 "sop_original_sha256": expected_digests,
                 "sop_returned_sha256": returned_digests,
@@ -351,7 +370,11 @@ def main() -> int:
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(json.dumps(evidence, indent=2, sort_keys=True) + "\n",
                           encoding="utf-8")
-        print("PASS: real third-party fictional DICOMweb STOW/QIDO/WADO roundtrip")
+        if evidence["qido_media_type_conformant"]:
+            print("PASS: technical real-backend fictional STOW/QIDO/WADO roundtrip")
+        else:
+            print("TECHNICAL ROUNDTRIP: HOLD QIDO MIME standards gate; "
+                  "backend returns application/json not application/dicom+json")
         print("Evidence file:", output)
         return 0
     except Exception as error:
