@@ -30,6 +30,8 @@ def exercise(cd):
     (out/'reading-before-or-after.png').write_bytes(base64.b64decode(cd.command('Page.captureScreenshot', {'format':'png'})['data']))
     assert cd.evaluate("!document.querySelector('[data-testid=record-import-disclosure]')?.open && Boolean(document.querySelector('[data-testid=record-import-disclosure]'))"), 'Loaded records start with the import form collapsed'
     assert cd.evaluate("!document.querySelector('#original-file').checkVisibility()"), 'Closed import does not compete with source reading'
+    assert cd.evaluate("Boolean(document.querySelector('[data-testid=reviewed-document-disclosure]')) && !document.querySelector('[data-testid=reviewed-document-disclosure]').open"), 'Reviewed originals start collapsed beside the structured import'
+    assert cd.evaluate("!document.querySelector('[data-testid=reviewed-file]').checkVisibility()"), 'Closed reviewed intake preserves the reading-first workspace'
     assert cd.evaluate("Boolean(document.querySelector('#source-filter'))"), 'Loaded source versions need a response-scoped filter'
     assert cd.evaluate("Boolean(document.querySelector('#reading-view'))"), 'Patient and clinical reading layouts must share the existing session'
     assert cd.evaluate("document.querySelector('[data-testid=readiness]').getAttribute('role')==='status'"), 'Readiness needs noninterrupting status semantics'
