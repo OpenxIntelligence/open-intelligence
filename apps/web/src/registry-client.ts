@@ -146,21 +146,38 @@ function created(value: unknown): CreatedPatient {
   return Object.freeze(value as CreatedPatient);
 }
 export class RegistrySession {
-  async documentRequest(caseId:string,path:string,body?:string):Promise<import('./reviewed-documents').DocumentReply>{
+  // Exact reference-only commands survive a transient panel or evidence refresh.
+  // Scope checks withhold recovery controls from another patient/case/question;
+  // explicit disconnect clears this in-memory session just like other drafts.
+  #manualPassageIntents=new Map<string,string>();
+  manualPassageIntentStore=(scope:import('./question-passages').PassageScope):import('./question-passages').ManualIntentStore=>{
+    const key=JSON.stringify([scope.patient_id,scope.case_id,scope.question_id]);
+    const current=()=>this.#state.patient?.patient_id===scope.patient_id&&this.#state.questionsCaseId===scope.case_id&&
+      Boolean(this.#state.questions?.some(q=>q.question_id===scope.question_id&&q.case_id===scope.case_id&&q.patient_id===scope.patient_id));
+    return {read:()=>current()?this.#manualPassageIntents.get(key)??null:null,
+      write:body=>{if(body===null)this.#manualPassageIntents.delete(key);else if(current())this.#manualPassageIntents.set(key,body);}};
+  };
+  async documentRequest(caseId:string,path:string,body?:string,questionId?:string):Promise<import('./reviewed-documents').DocumentReply>{
     if(!/^CASE-[A-Z0-9-]{1,35}$/.test(caseId)||!/^$|^\/preview$|^\/SRC-[A-F0-9]{32}(?:\/(?:original|annotations)|\/selections\/ANN-[A-F0-9]{32}\/[a-z][a-z0-9_-]{0,59})?$/.test(path))throw Error('Invalid document path');
-    return this.#caseContentRequest(caseId,'/documents'+path,body);
+    if(questionId!==undefined&&!/^QUESTION-[A-F0-9]{32}$/.test(questionId))throw Error('Invalid question scope');
+    return this.#caseContentRequest(caseId,'/documents'+path,body,questionId);
   }
   async questionPassageRequest(caseId:string,questionId:string,body?:string):Promise<import('./reviewed-documents').DocumentReply>{
     if(!/^CASE-[A-Z0-9-]{1,35}$/.test(caseId)||!/^QUESTION-[A-F0-9]{32}$/.test(questionId))throw Error('Invalid question passage path');
     const q=this.#state.questions?.find(q=>q.question_id===questionId&&q.case_id===caseId);
     if(!q||q.patient_id!==this.#state.patient?.patient_id)throw Error('Recheck current question access');
-    return this.#caseContentRequest(caseId,'/questions/'+questionId+'/manual-passages',body);
+    return this.#caseContentRequest(caseId,'/questions/'+questionId+'/manual-passages',body,questionId);
   }
-  async #caseContentRequest(caseId:string,path:string,body?:string):Promise<import('./reviewed-documents').DocumentReply>{
+  async #caseContentRequest(caseId:string,path:string,body?:string,questionId?:string):Promise<import('./reviewed-documents').DocumentReply>{
     const scope=this.#scope,read=this.#read,records=this.#records,patient=this.#state.patient?.patient_id;
-    const current=()=>scope===this.#scope&&read===this.#read&&records===this.#records&&patient===this.#state.patient?.patient_id&&this.#state.sourceIndex?.case_id===caseId;
+    const caseContext=()=>questionId!==undefined?
+      this.#state.questionListPhase==='ready'&&this.#state.questionsCaseId===caseId&&this.#state.worldPhase==='ready'&&this.#state.worldModel?.case_id===caseId&&
+       Boolean(this.#state.questions?.some(q=>q.question_id===questionId&&q.case_id===caseId&&q.patient_id===patient)):
+      this.#state.sourceIndex?.case_id===caseId;
+    const current=()=>scope===this.#scope&&read===this.#read&&records===this.#records&&patient===this.#state.patient?.patient_id&&caseContext();
     if(!patient||!this.#token||!current())throw Error('Recheck patient and case access');
     const control=new AbortController();this.#controllers.add(control);
+    const timeout=questionId!==undefined?setTimeout(()=>control.abort(),10000):undefined;
     try{
       const response=await this.transport('/v1/patients/'+encodeURIComponent(patient)+'/cases/'+encodeURIComponent(caseId)+path,this.#init(control,body));
       if(!current()){
@@ -193,7 +210,7 @@ export class RegistrySession {
       if(body===undefined&&response.status===200&&path!=='/documents/preview'&&!path.endsWith('/original')&&
         (!contentScope||typeof contentScope!=='object'||(contentScope as {patient_id?:string}).patient_id!==patient||(contentScope as {case_id?:string}).case_id!==caseId))throw Error('Wrong document scope');
       return{status:response.status,body:value,headers:response.headers};
-    }finally{this.#controllers.delete(control);}
+    }finally{clearTimeout(timeout);this.#controllers.delete(control);}
   }
   #token=''; #scope=0; #read=0; #records=0; #state:ViewState=fresh();
   #worldRead=0; #composerRead=0; #questionRead=0; #questionWrite=0; #briefRead=0;
@@ -295,6 +312,7 @@ export class RegistrySession {
       sourceQuoteMessage:'Select a saved question to inspect its source quotation and evidence gaps.'});
   };
   disconnect=()=>{
+    this.#manualPassageIntents.clear();
     this.#scope++;this.#read++;this.#records++;this.#token='';this.#creating=false;this.#uploading=false;
     this.#resetInvestigation();
     for(const c of this.#controllers)c.abort();this.#controllers.clear();

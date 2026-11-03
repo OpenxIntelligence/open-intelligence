@@ -203,10 +203,17 @@ def main():
                     'question_id': question_id, 'case_id': CASE,
                     'actor': credential['actor'], 'link_count': 1,
                 }, 'Metadata read audit changed its canonical scope'
-            manual_reads = [row for row in fresh if row['event_type'] == 'investigation.report_manual_context_access_prepared']
+            manual_reads = [row for row in fresh if row['event_type'] in (
+                'investigation.report_manual_context_access_prepared', 'investigation.question_passages_access_prepared')]
             assert bool(manual_reads) is expect_manual, 'Unexpected restored manual-context audit state'
+            for event in manual_reads:
+                assert event['patient_id'] == patient
+                assert event['metadata_json']['question_id'] == question_id
+                assert event['metadata_json']['case_id'] == CASE
+                assert event['metadata_json']['references'] == passage_command['references']
             assert all(row['event_type'] in ('source.read_authorized', 'evidence.links.read_authorized',
-                                             'investigation.report_manual_context_access_prepared')
+                                             'investigation.report_manual_context_access_prepared',
+                                             'investigation.question_passages_access_prepared')
                        for row in fresh), 'Exact retry unexpectedly emitted a new business event'
             return len(fresh)
 
@@ -440,9 +447,20 @@ def main():
             for field in ('report_id', 'body', 'body_sha256', 'snapshot', 'snapshot_sha256', 'prepared_at'):
                 assert restored_manual_report[field] == manual_report[field], 'Restored manual report changed ' + field
             manual_receipts = [restored_manual_report['access_receipt_id']]
+            status, restored_manual = request(passage_path)
+            assert status == 200 and {k:v for k,v in restored_manual.items() if k != 'access_receipt_id'} == {
+                k:v for k,v in manual_context.items() if k != 'access_receipt_id'}
+            manual_receipts.append(restored_manual['access_receipt_id'])
+            assert request(passage_path, passage_command) == (200, passage_receipt | {'duplicate': True})
             assert request(url + '/evidence-reports', report_commands[-1][0]) == (200, report_commands[-1][1])
-            assert_restored_reads(manual_before, manual_database, manual_receipts,
-                                  expect_metadata=False, expect_manual=True)
+            credential['actions'].remove('source_original_read'); save_access()
+            denied_before = snapshot(manual_database)
+            assert request(passage_path)[0] == 404
+            assert request(url + '/evidence-reports/' + manual_report['report_id'])[0] == 404
+            assert snapshot(manual_database) == denied_before
+            credential['actions'] = list(actions); save_access()
+            manual_access_count = assert_restored_reads(manual_before, manual_database, manual_receipts,
+                                                       expect_metadata=False, expect_manual=True)
             serve_database('oi_api_synthetic')
             assert snapshot() == manual_before
             print('PASS RESTORED MANUAL CONTEXT: exact passage revision/report bytes/retry and restored-only authority')
@@ -464,6 +482,28 @@ def main():
             a3 = assess(amended, 'unknown', 'ASSESS-SUPPORT-V2')
             second = make_report([a3[0], a2[0]], 'REPORT-REASSESSED')
 
+            status, corrected_manual = request(prefix + '/documents/' + manual_document['source_id'] + '/annotations', {
+                'synthetic': True, 'request_key': 'RECOVERY-MANUAL-CORRECTION',
+                'expected_revision_id': manual_document['annotation_revision_id'],
+                'confirmed_case_id': CASE, 'expected_sha256': manual_preview['sha256'],
+                'reason': 'Preserve a narrower exact passage',
+                'findings': [{'key': 'marker', 'state': 'pending', 'quote': 'pending.', 'line': 2}]})
+            assert status == 201, corrected_manual
+            status, historical_manual = request(passage_path)
+            assert status == 200 and historical_manual['state'] == 'reassessment_required'
+            assert historical_manual['passages'][0]['anchor'] == manual_selection['anchor']
+            status, manual_history = request(url + '/evidence-reports/' + second['report_id'])
+            assert status == 200 and manual_history['state'] == 'historical_reassessment_required'
+            assert manual_history['body'] == second['body'] and manual_history['snapshot'] == second['snapshot']
+            current_manual_packet = packet()
+            denied_before = snapshot()
+            assert request(url + '/evidence-reports', {
+                'synthetic': True, 'request_key': 'STALE-MANUAL-REPORT',
+                'expected_packet_sha256': current_manual_packet['packet_sha256'],
+                'expected_manual_context_sha256': historical_manual['context_sha256'],
+                'assessment_ids': [a3[0], a2[0]]})[0] == 409
+            assert snapshot() == denied_before, 'Stale manual report attempt changed persisted state'
+
             # A changed text class never donates permission to old abstract quotations.
             changed = import_evidence(evidence('INK-SUPPORT',
                 'A new authored API-shaped fixture records uncertainty for the invented ink example.', amends=2),
@@ -478,6 +518,11 @@ def main():
             rights_database = 'oi_api_test_evidence_rights_restore'
             rights_before = restore('oi_api_synthetic', rights_database)
             rights_receipts = []
+            status, restored_manual_history = request(passage_path)
+            assert status == 200 and restored_manual_history['state'] == 'reassessment_required'
+            assert restored_manual_history['passages'][0]['anchor'] == manual_selection['anchor']
+            assert request(passage_path, passage_command) == (200, passage_receipt | {'duplicate': True})
+            rights_receipts.append(restored_manual_history['access_receipt_id'])
             status, latest_original = request(url + '/evidence/' + changed['evidence_id'] + '/original')
             assert status == 200 and hashlib.sha256(latest_original['original_text'].encode()).hexdigest() == changed['sha256']
             rights_receipts.append(latest_original['access_receipt_id'])
@@ -491,7 +536,7 @@ def main():
             assert request(url + '/evidence/' + support['evidence_id'] + '/original')[0] == 404
             assert snapshot(rights_database) == denied_before
             assert_continuity(rights_receipts)
-            rights_access_count = assert_restored_reads(rights_before, rights_database, rights_receipts)
+            rights_access_count = assert_restored_reads(rights_before, rights_database, rights_receipts, expect_manual=True)
             serve_database('oi_api_synthetic')
             assert snapshot() == rights_before
             withdrawal = {'synthetic': True, 'request_key': 'WITHDRAW-SUPPORT',
@@ -598,6 +643,11 @@ def main():
                        'restored_revoked_binding_denial': True, 'original_database_unchanged': True,
                        'citation_link_id': citation_receipt['link_id'], 'followthrough_task_id': task_receipt['task_id'],
                        'restored_same_question_citation_report_and_task': True,
+                       'restored_manual_context_and_exact_retry': True,
+                       'restored_manual_anchor': manual_selection['anchor'],
+                       'manual_annotation_correction_preserves_report_bytes': True,
+                       'restored_independent_original_read_denial': True,
+                       'restored_manual_access_events': manual_access_count,
                        'authored_withholding_does_not_grant_or_revoke_metadata': True,
                        'restored_readable_access_events': readable_access_count,
                        'restored_rights_access_events': rights_access_count,

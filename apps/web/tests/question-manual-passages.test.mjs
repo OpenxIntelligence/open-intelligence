@@ -1,6 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {QuestionPassageClient,decodeManualContext,decodeSelection} from '../.test-dist/question-passages.js';
+import * as manualModule from '../.test-dist/question-passages.js';
 import {decodeEvidenceReport} from '../.test-dist/authored-evidence.js';
 import {RegistrySession} from '../.test-dist/registry-client.js';
 import {question,report,reportId,patientId,caseId,questionId,hash,ready,transportFor,response,packet,world,deferred} from './authored-evidence-fixtures.mjs';
@@ -93,4 +94,57 @@ test('selection transport validates scope inside the immutable source anchor',as
  const path='/'+p.anchor.source_id+'/selections/'+p.anchor.annotation_revision_id+'/'+p.anchor.selection_key;
  assert.equal((await session.documentRequest(caseId,path)).status,200);
  selection.anchor.patient_id='PAT-OTHER';await assert.rejects(()=>session.documentRequest(caseId,path),/scope/);
+});
+
+test('manual context has independent question authority without a loaded Records source-index',async()=>{
+ const fallback=transportFor(()=>response(packet()));
+ const session=new RegistrySession((url,init)=>url.endsWith('/manual-passages')?response(context(true)):fallback(url,init));
+ await ready(session);await session.loadWorldModel(caseId);await session.loadSavedQuestions(caseId);await session.loadQuestionEvidence(questionId);
+ assert.equal(session.snapshot().sourceIndex,null);
+ assert.equal((await session.questionPassageRequest(caseId,questionId)).status,200);
+});
+test('question document picker has independent question authority without a loaded Records source-index',async()=>{
+ const fallback=transportFor(()=>response(packet()));
+ const session=new RegistrySession((url,init)=>url.endsWith('/documents')?response({patient_id:patientId,case_id:caseId,documents:[]}):fallback(url,init));
+ await ready(session);await session.loadWorldModel(caseId);await session.loadSavedQuestions(caseId);await session.loadQuestionEvidence(questionId);
+ assert.equal(session.snapshot().sourceIndex,null);
+ assert.equal((await session.documentRequest(caseId,'',undefined,questionId)).status,200);
+});
+
+test('denied recovery retains the exact uncertain request until authority returns',async()=>{
+ const sent=[];let step=0;
+ const client=new QuestionPassageClient(scope,async body=>{
+  if(!body)return {status:200,body:context(step===0)};
+  sent.push(body);step++;if(step===1)throw Error('Lost committed response');
+  if(step===2)return {status:404,body:{detail:'Unavailable'}};
+  return {status:200,body:{revision_id:context().revision_id,question_id:questionId,duplicate:true}};
+ });
+ await client.load();await client.replace([ref()]);const exact=client.snapshot().pending;
+ await client.retry();assert.equal(client.snapshot().phase,'uncertain');assert.equal(client.snapshot().pending,exact);
+ await client.retry();assert.equal(client.snapshot().packet.revision,1);assert.deepEqual(sent,[exact,exact,exact]);
+});
+
+test('session-owned exact intent survives an in-flight panel disposal and evidence refresh',async()=>{
+ const held=deferred(),session=await sessionFor(()=>response(context(true)));
+ assert.equal(typeof session.manualPassageIntentStore,'function','manual recovery needs the existing session owner');
+ const store=session.manualPassageIntentStore(scope),sent=[];
+ const request=async body=>{if(!body)return {status:200,body:context(true)};sent.push(body);return held.promise;};
+ const first=new QuestionPassageClient(scope,request,store);await first.load();const saving=first.replace([ref()]);
+ const exact=first.snapshot().pending;first.dispose();await session.loadQuestionEvidence(questionId);
+ held.resolve({status:201,body:{revision_id:context().revision_id,question_id:questionId,duplicate:false}});await saving;
+ const recovered=new QuestionPassageClient(scope,async body=>body?(sent.push(body),{status:200,body:{revision_id:context().revision_id,question_id:questionId,duplicate:true}}):{status:200,body:context()},session.manualPassageIntentStore(scope));
+ assert.equal(recovered.snapshot().phase,'uncertain');assert.equal(recovered.snapshot().pending,exact);
+ assert.equal(recovered.snapshot().packet,null,'retained identifiers are not content disclosure authority');
+ await recovered.retry();assert.deepEqual(sent,[exact,exact]);assert.equal(store.read(),null);
+});
+
+test('unsaved additions and removals block report binding until explicit save or discard',()=>{
+ assert.equal(typeof manualModule.manualReportBinding,'function');
+ const packet=context(),saved=packet.passages;
+ assert.equal(manualModule.manualReportBinding(packet,saved,'idle').blocked,false);
+ const removed=manualModule.manualReportBinding(packet,[],'idle');assert.equal(removed.blocked,true);assert.equal(removed.context,null);
+ assert.equal(manualModule.manualReportBinding(context(true),saved,'idle').blocked,true);
+ assert.equal(manualModule.manualReportBinding(packet,saved,'saving').blocked,true);
+ assert.equal(manualModule.manualReportBinding(null,[],'uncertain').blocked,true);
+ assert.equal(manualModule.manualReportBinding(packet,saved,'idle').context.context_sha256,packet.context_sha256);
 });

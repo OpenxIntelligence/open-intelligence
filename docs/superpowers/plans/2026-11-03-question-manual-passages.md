@@ -34,9 +34,9 @@ Files: new `question_passages.py`, `question_passage_contracts.py`, `question_pa
 
 Interface: GET/POST `/questions/{question_id}/manual-passages`; POST carries synthetic flag, request key, expected context hash and up to 20 source/annotation/key/hash references. GET returns the selected immutable set with source-owned resolved anchors, independent freshness and a context hash.
 
-- [ ] Write and run failing HTTP acceptance for attach/read, exact retry, changed intent, stale replacement, cross-scope references and authorization rollback.
-- [ ] Implement immutable persistence, locked source resolution, bounded history and compare-and-swap updates.
-- [ ] Verify focused tests and commit.
+- [x] Write and run failing HTTP acceptance for attach/read, exact retry, changed intent, stale replacement, cross-scope references and authorization rollback.
+- [x] Implement immutable persistence, locked source resolution, bounded history and compare-and-swap updates.
+- [x] Verify focused tests and commit.
 
 ### 2. Preserved report context
 
@@ -44,16 +44,28 @@ Files: `authored_evidence.py`, `authored_evidence_contracts.py`, `authored_evide
 
 Interface: optional expected manual-context hash in report command; versioned nested manual context in new report snapshots; existing report API and legacy snapshots remain compatible.
 
-- [ ] Add failing tests for frozen quotation/attribution, correction invalidation, stale report rejection, legacy report compatibility and revoked original-read.
-- [ ] Implement v3 literal rendering, immutable-source verification and current-context comparison; preserve exact command recovery.
-- [ ] Run focused API/contracts tests and commit.
+- [x] Add failing tests for frozen quotation/attribution, correction invalidation, stale report rejection, legacy report compatibility and revoked original-read.
+- [x] Implement v3 literal rendering, immutable-source verification and current-context comparison; preserve exact command recovery.
+- [x] Run focused API/contracts tests and commit.
 
 ### 3. Existing workspace and combined verification
 
 Files: new `question-passages.ts` and `question-passages-panel.tsx`; existing registry transport and evidence panel/session/parser; client and actual browser tests.
 
-- [ ] Add failing client checks for strict provenance, foreign scope, uncertain retry and late responses.
-- [ ] Add bounded passage selection/editing in the existing evidence workspace and bind report creation to the inspected context hash.
-- [ ] Run client suite/build/rights checks and actual PostgreSQL HTTP/browser acceptance.
-- [ ] Extend restored database coverage for context revisions and report continuity.
-- [ ] Obtain fresh independent review, fix material findings, publish a draft PR with exact-head verification and update backlog/limitations.
+- [x] Add failing client checks for strict provenance, foreign scope, uncertain retry and late responses.
+- [x] Add bounded passage selection/editing in the existing evidence workspace and bind report creation to the inspected context hash.
+- [x] Run client suite/build/rights checks; add actual PostgreSQL HTTP/browser acceptance to the hosted gates.
+- [ ] Confirm the final combined revision completes both hosted gates; record the exact head and artifacts in draft #396.
+- [x] Extend restored database coverage for context revisions and report continuity.
+- [x] Obtain fresh independent review, fix material findings, publish draft #396 and update backlog/limitations.
+
+## Execution record
+
+Tests-first head `8c8428dd4a1a6fa5301bf0087d98e0ada29cd9cd` failed the six new
+PostgreSQL route tests at the absent endpoint. Implementation followed. Client
+regressions for question scope and all three recovery/report-binding findings
+were observed failing before fixes and then passed. The independent review's
+four material findings are addressed; backend authority regressions additionally
+run in the hosted database suite. Concurrent metadata/legacy-report/restore work
+through `d0855ea` is integrated rather than overwritten. Verification evidence
+and the remaining scope boundaries are in the engineering spec and draft #396.

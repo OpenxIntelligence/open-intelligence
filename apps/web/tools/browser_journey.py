@@ -300,6 +300,8 @@ def main():
                 credentials,write_grants,connect,out)
             from reviewed_documents_journey import exercise as exercise_reviewed_documents
             exercise_reviewed_documents(cd,pid,directory,tokens[0],credentials,write_grants,out,restart_api)
+            from question_manual_passages_journey import exercise as exercise_question_manual_passages
+            exercise_question_manual_passages(cd,pid,tokens[0],credentials,write_grants,out)
             cd.evaluate("[...document.querySelectorAll('nav button')].find(e=>e.textContent.startsWith('Overview')).click()")
             cd.wait("Boolean(document.querySelector('#patient-id'))",'Overview restored after reviewed document journey')
             credentials[0]['patient_ids']=[];write_grants();read()

@@ -35,10 +35,49 @@ removed. Correction, amendment or context-set replacement makes affected earlier
 reports historical; it never retargets a frozen quotation. Removing an attachment
 does not erase history or grant permission to disclose a historical report.
 
-The existing React evidence workspace will let a user inspect saved documents,
+The existing React evidence workspace lets a user inspect saved documents,
 choose saved passages, save/clear a set and recover an exact uncertain submission.
 Patient/case/question changes clear local disclosure and ignore late responses.
 No new dependency, vector search, model execution, clinical approval, real-data
 input or new canonical question/report owner is introduced. Starting a question
 from a manual-only record and clinically comparing against manual annotations
 remain separate extensions.
+
+## Verification and recovery behavior
+
+Draft #396 implements this increment on #392. Its current pinned head and hosted
+results are recorded in the pull request. Do not infer merged or clinical state
+from this engineering candidate.
+
+An uncertain save retains only its exact reference command in the scoped session,
+including across an evidence refresh or denied retry. Restoring authority allows
+recovery with the same request key; changing patients or questions cannot display
+that command or its previous quotations. Disconnecting clears session memory.
+Unsaved additions/removals and unresolved saves block report preparation until
+saved, recovered or explicitly discarded.
+
+The independent review identified four issues: historical manual reports coupling
+unrelated reads to original-read authority, denied retry losing intent, evidence
+refresh disposing pending intent, and unsaved selections diverging from report
+context. The combined implementation addresses all four. Metadata freshness is
+checked without disclosing manual text; only the requested quotation-bearing
+report invokes original resolution and its final authority checks. Concurrent
+commits through `08c5e933fd21b346f03a740db1379af188b9ab70` are preserved.
+The combined continuation uses an isolated branch to keep its checks pinned
+while the shared draft continues to advance.
+
+Local verification: 434 client tests, production build and 13 dependency-rights
+controls pass; the installed inventory is 18 packages with two uninstalled optional
+packages explicitly uninspected. The local API suite runs 467 tests with 343
+PostgreSQL tests skipped; this is not database acceptance. The inherited reference
+suite passes 351 tests. The hosted API workflow must complete without skipped
+PostgreSQL tests, and the React workflow must complete its actual browser journey.
+
+The browser journey uses independently fictional text and a two-page PDF, loses
+an actual committed save response, refreshes, denies recovery, restores authority,
+and recovers the same command before downloading a preserved report. It also
+checks unsaved removal, annotation correction and original-read revocation.
+The database recovery journey separately preserves legacy and manual reports,
+compares complete rows and sequences after restore, reads through the restored
+HTTP service, verifies exact retries and independent grants, then checks that
+annotation correction preserves historical quotations and report bytes.

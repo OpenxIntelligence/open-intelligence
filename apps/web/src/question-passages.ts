@@ -67,13 +67,27 @@ export async function decodeManualContext(value:unknown,scope:PassageScope,packe
 
 type Request=(body?:string)=>Promise<DocumentReply>;
 type State=Readonly<{phase:'idle'|'loading'|'saving'|'uncertain'|'error';packet:ManualPacket|null;pending:string|null;message:string}>;
+export type ManualIntentStore=Readonly<{read:()=>string|null;write:(body:string|null)=>void}>;
+export function manualReportBinding(packet:ManualPacket|null,chosen:readonly ResolvedPassage[],phase:State['phase']):Readonly<{context:ManualContext|null;blocked:boolean;dirty:boolean}>{
+ const identities=(rows:readonly ResolvedPassage[])=>rows.map(p=>canonicalEvidenceJson(passageReference(p))).sort();
+ const dirty=packet!==null&&canonicalEvidenceJson(identities(packet.passages))!==canonicalEvidenceJson(identities(chosen));
+ const blocked=dirty||phase==='saving'||phase==='uncertain';
+ return {context:phase==='idle'&&!blocked?packet:null,blocked,dirty};
+}
+export type ManualPanelStatus=Readonly<{scope:PassageScope;context:ManualContext|null;blocked:boolean}>;
 export class QuestionPassageClient{
  #generation=0;#listeners=new Set<()=>void>();
  #state:State={phase:'idle',packet:null,pending:null,message:'Inspect the saved manual context for this question.'};
- constructor(private scope:PassageScope,private request:Request){}
+ constructor(private scope:PassageScope,private request:Request,private intentStore?:ManualIntentStore){
+  const pending=intentStore?.read();
+  if(pending)this.#state={phase:'uncertain',packet:null,pending,message:'An earlier passage save has an unknown outcome. Retry its exact intent after rechecking this question.'};
+ }
  snapshot=()=>this.#state;
  subscribe=(fn:()=>void)=>{this.#listeners.add(fn);return()=>{this.#listeners.delete(fn);};};
- #publish(patch:Partial<State>){this.#state=Object.freeze({...this.#state,...patch});this.#listeners.forEach(fn=>fn());}
+ #publish(patch:Partial<State>){
+  if(Object.hasOwn(patch,'pending'))this.intentStore?.write(patch.pending??null);
+  this.#state=Object.freeze({...this.#state,...patch});this.#listeners.forEach(fn=>fn());
+ }
  dispose(){this.#generation++;this.#listeners.clear();this.#state={phase:'idle',packet:null,pending:null,message:''};}
  async load(){
   if(['saving','uncertain'].includes(this.#state.phase))return;
@@ -90,9 +104,13 @@ export class QuestionPassageClient{
  }
  async retry(){if(this.#state.phase==='uncertain'&&this.#state.pending)await this.#send(this.#state.pending);}
  async #send(body:string){
+  const recovering=this.#state.phase==='uncertain';
   const generation=++this.#generation;this.#publish({phase:'saving',pending:body,message:'Saving the exact selected reference set…'});
   try{const reply=await this.request(body);if(generation!==this.#generation)return;
-   if([400,401,403,404,409,422].includes(reply.status)){this.#publish({phase:'error',packet:null,pending:null,message:reply.status===409?'The inspected context changed. Refresh before selecting again.':'Manual context save denied. Recheck current permissions.'});return;}
+   if([400,401,403,404,409,422].includes(reply.status)){
+    this.#publish(recovering?{phase:'uncertain',packet:null,pending:body,message:'Recovery was denied. The earlier outcome remains unknown; restore permission and retry this exact intent.'}:
+     {phase:'error',packet:null,pending:null,message:reply.status===409?'The inspected context changed. Refresh before selecting again.':'Manual context save denied. Recheck current permissions.'});return;
+   }
    if(![200,201].includes(reply.status)||!exact(reply.body,['revision_id','question_id','duplicate'])||!id(reply.body.revision_id,'PASSAGES')||reply.body.question_id!==this.scope.question_id||typeof reply.body.duplicate!=='boolean'||reply.body.duplicate!==(reply.status===200))throw Error('Uncertain receipt');
    this.#publish({phase:'idle',packet:null,pending:null,message:'Saved exact manual context.'});await this.load();
   }catch(_){if(generation===this.#generation)this.#publish({phase:'uncertain',packet:null,pending:body,message:'The save may have committed. Retry the exact intent to recover its receipt.'});}

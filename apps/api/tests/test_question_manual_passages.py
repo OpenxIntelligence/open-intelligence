@@ -208,3 +208,67 @@ class QuestionManualPassagesHTTPTests(EvidenceFixture):
             self.save(base,path,command|dict(request_key='REMOVE',expected_context_sha256=stale['context_sha256'],references=[]))
             self.creds[0]['actions'].remove('source_original_read');self.write()
             self.assertEqual(self.read_report(base,p,q,saved['report_id'])[0],404)
+
+    def test_primary_evidence_actions_keep_their_independent_permissions(self):
+        with running_server(create_app(self.settings)) as base:
+            p,q,_,_,path,_,command=self.setup_manual(base)
+            self.save(base,path,command)
+            self.creds[0]['actions'].remove('source_original_read');self.write()
+            # Metadata and a comparison about the primary structured observation
+            # do not consume or disclose the separately attached manual passages.
+            packet=self.packet(base,p,q)
+            self.assertEqual(packet['reports'],[])
+            code,evidence,_=self.imported(base,p,q);self.assertEqual(code,201,evidence)
+            packet=self.packet(base,p,q)
+            code,comparison,_=self.assessed(base,p,q,self.assessment_body(packet,evidence['evidence_id']))
+            self.assertEqual(code,201,comparison)
+            self.assertEqual(request(base,path,token=TOKEN_A)[0],404)
+
+    def test_historical_manual_report_does_not_claim_unrelated_evidence_authority(self):
+        with running_server(create_app(self.settings)) as base:
+            p,q,_,_,path,_,command=self.setup_manual(base)
+            code,evidence,_=self.imported(base,p,q);self.assertEqual(code,201,evidence)
+            code,assessment,_=self.assessed(base,p,q,self.assessment_body(self.packet(base,p,q),evidence['evidence_id']))
+            self.assertEqual(code,201,assessment)
+            legacy_intent=self.report_body(self.packet(base,p,q),[assessment['assessment_id']],key='LEGACY-REPORT')
+            code,legacy,_=self.reported(base,p,q,legacy_intent);self.assertEqual(code,201,legacy)
+            _,context=self.save(base,path,command)
+            intent=self.report_body(self.packet(base,p,q),[assessment['assessment_id']],key='WITH-MANUAL')|{'expected_manual_context_sha256':context['context_sha256']}
+            code,manual,_=self.reported(base,p,q,intent);self.assertEqual(code,201,manual)
+            _,cleared=self.save(base,path,command|dict(request_key='CLEAR-MANUAL',expected_context_sha256=context['context_sha256'],references=[]))
+            self.creds[0]['actions'].remove('source_original_read');self.write()
+            packet=self.packet(base,p,q)
+            self.assertEqual(len(packet['reports']),2)
+            self.assertEqual(self.read_report(base,p,q,legacy['report_id'])[0],200)
+            self.assertEqual(self.read_report(base,p,q,manual['report_id'])[0],404)
+            self.assertEqual(request(base,path,token=TOKEN_A)[0],200)
+            empty_intent=self.report_body(packet,[assessment['assessment_id']],key='EMPTY-MANUAL')|{'expected_manual_context_sha256':cleared['context_sha256']}
+            code,empty,_=self.reported(base,p,q,empty_intent);self.assertEqual(code,201,empty)
+            code,report,_=self.read_report(base,p,q,empty['report_id']);self.assertEqual(code,200,report)
+            self.assertEqual(report['snapshot']['manual_passages']['passages'],[])
+
+    def test_manual_report_checks_original_permission_after_encoding_and_its_audit(self):
+        with running_server(create_app(self.settings)) as base:
+            p,q,_,_,path,_,command=self.setup_manual(base)
+            _,context=self.save(base,path,command)
+            code,evidence,_=self.imported(base,p,q);self.assertEqual(code,201,evidence)
+            code,assessment,_=self.assessed(base,p,q,self.assessment_body(self.packet(base,p,q),evidence['evidence_id']))
+            self.assertEqual(code,201,assessment)
+            intent=self.report_body(self.packet(base,p,q),[assessment['assessment_id']])|{'expected_manual_context_sha256':context['context_sha256']}
+            code,saved,_=self.reported(base,p,q,intent);self.assertEqual(code,201,saved)
+            for phase in ('encoding','audit'):
+                self.creds[0]['actions']=list(set(self.creds[0]['actions'])|{'source_original_read'});self.write()
+                before=self.counts();render=JSONResponse.render;append=PostgresPatientRegistry.append_event
+                def revoke():
+                    self.creds[0]['actions'].remove('source_original_read');self.write()
+                def encode(response,content):
+                    result=render(response,content)
+                    if isinstance(content,dict) and content.get('contract')=='oi.h1-evidence-report/1':revoke()
+                    return result
+                def audit(registry,patient,event,**kwargs):
+                    result=append(registry,patient,event,**kwargs)
+                    if event=='investigation.report_manual_context_access_prepared':revoke()
+                    return result
+                with patch.object(JSONResponse,'render',encode) if phase=='encoding' else patch.object(PostgresPatientRegistry,'append_event',audit):
+                    code,body,_=self.read_report(base,p,q,saved['report_id'])
+                self.assertEqual(code,404,body);self.assertEqual(self.counts(),before)
