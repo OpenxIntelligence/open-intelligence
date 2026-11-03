@@ -431,5 +431,44 @@ class ClinicalEncounterTests(unittest.TestCase):
             ('req-attest-replay-001',)).fetchone()[0], 1)
 
 
+    def test_corrupted_current_note_cannot_be_attested(self):
+        """A restored/altered note with an invalid digest cannot be signed."""
+        encounter_id = self.begin()['encounter_id']
+        self.ops.write_note('CASE-ONE', encounter_id, 'NOTE-001',
+                            'Original fictional clinical draft', expected_version=0,
+                            request_key='req-corrupt-note-001', **self.actor)
+        with self.store.db:
+            self.store.db.execute('DROP TRIGGER clinical_note_versions_block_update')
+            self.store.db.execute('UPDATE clinical_note_versions SET body=? WHERE version=1',
+                                  ('Altered fictional note content',))
+        before = self.store.db.execute('SELECT COUNT(*) FROM events').fetchone()[0]
+        with self.assertRaisesRegex(ClinicalConflict, 'integrity'):
+            self.ops.attest_note('CASE-ONE', encounter_id, 'NOTE-001',
+                                 expected_version=1, request_key='req-corrupt-attest-001',
+                                 **self.actor)
+        self.assertEqual(self.store.db.execute('SELECT COUNT(*) FROM events').fetchone()[0], before)
+        self.assertEqual(self.store.db.execute('SELECT COUNT(*) FROM clinical_note_versions').fetchone()[0], 1)
+        self.assertEqual(self.store.db.execute(
+            "SELECT COUNT(*) FROM clinical_encounter_commands WHERE request_key=?",
+            ('req-corrupt-attest-001',)).fetchone()[0], 0)
+
+    def test_corrupted_historical_note_not_disclosed(self):
+        """A history read cannot silently return an altered prior note version."""
+        encounter_id = self.begin()['encounter_id']
+        self.ops.write_note('CASE-ONE', encounter_id, 'NOTE-001',
+                            'Original version retained', expected_version=0,
+                            request_key='req-before-history-001', **self.actor)
+        self.ops.write_note('CASE-ONE', encounter_id, 'NOTE-001',
+                            'Second version retained', expected_version=1,
+                            request_key='req-before-history-002', **self.actor)
+        with self.store.db:
+            self.store.db.execute('DROP TRIGGER clinical_note_versions_block_update')
+            self.store.db.execute('UPDATE clinical_note_versions SET body=? WHERE version=1',
+                                  ('Altered historical note',))
+        with self.assertRaisesRegex(ClinicalConflict, 'integrity'):
+            self.ops.note_history('CASE-ONE', encounter_id, 'NOTE-001', **self.actor)
+        self.assertEqual(self.store.db.execute('SELECT COUNT(*) FROM clinical_note_versions').fetchone()[0], 2)
+
+
 if __name__ == '__main__':
     unittest.main()
