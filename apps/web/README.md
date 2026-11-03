@@ -65,6 +65,48 @@ production access/auditing/RLS, original-file processing beyond the strict
 fictional text contract and full React↔clinical-Composer integration remain
 independent release gates. Continue to keep every parent PR draft/unmerged.
 
+## Source-derived Patient World Model (H1 integration candidate)
+
+An **Investigations → source-only** view is now connected to the same
+PostgreSQL 16 clinical source owner as Records, without adding a second
+patient/source database, model, evidence store or backend dependency.
+
+The backend imports the original source-owned
+`src/open_intelligence/world_model.py` **byte-for-byte** (Git blob
+`cbdc18ff2e41fa2e18a4e96297380541e99e2c3b` from the already verified
+clinical World Model stack). An in-memory PostgreSQL adapter reuses that pure
+source assertion/conflict projector; temporary ordinal IDs never leave the
+adapter. API responses retain canonical `SRC-*` original-version identifiers,
+SHA-256, source line, asserted label, document date and specimen metadata.
+
+The user must hold independent `patient_read` and `source_read` grants and
+supply the exact case ID. `GET /v1/patients/{patient_id}/cases/{case_id}/world-model`
+takes the existing source owner's case-binding lock so its view is consistent
+with document import, amendment and case-binding revocation. It rechecks each
+original's raw hash and that stored source assertion/line exactly matches the
+author-supplied literal original. No source bytes are delivered by this route.
+
+In React, the **Investigations** tab displays current observations, unresolved
+reported labels, constrained same-specimen/date disagreements, history and a
+source-set fingerprint. The tab is read-only and clears cached observations
+on patient/session changes, permission failure, and navigation. Reloading
+observations after a source amendment changes the fingerprint and shows the
+new current original with the superseded version retained separately. This is
+not continuous subscription or distributed invalidation.
+
+**Not yet connected:** investigation question persistence, clinical Composer,
+licensed medical literature, evidence interpretation, model execution,
+clinical review decisions, provider identity, consent, PHI or a deployable
+healthcare product. The older SQLite clinical review stack has not been mounted
+into this PostgreSQL service. Absence of question/review records from this
+read model **must not be interpreted as no work requiring clinical review**.
+No inference of molecular status, diagnosis or treatment occurs.
+
+The H1 workflow runs real PostgreSQL tests for source custody, exact quote/line
+verification, conflicting source labels, amendment, wrong patient/organization,
+revocation and access rights before the real Chromium journey. A successful
+synthetic software gate is not production authorization or clinical validation.
+
 ## Development setup
 
 The backend instructions and exact Python dependency gate remain in
