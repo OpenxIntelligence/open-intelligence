@@ -17,3 +17,19 @@
 .finding-list blockquote{border-left:3px solid #aac1b4;margin:12px 0;padding:8px 12px;white-space:pre-wrap;overflow-wrap:anywhere}
 .finding-list small{color:#53685f}
 @media(max-width:600px){.source-metadata{grid-template-columns:1fr}.case-row,.source-list li,.finding-list li{padding:12px}}
+
+
+/* Source-only World Model. Read-only, no clinical recommendation affordances. */
+.source-world h3{font-size:17px;margin:24px 0 10px}
+.world-cases,.world-timeline,.world-observations{list-style:none;padding:0;display:grid;gap:12px}
+.world-cases li,.world-timeline li,.world-observations li{min-width:0;border:1px solid #d7e0d8;border-radius:8px;padding:14px;background:#fcfdfb;overflow-wrap:anywhere}
+.world-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(115px,1fr));gap:12px;margin:20px 0}
+.world-summary>div{border:1px solid #d7e0d8;border-radius:8px;background:#f9faf7;padding:14px;display:flex;flex-direction:column;gap:3px}
+.world-summary strong{font-size:23px;color:#194d45}
+.world-summary span{font-size:12px;color:#52635d}
+.world-observations p{margin:4px 0 9px}
+.world-observations blockquote{margin:8px 0;border-left:3px solid #b1c3b5;padding:9px 12px;white-space:pre-wrap;overflow-wrap:anywhere}
+.source-world code{overflow-wrap:anywhere;word-break:break-word}
+.world-history{margin:20px 0;padding:14px;border:1px solid #d7e0d8;border-radius:8px}
+.world-history li{margin:8px 0;overflow-wrap:anywhere}
+@media(max-width:600px){.world-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}

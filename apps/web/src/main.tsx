@@ -2,6 +2,7 @@ import {StrictMode, useEffect, useRef, useState, useSyncExternalStore} from 'rea
 import {createRoot} from 'react-dom/client';
 import {RegistrySession} from './registry-client';
 import {SourceIntake} from './source-intake-view';
+import {WorldModelView} from './world-model-view';
 import './styles.css';
 import './source-intake.css';
 const session=new RegistrySession();
@@ -29,14 +30,14 @@ function App(){
   <aside className="rail" aria-label="Workspace navigation">
    <div className="brand"><span className="mark" aria-hidden="true">oi</span><span>Open<br/>Intelligence</span></div>
    <div className="environment">Development · fictional identities only</div>
-   <nav aria-label="Patient workspace">{navigation.map(name=><button type="button" key={name} aria-current={name===section?'page':undefined} onClick={()=>setSection(name)}><span>{name}</span>{name==='Records'?<span className="nav-hint">Original records</span>:name!=='Overview'?<span className="nav-hint">Not connected</span>:null}</button>)}</nav>
+   <nav aria-label="Patient workspace">{navigation.map(name=><button type="button" key={name} aria-current={name===section?'page':undefined} onClick={()=>setSection(name)}><span>{name}</span>{name==='Records'?<span className="nav-hint">Original records</span>:name==='Journey'?<span className="nav-hint">Source view</span>:name!=='Overview'?<span className="nav-hint">Not connected</span>:null}</button>)}</nav>
    <div className="rail-note">One patient context.<br/>Original sources.<br/>Human clinical authority.</div>
   </aside>
   <div className="body"><header className="topbar"><span>Patient workspace <span className="muted">/ {section}</span></span><span className={'connection '+readiness} data-testid="readiness">{readiness==='checking'?'Checking API':readiness==='ready'?'PostgreSQL API ready':'API unavailable'}</span></header>
    <main id="main" tabIndex={-1}>
-    <div className="heading"><div><p className="eyebrow">OPEN INTELLIGENCE · H1</p><h1>{section==='Overview'?'Start with the right patient.':section}</h1><p className="lede">{section==='Overview'?'A connected foundation for the patient’s story, evidence and care.':section==='Records'?'Inspect authorized fictional case mappings, original source history and unreviewed source statements.':'This capability remains part of the platform, but is not connected to this H1 API yet.'}</p></div></div>
+    <div className="heading"><div><p className="eyebrow">OPEN INTELLIGENCE · H1</p><h1>{section==='Overview'?'Start with the right patient.':section}</h1><p className="lede">{section==='Overview'?'A connected foundation for the patient’s story, evidence and care.':section==='Records'?'Inspect authorized fictional case mappings, original source history and unreviewed source statements.':section==='Journey'?'View source-linked chronology, uncertainty and disagreements without implying clinical assessment.':'This capability remains part of the platform, but is not connected to this H1 API yet.'}</p></div></div>
     <div className="boundary" role="note"><strong>Development workspace, not a clinical service.</strong> Use operator-issued synthetic credentials and fictional identities only. These are not patient accounts, verified consent or professional sign-off.</div>
-    {section==='Records'?<section className="panel records-workspace" data-testid="records-workspace" aria-labelledby="records-heading">
+    {section==='Journey'?<WorldModelView session={session} state={state} busy={busy} onOverview={()=>setSection('Overview')}/>:section==='Records'?<section className="panel records-workspace" data-testid="records-workspace" aria-labelledby="records-heading">
      <span className="step">CANONICAL SOURCE OWNER / ORIGINALS</span>
      <h2 id="records-heading">Original source records</h2>
      <p>Shows source-reported information from the existing scoped PostgreSQL API. Original-text inspection and deliberate import require separate server permissions. AI interpretation, clinical decisions, verified identity and consent are not supplied by this screen. Information is current only at its last successful check.</p>

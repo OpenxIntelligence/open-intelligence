@@ -110,6 +110,21 @@ def main():
             assert cd.evaluate("document.querySelector('[data-testid=source-statement]').textContent.includes('<script>literal</script>')")
             assert cd.evaluate("document.querySelectorAll('[data-testid=source-statement] script').length===0")
             assert cd.evaluate("document.querySelector('[data-testid=source-index]').textContent.includes('not established')")
+            # Read the real PG source-derived World Model, no generated clinical facts.
+            cd.evaluate("Array.from(document.querySelectorAll('nav[aria-label=\"Patient workspace\"] button')).find(b=>b.textContent.includes('Journey')).click()")
+            cd.wait("Boolean(document.querySelector('[data-testid=world-workspace]'))",'source-only Journey screen')
+            cd.evaluate("document.querySelector('[data-testid=world-load]').click()")
+            cd.wait("Boolean(document.querySelector('[data-testid=world-projection]'))",'PG-backed world model initial source')
+            assert cd.evaluate("document.querySelector('[data-testid=world-current]').textContent==='1'")
+            assert cd.evaluate("document.querySelector('[data-testid=world-history-count]').textContent==='0'")
+            assert cd.evaluate("document.querySelector('[data-testid=world-unresolved-count]').textContent==='1'")
+            assert cd.evaluate("document.querySelector('[data-testid=world-reported-state]').textContent==='not-reported'")
+            assert cd.evaluate("document.querySelector('[data-testid=world-statement]').textContent.includes('<script>literal</script>')")
+            assert cd.evaluate("document.querySelectorAll('[data-testid=world-statement] script').length===0")
+            assert cd.evaluate("document.querySelector('[data-testid=world-no-approval]').textContent.includes('Composer execution: unavailable')")
+            initial_world_fingerprint=cd.evaluate("document.querySelector('[data-testid=world-fingerprint]').textContent")
+            assert len(initial_world_fingerprint)==64
+            cd.evaluate("Array.from(document.querySelectorAll('nav[aria-label=\"Patient workspace\"] button')).find(b=>b.textContent.includes('Records')).click()")
             amended=(
                 'OI-SYNTHETIC-REPORT/1\nPatient: CASE-ALPHA\nDocument: DOC-ONE\n'
                 'Type: pathology\nEvent-Date: 2026-01-10\nIssued-At: 2026-01-12\n'
@@ -124,8 +139,23 @@ def main():
             assert cd.evaluate("document.querySelector('[data-testid=source-index]').textContent.includes('superseded')")
             assert cd.evaluate("document.querySelector('[data-testid=source-index]').textContent.includes('Amended fictional marker is reported negative.')")
             assert cd.evaluate("document.querySelectorAll('[data-testid=source-statement]').length===1")
-            # Read rights must be checked afresh; a denied refresh discards earlier findings.
+            cd.evaluate("Array.from(document.querySelectorAll('nav[aria-label=\"Patient workspace\"] button')).find(b=>b.textContent.includes('Journey')).click()")
+            cd.evaluate("document.querySelector('[data-testid=world-load]').click()")
+            cd.wait("document.querySelector('[data-testid=world-history-count]')?.textContent==='1'",'world model retains superseded source')
+            assert cd.evaluate("document.querySelector('[data-testid=world-current]').textContent==='1'")
+            assert cd.evaluate("document.querySelector('[data-testid=world-unresolved-count]').textContent==='0'")
+            assert cd.evaluate("document.querySelector('[data-testid=world-reported-state]').textContent==='negative'")
+            assert cd.evaluate("document.querySelector('[data-testid=world-fingerprint]').textContent") != initial_world_fingerprint
+            assert cd.evaluate(f"document.querySelector('[data-testid=world-projection]').textContent.includes({json.dumps(original_id)})")
+            # Current source metadata access is independent from the historical original bytes.
+            # World Model recheck must clear the old view after source-read grant withdrawal.
             credentials[0]['actions'].remove('source_read');write_grants()
+            cd.evaluate("document.querySelector('[data-testid=world-load]').click()")
+            cd.wait("document.querySelector('[data-testid=world-status]').textContent.includes('unavailable or revoked')",'World Model permission revocation')
+            assert cd.evaluate("!document.querySelector('[data-testid=world-projection]')")
+            cd.evaluate("Array.from(document.querySelectorAll('nav[aria-label=\"Patient workspace\"] button')).find(b=>b.textContent.includes('Records')).click()")
+            # Read rights must be checked afresh; a denied refresh discards earlier findings.
+            # source_read was already withdrawn for the source-bound World Model.
             cd.evaluate("document.querySelector('[data-testid=load-sources]').click()")
             cd.wait("document.querySelector('[data-testid=records-status]').textContent.includes('Sources unavailable')",'revoked source permission erases stale view')
             assert cd.evaluate("!document.querySelector('[data-testid=source-index]')")
