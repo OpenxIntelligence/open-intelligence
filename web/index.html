@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
   <script src="/mission.js" defer></script>
+  <script src="/clinician-overview.js" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main-content">Skip to case workspace</a>
@@ -34,6 +35,7 @@
           <a href="#incoming-board">Incoming board</a>
           <a href="#patient-view">Patient view</a>
           <a href="#patient-mission">Patient Mission</a>
+          <a href="#clinician-overview">Clinician overview</a>
           <a href="#assertions">Reported findings</a>
           <a href="#timeline">Timeline</a>
           <a href="#investigations">Investigation</a>
@@ -128,6 +130,27 @@
         </div>
         <div class="subhead">Guardrails</div>
         <ul id="mission-guardrails" class="muted tiny"></ul>
+      </section>
+
+      <section class="panel" id="clinician-overview" aria-labelledby="clinician-overview-title">
+        <div class="panel-head">
+          <div><div class="eyebrow">CLINICIAN OVERVIEW · READ-ONLY PROJECTION</div><h2 id="clinician-overview-title">Clinician overview</h2></div>
+          <span id="clinician-overview-stage" class="pill pill-neutral" aria-live="polite">Loading…</span>
+        </div>
+        <p class="muted"><strong>FICTIONAL DEMO DATA — not a real patient.</strong> <span id="clinician-overview-disclaimer">Summary of the recorded case file only — not a clinical recommendation, not a treatment decision.</span> This surface organizes the recorded file; it makes no care decision.</p>
+        <div class="metrics" id="clinician-overview-counts" aria-live="polite"></div>
+        <div class="workspace">
+          <div class="content-left">
+            <div><div class="subhead">Current sources (FICTIONAL)</div><div id="clinician-overview-sources" class="cards" aria-live="polite"></div></div>
+            <div><div class="subhead">Open questions (FICTIONAL)</div><div id="clinician-overview-questions" class="questions" aria-live="polite"></div></div>
+            <div><div class="subhead">Pending reviews (FICTIONAL)</div><div id="clinician-overview-pending" class="snapshots" aria-live="polite"></div></div>
+          </div>
+          <div class="content-right">
+            <div><div class="subhead">Follow-up tasks (FICTIONAL)</div><div id="clinician-overview-tasks" class="cards" aria-live="polite"></div></div>
+            <div><div class="subhead">Goals (FICTIONAL)</div><div id="clinician-overview-goals" class="cards" aria-live="polite"></div></div>
+            <div><div class="subhead">Journey stage (FICTIONAL)</div><div id="clinician-overview-journey" class="cards" aria-live="polite"></div></div>
+          </div>
+        </div>
       </section>
 
       <section class="panel panel-timeline" id="timeline">
