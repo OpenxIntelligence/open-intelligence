@@ -98,3 +98,11 @@
 .question-draft .actions{margin:12px 0}
 .question-draft code{overflow-wrap:anywhere;word-break:break-word}
 @media(max-width:600px){.question-draft{padding:12px}.question-draft .actions button{width:100%}}
+
+/* Existing source-scoped patient Overview, transplanted from PR #288. */
+.continuity{margin-bottom:24px}
+.continuity-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:14px;margin:20px 0}
+.continuity-item{min-width:0;border:1px solid #c6d8c9;border-radius:8px;padding:16px;background:#f9fcf7}
+.continuity-item h3{font-size:17px;margin:0 0 12px}
+.continuity code,.continuity button{overflow-wrap:anywhere;white-space:normal}
+.continuity button{max-width:100%}
