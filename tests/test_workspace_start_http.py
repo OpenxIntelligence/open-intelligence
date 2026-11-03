@@ -42,6 +42,13 @@ class WorkspaceStartHttpTests(unittest.TestCase):
   for required in ['case-create-form','source-upload-form','journey-steps']:self.assertIn(required,page)
   self.assertIn('decodeSource',script)
   self.assertEqual(self.read('/api/cases'),[])
+ def test_role_views_layer_is_linked_and_served(self):
+  page=self.read('/')
+  self.assertIn('<link rel="stylesheet" href="/views.css">',page)
+  self.assertIn('<script src="/views.js" defer></script>',page)
+  self.assertLess(page.index('/workspace-entry.js'),page.index('/views.js'))
+  self.assertIn('LAYOUT',self.read('/views.js'))
+  self.assertIn('.view-panel',self.read('/views.css'))
  def test_duplicate_case_does_not_replace_existing_sources(self):
   payload={'case_id':'CASE-START','label':'Fictional case Start'}
   self.read('/api/cases',payload);self.read('/api/cases/CASE-START/imports',{'text':RAW.decode()})

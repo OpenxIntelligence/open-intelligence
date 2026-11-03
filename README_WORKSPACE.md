@@ -20,6 +20,21 @@ Open **http://127.0.0.1:8765**. Python 3.10 or newer is required. The default da
 
 The same existing workspace contains patient-oriented wording, source history, research/evidence assessment, bibliography, timeline, worklist and review history. Availability of a control is not evidence that hospital integration or clinical reasoning is implemented.
 
+## Patient and care-team views
+
+`web/views.css` and `web/views.js` regroup the same page into two views without changing any original file, API or saved record. Every original section is moved, never copied or removed, so its controls, saved state and element IDs keep working.
+
+- **Care team.** Incoming board, then Overview (setup, intake, counts, reported findings, review status, next investigation), Records & timeline, Investigations, Evidence & research, Review & changes, and Options & tasks. "Needs review" offers a direct comparison of the amended report versions. Source and comparison views dock on the right as an inspector instead of covering the page.
+- **Patient.** Overview, My reports, Research and My questions. These are read-only summaries of the same case state: what changed in an amended report, each result with its plain status and exact source line, connected fictional research, and question status. Care-team authoring tools are hidden, not removed.
+- **Switching views.** The header's **Dev view** switch exists for development only; real deployments would sign each person in to their own view. `?role=patient` or `?role=careteam` selects a view. For a side-by-side demo, open both in two windows with `&live=1`. Each window then re-reads the selected case every few seconds, unless a draft is unsaved or a source view is open.
+
+Not included yet: patient messaging, an AI assistant for patients, reviewer accept/reject decisions and drafts that cite exact lines. Each needs its own reviewed change.
+
+```sh
+PYTHONPATH=src python -m unittest tests.test_workspace_start_http -v
+PYTHONPATH=src python tests/role_views_browser_journey.py
+```
+
 ## Boundaries
 
 Use **independently authored fictional data only**, not actual, public or disguised patient records. File intake currently accepts UTF-8 `.txt` files with LF line endings and the existing `OI-SYNTHETIC-REPORT/1` contract, maximum 64 KiB. CRLF, BOM, invalid UTF-8 and unsupported formats are rejected rather than silently normalized. There is no normal PDF/OCR extraction or clinical inference here. Source statements are authored annotations, not model discoveries. A checkbox cannot prove consent, identity or data rights.
