@@ -53,6 +53,10 @@ def main():
     cd.evaluate("document.querySelector('#source-upload-confirm').click();document.querySelector('#source-upload-form').requestSubmit()")
    upload(ORIGINAL,'original.txt')
    cd.wait("document.querySelectorAll('#source-list .source-card').length===1",'file import updates original record')
+   # After the intake re-renders with its first source, the confirmation stays and the panel stays open.
+   cd.wait("document.querySelector('#journey-steps').textContent.includes('Sources received')",'intake re-rendered with the first source')
+   assert cd.evaluate("document.querySelector('#source-upload-status').textContent.startsWith('Original source imported') && document.querySelector('#source-intake').open"), \
+    'first import keeps its confirmation and the intake panel open'
    state=json.load(urlopen(url+'api/cases/'+CASE+'/state'))
    assert state['sources'][0]['sha256']==hashlib.sha256(ORIGINAL).hexdigest()
    assert state['assertions'][0]['certainty']=='not-reported'

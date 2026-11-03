@@ -101,9 +101,12 @@
       const id=state?.case?.case_id || null;
       const hasSources=Boolean(state?.sources?.length);
       if(id!==shownCase || hasSources!==hadSources) {
-        resetScope();
+        // Reset only for a different case. When the first source of the same
+        // case arrives, keep the import confirmation and the open intake panel.
+        const sameCase=id===shownCase;
+        if(!sameCase)resetScope();
         $('workspace-start').open=!hasSources;
-        $('source-intake').open=Boolean(state) && !hasSources;
+        if(!sameCase)$('source-intake').open=Boolean(state) && !hasSources;
         $('new-case-panel').open=!state;
       }
       shownCase=id;hadSources=hasSources;
