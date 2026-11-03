@@ -241,6 +241,25 @@ class FollowthroughChecks:
         fill(self.cd, question + ' [data-testid=followthrough-detail]', draft_detail)
         before_transitions = self.cd.evaluate('window.__oiFollowthroughChecks.writes.length')
 
+        # Leaving the question to inspect its source must not discard an unsent
+        # coordination draft or silently record it. These are real UI inputs.
+        draft_fields = {'title': draft_title, 'detail': draft_detail,
+                        'owner': 'Fictional navigation coordinator',
+                        'due-date': '2026-12-09',
+                        'trigger': 'After inspecting the fictional original',
+                        'reason': 'Keep the exact unsent coordination plan.'}
+        for name, value in draft_fields.items():
+            fill(self.cd, question + ' [data-testid=followthrough-' + name + ']', value)
+        for section in ('Journey', 'Records', 'Overview'):
+            navigate(self.cd, section)
+            navigate(self.cd, 'Investigations')
+            self.cd.evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve(true))))')
+            for name, expected in draft_fields.items():
+                actual = self.cd.evaluate('document.querySelector(' + json.dumps(
+                    question + ' [data-testid=followthrough-' + name + ']') + ')?.value')
+                assert actual == expected, 'Same-case navigation discarded unsent follow-up ' + name
+            assert self.cd.evaluate('window.__oiFollowthroughChecks.writes.length') == before_transitions
+
         def assert_creation_draft_survives(status):
             # Let committed receipt rendering and its React effects settle;
             # an eventually closed form must not accidentally pass this check.
