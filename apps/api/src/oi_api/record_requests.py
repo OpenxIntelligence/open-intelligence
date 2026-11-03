@@ -8,7 +8,9 @@ No provider communication, identity proof, clinical validation or PHI support.
 from __future__ import annotations
 
 from datetime import datetime
+from collections.abc import Callable
 import hashlib
+from typing import TypeVar
 import uuid
 
 from open_intelligence.patient_registry import (
@@ -18,6 +20,7 @@ from open_intelligence.patient_registry import (
 from open_intelligence.postgres_registry import PostgresPatientRegistry
 
 KINDS = frozenset(("clinical", "pathology", "laboratory", "imaging", "molecular", "other"))
+PreparedResponse = TypeVar("PreparedResponse")
 
 
 def _label(value: str, max_size: int) -> str:
@@ -228,13 +231,19 @@ class PostgresRecordRequests:
 
     def receive(self, patient_id: str, request_id: str, case_id: str,
                 source_id: str, *, organization: str,
-                actor: str, purpose: str) -> dict:
+                actor: str, purpose: str,
+                recheck_authority: Callable[[], None],
+                prepare_response: Callable[[dict], PreparedResponse] | None = None) -> dict | PreparedResponse:
         """Attach an existing exact current original; do not ingest or recopy it.
 
         The row lock serializes receive/cancel/idempotent retry. The qualified
         canonical case binding is held through the event commit, as is the
         original source integrity check. This does not verify the provider
         label or perform clinical acceptance of the document.
+
+        Both new receipts and historical retries prepare their response and
+        refresh current authority under these locks before commit. The existing
+        event is a received pointer, not proof of HTTP delivery.
         """
         from .case_bindings import _case_id
         from .sources import _source_id, PostgresSourceVersions
@@ -246,6 +255,12 @@ class PostgresRecordRequests:
         actor = _key(actor, "actor")
         if purpose not in ("operations", "research"):
             raise PatientRegistryError("Invalid source-receipt purpose")
+
+        def complete(result):
+            prepared = prepare_response(result) if prepare_response is not None else result
+            recheck_authority()
+            return prepared
+
         with self.patients.transaction():
             self._active_patient(patient_id, organization)
             row = self.patients._fetchone(
@@ -274,8 +289,8 @@ class PostgresRecordRequests:
             if existing is not None:
                 if existing["case_id"] != case_id or existing["source_id"] != source_id:
                     raise PatientRegistryConflict("Record request already has a different source")
-                return {"request_id": request_id, "source_id": source_id,
-                        "version": source[2], "duplicate": True}
+                return complete({"request_id": request_id, "source_id": source_id,
+                                 "version": source[2], "duplicate": True})
             if source[4] != "current":
                 raise PatientRegistryConflict("Source version is no longer current")
             # This *one* existing immutable patient event is the only durable
@@ -286,5 +301,5 @@ class PostgresRecordRequests:
                 request_id=request_id, case_id=case_id, source_id=source_id,
                 source_sha256=source[3], source_version=source[2], actor=actor,
             )
-            return {"request_id": request_id, "source_id": source_id,
-                    "version": source[2], "duplicate": False}
+            return complete({"request_id": request_id, "source_id": source_id,
+                             "version": source[2], "duplicate": False})

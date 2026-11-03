@@ -4,6 +4,29 @@
 
 ## Current audit — 2 November 2026
 
+### H1 source intake and record receipt final authority — draft #265
+
+This continuation uses verified canonical source/question owner #244 at
+`3b6c466950852c20f99d57a70dd196fd2862571a`. The existing source-import and
+record-receive methods now prepare their JSON receipt and refresh the original
+bearer's independent grants under their original transactions. Denied imports,
+amendments, quarantine and received-pointer writes roll back; duplicate/history
+paths also refresh authority before returning their source identity. No source,
+request, evidence or review owner is duplicated, and no migration/dependency is
+added. The separate active review and source-brief owners remain #262 and #264.
+
+Twelve new actual PostgreSQL/HTTP regression methods supplement the existing
+gates. Hosted tests-first runs reproduced missing final checks and response
+preparation after commit. A generic renderer-hook mistake was corrected using
+the pinned FastAPI serializer's actual path; the failure history remains recorded.
+Local checks execute 42 API tests and explicitly skip 162 database executions;
+they are not PostgreSQL acceptance. Final exact-head API/migration/recovery and
+built React/Chromium evidence belongs to
+[PR #265's verification receipt](https://github.com/OpenxIntelligence/open-intelligence/pull/265).
+See the [existing source receipt documentation](engineering/H1_CANONICAL_RECORD_SOURCE_RECEIPT.md)
+for behavior and limits. This is fictional-only engineering, draft and undeployed;
+external grant revocation and network delivery are not atomically coupled to PostgreSQL.
+
 ### H1 canonical patient identity integration — issue #112
 
 The audited default main was
