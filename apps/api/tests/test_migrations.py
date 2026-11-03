@@ -79,12 +79,19 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
         cls.engine.dispose()
 
     def setUp(self):
+        self.remove_owned_fixtures()
+
+    def remove_owned_fixtures(self):
         with self.engine.begin() as conn:
+            for name in ("identity_domain_events", "identity_create_receipts", "identity_patients"):
+                conn.execute(text(f"DROP TABLE IF EXISTS identity.{name}"))
+            for name in ("guard_patient_identity_mutation", "guard_registration_receipt", "reject_registry_history_mutation"):
+                conn.execute(text(f"DROP FUNCTION IF EXISTS identity.{name}()"))
+            conn.execute(text("DROP SCHEMA IF EXISTS identity"))
             conn.execute(text("DROP TABLE IF EXISTS public.alembic_version"))
 
     def tearDown(self):
-        with self.engine.begin() as conn:
-            conn.execute(text("DROP TABLE IF EXISTS public.alembic_version"))
+        self.remove_owned_fixtures()
 
     def test_apply_restart_downgrade_and_reapply_preserve_readiness_contract(self):
         probe = Database(self.settings)
@@ -96,7 +103,7 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
             status, body, _ = get_json(base, "/health/ready")
             self.assertEqual(status, 200)
             self.assertEqual(body["database"]["required_revision"], SCHEMA_REVISION)
-            # Repeat upgrade is idempotent; no patient tables are created.
+            # Repeat upgrade is idempotent; identity lives in its owned schema.
             migrate(self.settings, "upgrade", "head")
             self.assertEqual(inspect(self.engine).get_table_names(schema="public"), ["alembic_version"])
         with running_server(create_app(self.settings)) as restarted:

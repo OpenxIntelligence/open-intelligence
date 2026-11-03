@@ -70,10 +70,11 @@ class HTTPContractTests(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertEqual(body["product"], "Open Intelligence")
             self.assertEqual(body["api_version"], "v1")
-            self.assertEqual(body["stage"], "synthetic_shell")
-            self.assertEqual(body["authentication"], "not_implemented")
+            self.assertEqual(body["stage"], "synthetic_patient_registry")
+            self.assertEqual(body["authentication"], "deny_all")
             self.assertFalse(body["patient_data_enabled"])
-            self.assertEqual(body["capabilities"], [])
+            self.assertTrue(body["synthetic_registry_enabled"])
+            self.assertEqual(body["capabilities"], ["synthetic_patient_create", "synthetic_patient_read"])
 
     def test_missing_database_is_unready_not_a_fake_pass(self):
         with running_server(create_app(Settings.from_env({}))) as base:
@@ -126,11 +127,12 @@ class HTTPContractTests(unittest.TestCase):
     def test_openapi_is_local_versioned_and_describes_failure(self):
         with running_server(create_app(Settings.from_env({}))) as base:
             status, schema, _ = get_json(base, "/v1/openapi.json")
-            for path in ("/docs", "/redoc", "/openapi.json", "/v1/patients"):
+            for path in ("/docs", "/redoc", "/openapi.json"):
                 missing_status, _, _ = get_json(base, path)
                 self.assertEqual(missing_status, 404)
         self.assertEqual(status, 200)
-        self.assertEqual(set(schema["paths"]), {"/health", "/health/ready", "/v1"})
+        self.assertEqual(set(schema["paths"]), {"/health", "/health/ready", "/v1", "/v1/patients", "/v1/patients/{patient_id}"})
+        self.assertEqual(schema["paths"]["/v1/patients"]["post"]["security"], [{"SyntheticFixture": []}])
         self.assertIn("503", schema["paths"]["/health/ready"]["get"]["responses"])
         self.assertFalse(schema["components"]["schemas"]["Readiness"]["additionalProperties"])
 

@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-SCHEMA_REVISION = "0001_h1_shell"
+SCHEMA_REVISION = "0002_patient_registry"
 POSTGRES_MAJOR = 16
 
 
@@ -19,7 +19,7 @@ class Liveness(Contract):
 class DatabaseStatus(Contract):
     status: Literal["unconfigured", "unavailable", "unsupported_version", "schema_mismatch", "ready"]
     required_postgres_major: Literal[16] = POSTGRES_MAJOR
-    required_revision: Literal["0001_h1_shell"] = SCHEMA_REVISION
+    required_revision: Literal["0002_patient_registry"] = SCHEMA_REVISION
 
 
 class Readiness(Contract):
@@ -30,8 +30,10 @@ class Readiness(Contract):
 class VersionManifest(Contract):
     product: Literal["Open Intelligence"] = "Open Intelligence"
     api_version: Literal["v1"] = "v1"
-    stage: Literal["synthetic_shell"] = "synthetic_shell"
-    authentication: Literal["not_implemented"] = "not_implemented"
+    stage: Literal["synthetic_patient_registry"] = "synthetic_patient_registry"
+    authentication: Literal["deny_all", "synthetic_fixture", "trusted_provider"] = "deny_all"
     patient_data_enabled: Literal[False] = False
-    capabilities: list[str] = Field(default_factory=list, max_length=0)
+    synthetic_registry_enabled: Literal[True] = True
+    capabilities: list[Literal["synthetic_patient_create", "synthetic_patient_read"]] = Field(
+        default_factory=lambda: ["synthetic_patient_create", "synthetic_patient_read"])
     openapi: Literal["/v1/openapi.json"] = "/v1/openapi.json"

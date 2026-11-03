@@ -7,11 +7,11 @@ FROM python:3.12.16-slim-bookworm
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PYTHONPATH=/app/src
+    PYTHONPATH=/app/src:/app/domain
 
 WORKDIR /app
-COPY requirements.lock dependency-license-inventory.json THIRD_PARTY_NOTICES.md ./
-COPY tools/check_dependencies.py ./tools/check_dependencies.py
+COPY apps/api/requirements.lock apps/api/dependency-license-inventory.json apps/api/THIRD_PARTY_NOTICES.md ./
+COPY apps/api/tools/check_dependencies.py ./tools/check_dependencies.py
 
 # The optional BuildKit secret supports managed development proxies without
 # copying their CA into an image layer or disabling certificate verification.
@@ -23,7 +23,10 @@ RUN --mount=type=secret,id=proxy_ca \
     && python -m pip check \
     && rm -rf /tmp/oi-h1-wheels
 
-COPY . .
+COPY apps/api/alembic.ini ./alembic.ini
+COPY apps/api/migrations ./migrations
+COPY apps/api/src ./src
+COPY src/open_intelligence ./domain/open_intelligence
 USER 10001:10001
 
 EXPOSE 8000

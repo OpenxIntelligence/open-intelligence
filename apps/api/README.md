@@ -1,167 +1,234 @@
-# Open Intelligence H1 API shell
+# Open Intelligence H1 patient registry API
 
-This is the `apps/api` composition root for [issue #112](https://github.com/OpenxIntelligence/open-intelligence/issues/112).
-It implements a local synthetic infrastructure boundary with typed HTTP
-contracts, PostgreSQL 16 readiness and explicit Alembic migrations. The existing
-Python/SQLite application in `src/open_intelligence` remains the patient-domain
-implementation. This shell does not copy that ledger or implement clinical routes.
+This is the FastAPI/PostgreSQL 16 composition root for [issue #112](https://github.com/OpenxIntelligence/open-intelligence/issues/112).
+It now mounts the existing canonical patient registry through two scoped HTTP
+operations, with domain-owned migrations and durable creation receipts/events.
+The Python/SQLite prototype remains the source/evidence/investigation oracle.
 
 ## Product and release boundary
 
-The connected patient-information → evidence → investigation → human-review
-workflow remains the priority. This shell enables its migration to the accepted
-H1 stack; it does not complete MRT-01 or an end-to-end patient investigation.
+The first integrated product remains patient information → source-linked World
+Model → permitted evidence → investigation → human review → follow-up →
+reassessment. This contribution connects its identity foundation; it does not
+complete that workflow or MRT-01.
 
-The environment is **local, synthetic development only**. It has no authenticated
-accounts, patient operations, licensed clinical content, model inference or
-production authorization. The manifest reports those omissions explicitly.
-Host-header validation is a local boundary, not authentication. Do not expose the
-container listener directly, use real patient data, or put this behind a public
-reverse proxy.
+**Local, independently synthetic development only.** The API accepts opaque
+fictional identities, not names, demographics, records or clinical information.
+The included credential adapter is an operator-authored test fixture. Account
+creation, identity proofing, caregiver delegation, clinical consent, production
+authorization, clinical sign-off and treatment actions remain unimplemented.
+There is no real-patient, deployment or clinical-validation approval.
 
-No Next.js, vectors, acute alerts, external model calls or patient-data acquisition
-are added. The project distribution license remains undecided.
+The default configuration denies all patient operations. Host-header validation
+and loopback publication do not replace authentication. No new third-party
+packages, model weights, medical content or frontend assets are introduced.
+Next.js remains excluded; the project's distribution license is unchanged.
 
 ## Run with Compose
 
-From the repository root, with Docker Engine and the Compose plugin already
-available:
+From the repository root, with Docker Engine and the Compose plugin available:
 
-```bash
-docker compose --file apps/api/compose.yaml config --quiet
-docker compose --file apps/api/compose.yaml up --build --detach api
-docker compose --file apps/api/compose.yaml ps --all
-curl --fail http://127.0.0.1:8000/health
-curl --fail http://127.0.0.1:8000/health/ready
-curl --fail http://127.0.0.1:8000/v1
-```
+    docker compose --file apps/api/compose.yaml config --quiet
+    docker compose --file apps/api/compose.yaml up --build --detach api
+    curl --fail http://127.0.0.1:8000/health/ready
+    curl --fail http://127.0.0.1:8000/v1
 
-The database is not published on a host port. The API is published only on
-`127.0.0.1:8000`. A separate one-shot migration must succeed before the API
-starts. The API runs as an unprivileged user on a read-only filesystem, with an
-internal database network and a separate frontend bridge for loopback publication.
-The database and migration service remain internal-only. **The API frontend bridge
-also permits outbound routing; this is not an egress firewall.** The shell has no
-external content/model connector. Database state lives in the named synthetic volume.
+This default is usable for health/contracts and denies patient operations.
+The database has no published host port. The API publishes only
+127.0.0.1:8000. An explicit one-shot migration must succeed before serving.
+The API is unprivileged with a read-only filesystem. Database and migrator use
+an internal-only network; the API also uses a frontend bridge for loopback
+publication. **The frontend bridge permits outbound routing; it is not an
+egress firewall.** No external content/model connector is implemented here.
 
-```bash
-docker compose --file apps/api/compose.yaml restart api
-curl --fail http://127.0.0.1:8000/health/ready
-docker compose --file apps/api/compose.yaml down
-```
+    docker compose --file apps/api/compose.yaml restart api
+    docker compose --file apps/api/compose.yaml down
 
-`down` preserves the named database volume. Use `down --volumes` only when you
-intend to delete this disposable synthetic database. The documented password is
-a public fixture credential, never an operator or production credential.
+The named synthetic volume survives restart and ordinary down. Use
+down --volumes only to delete this disposable project database. The documented
+database password is a public fixture credential.
 
-Current artifact target: **Linux x86_64 / CPython 3.12**. The lock pins the exact
-reviewed wheels for that target. Other architectures, optional extras, and native
-source builds need their own artifacts and review. Python 3.12.16 and PostgreSQL
-16.15 container **patch tags** are used; tags are not immutable digest pins. CI
-records the actual image identities. Container/OS/driver layers are not cleared
-by the Python wheel inventory, and no production image is released by this work.
+The image target is Linux x86_64 / CPython 3.12, with Python 3.12.16 and
+PostgreSQL 16.15 patch tags. Tags are not immutable digest pins; CI records
+resolved image identities. Container/OS/driver distribution rights remain a
+separate review. The Dockerfile-specific ignore file bounds the root build
+context, and explicit COPY instructions package only required app/domain files.
 
-## Run the application without containers
+### Opt in to local synthetic access
 
-Use Python 3.12 on the reviewed platform. Dependency download is an explicit
-build operation; serving the shell performs no outbound content retrieval.
+Use the explicit apps/api/compose.synthetic-access.yaml overlay. Set
+OI_API_ACCESS_DIRECTORY to an operator-controlled directory containing
+access.json. The container user (UID 10001) must be able to traverse the
+directory and read the file. Mounting the directory permits atomic replacement;
+only token hashes and synthetic grants belong there.
 
-```bash
-python3.12 -m venv /tmp/oi-h1-api-venv
-/tmp/oi-h1-api-venv/bin/python -m pip download --require-hashes --only-binary=:all: --dest /tmp/oi-h1-wheels -r apps/api/requirements.lock
-python3.12 apps/api/tools/check_dependencies.py --wheel-dir /tmp/oi-h1-wheels --sbom /tmp/oi-h1-sbom.json
-/tmp/oi-h1-api-venv/bin/python -m pip install --no-index --find-links /tmp/oi-h1-wheels --require-hashes -r apps/api/requirements.lock
-/tmp/oi-h1-api-venv/bin/python -m pip check
-PYTHONPATH=apps/api/src /tmp/oi-h1-api-venv/bin/python -m oi_api
-```
+The fixture schema is version oi.synthetic-access/1, with credentials containing
+token_sha256, actor, organization, purpose, actions, patient_ids and expires_at.
+Purpose is operations or research; supported actions are patient_create and
+patient_read. Expiry must include a timezone. Unknown fields, duplicate token
+hashes, oversized/invalid files and unavailable files fail closed. Bearer tokens
+must be 32–256 ASCII letters, digits, dots, underscores, tildes or hyphens.
 
-Without a database URL, liveness and the version contract work, but readiness
-returns 503 with `unconfigured`. To use an independently prepared, empty local
-synthetic PostgreSQL 16 database, set `OI_API_DATABASE_URL` to its
-`postgresql+pg8000://` URL, then run:
+For a generated fixture and a complete automated demonstration, run:
 
-```bash
-PYTHONPATH=apps/api/src /tmp/oi-h1-api-venv/bin/python -m oi_api.migrate upgrade head
-PYTHONPATH=apps/api/src /tmp/oi-h1-api-venv/bin/python -m oi_api.migrate current
-```
+    python3 apps/api/tools/verify_registry_compose.py
 
-Only `OI_API_ENVIRONMENT=synthetic` is accepted. Database connection timeout
-defaults to two seconds and may be set through
-`OI_API_CONNECT_TIMEOUT_SECONDS` from 0.1 to 10 seconds. Database URL query
-options are not enabled in this shell. Credential-safe errors do not echo URLs,
-SQL or raw database exceptions.
+This starts its own uniquely named disposable Compose project, creates
+synthetic credentials without printing raw tokens, tests create/retry/read,
+changes exact-patient grants, rejects another organization, restarts the API
+and database, performs pg_dump/pg_restore, verifies identity/receipt/event
+continuity, revokes grants and credentials, then removes only its own project
+and volumes. Port 8000 must be free. This is a container acceptance command,
+not a deployment command.
+
+For an operator-authored fixture, start the overlay with:
+
+    docker compose --file apps/api/compose.yaml --file apps/api/compose.synthetic-access.yaml up --build --detach api
+
+A create request accepts only a JSON object containing synthetic: true and a
+bounded request_key. A successful create does not grant read access. Add the
+returned patient_id to the authorized credential's exact patient_ids list to
+enable reading; matching organization and patient_read action are also required.
+Replace access.json atomically to change grants. Changes apply on the next
+request; an already authorized synchronous request may finish. This is not a
+distributed consent/revocation service.
+
+## Run without containers
+
+Use Python 3.12 on the reviewed platform. Download is an explicit build step:
+
+    python3.12 -m venv /tmp/oi-h1-api-venv
+    /tmp/oi-h1-api-venv/bin/python -m pip download --require-hashes --only-binary=:all: --dest /tmp/oi-h1-wheels -r apps/api/requirements.lock
+    python3.12 apps/api/tools/check_dependencies.py --wheel-dir /tmp/oi-h1-wheels --sbom /tmp/oi-h1-sbom.json
+    /tmp/oi-h1-api-venv/bin/python -m pip install --no-index --find-links /tmp/oi-h1-wheels --require-hashes -r apps/api/requirements.lock
+    /tmp/oi-h1-api-venv/bin/python -m pip check
+    PYTHONPATH=apps/api/src:src /tmp/oi-h1-api-venv/bin/python -m oi_api
+
+Without OI_API_DATABASE_URL, liveness and version work; readiness reports
+unconfigured. For an independently prepared empty synthetic PostgreSQL 16
+database, set that variable to its postgresql+pg8000:// URL and run:
+
+    PYTHONPATH=apps/api/src:src /tmp/oi-h1-api-venv/bin/python -m oi_api.migrate upgrade head
+    PYTHONPATH=apps/api/src:src /tmp/oi-h1-api-venv/bin/python -m oi_api.migrate current
+
+Set OI_API_ACCESS_FILE only to a local synthetic fixture file when exercising
+patient operations. An application may inject a trusted Authentication provider
+through create_app; that interface does not itself establish a production
+provider. Only OI_API_ENVIRONMENT=synthetic is accepted. Connection timeout
+defaults to two seconds; OI_API_CONNECT_TIMEOUT_SECONDS accepts 0.1–10 seconds.
+Database URL query options are not enabled. Public errors omit credentials,
+URLs, SQL, source text and rejected validation inputs.
 
 ## HTTP and migration contracts
 
-| Route | Contract |
+| Route | Behavior |
 |---|---|
-| `GET /health` | Process liveness, 200 even while the database is unavailable. |
-| `GET /health/ready` | 200 only for PostgreSQL major 16 at migration `0001_h1_shell`; otherwise 503 with a bounded state. |
-| `GET /v1` | Versioned synthetic-shell manifest; capabilities empty, authentication not implemented, patient data disabled. |
-| `GET /v1/openapi.json` | Local OpenAPI contract. Swagger/Redoc CDN interfaces are disabled. |
+| GET /health | Process liveness; 200 even if the database is unavailable. |
+| GET /health/ready | 200 only for PostgreSQL major 16 at revision 0002_patient_registry; bounded 503 otherwise. |
+| GET /v1 | Reports synthetic_patient_registry stage, implemented synthetic capabilities and the configured authentication mode. |
+| GET /v1/openapi.json | Local typed contract, including bearer security; no CDN documentation UI. |
+| POST /v1/patients | Authenticated synthetic creation; trusted actor/org/purpose; 201 for new identity or 200 for identical retry. |
+| GET /v1/patients/{patient_id} | Requires read action, exact-patient grant and persisted organization match. Missing and inaccessible identities both return 404. |
 
-Readiness states are `unconfigured`, `unavailable`, `unsupported_version`,
-`schema_mismatch` and `ready`. Every response has `Cache-Control: no-store`.
-Non-loopback or ambiguous Host headers are rejected. No patient route exists.
+The manifest's patient_data_enabled: false means identifiable/clinical patient
+data is excluded; synthetic_registry_enabled: true reports the bounded identity
+capability. Authentication is deny_all, synthetic_fixture or trusted_provider.
+All responses use Cache-Control: no-store. External or ambiguous Host headers
+are rejected. POST bodies are bounded to 16 KiB, including chunked bodies, with
+a five-second read deadline. Malformed/duplicate credentials are rejected.
+Conflict is 409, invalid input 422, oversized body 413, read timeout 408, and
+unavailable authority/database 503.
 
-Importing or starting the application never applies DDL. The baseline migration
-creates only Alembic's revision bookkeeping, not patient/source/evidence tables.
-The future canonical PostgreSQL patient port must be integrated through its
-existing owner and contracts. Downgrades are restricted to
-`OI_API_RUN_DATABASE_TESTS=1` and database names beginning `oi_api_test_`.
+Creation delegates to the unchanged source-owned PostgresPatientRegistry:
+patient, idempotency receipt and event commit together. It does not create an
+alternative ledger. The current fixture grants contain no clinical authority.
+There is no patient-list endpoint or implicit access from a created ID.
 
-## Dependencies and rights gate
+Import/startup never applies DDL. Migration 0001 remains the empty shell
+baseline; 0002 owns only the identity patient, creation receipt and event tables,
+their indexes, immutable guards and sequence. Its preflight rejects conflicting
+owned table/index/sequence/function names, including weaker same-name schemas,
+for explicit reconciliation. It does not silently import experimental EHR,
+source, auth or RLS schemas from the PostgreSQL research branch.
 
-Direct pins are FastAPI 0.162.0, Pydantic 2.14.1, SQLAlchemy 2.0.55, Alembic
-1.20.1, Uvicorn 0.54.0 and pg8000 1.31.6. The resolved lock contains 24 exact
-wheels. **The pin list is not a whole-artifact license conclusion.** Consult
-[the artifact inventory](dependency-license-inventory.json) and
-[retained notices](THIRD_PARTY_NOTICES.md) for exact hashes, selected grants,
-embedded/native components, obligations and unresolved deployment boundaries.
+Downgrade drops only owned objects without CASCADE and preserves unrelated
+objects. The CLI permits downgrade only with OI_API_RUN_DATABASE_TESTS=1 and
+an oi_api_test_* database. Runtime checks validate server/revision, not arbitrary
+post-migration administrative schema changes. Production least-privilege roles,
+RLS and independent security qualification remain open.
 
-The default psycopg driver was not selected: its LGPL grant does not fit the
-strict permissive baseline. pg8000 is the researched BSD-3-Clause driver
-alternative. No HTTPX/TestClient or pytest dependency was needed: the tests use
-`unittest`, Uvicorn and actual loopback HTTP. Existing research-environment pins
-are not silently promoted into application dependencies.
+## Source ownership and rights
 
-The gate is a review-integrity check. It rejects incomplete review status,
-expanded scope, blocking rights items, changed notices, unexpected wheels,
-lock/inventory differences, changed hashes and unreviewed selected expressions.
-It does not infer permission or replace legal review. Approval, when recorded,
-is only for the exact artifacts in **local synthetic H1 development/evaluation**.
-The Docker build checks the same wheel bytes it installs. SBOM output includes
-supplier-declared all-target Rust components; that is not proof that every such
-component is linked in the Linux binary. Embedded runtime and host-library
-limitations remain explicit in the inventory.
+This integration is stacked on [#162](https://github.com/OpenxIntelligence/open-intelligence/pull/162)
+at 62d2ad0dd2c2d581f9d13d7659f888265838a4f0, including its owner's network and
+startup retry fixes. #162 depends on synthetic-only safety [#137](https://github.com/OpenxIntelligence/open-intelligence/pull/137).
+The canonical patient port comes from [#148](https://github.com/OpenxIntelligence/open-intelligence/pull/148)
+at 19b1c1319ba543fd0e93744ea3425bd861b0f233, preserving [#85](https://github.com/OpenxIntelligence/open-intelligence/pull/85)'s contract.
 
-No model weights, clinical dataset, guideline content, font/icon assets or new
-frontend packages are included. The four rights registers must remain separate
-as those capabilities are added. Product distribution and complete image
-licensing remain later decisions and evidence requirements.
+| Preserved source | Git blob |
+|---|---|
+| src/open_intelligence/patient_registry.py | 7edade0e13d81eebc4ffeac1a19beeb6c241cb3e |
+| src/open_intelligence/postgres_registry.py | f0f59af9792c7ba8f36911c5768bae5bd7483cfd |
+| tools/research/postgres_bakeoff/002_registry_port.sql | ff4d5ad6f0c9870b955711eee87c0df9d3a121e0 |
 
-## Verify
+The domain SQL retains the identity-only portion of #148's contract and its
+complete creation-receipt/event SQL. No source owner's branch is rewritten.
 
-```bash
-PYTHONPATH=apps/api/src /tmp/oi-h1-api-venv/bin/python -m unittest discover -s apps/api/tests -v
-PYTHONPATH=src /tmp/oi-h1-api-venv/bin/python -m unittest discover -s tests -v
-python3 tools/audit_ci_data_boundaries.py
-```
+The unchanged lock has 24 wheels: direct pins FastAPI 0.162.0, Pydantic 2.14.1,
+SQLAlchemy 2.0.55, Alembic 1.20.1, Uvicorn 0.54.0 and pg8000 1.31.6.
+Consult [the exact artifact inventory](dependency-license-inventory.json) and
+[notices](THIRD_PARTY_NOTICES.md). Their recorded scope is local synthetic H1
+development/evaluation, not whole-product commercial clearance. pg8000 is the
+researched BSD-3-Clause alternative to an unapproved LGPL driver.
 
-The PostgreSQL tests skip explicitly unless **both**
-`OI_API_RUN_DATABASE_TESTS=1` and `OI_API_TEST_DATABASE_URL` identify an empty,
-disposable `oi_api_test_*` database. They remove the revision table during their
-tests. They verify actual migration/re-upgrade, missing/unknown/multiple
-revisions, API restart and absence of domain tables. Do not point these checks at
-another database. CI fails if the acceptance suite skips any test.
+The fail-closed artifact gate checks lock/inventory/hash/notice consistency and
+review scope. Its 99 supplier native entries and 13 embedded-runtime entries
+are distinct evidence scopes, not 112 verified linked components. Mako's
+inherited-label review, native link-map evidence and complete container/host
+distribution review remain explicit holds. No new dependency review is claimed
+from this integration. Software, models, data and content retain separate
+registers.
 
-`.github/workflows/h1-api.yml` tests the exact proposed head, then runs the
-existing prototype regressions/browser journeys and the actual Compose build,
-migration and restart. CI data-boundary checks remain in force. Hosted results
-and exact commit links belong in the draft PR; configuration alone is not proof
-that they ran or passed.
+## Verification and continuation
 
-### Local execution evidence — 2 November 2026
+    PYTHONPATH=apps/api/src:src /tmp/oi-h1-api-venv/bin/python -m unittest discover -s apps/api/tests -v
+    PYTHONPATH=src /tmp/oi-h1-api-venv/bin/python -m unittest discover -s tests -v
+    python3 tools/audit_ci_data_boundaries.py
+    python3 apps/api/tools/verify_registry_compose.py
+
+Database tests require OI_API_RUN_DATABASE_TESTS=1 and
+OI_API_TEST_DATABASE_URL pointing to a disposable oi_api_test_* database.
+OI_API_REGISTRY_MIGRATION_TEST_DATABASE_URL can isolate migration tests in a
+second disposable database. The tests remove owned identity objects and revision
+tables; never point them at other data. Without these variables database checks
+skip explicitly. CI rejects any skip in this acceptance suite.
+
+Local integration evidence on 2 November 2026: **49 API/migration/gate tests
+passed with zero skips** against actual PostgreSQL 16.15 and Python 3.12.14;
+**245 prototype tests passed**. The exact-wheel gate and static CI data-boundary
+guard passed. Failing tests first reproduced missing patient routes, unbounded
+request bodies, weakened-schema adoption and lost-connection cleanup. Independent
+review confirmed the latter two corrections and the Docker context boundary.
+
+The H1 workflow checks out the exact proposed head, retains original prototype
+and both browser journeys, then runs the actual container acceptance including
+API restart, database restart and backup/restore. Docker and Chromium are absent
+in this local session. Hosted results must be attached to the exact PR head;
+this description or passing local tests alone does not prove those operations.
+
+**Next executable integration:** reconcile canonical patient IDs with the
+existing clinical/source binding owners (#89/#95/#148), mount their narrowly
+scoped source contract through H1, and prove correct-patient source acquisition,
+original-version preservation and amendment invalidation. Connect issue #119's
+React/Vite workspace to those real APIs. Do not create another patient/source
+ledger. Accounts, consent, EHR/LIS, source/evidence/Composer, UI, production
+authorization and complete MRT-01 remain separate incomplete work.
+
+See the [bounded implementation/continuation record](../../docs/superpowers/plans/2026-11-02-h1-patient-registry.md)
+for audit scope and regressions. No merge, deployment or clinical validation is
+performed by this contribution.
+
+### Preserved shell-only evidence — 2 November 2026
 
 - **26/26 API tests passed**, with no skips, using Python 3.12.14 and an actual
   temporary PostgreSQL 16.15 server. This includes migration/restart, invalid
@@ -198,24 +265,8 @@ that they ran or passed.
   URL errors and timeouts. Response/schema assertions remain fail-fast; the
   published-port and restart checks must still pass on the final head.
 
-## Traceability and handoff
 
-| Source | Bounded relationship |
-|---|---|
-| [Issue #112](https://github.com/OpenxIntelligence/open-intelligence/issues/112), parent #96 | API/PG16 composition root, migrations, contracts, dependency gate and reproducible local startup. |
-| [OI-27 roadmap](https://docs.google.com/document/d/1Wlg7k61mjVbj-_4x6dth8KM1N7N0U4qzZh-ywitwNA4/edit) | WS-00; supports M-H1-0. Does not complete all component-contract work or any clinical step of MRT-01. |
-| [OI-25 components](https://docs.google.com/document/d/1BC5JPDXGf0hnsZwMuofGHQox7IZCKn30-kLSmzgj_D4/edit) | Primary CMP-17; bounded CMP-15 and CMP-19 support. |
-| [OI-23 requirements](https://docs.google.com/document/d/1_aw9TKHQ_GRfT8i9FDiAA6MA7F971fX20YCw021noBc/edit) | Tests REQ-L-113 loopback/Host and REQ-L-120 contracts/invariants. That register labels broader requirements as proposals; this does not accept them wholesale. |
-| REQ-L-102 / REQ-L-106 | UI performance and source-linked clinical statements remain downstream; no accomplishment claim from this shell. |
-| REQ-A-001 / REQ-A-003 | Authentication and consent/purpose remain unimplemented; local shell behavior is not their substitute. |
-
-This branch starts at PR #137's synthetic-only correction
-`533afd3ca6dd0c011e2e47397d3d5cae04e62512`; it must not be merged independently
-of that safety dependency without reconciliation. It preserves existing
-patient-port, clinical-spine, composer, source-correction and review branches.
-
-**Next useful integration:** review the existing PostgreSQL canonical patient
-port, establish its domain-owned migrations, and mount one authenticated/scoped
-patient-source contract through this shell. Then connect the existing
-source/evidence/investigation/review contracts and the React/Vite workspace in
-issue #119. Preserve one canonical patient/source/evidence history throughout.
+The source owner's final shell-only [run #41530234376](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41530234376)
+at 62d2ad0dd2c2d581f9d13d7659f888265838a4f0 passed 26 API tests, 245 prototype
+tests, both Chromium journeys and the health-only Compose/API-restart probe.
+That proves the base shell, not this new patient/backup/restore extension.

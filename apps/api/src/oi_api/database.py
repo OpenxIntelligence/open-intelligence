@@ -1,5 +1,7 @@
 """Read-only dependency check. Application startup never migrates the database."""
 
+from contextlib import contextmanager
+
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.pool import NullPool
@@ -49,3 +51,35 @@ class Database:
     def close(self):
         if self._engine is not None:
             self._engine.dispose()
+
+    @contextmanager
+    def registry_connection(self):
+        """An owned DB-API connection; validate this connection before any write.
+
+        The canonical registry owns its transactions. Connection/session limits
+        apply through its later commits, and closing rolls back failed reads.
+        """
+        if self._engine is None:
+            raise RuntimeError("Database unavailable")
+        pooled = self._engine.raw_connection()
+        connection = pooled.driver_connection
+        try:
+            cursor = connection.cursor()
+            try:
+                cursor.execute("SELECT set_config('statement_timeout', %s, false)", (self._timeout_ms,))
+                cursor.execute("SELECT set_config('lock_timeout', %s, false)", (self._timeout_ms,))
+                cursor.execute("SELECT current_setting('server_version_num')")
+                if int(cursor.fetchone()[0]) // 10000 != POSTGRES_MAJOR:
+                    raise RuntimeError("Unsupported database")
+                cursor.execute("SELECT version_num FROM public.alembic_version")
+                if [row[0] for row in cursor.fetchall()] != [SCHEMA_REVISION]:
+                    raise RuntimeError("Unsupported migration state")
+            finally:
+                cursor.close()
+            connection.commit()
+            yield connection
+        finally:
+            try:
+                connection.rollback()
+            finally:
+                pooled.close()

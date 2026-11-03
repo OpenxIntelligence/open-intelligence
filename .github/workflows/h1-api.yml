@@ -24,7 +24,7 @@ jobs:
     env:
       PYTHONDONTWRITEBYTECODE: '1'
       PIP_DISABLE_PIP_VERSION_CHECK: '1'
-      PYTHONPATH: apps/api/src
+      PYTHONPATH: apps/api/src:src
       OI_API_ENVIRONMENT: synthetic
       # Public credentials for this disposable CI database only.
       OI_API_DATABASE_URL: postgresql+pg8000://oi_api:oi_h1_synthetic_only@127.0.0.1:5432/oi_api_test_shell
@@ -108,73 +108,8 @@ jobs:
         run: |
           python tests/browser_journey.py
           python tests/patient_mission_browser_journey.py
-      - name: Validate and start the actual container composition
-        run: |
-          docker compose --file apps/api/compose.yaml config --quiet
-          docker compose --file apps/api/compose.yaml up --build --detach api
-      - name: Verify loopback contracts and API restart
-        run: |
-          python - <<'PY'
-          import json
-          import subprocess
-          import time
-          import urllib.error
-          import urllib.request
-
-          base = 'http://127.0.0.1:8000'
-          compose = ['docker', 'compose', '--file', 'apps/api/compose.yaml']
-
-          def read(path):
-              with urllib.request.urlopen(base + path, timeout=2) as response:
-                  assert response.status == 200, (path, response.status)
-                  assert response.headers.get_content_type() == 'application/json', path
-                  return json.load(response)
-
-          def verify(phase):
-              deadline = time.monotonic() + 45
-              while True:
-                  try:
-                      ready = read('/health/ready')
-                      break
-                  except (urllib.error.URLError, TimeoutError, ConnectionError):
-                      if time.monotonic() >= deadline:
-                          raise
-                      time.sleep(0.5)
-              assert ready['status'] == 'ready', ready
-              assert ready['database']['status'] == 'ready', ready
-              assert read('/health') == {'status': 'ok'}
-              manifest = read('/v1')
-              assert manifest['stage'] == 'synthetic_shell', manifest
-              assert manifest['patient_data_enabled'] is False, manifest
-              assert manifest['capabilities'] == [], manifest
-              schema = read('/v1/openapi.json')
-              assert schema['openapi'].startswith('3.'), schema.get('openapi')
-              assert {'/health', '/health/ready', '/v1'} <= set(schema['paths'])
-              print(phase + ': real loopback health, readiness, manifest and OpenAPI passed')
-
-          migration_id = subprocess.check_output(compose + ['ps', '--all', '--quiet', 'migrate'], text=True).strip()
-          assert migration_id, 'one-shot migration container missing'
-          migration = json.loads(subprocess.check_output(['docker', 'inspect', migration_id], text=True))[0]
-          assert migration['State']['Status'] == 'exited', migration['State']['Status']
-          assert migration['State']['ExitCode'] == 0, migration['State']['ExitCode']
-          api_id = subprocess.check_output(compose + ['ps', '--quiet', 'api'], text=True).strip()
-          api = json.loads(subprocess.check_output(['docker', 'inspect', api_id], text=True))[0]
-          bindings = api['NetworkSettings']['Ports'].get('8000/tcp')
-          assert bindings == [{'HostIp': '127.0.0.1', 'HostPort': '8000'}], bindings
-          db_id = subprocess.check_output(compose + ['ps', '--quiet', 'db'], text=True).strip()
-          db = json.loads(subprocess.check_output(['docker', 'inspect', db_id], text=True))[0]
-          assert not any(db['NetworkSettings']['Ports'].values()), db['NetworkSettings']['Ports']
-          networks = json.loads(subprocess.check_output(
-              ['docker', 'network', 'inspect', *api['NetworkSettings']['Networks']], text=True))
-          internal = {network['Name'] for network in networks if network['Internal']}
-          assert len(internal) == 1 and len(networks) == 2, 'API needs internal DB and frontend bridge networks'
-          assert set(db['NetworkSettings']['Networks']) == internal, 'Database must stay internal-only'
-          assert set(migration['NetworkSettings']['Networks']) == internal, 'Migrator must stay internal-only'
-          print('Verified actual loopback port mapping and internal-only database/migrator')
-          verify('After one-shot migration')
-          subprocess.run(compose + ['restart', 'api'], check=True)
-          verify('After API-only restart')
-          PY
+      - name: Verify actual patient HTTP, restart, backup restore and access revocation
+        run: python apps/api/tools/verify_registry_compose.py
       - name: Record resolved container identities and application packages
         run: |
           docker image inspect postgres:16.15-bookworm oi-h1-api:synthetic --format '{{.Id}} {{json .RepoDigests}}'
@@ -183,9 +118,3 @@ jobs:
           from pathlib import Path
           print(Path('/tmp/oi-h1-sbom.json').read_text())
           PY
-      - name: Show container diagnostics on failure
-        if: failure()
-        run: docker compose --file apps/api/compose.yaml logs --no-color --tail 100
-      - name: Remove only this run's disposable composition
-        if: always()
-        run: docker compose --file apps/api/compose.yaml down --volumes
