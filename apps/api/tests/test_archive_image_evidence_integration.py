@@ -165,6 +165,7 @@ class ArchiveImageEvidenceIntegrationHTTPTests(SourceVersionFixture):
                         self.assertEqual(self.read_json(base, prefix + "/followthrough")["tasks"], [flow["task"]])
                         self.assertEqual(self.read_json(base, flow["citation"][0])["links"], flow["links"])
             for missing, operations in (
+                ("source_read", [(prefix + "/sources", None)]),
                 ("followthrough_read", [(prefix + "/followthrough", None)]),
                 ("followthrough_create", [flow["writes"][2][:2]]),
                 ("followthrough_update", [flow["writes"][3][:2]]),

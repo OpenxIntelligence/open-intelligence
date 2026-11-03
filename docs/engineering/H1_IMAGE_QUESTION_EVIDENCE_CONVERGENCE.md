@@ -123,6 +123,29 @@ Final combined hosted results belong to this continuation's draft PR and the
 existing canonical engineering records. Parent passes, local syntax checks and
 database skips are not evidence that the new combined workflow executed.
 
+### Concurrent archive overlap
+
+The later #332 at `ae550ed9272dcd0414b9c44042deb26ff659f669` independently
+implements the same #312-to-#313 archive connection. A code-level comparison
+identified three useful acceptance assertions to retain in this existing
+continuation: a successful image-index read never invokes the archive; the whole
+archive failure/recovery/restart cycle preserves all non-event snapshot owners
+and the prior event prefix, appending only allowed read events; and a caller
+without the `source_read` grant can still use an independently granted
+`image_original_read` action. These refine the existing tests and helper without adding duplicate
+test methods, another runtime or another owner. #332's other archive behavior
+is already covered by the retained PostgreSQL and recovery tests. This candidate
+also retains the #304 source-original correction absent from that overlap.
+Neither existing PR is merged or closed by this reconciliation.
+
+The separate #327 owns the planned image-inspection UI and authored-report join.
+At the inspected `96ea369df0a560c8a325d33d66ef5b6b4a4865ef` checkpoint it
+contains tests only and has expected missing-feature failures; it is not an
+accepted combined runtime. Its future implementation must preserve the current
+source/citation protections and both image and authored-evidence recovery probes.
+Adoption of this archive continuation into that owner requires its own combined
+acceptance; citing either candidate does not complete the join.
+
 ## Source preservation and verification
 
 The #298 source archive's 356 files reproduced tree

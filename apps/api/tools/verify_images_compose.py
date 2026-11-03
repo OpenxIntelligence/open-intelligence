@@ -716,6 +716,7 @@ finally:
                 image_ids.append(value["image_id"])
 
         def read_images(source_id):
+            calls_before = archive_history()
             status, value, _ = request(collection(source_id))
             assert status == 200, "Image index unavailable"
             assert set(value) == {"patient_id", "case_id", "source_id", "images",
@@ -728,6 +729,7 @@ finally:
             assert set(by_id) == set(image_ids)
             for index, image_id in enumerate(image_ids):
                 metadata(by_id[image_id], source_id, index)
+            assert archive_history() == calls_before, "Image index invoked the original archive"
 
         def read_originals(source_id):
             before = archive_history()
@@ -1323,6 +1325,7 @@ finally:
 
             # A valid local original remains available throughout each failure.
             # Failure must not mint a receipt, alter any sibling owner or fallback.
+            archive_state = snapshot()
             for missing in (False, True):
                 archive_failure(source_two, missing=missing)
                 read_originals(source_two)
@@ -1356,6 +1359,17 @@ finally:
                 denied(source_one)
                 check_history()
                 check_question_history()
+            after_archive = snapshot()
+            for owner in archive_state.keys() - {"events"}:
+                assert after_archive[owner] == archive_state[owner], "Archive recovery changed durable " + owner
+            assert after_archive["events"][:len(archive_state["events"])] == archive_state["events"]
+            # Citation reads and empty rights-restricted searches still emit
+            # their existing audit events; they do not create business records.
+            assert all(row["event_type"] in {
+                "source.read_authorized", "image.read_authorized", "image.original_read_authorized",
+                "evidence.links.read_authorized", "evidence.metadata.searched",
+            } for row in after_archive["events"][len(archive_state["events"]):]), \
+                "Archive recovery added non-read business history"
             assert snapshot(source_database) == source_database_snapshot, "Archive checks mutated the source database"
             print("Restored archive HTTP preserved exact images, question/return/task/citation history and restricted metadata; "
                   "missing/changed originals refused without fallback; grants, retries and API/DB restarts preserved")
