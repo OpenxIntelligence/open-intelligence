@@ -25,6 +25,7 @@ jobs:
         run: |
           node --check web/app.js
           node --check web/mission.js
+          node --check web/report.js
       - name: Unit and HTTP tests
         shell: bash
         run: |
@@ -38,6 +39,11 @@ jobs:
           PYTHONPATH=src python tests/browser_journey.py 2>&1 | tee verification-artifacts/browser-tests.txt
       - name: Patient Mission browser journey (headless Chromium)
         run: PYTHONPATH=src python tests/patient_mission_browser_journey.py
+      - name: Patient report and follow-through browser journey
+        shell: bash
+        run: |
+          set -o pipefail
+          PYTHONPATH=src python tests/patient_report_followthrough_browser_journey.py 2>&1 | tee verification-artifacts/patient-report-browser-tests.txt
       - name: Record exact synthetic source under test
         if: always()
         run: |

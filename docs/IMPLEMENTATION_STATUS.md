@@ -4,6 +4,10 @@
 
 **Backlog coverage:** Part of OI-003, OI-006, OI-007, OI-009 and OI-010. Does not complete the broader investigation/evidence stage (OI-008), identity/governance (OI-012–013), or clinical evaluation (OI-014 onward).
 
+## Current patient-record integration candidate — 2 November 2026
+
+The existing source-derived World Model (#147) is connected to the current Patient view in [draft PR #161](https://github.com/OpenxIntelligence/open-intelligence/pull/161), carrying #136/#142 question-state and case-binding fixes. Findings open exact original source lines; open questions select the existing evidence/investigation workflow; amendments retain history and reopen affected work. Delayed or inconsistent projections are cleared. Verified head `f115fb2335897d4d37307abd9aab62dcfdd636d1`: 249 Python/HTTP tests, 66 Node tests, and four hosted browser journeys/checks passed ([run](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41528676636)); 170 archived source files matched the inspected checkout. This is a bounded synthetic interface increment, not complete MVP delivery, production authorization or clinical validation. See [the maintained World Model implementation record](engineering/SYNTHETIC_WORLD_MODEL_PROJECTION.md#patient-record-interface-increment--2-november-2026) for scope, tests and remaining integration gates.
+
 ## Behaviors built
 
 - Strict import of independently authored `OI-SYNTHETIC-REPORT/1` UTF-8 bytes; explicit report identifier, subject, event date, issued date, specimen, finding quotation, and status.
