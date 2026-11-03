@@ -3,9 +3,10 @@
 // Does not create another case/source store, parser, investigation or review flow.
 (() => {
   const $ = id => document.getElementById(id);
-  const dirty = () => ['question-text','draft-observations','draft-summary','draft-assumptions',
-    'evidence-rationale','evidence-withdraw-reason','option-description']
-    .some(id => $(id)?.value.trim());
+  const dirty = () => Boolean($('source-file')?.files?.length) ||
+    ['question-text','draft-observations','draft-summary','draft-assumptions',
+     'evidence-rationale','evidence-withdraw-reason','option-description']
+      .some(id => $(id)?.value.trim());
   const current = () => {
     try { return readyCase(); } catch (_) { return null; }
   };
