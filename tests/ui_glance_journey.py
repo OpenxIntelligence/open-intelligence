@@ -71,6 +71,30 @@ def main() -> None:
                     'Alpha loaded')
             cd.wait("document.querySelectorAll('#assertion-list .finding').length > 0", 'source findings')
             cd.evaluate('window.scrollTo(0,0)')
+            navigation = cd.evaluate("""(() => {
+              const nav = document.querySelector('#workspace-nav');
+              const groups = [...nav.querySelectorAll('[role="group"]')];
+              const links = [...nav.querySelectorAll('a[href^="#"]')];
+              return {
+                groups: groups.map(group => ({
+                  label: group.getAttribute('aria-label'),
+                  links: group.querySelectorAll('a').length
+                })),
+                links: links.length,
+                brokenTargets: links.map(a => a.hash.slice(1))
+                  .filter(id => !document.getElementById(id)),
+                overviewFirst: links[0]?.getAttribute('href') === '#overview',
+              };
+            })()""")
+            check(len(navigation['groups']) == 4,
+                  'Navigation presents four labeled task groups')
+            check(all(group['label'] and group['links'] > 0 for group in navigation['groups']),
+                  'Every navigation group has a descriptive name and working links')
+            check(navigation['links'] == 14 and not navigation['brokenTargets'],
+                  'All 14 existing destinations remain reachable and point to existing sections')
+            check(navigation['overviewFirst'], 'Case overview remains the first keyboard navigation destination')
+            report['navigation'] = navigation
+
 
             def capture(name: str) -> None:
                 image = cd.command('Page.captureScreenshot', {'format': 'png', 'captureBeyondViewport': False})
