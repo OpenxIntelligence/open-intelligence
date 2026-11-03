@@ -798,13 +798,19 @@ def exercise_case_switch(cd, patient_id, case_id, second_case_id, credentials, w
         assert cd.evaluate("document.querySelector('[data-testid=followthrough-title]').value") == ''
         click(cd, '[data-testid=followthrough-cancel]')
         checks.case_id = case_id
-        checks.refresh()
+        restored = checks.refresh(expected_count=4)
         assert cd.evaluate("[...document.querySelectorAll('[data-testid=followthrough-transition-reason]')].every(e=>e.value==='')")
         assert cd.evaluate('localStorage.length===0 && sessionStorage.length===0')
+        # Return to the independently empty case before checking its Overview;
+        # the first case now has four saved tasks from the combined agenda path.
+        select_case(cd, second_case_id)
+        checks.case_id = second_case_id
+        empty = checks.refresh(expected_count=0)
         (screenshots / 'h1-followthrough-case-switch.json').write_text(json.dumps({
             'patient_id': patient_id, 'first_case_id': case_id, 'second_case_id': second_case_id,
             'unsaved_draft_question_id': current_question_id,
             'case_roundtrip_draft_cleared': True, 'browser_storage_empty': True,
+            'restored_first_case_task_count': len(restored['tasks']),
             'delayed_real_read_discarded': True, 'second_case_tasks': empty['tasks'],
         }, indent=2) + '\n', encoding='utf-8')
         navigate(cd, 'Overview')
