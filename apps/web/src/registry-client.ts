@@ -1,6 +1,8 @@
 /** Transient UI state over the canonical patient API; never an authority or ledger. */
 import {parseCaseBindingList, parseSourceIndex} from './source-contracts.js';
 import type {CaseBinding, SourceIndex} from './source-contracts.js';
+import {prepareSource,parseImportReceipt,verifyOriginal} from './source-intake.js';
+import type {ImportReceipt,OriginalSource} from './source-intake.js';
 export type Patient = Readonly<{
   patient_id: string; origin_org: string; created_at: string;
   status: 'active' | 'suspended'; revision: number;
@@ -10,7 +12,9 @@ export type ViewState = Readonly<{
   connected: boolean; phase: 'disconnected' | 'idle' | 'reading' | 'creating' | 'ready' | 'error';
   patient: Patient | null; created: CreatedPatient | null; message: string;
   cases: ReadonlyArray<CaseBinding> | null; sourceIndex: SourceIndex | null;
-  recordsPhase: 'idle' | 'loading-cases' | 'loading-sources' | 'ready' | 'error';
+  recordsPhase: 'idle' | 'loading-cases' | 'loading-sources' | 'loading-original' | 'ready' | 'error';
+  original:OriginalSource|null; importReceipt:ImportReceipt|null;
+  importOutcome:'idle'|'sending'|'confirmed'|'rejected'|'unknown'; importMessage:string;
   recordMessage: string;
 }>;
 export type Transport = (input: string, init: RequestInit) => Promise<Response>;
@@ -26,23 +30,24 @@ const messages: Record<number,string> = {
   422:'The API refused this request. Check the opaque identifiers.',
   503:'The patient registry or access service is unavailable. No cached patient is shown.',
 };
-const fresh = (): ViewState => Object.freeze({connected:false,phase:'disconnected',patient:null,created:null,message:'Connect a local synthetic credential to use the patient registry.',cases:null,sourceIndex:null,recordsPhase:'idle',recordMessage:'Open an authorized fictional patient in Overview first.'});
-const emptyRecords=()=>({cases:null,sourceIndex:null,recordsPhase:'idle' as const,recordMessage:'Load the current authorized case mappings to inspect original source metadata.'});
+const emptyIntake=()=>({original:null,importReceipt:null,importOutcome:'idle' as const,importMessage:''});
+const fresh = (): ViewState => Object.freeze({connected:false,phase:'disconnected',patient:null,created:null,message:'Connect a local synthetic credential to use the patient registry.',cases:null,sourceIndex:null,recordsPhase:'idle',recordMessage:'Open an authorized fictional patient in Overview first.',...emptyIntake()});
+const emptyRecords=()=>({...emptyIntake(),cases:null,sourceIndex:null,recordsPhase:'idle' as const,recordMessage:'Load the current authorized case mappings to inspect original source metadata.'});
 function exact(value: unknown, fields: string[]): value is Record<string,unknown> {
   return value !== null && typeof value==='object' && !Array.isArray(value) &&
     Object.keys(value).length===fields.length && fields.every(k=>Object.hasOwn(value,k));
 }
 function boundedKey(value: unknown): value is string { return typeof value==='string' && KEY.test(value); }
-async function json(response: Response): Promise<unknown> {
+async function json(response: Response, limit=65536): Promise<unknown> {
   if(!/^application\/json(?:\s*;|$)/i.test(response.headers.get('Content-Type') || '')) throw Error('contract');
   const declared=response.headers.get('Content-Length');
-  if(declared && (!/^\d+$/.test(declared) || Number(declared)>65536)) throw Error('contract');
+  if(declared && (!/^\d+$/.test(declared) || Number(declared)>limit)) throw Error('contract');
   // Bounded streaming read also covers absent or dishonest Content-Length.
   const reader=response.body?.getReader(); if(!reader)throw Error('contract');
   let size=0; const parts:Uint8Array[]=[];
   try {
     while(true){ const {done,value}=await reader.read();if(done)break;size+=value.byteLength;
-      if(size>65536){await reader.cancel();throw Error('contract');}parts.push(value); }
+      if(size>limit){await reader.cancel();throw Error('contract');}parts.push(value); }
   } finally {reader.releaseLock();}
   const all=new Uint8Array(size);let offset=0;for(const p of parts){all.set(p,offset);offset+=p.length;}
   return JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(all));
@@ -61,13 +66,13 @@ function created(value: unknown): CreatedPatient {
 }
 export class RegistrySession {
   #token=''; #scope=0; #read=0; #records=0; #state:ViewState=fresh();
-  #listeners=new Set<()=>void>(); #controllers=new Set<AbortController>(); #creating=false;
+  #listeners=new Set<()=>void>(); #controllers=new Set<AbortController>(); #creating=false; #uploading=false;
   constructor(private readonly transport:Transport=(url,init)=>fetch(url,init)) {}
   snapshot=():ViewState=>this.#state;
   subscribe=(listener:()=>void):(()=>void)=>{this.#listeners.add(listener);return()=>this.#listeners.delete(listener);};
   #publish(patch:Partial<ViewState>){this.#state=Object.freeze({...this.#state,...patch});for(const listener of this.#listeners)listener();}
   disconnect=()=>{
-    this.#scope++;this.#read++;this.#records++;this.#token='';this.#creating=false;
+    this.#scope++;this.#read++;this.#records++;this.#token='';this.#creating=false;this.#uploading=false;
     for(const c of this.#controllers)c.abort();this.#controllers.clear();
     this.#state=fresh();for(const listener of this.#listeners)listener();
   };
@@ -125,7 +130,7 @@ export class RegistrySession {
   async loadCases():Promise<void>{
     const patientId=this.#state.patient?.patient_id;
     if(!this.#token || !patientId || this.#state.phase!=='ready'){
-      this.#publish({...emptyRecords(),recordsPhase:'error',recordMessage:'Open an authorized fictional patient in Overview first.'});
+      this.#publish({...emptyRecords(),recordsPhase:'error',recordMessage:'Open an authorized fictional patient in Overview first.',...emptyIntake()});
       return;
     }
     const scope=this.#scope,read=this.#read,request=++this.#records;
@@ -133,7 +138,7 @@ export class RegistrySession {
       request===this.#records && this.#state.patient?.patient_id===patientId;
     const control=new AbortController();this.#controllers.add(control);
     const timeout=setTimeout(()=>control.abort(),10000);
-    this.#publish({cases:null,sourceIndex:null,recordsPhase:'loading-cases',recordMessage:'Checking current case mapping permissions…'});
+    this.#publish({...emptyIntake(),cases:null,sourceIndex:null,recordsPhase:'loading-cases',recordMessage:'Checking current case mapping permissions…'});
     try{
       const res=await this.transport('/v1/patients/'+encodeURIComponent(patientId)+'/case-bindings',this.#init(control));
       if(!current())return;
@@ -156,7 +161,7 @@ export class RegistrySession {
     if(!patientId || !this.#token || this.#state.phase!=='ready' ||
        !this.#state.cases?.some(item=>item.case_id===caseId && item.status==='active')){
       this.#records++;
-      this.#publish({sourceIndex:null,recordsPhase:'error',
+      this.#publish({...emptyIntake(),sourceIndex:null,recordsPhase:'error',
         recordMessage:'Select an active, currently authorized case first.'});
       return;
     }
@@ -165,7 +170,7 @@ export class RegistrySession {
       request===this.#records && this.#state.patient?.patient_id===patientId;
     const control=new AbortController();this.#controllers.add(control);
     const timeout=setTimeout(()=>control.abort(),10000);
-    this.#publish({sourceIndex:null,recordsPhase:'loading-sources',
+    this.#publish({...(this.#state.sourceIndex?.case_id!==caseId?emptyIntake():{original:null}),sourceIndex:null,recordsPhase:'loading-sources',
       recordMessage:'Checking exact source versions and current permissions…'});
     try{
       const url='/v1/patients/'+encodeURIComponent(patientId)+'/cases/'+encodeURIComponent(caseId)+'/sources';
@@ -185,5 +190,69 @@ export class RegistrySession {
       if(current())this.#publish({cases:null,sourceIndex:null,recordsPhase:'error',
         recordMessage:'Source response failed validation or the service is unavailable. No sources are shown.'});
     }finally{clearTimeout(timeout);this.#controllers.delete(control);}
+  }
+
+  /** Original is an independently permission-checked read; hash verification is not clinical validation. */
+  dismissOriginal=()=>{this.#records++;this.#publish({original:null,recordsPhase:'ready'});};
+  async loadOriginal(sourceId:string):Promise<void>{
+    const patientId=this.#state.patient?.patient_id,index=this.#state.sourceIndex;
+    const source=index?.sources.find(s=>s.source_id===sourceId);
+    this.#publish({original:null});
+    if(!this.#token||!patientId||!index||!source||this.#uploading)return;
+    const scope=this.#scope,read=this.#read,request=++this.#records,caseId=index.case_id;
+    const current=()=>scope===this.#scope&&read===this.#read&&request===this.#records&&
+      this.#state.patient?.patient_id===patientId&&this.#state.sourceIndex?.case_id===caseId;
+    const control=new AbortController();this.#controllers.add(control);
+    const timeout=setTimeout(()=>control.abort(),10000);
+    this.#publish({recordsPhase:'loading-original',recordMessage:'Checking original-document permission and exact source hash…'});
+    try{
+      const res=await this.transport('/v1/patients/'+encodeURIComponent(patientId)+'/cases/'+encodeURIComponent(caseId)+'/sources/'+encodeURIComponent(sourceId),this.#init(control));
+      if(!current())return;
+      if(res.status===401){this.#httpError(401);return;}
+      if(res.status!==200){this.#publish({original:null,recordsPhase:'error',recordMessage:'Original unavailable or permission denied. No previously opened text is retained.'});return;}
+      // A 64 KiB original can expand under JSON escaping. Keep the envelope bounded too.
+      const original=await verifyOriginal(await json(res,524288),caseId,source);
+      if(!current())return;
+      this.#publish({original,recordsPhase:'ready',recordMessage:'Exact original bytes verified against the selected source hash. Clinical review remains not established.'});
+    }catch(_){if(current())this.#publish({original:null,recordsPhase:'error',recordMessage:'Original failed verification or service unavailable. Reload metadata before trying again.'});}
+    finally{clearTimeout(timeout);this.#controllers.delete(control);}
+  }
+  /** Only the existing server decides import/duplicate/quarantine. No retry or inferred rollback. */
+  async importSource(caseId:string,text:string,confirmed:boolean):Promise<void>{
+    if(this.#uploading)return;
+    const patientId=this.#state.patient?.patient_id;
+    if(!this.#token||!patientId||this.#state.phase!=='ready'||this.#state.sourceIndex?.case_id!==caseId||
+      !this.#state.cases?.some(c=>c.case_id===caseId&&c.status==='active')||confirmed!==true){
+      this.#publish({importOutcome:'rejected',importReceipt:null,importMessage:'Select an authorized active case, inspect the original and confirm fictional data first.'});return;
+    }
+    try{
+      if(typeof text!=='string'||prepareSource(new TextEncoder().encode(text),'original.txt').text!==text)throw Error('input');
+      if(new TextEncoder().encode(JSON.stringify({synthetic:true,original_text:text})).length>72000)throw Error('envelope');
+    }
+    catch(_){this.#publish({importOutcome:'rejected',importReceipt:null,importMessage:'Unsupported original source. Nothing was sent.'});return;}
+    const scope=this.#scope,read=this.#read,request=++this.#records;
+    const current=()=>scope===this.#scope&&read===this.#read&&request===this.#records&&
+      this.#state.patient?.patient_id===patientId&&this.#state.sourceIndex?.case_id===caseId;
+    const control=new AbortController();this.#controllers.add(control);this.#uploading=true;
+    const timeout=setTimeout(()=>control.abort(),10000);
+    this.#publish({original:null,importOutcome:'sending',importReceipt:null,importMessage:'Sending this original once. Do not switch context until its receipt returns.'});
+    try{
+      const res=await this.transport('/v1/patients/'+encodeURIComponent(patientId)+'/cases/'+encodeURIComponent(caseId)+'/sources',
+        this.#init(control,JSON.stringify({synthetic:true,original_text:text})));
+      if(!current())return;
+      if(res.status===401){this.#httpError(401);return;}
+      if([403,404,409,413,422].includes(res.status)){
+        this.#publish({cases:null,sourceIndex:null,original:null,recordsPhase:'error',importOutcome:'rejected',
+          importMessage:'The server rejected this import. Reload current case permissions; no success is claimed.'});return;
+      }
+      if(![200,201].includes(res.status))throw Error('unconfirmed');
+      const receipt=parseImportReceipt(await json(res));if(!current())return;
+      this.#publish({importReceipt:receipt,importOutcome:'confirmed',importMessage:receipt.result==='quarantined'?
+        'Quarantined: different declared case. No findings were attached to this case.':receipt.result==='duplicate'?
+        'Duplicate: the original already exists. No new source version was created.':
+        'Original saved as version '+receipt.version+'. Source statements are not clinical approval.'});
+      await this.loadSources(caseId);
+    }catch(_){if(current())this.#publish({importReceipt:null,importOutcome:'unknown',importMessage:'Import outcome unknown. It may have been saved. Inspect current source versions before any explicit retry; nothing was automatically retried.'});}
+    finally{clearTimeout(timeout);this.#controllers.delete(control);if(scope===this.#scope)this.#uploading=false;}
   }
 }

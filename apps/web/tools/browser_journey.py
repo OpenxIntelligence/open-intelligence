@@ -84,6 +84,8 @@ def main():
             cd.wait('window.innerWidth===390','mobile width')
             assert cd.evaluate('document.documentElement.scrollWidth<=window.innerWidth+1')
             image=cd.command('Page.captureScreenshot',{'format':'png'});(out/'h1-mobile.png').write_bytes(base64.b64decode(image['data']))
+            from record_intake_journey import exercise
+            exercise(cd,pid,directory,tokens[0],credentials,write_grants,out)
             credentials[0]['patient_ids']=[];write_grants();read()
             cd.wait("!document.querySelector('[data-testid=patient-card]') && document.querySelector('[data-testid=status]').textContent.includes('Patient unavailable')",'revoked read removes prior view')
             credentials[0]['expires_at']=(datetime.now(timezone.utc)-timedelta(seconds=1)).isoformat();write_grants();read()
