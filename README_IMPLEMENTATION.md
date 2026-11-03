@@ -106,3 +106,47 @@ PYTHONPATH=src python -m open_intelligence serve
 Remaining proof step: a live-server run against the real API with
 the operator key set, before the demo. The API completion itself
 was verified separately on 2026-10-31.
+
+## Investigation workspace slice
+
+Durable investigation questions that survive amendments and stay linked to
+their evidence. All records below are fictional demo data; nothing here is
+clinically reviewed and nothing selects a treatment.
+
+- New append-only tables: `workspace_questions` (question text, status,
+  created timestamp plus derived created date), `workspace_question_history`
+  (every status change with its reason and preserved answer), and
+  `workspace_question_links` (question-to-source-version records).
+  Statuses are restricted to `open`, `in_progress`, `answered`,
+  `needs_review` in both SQL checks and Python validation.
+- Routes (case-scoped; unknown case returns 422 as elsewhere):
+  `POST /api/cases/{case}/workspace-questions` creates a question;
+  `GET .../workspace-questions` lists questions with links and history;
+  `POST .../workspace-questions/{id}/links` links a current source version;
+  `POST .../workspace-questions/{id}/links/{link}/unlink` supersedes a link
+  (the row is kept, never deleted);
+  `POST .../workspace-questions/{id}/status` records a human status change
+  with a required reason. Answer text is only accepted when marking a
+  question `answered`.
+- Questions are never auto-answered: only the explicit status route moves a
+  question to `answered`. When a linked source version is amended, every
+  `answered` question with an active link to the superseded version reopens
+  to `needs_review` in the same import transaction; its prior answer is
+  preserved in history and its current answer reads back empty. Unlinked or
+  unanswered questions are untouched, as is every other case.
+- UI: an "Investigations" panel (`#workspace-investigations`) in the case
+  view lists each question with its status pill, linked sources as
+  `DOCUMENT@VERSION` with source and link states, and per-question history.
+  Every item carries a FICTIONAL label; answers render only for `answered`
+  questions while history keeps earlier recorded answers for review.
+  Rendering uses existing CSS classes and text-only DOM updates, follows
+  the case-switch guards, and discards stale responses after a case change.
+- Tests: `tests/test_investigations.py` covers the store
+  (create → link → answer → amend → `needs_review` with history intact,
+  reason/answer rules, append-only links, case isolation), the HTTP routes
+  (including 422 for unknown cases and cross-case links), and the UI/server
+  contract (panel markup, case-scoped text-only renderer, route presence).
+
+Limitations: no authentication or real-patient support; amendment reopening
+applies only to source-version amendments, not to evidence or rights changes;
+the demo reviewer label is unverified and is not clinical sign-off.

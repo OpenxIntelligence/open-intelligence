@@ -61,7 +61,8 @@ async function initialize() {
     picker.addEventListener('change', () => {
       // An unfinished narrative must never silently become attached to another case.
       if ((['draft-observations', 'draft-summary', 'draft-assumptions', 'evidence-rationale',
-            'evidence-withdraw-reason', 'option-description'].some(id => el(id).value.trim()))) {
+            'evidence-withdraw-reason', 'option-description', 'workspace-question-text',
+            'workspace-status-reason', 'workspace-status-answer'].some(id => el(id).value.trim()))) {
         picker.value = caseId;
         notice('Save or explicitly clear the unfinished investigation draft before switching cases.', true);
         return;
@@ -70,7 +71,8 @@ async function initialize() {
       caseId = picker.value;
       active = null; // Reject writes while the next case is loading.
       for (const id of ['question-text', 'report-text', 'evidence-rationale', 'draft-observations',
-        'draft-summary', 'draft-assumptions']) el(id).value = '';
+        'draft-summary', 'draft-assumptions', 'workspace-question-text', 'workspace-status-reason',
+        'workspace-status-answer']) el(id).value = '';
       if (el('source-dialog').open) el('source-dialog').close();
       if (el('compare-dialog').open) el('compare-dialog').close();
       refresh();
@@ -553,6 +555,7 @@ function render() {
   }
   loadModelInvestigations();
   loadChangesSinceReview();
+  loadWorkspaceQuestions();
   clear('quarantine-list');
   for (const entry of active.quarantines) {
     el('quarantine-list').append(node('div', 'Quarantined #' + entry.id + ': declared ' + entry.declared_patient_id + ', not ' + caseId + ', no assertions imported', 'quarantine'));
@@ -1108,6 +1111,128 @@ async function loadModelInvestigations() {
     if (requested === caseId) notice(err.message, true);
   }
 }
+async function loadWorkspaceQuestions() {
+  const requested = caseId;
+  const priorLinkQuestion = el('workspace-link-question').value;
+  const priorStatusQuestion = el('workspace-status-question').value;
+  const priorLinkSource = el('workspace-link-source').value;
+  clear('workspace-question-list');
+  try {
+    const data = await api('/api/cases/' + requested + '/workspace-questions');
+    if (requested !== caseId || !active || active.case.case_id !== requested) return;
+    renderWorkspaceQuestions(data.workspace_questions || [],
+      { priorLinkQuestion, priorStatusQuestion, priorLinkSource });
+  } catch (err) {
+    if (requested !== caseId) return;
+    empty(el('workspace-question-list'), 'Investigation questions unavailable: ' + err.message);
+  }
+}
+function workspaceStatusPill(status) {
+  return pill(status, status === 'answered' ? '' : status === 'needs_review' ? 'pill-alert' : 'pill-warn');
+}
+function renderWorkspaceQuestions(items, prior) {
+  // An answer is shown only for answered questions. History keeps earlier
+  // recorded answers so a reopened question can still be reviewed.
+  clear('workspace-link-question'); clear('workspace-status-question'); clear('workspace-link-source');
+  for (const item of items) {
+    const label = 'WQ' + item.id + ', ' + String(item.question).slice(0, 62);
+    const linkOpt = node('option', label); linkOpt.value = item.id;
+    el('workspace-link-question').append(linkOpt);
+    const statusOpt = node('option', label); statusOpt.value = item.id;
+    el('workspace-status-question').append(statusOpt);
+  }
+  for (const source of (active.sources || []).filter(s => s.state === 'current')) {
+    const opt = node('option', source.document_id + '@' + source.version + ', ' + source.event_date);
+    opt.value = source.id; el('workspace-link-source').append(opt);
+  }
+  const restore = (id, value) => {
+    if (value && [...el(id).options].some(x => x.value === value)) el(id).value = value;
+  };
+  restore('workspace-link-question', prior.priorLinkQuestion);
+  restore('workspace-status-question', prior.priorStatusQuestion);
+  restore('workspace-link-source', prior.priorLinkSource);
+  if (!items.length) { empty(el('workspace-question-list'), 'No investigation questions yet. Add one above.'); return; }
+  for (const item of items) {
+    const box = node('div', null, 'question');
+    const top = node('div', null, 'topline');
+    top.append(node('strong', 'Investigation question WQ' + item.id),
+      workspaceStatusPill(item.status), pill('FICTIONAL', 'pill-neutral'));
+    box.append(top, node('p', item.question));
+    box.append(node('p', 'Created ' + (item.created_date || '') + ' · Review state: ' + item.status, 'snapshot-meta'));
+    if (item.status === 'answered' && item.answer) {
+      box.append(node('p', 'Recorded answer (human-entered, fictional):', 'muted'));
+      box.append(node('p', item.answer, 'quoted'));
+    } else {
+      box.append(node('p', 'No recorded answer.', 'muted'));
+    }
+    const links = item.links || [];
+    box.append(node('p', links.length ? 'Linked source versions:' : 'No linked source versions yet.', 'muted'));
+    for (const link of links) {
+      box.append(node('p', (link.source_anchor || ('#' + link.source_version_id)) +
+        ' · source ' + (link.source_state || 'unknown') +
+        ' · link ' + link.state, 'snapshot-meta'));
+      if (link.state === 'active') {
+        const unlink = node('button', 'Unlink ' + (link.source_anchor || ('#' + link.source_version_id)), 'button secondary minor');
+        unlink.type = 'button';
+        unlink.addEventListener('click', async () => {
+          try {
+            const requestedCase = readyCase();
+            await api('/api/cases/' + requestedCase + '/workspace-questions/' + item.id + '/links/' + link.id + '/unlink', {});
+            if (requestedCase !== caseId) return;
+            notice('Link superseded; the record is kept as history.');
+            await refresh();
+          } catch (err) { notice(err.message, true); }
+        });
+        box.append(unlink);
+      }
+    }
+    const history = item.history || [];
+    box.append(node('p', 'History (' + history.length + ' entr' + (history.length === 1 ? 'y' : 'ies') + '):', 'muted'));
+    for (const entry of history) {
+      box.append(node('p', (entry.previous_status || 'recorded') + ' → ' + entry.new_status +
+        ': ' + entry.reason + ' · ' + (entry.recorded_at || ''), 'snapshot-meta'));
+      if (entry.answer) box.append(node('p', 'Earlier recorded answer (kept for review): ' + entry.answer, 'quoted'));
+    }
+    el('workspace-question-list').append(box);
+  }
+}
+el('workspace-question-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    await api('/api/cases/' + requestedCase + '/workspace-questions', { question: el('workspace-question-text').value });
+    if (requestedCase !== caseId) return;
+    el('workspace-question-text').value = '';
+    notice('Investigation question recorded.');
+    await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('workspace-link-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    await api('/api/cases/' + requestedCase + '/workspace-questions/' + el('workspace-link-question').value + '/links', {
+      source_version_id: Number(el('workspace-link-source').value),
+    });
+    if (requestedCase !== caseId) return;
+    notice('Source version linked.');
+    await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('workspace-status-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const answer = el('workspace-status-answer').value.trim();
+  try {
+    const requestedCase = readyCase();
+    const payload = { status: el('workspace-status-value').value, reason: el('workspace-status-reason').value };
+    if (answer) payload.answer = answer;
+    await api('/api/cases/' + requestedCase + '/workspace-questions/' + el('workspace-status-question').value + '/status', payload);
+    if (requestedCase !== caseId) return;
+    el('workspace-status-reason').value = ''; el('workspace-status-answer').value = '';
+    notice('Status change recorded.');
+    await refresh();
+  } catch (err) { notice(err.message, true); }
+});
 async function loadChangesSinceReview() {
   const requested = caseId;
   const anchorEl = el('changes-anchor');
