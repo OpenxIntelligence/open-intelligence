@@ -66,6 +66,11 @@ export function WorldModelView({session,state,onOverview,busy,showQuestions=fals
             disabled={loading||busy||state.composerPhase==='loading'}
             onClick={()=>{void session.prepareSourceContext(item.source_id,item.source_line,DEFAULT_SOURCE_QUESTION);onInvestigations?.();}}>
             Prepare source-only question context
+          </button>{' '}
+          <button type="button" data-testid="choose-question-draft"
+            disabled={loading||busy||state.questionSavePhase==='saving'}
+            onClick={()=>{session.chooseQuestionDraft(item.source_id,item.source_line);onInvestigations?.();}}>
+            Write a source-linked question
           </button></div>
         </li>)}</ul>}
         {model.conflicts.length>0&&<section aria-labelledby="source-disagreements">
