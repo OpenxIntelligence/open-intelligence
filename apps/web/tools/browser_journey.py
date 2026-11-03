@@ -74,7 +74,7 @@ def main():
             assert cd.evaluate('localStorage.length===0 && sessionStorage.length===0')
             assert tokens[0] not in cd.evaluate('document.documentElement.outerHTML')
             # Add only operator-controlled fictional grants; no UI self-authorization.
-            credentials[0]['actions'].extend(['case_binding_create','case_binding_read','source_import','source_read'])
+            credentials[0]['actions'].extend(['case_binding_create','case_binding_read','source_import','source_read','source_original_read'])
             write_grants()
             def add_synthetic(path,payload):
                 url='http://127.0.0.1:8000'+path
@@ -110,6 +110,12 @@ def main():
             assert cd.evaluate("document.querySelector('[data-testid=source-statement]').textContent.includes('<script>literal</script>')")
             assert cd.evaluate("document.querySelectorAll('[data-testid=source-statement] script').length===0")
             assert cd.evaluate("document.querySelector('[data-testid=source-index]').textContent.includes('not established')")
+            # Distinct source_original_read permission and SHA-256 validated in the React client.
+            cd.evaluate("document.querySelector('[data-testid=read-original]').click()")
+            cd.wait("Boolean(document.querySelector('[data-testid=exact-original]'))",'SHA-verified exact original source bytes')
+            assert cd.evaluate("document.querySelector('[data-testid=original-text]').textContent.includes('<script>literal</script>')")
+            assert cd.evaluate("document.querySelectorAll('[data-testid=original-text] script').length===0")
+            assert cd.evaluate("document.querySelector('[data-testid=exact-original]').textContent.includes('v1')")
             amended=(
                 'OI-SYNTHETIC-REPORT/1\nPatient: CASE-ALPHA\nDocument: DOC-ONE\n'
                 'Type: pathology\nEvent-Date: 2026-01-10\nIssued-At: 2026-01-12\n'
@@ -119,11 +125,29 @@ def main():
             status,new_receipt=add_synthetic(root+'/cases/'+case+'/sources',{
                 'synthetic':True,'original_text':amended})
             assert status==201 and new_receipt['version']==2
+            # Backend original state is now superseded, but the previously loaded index
+            # still says current: refuse to render until source history is refreshed.
+            cd.evaluate("document.querySelector('[data-testid=read-original]').click()")
+            cd.wait("document.querySelector('[data-testid=original-status]').textContent.includes('could not be verified')",'source state mismatch requires index refresh')
+            assert cd.evaluate("!document.querySelector('[data-testid=exact-original]')")
             cd.evaluate("document.querySelector('[data-testid=load-sources]').click()")
             cd.wait("document.querySelectorAll('[data-testid=source-version]').length===2",'versioned amendment history')
             assert cd.evaluate("document.querySelector('[data-testid=source-index]').textContent.includes('superseded')")
             assert cd.evaluate("document.querySelector('[data-testid=source-index]').textContent.includes('Amended fictional marker is reported negative.')")
             assert cd.evaluate("document.querySelectorAll('[data-testid=source-statement]').length===1")
+            cd.evaluate("document.querySelectorAll('[data-testid=read-original]')[0].click()")
+            cd.wait("document.querySelector('[data-testid=exact-original]')?.textContent.includes('superseded')",'historical version remains inspectable with exact SHA')
+            assert cd.evaluate("document.querySelector('[data-testid=original-text]').textContent.includes('Fictional café')")
+            cd.evaluate("document.querySelectorAll('[data-testid=read-original]')[1].click()")
+            cd.wait("document.querySelector('[data-testid=original-text]')?.textContent.includes('Amended fictional marker')",'amended version exact bytes')
+            assert cd.evaluate("document.querySelector('[data-testid=exact-original]').textContent.includes('current')")
+            # Source metadata permission must not imply permission to original bytes.
+            credentials[0]['actions'].remove('source_original_read');write_grants()
+            cd.evaluate("document.querySelectorAll('[data-testid=read-original]')[1].click()")
+            cd.wait("document.querySelector('[data-testid=original-status]').textContent.includes('unavailable under the current grant')",'original-read revocation clears bytes')
+            assert cd.evaluate("!document.querySelector('[data-testid=exact-original]')")
+            assert cd.evaluate("Boolean(document.querySelector('[data-testid=source-index]'))")
+            credentials[0]['actions'].append('source_original_read');write_grants()
             # Read rights must be checked afresh; a denied refresh discards earlier findings.
             credentials[0]['actions'].remove('source_read');write_grants()
             cd.evaluate("document.querySelector('[data-testid=load-sources]').click()")
