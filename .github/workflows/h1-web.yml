@@ -3,7 +3,7 @@ on:
   push:
     branches: [feat/h1-react-patient-entry-20261102, integration/h1-postgres-world-model-20261102]
   pull_request:
-    paths: ['apps/web/**', 'apps/api/src/oi_api/**', 'apps/api/tests/test_world_model_source_read.py', 'apps/api/tests/test_composer_preflight.py', 'apps/api/tests/test_contracts.py', 'src/open_intelligence/world_model.py', '.github/workflows/h1-web.yml']
+    paths: ['apps/web/**', 'apps/api/src/oi_api/**', 'apps/api/tests/test_world_model_source_read.py', 'apps/api/tests/test_composer_preflight.py', 'apps/api/tests/test_source_questions.py', 'apps/api/tests/test_contracts.py', 'src/open_intelligence/world_model.py', '.github/workflows/h1-web.yml']
 permissions:
   contents: read
 jobs:
@@ -75,6 +75,7 @@ jobs:
           python -m unittest discover -s apps/api/tests -p test_contracts.py -v 2>&1 | tee verification-web/world-model-contracts.txt
           python -m unittest discover -s apps/api/tests -p test_world_model_source_read.py -v 2>&1 | tee verification-web/world-model-postgres.txt
           python -m unittest discover -s apps/api/tests -p test_composer_preflight.py -v 2>&1 | tee verification-web/composer-preflight-postgres.txt
+          python -m unittest discover -s apps/api/tests -p test_source_questions.py -v 2>&1 | tee verification-web/durable-question-postgres.txt
       - name: Actual PostgreSQL API and built React browser journey
         shell: bash
         run: |

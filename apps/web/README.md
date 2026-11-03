@@ -107,6 +107,31 @@ verification, conflicting source labels, amendment, wrong patient/organization,
 revocation and access rights before the real Chromium journey. A successful
 synthetic software gate is not production authorization or clinical validation.
 
+## Durable source-linked questions (draft)
+
+The source-only Composer preflight can now be deliberately **saved** as a
+first-party `investigation.source_questions` item in PostgreSQL 16
+(revision `0006_source_questions`). Its original source ID, version, exact
+line, source fingerprint and preflight SHA remain pinned. Source corrections
+make the *historical question* report
+`source_reassessment_required` when its authorized case is re-read.
+The React Investigations tab can refresh the saved question history after
+restart. A saved question has **no assigned or approved clinician**; the
+original durable review owner is still separate.
+
+Question creation demands its own `question_create` scope plus patient,
+source and Composer permissions. Reading saved history separately requires
+`question_read` and source rights. The UI keeps a stable request key for
+an uncertain same-preflight retry while the session remains open and never
+stores credentials or source content in browser storage. For now the UI saves
+the explicit standard provenance question only; the API can accept a
+validated custom question, but editable free-text drafting must have an
+unsaved-work guard before becoming a browser control.
+
+Full integration boundaries and negative tests:
+`docs/engineering/H1_CANONICAL_SOURCE_QUESTION_INTAKE.md`.
+No clinical sign-off or user-facing AI answer is inferred.
+
 ## Development setup
 
 The backend instructions and exact Python dependency gate remain in

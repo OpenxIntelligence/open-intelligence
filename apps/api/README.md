@@ -264,6 +264,32 @@ defaults to two seconds; OI_API_CONNECT_TIMEOUT_SECONDS accepts 0.1–10 seconds
 Database URL query options are not enabled. Public errors omit credentials,
 URLs, SQL, source text and rejected validation inputs.
 
+## H1 first-party durable question intake (synthetic only)
+
+Alembic `0006_source_questions` ports the existing CaseStore **question intake**
+domain into one canonical PostgreSQL `investigation.source_questions` owner.
+It stores an immutable exact source/version/line, the source-set and Composer
+preflight SHA-256, a stable patient-scoped request key, the question text, and a
+single `investigation.question.created` entry in the existing patient event
+journal, committed atomically. No model or review ledger is created.
+
+`POST .../cases/{case_id}/questions` requires `question_create`, plus
+`patient_read`, `source_read`, `composer_context_read` and operations
+purpose. It **recomputes** original/source/Composer preflight integrity under
+the same case lock and transaction as the write. Stale/cross-case source
+references, changed intent and unauthorized patient access are denied.
+`GET .../cases/{case_id}/questions` additionally requires independently
+granted `question_read`. After an original amendment, the historical
+question is still inspectable but projected as
+`source_reassessment_required`, not silently treated as current.
+Idempotent uncertain retries recover one question ID.
+
+This is a **saved unreviewed question**, not a clinical human-review
+submission or approval. No real patient consent, clinical identity,
+publisher rights, signed reviewer, model execution or PHI processing is
+established. See `docs/engineering/H1_CANONICAL_SOURCE_QUESTION_INTAKE.md`
+for the source ownership, limitations and exact-head test expectations.
+
 ## HTTP and migration contracts
 
 | Route | Behavior |

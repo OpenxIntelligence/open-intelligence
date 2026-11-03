@@ -22,6 +22,7 @@ from .case_bindings import CanonicalCaseBindings
 from .sources import PostgresSourceVersions
 from .world_model_read import PostgresWorldModelRead
 from .composer_preflight import PostgresSourceComposerPreflight
+from .source_questions import PostgresSourceQuestions
 
 TOKEN = re.compile(r"[A-Za-z0-9._~-]{32,256}\Z")
 
@@ -398,6 +399,56 @@ class PreparedSourceComposer(Contract):
     preflight_sha256: str
 
 
+class SaveSourceQuestion(Contract):
+    synthetic: StrictBool
+    request_key: str = Field(min_length=3, max_length=128)
+    source_id: str = Field(pattern=r"^SRC-[0-9A-F]{32}$")
+    source_line: int = Field(ge=1, le=10000)
+    question: str = Field(min_length=8, max_length=500)
+    expected_source_snapshot_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    expected_preflight_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @field_validator("synthetic")
+    @classmethod
+    def synthetic_only(cls, value):
+        if value is not True:
+            raise ValueError("Only fictional source-anchored questions are allowed")
+        return value
+
+
+class SavedSourceQuestion(Contract):
+    question_id: str
+    duplicate: bool
+
+
+class QuestionSourceState(Contract):
+    question_id: str
+    patient_id: str
+    case_id: str
+    question: str
+    source_id: str
+    source_line: int = Field(ge=1)
+    source_sha256: str
+    source_version: int = Field(ge=1)
+    source_snapshot_sha256: str
+    preflight_sha256: str
+    created_at: datetime
+    source_context_state: Literal["current_unreviewed_question",
+                                  "source_reassessment_required"]
+    human_review_state: Literal["not_submitted"]
+    clinical_approval: Literal[False]
+    model_executed: Literal[False]
+
+
+class SourceQuestionsList(Contract):
+    patient_id: str
+    case_id: str
+    questions: list[QuestionSourceState]
+    synthetic: Literal[True] = True
+    clinical_review_connected: Literal[False] = False
+    clinical_approval: Literal[False] = False
+
+
 def patient_router(database: Database, authentication: Authentication) -> APIRouter:
     router = APIRouter(prefix="/v1/patients", tags=["Synthetic patient registry"])
     bearer = HTTPBearer(auto_error=False, scheme_name="SyntheticFixture",
@@ -432,7 +483,7 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
                         return False
                     if action == "patient_create":
                         return subject == context.organization
-                    if action not in {"patient_read", "record_request_create", "record_request_read", "record_request_cancel", "record_request_receive", "case_binding_create", "case_binding_read", "case_binding_revoke", "source_import", "source_read", "source_original_read", "composer_context_read"} or subject not in context.patient_ids:
+                    if action not in {"patient_read", "record_request_create", "record_request_read", "record_request_cancel", "record_request_receive", "case_binding_create", "case_binding_read", "case_binding_revoke", "source_import", "source_read", "source_original_read", "composer_context_read", "question_create", "question_read"} or subject not in context.patient_ids:
                         return False
                     cursor = connection.cursor()
                     try:
@@ -617,6 +668,55 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
             raise HTTPException(404, "Patient unavailable") from None
         return CaseBindingReceipt(**result)
 
+
+
+    @router.get("/{patient_id}/cases/{case_id}/questions",
+                response_model=SourceQuestionsList, responses=errors,
+                operation_id="list_source_questions_v1")
+    def list_source_questions(patient_id: str, case_id: str,
+                              context: Principal = Depends(principal)):
+        if context.purpose != "operations":
+            raise HTTPException(404, "Question intake unavailable")
+        try:
+            with registry(context) as patients:
+                records_authorized(patients, context, patient_id, "question_read")
+                records_authorized(patients, context, patient_id, "source_read")
+                rows = PostgresSourceQuestions(patients).list(
+                    patient_id, case_id, organization=context.organization
+                )
+                patients._allow(context.actor, patient_id,
+                                "question_read", context.purpose)
+                return SourceQuestionsList(patient_id=patient_id, case_id=case_id,
+                                           questions=rows)
+        except PatientRegistryDenied:
+            raise HTTPException(404, "Question intake unavailable") from None
+
+    @router.post("/{patient_id}/cases/{case_id}/questions",
+                 response_model=SavedSourceQuestion, status_code=201,
+                 responses={200: {"model": SavedSourceQuestion}, **errors},
+                 operation_id="save_source_question_v1")
+    def save_source_question(patient_id: str, case_id: str,
+                             payload: SaveSourceQuestion, response: Response,
+                             context: Principal = Depends(principal)):
+        if context.purpose != "operations":
+            raise HTTPException(404, "Question intake unavailable")
+        try:
+            with registry(context) as patients:
+                records_authorized(patients, context, patient_id, "question_create")
+                records_authorized(patients, context, patient_id, "composer_context_read")
+                records_authorized(patients, context, patient_id, "source_read")
+                receipt = PostgresSourceQuestions(patients).create(
+                    patient_id, case_id, organization=context.organization,
+                    actor=context.actor, purpose=context.purpose,
+                    request_key=payload.request_key, question=payload.question,
+                    source_id=payload.source_id, source_line=payload.source_line,
+                    expected_source_snapshot_sha256=payload.expected_source_snapshot_sha256,
+                    expected_preflight_sha256=payload.expected_preflight_sha256,
+                )
+        except PatientRegistryDenied:
+            raise HTTPException(404, "Question intake unavailable") from None
+        response.status_code = 200 if receipt["duplicate"] else 201
+        return SavedSourceQuestion(**receipt)
 
 
     @router.post("/{patient_id}/cases/{case_id}/composer/source-preflight",

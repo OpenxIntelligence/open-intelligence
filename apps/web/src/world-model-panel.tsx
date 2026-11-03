@@ -48,11 +48,53 @@ export function WorldModelPanel({state,session}:{state:ViewState;session:Registr
        <code>{state.composerPreview.source_snapshot_sha256}</code></p>
      <p><strong>Preflight receipt hash (not a credential):</strong>
        <code>{state.composerPreview.preflight_sha256}</code></p>
-     <p role="note"><strong>Not a clinical review.</strong> No question has been saved,
-       no model executed, no biomedical source rights established, and no
-       clinician has approved this context. A future action must recheck
-       the original source version and current permissions.</p>
+     <p role="note"><strong>Not a clinical review.</strong> This preview alone does not
+       save a question, execute a model, establish biomedical source rights or
+       authorize a clinician. Saving below creates only a source-linked
+       question-intake record with independent source revalidation.</p>
+     <button type="button" className="primary" data-testid="save-source-question"
+       disabled={state.questionSavePhase==='saving'}
+       onClick={()=>void session.savePreparedQuestion()}>
+       {state.questionSavePhase==='saving'?'Saving authorized question…':
+        'Save source-linked question (no clinical approval)'}
+     </button>
+     <p className={'status '+(state.questionSavePhase==='error'?'error':'')}
+       data-testid="question-save-status" role="status" aria-live="polite">
+       {state.questionSaveMessage}</p>
+     {state.savedQuestion&&<p className="question-receipt" data-testid="saved-source-question">
+       <strong>{state.savedQuestion.duplicate?'Existing question recovered':'Question saved'}:</strong>
+       <code>{state.savedQuestion.question_id}</code>. This does not submit
+       or approve a clinician review.</p>}
    </section>}
+   <section className="question-history" aria-labelledby="question-history-heading">
+    <div className="question-history-heading">
+      <div><h3 id="question-history-heading">Saved source-linked questions</h3>
+       <p>Durable question intake only. No clinical reviewer has received or approved these items.</p></div>
+      <button type="button" data-testid="load-source-questions" disabled={state.questionListPhase==='loading'}
+        onClick={()=>void session.loadSavedQuestions(caseId)}>
+        {state.questionListPhase==='loading'?'Checking question history…':'Refresh question history'}
+      </button>
+    </div>
+    <p data-testid="questions-status" role="status" aria-live="polite"
+      className={'status '+(state.questionListPhase==='error'?'error':'')}>
+      {state.questionListMessage}</p>
+    {state.questions&&<div data-testid="source-question-history">
+      {state.questions.length===0?<p>No saved source-linked questions are visible.</p>:
+       <ul className="question-items">
+        {state.questions.map(item=><li key={item.question_id}>
+          <div className="question-status-title">
+           <strong>{item.question}</strong>
+           <span className={'question-status '+(item.source_context_state==='source_reassessment_required'?'reassessment':'')}>
+           {item.source_context_state==='source_reassessment_required'?
+             'Source changed — reassessment required':'Current source context — unreviewed'}
+           </span>
+          </div>
+          <p><strong>Original anchor:</strong> <code>{item.source_id}</code> · v{item.source_version}, line {item.source_line}.</p>
+          <p><strong>Saved question:</strong> <code>{item.question_id}</code></p>
+          <p className="muted">Human review not submitted. Clinical approval: none.</p>
+         </li>)}</ul>}
+    </div>}
+   </section>
    {model&&<div data-testid="world-model-result">
     <div className="world-summary" aria-label="Source-only summary">
      <div><strong>{model.summary.current_sources}</strong><span>Current source versions</span></div>

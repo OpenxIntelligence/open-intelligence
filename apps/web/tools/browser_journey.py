@@ -151,7 +151,8 @@ def main():
             assert "Clinical approval" not in original_view
             # The preflight requires its own grant; source_read alone must
             # never authorize clinical Composer execution.
-            credentials[0]['actions'].append('composer_context_read')
+            credentials[0]['actions'].extend([
+                'composer_context_read','question_create','question_read'])
             write_grants()
             assert cd.evaluate("!document.querySelector('[data-testid=composer-context]')")
             cd.evaluate("document.querySelector('[data-testid=composer-preflight]').click()")
@@ -159,9 +160,21 @@ def main():
                     'authorized non-executing Composer source preflight')
             preview=cd.evaluate("document.querySelector('[data-testid=composer-context]').textContent")
             assert sid in preview and "line 8" in preview and "version 1" in preview
-            assert "No question has been saved" in preview
-            assert "no model executed" in preview
-            assert "no clinician has approved" in preview
+            assert "This preview alone does not" in preview
+            assert "execute a model" in preview
+            assert "authorize a clinician" in preview
+            assert cd.evaluate("!document.querySelector('[data-testid=saved-source-question]')")
+            cd.evaluate("document.querySelector('[data-testid=save-source-question]').click()")
+            cd.wait("document.querySelector('[data-testid=saved-source-question]')?.textContent.includes('Question saved')",
+                    'atomic source-pinned question intake with no clinical review')
+            q1=cd.evaluate("document.querySelector('[data-testid=saved-source-question] code').textContent")
+            assert q1.startswith('QUESTION-') and len(q1)==41
+            cd.evaluate("document.querySelector('[data-testid=load-source-questions]').click()")
+            cd.wait("document.querySelector('[data-testid=source-question-history]')?.textContent.includes('Current source context')",
+                    'same-patient source question history reads as unreviewed')
+            initial_history=cd.evaluate("document.querySelector('[data-testid=source-question-history]').textContent")
+            assert q1 in initial_history and sid in initial_history
+            assert "Clinical approval: none" in initial_history
 
             # A correction after receipt must never silently replace the
             # previously pinned original or describe it as current.
@@ -173,6 +186,12 @@ def main():
             status,correction=post(root+'/cases/CASE-ALPHA/sources',{
                 'synthetic':True,'original_text':amended})
             assert status==201 and correction['version']==2 and correction['source_id']!=sid
+            cd.evaluate("document.querySelector('[data-testid=load-source-questions]').click()")
+            cd.wait("document.querySelector('[data-testid=source-question-history]')?.textContent.includes('Source changed')",
+                    'durable original source question reopens for reassessment')
+            historical_q=cd.evaluate("document.querySelector('[data-testid=source-question-history]').textContent")
+            assert q1 in historical_q and sid in historical_q
+            assert correction['source_id'] not in historical_q
             # A previously displayed source preview must fail its exact
             # source-set fingerprint after a corrected original is imported.
             cd.evaluate("document.querySelector('[data-testid=composer-preflight]').click()")
@@ -195,6 +214,25 @@ def main():
             prepared=cd.evaluate("document.querySelector('[data-testid=composer-context]').textContent")
             assert correction['source_id'] in prepared and "line 9" in prepared
             assert sid not in prepared
+            cd.evaluate("document.querySelector('[data-testid=save-source-question]').click()")
+            cd.wait("document.querySelector('[data-testid=saved-source-question]')?.textContent.includes('Question saved')",
+                    'corrected source supports new independently revalidated question')
+            q2=cd.evaluate("document.querySelector('[data-testid=saved-source-question] code').textContent")
+            assert q2!=q1
+            cd.evaluate("document.querySelector('[data-testid=load-source-questions]').click()")
+            cd.wait("document.querySelectorAll('.question-items li').length===2",
+                    'PostgreSQL retains historical and current questions')
+            question_history=cd.evaluate("document.querySelector('[data-testid=source-question-history]').textContent")
+            assert q1 in question_history and q2 in question_history
+            assert "Source changed" in question_history
+            assert "Current source context" in question_history
+            credentials[0]['actions'].remove('question_read')
+            write_grants()
+            cd.evaluate("document.querySelector('[data-testid=load-source-questions]').click()")
+            cd.wait("document.querySelector('[data-testid=questions-status]').textContent.includes('unavailable')",
+                    'independent question-read revocation clears history')
+            assert cd.evaluate("!document.querySelector('[data-testid=source-question-history]')")
+            credentials[0]['actions'].append('question_read')
             credentials[0]['actions'].remove('composer_context_read')
             write_grants()
             cd.evaluate("document.querySelector('[data-testid=composer-preflight]').click()")
@@ -299,7 +337,7 @@ def main():
             cd.wait("document.querySelector('[data-testid=status]').textContent.includes('Patient unavailable')",'cross-organization read denied')
             cd.command('Page.reload');cd.wait("Boolean(document.querySelector('#credential'))",'reload forgets credential')
             assert cd.evaluate("document.querySelector('#credential').value==='' && document.querySelector('#patient-id').value==='' && localStorage.length===0 && sessionStorage.length===0")
-            print('PASS: React/Vite -> actual FastAPI/PostgreSQL 16; create/retry, independent record/source/original reads, exact source/receipt, grant withdrawal, case-binding revocation, revoked view clearing, expiry, cross-organization denial, memory-only credential, reload, accessibility landmarks and 390px layout. Fictional records only; not clinical authorization.')
+            print('PASS: React/Vite -> actual FastAPI/PostgreSQL 16; canonical patient/record/World Model, source-pinned Composer preflight, durable source-question create/read, v1→v2 source reassessment, independent question/preflight/source grants, no clinical approval, case-binding revocation, expiry, cross-org denial, memory-only credential, reload and 390px layout. Fictional records only.')
         finally:
             if cd:cd.close()
             for process in (browser,web,api):

@@ -1,6 +1,8 @@
 import {decodeOriginal,decodeRecordRequests} from './record-views.js';
 import {decodeSourceWorldModel} from './world-model-views.js';
 import {decodeComposerPreflight,DEFAULT_SOURCE_QUESTION} from './composer-preflight-view.js';
+import {decodeSavedQuestion,decodeSourceQuestions} from './source-questions-view.js';
+import type {SavedQuestion,SourceQuestion} from './source-questions-view.js';
 import type {ComposerPreflight} from './composer-preflight-view.js';
 import type {SourceWorldModel} from './world-model-views.js';
 import type {OriginalSource,RecordRequest} from './record-views.js';
@@ -21,6 +23,8 @@ export type ViewState = Readonly<{
   worldPhase:'idle'|'loading'|'ready'|'error';worldMessage:string;
   composerPreview:ComposerPreflight|null;
   composerPhase:'idle'|'loading'|'ready'|'error';composerMessage:string;
+  savedQuestion:SavedQuestion|null;questionSavePhase:'idle'|'saving'|'saved'|'error';questionSaveMessage:string;
+  questions:readonly SourceQuestion[]|null;questionListPhase:'idle'|'loading'|'ready'|'error';questionListMessage:string;
 }>;
 export type Transport = (input: string, init: RequestInit) => Promise<Response>;
 const KEY = /^[A-Za-z0-9][A-Za-z0-9_.:-]{2,127}$/;
@@ -43,6 +47,8 @@ const fresh = (): ViewState => Object.freeze({
   worldModel:null,worldPhase:'idle',worldMessage:'Open an authorized patient and select a source case.',
   composerPreview:null,composerPhase:'idle',
   composerMessage:'Select an exact current source observation to prepare a non-executing context.',
+  savedQuestion:null,questionSavePhase:'idle',questionSaveMessage:'Save a verified preflight to create one unreviewed source-linked question.',
+  questions:null,questionListPhase:'idle',questionListMessage:'Open an authorized case to inspect saved source questions.',
 });
 function exact(value: unknown, fields: string[]): value is Record<string,unknown> {
   return value !== null && typeof value==='object' && !Array.isArray(value) &&
@@ -76,14 +82,24 @@ function created(value: unknown): CreatedPatient {
   return Object.freeze(value as CreatedPatient);
 }
 export class RegistrySession {
-  #token=''; #scope=0; #read=0; #recordsRead=0; #originalRead=0; #worldRead=0; #composerRead=0; #state:ViewState=fresh();
+  #token=''; #scope=0; #read=0; #recordsRead=0; #originalRead=0; #worldRead=0; #composerRead=0;
+  #questionWrite=0; #questionRead=0; #questionKey=''; #questionFingerprint=''; #savingQuestion=false;
+  #state:ViewState=fresh();
   #listeners=new Set<()=>void>(); #controllers=new Set<AbortController>(); #creating=false;
   constructor(private readonly transport:Transport=(url,init)=>fetch(url,init)) {}
   snapshot=():ViewState=>this.#state;
   subscribe=(listener:()=>void):(()=>void)=>{this.#listeners.add(listener);return()=>this.#listeners.delete(listener);};
   #publish(patch:Partial<ViewState>){this.#state=Object.freeze({...this.#state,...patch});for(const listener of this.#listeners)listener();}
+  #resetQuestions(){
+    this.#questionWrite++;this.#questionRead++;this.#savingQuestion=false;
+    this.#questionKey='';this.#questionFingerprint='';
+    this.#publish({savedQuestion:null,questionSavePhase:'idle',
+      questionSaveMessage:'Save a verified preflight to create one unreviewed source-linked question.',
+      questions:null,questionListPhase:'idle',
+      questionListMessage:'Open an authorized case to inspect saved source questions.'});
+  }
   #resetWorld(){
-    this.#worldRead++;this.#composerRead++;
+    this.#worldRead++;this.#composerRead++;this.#resetQuestions();
     this.#publish({worldModel:null,worldPhase:'idle',worldMessage:
       'Open an authorized patient and select a source case.',
       composerPreview:null,composerPhase:'idle',composerMessage:
@@ -92,6 +108,7 @@ export class RegistrySession {
   clearWorldModel=()=>this.#resetWorld();
   #resetRecords(){
     this.#recordsRead++;this.#originalRead++;this.#worldRead++;this.#composerRead++;
+    this.#resetQuestions();
     this.#publish({records:null,recordsPhase:'idle',recordsMessage:'Open an authorized patient to inspect record requests.',
       original:null,originalPhase:'idle',originalMessage:'Original text is never loaded automatically.',
       worldModel:null,worldPhase:'idle',worldMessage:'Open an authorized patient and select a source case.',
@@ -99,7 +116,9 @@ export class RegistrySession {
         'Select an exact current source observation to prepare a non-executing context.'});
   }
   disconnect=()=>{
-    this.#scope++;this.#read++;this.#recordsRead++;this.#originalRead++;this.#worldRead++;this.#composerRead++;this.#token='';this.#creating=false;
+    this.#scope++;this.#read++;this.#recordsRead++;this.#originalRead++;this.#worldRead++;this.#composerRead++;
+    this.#questionRead++;this.#questionWrite++;this.#questionKey='';this.#questionFingerprint='';
+    this.#savingQuestion=false;this.#token='';this.#creating=false;
     for(const c of this.#controllers)c.abort();this.#controllers.clear();
     this.#state=fresh();for(const listener of this.#listeners)listener();
   };
@@ -138,7 +157,7 @@ export class RegistrySession {
   async loadWorldModel(caseId:string):Promise<void>{
     const patientId=this.#state.patient?.patient_id;
     const query=++this.#worldRead,scope=this.#scope,selection=this.#read;
-    this.#composerRead++;
+    this.#composerRead++;this.#resetQuestions();
     // Every new read clears previous source observations and preflights.
     this.#publish({composerPreview:null,composerPhase:'idle',
       composerMessage:'Source context must be re-prepared after a source refresh.',
@@ -183,6 +202,9 @@ export class RegistrySession {
       o.source_version_id===sourceId&&o.source_line===sourceLine);
     const query=++this.#composerRead,scope=this.#scope,selection=this.#read,
       worldQuery=this.#worldRead;
+    this.#questionRead++;
+    this.#publish({questions:null,questionListPhase:'idle',
+      questionListMessage:'Refresh current questions after preparing source context.'});
     // An old preview is never a durable permission or context for a new run.
     this.#publish({composerPreview:null,composerPhase:'idle',
       composerMessage:'Preparing source context requires an independent authorization.'});
@@ -221,8 +243,15 @@ export class RegistrySession {
       }
       const prepared=decodeComposerPreflight(await json(res),model,observation,question);
       if(!current())return;
+      if(this.#questionFingerprint!==prepared.preflight_sha256){
+        this.#questionFingerprint=prepared.preflight_sha256;
+        this.#questionKey=crypto.randomUUID();
+        this.#questionWrite++;
+        this.#publish({savedQuestion:null,questionSavePhase:'idle',
+          questionSaveMessage:'Save the source-linked question with an explicit, idempotent request.'});
+      }
       this.#publish({composerPreview:prepared,composerPhase:'ready',composerMessage:
-        'Source-only preflight prepared. It cannot execute a model, save a question or approve clinical work.'});
+        'Source-only preflight prepared. It cannot execute a model or approve clinical work.'});
     }catch(_){
       if(current()){
         this.#resetWorld();
@@ -230,6 +259,104 @@ export class RegistrySession {
           'The Composer preflight failed validation. Refresh current source context.'});
       }
     }finally{clearTimeout(timeout);this.#controllers.delete(control);}
+  }
+
+  async savePreparedQuestion():Promise<void>{
+    const prepared=this.#state.composerPreview;
+    const patientId=this.#state.patient?.patient_id;
+    if(this.#savingQuestion)return;
+    if(!patientId||!prepared||this.#state.composerPhase!=='ready'||
+       !this.#state.worldModel||!this.#token||!this.#questionKey){
+      this.#publish({questionSavePhase:'error',questionSaveMessage:
+        'Prepare the current, authorized source context before saving a question.'});
+      return;
+    }
+    const key=this.#questionKey,query=++this.#questionWrite;
+    const scope=this.#scope,patientRead=this.#read,worldRead=this.#worldRead,
+      composerRead=this.#composerRead;
+    const current=()=>query===this.#questionWrite&&scope===this.#scope&&
+      patientRead===this.#read&&worldRead===this.#worldRead&&
+      composerRead===this.#composerRead&&
+      this.#state.patient?.patient_id===patientId&&
+      this.#state.composerPreview?.preflight_sha256===prepared.preflight_sha256;
+    const control=new AbortController();this.#controllers.add(control);
+    const timeout=setTimeout(()=>control.abort(),10000);
+    this.#savingQuestion=true;
+    this.#publish({savedQuestion:null,questionSavePhase:'saving',
+      questionSaveMessage:'Revalidating source and saving one canonical fictional question…'});
+    try{
+      const url='/v1/patients/'+encodeURIComponent(patientId)+'/cases/'+
+        encodeURIComponent(prepared.case_id)+'/questions';
+      const body=JSON.stringify({
+        synthetic:true,request_key:key,question:prepared.question,
+        source_id:prepared.selected_source.source_id,
+        source_line:prepared.selected_source.line,
+        expected_source_snapshot_sha256:prepared.source_snapshot_sha256,
+        expected_preflight_sha256:prepared.preflight_sha256,
+      });
+      const res=await this.transport(url,this.#init(control,body));
+      if(!current())return;
+      if(res.status===401){this.#httpError(res.status);return;}
+      if(![200,201].includes(res.status)){
+        if(res.status===409){
+          this.#resetWorld();
+          this.#publish({questionSavePhase:'error',questionSaveMessage:
+            'Source/version or request intent changed. Refresh current originals and saved questions.'});
+        }else{
+          this.#publish({questionSavePhase:'error',questionSaveMessage:
+            'Question save refused by current authorization. No successful save is assumed.'});
+        }
+        return;
+      }
+      const value=decodeSavedQuestion(await json(res));
+      if(!current())return;
+      this.#publish({savedQuestion:value,questionSavePhase:'saved',
+        questionSaveMessage:value.duplicate?
+        'Original question receipt recovered. The same request was not saved twice.':
+        'Source-linked question saved. No clinician review was submitted or approved.'});
+    }catch(_){
+      if(current())this.#publish({savedQuestion:null,questionSavePhase:'error',
+        questionSaveMessage:'Save outcome unknown. Retry this same prepared question to preserve its request key.'});
+    }finally{clearTimeout(timeout);this.#controllers.delete(control);
+      if(query===this.#questionWrite)this.#savingQuestion=false;}
+  }
+
+  async loadSavedQuestions(caseId:string):Promise<void>{
+    const patientId=this.#state.patient?.patient_id;
+    const query=++this.#questionRead,scope=this.#scope,patientRead=this.#read;
+    this.#publish({questions:null,questionListPhase:'idle',
+      questionListMessage:'Checking current authorization for saved source-linked questions…'});
+    if(!patientId||!this.#token||!/^CASE-[A-Z0-9-]{1,35}$/.test(caseId)){
+      this.#publish({questionListPhase:'error',questionListMessage:
+        'Open an authorized patient and exact source case before reading questions.'});
+      return;
+    }
+    const current=()=>query===this.#questionRead&&scope===this.#scope&&
+      patientRead===this.#read&&this.#state.patient?.patient_id===patientId;
+    const controller=new AbortController();this.#controllers.add(controller);
+    const timeout=setTimeout(()=>controller.abort(),10000);
+    this.#publish({questionListPhase:'loading',questionListMessage:'Reading source-current and reassessment states…'});
+    try{
+      const url='/v1/patients/'+encodeURIComponent(patientId)+'/cases/'+
+        encodeURIComponent(caseId)+'/questions';
+      const res=await this.transport(url,this.#init(controller));
+      if(!current())return;
+      if(res.status===401){this.#httpError(res.status);return;}
+      if(res.status!==200){
+        this.#publish({questions:null,questionListPhase:'error',
+          questionListMessage:'Saved questions unavailable under current authority.'});
+        return;
+      }
+      const rows=decodeSourceQuestions(await json(res),patientId,caseId);
+      if(!current())return;
+      this.#publish({questions:rows,questionListPhase:'ready',
+        questionListMessage:rows.length?
+          'Authorized source-linked questions, including any reopened reassessment needs.':
+          'No saved source questions are available under this grant.'});
+    }catch(_){
+      if(current())this.#publish({questions:null,questionListPhase:'error',
+        questionListMessage:'Question history could not be verified; no cached questions are shown.'});
+    }finally{clearTimeout(timeout);this.#controllers.delete(controller);}
   }
 
   async loadRecords():Promise<void>{
