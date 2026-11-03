@@ -106,3 +106,38 @@ PYTHONPATH=src python -m open_intelligence serve
 Remaining proof step: a live-server run against the real API with
 the operator key set, before the demo. The API completion itself
 was verified separately on 2026-10-31.
+
+## Source provenance and amendment history
+
+A read-only projection over existing sources, snapshots, and events.
+No new tables, no new writes. Every call reads live ledger state, so an
+amendment appears as a new chain link and chain event the moment its
+import commits. Superseded versions stay retrievable with anchors intact.
+
+```text
+GET /api/cases/{CASE-ID}/provenance
+```
+
+Per source document, the payload lists the ordered chain original →
+amendments. Each link carries version number, received date
+(`received_at` plus `received_date`), exact anchor (`DOCUMENT@VERSION`),
+state (`current`/`superseded`), supersession links, the import event that
+recorded it, and the saved investigations citing it with their ledger
+review state quoted verbatim (`draft`, `reviewed_in_demo`, `stale`).
+Per-document `chain_events` record each receipt and which investigations
+were marked stale. Unknown case IDs return 422 with `Unknown case`, as
+elsewhere. Case isolation holds: only the requested case's rows appear.
+
+The portal adds a **Provenance** panel after the timeline. It lists
+documents, expands each chain oldest-first, marks superseded versions
+explicitly while keeping them viewable with anchors, and shows citing
+work in plain language. Every item is labeled FICTIONAL. Rendering uses
+existing CSS classes and `textContent` only, follows the selected case,
+clears on case switch, discards stale responses, and refreshes when the
+ledger changes. It makes no medical judgment and suggests no treatment.
+
+Falsifiable coverage lives in `tests/test_provenance.py` (store +
+HTTP + UI-contract): a twice-amended source shows a 3-link ordered chain
+with correct flags, superseded text stays retrievable, a single-version
+source shows one link, citing review states match the ledger exactly,
+case isolation holds, and unknown cases return 422.

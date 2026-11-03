@@ -24,6 +24,7 @@ from .investigation import (
     validate_output,
 )
 from .mission import build_patient_mission
+from .provenance import case_provenance
 from .store import CaseStore, InvalidInput, MAX_SOURCE_BYTES
 from .timeline import case_timeline
 
@@ -106,6 +107,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._static("app.js", "text/javascript; charset=utf-8")
             if path == "/mission.js":
                 return self._static("mission.js", "text/javascript; charset=utf-8")
+            if path == "/provenance.js":
+                return self._static("provenance.js", "text/javascript; charset=utf-8")
             if path == "/style.css":
                 return self._static("style.css", "text/css; charset=utf-8")
             if path == "/tokens.css":
@@ -154,6 +157,9 @@ class Handler(BaseHTTPRequestHandler):
             case_mission = re.fullmatch(rf"/api/cases/{ID_PART}/mission", path)
             if case_mission:
                 return self._json(200, build_patient_mission(store.state(case_mission[1])))
+            case_provenance_route = re.fullmatch(rf"/api/cases/{ID_PART}/provenance", path)
+            if case_provenance_route:
+                return self._json(200, case_provenance(store, case_provenance_route[1]))
             changes = re.fullmatch(rf"/api/cases/{ID_PART}/changes-since-review", path)
             if changes:
                 raw_since = parse_qs(urlsplit(self.path).query).get("since_event_id", [None])[0]

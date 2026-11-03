@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
   <script src="/mission.js" defer></script>
+  <script src="/provenance.js" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main-content">Skip to case workspace</a>
@@ -36,6 +37,7 @@
           <a href="#patient-mission">Patient Mission</a>
           <a href="#assertions">Reported findings</a>
           <a href="#timeline">Timeline</a>
+          <a href="#provenance">Provenance</a>
           <a href="#investigations">Investigation</a>
           <a href="#sources">Sources and findings</a>
           <a href="#evidence">Evidence review</a>
@@ -156,6 +158,16 @@
           <p class="muted panel-note">Compare original report text and inspect which saved investigations used an earlier version. A textual amendment is not automatically a new biological event or a clinical change.</p>
           <div id="source-change-list" class="change-list"></div>
         </section>
+      </section>
+
+      <section class="panel" id="provenance" aria-labelledby="provenance-title">
+        <div class="panel-head">
+          <div><div class="eyebrow">PROVENANCE · READ-ONLY HISTORY</div><h2 id="provenance-title">Source provenance and amendment history</h2></div>
+          <span id="provenance-status" class="pill pill-neutral" aria-live="polite">Loading…</span>
+        </div>
+        <p class="muted"><strong>Plain history of what arrived and what changed it.</strong> Each fictional source document lists every version from the original to the latest amendment. Older versions are kept and can still be opened. This view makes no medical judgment and suggests no treatment.</p>
+        <p class="muted tiny">FICTIONAL DEMO DATA — not a real patient. Every version below carries its exact source anchor and the review state of saved work that cites it.</p>
+        <div id="provenance-list" class="cards" aria-live="polite"></div>
       </section>
 
       <section class="panel panel-investigation" id="investigations" aria-labelledby="investigation-heading">
