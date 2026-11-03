@@ -8,6 +8,7 @@ clinical interpretation, external dispatch, trusted reviewer or signed review.
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime
 import hashlib
 import hmac
@@ -157,12 +158,14 @@ class PostgresQuestionReviewReturns:
             })
         return output, receipts
 
-    def queue(self, patient_id: str, case_id: str, *, organization: str) -> dict:
+    def queue(self, patient_id: str, case_id: str, *, organization: str,
+              recheck_authority: Callable[[], None]) -> dict:
         patient_id = _key(patient_id,"patient_id")
         case_id = _case_id(case_id)
         organization = _key(organization,"organization")
         with self.registry.transaction():
             items, receipts = self._read_locked(patient_id,case_id,organization)
+            recheck_authority()
             return {
                 "contract":"oi.synthetic-question-review-return-queue/1",
                 "patient_id":patient_id, "case_id":case_id,"synthetic":True,
@@ -176,7 +179,8 @@ class PostgresQuestionReviewReturns:
     def return_for_verification(self,patient_id:str,case_id:str,question_id:str,*,
                                 organization:str,actor:str,purpose:str,
                                 request_key:str,expected_queue_fingerprint:str,
-                                reason:str)->dict:
+                                reason:str,
+                                recheck_authority:Callable[[], None])->dict:
         patient_id = _key(patient_id,"patient_id")
         case_id = _case_id(case_id)
         question_id = _question_id(question_id)
@@ -213,6 +217,7 @@ class PostgresQuestionReviewReturns:
                     raise PatientRegistryConflict(
                         "Review request key reused with changed intent")
                 self.registry._allow(actor,patient_id,"review_return",purpose)
+                recheck_authority()
                 return {"receipt_id":prior[0],"question_id":question_id,"duplicate":True}
             item=next((i for i in items if i["question_id"]==question_id),None)
             if item is None:
@@ -225,6 +230,7 @@ class PostgresQuestionReviewReturns:
             ):
                 raise PatientRegistryConflict("Review queue item changed; refresh")
             self.registry._allow(actor,patient_id,"review_return",purpose)
+            recheck_authority()
             receipt_id="REVIEW-"+uuid.uuid4().hex.upper()
             inserted=self.registry._fetchone(
                 "INSERT INTO investigation.question_review_receipts "
@@ -248,11 +254,13 @@ class PostgresQuestionReviewReturns:
                         or not hmac.compare_digest(winner[1],intent)):
                     raise PatientRegistryConflict(
                         "Review request key belongs to different intent")
+                recheck_authority()
                 return {"receipt_id":winner[0],"question_id":question_id,"duplicate":True}
             self.registry.append_event(
                 patient_id,"investigation.review.returned_for_verification",
                 case_id=case_id,question_id=question_id,receipt_id=receipt_id,
                 queue_fingerprint=expected_queue_fingerprint,actor=actor,
             )
+            recheck_authority()
             return {"receipt_id":receipt_id,"question_id":question_id,
                     "duplicate":False}
