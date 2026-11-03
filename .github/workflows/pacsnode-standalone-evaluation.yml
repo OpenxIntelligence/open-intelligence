@@ -105,9 +105,11 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/oi-pacsnode-run"
-          "$RUNNER_TEMP/oi-pacsnode-source/target/debug/pacsnode" \
-            generate-config standalone --output "$RUNNER_TEMP/oi-pacsnode-run/config.toml"
           cd "$RUNNER_TEMP/oi-pacsnode-run"
+          # Checked upstream binary source at the pinned commit: the
+          # command writes config.toml in cwd and does not take --output.
+          "$RUNNER_TEMP/oi-pacsnode-source/target/debug/pacsnode" generate-config standalone
+          test -f config.toml
           export PACS_SERVER__HTTP_PORT=18042
           "$RUNNER_TEMP/oi-pacsnode-source/target/debug/pacsnode" \
             > "$GITHUB_WORKSPACE/verification-artifacts/pacsnode-stdout.txt" 2>&1 &
