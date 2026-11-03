@@ -13,15 +13,15 @@ permissions:
 jobs:
   ui:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     env:
       PYTHONPATH: src
       OI_UI_ARTIFACT_DIR: ui-artifacts
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: '3.13'
       - name: Compile and JavaScript syntax
@@ -30,16 +30,28 @@ jobs:
           node --check web/app.js
       - name: Python and HTTP regression suite
         run: python -m unittest discover -s tests -p 'test_*.py' -v
-      - name: Source-reader concurrency and lineage regressions
-        run: node --test tests/test_source_dialogs.js
-      - name: Synthetic World Model inspector race and literal-source checks
-        run: node --test tests/test_world_model_ui.js
+      - name: JavaScript workflow, concurrency, and navigation regressions
+        run: node --test tests/test_*.js
       - name: Existing integrated browser journey
         run: python tests/browser_journey.py
       - name: Source-dialog race browser journey
         run: python tests/browser_source_dialogs.py
+      - name: Patient Mission and Composer workflow regressions
+        run: |
+          python tests/patient_mission_browser_journey.py
+          python tests/composer_browser_journey.py
+      - name: Empty workspace, original-file intake, and versioned review
+        env:
+          OI_INTAKE_ARTIFACT_DIR: ui-artifacts/intake
+        run: python tests/workspace_start_browser_journey.py
+      - name: Patient and clinician navigation, retained state, and responsive layouts
+        env:
+          OI_UI_ARTIFACT_DIR: ui-artifacts/navigation
+        run: python tests/workspace_navigation_browser_journey.py
       - name: Source-first layout and keyboard journey
         if: always()
+        env:
+          OI_UI_ARTIFACT_DIR: ui-artifacts/glance
         run: python tests/ui_glance_journey.py
       - name: Record exact source under test
         if: always()

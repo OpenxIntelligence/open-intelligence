@@ -37,10 +37,12 @@ function metric(number, label) {
 function focusOverviewFromCasePicker(event) {
   if (event.key !== 'Tab' || event.shiftKey || event.defaultPrevented) return;
   if (document.activeElement !== el('case-picker')) return;
-  const overviewLink = document.querySelector('.rail nav a[href="#overview"]');
-  if (!overviewLink) return;
+  const menu = document.querySelector('.section-menu');
+  const destination = menu && !menu.open ? menu.querySelector(':scope > summary')
+    : document.querySelector('.rail nav a[aria-current]') || document.querySelector('.rail nav a');
+  if (!destination) return;
   event.preventDefault();
-  overviewLink.focus();
+  destination.focus();
 }
 async function initialize() {
   try {
@@ -104,6 +106,8 @@ async function renderIncomingBoard(cases) {
   summaries.sort((a, b) => b.latestEvent.localeCompare(a.latestEvent));
   for (const summary of summaries) {
     const row = node('div', null, 'question');
+    row.dataset.caseId = summary.caseId;
+    row.dataset.caseLabel = summary.label;
     const text = node('div');
     text.append(node('p', summary.label + ' · ' + summary.caseId));
     if (summary.error) text.append(node('p', 'Could not load this case summary: ' + summary.error, 'muted'));
@@ -114,6 +118,10 @@ async function renderIncomingBoard(cases) {
     const open = node('button', 'Open this case', 'button secondary minor');
     open.type = 'button';
     open.addEventListener('click', () => {
+      if (caseId === summary.caseId && el('case-picker').value === summary.caseId && globalThis.OIWorkspaceNavigation) {
+        globalThis.OIWorkspaceNavigation.navigate('#overview');
+        return;
+      }
       el('case-picker').value = summary.caseId;
       el('case-picker').dispatchEvent(new Event('change'));
       el('overview').scrollIntoView();
@@ -396,6 +404,7 @@ function render() {
   if (!active.sources.length) empty(el('source-list'), 'No records received.');
   for (const source of active.sources) {
     const card = node('article', null, 'source-card');
+    card.dataset.sourceState = source.state;
     const top = node('div', null, 'source-top');
     top.append(node('span', source.document_id + ' @' + source.version, 'source-title'),
       pill(source.state, source.state === 'current' ? '' : 'pill-neutral'));
@@ -539,6 +548,7 @@ function render() {
     exportButton.addEventListener('click', () => downloadSnapshot(snapshot.id)); actions.append(exportButton);
     if (snapshot.state === 'draft') {
       const button = node('button', 'Demo review acknowledgment', 'button minor'); button.type = 'button';
+      button.dataset.clinicianAction = 'true';
       button.addEventListener('click', async () => {
         try {
           const requestedCase = readyCase();
@@ -1351,26 +1361,380 @@ initialize();
 initializeBibliography();
 loadModelTemplates();
 
-const sectionMenu = document.querySelector('.section-menu');
-const workspaceNav = document.querySelector('#workspace-nav');
-if (workspaceNav) {
-  const sectionLinks = [...workspaceNav.querySelectorAll('a[href^="#"]')];
-  const syncCurrentSection = () => {
-    const current = window.location.hash || '#overview';
-    sectionLinks.forEach(link => {
-      if (link.getAttribute('href') === current) link.setAttribute('aria-current', 'location');
-      else link.removeAttribute('aria-current');
-    });
+/* Workspace navigation shell — presentation only; the original ledger and
+ * handlers above remain the sole owners of records and workflow state. */
+function workspaceRoute(fragment, audience = 'clinician') {
+  audience = audience === 'patient' ? 'patient' : 'clinician';
+  let anchor;
+  try { anchor = decodeURIComponent(String(fragment || '').replace(/^#/, '')); }
+  catch (_) { anchor = ''; }
+  const aliases = {
+    home: 'home', workspace: 'workspace', patients: 'patients', 'incoming-board': 'patients',
+    overview: audience === 'patient' ? 'home' : 'overview', assertions: 'overview',
+    records: 'records', 'patient-view': 'records',
+    'patient-mission': audience === 'patient' ? 'records' : 'overview',
+    'world-model-detail': audience === 'patient' ? 'records' : 'overview',
+    questions: 'questions', documents: 'documents', sources: 'documents', 'source-intake': 'documents',
+    import: 'documents', 'biological-assets': 'documents', timeline: 'timeline',
+    investigations: 'investigations', 'model-investigation-heading': 'investigations',
+    'question-form': 'investigations', evidence: 'evidence', options: 'options',
+    updates: 'updates', activity: 'updates', 'changes-since-review': 'updates',
+    research: 'research', bibliography: 'research', setup: 'setup',
+    'workspace-start': 'setup', 'new-case-panel': 'setup',
   };
-  syncCurrentSection();
-  window.addEventListener('hashchange', syncCurrentSection);
-  if (sectionMenu) {
-    const mobileSections = window.matchMedia('(max-width: 60rem)');
-    const syncSectionMenu = () => { sectionMenu.open = !mobileSections.matches; };
-    syncSectionMenu();
-    mobileSections.addEventListener('change', syncSectionMenu);
-    workspaceNav.addEventListener('click', event => {
-      if (mobileSections.matches && event.target.closest('a')) sectionMenu.open = false;
-    });
-  }
+  let page = Object.hasOwn(aliases, anchor) ? aliases[anchor] : null;
+  if (/^snapshot-\d+$/.test(anchor)) page = audience === 'patient' ? 'questions' : 'investigations';
+  if (!page) { page = audience === 'patient' ? 'home' : 'workspace'; anchor = page; }
+  if (['home', 'records', 'questions'].includes(page)) audience = 'patient';
+  if (['workspace', 'patients', 'overview', 'investigations', 'evidence', 'options'].includes(page)) audience = 'clinician';
+  return {page, anchor, audience};
 }
+
+function mountWorkspaceNavigation() {
+  const main = el('main-content'), picker = el('case-picker'), preview = el('experience-picker');
+  if (!main || !preview) return;
+  const pages = new Map();
+  const titles = {
+    home: ['Home', 'Your records, questions, and recent updates in one place.'],
+    workspace: ['Workspace', 'Find a patient workspace or continue reviewing a record.'],
+    patients: ['Patients', 'Search the existing fictional patient workspaces. Records are ordered by their latest source event.'],
+    overview: ['Chart overview', 'Reported findings and the work that needs another look.'],
+    records: ['My health records', 'Understand what your documents say, including what is still uncertain.'],
+    questions: ['Questions & reports', 'Keep your questions together and read the reports prepared from your records.'],
+    documents: ['Documents', 'Read original records, inspect earlier versions, or add a source.'],
+    timeline: ['Timeline', 'Follow source events and inspect report amendments.'],
+    investigations: ['Investigations', 'Develop a question with its exact sources, then prepare a report for review.'],
+    evidence: ['Evidence', 'Inspect sources and record their relationship to a case question.'],
+    options: ['Discussion options', 'Keep proposed items, dependencies, and reviewer decisions together.'],
+    updates: ['Updates', 'See what was added or changed and which earlier work needs review.'],
+    research: ['Research library', 'Explore public citation metadata. Searches here are not linked to a patient record.'],
+    setup: ['Workspace setup', 'Create a fictional workspace and follow the existing record-to-review workflow.'],
+  };
+  let audience = 'clinician';
+  try { if (sessionStorage.getItem('oi-preview-experience') === 'patient') audience = 'patient'; } catch (_) { /* optional preference */ }
+  let current = workspaceRoute(location.hash, audience), pendingAnchor = null, updateQueued = false;
+  const recent = []; // This session's navigation history, never a new patient authority.
+  const chartPages = new Set(['overview', 'timeline', 'documents', 'investigations', 'evidence', 'options', 'updates']);
+  const casePages = new Set([...chartPages, 'home', 'records', 'questions']);
+  const menu = document.querySelector('.section-menu');
+  const mobile = window.matchMedia('(max-width: 60rem)');
+  const questionPane = document.querySelector('.question-pane');
+  const reports = document.querySelector('.investigation-history');
+  const questionPosition = document.createComment('Existing question pane position');
+  const reportPosition = document.createComment('Existing report history position');
+  questionPane.before(questionPosition); reports.before(reportPosition);
+
+  for (const key of Object.keys(titles)) {
+    const page = node('section', null, 'workspace-page');
+    page.id = 'page-' + key; page.dataset.page = key;
+    page.setAttribute('aria-labelledby', 'page-title'); page.hidden = true; page.inert = true;
+    main.append(page); pages.set(key, page);
+  }
+  function move(page, ...ids) { for (const id of ids) { const item = el(id); if (item) pages.get(page).append(item); } }
+  move('overview', 'metrics', 'review-attention', 'assertions');
+  const guide = document.querySelector('.glance-guide');
+  if (guide) pages.get('overview').append(guide);
+  move('patients', 'incoming-board');
+  move('records', 'patient-view', 'patient-mission');
+  move('timeline', 'timeline');
+  move('documents', 'source-intake', 'sources', 'import', 'biological-assets');
+  move('investigations', 'investigations');
+  move('evidence', 'evidence'); move('options', 'options');
+  move('updates', 'changes-since-review', 'activity'); move('research', 'bibliography');
+  const about = document.querySelector('.side-bottom');
+  if (about) pages.get('setup').append(about);
+  const footer = main.querySelector(':scope > footer');
+  if (footer) pages.get('setup').append(footer);
+  for (const old of main.querySelectorAll(':scope > .glance-layout, :scope > .workspace')) old.remove();
+  const chartOverview = node('div', null, 'glance-layout');
+  const chartReview = node('aside', null, 'glance-review');
+  chartReview.setAttribute('aria-label', 'Review context and next steps');
+  chartReview.append(el('review-attention')); if (guide) chartReview.append(guide);
+  chartOverview.append(el('assertions'), chartReview); pages.get('overview').append(chartOverview);
+  el('overview').classList.add('chart-banner');
+  el('overview').querySelector('.view-question').textContent = 'SELECTED PATIENT RECORD';
+  el('overview').querySelector('.hero-desc').textContent = 'Fictional development record · source-linked and versioned';
+  main.insertBefore(el('notice'), el('page-header').nextSibling);
+  if (el('workspace-start')) main.insertBefore(el('workspace-start'), pages.get('setup'));
+  const previewNote = document.querySelector('.rail > p.tiny');
+  if (previewNote) {
+    const details = node('details', null, 'preview-details');
+    details.append(node('summary', 'About this preview')); previewNote.before(details); details.append(previewNote);
+  }
+
+  function disclosure(item, label, open = false) {
+    if (!item) return;
+    const details = node('details', null, 'record-group');
+    details.append(node('summary', label)); details.open = open;
+    item.before(details); details.append(item); return details;
+  }
+  for (const [id, label, open] of [
+    ['patient-findings', 'What the records say', true],
+    ['patient-timeline', 'What has happened so far', false],
+    ['patient-questions', 'Questions still open', false],
+    ['patient-uncertainty', 'What is not certain yet', true],
+  ]) {
+    const item = el(id), heading = item.previousElementSibling;
+    if (heading?.classList.contains('subhead')) heading.remove();
+    disclosure(item, label, open);
+  }
+  const missionDisclosure = disclosure(el('patient-mission'), 'Record status and source detail');
+  const missionPosition = document.createComment('Existing record status position');
+  missionDisclosure.before(missionPosition);
+  disclosure(el('import'), 'Paste a structured source');
+  disclosure(el('biological-assets'), 'Specimen and biological records');
+  for (const [id, title] of [
+    ['option-form', 'Propose a discussion option'], ['option-dependency-form', 'Add a dependency'],
+    ['option-task-form', 'Add a preparation task'], ['option-threat-form', 'Add a threat'],
+    ['option-review-form', 'Record a reviewer action'], ['evidence-assessment-form', 'Assess evidence for a question'],
+  ]) {
+    const form = el(id), heading = form.previousElementSibling;
+    if (heading?.classList.contains('subhead')) heading.remove();
+    disclosure(form, title).classList.add('workflow-tool');
+  }
+
+  function link(href, label, detail) {
+    const a = node('a'); a.href = href;
+    if (detail) a.append(node('strong', label), node('span', detail)); else a.textContent = label;
+    return a;
+  }
+  function section(parent, title, id) {
+    const box = node('section', null, 'dashboard-section');
+    if (id) box.id = id;
+    box.append(node('h2', title)); parent.append(box); return box;
+  }
+  if (guide) guide.append(link('#world-model-detail', 'Inspect record context and source history'));
+  const home = pages.get('home'), workspace = pages.get('workspace');
+  const homeStats = node('div', null, 'dashboard-metrics'); homeStats.id = 'home-summary'; home.append(homeStats);
+  const homeLinks = section(home, 'What would you like to do?');
+  const actions = node('div', null, 'task-links');
+  actions.append(link('#records', 'Understand my records', 'Read findings in plain language'),
+    link('#source-intake', 'Add or view a document', 'Keep original reports together'),
+    link('#questions', 'Prepare a question', 'Keep track of questions and reports'));
+  homeLinks.append(actions);
+  const homeGrid = node('div', null, 'dashboard-grid'); home.append(homeGrid);
+  const homeUpdates = section(homeGrid, 'Recent updates');
+  const homeActivity = node('div', null, 'dashboard-list'); homeActivity.id = 'home-recent-activity';
+  homeUpdates.append(homeActivity, link('#updates', 'View all updates'));
+  const homeAttention = section(homeGrid, 'Questions and review');
+  const homeReview = node('p'); homeReview.id = 'home-review-status';
+  homeAttention.append(homeReview, link('#questions', 'Open questions & reports'), link('#patient-mission', 'View record status and source detail'));
+  const workspaceStats = node('div', null, 'dashboard-metrics'); workspace.append(workspaceStats);
+  const workspaceActions = section(workspace, 'Continue your work');
+  const resume = node('div', null, 'task-links'); workspaceActions.append(resume);
+  const recentBox = section(workspace, 'Opened this session');
+  const recentList = node('div', null, 'dashboard-list'); recentList.id = 'recent-patients'; recentBox.append(recentList);
+  const workspaceHelp = node('p', 'Counts describe the available records. They do not represent urgency or a clinical assessment.', 'muted tiny');
+  workspace.append(workspaceHelp);
+
+  const patientToolbar = node('div', null, 'page-toolbar');
+  const patientSearchLabel = node('label', 'Find a patient workspace'); patientSearchLabel.htmlFor = 'patient-search';
+  const patientSearch = node('input'); patientSearch.type = 'search'; patientSearch.id = 'patient-search';
+  patientSearch.placeholder = 'Search by name or case reference'; patientSearch.autocomplete = 'off';
+  const patientCount = node('p', '', 'muted tiny'); patientCount.id = 'patient-search-count'; patientCount.setAttribute('role', 'status');
+  patientToolbar.append(patientSearchLabel, patientSearch, patientCount);
+  if (el('new-workspace-button')) patientToolbar.append(el('new-workspace-button'));
+  pages.get('patients').prepend(patientToolbar);
+  const docToolbar = node('div', null, 'page-toolbar');
+  const docLabel = node('label', 'Find a document'); docLabel.htmlFor = 'document-search';
+  const docSearch = node('input'); docSearch.id = 'document-search'; docSearch.type = 'search'; docSearch.placeholder = 'Search name, record type, or date';
+  const docFilterLabel = node('label', 'Versions'); docFilterLabel.htmlFor = 'document-filter';
+  const docFilter = node('select'); docFilter.id = 'document-filter';
+  for (const [value, text] of [['all', 'All versions'], ['current', 'Current versions'], ['historical', 'Earlier versions']]) {
+    const option = node('option', text); option.value = value; docFilter.append(option);
+  }
+  const docCount = node('p', '', 'muted tiny'); docCount.id = 'document-search-count'; docCount.setAttribute('role', 'status');
+  docToolbar.append(docLabel, docSearch, docFilterLabel, docFilter, docCount);
+  el('sources').insertBefore(docToolbar, el('source-list'));
+  const docLinks = node('nav', null, 'section-links'); docLinks.setAttribute('aria-label', 'Document sections');
+  docLinks.append(link('#sources', 'Original documents'));
+  if (el('source-intake')) docLinks.append(link('#source-intake', 'Add a document'));
+  docLinks.append(link('#import', 'Paste a source'), link('#biological-assets', 'Specimen records'));
+  pages.get('documents').prepend(docLinks);
+
+  function filterPatients() {
+    const query = patientSearch.value.toLocaleLowerCase().trim();
+    const rows = [...el('incoming-list').children].filter(row => row.dataset.caseId);
+    let visible = 0;
+    for (const row of rows) {
+      row.hidden = !(row.dataset.caseLabel + ' ' + row.dataset.caseId).toLocaleLowerCase().includes(query);
+      if (!row.hidden) visible++;
+    }
+    patientCount.textContent = rows.length ? (visible ? `${visible} of ${rows.length} patient workspaces` : 'No patient workspaces match your search. Clear the search to see all.') : 'No patient workspaces available.';
+  }
+  function filterDocuments() {
+    const query = docSearch.value.toLocaleLowerCase().trim(), value = docFilter.value;
+    const rows = [...el('source-list').querySelectorAll('.source-card')]; let visible = 0;
+    for (const row of rows) {
+      row.hidden = !row.textContent.toLocaleLowerCase().includes(query) ||
+        (value === 'current' && row.dataset.sourceState !== 'current') ||
+        (value === 'historical' && row.dataset.sourceState === 'current');
+      if (!row.hidden) visible++;
+    }
+    docCount.textContent = rows.length ? (visible ? `${visible} of ${rows.length} source versions` : 'No documents match these filters. Clear the search or show all versions.') : 'No documents received yet.';
+  }
+  patientSearch.addEventListener('input', filterPatients);
+  docSearch.addEventListener('input', filterDocuments); docFilter.addEventListener('change', filterDocuments);
+
+  function record() { try { readyCase(); return active; } catch (_) { return null; } }
+  function stats(container, entries) {
+    container.replaceChildren();
+    for (const [value, label] of entries) {
+      const box = node('div', null, 'dashboard-stat'); box.append(node('strong', value), node('span', label)); container.append(box);
+    }
+  }
+  function openPatient(id) {
+    if (caseId === id && picker.value === id) { navigate('#overview'); return; }
+    picker.value = id; picker.dispatchEvent(new Event('change'));
+    // Use the original synchronous guard. A veto must not navigate another chart.
+    if (caseId === id && picker.value === id) navigate('#overview');
+  }
+  function updateDashboard() {
+    const data = record();
+    const options = [...picker.options];
+    stats(workspaceStats, [[options.length, 'Patient workspaces'], [data ? data.questions.filter(q => q.state === 'open').length : '—', 'Open questions · selected record']]);
+    resume.replaceChildren(link('#patients', 'Find a patient', 'Search the existing patient workspaces'));
+    if (data) {
+      const sources = data.sources.filter(s => s.state === 'current').length;
+      const questions = data.questions.filter(q => q.state === 'open').length;
+      stats(homeStats, [[sources, 'Current documents'], [questions, 'Open questions'], [data.snapshots.length, 'Saved reports']]);
+      resume.append(link('#overview', data.case.label, 'Continue in the patient chart'), link('#changes-since-review', 'Review changes', 'Inspect updates to the selected record'));
+      const needsReview = el('review-attention').dataset.state === 'needs-review';
+      homeReview.textContent = needsReview
+        ? 'Some sources have changed. Earlier reports are kept, and the affected questions need another look.'
+        : `${questions} open question${questions === 1 ? '' : 's'} recorded. Reports retain their original sources and review status.`;
+      homeActivity.replaceChildren();
+      for (const event of (data.events || []).slice(0, 3)) {
+        const row = node('div', null, 'dashboard-row');
+        row.append(node('strong', String(event.event_type || event.kind || 'Record update').replaceAll('_', ' ')), node('span', event.occurred_at || '', 'muted tiny'));
+        homeActivity.append(row);
+      }
+      if (!homeActivity.childElementCount) homeActivity.append(node('p', 'No activity has been recorded yet.', 'muted'));
+      if (recent[0] !== data.case.case_id) {
+        const old = recent.indexOf(data.case.case_id); if (old >= 0) recent.splice(old, 1);
+        recent.unshift(data.case.case_id); recent.splice(5);
+      }
+    } else { homeStats.replaceChildren(); homeActivity.replaceChildren(); homeReview.textContent = 'Choose a record to see its questions and review status.'; }
+    recentList.replaceChildren();
+    for (const id of recent) {
+      const option = options.find(item => item.value === id); if (!option) continue;
+      const row = node('div', null, 'dashboard-row');
+      row.append(node('strong', option.textContent));
+      const open = node('button', 'Open chart', 'button secondary minor'); open.type = 'button'; open.addEventListener('click', () => openPatient(id));
+      row.append(open); recentList.append(row);
+    }
+    if (!recentList.childElementCount) recentList.append(node('p', 'No patient chart opened in this session yet.', 'muted'));
+    filterPatients(); filterDocuments();
+  }
+
+  function renderNavigation() {
+    const nav = el('workspace-nav'); nav.setAttribute('aria-label', audience === 'patient' ? 'Patient navigation' : 'Clinician navigation');
+    const items = audience === 'patient'
+      ? [['home', 'Home'], ['records', 'My health records'], ['questions', 'Questions & reports'], ['documents', 'Documents'], ['updates', 'Updates'], ['setup', 'Workspace setup']]
+      : [['workspace', 'Workspace'], ['patients', 'Patients'], ['overview', 'Patient chart'], ['research', 'Research library'], ['setup', 'Workspace setup']];
+    nav.replaceChildren();
+    for (const [page, label] of items) {
+      const a = link('#' + page, label);
+      const selected = current.page === page || (audience === 'clinician' && page === 'overview' && chartPages.has(current.page)) || (audience === 'patient' && page === 'records' && current.page === 'timeline');
+      if (selected) a.setAttribute('aria-current', 'location');
+      nav.append(a);
+    }
+    const chart = el('chart-navigation'); chart.replaceChildren();
+    for (const [page, label] of [['overview', 'Overview'], ['timeline', 'Timeline'], ['documents', 'Documents'], ['investigations', 'Investigations'], ['evidence', 'Evidence'], ['options', 'Discussion options'], ['updates', 'Updates']]) {
+      const a = link('#' + page, label); if (page === current.page) a.setAttribute('aria-current', 'page'); chart.append(a);
+    }
+    chart.hidden = audience !== 'clinician' || !chartPages.has(current.page);
+  }
+  function positionSharedNodes() {
+    if (audience === 'patient') {
+      pages.get('questions').append(questionPane, reports); missionPosition.after(missionDisclosure);
+    } else {
+      questionPosition.after(questionPane); reportPosition.after(reports); pages.get('overview').append(missionDisclosure);
+    }
+  }
+  function revealAnchor(anchor, focus) {
+    const target = el(anchor);
+    if (!target) return false;
+    let parent = target.parentElement;
+    while (parent && parent !== main) { if (parent.tagName === 'DETAILS') parent.open = true; parent = parent.parentElement; }
+    if (target.tagName === 'DETAILS') target.open = true;
+    if (target.closest('[hidden], [inert]')) return false;
+    if (focus) {
+      if (!target.matches('a, button, input, select, textarea, summary, [tabindex]')) target.tabIndex = -1;
+      target.focus({preventScroll: true}); target.scrollIntoView({block: 'start'});
+    }
+    return true;
+  }
+  function syncPage() {
+    const data = record(), emptyWorkspace = document.body.dataset.workspaceState === 'empty';
+    const waiting = !data && !!caseId && casePages.has(current.page);
+    for (const [key, page] of pages) { page.hidden = key !== current.page || waiting || (emptyWorkspace && key !== 'setup'); page.inert = page.hidden; }
+    el('overview').hidden = !casePages.has(current.page) || !data;
+    el('workspace-loading').hidden = !waiting;
+    el('chart-navigation').hidden = audience !== 'clinician' || !chartPages.has(current.page) || !data;
+    const setup = el('workspace-start');
+    if (setup) { setup.hidden = current.page !== 'setup' && !emptyWorkspace; if (emptyWorkspace) { setup.open = true; el('new-case-panel').open = true; } }
+    const entryReady = !setup || document.body.dataset.workspaceState === 'ready';
+    if (pendingAnchor && data && entryReady && revealAnchor(pendingAnchor, true)) pendingAnchor = null;
+  }
+  function navigate(fragment, options = {}) {
+    if (fragment === '#main-content' && document.body.dataset.page) { main.focus(); return; }
+    current = workspaceRoute(fragment, audience); audience = current.audience;
+    pendingAnchor = null;
+    document.documentElement.dataset.audience = audience; preview.value = audience;
+    el('overview').querySelector('.hero-actions').hidden = audience === 'patient';
+    el('overview').querySelector('.view-question').textContent = audience === 'patient' ? 'MY RECORD' : 'SELECTED PATIENT RECORD';
+    try { sessionStorage.setItem('oi-preview-experience', audience); } catch (_) { /* no patient data persisted */ }
+    positionSharedNodes();
+    el('page-title').textContent = titles[current.page][0];
+    el('page-description').textContent = titles[current.page][1];
+    el('page-eyebrow').textContent = audience === 'patient' ? 'PATIENT PREVIEW' : chartPages.has(current.page) ? 'PATIENT CHART' : 'CLINICIAN WORKSPACE';
+    document.title = titles[current.page][0] + ' · Open Intelligence';
+    document.body.dataset.page = current.page;
+    const hash = '#' + current.anchor;
+    if (options.history !== 'none' && location.hash !== hash) history[options.history === 'replace' ? 'replaceState' : 'pushState'](null, '', hash);
+    renderNavigation(); syncPage();
+    const revealed = revealAnchor(current.anchor, options.focus !== false);
+    if (options.focus !== false && !revealed) { el('page-title').focus({preventScroll: true}); window.scrollTo({top: 0}); }
+    // Initial deep links must open their disclosures as well as resolve a page.
+    // Case-bound targets become focusable only after the existing owner is ready.
+    const entryPending = !record() || (el('workspace-start') && document.body.dataset.workspaceState !== 'ready');
+    if ((!revealed || entryPending) && (el(current.anchor) || /^snapshot-\d+$/.test(current.anchor))) pendingAnchor = current.anchor;
+    if (mobile.matches && menu) menu.open = false;
+  }
+  function schedule() {
+    if (updateQueued) return; updateQueued = true;
+    queueMicrotask(() => { updateQueued = false; updateDashboard(); syncPage(); });
+  }
+  const observer = new MutationObserver(schedule);
+  for (const id of ['case-heading', 'source-list', 'question-list', 'snapshot-list', 'event-list', 'incoming-list'])
+    observer.observe(el(id), {childList: true, subtree: true});
+  observer.observe(document.body, {attributes: true, attributeFilter: ['data-workspace-state']});
+  document.addEventListener('click', event => {
+    const a = event.target.closest('a[href^="#"]');
+    if (!a || event.defaultPrevented || event.button > 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    event.preventDefault(); navigate(a.getAttribute('href'));
+  });
+  preview.addEventListener('change', () => {
+    audience = preview.value === 'patient' ? 'patient' : 'clinician';
+    let next = ['documents', 'updates', 'setup', 'timeline', 'research'].includes(current.page) ? '#' + current.page : '';
+    if (current.page === 'investigations' && audience === 'patient') next = '#questions';
+    if (current.page === 'questions' && audience === 'clinician') next = '#investigations';
+    navigate(next);
+  });
+  picker.addEventListener('change', () => {
+    const requested = picker.value;
+    queueMicrotask(() => {
+      if (caseId === requested && picker.value === requested && audience === 'clinician' && !chartPages.has(current.page)) navigate('#overview');
+      schedule();
+    });
+  });
+  window.addEventListener('hashchange', () => navigate(location.hash, {history: 'none'}));
+  window.addEventListener('popstate', () => navigate(location.hash, {history: 'none'}));
+  if (menu) { menu.open = !mobile.matches; mobile.addEventListener('change', () => { menu.open = !mobile.matches; }); }
+  document.body.classList.add('workspace-shell');
+  globalThis.OIWorkspaceNavigation = {navigate};
+  navigate(location.hash, {history: 'replace', focus: false});
+  schedule();
+}
+if (typeof document !== 'undefined') mountWorkspaceNavigation();

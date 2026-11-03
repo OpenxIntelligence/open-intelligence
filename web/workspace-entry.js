@@ -34,6 +34,7 @@
       }
       if(!dirty() && id!==caseId) { picker.value=id;picker.dispatchEvent(new Event('change')); }
       $('source-intake').open=true;
+      globalThis.OIWorkspaceNavigation?.navigate('#source-intake');
       $('source-intake').scrollIntoView({block:'start'});
       schedule();
     },
@@ -72,6 +73,7 @@
     intake.resetScope();document.body.dataset.workspaceState='loading';schedule();
   });
   $('new-workspace-button').addEventListener('click',()=>{
+    globalThis.OIWorkspaceNavigation?.navigate('#workspace-start');
     $('workspace-start').open=true;$('new-case-panel').open=true;
     $('case-create-alias').focus();
   });
