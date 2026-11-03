@@ -1,16 +1,16 @@
-name: Workspace startup recovery proof
+name: Complete workspace startup recovery verification
 on:
   push:
     branches: [verification/worklist-currentness-20261102]
 permissions:
   contents: read
 jobs:
-  startup:
+  ui:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
       PYTHONPATH: src
-      OI_STARTUP_ARTIFACT_DIR: ui-artifacts/startup
+      OI_UI_ARTIFACT_DIR: ui-artifacts
     steps:
       - uses: actions/checkout@v4
         with:
@@ -18,10 +18,57 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
-      - name: Compile regression harness
-        run: python -m compileall -q tests
-      - name: Real browser startup recovery
+      - name: Compile and JavaScript syntax
+        run: |
+          python -m compileall -q src tests
+          node --check web/app.js
+          node --check web/intake.js
+          node --check web/workspace-entry.js
+      - name: Python and HTTP regression suite
+        run: python -m unittest discover -s tests -p 'test_*.py' -v
+      - name: All JavaScript contracts, including source and World Model races
+        run: |
+          for test_file in tests/test_*.js; do
+            node "$test_file"
+          done
+      - name: Existing integrated browser journey
+        run: python tests/browser_journey.py
+      - name: Source-dialog race browser journey
+        run: python tests/browser_source_dialogs.py
+      - name: Original-source comparison browser journey
+        run: python tests/browser_text_changes.py
+      - name: Composer and Mission browser journeys
+        run: |
+          python tests/composer_browser_journey.py
+          python tests/patient_mission_browser_journey.py
+      - name: Empty workspace and original-file intake browser journey
+        env:
+          OI_INTAKE_ARTIFACT_DIR: ui-artifacts/intake
+        run: python tests/workspace_start_browser_journey.py
+      - name: Responsive navigation and all existing forms
+        env:
+          OI_UI_ARTIFACT_DIR: ui-artifacts/navigation
+          OI_UI_STANDARD_SMOKE: '1'
+        run: python tests/workspace_navigation_journey.py
+      - name: Unfinished-work retention and explicit local source discard
+        env:
+          OI_CASE_SAFETY_ARTIFACT_DIR: ui-artifacts/case-continuity
+        run: python tests/workspace_case_safety_journey.py
+      - name: Case-scoped notices, intake visibility and failed-load recovery
+        env:
+          OI_SCOPE_ARTIFACT_DIR: ui-artifacts/scope-recovery
+        run: python tests/workspace_scope_recovery_journey.py
+      - name: Current worklist summaries and recoverable refresh
+        env:
+          OI_WORKLIST_ARTIFACT_DIR: ui-artifacts/worklist
+        run: python tests/workspace_worklist_journey.py
+      - name: First-load recovery, empty discovery and saved creation activation
+        env:
+          OI_STARTUP_ARTIFACT_DIR: ui-artifacts/startup
         run: python tests/workspace_startup_recovery_journey.py
+      - name: Source-first layout and keyboard journey
+        if: always()
+        run: python tests/ui_glance_journey.py
       - name: Record exact source under test
         if: always()
         run: |
@@ -30,11 +77,11 @@ jobs:
           git rev-parse 'HEAD^{tree}' | tee ui-artifacts/tree.txt
           sha256sum web/app.js web/index.html web/intake.js web/workspace-entry.js web/workspace-entry.html | tee ui-artifacts/runtime-sha256.txt
           git archive --format=zip --output=ui-artifacts/source-under-test.zip HEAD
-      - name: Preserve verification receipts
+      - name: Preserve fictional screenshots and reproducible source
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: startup-recovery-${{ github.run_id }}-${{ github.run_attempt }}
+          name: synthetic-ui-glance-${{ github.run_id }}-${{ github.run_attempt }}
           path: ui-artifacts/
           if-no-files-found: error
           retention-days: 7

@@ -1,6 +1,7 @@
 """Real-browser recovery of the first roster read and initial creation.
 
-Only selected GET outcomes are delayed or failed before a fresh document loads.
+Selected GET outcomes are delayed or failed before a fresh document loads;
+handoff tests also hold delivery of an actual successful creation response.
 Successful reads and all writes use the actual application/server. Existing
 fictional fixtures and independently authored fictional text are the only data.
 OI_STARTUP_SCENARIOS selects a focused subset; the default executes all scenarios.
