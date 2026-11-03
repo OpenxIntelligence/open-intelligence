@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
   <script src="/mission.js" defer></script>
+  <script src="/enrichments.js" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main-content">Skip to case workspace</a>
@@ -34,6 +35,9 @@
           <a href="#incoming-board">Incoming board</a>
           <a href="#patient-view">Patient view</a>
           <a href="#patient-mission">Patient Mission</a>
+          <a href="#enrichment-visits">Visit groupings</a>
+          <a href="#enrichment-journey">Journey stages</a>
+          <a href="#enrichment-biology">Biological context</a>
           <a href="#assertions">Reported findings</a>
           <a href="#timeline">Timeline</a>
           <a href="#investigations">Investigation</a>
@@ -128,6 +132,36 @@
         </div>
         <div class="subhead">Guardrails</div>
         <ul id="mission-guardrails" class="muted tiny"></ul>
+      </section>
+
+      <section class="panel" id="enrichment-visits" aria-labelledby="enrichment-visits-title">
+        <div class="panel-head">
+          <div><div class="eyebrow">ENRICHMENTS · READ-ONLY PROJECTION</div><h2 id="enrichment-visits-title">Visits as occurred-date groupings</h2></div>
+          <span id="visits-status" class="pill pill-neutral" aria-live="polite">Loading…</span>
+        </div>
+        <p class="muted"><strong>Fictional synthetic data only.</strong> A visit here groups existing ledger rows by the date the report concerns — it is not an appointment, an encounter, or a clinical event. No visit record is created.</p>
+        <div class="subhead">Occurred-date groupings</div><div id="visits-list" class="cards" aria-live="polite"></div>
+        <div class="subhead">Questions without a grouping date</div><div id="visits-ungrouped" class="cards" aria-live="polite"></div>
+      </section>
+
+      <section class="panel" id="enrichment-journey" aria-labelledby="enrichment-journey-title">
+        <div class="panel-head">
+          <div><div class="eyebrow">ENRICHMENTS · READ-ONLY PROJECTION</div><h2 id="enrichment-journey-title">Journey stages from a fixed rule</h2></div>
+          <span id="journey-status" class="pill pill-neutral" aria-live="polite">Loading…</span>
+        </div>
+        <p class="muted"><strong>Fictional synthetic data only.</strong> Stages are workflow states computed by the deterministic rule below — never medical or patient-condition states. The rule never edits or tags the sources it describes.</p>
+        <div class="subhead">The rule, shown beside the view</div><div id="journey-rule" aria-live="polite"></div>
+        <div class="subhead">Stages and their supporting ledger facts</div><div id="journey-stages" class="cards" aria-live="polite"></div>
+        <div class="subhead">Stage-evidence events</div><div id="journey-events" class="activity" aria-live="polite"></div>
+      </section>
+
+      <section class="panel" id="enrichment-biology" aria-labelledby="enrichment-biology-title">
+        <div class="panel-head">
+          <div><div class="eyebrow">ENRICHMENTS · READ-ONLY PROJECTION</div><h2 id="enrichment-biology-title">Biological context as recorded</h2></div>
+          <span id="biology-status" class="pill pill-neutral" aria-live="polite">Loading…</span>
+        </div>
+        <p class="muted"><strong>Fictional synthetic data only.</strong> Recorded assets and their own inventory assertions, each with its anchor, attributor, and state. Nothing is merged or rolled up; no interpretive claim is made.</p>
+        <div id="biology-list" class="findings" aria-live="polite"></div>
       </section>
 
       <section class="panel panel-timeline" id="timeline">

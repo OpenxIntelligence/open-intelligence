@@ -14,6 +14,7 @@ To run the verification suite:
 PYTHONPATH=src python -m compileall -q src
 node --check web/app.js
 node --check web/mission.js
+node --check web/enrichments.js
 PYTHONPATH=src python -m unittest discover -s tests -v
 PYTHONPATH=src python tests/browser_journey.py
 PYTHONPATH=src python tests/patient_mission_browser_journey.py
@@ -48,6 +49,36 @@ The endpoint and panel do not create or persist a second patient record. They de
 The panel automatically follows the selected synthetic case and refreshes after the canonical workspace changes. A source amendment can therefore move the projection to `review_required`, surface the exact stale investigation IDs, describe the recorded amendment, and suggest reconciliation as a bounded workflow action. Stale responses are discarded after case changes, and the test suite verifies that Alpha source text cannot appear in Beta's mission projection.
 
 This slice does **not** add identity, consent, patient goals, PHI support, medication intelligence, acute-safety escalation, diagnostic inference, literature appraisal, trial matching, treatment selection, therapeutic development, care coordination, outcome interpretation, or platform learning. It is a source-grounded workflow orientation surface for the synthetic engineering reference only.
+
+## B-11 enrichment projections (read-only)
+
+Three read-only projections over the existing case ledger, each with a GET
+route and a textContent-only panel. None of them writes, creates entities,
+or infers clinical meaning:
+
+```text
+GET /api/cases/{CASE-ID}/visits
+GET /api/cases/{CASE-ID}/journey-stages
+GET /api/cases/{CASE-ID}/biological-context
+```
+
+- **Visits** groups existing sources, assertions, questions, and snapshots
+  by occurred date, using the timeline ordering and tiebreaks (imported,
+  not forked). Groupings only — no visit record exists.
+- **Journey stages** applies a deterministic rule (`b11-journey-stage-rule`,
+  shown beside the view) mapping the existing workflow states to
+  pre-first-source / ready / under-review / review-required / reviewed.
+  Workflow states only, never medical states; no tags, no transition writes.
+- **Biological context** describes recorded assets and their own inventory
+  assertions with anchors, attributors, and states. No rollups are
+  computed and no interpretive claim is made; any future interpretive
+  sentence must carry `kind=hypothesis` / `review_state=pending`.
+
+Goals/lived experience, dedicated visit entities, human journey tags, and
+authored bio explanations are owned by parallel drafts (#80/#233/#77/#73)
+and are deliberately absent here; see `PROGRESS.md`. Empty cases render
+explicit "none recorded" statements, and unknown case ids keep the
+existing `422 "Unknown case"` contract.
 
 ## Fictional evidence and case applicability slice
 
