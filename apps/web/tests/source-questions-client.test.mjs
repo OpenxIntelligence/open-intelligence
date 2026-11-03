@@ -1,4 +1,5 @@
 import {test} from 'node:test';
+import {createHash} from 'node:crypto';
 import assert from 'node:assert/strict';
 import {RegistrySession} from '../.test-dist/registry-client.js';
 import {decodeComposerPreflight} from '../.test-dist/composer-preflight-view.js';
@@ -464,4 +465,152 @@ test('versioned question history retains access receipt and quarantines legacy c
  assert.throws(()=>decodeSourceQuestions(sourceQuestions([sourceQuestion('current_unreviewed_question',{
   source_snapshot_contract:'oi.synthetic-postgres-world-model-sources/1',
  })]),receiptPatient,receiptCase));
+});
+
+
+const quotePacketPath=questionsPath+'/'+savedQuestionId+'/source-review-packet';
+const quoteDetail=()=>({
+ source_id:receiptSource,document_id:'DOC-ONE',document_version:1,
+ source_sha256:sha256,source_line:8,finding_key:'marker',
+ reported_state:'not-reported',source_statement:'Independently fictional example.',
+ source_kind:'pathology',specimen_id:'SPECIMEN-ONE',event_date:'2026-01-10',
+ issued_at:'2026-01-11',review_state:'not_established',clinical_meaning:null
+});
+function stableQuoteJson(value){
+ if(Array.isArray(value))return '['+value.map(stableQuoteJson).join(',')+']';
+ if(value!==null&&typeof value==='object')return '{'+
+   Object.keys(value).sort().map(k=>JSON.stringify(k)+':'+stableQuoteJson(value[k])).join(',')+'}';
+ return JSON.stringify(value);
+}
+const packetFixture=(historical=false)=>{
+ const q=sourceQuestion(historical?'source_reassessment_required':'current_unreviewed_question');
+ const p={
+  contract:'oi.synthetic-question-source-review-packet/1',
+  patient_id:receiptPatient,case_id:receiptCase,question_id:q.question_id,question:q.question,
+  original_anchor:{
+    source_id:q.source_id,source_line:q.source_line,source_sha256:q.source_sha256,
+    source_version:q.source_version,source_snapshot_sha256:q.source_snapshot_sha256,
+    source_snapshot_contract:q.source_snapshot_contract,preflight_sha256:q.preflight_sha256
+  },
+  source_context_state:historical?'source_reassessment_required':'current_unreviewed_source',
+  current_source_snapshot_sha256:historical?'f'.repeat(64):'a'.repeat(64),
+  selected_statement:historical?null:quoteDetail(),
+  related_statements:[],related_statement_count_total:0,related_statements_truncated:false,
+  current_source_count:1,current_observation_count:1,
+  external_biomedical_evidence_qualified:false,published_evidence_rights_verified:false,
+  medical_interpretation_performed:false,clinical_review_connected:false,
+  clinical_approval:false,reviewer_identity_verified:false,synthetic:true,
+  review_next_step:historical?'refresh_source_and_create_new_question':
+    'independent_source_verification_required',
+ };
+ return {...p,packet_sha256:createHash('sha256').update(stableQuoteJson(p),'utf8').digest('hex'),
+   source_access_receipt_id:'ACCESS-'+'F'.repeat(32)};
+};
+const quoteSession=(packet=packetFixture(),status=200)=>newSession(async(url)=>{
+ if(url===questionsPath)return response(sourceQuestions([
+   sourceQuestion(packet.source_context_state==='source_reassessment_required'?
+     'source_reassessment_required':'current_unreviewed_question')]));
+ if(url===quotePacketPath)return response(packet,status);
+ return response(patient());
+});
+test('source quotation packet requires selected authorized question before any HTTP read',async()=>{
+ let calls=0;
+ const s=newSession(async(url)=>{calls++;return response(url===questionsPath?sourceQuestions():patient())});
+ s.connect(token);await s.loadQuestionSourcePacket(savedQuestionId);
+ assert.equal(calls,0);
+ await s.read(receiptPatient);await s.loadCases();await s.loadQuestionSourcePacket(savedQuestionId);
+ assert.equal(calls,1);
+ assert.equal(s.snapshot().sourceQuotePacket,null);
+ assert.equal(s.snapshot().sourceQuotePhase,'error');
+});
+test('source-only quote packet has separate read, stable content hash and explicit no-approval flags',async()=>{
+ const requests=[];
+ const s=newSession(async(url,init)=>{
+   requests.push([url,init]);
+   return response(url===questionsPath?sourceQuestions():
+     url===quotePacketPath?packetFixture():patient());
+ });
+ s.connect(token);await s.read(receiptPatient);await s.loadCases();
+ await s.loadSavedQuestions(receiptCase);await s.loadQuestionSourcePacket(savedQuestionId);
+ assert.equal(s.snapshot().sourceQuotePhase,'ready');
+ const p=s.snapshot().sourceQuotePacket;
+ assert.equal(p?.selected_statement?.source_statement,'Independently fictional example.');
+ assert.equal(p?.selected_statement?.review_state,'not_established');
+ assert.equal(p?.clinical_approval,false);
+ assert.equal(p?.external_biomedical_evidence_qualified,false);
+ assert.equal(p?.published_evidence_rights_verified,false);
+ assert.equal(p?.review_next_step,'independent_source_verification_required');
+ const req=requests.at(-1);
+ assert.equal(req[0],quotePacketPath);
+ assert.equal(req[1].method,'GET');
+ assert.equal(req[1].credentials,'omit');
+ assert.equal(req[1].redirect,'error');
+ assert.equal(req[1].cache,'no-store');
+ assert.equal(req[1].headers.Authorization,'Bearer '+token);
+ assert.equal(JSON.stringify(s.snapshot()).includes(token),false);
+});
+test('historical source question keeps original anchor but never promotes old quote',async()=>{
+ const s=quoteSession(packetFixture(true));
+ s.connect(token);await s.read(receiptPatient);await s.loadCases();
+ await s.loadSavedQuestions(receiptCase);await s.loadQuestionSourcePacket(savedQuestionId);
+ assert.equal(s.snapshot().sourceQuotePhase,'ready');
+ assert.equal(s.snapshot().sourceQuotePacket.source_context_state,'source_reassessment_required');
+ assert.equal(s.snapshot().sourceQuotePacket.selected_statement,null);
+ assert.equal(s.snapshot().sourceQuotePacket.original_anchor.source_id,receiptSource);
+ assert.equal(s.snapshot().sourceQuotePacket.review_next_step,'refresh_source_and_create_new_question');
+});
+test('modified packet hash, mismatched original, forged rights and clinical approval fail closed',async()=>{
+ for(const bad of [
+   {...packetFixture(),packet_sha256:'0'.repeat(64)},
+   {...packetFixture(),patient_id:'PAT-OTHER-001'},
+   {...packetFixture(),original_anchor:{...packetFixture().original_anchor,source_id:'SRC-'+'B'.repeat(32)}},
+   {...packetFixture(),selected_statement:{...quoteDetail(),source_line:7}},
+   {...packetFixture(),selected_statement:{...quoteDetail(),source_statement:'Fabricated'}},
+   {...packetFixture(),clinical_approval:true},
+   {...packetFixture(),published_evidence_rights_verified:true},
+   {...packetFixture(),reviewer_identity_verified:true},
+   {...packetFixture(),medical_interpretation_performed:true}
+ ]){
+   const s=quoteSession(bad);
+   s.connect(token);await s.read(receiptPatient);await s.loadCases();
+   await s.loadSavedQuestions(receiptCase);await s.loadQuestionSourcePacket(savedQuestionId);
+   assert.equal(s.snapshot().sourceQuotePacket,null);
+   assert.equal(s.snapshot().sourceQuotePhase,'error');
+ }
+});
+test('source quotation access denial removes prior quote without echoing forbidden details',async()=>{
+ let denied=false;
+ const s=newSession(async url=>{
+   if(url===questionsPath)return response(sourceQuestions());
+   if(url===quotePacketPath)return denied?response({detail:'private source quote'},404):response(packetFixture());
+   return response(patient());
+ });
+ s.connect(token);await s.read(receiptPatient);await s.loadCases();
+ await s.loadSavedQuestions(receiptCase);await s.loadQuestionSourcePacket(savedQuestionId);
+ assert.ok(s.snapshot().sourceQuotePacket);
+ denied=true;await s.loadQuestionSourcePacket(savedQuestionId);
+ assert.equal(s.snapshot().sourceQuotePacket,null);
+ assert.equal(s.snapshot().sourceQuotePhase,'error');
+ assert.equal(JSON.stringify(s.snapshot()).includes('private source quote'),false);
+});
+test('patient switch, renewed question list and navigation invalidate in-flight source quote',async()=>{
+ const pending=deferred();
+ const s=newSession(async url=>{
+   if(url===quotePacketPath)return pending.promise;
+   if(url===questionsPath)return response(sourceQuestions());
+   return response(patient(url.endsWith('PAT-OTHER')?'PAT-OTHER':receiptPatient));
+ });
+ s.connect(token);await s.read(receiptPatient);await s.loadCases();
+ await s.loadSavedQuestions(receiptCase);
+ const reading=s.loadQuestionSourcePacket(savedQuestionId);
+ await s.read('PAT-OTHER');pending.resolve(response(packetFixture()));await reading;
+ assert.equal(s.snapshot().sourceQuotePacket,null);
+ const t=quoteSession();
+ t.connect(token);await t.read(receiptPatient);await t.loadCases();
+ await t.loadSavedQuestions(receiptCase);await t.loadQuestionSourcePacket(savedQuestionId);
+ assert.ok(t.snapshot().sourceQuotePacket);
+ t.dismissSourceQuotePacket();assert.equal(t.snapshot().sourceQuotePacket,null);
+ await t.loadQuestionSourcePacket(savedQuestionId);assert.ok(t.snapshot().sourceQuotePacket);
+ await t.loadSavedQuestions(receiptCase);assert.equal(t.snapshot().sourceQuotePacket,null);
+ t.disconnect();assert.equal(t.snapshot().sourceQuotePacket,null);
 });

@@ -1,0 +1,83 @@
+name: Publish pinned connected-question source candidate
+on:
+  push:
+    branches: [automation/publish-connected-question-source-20261103]
+permissions:
+  contents: write
+jobs:
+  source-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: true
+      - name: Verify source bytes and create only the isolated feature branch
+        shell: bash
+        run: |
+          python - <<'PY'
+          import base64, gzip, hashlib, pathlib, subprocess
+          base = 'e042f753eca85cca97e08fdbb3e07ea8263aae69'
+          expected = '5c8058ac57bd8ba6f54cf2b21d562d6f01fe58fb'
+          target = 'refs/heads/integration/h1-connected-source-question-20261103'
+          def git(*args):
+              return subprocess.check_output(['git', *args], text=True).strip()
+          def blob_sha(value):
+              raw = value.encode('ascii')
+              return hashlib.sha1(b'blob ' + str(len(raw)).encode() + b'\0' + raw).hexdigest()
+          stage = git('rev-parse', 'HEAD')
+          assert git('rev-parse', 'HEAD^') == base
+          parts = [pathlib.Path(f'.github/connected-source-transport/{n}.b64').read_text().strip() for n in range(4)]
+          assert [blob_sha(p) for p in parts] == [
+              '2573cbc7bec26fc00f1b62cdd60fb41643c3f441',
+              '896b424e3ba6ecc0657939df1051a237f44afc96',
+              'a943ae7dc41838b3003e3367a3d2bcd3ba1e549b',
+              'ceade52cb0128a6d372aed650f61f421e49ea621']
+          # Restore two explicitly identified transcription differences in transport,
+          # then require the original local fragment, archive, patch and Git hashes.
+          missing = 'xXSCDts/SfhQ6Qew7QNicmA0GPc8NPaB4nY5n27HdD+Ik6HuJ44a2wxyrH/VSK+yFvmMn/UEKBDK8nxCWprGdFpaaITnsuaZvHNHfihz+hS1zONEfgdKlcLibRHG9uoITmsSCDCq8Sdj8ZhxOCbDzmzm0gkbjdPJ5tV4SsKyW63zFkvFimV1PErY8xCMtXisDABxUOGbzMJqypBjk23CaM4IE/MD'
+          assert len(parts[0]) == 8780 and len(missing) == 220
+          parts[0] = parts[0][:755] + missing + parts[0][755:]
+          assert len(parts[3]) == 8485 and parts[3].count('Ckhqzz0dX4') == 1
+          parts[3] = parts[3].replace('Ckhqzz0dX4', 'Ckhqz0dX4')
+          assert blob_sha(parts[0]) == '1ef98d457812e49b1932bb910c2c8b46cc7a8664'
+          assert blob_sha(parts[3]) == '992fccb2613bbba798d93ab5882c90028900ecc3'
+          encoded = ''.join(parts)
+          assert len(encoded) == 35484
+          archive = base64.b64decode(encoded, validate=True)
+          assert len(archive) == 26611
+          assert hashlib.sha256(archive).hexdigest() == '75d834f871aabe3ee78292739088d8072bc449d7cb0b054c7d75945ed3f6bcc9'
+          patch = gzip.decompress(archive)
+          assert len(patch) == 95425
+          assert hashlib.sha256(patch).hexdigest() == 'eade95f7e97afd1ba13c21746d41225a1219032a87a07cf9a2b4082f129d5396'
+          pathname = '/tmp/oi-connected-question.patch'
+          pathlib.Path(pathname).write_bytes(patch)
+          donors = {
+              'apps/api/tests/test_question_source_review_packet.py': '28d2b5604719f173a8e5f7836affe0c42b8e8c03',
+              'apps/api/src/oi_api/question_source_review_packet.py': 'fd3b8029363892a5227e68a5043786781444d562',
+              'apps/web/tests/source-questions-client.test.mjs': '8add9d0246fc04a4f2aeaa58cc66420b75b1917d',
+              'apps/web/src/source-quote-review-packet.ts': '48d10bad07f84e49be055b3f887502cd495b4ad7',
+              'docs/engineering/H1_QUESTION_SOURCE_REVIEW_PACKET.md': 'a18763bf5492717366298f3290f48fafe9529e35',
+              'apps/web/tests/user-authored-question.test.mjs': 'eb05b525c8962cf8477e6b32816b04598c2ea94a',
+              'apps/web/src/world-model-view.tsx': '2783335a9ecbca50decc944528d8eb4dec68c019'}
+          for path, sha in donors.items():
+              assert git('rev-parse', f'{stage}:{path}') == sha
+          git('config', 'core.hooksPath', '/dev/null')
+          git('checkout', '--detach', base)
+          git('checkout', stage, '--', *donors)
+          subprocess.run(['git', 'apply', '--index', '--whitespace=error', pathname], check=True)
+          assert git('write-tree') == expected
+          paths = git('diff', '--cached', '--name-only').splitlines()
+          assert len(paths) == 24 and all(p.startswith(('apps/', 'docs/')) for p in paths)
+          assert git('rev-parse', f'{expected}:.github') == git('rev-parse', f'{base}:.github')
+          # Source transport only: never execute application code with this credential.
+          # Empty ref lease permits creation only, never replacing an existing branch.
+          commit = git('-c', 'user.name=Open Intelligence', '-c', 'user.email=open-intelligence@outlook.com',
+                       'commit-tree', expected, '-p', base, '-m',
+                       'feat(h1): connect authored source questions, exact quotations and fresh brief downloads')
+          subprocess.run(['git', 'push', f'--force-with-lease={target}:', 'origin', f'{commit}:{target}'], check=True)
+          print('Published source candidate:', commit, 'tree:', expected)
+          print('No merge or deployment. Read-only exact-head API/PG16 and React/browser CI required.')
+          PY
