@@ -12,7 +12,8 @@ Both published migration histories are retained under the explicit
 `0008_merge_image_questions` head. Source, question and image grants remain
 independent; an amendment preserves historical question anchors and image bytes
 while requiring reassessment and explicit image relinking. Image response
-preparation now precedes the final authority check and committed event.
+preparation, including actual JSON encoding for metadata and import receipts,
+now precedes the final authority check and committed event.
 
 See [the combined contract and acceptance scope](../../docs/engineering/H1_IMAGE_QUESTION_CONVERGENCE.md).
 The domain sections below retain their incremental history; statements that
@@ -358,15 +359,25 @@ amendment/revocation; a receipt records a grant for prepared disclosure, not
 client delivery or distributed revocation atomicity. No separate PACS endpoint
 is deployed or protected by this change.
 
-Run the actual restart/restore acceptance with Docker available:
+Run the combined question/image restart/restore acceptance with Docker available:
 
     python apps/api/tools/verify_images_compose.py
 
-It creates two independently authored originals, checks exact bytes and
-permissions, restarts API/PostgreSQL, amends and explicitly relinks sources,
-revokes the binding, and compares pg_dump/pg_restore bytes and access history.
-The executable API/database cases live in test_image_custody.py and
-test_image_migrations.py; bounded parser and HTTP ingress have separate tests.
+It creates two independently authored originals and canonical source-linked
+questions, checks exact bytes and independent grants, restarts API/PostgreSQL,
+amends the report and explicitly relinks the same images. The v1 question keeps
+its original anchor and requires reassessment; a fresh v2 question remains
+separate. Active and revoked snapshots undergo actual pg_dump/pg_restore. The
+same API image is pointed at each restored database to check reopened question
+history, same-key retries, exact image bytes and denied revoked access. A fresh
+receipt in the restored database, absent from the original database, confirms
+which database served the restored HTTP response.
+The API/database cases also cover final credential changes during real image
+response preparation and JSON encoding, encoder failure, and deferred database
+commit failure in test_image_disclosure_authority.py. JSON responses validate the
+existing model and encode inside the source transaction, keeping duplicate
+imports at 200 and new objects/links at 201. The existing image
+custody, migration, bounded parser and HTTP ingress tests remain separate.
 See the [implementation record](../../docs/superpowers/plans/2026-11-03-h1-image-custody.md)
 for scope, alternatives and remaining boundaries.
 
