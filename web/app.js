@@ -661,6 +661,11 @@ function render() {
       withdraw.value = item.id; el('evidence-withdraw-id').append(withdraw);
     }
   }
+  // Leave the withdraw target explicitly unchosen until the user picks one.
+  // Without this, the first current item is implicitly selected on first
+  // paint, aiming a destructive cross-case withdrawal at whatever sorts
+  // first. A prior selection is restored below when still current.
+  el('evidence-withdraw-id').selectedIndex = -1;
   if (priorWithdrawTarget) {
     if ([...el('evidence-withdraw-id').options].some(x => x.value === priorWithdrawTarget))
       el('evidence-withdraw-id').value = priorWithdrawTarget;

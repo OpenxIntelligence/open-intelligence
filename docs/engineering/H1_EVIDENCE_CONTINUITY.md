@@ -615,3 +615,10 @@ The intervening commits are `f02d2427f9314c0d258425a809ee5e95f8857bf6` (clear th
 Six paths changed on main. Five overlap the integration proposal only because the proposal had retained the immediately prior accepted-main versions of those files; no H1-specific correction in those paths is displaced. The refreshed candidate therefore takes the direct successor main blobs for `src/open_intelligence/__main__.py`, `src/open_intelligence/store.py`, `tests/test_qa_adversarial_cycle3.py`, `web/app.js` and `web/mission.js`, and adds `tests/test_qa_regressions_qa11_12_13_15_17.py` unchanged from main.
 
 The earlier exact-head #390 web/API success applies only to `427f5222`. This refreshed head requires a new exact-head hosted run before merge. No earlier run is relabelled as verification of the refreshed tree.
+
+
+### Second post-publication main movement — 3 November 2026
+
+After refreshed head `73f6eb838a966399173bc753833048d567b3ea3a` completed both H1 hosted gates successfully, `main` advanced once more from `c2aa2054fa746fb26576150f27ec1f229b003f6f` to `e7c6b02e06ff76d0276ffa11cf09215c0b6f65b0` via QA cycle-1 fixes #346.
+
+The accepted commit changes `src/open_intelligence/changes.py`, `src/open_intelligence/discovery.py`, `src/open_intelligence/investigation.py`, `src/open_intelligence/store.py`, `web/app.js`, and adds `tests/test_qa_c1_remaining.py`. The overlapping integration files are direct accepted-main successors; no H1-specific chronology, workflow, evidence-report, follow-through, or dependency-gate change is displaced. The refreshed candidate takes those exact accepted blobs and must again pass exact-head H1 web and API/recovery workflows before merge. Earlier successful runs remain evidence for their own immutable heads only.
