@@ -171,9 +171,10 @@ class QuestionPassages:
                     result=dict(revision_id=revision_id,question_id=question_id,duplicate=False)
             response=prepare_response(result)
             recheck()
+            audited_references=c.get('manual_reads',[])
             self.registry.append_event(patient_id,'investigation.question_passages_access_prepared',case_id=case_id,question_id=question_id,
                 actor=actor,receipt_id=index['access_receipt_id'],revision_id=result.get('revision_id'),context_sha256=current['context_sha256'],
-                references=c.get('manual_reads',[]))
+                reference_count=len(audited_references),references_sha256=fingerprint(audited_references))
             return response
         with self.registry.transaction():
             response=PostgresSourceVersions(self.registry).list_locked(patient_id,case_id,organization=organization,actor=actor,purpose=purpose,
