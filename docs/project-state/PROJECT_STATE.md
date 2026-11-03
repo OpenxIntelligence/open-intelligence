@@ -69,4 +69,10 @@ The live GitHub audit separately confirmed successful API/web workflow conclusio
 - [Implementation roadmap](IMPLEMENTATION_ROADMAP.md)
 - [Architecture decisions](ARCHITECTURE_DECISIONS.md)
 
+The supplementary [technology strategy](TECHNOLOGY_STRATEGY.md) compares every requested candidate family with the accepted H1 stack and records version-sensitive licensing distinctions without adopting new dependencies.
+
 Existing authoritative engineering traceability remains [EXECUTION_BACKLOG.csv](../EXECUTION_BACKLOG.csv), [FIRST_PRINCIPLES_PLAN.md](../FIRST_PRINCIPLES_PLAN.md) and each named source owner's contract. Final candidate verification will be recorded separately so the initial baseline is not silently rewritten as a completion claim.
+
+## Subsequent implementation
+
+The [connected-workflow evidence record](IMPLEMENTATION_EVIDENCE.md) records the subsequent #287 integration, source-reuse manifest and observed failure/repair history. Its linked exact-head verification receipt distinguishes the implemented draft from this initial assessment and from `main`.

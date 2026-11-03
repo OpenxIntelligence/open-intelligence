@@ -32,7 +32,7 @@
 
 - [x] Inspect main, active owners, Notion, Drive, schema, configuration, dependencies and CI; record conflicts and coverage limits.
 - [x] Create an isolated checkout from #276 and run client/build/API discovery and existing dependency gates.
-- [ ] Finish all ten requested assessment files with source links and explicit statuses before product implementation.
+- [x] Finish all ten requested assessment files with source links and explicit statuses before product implementation.
 
 ### 2. Reconcile existing question and review consumers
 
@@ -40,11 +40,11 @@ Files: `apps/api/src/oi_api/{access,contracts,patients}.py`, new donor `question
 
 Interfaces: retain `RegistrySession`'s canonical source/question/brief/review state; add the donor's exact-packet decode/read methods and custom question draft methods. Reuse `PostgresQuestionSourcePacket.read(..., prepare_response, recheck_authority)` and all existing route operation IDs.
 
-- [ ] Import donor tests first; run the unchanged baseline client suite to observe missing authoring/packet behavior.
-- [ ] Apply #280's changes relative to #264 using three-way reconciliation; preserve #276's independent review/intake changes.
-- [ ] Import #278's byte-verified review disclosure tests and client exact-retry regressions; observe local client failures before applying those repairs.
-- [ ] Reconcile only #278's review JSONResponse and client recovery changes, with no images or migrations.
-- [ ] Run full client tests, TypeScript build, non-DB API checks and migration/owner preservation checks.
+- [x] Import donor tests first; run the unchanged baseline client suite to observe missing authoring/packet behavior.
+- [x] Apply #280's changes relative to #264 using three-way reconciliation; preserve #276's independent review/intake changes.
+- [x] Import #278's byte-verified review disclosure tests and client exact-retry regressions; observe local client failures before applying those repairs.
+- [x] Reconcile only #278's review JSONResponse and client recovery changes, with no images or migrations.
+- [x] Run full client tests, TypeScript build, non-DB API checks and migration/owner preservation checks.
 
 ### 3. Govern actual source-packet response preparation
 
@@ -52,14 +52,14 @@ Files: packet route in `apps/api/src/oi_api/patients.py`; new `apps/api/tests/te
 
 Interface: callback returns an already serialized `JSONResponse` from the same existing `PostgresQuestionSourcePacket.read` transaction; OpenAPI retains `QuestionSourceReviewPacket` schema. No new persistence.
 
-- [ ] Add actual PostgreSQL/HTTP tests for actual encoding, final grant withdrawal/identity change, encoder failure, held locks and failed audit/commit; unchanged donor must fail materially under hosted verification.
-- [ ] Add cross-owner lifecycle acceptance for a custom question, exact packet, return history, authorized brief, amendment and explicit retry; preserve all donor browser assertions.
-- [ ] Construct packet JSON inside `prepare_response`, before the owner refresh/audit/commit; retain headers and status.
+- [x] Add actual PostgreSQL/HTTP tests for actual encoding, final grant withdrawal/identity change, encoder failure, held locks and failed audit/commit; unchanged donor must fail materially under hosted verification.
+- [x] Add cross-owner lifecycle acceptance for a custom question, exact packet, return history, authorized brief, amendment and explicit retry; preserve all donor browser assertions.
+- [x] Construct packet JSON inside `prepare_response`, before the owner refresh/audit/commit; retain headers and status.
 - [ ] Run full existing API/PostgreSQL and built-React/browser hosted gates on the exact candidate, with no DB skips counted as passes.
 
 ### 4. Review, evidence and durable handoff
 
-- [ ] Fresh whole-branch review of code, scope, donor preservation and failure-mode tests.
+- [x] Fresh whole-branch review of code, scope, donor preservation and failure-mode tests.
 - [ ] Correct material findings, verify relevant regressions, record any limitations/rulings.
 - [ ] Update existing owner contracts/backlog with actual evidence, source-reuse manifest and final verification receipt; preserve the initial assessment as initial state.
 - [ ] Publish/verify draft PR and report exact commit, executed gates, remaining platform gaps and next owner integration. Do not merge, deploy or send external messages.

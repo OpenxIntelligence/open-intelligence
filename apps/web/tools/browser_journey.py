@@ -130,6 +130,7 @@ def main():
                 credentials=credentials,write_grants=write_grants)
             from source_questions_journey import exercise as exercise_source_questions
             from question_review_journey import exercise as exercise_question_review
+            from connected_question_review_journey import exercise as exercise_connected_question_review
             with exercise_source_questions(cd,original_id,credentials,write_grants) as questions, \
                  exercise_question_review(cd,pid,case,questions.original_question_id,original_id,
                      credentials,write_grants) as reviews:
@@ -160,8 +161,28 @@ def main():
                 assert cd.evaluate(f"document.querySelector('[data-testid=world-projection]').textContent.includes({json.dumps(original_id)})")
                 questions.finish(new_receipt['source_id'],credentials,write_grants,
                     Path(os.environ.get('OI_WEB_ARTIFACT_DIR',ROOT/'apps/web/.evidence')))
+                # Actual brief responses identify the three already-persisted
+                # questions independently of Review's projection and sort order.
+                saved_questions = cd.evaluate("""Object.fromEntries(window.__oiBriefChecks.reads
+                    .filter(r=>r.status===200).map(r=>[r.question.question_id,
+                      {question:r.question.question,source_id:r.selected_source.source_id}]))""")
+                assert len(saved_questions) == 3
+                assert saved_questions[questions.original_question_id]['source_id'] == original_id
+                current_questions = {qid:value for qid,value in saved_questions.items()
+                                     if value['source_id'] == new_receipt['source_id']}
+                assert len(current_questions) == 2
+                authored_ids = [qid for qid,value in current_questions.items() if value['question'] ==
+                    'Which original fictional report and line support this recorded marker status?']
+                assert len(authored_ids) == 1
+                authored_question_id = authored_ids[0]
+                replacement_question_id, = set(current_questions) - {authored_question_id}
                 reviews.finish(new_receipt['source_id'],credentials,write_grants,
-                    Path(os.environ.get('OI_WEB_ARTIFACT_DIR',ROOT/'apps/web/.evidence')))
+                    Path(os.environ.get('OI_WEB_ARTIFACT_DIR',ROOT/'apps/web/.evidence')),
+                    replacement_question_id=replacement_question_id,
+                    authored_question_id=authored_question_id)
+                # Add the fourth question only after both three-question checks.
+                exercise_connected_question_review(cd,pid,case,new_receipt['source_id'],amended,
+                    credentials,write_grants,questions)
             # Current source metadata access is independent from the historical original bytes.
             # World Model recheck must clear the old view after source-read grant withdrawal.
             credentials[0]['actions'].remove('source_read');write_grants()

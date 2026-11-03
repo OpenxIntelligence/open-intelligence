@@ -140,12 +140,15 @@ export class RegistrySession {
     this.#questionKey='';this.#questionFingerprint='';this.#savingQuestion=false;
     return {...emptyInvestigation(),...this.#resetReview(preserveReviewCase)};
   }
-  #resetWorld(){this.#publish({...emptyWorld(),...this.#resetInvestigation()});}
+  #resetWorld(preserveReviewCase?:string){
+    this.#publish({...emptyWorld(),...this.#resetInvestigation(preserveReviewCase)});
+  }
   /** The two independently authorized readers share one UI selection, not a
    * new domain record. A switch invalidates both readers before either awaits.
    * This prevents a late response for question A restoring beside question B.
+   * A null selection returns to an authored draft or a new source preflight.
    */
-  #focusSavedQuestion(questionId:string):void{
+  #focusSavedQuestion(questionId:string|null):void{
     if(this.#inspectionQuestionId===questionId)return;
     this.#inspectionQuestionId=questionId;
     this.dismissSourceBrief();
@@ -292,6 +295,14 @@ export class RegistrySession {
     const retained=this.#resetReview(caseId);
     const patientId=this.#state.patient?.patient_id;
     this.#publish(retained);
+    // The retained intent already matches this patient and exact captured case.
+    // Missing metadata cannot authorize a read or erase uncertain write recovery.
+    if(patientId&&this.#token&&this.#state.phase==='ready'&&!this.#uploading&&
+       this.#state.cases===null&&retained.reviewReturnIntent){
+      this.#publish({reviewPhase:'error',reviewMessage:
+        'Recheck authorized cases in Records before refreshing this inbox. The exact earlier return remains saved.'});
+      return;
+    }
     if(!patientId||!this.#token||this.#state.phase!=='ready'||this.#uploading||
        !/^CASE-[A-Z0-9-]{1,35}$/.test(caseId)||
        !this.#state.cases?.some(item=>item.case_id===caseId&&item.status==='active')){
@@ -456,6 +467,7 @@ export class RegistrySession {
       this.#publish({composerMessage:'Choose a currently authorized source statement before writing.'});
       return;
     }
+    this.#focusSavedQuestion(null);
     const existing=this.#state.questionDraft;
     if(existing?.case_id===model.case_id&&existing.source_id===sourceId&&
        existing.source_line===sourceLine&&existing.snapshot_fingerprint===model.snapshot_fingerprint)return;
@@ -476,6 +488,7 @@ export class RegistrySession {
     const draft=this.#state.questionDraft;
     if(!draft||this.#savingQuestion||this.#state.questionSaveMessage.startsWith('Save outcome unknown.')||
        typeof text!=='string'||text.length>500||draft.question===text)return;
+    this.#focusSavedQuestion(null);
     // A changed character makes an earlier preflight response and save key
     // invalid. The previous saved question, if any, remains on the server.
     this.#composerRead++;this.#questionWrite++;
@@ -513,6 +526,7 @@ export class RegistrySession {
   async prepareSourceContext(sourceId:string,sourceLine:number,
                              question:string=DEFAULT_SOURCE_QUESTION):Promise<void>{
     if(this.#savingQuestion)return;
+    this.#focusSavedQuestion(null);
     const model=this.#state.worldModel;
     const patientId=this.#state.patient?.patient_id;
     const observation=model?.observations.find(o=>
@@ -551,8 +565,9 @@ export class RegistrySession {
       if(res.status===401){this.#httpError(res.status);return;}
       if(res.status!==200){
         // A failed preflight must not leave stale patient observations visible
-        // as though they remained currently permitted.
-        this.#resetWorld();
+        // as though they remained currently permitted. Only the exact earlier
+        // return survives a non-authoritative failure; retry checks its own grant.
+        this.#resetWorld([403,404].includes(res.status)?undefined:model.case_id);
         this.#publish({composerPhase:'error',composerMessage:res.status===409?
           'The original source changed. Refresh Investigations before preparing a new context.':
           'Composer context unavailable under current authority. Source observations were cleared.'});
@@ -571,7 +586,7 @@ export class RegistrySession {
         'Source-only preflight prepared. It cannot execute a model or approve clinical work.'});
     }catch(_){
       if(current()){
-        this.#resetWorld();
+        this.#resetWorld(model.case_id);
         this.#publish({composerPreview:null,composerPhase:'error',composerMessage:
           'The Composer preflight failed validation. Refresh current source context.'});
       }
@@ -771,7 +786,7 @@ export class RegistrySession {
       if(control.signal.aborted)throw Error('brief timeout');
       if(res.status===401){this.#httpError(401);return null;}
       if(res.status!==200){
-        this.#resetWorld();
+        this.#resetWorld([403,404].includes(res.status)?undefined:model.case_id);
         this.#publish({briefPhase:'error',briefMessage:res.status===409?
           'The source changed. Refresh Investigations and use a current saved question before preparing a new brief.':
           'Source brief unavailable under current authority. No earlier preview can be downloaded.'});
@@ -786,6 +801,7 @@ export class RegistrySession {
       return prepared;
     }catch(_){
       if(current()){
+        this.#resetWorld(model.case_id);
         this.#publish({...emptyBrief(),briefPhase:'error',briefMessage:
           'The source brief could not be verified. No earlier preview can be downloaded.'});
       }

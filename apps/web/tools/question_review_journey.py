@@ -119,7 +119,10 @@ class QuestionReviewChecks:
         assert self.receipt_id in history and self.reason in history
         self.navigate('Records')
 
-    def finish(self, replacement_source_id, credentials, write_grants, screenshots):
+    def finish(self, replacement_source_id, credentials, write_grants, screenshots,
+               *, replacement_question_id, authored_question_id):
+        expected_ids = [self.question_id, replacement_question_id, authored_question_id]
+        assert len(set(expected_ids)) == 3
         previous_actions = list(credentials[0]['actions'])
         self.navigate('Review')
         try:
@@ -127,12 +130,18 @@ class QuestionReviewChecks:
             credentials[0]['actions'] = [a for a in previous_actions if a != 'composer_context_read']
             write_grants()
             self.refresh(self.receipt_id)
-            assert self.cd.evaluate("document.querySelectorAll('[data-testid=review-queue-item]').length===2")
+            actual_ids = self.cd.evaluate("[...document.querySelectorAll('[data-testid=review-queue-item]')].map(e=>e.dataset.questionId)")
+            assert sorted(actual_ids) == sorted(expected_ids), 'Review contains the exact three persisted questions'
             assert self.cd.evaluate('document.querySelector(' + json.dumps(self.item()) + ').dataset.state') == 'source_reassessment_required'
-            new_question = self.cd.evaluate("[...document.querySelectorAll('[data-testid=review-queue-item]')].find(e=>e.dataset.sourceId==="
-                                            + json.dumps(replacement_source_id) + ').dataset.questionId')
+            # Both current questions share one v2 source; select the exact default
+            # question captured by the source journey, never the first source match.
+            new_question = replacement_question_id
             assert new_question != self.question_id
-            assert 'version 2, line 9' in self.cd.evaluate('document.querySelector(' + json.dumps(self.item(new_question)) + ').textContent')
+            for question_id in (new_question, authored_question_id):
+                row = 'document.querySelector(' + json.dumps(self.item(question_id)) + ')'
+                assert self.cd.evaluate(row + '.dataset.sourceId') == replacement_source_id
+                assert self.cd.evaluate(row + '.dataset.state') == 'awaiting_independent_verification'
+                assert 'version 2, line 9' in self.cd.evaluate(row + '.textContent')
             current_reason = 'Independently verify the amended fictional marker against its new source version.'
 
             # A readable queue is not permission to append a return.
@@ -155,8 +164,10 @@ class QuestionReviewChecks:
             assert new_receipt != self.receipt_id
             self.refresh(new_receipt)
             assert self.cd.evaluate('document.querySelector(' + json.dumps(self.item(new_question)) + ').dataset.state') == 'returned_for_independent_verification'
+            assert self.cd.evaluate('document.querySelector(' + json.dumps(self.item(authored_question_id)) + ').dataset.state') == 'awaiting_independent_verification'
             history = self.cd.evaluate("document.querySelector('[data-testid=review-return-history]').textContent")
             assert self.reason in history and current_reason in history and self.receipt_id in history
+            assert authored_question_id not in history, 'Returning the default v2 question cannot return the authored question'
 
             # Both independent read gates must clear the displayed projection on denial.
             for action in ('review_queue_read', 'question_read'):
@@ -169,6 +180,9 @@ class QuestionReviewChecks:
                 credentials[0]['actions'].append(action)
                 write_grants()
                 self.refresh(new_receipt)
+
+            assert sorted(self.cd.evaluate("[...document.querySelectorAll('[data-testid=review-queue-item]')].map(e=>e.dataset.questionId)")) == sorted(expected_ids)
+            assert self.cd.evaluate('document.querySelector(' + json.dumps(self.item(authored_question_id)) + ').dataset.state') == 'awaiting_independent_verification'
 
             screenshots.mkdir(parents=True, exist_ok=True)
             self.cd.command('Emulation.setDeviceMetricsOverride', {'width':1440,'height':1100,'deviceScaleFactor':1,'mobile':False})

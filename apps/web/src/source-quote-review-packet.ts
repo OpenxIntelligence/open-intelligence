@@ -116,7 +116,8 @@ export async function decodeQuestionSourcePacket(
 
  let selected:SourceQuote|null=null,related:SourceQuote[]=[];
  if(value.source_context_state==='current_unreviewed_source'){
-   if(value.review_next_step!=='independent_source_verification_required'||
+   if(expected.source_snapshot_contract!=='oi.pg-source-world-model/1'||
+      value.review_next_step!=='independent_source_verification_required'||
       value.current_source_snapshot_sha256!==expected.source_snapshot_sha256||
       (currentFingerprint!==undefined&&currentFingerprint!==value.current_source_snapshot_sha256)||
       value.selected_statement===null)throw Error('contract');

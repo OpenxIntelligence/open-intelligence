@@ -2,6 +2,7 @@ import {test} from 'node:test';
 import {createHash} from 'node:crypto';
 import assert from 'node:assert/strict';
 import {RegistrySession} from '../.test-dist/registry-client.js';
+import {decodeQuestionSourcePacket} from '../.test-dist/source-quote-review-packet.js';
 
 const PID='PAT-EXAMPLE-001',CASE='CASE-ALPHA',SID='SRC-'+'A'.repeat(32);
 const TOKEN='fictional_test_credential_000000000001';
@@ -116,6 +117,23 @@ async function ready(options={}){
  await s.loadWorldModel(CASE);await s.loadSavedQuestions(CASE);
  assert.equal(s.snapshot().questionListPhase,'ready');return f;
 }
+
+test('legacy snapshot provenance cannot be promoted by matching hashes but remains inspectable as history',async()=>{
+ const legacy={...item(),source_snapshot_contract:'oi.synthetic-postgres-world-model-sources/1',
+  source_context_state:'source_reassessment_required'};
+ // Every anchor and content hash matches, but this is not the canonical contract.
+ const promoted=packet(legacy);
+ await assert.rejects(decodeQuestionSourcePacket(promoted,legacy,CASE,PID,'a'.repeat(64)));
+ const historical={...promoted,source_context_state:'source_reassessment_required',
+  selected_statement:null,review_next_step:'refresh_source_and_create_new_question'};
+ const stableFields={...historical};
+ delete stableFields.packet_sha256;delete stableFields.source_access_receipt_id;
+ historical.packet_sha256=hash(stable(stableFields));
+ const decoded=await decodeQuestionSourcePacket(historical,legacy,CASE,PID,'a'.repeat(64));
+ assert.equal(decoded.original_anchor.source_snapshot_contract,legacy.source_snapshot_contract);
+ assert.equal(decoded.selected_statement,null);
+ assert.equal(decoded.source_context_state,'source_reassessment_required');
+});
 
 test('authored question reaches exact source inspection and brief without being rewritten or approved',async()=>{
  const {s,calls}=await ready({empty:true});

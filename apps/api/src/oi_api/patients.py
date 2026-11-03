@@ -933,7 +933,11 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
                 return PostgresQuestionReviewReturns(patients).queue(
                     patient_id, case_id, organization=context.organization,
                     actor=context.actor, purpose=context.purpose,
-                    prepare_response=lambda result: QuestionReviewQueue(**result),
+                    # Complete the actual JSON body under the source owner's
+                    # locks, before final authority, access audit and commit.
+                    prepare_response=lambda result: JSONResponse(
+                        QuestionReviewQueue(**result).model_dump(mode="json"),
+                        headers={"Cache-Control": "no-store"}),
                     recheck_authority=lambda: final_question_authority(
                         request, context, patients, patient_id, actions),
                 )
@@ -947,7 +951,7 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
         operation_id="return_source_question_for_verification_v1")
     def return_source_question_for_verification(
             request: Request, patient_id: str, case_id: str, question_id: str,
-            payload: ReturnForVerification, response: Response,
+            payload: ReturnForVerification,
             context: Principal = Depends(principal)):
         if context.purpose != "operations":
             raise HTTPException(404, "Review return unavailable")
@@ -956,21 +960,21 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
                 actions = ("question_read", "source_read", "review_return")
                 for action in actions:
                     records_authorized(patients, context, patient_id, action)
-                receipt = PostgresQuestionReviewReturns(patients).return_for_verification(
+                return PostgresQuestionReviewReturns(patients).return_for_verification(
                     patient_id, case_id, question_id, organization=context.organization,
                     actor=context.actor, purpose=context.purpose,
                     request_key=payload.request_key,
                     expected_queue_fingerprint=payload.expected_queue_fingerprint,
                     reason=payload.reason,
-                    prepare_response=lambda result: ReturnForVerificationReceipt(**result),
+                    prepare_response=lambda result: JSONResponse(
+                        ReturnForVerificationReceipt(**result).model_dump(mode="json"),
+                        status_code=200 if result["duplicate"] else 201,
+                        headers={"Cache-Control": "no-store"}),
                     recheck_authority=lambda: final_question_authority(
                         request, context, patients, patient_id, actions),
                 )
         except PatientRegistryDenied:
             raise HTTPException(404, "Review return unavailable") from None
-        response.status_code = 200 if receipt.duplicate else 201
-        return receipt
-
     @router.get("/{patient_id}/cases/{case_id}/questions/{question_id}/source-review-packet",
                 response_model=QuestionSourceReviewPacket, responses=errors,
                 operation_id="read_question_source_review_packet_v1")
@@ -987,7 +991,12 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
                 return PostgresQuestionSourcePacket(patients).read(
                     patient_id,case_id,question_id,organization=context.organization,
                     actor=context.actor,purpose=context.purpose,
-                    prepare_response=lambda packet: QuestionSourceReviewPacket(**packet),
+                    # Keep complete JSON encoding under the original-source
+                    # locks, before final authority, access receipt and commit.
+                    prepare_response=lambda packet: JSONResponse(
+                        QuestionSourceReviewPacket(**packet).model_dump(mode="json"),
+                        headers={"Cache-Control": "no-store",
+                                 "X-Content-Type-Options": "nosniff"}),
                     recheck_authority=lambda: final_question_authority(
                         request,context,patients,patient_id,actions),
                 )

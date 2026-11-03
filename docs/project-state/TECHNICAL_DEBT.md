@@ -35,4 +35,8 @@ The later-uploaded [Cosmo Stack Formality ADR](https://drive.google.com/file/d/1
 
 ## Debt not to create during this slice
 
+### Findings retained after connected-workflow review
+
+The [subsequent implementation evidence](IMPLEMENTATION_EVIDENCE.md) records the independently reproduced review-inbox, draft-context and brief/preflight return-recovery corrections. The following inherited limits remain explicit: reopening/reading a patient is a complete in-memory reset even for the same patient ID; an unknown question-creation intent can be cleared by world/case refresh or source import. The current repair preserves verification-return intent across eligible same-case failures. It does not complete recovery for all uncertain writes. Extend OI-007/009/013 through the existing owners with separate captured-intent, denial, reload and duplicate-recovery acceptance.
+
 The planned #276/#280 convergence should reuse existing patient, source, question, verification-return and brief owners, plus the selected #278 review encoding and uncertain-return repairs. It should add neither a second chart/queue nor a new framework, storage engine, model provider, clinical content source or licensing decision. Image/migration/PDF convergence, patient overview and reading-layout work belong to their existing owners. Missing standalone clinical domains remain in the [roadmap mapping](IMPLEMENTATION_ROADMAP.md), rather than being disguised as technical cleanup.
