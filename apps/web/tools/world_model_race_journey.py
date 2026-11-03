@@ -61,8 +61,23 @@ def exercise(cd, *, patient_id, case_id, source_id, original, fingerprint,
     def open_original():
         cd.evaluate("[...document.querySelectorAll('[data-testid=source-version]')].find(e=>e.textContent.includes("
                     + json.dumps(source_id) + ")).querySelector('[data-testid=open-original]').click()")
-        cd.wait("document.querySelector('[data-testid=server-original]')?.textContent==="
-                + json.dumps(original), 'real separately authorized original bytes')
+        try:
+            cd.wait("document.querySelector('[data-testid=server-original]')?.textContent==="
+                    + json.dumps(original), 'real separately authorized original bytes')
+        except AssertionError:
+            diagnostic = cd.evaluate("""(() => ({
+              originalPresent: Boolean(document.querySelector('[data-testid=server-original]')),
+              originalTextLength: document.querySelector('[data-testid=server-original]')?.textContent.length ?? -1,
+              recordMessage: document.querySelector('[data-testid=records-status]')?.textContent ?? '',
+              recordCase: document.querySelector('[data-testid=source-index]')?.textContent.slice(0,180) ?? '',
+              buttonCount: document.querySelectorAll('[data-testid=open-original]').length,
+              buttonDisabled: document.querySelector('[data-testid=open-original]')?.disabled ?? null,
+              worldStatus: document.querySelector('[data-testid=world-status]')?.textContent ?? '',
+              fetchRaceHeld: window.__oiWorldModelRace?.held?.number ?? null,
+              fetchRaceReads: window.__oiWorldModelRace?.reads.length ?? null
+            }))()""")
+            print('SOURCE ORIGINAL READ RACE DIAGNOSTIC:',json.dumps(diagnostic,sort_keys=True),flush=True)
+            raise
 
     def close_original():
         cd.evaluate("document.querySelector('[data-testid=opened-original] button').click()")
