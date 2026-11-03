@@ -23,6 +23,7 @@ from .sources import PostgresSourceVersions
 from .source_world_model import project_source_world_model
 from .composer_preflight import PostgresSourceComposerPreflight
 from .source_questions import PostgresSourceQuestions
+from .question_review_returns import PostgresQuestionReviewReturns
 
 from .images import PostgresSourceImages
 
@@ -469,6 +470,85 @@ class SourceImageIndex(Contract):
     source_identity_verified: Literal[False]
 
 
+class ReturnForVerification(Contract):
+    synthetic: StrictBool
+    request_key: str = Field(min_length=3, max_length=128)
+    expected_queue_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    reason: str = Field(min_length=10, max_length=600)
+
+    @field_validator("synthetic")
+    @classmethod
+    def fictional_only(cls, value):
+        if value is not True:
+            raise ValueError("Only fictional review return receipts are enabled")
+        return value
+
+
+class ReturnForVerificationReceipt(Contract):
+    receipt_id: str
+    question_id: str
+    duplicate: bool
+
+
+class QuestionReviewItem(Contract):
+    question_id: str
+    patient_id: str
+    case_id: str
+    question: str
+    source_id: str
+    source_line: int = Field(ge=1)
+    source_sha256: str
+    source_version: int = Field(ge=1)
+    source_snapshot_sha256: str
+    source_snapshot_contract: Literal["oi.pg-source-world-model/1",
+                                      "oi.synthetic-postgres-world-model-sources/1"]
+    preflight_sha256: str
+    created_at: datetime
+    kind: Literal["source-question"]
+    queue_fingerprint: str | None
+    queue_fingerprint_contract: Literal["oi.synthetic-source-review-return/2"]
+    source_context_state: Literal["current_unreviewed_question", "source_reassessment_required"]
+    review_state: Literal["awaiting_independent_verification",
+                          "returned_for_independent_verification", "source_reassessment_required"]
+    current_return_receipt_id: str | None
+    return_count: int = Field(ge=0)
+    prior_return_count: int = Field(ge=0)
+    clinical_approval: Literal[False]
+    reviewer_identity_verified: Literal[False]
+
+
+class QuestionReturnHistory(Contract):
+    receipt_id: str
+    question_id: str
+    queue_fingerprint: str
+    source_snapshot_sha256: str
+    source_snapshot_contract: Literal["oi.pg-source-world-model/1",
+                                      "oi.synthetic-postgres-world-model-sources/1"]
+    queue_fingerprint_contract: Literal["oi.synthetic-source-review-return/1",
+                                       "oi.synthetic-source-review-return/2"]
+    actor_label: str
+    action: Literal["returned"]
+    reason: str
+    created_at: datetime
+    reviewer_identity_verified: Literal[False]
+    external_notification_sent: Literal[False]
+    clinical_approval: Literal[False]
+
+
+class QuestionReviewQueue(Contract):
+    contract: Literal["oi.synthetic-question-review-return-queue/2"]
+    patient_id: str
+    case_id: str
+    access_receipt_id: str
+    synthetic: Literal[True]
+    items: list[QuestionReviewItem]
+    receipts: list[QuestionReturnHistory]
+    external_notification_sent: Literal[False]
+    reviewer_identity_verified: Literal[False]
+    clinical_approval: Literal[False]
+    review_completion_supported: Literal[False]
+
+
 def patient_router(database: Database, authentication: Authentication) -> APIRouter:
     router = APIRouter(prefix="/v1/patients", tags=["Synthetic patient registry"])
     bearer = HTTPBearer(auto_error=False, scheme_name="SyntheticFixture",
@@ -486,7 +566,7 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
                         return False
                     if action == "patient_create":
                         return subject == context.organization
-                    if action not in {"patient_read", "record_request_create", "record_request_read", "record_request_cancel", "record_request_receive", "case_binding_create", "case_binding_read", "case_binding_revoke", "source_import", "source_read", "source_original_read", "composer_context_read", "question_create", "question_read", "image_import", "image_read", "image_original_read"} or subject not in context.patient_ids:
+                    if action not in {"patient_read", "record_request_create", "record_request_read", "record_request_cancel", "record_request_receive", "case_binding_create", "case_binding_read", "case_binding_revoke", "source_import", "source_read", "source_original_read", "composer_context_read", "question_create", "question_read", "image_import", "image_read", "image_original_read", "review_queue_read", "review_return"} or subject not in context.patient_ids:
                         return False
                     cursor = connection.cursor()
                     try:
@@ -692,6 +772,59 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
             raise PatientRegistryDenied("Source-question authority changed")
         for action in actions:
             records_authorized(patients, current, patient_id, action)
+
+    @router.get("/{patient_id}/cases/{case_id}/review-queue",
+                response_model=QuestionReviewQueue, responses=errors,
+                operation_id="list_source_question_review_queue_v1")
+    def list_source_question_review_queue(request: Request, patient_id: str, case_id: str,
+                                         context: Principal = Depends(principal)):
+        if context.purpose != "operations":
+            raise HTTPException(404, "Question review queue unavailable")
+        try:
+            with registry(context) as patients:
+                actions = ("question_read", "source_read", "review_queue_read")
+                for action in actions:
+                    records_authorized(patients, context, patient_id, action)
+                return PostgresQuestionReviewReturns(patients).queue(
+                    patient_id, case_id, organization=context.organization,
+                    actor=context.actor, purpose=context.purpose,
+                    prepare_response=lambda result: QuestionReviewQueue(**result),
+                    recheck_authority=lambda: final_question_authority(
+                        request, context, patients, patient_id, actions),
+                )
+        except PatientRegistryDenied:
+            raise HTTPException(404, "Question review queue unavailable") from None
+
+    @router.post(
+        "/{patient_id}/cases/{case_id}/questions/{question_id}/return-for-verification",
+        response_model=ReturnForVerificationReceipt, status_code=201,
+        responses={200: {"model": ReturnForVerificationReceipt}, **errors},
+        operation_id="return_source_question_for_verification_v1")
+    def return_source_question_for_verification(
+            request: Request, patient_id: str, case_id: str, question_id: str,
+            payload: ReturnForVerification, response: Response,
+            context: Principal = Depends(principal)):
+        if context.purpose != "operations":
+            raise HTTPException(404, "Review return unavailable")
+        try:
+            with registry(context) as patients:
+                actions = ("question_read", "source_read", "review_return")
+                for action in actions:
+                    records_authorized(patients, context, patient_id, action)
+                receipt = PostgresQuestionReviewReturns(patients).return_for_verification(
+                    patient_id, case_id, question_id, organization=context.organization,
+                    actor=context.actor, purpose=context.purpose,
+                    request_key=payload.request_key,
+                    expected_queue_fingerprint=payload.expected_queue_fingerprint,
+                    reason=payload.reason,
+                    prepare_response=lambda result: ReturnForVerificationReceipt(**result),
+                    recheck_authority=lambda: final_question_authority(
+                        request, context, patients, patient_id, actions),
+                )
+        except PatientRegistryDenied:
+            raise HTTPException(404, "Review return unavailable") from None
+        response.status_code = 200 if receipt.duplicate else 201
+        return receipt
 
     @router.get("/{patient_id}/cases/{case_id}/questions",
                 response_model=SourceQuestionsList, responses=errors,

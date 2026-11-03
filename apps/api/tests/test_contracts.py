@@ -74,7 +74,7 @@ class HTTPContractTests(unittest.TestCase):
             self.assertEqual(body["authentication"], "deny_all")
             self.assertFalse(body["patient_data_enabled"])
             self.assertTrue(body["synthetic_registry_enabled"])
-            self.assertEqual(body["capabilities"], ["synthetic_patient_create", "synthetic_patient_read", "synthetic_record_request_create", "synthetic_record_request_list", "synthetic_record_request_cancel", "synthetic_record_request_receive", "synthetic_case_binding_create", "synthetic_case_binding_list", "synthetic_case_binding_revoke", "synthetic_source_import", "synthetic_source_list", "synthetic_source_original_read", "synthetic_source_world_model_read", "synthetic_source_composer_preflight", "synthetic_source_question_create", "synthetic_source_question_list", "synthetic_image_import", "synthetic_image_list", "synthetic_image_original_read"])
+            self.assertEqual(body["capabilities"], ["synthetic_patient_create", "synthetic_patient_read", "synthetic_record_request_create", "synthetic_record_request_list", "synthetic_record_request_cancel", "synthetic_record_request_receive", "synthetic_case_binding_create", "synthetic_case_binding_list", "synthetic_case_binding_revoke", "synthetic_source_import", "synthetic_source_list", "synthetic_source_original_read", "synthetic_source_world_model_read", "synthetic_source_composer_preflight", "synthetic_source_question_create", "synthetic_source_question_list", "synthetic_image_import", "synthetic_image_list", "synthetic_image_original_read", "synthetic_source_review_queue_read", "synthetic_source_review_return"])
 
     def test_missing_database_is_unready_not_a_fake_pass(self):
         with running_server(create_app(Settings.from_env({}))) as base:
@@ -131,9 +131,15 @@ class HTTPContractTests(unittest.TestCase):
                 missing_status, _, _ = get_json(base, path)
                 self.assertEqual(missing_status, 404)
         self.assertEqual(status, 200)
-        self.assertEqual(set(schema["paths"]), {"/health", "/health/ready", "/v1", "/v1/patients", "/v1/patients/{patient_id}", "/v1/patients/{patient_id}/record-requests", "/v1/patients/{patient_id}/record-requests/{request_id}/cancel", "/v1/patients/{patient_id}/record-requests/{request_id}/receive", "/v1/patients/{patient_id}/case-bindings", "/v1/patients/{patient_id}/case-bindings/{case_id}/revoke", "/v1/patients/{patient_id}/cases/{case_id}/sources", "/v1/patients/{patient_id}/cases/{case_id}/sources/{source_id}", "/v1/patients/{patient_id}/cases/{case_id}/world-model", "/v1/patients/{patient_id}/cases/{case_id}/composer/source-preflight", "/v1/patients/{patient_id}/cases/{case_id}/questions", "/v1/patients/{patient_id}/cases/{case_id}/sources/{source_id}/images", "/v1/patients/{patient_id}/cases/{case_id}/sources/{source_id}/images/{image_id}"})
+        self.assertEqual(set(schema["paths"]), {"/health", "/health/ready", "/v1", "/v1/patients", "/v1/patients/{patient_id}", "/v1/patients/{patient_id}/record-requests", "/v1/patients/{patient_id}/record-requests/{request_id}/cancel", "/v1/patients/{patient_id}/record-requests/{request_id}/receive", "/v1/patients/{patient_id}/case-bindings", "/v1/patients/{patient_id}/case-bindings/{case_id}/revoke", "/v1/patients/{patient_id}/cases/{case_id}/sources", "/v1/patients/{patient_id}/cases/{case_id}/sources/{source_id}", "/v1/patients/{patient_id}/cases/{case_id}/world-model", "/v1/patients/{patient_id}/cases/{case_id}/composer/source-preflight", "/v1/patients/{patient_id}/cases/{case_id}/questions", "/v1/patients/{patient_id}/cases/{case_id}/sources/{source_id}/images", "/v1/patients/{patient_id}/cases/{case_id}/sources/{source_id}/images/{image_id}", "/v1/patients/{patient_id}/cases/{case_id}/review-queue", "/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/return-for-verification"})
         self.assertEqual(schema["paths"]["/v1/patients"]["post"]["security"], [{"SyntheticFixture": []}])
         self.assertEqual(schema["paths"]["/v1/patients/{patient_id}/cases/{case_id}/world-model"]["get"]["security"], [{"SyntheticFixture": []}])
+        queue = schema["paths"]["/v1/patients/{patient_id}/cases/{case_id}/review-queue"]["get"]
+        returning = schema["paths"]["/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/return-for-verification"]["post"]
+        self.assertEqual(queue["operationId"], "list_source_question_review_queue_v1")
+        self.assertEqual(returning["operationId"], "return_source_question_for_verification_v1")
+        self.assertEqual(queue["security"], [{"SyntheticFixture": []}])
+        self.assertEqual(returning["security"], [{"SyntheticFixture": []}])
         self.assertIn("503", schema["paths"]["/health/ready"]["get"]["responses"])
         self.assertFalse(schema["components"]["schemas"]["Readiness"]["additionalProperties"])
 

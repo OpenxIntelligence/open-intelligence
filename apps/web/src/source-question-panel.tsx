@@ -1,7 +1,7 @@
 import type {RegistrySession,ViewState} from './registry-client';
 
 /** Reuses the source-question intake panel from PR238 over the canonical World Model. */
-export function SourceQuestionPanel({state,session,busy}:{state:ViewState;session:RegistrySession;busy:boolean}){
+export function SourceQuestionPanel({state,session,busy,onReview}:{state:ViewState;session:RegistrySession;busy:boolean;onReview?:()=>void}){
  const caseId=state.worldModel?.case_id??'';
  return <section data-testid="source-question-panel" aria-label="Source-linked question intake">
    <p className={'status '+(state.composerPhase==='error'?'error':'')}
@@ -55,6 +55,10 @@ export function SourceQuestionPanel({state,session,busy}:{state:ViewState;sessio
       className={'status '+(state.questionListPhase==='error'?'error':'')}>
       {state.questionListMessage}</p>
     {state.questions&&state.questionsCaseId===caseId&&<div data-testid="source-question-history">
+      {state.questions.length>0&&onReview&&<div className="actions question-review-action">
+       <button type="button" data-testid="open-question-review" disabled={busy}
+        onClick={()=>{void session.loadReviewQueue(caseId);onReview();}}>Open verification inbox for these questions</button>
+      </div>}
       <details><summary>Source-context access receipt</summary><code>{state.questionsAccessReceiptId}</code><p>Source access checked for this history read. No question or clinical approval is implied.</p></details>
       {state.questions.length===0?<p>No saved source-linked questions are visible.</p>:
        <ul className="question-items">

@@ -2,20 +2,25 @@
 
 This is the FastAPI/PostgreSQL 16 composition root for [issue #112](https://github.com/OpenxIntelligence/open-intelligence/issues/112).
 It mounts the existing canonical patient registry and a small synthetic record-request operational domain, with migrations and durable event receipts.
-The Python/SQLite prototype remains the source/evidence/investigation oracle.
+The Python/SQLite prototype remains the evidence/investigation reference. This
+branch now connects canonical PostgreSQL sources, source questions and
+nonterminal verification-return receipts; the evidence/report persistence
+boundary remains a separate integration.
 
-## Current combined source, question and image candidate
+## Current combined image, question and verification-return candidate
 
-The H1 candidate now reconciles the canonical source/World Model and persistent
-question owner from #244 with the original-image custody owner from #242.
-Both published migration histories are retained under the explicit
-`0008_merge_image_questions` head. Source, question and image grants remain
-independent; an amendment preserves historical question anchors and image bytes
-while requiring reassessment and explicit image relinking. Image response
-preparation, including actual JSON encoding for metadata and import receipts,
-now precedes the final authority check and committed event.
+The H1 candidate joins verified #263 (the #260 image/question owner with complete
+image JSON response preparation) and #262 (the canonical question verification-return
+owner). Both published `0008` histories remain intact under the explicit
+`0009_image_review_merge` head. Source, question, image and review grants remain
+independent. An amendment preserves historical question anchors, image bytes and
+return receipts while requiring reassessment and explicit image relinking.
+Image response preparation, including actual JSON encoding for metadata and import
+receipts, precedes final authority and commit. Complete review response encoding is
+being checked separately against the actual serializer before its repair is claimed.
 
-See [the combined contract and acceptance scope](../../docs/engineering/H1_IMAGE_QUESTION_CONVERGENCE.md).
+See [the combined design and acceptance scope](../../docs/superpowers/specs/2026-11-02-h1-image-question-review-design.md)
+and [the preserved image/question contract](../../docs/engineering/H1_IMAGE_QUESTION_CONVERGENCE.md).
 The domain sections below retain their incremental history; statements that
 source persistence, received records or image custody are still unavailable
 describe earlier slices, not this combined candidate. The existing fictional
@@ -23,15 +28,12 @@ authorization and clinical-release limits still apply.
 
 ## PostgreSQL record-acquisition continuation (draft, synthetic only)
 
-The H1 API now includes a **source-independent pending-record request** domain.
-It uses the same patient identifier in `identity.identity_patients`, the same
-`identity.identity_domain_events` append-only history and explicit actor,
-organization, purpose and exact-patient policy. The accepted clinical source
-ledger is **not** yet migrated into this API; therefore the H1 record request
-is intentionally limited to **requested/cancelled**, and the received/source
-version workflow demonstrated in SQLite [PR #171](https://github.com/OpenxIntelligence/open-intelligence/pull/171)
-remains unavailable here. Do not treat an unlinked request as a received clinical
-document and do not invent a parallel source table to enable it.
+The H1 API includes a record-request operational domain, using the same patient
+identifier in `identity.identity_patients` and the same append-only event owner.
+A request starts independently of a source. The later source integration can
+attach an existing exact fictional source through a received-record event;
+it does not acquire records from an external provider or copy source bytes.
+Actor, organization, purpose and exact-patient policy remain explicit.
 
 The explicitly applied `0003_record_acquisition` migration creates only
 `coordination.record_requests` with a foreign key to the existing canonical
@@ -49,8 +51,12 @@ Additional synthetic-only HTTP endpoints:
   `kind`, `record_label` and `source_organization`. 201 new, 200 identical retry.
 - `POST /v1/patients/{patient_id}/record-requests/{request_id}/cancel` — requires
   `patient_read` plus `record_request_cancel` and an explicit fictional reason.
-- There is **no receive route**. Request views return
-  `source_receipts_enabled:false` and `external_request_sent:false`.
+- `POST /v1/patients/{patient_id}/record-requests/{request_id}/receive` —
+  requires `record_request_receive`, `source_read` and `patient_read`, with an
+  exact existing `case_id` and `source_id`. The current source category and case
+  must match the request. Receipt is one immutable `record.request.received`
+  event; identical retries recover it. Views report `source_receipts_enabled:true`
+  and `external_request_sent:false`. A received pointer is not clinical acceptance.
 
 All request commands use the existing 16 KiB/5-second bounded JSON ingress.
 The local access fixture and `patient_ids` list are **test authorization only**,
@@ -61,18 +67,19 @@ untrusted third-party content remain separate and unavailable.
 
 The real PostgreSQL 16 acceptance includes creation, idempotency, cancellation,
 event atomicity, immutable-schema enforcement, patient/org/grant isolation,
-credential revocation, patient suspension, restart and explicit refusal to
-mark records received before canonical source persistence exists. Use only
+credential revocation, patient suspension and restart. The received-record
+continuation separately covers exact current source links, historical amendments,
+independent grants, case revocation and atomic event failure. Use only
 `oi_api_test_*` disposable databases with the documented explicit test flag.
 
-### Migration integration follow-up
+### Record-receipt integration boundary
 
-To implement actual receipt in H1, first reconcile the source-owning clinical
-ledger from the original patient/EHR/LIS implementation, preserving one
-canonical patient→case→source binding. Only then introduce a
-foreign-key-backed receipt or reference contract, source-version/amendment
-checks and approved access policy, with a cross-domain transaction or safe
-compensating mechanism. Until that stage passes, receipt is disabled.
+The existing `PostgresRecordRequests.receive` and
+`test_received_record_requests.py` own the source-linked continuation. Received
+state is derived from the immutable event and its exact original-source pointer;
+the original request row's guarded requested/cancelled lifecycle is preserved.
+The source/question/review integration below reuses those same identities.
+External provider verification and professional clinical acceptance remain open.
 
 ## H1 canonical patient-to-case reference binding (draft extension)
 
@@ -105,11 +112,10 @@ Additional versioned endpoints are:
 - `POST /v1/patients/{patient_id}/case-bindings/{case_id}/revoke`:
   `case_binding_revoke`, exact patient grant and meaningful reason required.
   No production consent or external source authorization is created.
-- **No actual medical record import or receipt endpoint is added**. Source
-  versions remain under their existing synthetic owner and are not replicated
-  in this H1 identity migration. The *next* integration must verify authoritative
-  source namespace/subject mapping, persist original bytes and amendments once,
-  and deny source read or use after binding revocation.
+- This identity migration alone adds no source-import or received-request
+  endpoint. The later canonical original-source integration below adds fictional
+  original bytes and amendments under this binding. The later request-to-source
+  receipt is an operational pointer; verified external subject identity remains open.
 
 The tests exercise real disposable PostgreSQL 16, duplicate and conflicting
 external identities, patient/org/action isolation, trigger immutability, event
@@ -178,11 +184,10 @@ institutions. A synthetic case-binding review label is **not verified identity,
 patient consent or rights to source content**. No PDF/DICOM ingestion or
 real-patient medical record is supported.
 
-The next source-owned integration must authorize a received-record receipt
-against a current, exact source version, with separate patient/case/organization
-checks, atomic request+receipt+audit history, amendment invalidation and one
-durable human review queue. Until that is tested, H1 records acquisition still
-reports source receipts as unavailable and no clinical interpretation is granted.
+The received-record continuation above now links an existing exact original to
+its request through the same event owner. Source-derived questions and verification
+returns below are additional bounded consumers of that source history; none
+establishes external source identity or a clinical interpretation.
 
 ## Product and release boundary
 
@@ -216,15 +221,57 @@ rehashed or relabeled. New rows record the canonical fingerprint contract.
 See [question ownership and acceptance](../../docs/engineering/H1_CANONICAL_SOURCE_QUESTION_INTAKE.md)
 and [preflight boundaries](../../docs/engineering/H1_SOURCE_COMPOSER_PREFLIGHT.md).
 
+### Source-question verification returns
+
+The same question history now supplies a derived review inbox. No second queue,
+patient or source store is created. The queue is an operational source-verification
+view; a returned receipt does not attest to a professional review or send a message.
+
+- `GET .../cases/{case_id}/review-queue` requires `patient_read`, `source_read`,
+  `question_read` and independent `review_queue_read`, under operations purpose.
+  Contract `/2` separates a fresh source `access_receipt_id` from stable content
+  fingerprints and includes current questions plus immutable return history.
+- `POST .../questions/{question_id}/return-for-verification` requires the same
+  patient/source/question grants plus independent `review_return`; it does not
+  require queue-read or Composer grants. The bounded request contains
+  `synthetic:true`, `request_key`, `expected_queue_fingerprint` and `reason`.
+  A new receipt returns 201; an identical retry returns the original receipt/200.
+- Amendment makes affected prior questions and returns historical. A fresh key
+  cannot act on stale context; an original committed request can be recovered
+  with its unchanged key and intent after fresh authorization.
+
+`0008_review_convergence` joins both unchanged original 0007 migration histories.
+Legacy rows retain their original hashes and explicit legacy provenance. New
+receipts bind the canonical source and `/2` queue-fingerprint contracts. The
+migration refuses a downgrade that would discard canonical receipt meaning.
+Typed response preparation, final grant refresh, source-access receipt and the
+return/event write share the existing transaction. A failure rolls them back.
+See [ownership, provenance and verification](../../docs/engineering/H1_SOURCE_QUESTION_REVIEW_RETURN.md).
+
+### Image/review migration convergence
+
+The [image/question owner #260](https://github.com/OpenxIntelligence/open-intelligence/pull/260)
+and [complete image-response follow-up #263](https://github.com/OpenxIntelligence/open-intelligence/pull/263)
+retain `0008_merge_image_questions`; [canonical review #262](https://github.com/OpenxIntelligence/open-intelligence/pull/262)
+retains `0008_review_convergence`. This candidate combines their existing code and
+adds only the no-DDL `0009_image_review_merge` graph join. Readiness requires that
+single new head. Published owner migration bytes and legacy provenance semantics
+are retained. Populated upgrade, lifecycle and actual restored-HTTP checks cover
+image bytes/links, question anchors, return receipts and the existing event journal.
+Image activity must leave review content fingerprints unchanged; explicit relinking
+after amendment cannot revive an old question or its historical return.
+
 ### Broader product boundary
 
 The first integrated product remains patient information → source-linked World
 Model → permitted evidence → investigation → human review → follow-up →
-reassessment. This contribution connects its identity foundation; it does not
-complete that workflow or MRT-01.
+reassessment. This branch connects identity, original sources, canonical source
+context, questions and nonterminal verification returns. It does not complete
+permitted evidence retrieval, model investigation, professional review or MRT-01.
 
 **Local, independently synthetic development only.** The API accepts opaque
-fictional identities, not names, demographics, records or clinical information.
+fictional identities and independently authored synthetic source text. Real
+names, demographics and identifiable clinical records remain excluded.
 The included credential adapter is an operator-authored test fixture. Account
 creation, identity proofing, caregiver delegation, clinical consent, production
 authorization, clinical sign-off and treatment actions remain unimplemented.
@@ -276,22 +323,30 @@ only token hashes and synthetic grants belong there.
 The fixture schema is version oi.synthetic-access/1, with credentials containing
 token_sha256, actor, organization, purpose, actions, patient_ids and expires_at.
 Purpose is operations or research. Actions are explicitly enumerated by
-Principal in access.py; patient, source, acquisition, binding and image actions
-are independently granted. No new image action is implied by older source grants. Expiry must include a timezone. Unknown fields, duplicate token
+Principal in access.py; patient, source, acquisition, binding, image, question and
+review actions are independently granted. Question and review operations require
+operations purpose; older source or identity grants do not imply these actions.
+Expiry must include a timezone. Unknown fields, duplicate token
 hashes, oversized/invalid files and unavailable files fail closed. Bearer tokens
 must be 32–256 ASCII letters, digits, dots, underscores, tildes or hyphens.
 
 For a generated fixture and a complete automated demonstration, run:
 
     python3 apps/api/tools/verify_registry_compose.py
+    python3 apps/api/tools/verify_sources_compose.py
+    python3 apps/api/tools/verify_images_compose.py
+    python3 apps/api/tools/verify_reviews_compose.py
 
-This starts its own uniquely named disposable Compose project, creates
+Run these commands sequentially. Each starts its own uniquely named disposable
+Compose project and creates
 synthetic credentials without printing raw tokens, tests create/retry/read,
 changes exact-patient grants, rejects another organization, restarts the API
 and database, performs pg_dump/pg_restore, verifies identity/receipt/event
 continuity, revokes grants and credentials, then removes only its own project
 and volumes. Port 8000 must be free. This is a container acceptance command,
-not a deployment command.
+not a deployment command. The review proof also verifies exact question/return
+provenance, same-key recovery after amendment, independent review grants and
+complete source/question/receipt/event equality after dump/restore.
 
 For an operator-authored fixture, start the overlay with:
 
@@ -412,7 +467,7 @@ URLs, SQL, source text and rejected validation inputs.
 | Route | Behavior |
 |---|---|
 | GET /health | Process liveness; 200 even if the database is unavailable. |
-| GET /health/ready | 200 only for PostgreSQL major 16 at the single revision 0008_merge_image_questions; bounded 503 otherwise. |
+| GET /health/ready | 200 only for PostgreSQL major 16 at the single revision 0009_image_review_merge; bounded 503 otherwise. |
 | GET /v1 | Reports synthetic_patient_registry stage, implemented synthetic capabilities and the configured authentication mode. |
 | GET /v1/openapi.json | Local typed contract, including bearer security; no CDN documentation UI. |
 | POST /v1/patients | Authenticated synthetic creation; trusted actor/org/purpose; 201 for new identity or 200 for identical retry. |
@@ -484,6 +539,8 @@ registers.
     PYTHONPATH=src /tmp/oi-h1-api-venv/bin/python -m unittest discover -s tests -v
     python3 tools/audit_ci_data_boundaries.py
     python3 apps/api/tools/verify_registry_compose.py
+    python3 apps/api/tools/verify_sources_compose.py
+    python3 apps/api/tools/verify_reviews_compose.py
 
 Database tests require OI_API_RUN_DATABASE_TESTS=1 and
 OI_API_TEST_DATABASE_URL pointing to a disposable oi_api_test_* database.
@@ -505,13 +562,13 @@ API restart, database restart and backup/restore. Docker and Chromium are absent
 in this local session. Hosted results must be attached to the exact PR head;
 this description or passing local tests alone does not prove those operations.
 
-**Next executable integration:** reconcile canonical patient IDs with the
-existing clinical/source binding owners (#89/#95/#148), mount their narrowly
-scoped source contract through H1, and prove correct-patient source acquisition,
-original-version preservation and amendment invalidation. Connect issue #119's
-React/Vite workspace to those real APIs. Do not create another patient/source
-ledger. Accounts, consent, EHR/LIS, source/evidence/Composer, UI, production
-authorization and complete MRT-01 remain separate incomplete work.
+**Current continuation:** the source, question and review-return seams described
+above supersede the original identity-only next-task note. The next evidence
+integration must reconcile the existing clinical-store, assessment and report
+owners through an explicit persistence/adapter contract, preserving canonical
+IDs and rights. Do not copy PostgreSQL state into a competing SQLite chart or
+coerce IDs to satisfy another owner's interface. Accounts, consent, EHR/LIS,
+clinical review, production authorization and complete MRT-01 remain incomplete.
 
 See the [bounded implementation/continuation record](../../docs/superpowers/plans/2026-11-02-h1-patient-registry.md)
 for audit scope and regressions. No merge, deployment or clinical validation is

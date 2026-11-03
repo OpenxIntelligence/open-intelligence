@@ -67,11 +67,11 @@ class QuestionFingerprintMigrationTests(SourceVersionFixture):
                 "SELECT * FROM investigation.source_questions WHERE question_id=:id"
             ), {"id": legacy_id}).mappings().one())
 
-        migrate(self.admin, "upgrade", "head")
+        migrate(self.admin, "upgrade", "0007_question_snapshot_contract")
         with self.engine.connect() as connection:
-            self.assertEqual(connection.execute(text(
+            self.assertEqual(set(connection.execute(text(
                 "SELECT version_num FROM public.alembic_version"
-            )).scalar_one(), SCHEMA_REVISION)
+            )).scalars()), {"0007_question_snapshot_contract", "0006_image_custody"})
             migrated = dict(connection.execute(text(
                 "SELECT * FROM investigation.source_questions WHERE question_id=:id"
             ), {"id": legacy_id}).mappings().one())
@@ -81,6 +81,13 @@ class QuestionFingerprintMigrationTests(SourceVersionFixture):
         # identity, actor/purpose and creation time; the upgrade must not rehash.
         self.assertEqual(migrated, before)
 
+        # Preserve the original 0007 proof above, then satisfy the current API's
+        # later convergence readiness gate before testing the same behavior.
+        migrate(self.admin, "upgrade", "head")
+        with self.engine.connect() as connection:
+            self.assertEqual(connection.execute(text(
+                "SELECT version_num FROM public.alembic_version"
+            )).scalar_one(), SCHEMA_REVISION)
         self.creds[0]["actions"].extend((
             "composer_context_read", "question_create", "question_read",
         ))
