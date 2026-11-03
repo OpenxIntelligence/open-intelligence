@@ -16,7 +16,9 @@ export function FollowthroughCreate({state,session,busy,question}:Props&{questio
  const current=state.worldPhase==='ready'&&state.questionListPhase==='ready'&&canCreateFollowthrough(question,state.worldModel);
  const field=(key:keyof FollowthroughDraft,value:string|null)=>setDraft(previous=>({...previous,[key]:value}));
  useEffect(()=>{
-  if(state.followthroughWritePhase==='saved'&&state.followthroughReceipt?.question_id===question.question_id){
+  // Only creation has revision 1; another task's transition must preserve this draft.
+  if(state.followthroughWritePhase==='saved'&&state.followthroughReceipt?.revision===1&&
+     state.followthroughReceipt.question_id===question.question_id){
    setDraft(blankDraft());setOpen(false);
   }
  },[state.followthroughReceipt,state.followthroughWritePhase,question.question_id]);

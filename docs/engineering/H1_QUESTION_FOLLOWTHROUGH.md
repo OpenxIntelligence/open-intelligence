@@ -178,10 +178,15 @@ History: `event_id`, `revision`, `previous_status` (null on creation),
   regressions also established independent recovery of uncertain task and
   review-return intents across case-permission refresh.
 - Independent review also found that a same-question task transition could
-  erase an unrelated unsaved creation draft. This checkpoint includes an actual
-  browser regression with the product effect deliberately unchanged, to observe
-  the failure before correcting the creation-only receipt condition. This is an
-  open defect until the final hosted receipt records its repair.
+  erase an unrelated unsaved creation draft. The actual React/FastAPI/PostgreSQL
+  browser run `41631363181` reproduced this on `d897280b516730d06c006ee9fcfcdb4b3169a5a9`:
+  `Successful existing-task assignment discarded the unsaved second-task creation form`.
+  The effect now resets only for creation receipts (revision 1); operational
+  transitions have revision 2 or later. The same browser scenario must pass on
+  the repaired head, including acknowledgment and retained title/detail values.
+- Upstream #287's completed evidence-only follow-up
+  `247705700080052705817fee9e8f7b54afa8ffaa` was inspected and preserved; its four
+  documentation changes do not alter the verified parent runtime.
 - Current limits: independently authored synthetic fixtures only; no external
   notifications, professional clinical approval, real identity/delegation,
   patient-data authorization, model execution or biomedical evidence appraisal.

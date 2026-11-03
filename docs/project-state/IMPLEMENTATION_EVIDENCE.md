@@ -2,6 +2,27 @@
 
 Date: 3 November 2026. Candidate: [draft PR #287](https://github.com/OpenxIntelligence/open-intelligence/pull/287), stacked on #276. The ten assessment files describe the state before this implementation. This record describes the subsequent bounded change; current exact-head hosted conclusions belong in the PR's verification receipt.
 
+## Verified implementation checkpoint
+
+The complete runtime implementation is verified at remote commit [`f7b0f683ab64ba2de7363744b65b8e26528f3138`](https://github.com/OpenxIntelligence/open-intelligence/commit/f7b0f683ab64ba2de7363744b65b8e26528f3138), tree `a72d810aaf32a76f9c736aa1df4232e3bcd9ced0`. That tree exactly matches independently reviewed local commit `bd9b563cfca3cfaca51a58adb75c9e79209a1b02`. This evidence-only follow-up records completed results without changing the runtime, tests, dependencies or workflows.
+
+| Gate | Observed result | Evidence |
+| --- | --- | --- |
+| API/PostgreSQL suite | **301 executions passed; zero failures/errors/skips.** Includes actual JSON-encoding authority, locks, audit/commit rollback, migrations, questions and returns. | [API run 41629005788](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41629005788), verified proposed checkout SHA. |
+| Historical reference suite | **245 executions passed.** | Same API run; original behavior preserved. |
+| Historical browser acceptance | Passed source comparison, review attention, keyboard/AX landmarks, case changes, amendment, export, fictional evidence/reference flows and narrow viewport. | Same API run; these reference capabilities do not imply H1 evidence integration. |
+| Patient recovery probe | Passed scoped HTTP, cross-tenant denial, API/DB restart, dump/restore and next-request revocation. | Same API run. |
+| Original-source recovery probe | Passed exact UTF-8 originals, amendment history, fresh authority, durable receipts, binding revocation and dump/restore. | Same API run. |
+| Canonical review recovery probe | Passed stable provenance, same-key recovery, amendment history, independent grants, API/DB restart, binding revocation and dump/restore. | Same API run. |
+| Client/build | **170 client tests passed; zero failures/skips.** TypeScript and Vite production build passed. | [Web run 41629005777](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41629005777). |
+| Built React/API/PostgreSQL browser | Passed all donor flows and the added fourth-question quotation → verification return → revisit → fresh actual download journey. | Same web run; actual Chromium and disposable PostgreSQL 16. |
+| Dependency gates | Existing backend 24-wheel/99-native/13-runtime-entry gate and web 18-installed-package gate passed; omitted optional packages retain their uninspected classification. | Both hosted runs; unchanged scoped development determinations. |
+| Independent review | All three Important client findings and the Minor decoder finding resolved; no remaining Critical/Important blocker for this scoped fictional-data integration. Reviewer independently reran all 170 client tests and TypeScript. | Frozen repair tree above; retained limits below. |
+
+The web evidence artifact is [`13227850139`](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41629005777/artifacts/13227850139), SHA-256 `3e99297c9e2e5281a733e3df235089966d358118228d9f7c69d326c34fb2d2fe`. Its `commit.txt` matches the verified remote head, and all **321** source files in its source archive were byte-compared with the local reviewed tree. The quotation, review-history and mobile brief screenshots were visually inspected. Artifact retention is seven days; commit, source, evidence summary and run links remain the durable trace.
+
+Status: **fully implemented and tested for this bounded fictional-data contract; draft, unmerged and undeployed.** It is not completion of OI-008, the full clinical platform, production identity, WCAG qualification or clinical evaluation. Any later code change needs its own acceptance; documentation-only updates are distinguishable from the verified implementation checkpoint.
+
 ## Patient-facing behavior
 
 One existing H1 patient/case workspace connects:
@@ -64,7 +85,7 @@ The minor decoder finding was also accepted: a malformed packet with matching ha
 
 Review resolution and final executed counts belong in the exact-head PR receipt. These findings do not justify relaxing the independent permission, literal provenance or rollback assertions.
 
-The client repairs were tested before implementation: the first fresh run had 156 executions, 140 passed and 16 failed on inbox/draft context; the additional brief/preflight run had 170 executions, 162 passed and eight failed. After the corrections, all 170 client tests and the production TypeScript/Vite build passed. The fixes preserve the original intent without authorizing a read when case metadata is absent, invalidate both saved-question readers on draft changes, and retain minimal same-case return recovery while clearing failed source previews. Authentication/authorization denial and patient/case/credential changes still discard recovery. Focused independent repair review and hosted acceptance remain required in the final receipt.
+The client repairs were tested before implementation: the first fresh run had 156 executions, 140 passed and 16 failed on inbox/draft context; the additional brief/preflight run had 170 executions, 162 passed and eight failed. After the corrections, all 170 client tests and the production TypeScript/Vite build passed. The fixes preserve the original intent without authorizing a read when case metadata is absent, invalidate both saved-question readers on draft changes, and retain minimal same-case return recovery while clearing failed source previews. Authentication/authorization denial and patient/case/credential changes still discard recovery. Focused independent repair review and actual hosted acceptance subsequently passed at the verified checkpoint above.
 
 ### Explicit remaining review boundaries
 
