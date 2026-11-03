@@ -605,3 +605,13 @@ the existing acceptance workflows on its frozen published head. Preserve the
 original PRs and record any new main movement explicitly. Human owner acceptance,
 whole-chain review, final merge authorization and clinical/production qualification
 remain separate. All engineering inputs remain independently fictional.
+
+
+### Post-publication main movement and refreshed candidate — 3 November 2026
+
+After draft #390 was published at `427f5222320fc86d9da8093bcc952d3a0e3f3fcf`, `main` advanced by two accepted commits from `824ed8c415068bd31c67929cb9f79e79b2df0892` to `c2aa2054fa746fb26576150f27ec1f229b003f6f`.
+The intervening commits are `f02d2427f9314c0d258425a809ee5e95f8857bf6` (clear the Patient Mission projection when grant authority is lost) and `c2aa2054fa746fb26576150f27ec1f229b003f6f` (QA-11/12/13/15/17 guards and their new regression file).
+
+Six paths changed on main. Five overlap the integration proposal only because the proposal had retained the immediately prior accepted-main versions of those files; no H1-specific correction in those paths is displaced. The refreshed candidate therefore takes the direct successor main blobs for `src/open_intelligence/__main__.py`, `src/open_intelligence/store.py`, `tests/test_qa_adversarial_cycle3.py`, `web/app.js` and `web/mission.js`, and adds `tests/test_qa_regressions_qa11_12_13_15_17.py` unchanged from main.
+
+The earlier exact-head #390 web/API success applies only to `427f5222`. This refreshed head requires a new exact-head hosted run before merge. No earlier run is relabelled as verification of the refreshed tree.

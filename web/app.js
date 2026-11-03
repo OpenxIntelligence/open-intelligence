@@ -126,10 +126,23 @@ function clearCaseViews(denied) {
       'evidence-assessment-list', 'quarantine-list', 'model-investigation-list',
       'source-choice', 'evidence-choice', 'patient-timeline', 'patient-findings',
       'patient-questions', 'patient-uncertainty', 'changes-new-sources',
-      'changes-amendments', 'changes-stale', 'changes-questions']) {
+      'changes-amendments', 'changes-stale', 'changes-questions',
+      // M-3: the mission projection renders case quotes (mission.js
+      // renderKnown); it must clear under denial like every other view.
+      'mission-summary', 'mission-known', 'mission-unresolved',
+      'mission-changes', 'mission-actions']) {
     clear(id);
     empty(el(id), denied);
   }
+  // mission-status is a pill, not a list container: replace the prior-case
+  // workflow label with the denial text and reset the pill styling.
+  el('mission-status').textContent = denied;
+  el('mission-status').className = 'pill pill-neutral';
+  // mission-guardrails is a <ul>: clear items without injecting a <p>.
+  clear('mission-guardrails');
+  // Drop the mission section's prior-case binding alongside its content.
+  delete el('patient-mission').dataset.caseId;
+  el('patient-mission').dataset.workflowStatus = 'unavailable';
   clear('timeline-events');
   const item = node('li', null, 'timeline-entry');
   item.append(node('p', denied, 'muted'));

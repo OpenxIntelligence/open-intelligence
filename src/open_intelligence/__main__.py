@@ -85,7 +85,9 @@ class Handler(BaseHTTPRequestHandler):
             n = int(self.headers.get("Content-Length", "0"))
         except ValueError:
             raise InvalidInput("Invalid Content-Length") from None
-        if not 0 < n <= MAX_SOURCE_BYTES + 8192:
+        if n <= 0:
+            raise InvalidInput("Request body is required")
+        if n > MAX_SOURCE_BYTES + 8192:
             raise InvalidInput("Request body exceeds local-demo limit")
         try:
             data = json.loads(self.rfile.read(n))

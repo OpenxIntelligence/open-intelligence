@@ -308,8 +308,20 @@ class TestMissionEmptyCaseListLeavesNoLoadingPill(unittest.TestCase):
         mission = (ROOT / "web" / "mission.js").read_text(encoding="utf-8")
         start = mission.index("if (!caseId)")
         end = mission.index("const sequence", start)
-        self.assertIn("textContent", mission[start:end],
-                      "empty case list leaves the mission status pill loading")
+        branch = mission[start:end]
+        if "clearMissionForEmptyPicker()" in branch:
+            # Delegated (M-3): the helper itself must resolve the pill,
+            # not leave it on "Loading…".
+            helper_start = mission.index("function clearMissionForEmptyPicker()")
+            helper_end = mission.index("async function refreshMission()", helper_start)
+            helper = mission[helper_start:helper_end]
+            self.assertIn("textContent", helper,
+                          "clearMissionForEmptyPicker must set the mission status text")
+            self.assertIn("pill-neutral", helper,
+                          "clearMissionForEmptyPicker must reset the pill styling")
+        else:
+            self.assertIn("textContent", branch,
+                          "empty case list leaves the mission status pill loading")
 
 
 class TestPointerLabelRejectsPathForms(unittest.TestCase):
