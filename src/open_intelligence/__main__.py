@@ -150,6 +150,8 @@ class Handler(BaseHTTPRequestHandler):
             if case_options:
                 query = parse_qs(urlsplit(self.path).query)
                 snapshot_raw = query.get("snapshot_id", [None])[0]
+                if snapshot_raw is not None and not snapshot_raw.isdigit():
+                    raise InvalidInput("snapshot_id must be a positive integer")
                 snapshot_id = int(snapshot_raw) if snapshot_raw is not None else None
                 return self._json(200, store.option_view(case_options[1], snapshot_id))
             case_mission = re.fullmatch(rf"/api/cases/{ID_PART}/mission", path)
@@ -187,6 +189,9 @@ class Handler(BaseHTTPRequestHandler):
             if exported:
                 contents = store.export_markdown(exported[1], int(exported[2])).encode("utf-8")
                 return self._send(200, contents, "text/markdown; charset=utf-8")
+            re_review_list = re.fullmatch(rf"/api/cases/{ID_PART}/re-review-tasks", path)
+            if re_review_list:
+                return self._json(200, store.list_re_review_tasks(re_review_list[1]))
             return self._json(404, {"error": "Route not found"})
         except InvalidInput as error:
             return self._json(422, {"error": str(error)})
@@ -328,6 +333,26 @@ class Handler(BaseHTTPRequestHandler):
                 if review:
                     store.acknowledge_demo_review(review[1], int(review[2]), data.get("reviewer_label"))
                     return self._json(200, {"result": "acknowledged_in_demo"})
+                scoped_decision = re.fullmatch(rf"/api/cases/{ID_PART}/snapshots/([0-9]+)/scoped-decisions", path)
+                if scoped_decision:
+                    return self._json(201, store.record_scoped_decision(
+                        scoped_decision[1], int(scoped_decision[2]), data.get("reviewer_label"),
+                        data.get("scope"), data.get("note")))
+                scoped_dissent = re.fullmatch(rf"/api/cases/{ID_PART}/snapshots/([0-9]+)/scoped-dissents", path)
+                if scoped_dissent:
+                    return self._json(201, store.record_scoped_dissent(
+                        scoped_dissent[1], int(scoped_dissent[2]), data.get("reviewer_label"),
+                        data.get("claim_ref"), data.get("rationale")))
+                scoped_handoff = re.fullmatch(rf"/api/cases/{ID_PART}/snapshots/([0-9]+)/scoped-handoffs", path)
+                if scoped_handoff:
+                    return self._json(201, store.record_scoped_handoff(
+                        scoped_handoff[1], int(scoped_handoff[2]), data.get("from_reviewer"),
+                        data.get("to_reviewer")))
+                re_review_close = re.fullmatch(rf"/api/cases/{ID_PART}/re-review-tasks/([0-9]+)/close", path)
+                if re_review_close:
+                    return self._json(200, store.close_re_review_task(
+                        re_review_close[1], int(re_review_close[2]),
+                        data.get("closing_snapshot_id"), data.get("no_change_note")))
                 option_create = re.fullmatch(rf"/api/cases/{ID_PART}/options", path)
                 if option_create:
                     option_id = store.create_option(
@@ -355,8 +380,14 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(201, {"task_id": task_id})
                 task_status = re.fullmatch(rf"/api/cases/{ID_PART}/tasks/([0-9]+)/status", path)
                 if task_status:
-                    store.set_preparation_task_status(task_status[1], int(task_status[2]), data.get("status"))
-                    return self._json(200, {"result": "task_status_updated"})
+                    # B-09: acting label is optional and recorded only on done.
+                    outcome = store.set_preparation_task_status(
+                        task_status[1], int(task_status[2]), data.get("status"),
+                        acting_label=data.get("acting_label"))
+                    payload: dict = {"result": "task_status_updated"}
+                    if outcome is not None:
+                        payload["receipt_id"] = outcome["receipt_id"]
+                    return self._json(200, payload)
                 option_threat = re.fullmatch(rf"/api/cases/{ID_PART}/options/([0-9]+)/threats", path)
                 if option_threat:
                     threat_id = store.add_optionality_threat(
