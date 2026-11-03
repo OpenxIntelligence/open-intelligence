@@ -1,0 +1,8 @@
+OI-SYNTHETIC-REPORT/1
+Patient: CASE-FIG-01
+Document: FIG-CERTAINTY
+Type: clinical
+Event-Date: 2026-06-01
+Issued-At: 2026-06-03
+Finding: visit-note|reported|Fictional visit note records that the user described mild tiredness over two weeks.
+Finding: exam-note|indeterminate|The fictional exam note leaves the cause of tiredness open for now.
