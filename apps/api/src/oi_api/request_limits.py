@@ -13,7 +13,7 @@ class PatientRequestLimit:
         route = scope.get("path", "")
         bounded = route == "/v1/patients" or (
             route.startswith("/v1/patients/") and (
-                route.endswith("/record-requests") or route.endswith("/case-bindings") or route.endswith("/sources") or
+                route.endswith("/record-requests") or route.endswith("/case-bindings") or route.endswith("/sources") or route.endswith("/world-model/brief") or
                 (("/record-requests/" in route or "/case-bindings/" in route) and route.endswith("/cancel"))
             )
         )

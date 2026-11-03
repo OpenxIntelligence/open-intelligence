@@ -39,3 +39,6 @@
 .world-boundary{border-left:3px solid #aa8950;background:#f1eddf;padding:14px 16px;margin:22px 0 0}
 @media(max-width:900px){.world-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:600px){.world-case-controls button{width:100%}.world-case-controls input{max-width:none}.world-observation dl{grid-template-columns:1fr}.world-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+.source-brief-preview pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 36rem; overflow: auto; padding: 1rem; border: 1px solid var(--border, #ccd5da); }
+.source-brief-preview code { overflow-wrap: anywhere; }
