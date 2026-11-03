@@ -6,15 +6,19 @@
 /* Document intake shares the existing source and review workspace. */
 .intake-fields {
   display: grid;
+  width: 100%;
+  max-width: 100%;
   min-width: 0;
   gap: var(--space-2);
   margin: var(--space-3) 0;
   padding: 0;
   border: 0;
 }
-.intake-fields legend { padding: var(--space-3) 0 var(--space-2); font-weight: 700; }
+.intake-fields > * { min-width: 0; }
+.intake-fields legend { max-width: 100%; padding: var(--space-3) 0 var(--space-2); font-weight: 700; white-space: normal; }
 .intake-field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
 .intake-field-grid > div { display: grid; gap: var(--space-1); min-width: 0; }
+.intake-field-grid input { width: 100%; min-width: 0; max-width: 100%; }
 .intake-original {
   max-height: 320px;
   overflow: auto;
@@ -29,6 +33,7 @@
 .intake-passage { display: grid; gap: var(--space-2); border-left: 3px solid var(--color-rule); padding: var(--space-3); overflow-wrap: anywhere; }
 .intake-confirmation { display: flex; gap: var(--space-2); align-items: start; }
 .intake-confirmation input { flex: 0 0 auto; width: auto; margin-top: 0.4em; }
+.intake-confirmation span { min-width: 0; overflow-wrap: anywhere; }
 .intake-provenance, .intake-legacy { margin-block: var(--space-3); }
 .intake-provenance p { overflow-wrap: anywhere; }
 .intake-legacy > summary { cursor: pointer; color: var(--color-muted); }

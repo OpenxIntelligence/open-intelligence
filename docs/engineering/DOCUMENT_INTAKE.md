@@ -30,6 +30,14 @@ clinical/Composer convergence work; its store changes must be reconciled by
 the source owner when this feature is incorporated. Do not replace that branch's
 canonical identity/adapter transaction with this reference store wholesale.
 
+Concurrent work discovered before publication: #166 and #167 already add
+empty-case entry and file choosers for the existing custom structured-report
+contract; #171 extends #166 with records-to-obtain tracking. This feature adds
+the ordinary-text/manual-transcription source contract those paths do not
+support. Reuse the selected connected-entry owner when consolidating the UI;
+do not adopt two launchers, case creators or source ledgers. #172 connects the
+existing PostgreSQL patient registry to H1 and remains separately owned.
+
 The accepted H1 working target remains Python/FastAPI/Pydantic/SQLAlchemy/
 Alembic/PostgreSQL and React/Vite/TypeScript. This dependency-free ingestion
 contract and behavioral tests can move with that migration; this change does
@@ -95,6 +103,13 @@ Local Chromium is unavailable. `tests/document_intake_browser_journey.py` is the
 hosted acceptance gate, including real file input, source modal, export,
 amendment, case isolation, accessibility labels and a narrow viewport. Its
 execution result must be recorded separately on the exact feature commit.
+
+First hosted attempt at `98d7ea1c6068a806d428840a035d827777b24d97`
+([run 41549856886](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41549856886))
+passed the Python, offline and JavaScript checks, then exposed 14 px of intake
+panel overflow at a 390 px viewport. The layout correction constrains fieldset
+and native control widths; the strict browser assertion remains. Subsequent
+exact-head browser results must establish the corrected workflow.
 
 ### API
 

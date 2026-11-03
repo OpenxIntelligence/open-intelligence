@@ -161,7 +161,11 @@ def assert_mobile_intake(session: ChromeSession) -> None:
         const rect = element.getBoundingClientRect();
         return rect.width > 0 && (rect.right > viewport + 1 || rect.left < -1);
       }).map(element => element.id || element.tagName).slice(0, 12);
-      return {client: panel.clientWidth, scroll: panel.scrollWidth, outliers};
+      const overflowing = [...panel.querySelectorAll('*')].filter(element =>
+        element.getClientRects().length && element.scrollWidth > element.clientWidth + 1
+      ).map(element => ({id: element.id || element.tagName,
+        client: element.clientWidth, scroll: element.scrollWidth})).slice(0, 12);
+      return {client: panel.clientWidth, scroll: panel.scrollWidth, outliers, overflowing};
     })()""")
     assert bounds["scroll"] <= bounds["client"] + 1 and not bounds["outliers"], (
         "New intake panel overflows the 390px viewport: " + json.dumps(bounds))
