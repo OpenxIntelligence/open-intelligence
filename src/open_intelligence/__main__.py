@@ -14,6 +14,7 @@ from urllib.parse import parse_qs, urlsplit
 from tools.crossref_metadata import MetadataInputError, fetch_public_doi, project_work
 
 from .changes import changes_since_review
+from .followthrough import followthrough_view
 from .investigation import (
     TEMPLATES,
     InvestigationError,
@@ -264,6 +265,9 @@ class Handler(BaseHTTPRequestHandler):
             timeline = re.fullmatch(rf"/api/cases/{ID_PART}/timeline", path)
             if timeline:
                 return self._json(200, case_timeline(store, timeline[1]))
+            followthrough = re.fullmatch(rf"/api/cases/{ID_PART}/followthrough", path)
+            if followthrough:
+                return self._json(200, followthrough_view(store, followthrough[1]))
             review_queue = re.fullmatch(rf"/api/cases/{ID_PART}/review-queue", path)
             if review_queue:
                 return self._json(200, store.review_queue(review_queue[1]))
@@ -385,6 +389,27 @@ class Handler(BaseHTTPRequestHandler):
                         owner = None
                     return self._json(201, {"question_id": store.add_question(
                         questions[1], data.get("question"), owner)})
+                followthrough_create = re.fullmatch(rf"/api/cases/{ID_PART}/followthrough-tasks", path)
+                if followthrough_create:
+                    task_id = store.create_followthrough_task(
+                        followthrough_create[1], data.get("title"),
+                        detail=data.get("detail"), due_date=data.get("due_date"),
+                        review_trigger=data.get("review_trigger"),
+                        question_id=data.get("question_id"),
+                        source_version_id=data.get("source_version_id"),
+                        actor_label=data.get("actor_label"), reason=data.get("reason"))
+                    return self._json(201, {"task_id": task_id})
+                followthrough_status = re.fullmatch(
+                    rf"/api/cases/{ID_PART}/followthrough-tasks/([0-9]+)/status", path)
+                if followthrough_status:
+                    kwargs: dict = {}
+                    if "due_date" in data:
+                        kwargs["due_date"] = data.get("due_date")
+                    return self._json(200, store.update_followthrough_task(
+                        followthrough_status[1], int(followthrough_status[2]),
+                        data.get("status"), actor_label=data.get("actor_label"),
+                        reason=data.get("reason"), owner_label=data.get("owner_label"),
+                        **kwargs))
                 question_owner = re.fullmatch(rf"/api/cases/{ID_PART}/questions/([0-9]+)/owner", path)
                 if question_owner:
                     history_id = store.assign_question_owner(

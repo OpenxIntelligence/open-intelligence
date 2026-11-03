@@ -164,6 +164,41 @@ Remaining proof step: a live-server run against the real API with
 the operator key set, before the demo. The API completion itself
 was verified separately on 2026-10-31.
 
+## Follow-through tasks (case records for humans)
+
+Each case can carry follow-through tasks: what was agreed, who owns it,
+and when to revisit it (a due date, a review trigger, or both). Tasks are
+records only — creating or changing one performs no action and touches no
+other ledger (sources, assertions, questions, snapshots, evidence, options).
+
+- Lifecycle: `created → assigned → acknowledged → completed`, with
+  `deferred` as a labeled side state that reopens only through a fresh
+  assignment. Completion requires a prior recorded acknowledgment, so the
+  platform never claims an action was taken without one.
+- Every status change appends a history row (actor, timestamp, reason);
+  history rows are never updated or deleted, and completed tasks stay
+  readable as history. Assignment names a human owner; deferral requires
+  a reason.
+- Overdue (past due, still open) and due-soon (due within 7 days) flags
+  are derived read-only in the case view; completed and deferred tasks
+  are never overdue. A task anchored to a superseded source version is
+  flagged for re-check without changing its history.
+- Task text passes a narrow guard rejecting recommendation, order,
+  eligibility, diagnosis, and dosing language; every view carries a
+  disclaimer that these are fictional records for humans to act on.
+
+```text
+GET  /api/cases/{CASE-ID}/followthrough
+POST /api/cases/{CASE-ID}/followthrough-tasks
+POST /api/cases/{CASE-ID}/followthrough-tasks/{N}/status
+```
+
+The case view (`GET /api/cases/{CASE-ID}/state`) embeds the same
+projection under `followthrough`, and the workspace renders a
+Follow-through panel with a visible overdue/due-soon attention box plus
+separate open, deferred, and completed-history lists. See
+`tests/test_followthrough.py` for the lifecycle, history-preservation,
+overdue-derivation, amendment-flag, and no-auto-execution checks.
 ## Patient goals and lived experience (fictional patient words)
 
 The case workspace includes a **Patient goals** panel for goals the
