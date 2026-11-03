@@ -17,8 +17,10 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from open_intelligence.__main__ import Handler, seed
+from open_intelligence.store import CaseStore
 from open_intelligence.investigation import (
     InvestigationError,
+    ValidatedInvestigation,
     build_prompt,
     call_meta_api,
     validate_output,
@@ -81,6 +83,87 @@ class ValidationTests(unittest.TestCase):
             payload = call_meta_api("test prompt", "test-key-not-real")
         self.assertEqual(len(payload["claims"]), 1)
         self.assertEqual(payload["claims"][0]["text"], claim()["text"])
+
+
+class InvestigationFreshnessTests(unittest.TestCase):
+    def setUp(self):
+        self.store = CaseStore(":memory:")
+        self.store.add_case("CASE-ALPHA", "Fictional case Alpha")
+        synthetic = Path(__file__).resolve().parents[1] / "examples" / "synthetic"
+        self.synthetic = synthetic
+        self.pathology_source = self.store.import_report(
+            "CASE-ALPHA", (synthetic / "alpha-pathology-original.txt").read_bytes())["source_id"]
+        self.imaging_source = self.store.import_report(
+            "CASE-ALPHA", (synthetic / "alpha-imaging.txt").read_bytes())["source_id"]
+
+    def tearDown(self):
+        self.store.close()
+
+    def _save(self, text, source_id):
+        question_id = self.store.add_question("CASE-ALPHA", text)
+        validated = ValidatedInvestigation(
+            status="completed", claims=[claim(source_id=source_id)], abstentions=[], dropped=[],
+            model="recorded-replay", mode="replay")
+        investigation_id = self.store.save_investigation(
+            "CASE-ALPHA", question_id, "evidence-summary", validated, "replay")
+        return question_id, investigation_id
+
+    def test_amendment_stales_citing_investigation_without_snapshot_only(self):
+        path_question, path_investigation = self._save(
+            "What does the fictional pathology source report?", self.pathology_source)
+        image_question, image_investigation = self._save(
+            "What does the fictional imaging source report?", self.imaging_source)
+
+        # Neither question has a human snapshot. Freshness must therefore be
+        # driven by the investigation's own durable source citations.
+        self.store.import_report(
+            "CASE-ALPHA", (self.synthetic / "alpha-pathology-amended.txt").read_bytes())
+
+        investigations = {row["id"]: row for row in self.store.list_investigations("CASE-ALPHA")}
+        self.assertEqual(investigations[path_investigation]["stale"], 1)
+        self.assertEqual(investigations[image_investigation]["stale"], 0)
+        questions = {row["id"]: row for row in self.store.state("CASE-ALPHA")["questions"]}
+        self.assertEqual(questions[path_question]["state"], "open")
+        self.assertEqual(questions[image_question]["state"], "addressed")
+
+        # Historical output stays inspectable and pinned to its original source.
+        saved = self.store.get_investigation("CASE-ALPHA", path_investigation)
+        self.assertEqual(saved["claims"][0]["citations"],
+                         [{"type": "source", "id": self.pathology_source}])
+        sources = {row["id"]: row for row in self.store.state("CASE-ALPHA")["sources"]}
+        self.assertEqual(sources[self.pathology_source]["state"], "superseded")
+
+    def test_duplicate_amendment_does_not_change_freshness_again(self):
+        _, investigation_id = self._save(
+            "What does the fictional pathology source report?", self.pathology_source)
+        amended = (self.synthetic / "alpha-pathology-amended.txt").read_bytes()
+        self.store.import_report("CASE-ALPHA", amended)
+        events_before = list(self.store.state("CASE-ALPHA")["events"])
+
+        duplicate = self.store.import_report("CASE-ALPHA", amended)
+
+        self.assertEqual(duplicate["result"], "duplicate")
+        self.assertEqual(self.store.get_investigation("CASE-ALPHA", investigation_id)["stale"], 1)
+        self.assertEqual(self.store.state("CASE-ALPHA")["events"], events_before)
+
+    def test_amendment_never_stales_another_case_investigation(self):
+        self.store.add_case("CASE-BETA", "Fictional case Beta")
+        beta_source = self.store.import_report(
+            "CASE-BETA", (self.synthetic / "beta-pathology.txt").read_bytes())["source_id"]
+        beta_question = self.store.add_question(
+            "CASE-BETA", "What does the fictional beta source report?")
+        validated = ValidatedInvestigation(
+            status="completed", claims=[claim(source_id=beta_source)], abstentions=[], dropped=[],
+            model="recorded-replay", mode="replay")
+        beta_investigation = self.store.save_investigation(
+            "CASE-BETA", beta_question, "evidence-summary", validated, "replay")
+
+        self.store.import_report(
+            "CASE-ALPHA", (self.synthetic / "alpha-pathology-amended.txt").read_bytes())
+
+        self.assertEqual(self.store.get_investigation("CASE-BETA", beta_investigation)["stale"], 0)
+        beta_questions = {row["id"]: row for row in self.store.state("CASE-BETA")["questions"]}
+        self.assertEqual(beta_questions[beta_question]["state"], "addressed")
 
 
 class HttpInvestigationTests(unittest.TestCase):
