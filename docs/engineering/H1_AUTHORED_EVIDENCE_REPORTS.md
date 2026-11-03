@@ -398,3 +398,82 @@ sandbox/flags, timeouts, steps and assertions remain unchanged. Logs discarded
 Chrome's startup stderr, so the precise browser-exit or timing cause on the newer
 26.04 image is not established. This does not claim to qualify that image.
 Exact-head results for the pinned runner and both H1 gates are recorded in #300.
+
+### Restored HTTP continuation — draft #302
+
+The earlier logical-only recovery boundary above remains the historical result
+for #300. [Draft child #302](https://github.com/OpenxIntelligence/open-intelligence/pull/302)
+extends the existing `verify_evidence_compose.py` probe against the identical
+application and schema. It recreates the actual API against disposable restored
+copies, preserving the existing container configuration and credential mount.
+
+The added acceptance covers four separately restored states:
+
+1. Readable originals/report: exact Unicode original text, immutable report body,
+   source snapshot and digests, and the original assessment/report retry IDs.
+2. Content-class restriction before withdrawal: latest API-output original stays
+   readable, while earlier abstract originals/reports remain withheld. This
+   isolates rights enforcement from withdrawal.
+3. Withdrawn evidence and amended patient source: the latest previously readable
+   original is denied, withdrawn packet content is null, historical reports are
+   withheld, exact retries recover IDs, and new stale assessments are rejected.
+4. Persisted revoked binding: revoke through the restored API, dump that database,
+   restore again, then deny reads and exact retries without durable effects.
+
+Each recreated API checks `current_database()` through its existing settings and
+engine factory. Positive reads must produce fresh returned access receipts only
+in the restored database. Complete original-database rows and sequences remain
+unchanged; restored immutable records, earlier events and non-access sequences
+remain unchanged during reads/retries. This prevents a successful request to the
+original database from being misreported as recovery acceptance.
+
+Independent review identified withdrawal being masked by a prior rights change
+and denial-only checks failing to establish the final database target. Both were
+addressed in one verification-only follow-up; business-sequence comparison was
+also tightened. No application, schema, migration, dependency, UI or permission
+change. Local gate sanity accepted the valid comparison and rejected five
+false-success mutations plus a mismatched API database target. These checks test
+the verification harness; they do not substitute for PostgreSQL/HTTP execution.
+
+Local verification: 250 reference tests passed; 64 API tests executed successfully
+and 283 database-dependent cases skipped. Compilation, whitespace and the existing
+patient-data boundary guard passed. Docker is unavailable in the local executor.
+Hosted acceptance at **`c89b22df38a0ede3fff12ee65adb9c9ef1e347cc`**, tree
+`b463dfd844f22869d5e727c7e1f0da346217de08`, completed successfully:
+
+- [API/PostgreSQL run 41653217105](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41653217105):
+  **347 API/database tests**, no failures/errors/skips (369.103 seconds); **250
+  reference tests** (10.016 seconds); inherited browser journeys and all four
+  Compose verification scripts passed. The evidence script additionally served
+  all four restored checkpoints through actual HTTP. Checkout identity was
+  explicitly verified in the log.
+- [React/browser run 41653217136](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41653217136):
+  **206 client tests**, no failures/skips, production build and actual
+  PostgreSQL/FastAPI/built-React browser journey passed.
+- Recovery artifact **13239876605**, SHA-256
+  `d16510300894238882d8b30360d662cf67a5beab7fc70c973cdc3aaa334bc2e8`,
+  was downloaded and checksum-verified. Its `oi.h1-evidence-recovery-acceptance/2`
+  receipt confirms original-database preservation, actual target verification,
+  exact retry identity, non-access sequence preservation, independently causal
+  rights/withdrawal checks and restored revoked-binding denial. Readable,
+  rights-only and withdrawn checkpoints produced **6, 3 and 10** fresh access
+  events respectively, only in their restored copies. The unchanged original
+  retained four evidence versions, three assessments, two reports, ten command
+  receipts, five origins, 59 events, thirteen tables and four sequence states.
+- Browser artifact **13238851838**, SHA-256
+  `4a030fb39556435f0ea75229eabb1e6663a60287c0182e76d308c45609db30b9`,
+  was downloaded and checksum-verified. Its recorded commit and **all 353 source
+  files** match the exact local committed candidate. No visual redesign occurred.
+
+Both artifacts expire on 10 November 2026; the executable assertions and this
+receipt remain in Git. The first pre-review candidate was superseded; final
+acceptance belongs only to the revision above. Repeated suites are not additive
+clinical cases. The later documentation-only receipt does not alter the tested
+script, application, schema or dependencies.
+
+This closes #300's specifically recorded restored-evidence-HTTP verification gap.
+It does not complete convergence with the separately owned metadata catalog,
+follow-through, clinical domains or PDF/annotation workflows. Production identity,
+consent, least-privilege operational recovery, independent clinical evaluation,
+merge and deployment remain separate gates. Only independently authored fictional
+inputs were used.

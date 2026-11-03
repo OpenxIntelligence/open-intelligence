@@ -28,6 +28,9 @@ SQL equality alone is the existing baseline. Add actual restored HTTP, using a t
 ## Progress
 
 - [x] Inspected attachment, current Notion/Drive records, published #300 and local identical tree `39b897a67da9a212e466c9ff7caf6241a219c980`.
-- [ ] Extend verification and execute local checks.
-- [ ] Independent review; publish a bounded child draft; execute hosted acceptance.
-- [ ] Record results in existing project documentation.
+- [x] Extend verification and execute local checks: compilation, whitespace, patient-data guard; 250 reference tests; 64 local API passes and 283 explicitly skipped DB cases.
+- [x] Independent review and bounded child draft #302 published; withdrawal/rights masking and denial-only database-target gaps addressed.
+- [x] Hosted PostgreSQL/HTTP acceptance passed at c89b22df38a0ede3fff12ee65adb9c9ef1e347cc: 347 API/database, 250 reference, all recovery probes; 206 client tests and real browser workflow. Runs 41653217105 and 41653217136; both downloaded artifact digests verified, all 353 browser source files matched.
+- [x] Record results in the existing engineering contract and OI-013 backlog; update existing Notion Engineering 12 and Google Docs Engineering Progress. The Drive append was verified by readback.
+
+Review disposition: both Important findings addressed. Non-access sequence comparison was also tightened because the stated exact-retry acceptance requires no business-sequence side effect. Local verification-gate mutation checks reject five false-success comparisons and a mismatched target. Production recovery qualification and clinical correctness remain outside this test-only scope; Docker execution is judged only from hosted evidence.
