@@ -107,6 +107,11 @@ def main() -> None:
             assert tab_from_picker() == 'visible', 'care team: Tab leaves the case picker for a visible control'
             # Only pills repeating the global fictional-data banner are hidden.
             assert not visible('#incoming-board .panel-head .pill-warn'), 'duplicate FICTIONAL DEMO pill hidden'
+            assert cd.evaluate("document.querySelector('#incoming-board .panel-head .pill-warn').classList.contains('view-dup-banner')"), \
+                'board duplicate pill marked even though the board starts collapsed'
+            cd.evaluate("document.querySelector('.top .brand').click()")
+            cd.wait("!document.querySelector('#view-board').hidden", 'header logo returns to the Worklist')
+            cd.evaluate("document.querySelector('#view-nav a[data-tab=overview]').click()")
             assert cd.evaluate("[...document.querySelectorAll('#options .panel-head .pill-warn')].some(p => p.textContent.includes('DISCUSSION ONLY') && getComputedStyle(p).display !== 'none')"), \
                 'DISCUSSION ONLY boundary label stays visible'
             assert 'treatment recommendations' in cd.evaluate("document.querySelector('.main > footer').innerText"), 'footer keeps the boundary statement'
@@ -129,6 +134,18 @@ def main() -> None:
             # Origin labels: a recorded replay is never presented as a live AI run.
             cd.wait("document.querySelector('#model-investigation-list .view-origin')?.textContent === 'Recorded replay · not a live AI run' && "
                     "(document.querySelector('#snapshot-list .view-origin')?.textContent || '').startsWith('Draft from a recorded replay')", 'honest origin labels')
+            # Origin comes from recorded data, not from words inside a hand-written draft.
+            state = json.load(urlopen(url + 'api/cases/CASE-ALPHA/state', timeout=5))
+            q1 = next(q for q in state['questions'] if q['state'] == 'open')
+            current = [s['id'] for s in state['sources'] if s['state'] == 'current']
+            req = Request(url + 'api/cases/CASE-ALPHA/snapshots', headers={'Content-Type': 'application/json'},
+                          data=json.dumps({'question_id': q1['id'], 'source_ids': current,
+                                           'summary': 'Hand-written note quoting the words Model-assisted and recorded-replay.'}).encode())
+            with urlopen(req, timeout=5) as response:
+                manual_id = json.load(response)['snapshot_id']
+            cd.evaluate('refresh()')
+            cd.wait(f"(document.querySelector('#snapshot-{manual_id} .view-origin')?.textContent || '') === 'Hand-written draft · unreviewed'",
+                    'hand-written draft labelled from its recorded origin')
 
             # Side-by-side demo mode: a patient window with ?live=1 stays open while the
             # corrected report arrives elsewhere through the existing import API.

@@ -147,9 +147,18 @@
   // looks for '.rail nav a[href="#overview"]' and must not find a hidden copy.
   parking.append(oldMenu);
   // Hide only header pills that repeat the global "FICTIONAL DEMO" banner;
-  // other boundary labels (e.g. "DISCUSSION ONLY") stay visible.
-  for (const pill of document.querySelectorAll('.panel-head .pill-warn'))
-    if (/FICTIONAL DEMO/i.test(pill.textContent)) pill.classList.add('view-dup-banner');
+  // other boundary labels (e.g. "DISCUSSION ONLY") stay visible. Runs after
+  // every arrange(), when every block (panels or parking) is in the document.
+  const markDuplicateBanners = () => {
+    for (const pill of document.querySelectorAll('.panel-head .pill-warn'))
+      if (/FICTIONAL DEMO/i.test(pill.textContent)) pill.classList.add('view-dup-banner');
+  };
+  // The header logo links to #overview, which may be parked; treat it as "home".
+  document.querySelector('.top .brand')?.addEventListener('click', event => {
+    event.preventDefault();
+    show(defaultTab());
+    scrollTo(0, 0);
+  });
   const roleBox = make('div', null, 'view-role');
   const roleGroup = make('div', null, 'view-role-group');
   roleGroup.setAttribute('role', 'group');
@@ -188,6 +197,7 @@
     }
     for (const [id, block] of Object.entries(blocks)) if (!placed.has(id)) parking.append(block);
     panels.replaceChildren(...built);
+    markDuplicateBanners();
     nav.replaceChildren();
     for (const [key, label, ids] of LAYOUT[layoutRole]) {
       const link = make('a', null, key === 'board' ? 'view-nav-board' : '');
@@ -626,23 +636,46 @@
     if (tag.textContent !== text) tag.textContent = text;
     if (tag.dataset.origin !== origin) tag.dataset.origin = origin;
   }
+  // Origin comes from recorded data, never from a draft's (user-written) text:
+  // a saved draft's investigation_origin is null when written by hand and holds
+  // the run's mode/model otherwise; model runs carry their own mode/model.
+  let runs = {key: null, byId: new Map()};
+  let runsSequence = 0;
+  async function loadRuns(state) {
+    const count = document.querySelectorAll('#model-investigation-list .snapshot').length;
+    const key = state.case.case_id + ':' + count;
+    if (runs.key === key || !count) return;
+    const sequence = ++runsSequence;
+    try {
+      const data = await api('/api/cases/' + encodeURIComponent(state.case.case_id) + '/investigations');
+      if (sequence !== runsSequence || state.case.case_id !== caseId) return;
+      runs = {key, byId: new Map((data.investigations || []).map(run => [Number(run.id), run]))};
+      paintOrigins(ready());
+    } catch (_) { /* Labels stay absent rather than guessed. */ }
+  }
   function paintOrigins(state) {
+    if (!state) return;
+    loadRuns(state);
     for (const item of document.querySelectorAll('#model-investigation-list .snapshot')) {
-      const replay = /recorded-replay/.test(item.textContent);
-      setOrigin(item, replay ? 'Recorded replay · not a live AI run' : 'AI draft · Meta Muse Spark · unreviewed', replay ? 'replay' : 'ai');
+      // The heading is rendered by the owner's code from the run id, not from model text.
+      const match = /^Model investigation #(\d+)$/.exec(item.querySelector('.topline strong')?.textContent || '');
+      const run = match && runs.byId.get(Number(match[1]));
+      if (!run) continue;
+      setOrigin(item, run.mode === 'replay' ? 'Recorded replay · not a live AI run' : 'AI draft · ' + run.model + ' · unreviewed',
+        run.mode === 'replay' ? 'replay' : 'ai');
     }
     for (const item of document.querySelectorAll('#snapshot-list .snapshot')) {
-      const match = /Investigation #(\d+)/.exec(item.textContent);
-      const snapshot = state && match && state.snapshots.find(s => Number(s.id) === Number(match[1]));
+      const match = /^snapshot-(\d+)$/.exec(item.id);
+      const snapshot = match && state.snapshots.find(s => Number(s.id) === Number(match[1]));
       if (!snapshot) continue;
-      const modelBased = /Model-assisted/.test(item.textContent);
-      const replay = /recorded-replay/.test(item.textContent);
-      const basis = !modelBased ? 'Hand-written draft' : replay ? 'Draft from a recorded replay' : 'AI-assisted draft (Meta Muse Spark)';
-      const [text, origin] = snapshot.state === 'stale' ? ['Out of date · a source changed · kept in history', 'stale']
-        : snapshot.state === 'draft' ? [basis + ' · unreviewed', modelBased && !replay ? 'ai' : 'replay']
+      const origin = snapshot.investigation_origin;
+      const replay = !!origin && origin.mode === 'replay';
+      const basis = !origin ? 'Hand-written draft' : replay ? 'Draft from a recorded replay' : 'AI-assisted draft (' + (origin.model || 'model') + ')';
+      const [text, kind] = snapshot.state === 'stale' ? ['Out of date · a source changed · kept in history', 'stale']
+        : snapshot.state === 'draft' ? [basis + ' · unreviewed', origin && !replay ? 'ai' : 'replay']
         : snapshot.state === 'reviewed_in_demo' ? ['Demo acknowledgment · not a clinical review', 'demo']
         : [String(snapshot.state).replace(/_/g, ' '), 'replay'];
-      setOrigin(item, text, origin);
+      setOrigin(item, text, kind);
     }
   }
 
