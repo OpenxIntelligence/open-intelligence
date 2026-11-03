@@ -29,7 +29,7 @@ function App(){
   <aside className="rail" aria-label="Workspace navigation">
    <div className="brand"><span className="mark" aria-hidden="true">oi</span><span>Open<br/>Intelligence</span></div>
    <div className="environment">Development · fictional identities only</div>
-   <nav aria-label="Patient workspace">{['Overview','Records','Investigations',...unavailable.map(s=>s[0])].map(name=><button type="button" key={name} data-testid={name==='Records'?'records-nav':name==='Investigations'?'world-nav':undefined} aria-current={name===section?'page':undefined} onClick={()=>setSection(name)}><span>{name}</span>{name!=='Overview'&&<span className="nav-hint">{name==='Records'?'Authorized reads':name==='Investigations'?'Source-only view':'Not connected'}</span>}</button>)}</nav>
+   <nav aria-label="Patient workspace">{['Overview','Records','Investigations',...unavailable.map(s=>s[0])].map(name=><button type="button" key={name} data-testid={name==='Records'?'records-nav':name==='Investigations'?'world-nav':undefined} aria-current={name===section?'page':undefined} onClick={()=>{session.clearWorldModel();setSection(name)}}><span>{name}</span>{name!=='Overview'&&<span className="nav-hint">{name==='Records'?'Authorized reads':name==='Investigations'?'Source-only view':'Not connected'}</span>}</button>)}</nav>
    <div className="rail-note">One patient context.<br/>Original sources.<br/>Human clinical authority.</div>
   </aside>
   <div className="body"><header className="topbar"><span>Patient workspace <span className="muted">/ {section}</span></span><span className={'connection '+readiness} data-testid="readiness">{readiness==='checking'?'Checking API':readiness==='ready'?'PostgreSQL API ready':'API unavailable'}</span></header>
