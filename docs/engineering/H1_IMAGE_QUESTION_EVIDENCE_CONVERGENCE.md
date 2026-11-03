@@ -93,3 +93,66 @@ separate first-party clinical EHR/LIS ports. They require their own explicit
 semantic and persistence convergence. The complete patient-centered healthcare
 and biomedical platform remains the destination. This candidate is draft,
 unmerged and undeployed.
+
+## Hosted acceptance completed — 3 November 2026
+
+The interrupted acceptance was reconciled against GitHub's completed jobs and
+decoded logs. These results apply to runtime commit
+`895561f6ca7e1271e8401604c77c95635c28274f` (tree
+`1df1532f23891a8e9f2af42de579fd3375512552`). Both workflows checked out that
+exact proposed source head.
+
+| Gate | Observed result |
+| --- | --- |
+| [API/PostgreSQL job 125997113982](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41659051682/job/125997113982) | 464 API/contract/PostgreSQL tests passed in 476.692 seconds; zero skips. |
+| Reference suite in the same job | 282 tests passed in 12.379 seconds; zero skips. Original loopback browser journeys passed. |
+| Five Compose recovery probes in the same job | Patient, source, combined image/question/return/task/citation, review, and follow-through/evidence all passed. |
+| [React/browser job 125997112174](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41659051340/job/125997112174) | 219 client tests passed; zero failures, cancellations or skips. TypeScript/Vite production build and actual React/FastAPI/PostgreSQL Chromium journey passed. |
+
+The combined recovery gate completed at 10:10:31 America/New_York on
+3 November 2026 (15:10:31 UTC in the log). The actual API reopened both generations
+of canonical questions, immutable verification returns, tasks, citations and exact
+DICOM originals from a restored database. Exact retries preserved their IDs;
+revoked metadata title/URL fields remained redacted. New receipts existed only in
+the restored copy, the original database remained unchanged, and the separately
+restored revoked binding continued to deny access. The remaining review and
+follow-through/evidence probes also completed successfully. These are software
+execution counts and fictional recovery scenarios, not clinical validation.
+
+The browser workflow exercises the inherited question, source quotation/brief,
+return, task and citation workspace, including uncertain-response recovery,
+amendment reassessment, independent permissions and case-switch isolation. Image
+custody is verified by HTTP/PostgreSQL and recovery acceptance; there is no image
+viewer in this increment.
+
+GitHub's [browser artifact 13241720289](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41659051340/artifacts/13241720289)
+reports SHA-256
+`363e84b5a0b63c6aaa54426c23dffdc6563d594eaca4ec1a1264c4b60219f1bc`,
+matching the upload log, and expires on 10 November 2026. The earlier execution
+handoff reports comparison of all 391 archived source files and inspection of
+desktop/narrow screenshots, plus independent review with no material defect.
+Those prior checks are retained as handoff evidence: the resumed session checked
+hosted logs and metadata, and did not repeat the archive comparison, visual
+inspection or independent review. Its local execution environment was
+unavailable. No test suite is claimed to have been rerun during this closeout.
+
+This receipt is a documentation-only continuation of the tested runtime.
+Previously recorded local PostgreSQL skips remain skips; hosted results above
+supply the actual database acceptance.
+
+### Subsequent integration ownership
+
+Current open draft heads were rechecked during closeout:
+
+| Owner | Current head | Separate responsibility |
+| --- | --- | --- |
+| [#312](https://github.com/OpenxIntelligence/open-intelligence/pull/312) | `9cd218210099c69d04b023ef77f9051a32206fc4` | Archive-backed image disclosure and restored-API acceptance |
+| [#307](https://github.com/OpenxIntelligence/open-intelligence/pull/307) | `c35219dc5eb244874a7df6e9bf00cfbfda18251f` | Authored evidence/report/follow-through convergence; runtime receipt pins `477f24826a8a102c7437c993d69877c1f250b951` |
+| [#311](https://github.com/OpenxIntelligence/open-intelligence/pull/311) | `8f7ad6a80dcb5312bc63480339d9142376883a4a` | Citation-history timestamp correction |
+
+The existing engineering records recommend reconciling #312 into #313, then
+converging with #307 while preserving #311's correction and the separately owned
+source-reading work. This is the next integration boundary, not completed
+capability in #313. It needs fresh combined migration, authority, retry and
+restored-HTTP acceptance. Existing OI-006/007/008/009/010/013 remain partially
+covered rather than closed. Draft, unmerged and undeployed; fictional inputs only.
