@@ -108,6 +108,45 @@ class QuestionEvidencePureTests(unittest.TestCase):
         self.assertNotIn("metadata/store: allowed", body)
         self.assertIn("metadata/store: allowed", render_evidence_report(snapshot()))
 
+    def test_report_rejects_invalid_or_noncanonical_evidence_issue_dates(self):
+        for issued in ("2026-02-30", "2025-02-29", "2026-1-10", "20260110",
+                       "2026-W02-6", "2026-01-10T00:00:00Z",
+                       "2026-01-10\nUNVERIFIED EXTRA REPORT LINE"):
+            value = snapshot()
+            value["comparisons"][0]["evidence"]["issued_at"] = issued
+            for renderer in ("oi.h1-evidence-text/1", "oi.h1-evidence-text/2"):
+                with self.subTest(issued=issued, renderer=renderer), self.assertRaises(PatientRegistryError):
+                    render_evidence_report(value, renderer=renderer)
+
+    def test_report_rejects_nonwire_timestamps_before_rendering(self):
+        paths = (("prepared_at",), ("question", "created_at"),
+                 ("comparisons", 0, "evidence", "created_at"),
+                 ("comparisons", 0, "assessment", "created_at"))
+        for timestamp in ("2026-11-03\n00:00:00+00:00", "2026-11-03\t00:00:00+00:00",
+                          "2026-11-03\u202e00:00:00+00:00", "2026-11-03 00:00:00+00:00",
+                          "20261103T000000+0000", "2026-11-03T00:00:00"):
+            for path in paths:
+                value = snapshot()
+                target = value
+                for key in path[:-1]:
+                    target = target[key]
+                target[path[-1]] = timestamp
+                with self.subTest(timestamp=timestamp, path=path), self.assertRaises(PatientRegistryError):
+                    render_evidence_report(value)
+
+    def test_valid_dates_and_timezone_strings_are_preserved_without_normalization(self):
+        for issued in ("2000-02-29", "2024-02-29", "2026-01-10"):
+            for timestamp in ("2026-11-03T00:00:00Z", "2026-11-03T05:30:00.123456+05:30",
+                              "2026-11-02T19:00:00-05:00", "2026-11-03T00:00+00:00"):
+                value = snapshot()
+                value["prepared_at"] = timestamp
+                value["comparisons"][0]["evidence"]["issued_at"] = issued
+                before = deepcopy(value)
+                body = render_evidence_report(value)
+                self.assertIn(f"Prepared: {timestamp} |", body)
+                self.assertIn(f" | Issued: {issued}\n", body)
+                self.assertEqual(value, before)
+
     def test_exact_command_recovery_accepts_pg8000_list_rows(self):
         registry = object.__new__(PostgresPatientRegistry)
         owner = PostgresQuestionEvidence(registry)
