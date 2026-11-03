@@ -25,6 +25,35 @@ caregiver delegation, consent, live model, biomedical retrieval or deployment is
 introduced. Source inputs are independently authored fictional reports. The backend remains responsible for authorization. An authorized
 request can complete after a later grant change; this UI is not a consent service.
 
+## Connected record acquisition
+
+The Records workspace now uses the existing PostgreSQL request owner to track a
+missing record, cancel internal tracking, and link an already imported original
+as received. This is an operational step, not a generated clinical conclusion.
+No provider is contacted. A received pointer is not clinical review or proof of
+external delivery. Source amendments retain the original receipt and display
+reassessment; revoked/withheld source references remain undisclosed.
+
+The same `RegistrySession` supplies its existing transient credential and exact
+patient context. `RecordAcquisition` retains only in-memory UI state and source
+references; it is not another patient/source/request ledger. The server retains
+all authority. Request-read, create, cancel, receive, source-read and original-read
+actions remain independent. No backend, schema or dependency change is made.
+
+Draft request text survives navigation within the current patient. A failed or
+unverifiable write retains its exact command/key for an explicit retry, never
+an automatic one. Pending/uncertain commands block patient rechecks/creation
+until resolved or explicitly disconnected. Source refresh clears cached receipt
+freshness without retargeting an uncertain received pointer. Disconnect/reload
+clears credentials and local intents; inspect durable history before starting
+another request after that boundary. A request count is not case completeness.
+
+The full browser journey includes the actual React → FastAPI → PostgreSQL create,
+cancel, original-receipt, amendment, source-disclosure and read-denial paths.
+Client tests exercise late responses, scoped reset, malformed receipts, and
+uncertain same-key recovery. Exact executed evidence belongs to the scoped draft
+PR; new full-stack acceptance is pending when these changes are authored.
+
 ## Development setup
 
 The backend instructions and exact Python dependency gate remain in

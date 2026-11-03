@@ -57,6 +57,30 @@ both FastAPI's typed serializer and explicit prepared JSON. See the
 Final exact-head API, recovery and built React/Chromium results are recorded in
 the draft PR's verification receipt; local PostgreSQL availability is not claimed.
 
+## H1 workspace connection
+
+A Records panel now connects the same existing patient-scoped request API to
+missing-record tracking, cancellation and an exact received-original pointer.
+The transient controller has no token, permission issuer or persistence layer:
+`RegistrySession` supplies its scoped credential transport and resets on
+patient/session changes. The UI preserves status and source disclosure separately,
+shows amended historical receipts without retargeting, and never marks receipt
+as clinical approval. Current compatible imported sources are selected explicitly.
+
+Create requests retain a stable request key after uncertain responses; cancel
+and receive retain their complete original command. Recovery does not replace
+an earlier source version with the latest source. Denied recovery leaves the
+original uncertain intent pending. Patient rechecks/creation cannot silently
+discard that state. Explicit disconnect/reload clears local-only intents and
+requires a durable history check. No automatic provider request or clinical
+communication is introduced.
+
+Only frontend source, focused client/browser tests, and these existing owner
+records change. The API's current authorization/transaction contracts remain
+unchanged: the final transaction-bound refresh described above applies to
+source import and receive, not a new claim about every list/create/cancel path.
+Production authority, independent review and deployment remain separate gates.
+
 ## Explicit limitations
 
 - The record request's institution/label is user-authored fictional input; it is **not independently authenticated as the source provider** or evidence that an external hospital was contacted.

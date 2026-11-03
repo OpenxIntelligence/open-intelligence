@@ -3,6 +3,7 @@ import {createRoot} from 'react-dom/client';
 import {RegistrySession} from './registry-client';
 import {SourceIntake} from './source-intake-view';
 import {WorldModelView} from './world-model-view';
+import {RecordAcquisitionPanel} from './record-acquisition-view';
 import {ReviewPanel} from './review-panel';
 import './styles.css';
 import './source-intake.css';
@@ -10,6 +11,7 @@ const session=new RegistrySession();
 const navigation=['Overview','Journey','Records','Investigations','Review'];
 function App(){
  const state=useSyncExternalStore(session.subscribe,session.snapshot);
+ const acquisition=useSyncExternalStore(session.acquisition.subscribe,session.acquisition.snapshot);
  const [token,setToken]=useState(''),[patientId,setPatientId]=useState(''),[confirmed,setConfirmed]=useState(false);
  const [requestKey,setRequestKey]=useState(()=>crypto.randomUUID());
  const [readiness,setReadiness]=useState<'checking'|'ready'|'unavailable'>('checking');
@@ -24,7 +26,7 @@ function App(){
  useEffect(()=>{if(state.created) setPatientId(state.created.patient_id)},[state.created]);
  useEffect(()=>{if(!state.connected){setPatientId('');setConfirmed(false)}},[state.connected]);
  useEffect(()=>{const clear=()=>session.disconnect();window.addEventListener('pagehide',clear);return()=>window.removeEventListener('pagehide',clear)},[]);
-  const busy=state.phase==='creating'||state.phase==='reading'||state.importOutcome==='sending'||state.questionSavePhase==='saving'||state.reviewReturnPhase==='saving';
+  const busy=state.phase==='creating'||state.phase==='reading'||state.importOutcome==='sending'||state.questionSavePhase==='saving'||state.reviewReturnPhase==='saving'||acquisition.writePhase==='sending';
  function disconnect(){session.disconnect();setToken('');setPatientId('');setConfirmed(false);setSection('Overview');}
  return <div className="app">
   <a className="skip" href="#main">Skip to workspace</a>
@@ -45,6 +47,7 @@ function App(){
      {!state.patient?<div data-testid="records-no-patient"><p>Open an authorized fictional patient in Overview before loading records.</p><button onClick={()=>setSection('Overview')}>Go to patient overview</button></div>:
      <div>
       <p className="record-scope" data-testid="records-patient"><strong>Selected patient:</strong> <code>{state.patient.patient_id}</code></p>
+      <RecordAcquisitionPanel key={state.patient.patient_id} session={session} state={state} busy={busy}/>
       <button className="primary" data-testid="load-cases" disabled={state.recordsPhase.startsWith('loading')||busy} onClick={()=>void session.loadCases()}>Check authorized cases</button>
       <p role="status" aria-live="polite" data-testid="records-status" className={'status '+(state.recordsPhase==='error'?'error':'')}>{state.recordMessage}</p>
       {state.importOutcome!=='idle'&&<p role="status" aria-live="polite" className="status" data-testid="import-receipt" data-outcome={state.importOutcome} data-result={state.importReceipt?.result??''}>{state.importMessage}</p>}

@@ -1,4 +1,5 @@
 /** Transient UI state over the canonical patient API; never an authority or ledger. */
+import {RecordAcquisition} from './record-acquisition.js';
 import {parseCaseBindingList, parseSourceIndex} from './source-contracts.js';
 import type {CaseBinding, SourceIndex} from './source-contracts.js';
 import {prepareSource,parseImportReceipt,verifyOriginal} from './source-intake.js';
@@ -108,6 +109,24 @@ export class RegistrySession {
   #questionKey=''; #questionFingerprint=''; #savingQuestion=false;
   #reviewRead=0; #reviewWrite=0; #reviewKey=''; #reviewIntent=''; #savingReview=false;
   #listeners=new Set<()=>void>(); #controllers=new Set<AbortController>(); #creating=false; #uploading=false;
+  readonly acquisition=new RecordAcquisition({
+    context:()=>({scope:this.#scope+':'+this.#read,patientId:this.#state.patient?.patient_id??null,
+      ready:!!this.#token&&this.#state.phase==='ready',sourceIndex:this.#state.sourceIndex,
+      cases:this.#state.cases,sourceBusy:this.#uploading||this.#state.recordsPhase.startsWith('loading')}),
+    send:(command,signal)=>{
+      if(!this.#token||this.#state.phase!=='ready'||this.#state.patient?.patient_id!==command.patientId)
+        return Promise.reject(Error('scope'));
+      const suffix=command.operation==='cancel'||command.operation==='receive'
+        ?'/'+encodeURIComponent(command.requestId!)+ '/'+command.operation:'';
+      return this.transport('/v1/patients/'+encodeURIComponent(command.patientId)+'/record-requests'+suffix,{
+        method:command.operation==='list'?'GET':'POST',
+        headers:{Authorization:'Bearer '+this.#token,'Content-Type':'application/json','Accept':'application/json'},
+        ...(command.body?{body:JSON.stringify(command.body)}:{}),
+        credentials:'omit',redirect:'error',cache:'no-store',signal,
+      });
+    },
+    expired:()=>this.#httpError(401),
+  });
   constructor(private readonly transport:Transport=(url,init)=>fetch(url,init)) {}
   snapshot=():ViewState=>this.#state;
   subscribe=(listener:()=>void):(()=>void)=>{this.#listeners.add(listener);return()=>this.#listeners.delete(listener);};
@@ -130,6 +149,7 @@ export class RegistrySession {
   }
   #resetWorld(){this.#publish({...emptyWorld(),...this.#resetInvestigation()});}
   disconnect=()=>{
+    this.acquisition.clear();
     this.#scope++;this.#read++;this.#records++;this.#token='';this.#creating=false;this.#uploading=false;
     this.#resetInvestigation();
     for(const c of this.#controllers)c.abort();this.#controllers.clear();
@@ -149,6 +169,10 @@ export class RegistrySession {
     else this.#publish({phase:'error',patient:null,message:messages[status] || 'Unexpected API response. No patient information is displayed.'});
   }
   async read(id:string):Promise<void>{
+    if(['sending','unknown'].includes(this.acquisition.snapshot().writePhase)){
+      this.#publish({message:'Resolve the pending record-tracking action before changing or rechecking the patient. Explicit disconnect clears this tab.'});return;
+    }
+    this.acquisition.clear();
     const scope=this.#scope, request=++this.#read;
     this.#records++;this.#publish({patient:null,...emptyRecords(),...this.#resetInvestigation()});
     if(!this.#token){this.#publish({message:'Connect an authorized synthetic credential first.'});return;}
@@ -167,9 +191,10 @@ export class RegistrySession {
     finally{clearTimeout(timeout);this.#controllers.delete(control);}
   }
   async create(requestKey:string,confirmed:boolean):Promise<void>{
-    if(this.#creating)return;
+    if(this.#creating||['sending','unknown'].includes(this.acquisition.snapshot().writePhase))return;
     if(!this.#token){this.#publish({message:'Connect an authorized synthetic credential first.'});return;}
     if(confirmed!==true || !boundedKey(requestKey)){this.#publish({phase:'error',message:'Confirm fictional identity creation and use a valid request key.'});return;}
+    this.acquisition.clear();
     // A new creation is a new selection intent; an older read cannot restore it.
     this.#read++;this.#records++;
     const scope=this.#scope,control=new AbortController();this.#controllers.add(control);this.#creating=true;
@@ -187,6 +212,7 @@ export class RegistrySession {
 
   /** Explicit, permission-checked metadata read; never create a second patient/case ledger. */
   async loadCases():Promise<void>{
+    this.acquisition.invalidate();
     const patientId=this.#state.patient?.patient_id;
     if(!this.#token || !patientId || this.#state.phase!=='ready'){
       this.#publish({...emptyRecords(),...this.#resetInvestigation(),recordsPhase:'error',recordMessage:'Open an authorized fictional patient in Overview first.',...emptyIntake()});
@@ -216,6 +242,7 @@ export class RegistrySession {
     }finally{clearTimeout(timeout);this.#controllers.delete(control);}
   }
   async loadSources(caseId:string):Promise<void>{
+    this.acquisition.invalidate();
     const patientId=this.#state.patient?.patient_id;
     if(!patientId || !this.#token || this.#state.phase!=='ready' ||
        !this.#state.cases?.some(item=>item.case_id===caseId && item.status==='active')){
@@ -663,7 +690,7 @@ export class RegistrySession {
   }
   /** Only the existing server decides import/duplicate/quarantine. No retry or inferred rollback. */
   async importSource(caseId:string,text:string,confirmed:boolean):Promise<void>{
-    if(this.#uploading)return;
+    if(this.#uploading||this.acquisition.snapshot().writePhase==='sending')return;
     const patientId=this.#state.patient?.patient_id;
     if(!this.#token||!patientId||this.#state.phase!=='ready'||this.#state.sourceIndex?.case_id!==caseId||
       !this.#state.cases?.some(c=>c.case_id===caseId&&c.status==='active')||confirmed!==true){
@@ -674,6 +701,7 @@ export class RegistrySession {
       if(new TextEncoder().encode(JSON.stringify({synthetic:true,original_text:text})).length>72000)throw Error('envelope');
     }
     catch(_){this.#publish({importOutcome:'rejected',importReceipt:null,importMessage:'Unsupported original source. Nothing was sent.'});return;}
+    this.acquisition.invalidate();
     const scope=this.#scope,read=this.#read,request=++this.#records;
     const current=()=>scope===this.#scope&&read===this.#read&&request===this.#records&&
       this.#state.patient?.patient_id===patientId&&this.#state.sourceIndex?.case_id===caseId;
