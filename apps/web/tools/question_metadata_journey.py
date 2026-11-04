@@ -18,11 +18,11 @@ CITATION = RECORD_ID + '@' + VERSION
 ACTIONS = {'evidence_read', 'evidence_link'}
 
 _OBSERVE = r"""() => {
-  if(window.__oiEvidenceChecks) throw Error('Evidence observer already installed');
+  if(window.__oiMetadataEvidenceChecks) throw Error('Evidence observer already installed');
   const actualFetch=window.fetch;
   const state={searches:[],reads:[],writes:[],dropNextWrite:false,
     holdNextSearch:false,held:false,released:0,release:null};
-  state.restore=()=>{state.release?.();window.fetch=actualFetch;delete window.__oiEvidenceChecks;};
+  state.restore=()=>{state.release?.();window.fetch=actualFetch;delete window.__oiMetadataEvidenceChecks;};
   window.fetch=async(input,init)=>{
     const path=new URL(input instanceof Request?input.url:input,location.href).pathname;
     const watched=/\/questions\/QUESTION-[0-9A-F]{32}\/(?:evidence-search|evidence-links)$/.test(path);
@@ -48,7 +48,7 @@ _OBSERVE = r"""() => {
     }else if(method==='GET')state.reads.push(observed);
     return response;
   };
-  window.__oiEvidenceChecks=state;
+  window.__oiMetadataEvidenceChecks=state;
   return true;
 }"""
 
@@ -62,9 +62,9 @@ def capture_failure(cd):
         info = cd.evaluate("({text:[...document.querySelectorAll('[data-testid=question-evidence-panel],"
                            "[data-testid=evidence-operation],[data-testid=evidence-recovery]')]"
                            ".map(e=>e.textContent).join(' ').slice(0,12000),"
-                           "writes:window.__oiEvidenceChecks?.writes.map(x=>({path:x.path,status:x.status})),"
-                           "reads:window.__oiEvidenceChecks?.reads.map(x=>({path:x.path,status:x.status})),"
-                           "searches:window.__oiEvidenceChecks?.searches.map(x=>({path:x.path,status:x.status}))})")
+                           "writes:window.__oiMetadataEvidenceChecks?.writes.map(x=>({path:x.path,status:x.status})),"
+                           "reads:window.__oiMetadataEvidenceChecks?.reads.map(x=>({path:x.path,status:x.status})),"
+                           "searches:window.__oiMetadataEvidenceChecks?.searches.map(x=>({path:x.path,status:x.status}))})")
         (out / 'h1-question-evidence-failure.json').write_text(
             json.dumps(info, indent=2) + '\n', encoding='utf-8')
     except Exception:
@@ -95,12 +95,12 @@ class QuestionEvidenceChecks:
         assert payload['source_access_receipt_id'].startswith('ACCESS-')
 
     def open_history(self, expected_status=None):
-        count = self.cd.evaluate('window.__oiEvidenceChecks.reads.length')
-        click(self.cd, self.control('evidence-open'))
-        self.cd.wait('window.__oiEvidenceChecks.reads.length===' + str(count + 1)
+        count = self.cd.evaluate('window.__oiMetadataEvidenceChecks.reads.length')
+        click(self.cd, self.control('metadata-evidence-open'))
+        self.cd.wait('window.__oiMetadataEvidenceChecks.reads.length===' + str(count + 1)
                      + ' && Boolean(document.querySelector(' + json.dumps(self.control('evidence-saved-links')) + '))',
                      'fresh canonical citation history')
-        observed = self.cd.evaluate('window.__oiEvidenceChecks.reads.at(-1)')
+        observed = self.cd.evaluate('window.__oiMetadataEvidenceChecks.reads.at(-1)')
         assert observed['status'] == 200
         payload = observed['payload']
         self.assert_scope(payload)
@@ -114,14 +114,14 @@ class QuestionEvidenceChecks:
         return payload
 
     def search(self, *, wait_for_delivery=True):
-        count = self.cd.evaluate('window.__oiEvidenceChecks.searches.length')
+        count = self.cd.evaluate('window.__oiMetadataEvidenceChecks.searches.length')
         fill(self.cd, self.control('evidence-query'), 'continuity')
         click(self.cd, self.control('evidence-search'))
-        condition = 'window.__oiEvidenceChecks.searches.length===' + str(count + 1)
+        condition = 'window.__oiMetadataEvidenceChecks.searches.length===' + str(count + 1)
         if wait_for_delivery:
             condition += ' && Boolean(document.querySelector(' + json.dumps(self.control('evidence-result')) + '))'
         self.cd.wait(condition, 'actual fictional catalog search')
-        observed = self.cd.evaluate('window.__oiEvidenceChecks.searches.at(-1)')
+        observed = self.cd.evaluate('window.__oiMetadataEvidenceChecks.searches.at(-1)')
         assert observed['status'] == 200
         assert observed['body'] == {'synthetic': True, 'query': 'continuity'}
         payload = observed['payload']
@@ -151,11 +151,11 @@ class QuestionEvidenceChecks:
         found = self.search()
         assert found['source_context_state'] == 'current_unreviewed_question'
         self.record = found['records'][0]
-        self.cd.evaluate('window.__oiEvidenceChecks.dropNextWrite=true')
+        self.cd.evaluate('window.__oiMetadataEvidenceChecks.dropNextWrite=true')
         click(self.cd, self.control('evidence-save'))
-        self.cd.wait("window.__oiEvidenceChecks.writes.length===1 && Boolean(document.querySelector('[data-testid=evidence-recovery]'))",
+        self.cd.wait("window.__oiMetadataEvidenceChecks.writes.length===1 && Boolean(document.querySelector('[data-testid=evidence-recovery]'))",
                      'lost committed citation response leaves explicit recovery')
-        first = self.cd.evaluate('window.__oiEvidenceChecks.writes[0]')
+        first = self.cd.evaluate('window.__oiMetadataEvidenceChecks.writes[0]')
         assert first['status'] == 201 and first['payload']['duplicate'] is False
         assert first['body']['synthetic'] is True and first['body']['citation'] == CITATION
         assert first['body']['expected_metadata_sha256'] == self.record['metadata_sha256']
@@ -165,10 +165,10 @@ class QuestionEvidenceChecks:
         assert self.cd.evaluate("!document.querySelector('[data-testid=evidence-link-receipt]')")
         assert self.cd.evaluate('document.querySelector(' + json.dumps(self.control('evidence-query')) + ').disabled')
         click(self.cd, '[data-testid=evidence-retry]')
-        self.cd.wait("window.__oiEvidenceChecks.writes.length===2 && Boolean(document.querySelector('[data-testid=evidence-link-receipt]'))"
+        self.cd.wait("window.__oiMetadataEvidenceChecks.writes.length===2 && Boolean(document.querySelector('[data-testid=evidence-link-receipt]'))"
                      + ' && Boolean(document.querySelector(' + json.dumps(self.control('evidence-saved-link')) + '))',
                      'same citation receipt recovered and server history refreshed')
-        recovered = self.cd.evaluate('window.__oiEvidenceChecks.writes[1]')
+        recovered = self.cd.evaluate('window.__oiMetadataEvidenceChecks.writes[1]')
         assert recovered['status'] == 200
         assert recovered['path'] == first['path'] and recovered['bodyText'] == first['bodyText']
         assert recovered['payload'] == {**first['payload'], 'duplicate': True}
@@ -239,9 +239,9 @@ class QuestionEvidenceChecks:
 
         # Hold an actual permitted result, switch the selected canonical question,
         # then revoke fixture rights before the old result can reach React.
-        self.cd.evaluate('window.__oiEvidenceChecks.holdNextSearch=true')
+        self.cd.evaluate('window.__oiMetadataEvidenceChecks.holdNextSearch=true')
         self.search(wait_for_delivery=False)
-        self.cd.wait('window.__oiEvidenceChecks.held', 'real allowed catalog response held before delivery')
+        self.cd.wait('window.__oiMetadataEvidenceChecks.held', 'real allowed catalog response held before delivery')
         click(self.cd, self.question(current_question_id) + ' [data-testid=source-quote-packet-open]')
         self.cd.wait("document.querySelector('[data-testid=source-quote-packet]')?.textContent.includes("
                      + json.dumps(current_question_id) + ')', 'another existing question selected through its source reader')
@@ -252,26 +252,26 @@ class QuestionEvidenceChecks:
         assert {key: value for key, value in row.items() if key not in ('record', 'status')} == {
             key: value for key, value in self.original_link.items() if key not in ('record', 'status')}
         self.assert_redacted()
-        self.cd.evaluate('window.__oiEvidenceChecks.release()')
-        self.cd.wait('window.__oiEvidenceChecks.released===1', 'earlier permitted search delivery released')
+        self.cd.evaluate('window.__oiMetadataEvidenceChecks.release()')
+        self.cd.wait('window.__oiMetadataEvidenceChecks.released===1', 'earlier permitted search delivery released')
         self.cd.evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve(true))))')
         self.assert_redacted()
 
         credentials[0]['actions'].remove('evidence_read')
         write_grants()
-        count = self.cd.evaluate('window.__oiEvidenceChecks.reads.length')
-        click(self.cd, self.control('evidence-open'))
-        self.cd.wait('window.__oiEvidenceChecks.reads.length===' + str(count + 1)
+        count = self.cd.evaluate('window.__oiMetadataEvidenceChecks.reads.length')
+        click(self.cd, self.control('metadata-evidence-open'))
+        self.cd.wait('window.__oiMetadataEvidenceChecks.reads.length===' + str(count + 1)
                      + ' && document.querySelector(' + json.dumps(self.control('evidence-links-status'))
                      + ")?.textContent.includes('unavailable')", 'independent evidence-read denial clears the displayed history')
-        denied = self.cd.evaluate('window.__oiEvidenceChecks.reads.at(-1)')
+        denied = self.cd.evaluate('window.__oiMetadataEvidenceChecks.reads.at(-1)')
         assert denied['status'] in (403, 404)
         assert self.cd.evaluate('!document.querySelector(' + json.dumps(self.control('evidence-saved-links')) + ')')
         self.assert_redacted()
         credentials[0]['actions'].append('evidence_read')
         write_grants()
         self.open_history('rights_restricted')
-        assert self.cd.evaluate('window.__oiEvidenceChecks.writes.length===2'), 'Stale or restricted inspection cannot create another citation'
+        assert self.cd.evaluate('window.__oiMetadataEvidenceChecks.writes.length===2'), 'Stale or restricted inspection cannot create another citation'
         receipt = {
             'contract': 'oi.synthetic-question-evidence-browser-receipt/1',
             'patient_id': self.patient_id, 'case_id': self.case_id,
@@ -312,7 +312,7 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials, write
         raise
     finally:
         try:
-            cd.evaluate('window.__oiEvidenceChecks?.restore()')
+            cd.evaluate('window.__oiMetadataEvidenceChecks?.restore()')
         finally:
             try:
                 if checks and checks.rights_revoked:

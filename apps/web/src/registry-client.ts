@@ -1,4 +1,5 @@
 /** Transient UI state over the canonical patient API; never an authority or ledger. */
+export {patientContinuity} from './patient-continuity.js';
 import {parseCaseBindingList, parseSourceIndex} from './source-contracts.js';
 import {decodeQuestionSourcePacket} from './source-quote-review-packet.js';
 import type {QuestionSourceReviewPacket} from './source-quote-review-packet.js';
@@ -23,6 +24,9 @@ import {decodeQuestionEvidenceSearch,decodeQuestionEvidenceLinks,decodeQuestionE
   validEvidenceQuery} from './question-evidence-view.js';
 import type {QuestionEvidenceSearch,QuestionEvidenceLinks,QuestionEvidenceIntent,
   QuestionEvidenceReceipt} from './question-evidence-view.js';
+import {QuestionEvidenceSession,emptyEvidenceState} from './authored-evidence-session.js';
+import type {EvidenceState} from './authored-evidence-session.js';
+import type {ContentItem,Permissions,Relation,Applicability} from './authored-evidence.js';
 export type Patient = Readonly<{
   patient_id: string; origin_org: string; created_at: string;
   status: 'active' | 'suspended'; revision: number;
@@ -33,7 +37,7 @@ export type ReviewReturnIntent=Readonly<{
 }>;
 export type QuestionDraft = Readonly<{case_id:string;source_id:string;source_line:number;
   snapshot_fingerprint:string;question:string}>;
-export type ViewState = Readonly<{
+export type ViewState = Readonly<EvidenceState & {
   connected: boolean; phase: 'disconnected' | 'idle' | 'reading' | 'creating' | 'ready' | 'error';
   patient: Patient | null; created: CreatedPatient | null; message: string;
   cases: ReadonlyArray<CaseBinding> | null; sourceIndex: SourceIndex | null;
@@ -103,7 +107,7 @@ const emptyInvestigation=()=>({questionDraft:null,composerPreview:null,composerP
   questionSaveMessage:'Save a verified preflight to create one unreviewed source-linked question.',
   questions:null,questionsAccessReceiptId:null,questionsCaseId:null,questionListPhase:'idle' as const,
   questionListMessage:'Open an authorized case to inspect saved source questions.',
-  ...emptyBrief(),sourceQuotePacket:null,sourceQuotePhase:'idle' as const,
+  ...emptyEvidenceState(),...emptyBrief(),sourceQuotePacket:null,sourceQuotePhase:'idle' as const,
   sourceQuoteMessage:'Select a saved question to inspect its source quotation and evidence gaps.'});
 const fresh = (): ViewState => Object.freeze({connected:false,phase:'disconnected',patient:null,created:null,message:'Connect a local synthetic credential to use the patient registry.',cases:null,sourceIndex:null,recordsPhase:'idle',recordMessage:'Open an authorized fictional patient in Overview first.',...emptyIntake(),...emptyWorld(),...emptyInvestigation(),...emptyReview(),...emptyFollowthrough(),...emptyEvidence()});
 const emptyRecords=()=>({...emptyIntake(),...emptyWorld(),cases:null,sourceIndex:null,recordsPhase:'idle' as const,recordMessage:'Load the current authorized case mappings to inspect original source metadata.'});
@@ -148,7 +152,25 @@ export class RegistrySession {
   #quoteRead=0;
   #inspectionQuestionId:string|null=null;
   #listeners=new Set<()=>void>(); #controllers=new Set<AbortController>(); #creating=false; #uploading=false;
-  constructor(private readonly transport:Transport=(url,init)=>fetch(url,init)) {}
+  #evidenceSession:QuestionEvidenceSession;
+  constructor(private readonly transport:Transport=(url,init)=>fetch(url,init)) {
+    this.#evidenceSession=new QuestionEvidenceSession({snapshot:this.snapshot,
+      publish:patch=>this.#publish(patch),scope:()=>[this.#scope,this.#read,this.#worldRead,this.#questionRead].join(':'),
+      selectedQuestion:()=>this.#inspectionQuestionId,
+      request:(url,control,body)=>this.transport(url,this.#init(control,body)),json,
+      add:control=>this.#controllers.add(control),remove:control=>this.#controllers.delete(control),
+      expire:()=>this.#httpError(401)});
+  }
+  dismissQuestionEvidence=()=>this.#evidenceSession.dismiss();
+  dismissEvidenceMetadata=()=>this.#publish(this.#resetEvidence(this.#state.evidenceLinkIntent?.case_id??this.#state.questionsCaseId??undefined));
+  loadQuestionEvidence=(questionId:string)=>{this.#focusSavedQuestion(questionId);return this.#evidenceSession.load(questionId);};
+  importQuestionEvidence=(questionId:string,text:string,item:ContentItem,permissions:Permissions)=>this.#evidenceSession.import(questionId,text,item,permissions);
+  assessQuestionEvidence=(questionId:string,evidenceId:string,quote:string,relation:Relation,applicability:Applicability,rationale:string)=>this.#evidenceSession.assess(questionId,evidenceId,quote,relation,applicability,rationale);
+  withdrawQuestionEvidence=(questionId:string,evidenceId:string,reason:string)=>this.#evidenceSession.withdraw(questionId,evidenceId,reason);
+  prepareEvidenceReport=(questionId:string,assessmentIds:readonly string[])=>this.#evidenceSession.prepareReport(questionId,assessmentIds);
+  readEvidenceReport=(questionId:string,reportId:string)=>this.#evidenceSession.readReport(questionId,reportId);
+  loadEvidenceOriginal=(questionId:string,evidenceId:string)=>this.#evidenceSession.original(questionId,evidenceId);
+  retryEvidenceWrite=()=>this.#evidenceSession.retry();
   snapshot=():ViewState=>this.#state;
   subscribe=(listener:()=>void):(()=>void)=>{this.#listeners.add(listener);return()=>this.#listeners.delete(listener);};
   #publish(patch:Partial<ViewState>){this.#state=Object.freeze({...this.#state,...patch});for(const listener of this.#listeners)listener();}
@@ -184,12 +206,12 @@ export class RegistrySession {
     this.#reviewKey='';this.#reviewIntent='';
     return emptyReview();
   }
-  #resetInvestigation(preserveReviewCase?:string,preserveFollowthroughCase=preserveReviewCase,preserveEvidenceCase=preserveReviewCase){
+  #resetInvestigation(preserveReviewCase?:string,preserveFollowthroughCase=preserveReviewCase,preserveEvidenceCase=preserveReviewCase,preserveAuthoredEvidenceCase=preserveReviewCase){
     this.#inspectionQuestionId=null;
     this.#worldRead++;this.#composerRead++;this.#questionRead++;this.#questionWrite++;this.#briefRead++;this.#quoteRead++;
     this.#questionKey='';this.#questionFingerprint='';this.#savingQuestion=false;
     return {...emptyInvestigation(),...this.#resetReview(preserveReviewCase),...this.#resetFollowthrough(preserveFollowthroughCase),
-      ...this.#resetEvidence(preserveEvidenceCase)};
+      ...this.#resetEvidence(preserveEvidenceCase),...this.#evidenceSession.reset(preserveAuthoredEvidenceCase)};
   }
   #resetWorld(preserveReviewCase?:string){
     this.#publish({...emptyWorld(),...this.#resetInvestigation(preserveReviewCase)});
@@ -204,7 +226,8 @@ export class RegistrySession {
     this.#inspectionQuestionId=questionId;
     this.dismissSourceBrief();
     this.dismissSourceQuotePacket();
-    this.#publish(this.#resetEvidence(this.#state.evidenceLinkIntent?.case_id??this.#state.questionsCaseId??undefined));
+    this.dismissEvidenceMetadata();
+    this.dismissQuestionEvidence();
   }
   dismissSourceBrief=()=>{
     this.#briefRead++;
@@ -236,7 +259,12 @@ export class RegistrySession {
   }
   async read(id:string):Promise<void>{
     const scope=this.#scope, request=++this.#read;
-    this.#records++;this.#publish({patient:null,...emptyRecords(),...this.#resetInvestigation()});
+    const pendingEvidence=this.#state.evidenceWriteIntent;
+    const preserveEvidence=pendingEvidence?.patient_id===id&&
+      ['saving','unknown'].includes(this.#state.evidenceWritePhase)?pendingEvidence:null;
+    this.#records++;this.#publish({patient:null,...emptyRecords(),...this.#resetInvestigation(),
+      ...(preserveEvidence?{evidenceWriteIntent:preserveEvidence,evidenceWritePhase:'unknown' as const,
+        evidenceWriteMessage:'The same patient is being rechecked. The earlier evidence write remains uncertain; reload its case authority before exact receipt recovery.'}:{})});
     if(!this.#token){this.#publish({message:'Connect an authorized synthetic credential first.'});return;}
     if(!boundedKey(id)){this.#publish({phase:'error',message:'Use an opaque patient ID, not a name or URL.'});return;}
     const control=new AbortController();this.#controllers.add(control);
@@ -246,7 +274,12 @@ export class RegistrySession {
     try{
       const res=await this.transport('/v1/patients/'+encodeURIComponent(id),this.#init(control));
       if(!current())return;
-      if(res.status!==200){this.#httpError(res.status);return;}
+      if(res.status!==200){
+        // A temporary recheck failure cannot establish the earlier write's
+        // outcome. Explicit patient denial does withdraw this shared scope.
+        if([403,404].includes(res.status))this.#publish(this.#resetInvestigation());
+        this.#httpError(res.status);return;
+      }
       const value=patient(await json(res),id); if(!current())return;
       this.#publish({patient:value,phase:'ready',message:'Patient identity read from the canonical registry. No clinical record is loaded.'});
     }catch(_){if(current())this.#publish({patient:null,phase:'error',message:'The patient response could not be verified. No cached patient is shown.'});}
@@ -280,20 +313,21 @@ export class RegistrySession {
     }
     const retainedCase=this.#state.reviewReturnIntent?.case_id,
       retainedFollowthroughCase=this.#state.followthroughIntent?.case_id,
-      retainedEvidenceCase=this.#state.evidenceLinkIntent?.case_id;
+      retainedEvidenceCase=this.#state.evidenceLinkIntent?.case_id,
+      retainedAuthoredEvidenceCase=this.#state.evidenceWriteIntent?.case_id;
     const scope=this.#scope,read=this.#read,request=++this.#records;
     const current=()=>scope===this.#scope && read===this.#read &&
       request===this.#records && this.#state.patient?.patient_id===patientId;
     const control=new AbortController();this.#controllers.add(control);
     const timeout=setTimeout(()=>control.abort(),10000);
-    this.#publish({...emptyIntake(),...emptyWorld(),...this.#resetInvestigation(retainedCase,retainedFollowthroughCase,retainedEvidenceCase),cases:null,sourceIndex:null,recordsPhase:'loading-cases',recordMessage:'Checking current case mapping permissions…'});
+    this.#publish({...emptyIntake(),...emptyWorld(),...this.#resetInvestigation(retainedCase,retainedFollowthroughCase,retainedEvidenceCase,retainedAuthoredEvidenceCase),cases:null,sourceIndex:null,recordsPhase:'loading-cases',recordMessage:'Checking current case mapping permissions…'});
     try{
       const res=await this.transport('/v1/patients/'+encodeURIComponent(patientId)+'/case-bindings',this.#init(control));
       if(!current())return;
       if(res.status===401){this.#httpError(401);return;}
       if(res.status!==200){
         this.#publish({cases:null,sourceIndex:null,recordsPhase:'error',
-          ...([403,404].includes(res.status)?{...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence()}:{}),
+          ...([403,404].includes(res.status)?{...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence(),...this.#evidenceSession.reset()}:{}),
           recordMessage:'Case mappings unavailable or permission changed. No records are shown.'});
         return;
       }
@@ -302,6 +336,7 @@ export class RegistrySession {
       const pendingCase=this.#state.followthroughIntent?.case_id;
       this.#publish({...((pendingCase&&!mappings.some(item=>item.case_id===pendingCase&&item.status==='active'))?this.#resetFollowthrough():{}),
         ...(retainedEvidenceCase&&!mappings.some(item=>item.case_id===retainedEvidenceCase&&item.status==='active')?this.#resetEvidence():{}),
+        ...(retainedAuthoredEvidenceCase&&!mappings.some(item=>item.case_id===retainedAuthoredEvidenceCase&&item.status==='active')?this.#evidenceSession.reset():{}),
         cases:mappings,sourceIndex:null,recordsPhase:'ready',
         ...(retainedCase&&!mappings.some(item=>item.case_id===retainedCase&&item.status==='active')?this.#resetReview():{}),
         recordMessage:mappings.length===0?'No permitted fictional case mappings were returned.':'Select an active case to check its original source metadata.'});
@@ -333,7 +368,7 @@ export class RegistrySession {
       if(res.status===401){this.#httpError(401);return;}
       if(res.status!==200){
         this.#publish({cases:null,sourceIndex:null,recordsPhase:'error',
-          ...([403,404].includes(res.status)?{...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence()}:{}),
+          ...([403,404].includes(res.status)?{...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence(),...this.#evidenceSession.reset()}:{}),
           recordMessage:'Sources unavailable, denied or mapping revoked. Reload case permissions.'});
         return;
       }
@@ -470,6 +505,57 @@ export class RegistrySession {
       if(query===this.#reviewWrite&&scope===this.#scope)this.#savingReview=false;}
   }
 
+  /** Recheck an exact original quotation before starting a question from Records.
+   *
+   * The cached source index only supplies an anchor, never permission or
+   * an executable clinical context. The canonical World Model is fetched again.
+   * A changed/amended source cannot silently become a new question's source.
+   */
+  async beginQuestionFromSourceReading(caseId:string,sourceId:string,sourceLine:number):Promise<boolean>{
+    if(this.#savingQuestion||this.#state.questionSavePhase==='saving'||
+       this.#state.questionSaveMessage.startsWith('Save outcome unknown.')){
+      this.#publish({worldMessage:'Resolve the earlier uncertain question save in Investigations before changing its source.'});
+      return false;
+    }
+    if(this.#state.questionDraft&&this.#state.questionSavePhase!=='saved'){
+      this.#publish({worldMessage:'An unfinished question draft exists. Finish or discard it in Investigations before starting a different one.'});
+      return false;
+    }
+    const index=this.#state.sourceIndex,patientId=this.#state.patient?.patient_id;
+    const source=index?.sources.find(s=>s.source_id===sourceId&&s.state==='current');
+    const finding=index?.source_reported_assertions.find(f=>f.source_id===sourceId&&f.source_line===sourceLine);
+    if(!index||index.case_id!==caseId||!patientId||this.#state.phase!=='ready'||
+       this.#state.recordsPhase!=='ready'||this.#state.worldPhase==='loading'||
+       !source||!finding||!this.#state.cases?.some(c=>c.case_id===caseId&&c.status==='active')){
+      this.#publish({worldMessage:'This statement is not a current, authorized source anchor. Recheck Records before asking a question.'});
+      return false;
+    }
+    const scope=this.#scope,priorWorldRead=this.#worldRead;
+    await this.loadWorldModel(caseId);
+    const model=this.#state.worldModel;
+    // A concurrent patient/case/source refresh invalidates this user intent.
+    if(scope!==this.#scope||priorWorldRead+1!==this.#worldRead||
+       this.#state.patient?.patient_id!==patientId||this.#state.sourceIndex!==index||
+       this.#state.worldPhase!=='ready'||!model||model.case_id!==caseId)return false;
+    const currentSource=model.current_sources.find(s=>s.source_id===sourceId);
+    const quotation=model.observations.filter(o=>o.source_id===sourceId&&o.source_line===sourceLine);
+    if(!currentSource||currentSource.sha256!==source.sha256||
+       currentSource.version!==source.version||quotation.length!==1||
+       quotation[0].document_id!==source.document_id||
+       quotation[0].document_version!==source.version||
+       quotation[0].source_sha256!==source.sha256||
+       quotation[0].source_statement!==finding.source_statement||
+       quotation[0].finding_key!==finding.finding_key||
+       quotation[0].reported_state!==finding.reported_state){
+      this.#resetWorld(caseId);
+      this.#publish({worldPhase:'error',worldMessage:'The source quotation or version changed during the handoff. No question draft was created. Recheck Records.'});
+      return false;
+    }
+    this.chooseQuestionDraft(sourceId,sourceLine);
+    return this.#state.questionDraft?.source_id===sourceId&&
+      this.#state.questionDraft.source_line===sourceLine;
+  }
+
   /** Source-only context is a read, never an authorization to execute Composer.
    * Request generation prevents responses from earlier patients/cases/credentials
    * or amended source views from repopulating the UI.
@@ -499,7 +585,7 @@ export class RegistrySession {
       if(!current())return;
       if(response.status===401){this.#httpError(401);return;}
       if(response.status!==200){
-        this.#publish({...emptyWorld(),...([403,404].includes(response.status)?{...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence()}:{}),worldPhase:'error',
+        this.#publish({...emptyWorld(),...([403,404].includes(response.status)?{...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence(),...this.#evidenceSession.reset()}:{}),worldPhase:'error',
           worldMessage:'World Model source scope unavailable or revoked. Previous snapshot cleared.'});
         return;
       }
@@ -771,6 +857,7 @@ export class RegistrySession {
   async loadSavedQuestions(caseId:string):Promise<void>{
     if(this.#state.followthroughCaseId&&this.#state.followthroughCaseId!==caseId)this.#publish(this.#resetFollowthrough(caseId));
     this.#publish(this.#resetEvidence(caseId));
+    this.dismissQuestionEvidence();
     this.dismissSourceQuotePacket();
     const patientId=this.#state.patient?.patient_id;
     const query=++this.#questionRead,scope=this.#scope,patientRead=this.#read,worldRead=this.#worldRead;
@@ -795,7 +882,7 @@ export class RegistrySession {
       if(!current())return;
       if(res.status===401){this.#httpError(res.status);return;}
       if(res.status!==200){
-        this.#publish({...([403,404].includes(res.status)?{...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence(),reviewPhase:'error' as const,
+        this.#publish({...([403,404].includes(res.status)?{...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence(),...this.#evidenceSession.reset(),reviewPhase:'error' as const,
           reviewMessage:'Question or source access is unavailable. Previous review content is cleared.'}:{}),
           questions:null,questionListPhase:'error',
           questionListMessage:'Saved questions unavailable under current authority.'});
@@ -1238,7 +1325,7 @@ export class RegistrySession {
       if(res.status===401){this.#httpError(401);return;}
       if([403,404,409,413,422].includes(res.status)){
         this.#publish({cases:null,sourceIndex:null,original:null,recordsPhase:'error',importOutcome:'rejected',
-          ...([403,404].includes(res.status)?{...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence()}:{}),
+          ...([403,404].includes(res.status)?{...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence(),...this.#evidenceSession.reset()}:{}),
           importMessage:'The server rejected this import. Reload current case permissions; no success is claimed.'});return;
       }
       if(![200,201].includes(res.status))throw Error('unconfirmed');

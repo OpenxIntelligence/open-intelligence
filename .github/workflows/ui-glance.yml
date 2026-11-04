@@ -12,7 +12,8 @@ permissions:
   contents: read
 jobs:
   ui:
-    runs-on: ubuntu-latest
+    # Keep the inherited browser on the same supported OS as the H1 API/web gates.
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
       PYTHONPATH: src

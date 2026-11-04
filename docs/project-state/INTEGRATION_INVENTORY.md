@@ -1,11 +1,34 @@
 # Integration inventory — current contracts and unfinished connections
 
 **Assessment:** 3 November 2026 (America/New_York).  
-**Baselines:** reference main `24519839aa8ac1ea3aff88a956349ba72798a72a`; initial H1 assessment [#276](https://github.com/OpenxIntelligence/open-intelligence/pull/276) at `c154bfbc5f99f76801d37903959943659c0b6a71`; current verified draft integration [#298](https://github.com/OpenxIntelligence/open-intelligence/pull/298) at `f4750327537a5febf764d25f43873be50ac7265a`, based on #293. Other drafts are named separately.
+**Baselines:** reference main `24519839aa8ac1ea3aff88a956349ba72798a72a`; initial H1 assessment [#276](https://github.com/OpenxIntelligence/open-intelligence/pull/276) at `c154bfbc5f99f76801d37903959943659c0b6a71`; current verified draft integration [#307](https://github.com/OpenxIntelligence/open-intelligence/pull/307) at `477f24826a8a102c7437c993d69877c1f250b951`, joining #298 and #300 with #302/#303/#304 corrections. Other drafts are named separately.
 
 **Status vocabulary:** the eight categories in [PRODUCT_REQUIREMENTS.md](PRODUCT_REQUIREMENTS.md) apply to bounded behavior, never to a whole clinical domain by implication.
 
-## Current integration checkpoint — 3 November 2026
+## Current #307 convergence checkpoint
+
+[The exact acceptance receipt](../engineering/H1_EVIDENCE_CONTINUITY.md) records
+runtime `477f24826a8a102c7437c993d69877c1f250b951`, tree
+`cd8d909ad2844e7fbd37ae30a9a10b9123374666`: 414 API/PostgreSQL tests, 287 reference
+tests, 266 React client tests, actual built-browser acceptance and all five
+recovery probes passed. Main is unchanged; the contribution remains draft,
+unmerged and undeployed. This supersedes only the older selected-next-work claims
+below, preserving their source and historical scope.
+
+| Connected capability | Preserved owner and actual result | Remaining boundary |
+| --- | --- | --- |
+| One question with citations, authored originals/comparisons/reports and tasks | #298/#293 plus #300/#288, verified together in #307 | Metadata does not become assessed content or confer its rights. All comparisons are human-authored, fictional and clinically unreviewed. |
+| Published evidence schema convergence | DDL-free `0011_evidence_convergence`; both populated old heads and the unconverged two-head rejection pass | Published migrations are unchanged; arbitrary schema heads remain refused. |
+| Original source disclosure | #304 final typed/JSON preparation and authorization reused in the source owner | Prepared disclosure is not delivery or atomic external identity-provider revocation. |
+| One restored canonical question with citation, report and task | #302's restored-HTTP probe extended to all 18 relevant tables and four sequence states; readable, rights-restricted, withdrawn/amended and revoked-binding checkpoints pass | Disposable PostgreSQL proof, not a production recovery qualification. |
+| One rendered application | Overview, sources, questions, reviews, metadata, authored reports and follow-through retained; shared-authority denial clears both evidence sessions | Production accounts/consent, full accessibility and clinical approval remain open. |
+
+The next bounded convergence is the separately owned source-reading/return UI in
+#305/#308/#309/#310, after rechecking live heads. Real biomedical access remains
+its own rights-qualified connector task. No new dependency, model, content source,
+asset or hosted service is adopted by #307.
+
+## Historical #293/#298 integration checkpoint — 3 November 2026
 
 The selected runtime base is [draft #293](https://github.com/OpenxIntelligence/open-intelligence/pull/293) at commit 635f357048eb27e52e6ec5c3d7b6714215070127, tree 74c4a2ab65bf54a0908246199bb67c300ae2662b, preserving [#287](https://github.com/OpenxIntelligence/open-intelligence/pull/287) and its source base 247705700080052705817fee9e8f7b54afa8ffaa. The published tree matches the reconstructed local checkout. Its [e44f225e evidence-only follow-up](https://github.com/OpenxIntelligence/open-intelligence/commit/e44f225e3ce4953d754ad0e6e1409e22b696a29f) changes exactly five documentation files; those newer receipts are preserved here without changing the selected runtime. Main remains [24519839aa8ac1ea3aff88a956349ba72798a72a](https://github.com/OpenxIntelligence/open-intelligence/tree/24519839aa8ac1ea3aff88a956349ba72798a72a). The #276 assessment and separate-owner tables below remain historical checkpoints; this section supersedes only their selected-baseline and next-work statements.
 

@@ -132,7 +132,7 @@ def main():
             from source_questions_journey import exercise as exercise_source_questions
             from question_review_journey import exercise as exercise_question_review
             from followthrough_journey import exercise as exercise_followthrough, exercise_case_switch
-            from question_evidence_journey import exercise as exercise_question_evidence
+            from question_metadata_journey import exercise as exercise_question_evidence
             from connected_question_review_journey import exercise as exercise_connected_question_review
             with exercise_source_questions(cd,original_id,credentials,write_grants) as questions, \
                  exercise_question_review(cd,pid,case,questions.original_question_id,original_id,
@@ -159,6 +159,30 @@ def main():
                 assert cd.evaluate("document.querySelector('[data-testid=source-index]').textContent.includes('superseded')")
                 assert cd.evaluate("document.querySelector('[data-testid=source-index]').textContent.includes('Amended fictional marker is reported negative.')")
                 assert cd.evaluate("document.querySelectorAll('[data-testid=source-statement]').length===1")
+                # The new Records action must recheck the canonical source before
+                # offering a question draft; no implicit question save or Composer call.
+                cd.evaluate("""(() => {
+                  window.__oiSourceHandoffCalls=[];
+                  window.__oiSourceHandoffFetch=window.fetch;
+                  window.fetch=(input,init)=>{
+                    const url=String(input),method=init?.method||'GET';
+                    if(url.includes('/v1/'))window.__oiSourceHandoffCalls.push([method,url]);
+                    return window.__oiSourceHandoffFetch(input,init);
+                  };
+                })()""")
+                cd.evaluate("document.querySelector('[data-testid=ask-source-question]').click()")
+                cd.wait("document.querySelector('[data-testid=question-draft-editor]')?.textContent.includes("
+                        +json.dumps(new_receipt['source_id'])+")", 'source-to-question handoff after fresh authorization')
+                assert cd.evaluate("document.querySelector('[data-testid=world-projection]')?.textContent.includes("
+                                   +json.dumps('Amended fictional marker is reported negative.')+")")
+                checks=cd.evaluate("window.__oiSourceHandoffCalls")
+                assert len([c for c in checks if c[0]=='GET' and c[1].endswith('/world-model')])==1, checks
+                assert not any(c[0]=='POST' or '/composer/' in c[1] for c in checks), checks
+                assert cd.evaluate("document.querySelector('[data-testid=question-draft-editor]').textContent.includes('line 9')")
+                cd.evaluate("document.querySelector('[data-testid=discard-question-draft]').click()")
+                cd.wait("!document.querySelector('[data-testid=question-draft-editor]')",
+                        'question remains unsaved and may be explicitly discarded')
+                cd.evaluate("window.fetch=window.__oiSourceHandoffFetch;delete window.__oiSourceHandoffFetch;delete window.__oiSourceHandoffCalls")
                 cd.evaluate("Array.from(document.querySelectorAll('nav[aria-label=\"Patient workspace\"] button')).find(b=>b.textContent.includes('Journey')).click()")
                 cd.evaluate("document.querySelector('[data-testid=world-load]').click()")
                 cd.wait("document.querySelector('[data-testid=world-history-count]')?.textContent==='1'",'world model retains superseded source')
@@ -196,6 +220,21 @@ def main():
                 # Add the fourth question only after both three-question checks.
                 connected_question = exercise_connected_question_review(cd,pid,case,new_receipt['source_id'],amended,
                     credentials,write_grants,questions)
+                def restart_api():
+                    nonlocal api
+                    os.killpg(api.pid, signal.SIGTERM)
+                    api.wait(timeout=10)
+                    api=subprocess.Popen([sys.executable,'-m','oi_api'],env=env,cwd=ROOT,
+                        stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
+                    wait_for(lambda:json.load(urlopen('http://127.0.0.1:8000/health/ready',timeout=2))['status']=='ready',
+                             'restarted PostgreSQL-backed evidence API',30)
+                from authored_evidence_journey import exercise as exercise_evidence
+                from evidence_continuity_journey import exercise as exercise_evidence_continuity
+                exercise_evidence(cd,pid,case,connected_question['question_id'],new_receipt['source_id'],
+                    credentials,write_grants,directory,questions.artifacts,restart_api,
+                    on_report=lambda report,path,body:exercise_evidence_continuity(cd,pid,case,
+                        connected_question['question_id'],new_receipt['source_id'],credentials,
+                        write_grants,questions.artifacts,report,path,body))
             # Current source metadata access is independent from the historical original bytes.
             # World Model recheck must clear the old view after source-read grant withdrawal.
             credentials[0]['actions'].remove('source_read');write_grants()

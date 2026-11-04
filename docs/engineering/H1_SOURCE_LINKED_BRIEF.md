@@ -199,3 +199,18 @@ Only independently authored fictional records are used. No Sid medical data,
 real-patient-derived fixture, external publication, model weight or licensed
 guideline is acquired by this workflow. The candidate's offline data guard is
 separate from still-open repository-wide historical data/workflow cleanup.
+
+## Overview continuation on the shared workflow — 3 November 2026
+
+Draft #288 reuses #286's patient Overview on #287's connected question, source,
+review-return and brief implementation. Overview resumes the existing editor and
+shows only successful scoped history, separating current unreviewed questions
+from source reassessment. Unknown reads remain unknown. Its links now share the
+same packet/brief clearing behavior as the navigation rail and contextual buttons.
+
+The existing combined browser journey carries an Overview-resumed question
+through exact-source inspection, a durable verification return and actual fresh
+brief download, without changing source identity or implying clinical approval.
+See [patient continuity](H1_PATIENT_CONTINUITY.md) for the observed red test,
+source ownership, acceptance artifact and limits. Final exact-head results belong
+in [#288](https://github.com/OpenxIntelligence/open-intelligence/pull/288).

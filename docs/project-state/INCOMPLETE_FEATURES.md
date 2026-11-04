@@ -2,7 +2,31 @@
 
 Assessment checkpoint: **3 November 2026, America/New_York**. This assessment maps the existing [execution backlog](../EXECUTION_BACKLOG.csv); it does not create another backlog or replace source-owner specifications.
 
-## Evidence boundary
+## Current #307 increment and still-open patient outcomes
+
+The later [#307 acceptance receipt](../engineering/H1_EVIDENCE_CONTINUITY.md)
+supersedes the selected #276/#280 planning statements below. At exact runtime
+`477f24826a8a102c7437c993d69877c1f250b951`, canonical source/question/verification
+return/brief, follow-through, fictional metadata citations and independently
+authored evidence comparisons/reports work together in H1. Actual API/PostgreSQL,
+React/browser, populated migration and all five recovery gates passed. Their
+same-question restore proof includes a citation, preserved report and task.
+The complete patient outcome remains **partially implemented**, not closed.
+
+Remaining work includes real biomedical retrieval under established rights,
+ordinary medical document/PDF and annotation parity, model/tool evaluation,
+authenticated professional review, production identity/delegation/consent,
+provider interoperability and clinical release qualification. Existing
+#305/#308/#309/#310 reading/return owners remain separate; inspect and integrate
+them rather than rebuilding their UI. The fictional grant editor #306 does not
+satisfy production identity.
+
+No new technology, model, content source or commercial clearance was introduced.
+The inherited dependency inventory remains scoped to fictional development.
+The historical rows below retain their original assessment scope; their earlier
+missing-integration claims do not negate the verified #307 increment.
+
+## Historical evidence boundary — initial #276/#280 assessment
 
 The repository audit captured `main` at `24519839aa8ac1ea3aff88a956349ba72798a72a`. The selected integration starts at draft [#276](https://github.com/OpenxIntelligence/open-intelligence/pull/276), `c154bfbc5f99f76801d37903959943659c0b6a71`, and proposes importing the existing question/quotation owner [#280](https://github.com/OpenxIntelligence/open-intelligence/pull/280), `e8d851e5c7769c31f429a3d1649c26402aa9de12`, plus selected #278 review-response encoding and uncertain-return recovery fixes. No #278 image or migration scope is included. Integration and combined verification are **planned at this assessment checkpoint**, not claimed complete. Later result records must identify their own exact head.
 

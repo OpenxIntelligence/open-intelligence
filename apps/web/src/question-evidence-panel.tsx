@@ -71,7 +71,7 @@ export function QuestionEvidencePanel({question,state,session,busy}:{question:So
  const panelId='evidence-'+question.question_id,queryId=panelId+'-query',hintId=panelId+'-hint';
  const ownRecovery=state.evidenceLinkIntent?.question_id===question.question_id;
  return <section className="question-evidence" data-testid="question-evidence-panel" aria-label="Question evidence citations">
-  <button type="button" data-testid="evidence-open" aria-expanded={selected} aria-controls={panelId}
+  <button type="button" data-testid="metadata-evidence-open" aria-expanded={selected} aria-controls={panelId}
    disabled={busy||writing||reading} onClick={()=>void session.loadQuestionEvidenceLinks(question.question_id)}>
    {selected?'Refresh saved evidence citations':'Find fictional evidence for this question'}
   </button>

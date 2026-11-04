@@ -614,3 +614,137 @@ test('patient switch, renewed question list and navigation invalidate in-flight 
  await t.loadSavedQuestions(receiptCase);assert.equal(t.snapshot().sourceQuotePacket,null);
  t.disconnect();assert.equal(t.snapshot().sourceQuotePacket,null);
 });
+
+
+// Records -> Investigations handoff: an old source read must not authorize
+// a draft until the canonical PG World Model confirms the same literal line.
+const handoffIndex=()=>({
+ contract:'oi.synthetic-original-sources/1',patient_id:receiptPatient,case_id:receiptCase,
+ access_receipt_id:'ACCESS-'+'E'.repeat(32),
+ sources:worldFixture().current_sources.map(v=>({...v})),
+ source_reported_assertions:[{
+  source_id:receiptSource,finding_key:'marker',reported_state:'not-reported',
+  source_statement:'Independently fictional example.',source_line:8,
+  clinical_review_state:'not_established',
+ }],
+ synthetic:true,clinical_interpretation:false,research_review_invalidation_integrated:false,
+});
+const handoffSession=({world=()=>response(worldFixture()),question=()=>response(composerFixture()),
+                       save=()=>response({question_id:'QUESTION-'+'F'.repeat(32),duplicate:false},201)}={})=>{
+ const calls=[];
+ const s=newSession((url,options)=>{
+  calls.push([url,options]);
+  if(url.endsWith('/sources'))return response(handoffIndex());
+  if(url.endsWith('/world-model'))return world(url,options);
+  if(url.endsWith('/composer/source-preflight'))return question(url,options);
+  if(url.endsWith('/questions'))return save(url,options);
+  return response(patient(url.endsWith('/PAT-OTHER')?'PAT-OTHER':receiptPatient));
+ });
+ return {s,calls};
+};
+async function loadedHandoff(fixture){
+ fixture.s.connect(token);
+ await fixture.s.read(receiptPatient);
+ await fixture.s.loadCases();
+ await fixture.s.loadSources(receiptCase);
+ assert.equal(fixture.s.snapshot().recordsPhase,'ready');
+ assert.equal(fixture.s.snapshot().sourceIndex.sources.length,1);
+ return fixture;
+}
+test('Records exact quote opens a draft only after a fresh authorized World Model GET',async()=>{
+ const f=await loadedHandoff(handoffSession());
+ const before=f.calls.length;
+ const ok=await f.s.beginQuestionFromSourceReading(receiptCase,receiptSource,8);
+ assert.equal(ok,true);
+ assert.equal(f.calls.length,before+1);
+ assert.equal(f.calls.at(-1)[0],'/v1/patients/'+receiptPatient+'/cases/'+receiptCase+'/world-model');
+ assert.equal(f.calls.at(-1)[1].method,'GET');
+ assert.equal(f.calls.at(-1)[1].credentials,'omit');
+ assert.equal(f.s.snapshot().questionDraft.source_id,receiptSource);
+ assert.equal(f.s.snapshot().questionDraft.source_line,8);
+ assert.equal(f.s.snapshot().composerPreview,null);
+ assert.equal(f.s.snapshot().savedQuestion,null);
+ assert.equal(f.s.snapshot().worldPhase,'ready');
+ assert.equal(f.s.snapshot().questionSavePhase,'idle');
+});
+test('Records handoff rejects version/hash drift without asking a question',async()=>{
+ const changed=worldFixture();
+ changed.current_sources[0].sha256='e'.repeat(64);
+ changed.observations[0].source_sha256='e'.repeat(64);
+ const f=await loadedHandoff(handoffSession({world:()=>response(changed)}));
+ assert.equal(await f.s.beginQuestionFromSourceReading(receiptCase,receiptSource,8),false);
+ assert.equal(f.s.snapshot().questionDraft,null);
+ assert.equal(f.s.snapshot().worldModel,null);
+ assert.equal(f.s.snapshot().worldPhase,'error');
+ assert.ok(f.s.snapshot().worldMessage.includes('changed during the handoff'));
+ assert.ok(!f.calls.some(([url])=>url.endsWith('/questions')));
+});
+test('Records handoff rejects edited or forged literal quote despite unchanged source hash',async()=>{
+ const changed=worldFixture();
+ changed.observations[0].source_statement='Different fictional quote from stored source.';
+ const f=await loadedHandoff(handoffSession({world:()=>response(changed)}));
+ assert.equal(await f.s.beginQuestionFromSourceReading(receiptCase,receiptSource,8),false);
+ assert.equal(f.s.snapshot().questionDraft,null);
+ assert.equal(f.s.snapshot().worldModel,null);
+});
+test('Revoked derived-source permission never creates a draft or an implicit preflight',async()=>{
+ const f=await loadedHandoff(handoffSession({world:()=>response({detail:'sensitive'},404)}));
+ assert.equal(await f.s.beginQuestionFromSourceReading(receiptCase,receiptSource,8),false);
+ assert.equal(f.s.snapshot().questionDraft,null);
+ assert.equal(f.s.snapshot().worldModel,null);
+ assert.equal(f.s.snapshot().worldPhase,'error');
+ assert.ok(!JSON.stringify(f.s.snapshot()).includes('sensitive'));
+ assert.ok(!f.calls.some(([url])=>url.includes('/composer/')));
+});
+test('Wrong case or unreferenced original line is refused without network calls',async()=>{
+ const f=await loadedHandoff(handoffSession());
+ const before=f.calls.length;
+ assert.equal(await f.s.beginQuestionFromSourceReading('CASE-BETA',receiptSource,8),false);
+ assert.equal(await f.s.beginQuestionFromSourceReading(receiptCase,receiptSource,9),false);
+ assert.equal(await f.s.beginQuestionFromSourceReading(receiptCase,'SRC-'+'F'.repeat(32),8),false);
+ assert.equal(f.calls.length,before);
+ assert.equal(f.s.snapshot().questionDraft,null);
+});
+test('Outstanding draft cannot be silently overwritten by choosing a second quote',async()=>{
+ const f=await loadedHandoff(handoffSession());
+ assert.equal(await f.s.beginQuestionFromSourceReading(receiptCase,receiptSource,8),true);
+ f.s.changeQuestionDraft('Which originally fictional source explains this observation?');
+ const before=f.calls.length;
+ assert.equal(await f.s.beginQuestionFromSourceReading(receiptCase,receiptSource,8),false);
+ assert.equal(f.calls.length,before);
+ assert.equal(f.s.snapshot().questionDraft.question,'Which originally fictional source explains this observation?');
+ assert.ok(f.s.snapshot().worldMessage.includes('unfinished question'));
+});
+test('Uncertain save locks the Records handoff and preserves the original retry',async()=>{
+ let writes=0;
+ const f=await loadedHandoff(handoffSession({save:()=>{
+  if(++writes===1)throw Error('Lost response after possible commit');
+  return response({question_id:'QUESTION-'+'F'.repeat(32),duplicate:true});
+ }}));
+ assert.equal(await f.s.beginQuestionFromSourceReading(receiptCase,receiptSource,8),true);
+ await f.s.prepareDraftQuestion();
+ await f.s.savePreparedQuestion();
+ assert.equal(writes,1);
+ assert.ok(f.s.snapshot().questionSaveMessage.startsWith('Save outcome unknown.'));
+ const before=f.calls.length;
+ assert.equal(await f.s.beginQuestionFromSourceReading(receiptCase,receiptSource,8),false);
+ assert.equal(f.calls.length,before);
+ assert.ok(f.s.snapshot().composerPreview);
+ await f.s.savePreparedQuestion();
+ assert.equal(writes,2);
+ const posts=f.calls.filter(([url])=>url.endsWith('/questions'));
+ assert.equal(posts.length,2);
+ assert.deepEqual(JSON.parse(posts[0][1].body),JSON.parse(posts[1][1].body));
+ assert.equal(f.s.snapshot().savedQuestion.duplicate,true);
+});
+test('Late read after a patient switch cannot reopen an old source question',async()=>{
+ const pending=deferred();
+ const f=await loadedHandoff(handoffSession({world:()=>pending.promise}));
+ const waiting=f.s.beginQuestionFromSourceReading(receiptCase,receiptSource,8);
+ await f.s.read('PAT-OTHER');
+ pending.resolve(response(worldFixture()));
+ assert.equal(await waiting,false);
+ assert.equal(f.s.snapshot().patient?.patient_id,'PAT-OTHER');
+ assert.equal(f.s.snapshot().questionDraft,null);
+ assert.equal(f.s.snapshot().worldModel,null);
+});

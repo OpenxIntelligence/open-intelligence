@@ -116,6 +116,10 @@ jobs:
         run: python apps/api/tools/verify_reviews_compose.py
       - name: Verify canonical question follow-through, exact retries and restored history
         run: python apps/api/tools/verify_followthrough_compose.py
+      - name: Verify case evidence, report history, rights changes and complete recovery
+        env:
+          OI_EVIDENCE_ACCEPTANCE_FILE: verification-api/evidence-recovery.json
+        run: python apps/api/tools/verify_evidence_compose.py
       - name: Record resolved container identities and application packages
         run: |
           docker image inspect postgres:16.15-bookworm oi-h1-api:synthetic --format '{{.Id}} {{json .RepoDigests}}'
@@ -124,3 +128,10 @@ jobs:
           from pathlib import Path
           print(Path('/tmp/oi-h1-sbom.json').read_text())
           PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: h1-evidence-recovery-${{ github.run_id }}-${{ github.run_attempt }}
+          path: verification-api/
+          if-no-files-found: warn
+          retention-days: 7
