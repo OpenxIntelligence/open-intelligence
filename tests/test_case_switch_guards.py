@@ -11,7 +11,7 @@ from pathlib import Path
 
 APP_JS = Path(__file__).resolve().parents[1] / "web" / "app.js"
 GUARDED_SYNTHESIS = ("synthesis-note-text", "synthesis-note-author")
-GUARDED_OWNED = ("owner-label-input", "note-text")
+GUARDED_OWNED = ("owner-label-input", "note-text", "question-note-text")
 GUARDED_SLICE = ("counterevidence-reason", "safety-detail")
 GUARDED_PORTFOLIO = ("flag-reason", "dimension-note")
 
