@@ -38,6 +38,17 @@ test('preparation separates primary question status from unchecked attached pass
  assert.match(html,/Attached passages and preserved reports need a separate freshness check in Investigations/);
 });
 
+test('agenda identifies unfinished passage work without treating it as saved or exposing quotations',()=>{
+ const state={...base(),questions:[question()],manualPassageDraftQuestionIds:[question().question_id]};
+ const html=render(state);
+ assert.match(html,/data-testid="second-opinion-passage-drafts"/);
+ assert.match(html,/data-testid="second-opinion-resume-passages"/);
+ assert.match(html,/Resume unsaved record passages/);
+ assert.match(html,/not yet attached/);
+ assert.doesNotMatch(render({...state,questionListPhase:'error'}),/second-opinion-resume-passages|second-opinion-passage-drafts/);
+ assert.doesNotMatch(render({...state,manualPassageDraftQuestionIds:[]}),/second-opinion-resume-passages|second-opinion-passage-drafts/);
+});
+
 test('agenda renders literal user-authored questions as escaped text, provenance and review status',()=>{
  const html=render({...base(),questions:[question('source_reassessment_required')]});
  assert.match(html,/data-testid="second-opinion-agenda-item"/);

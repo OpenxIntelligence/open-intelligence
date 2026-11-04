@@ -43,6 +43,17 @@ function App(){
  const filters=sourceFilters.scope===state.sourceIndex?sourceFilters:emptySourceFilters;
  useEffect(()=>{setSourceFilters({scope:state.sourceIndex,...emptySourceFilters})},[state.sourceIndex]);
  const heading=useRef<HTMLHeadingElement>(null),moveFocus=useRef(false);
+ useEffect(()=>{if(moveFocus.current){heading.current?.focus();moveFocus.current=false}},[section]);
+ const passageResume=useRef<{patientId:string;questionId:string}|null>(null);
+ useEffect(()=>{
+  const target=passageResume.current;if(!target)return;
+  if(section!=='Investigations'||state.patient?.patient_id!==target.patientId||state.phase!=='ready'||state.evidencePhase==='error'){
+   passageResume.current=null;return;
+  }
+  if(state.evidencePhase==='ready'&&state.evidencePacket?.question.question_id===target.questionId){
+   document.getElementById('manual-context-heading')?.focus();passageResume.current=null;
+  }
+ },[section,state.patient?.patient_id,state.phase,state.evidencePhase,state.evidencePacket]);
  const originalHeading=useRef<HTMLHeadingElement>(null),sourcesHeading=useRef<HTMLHeadingElement>(null);
  const originalReturn=useRef<{sourceId:string;trigger:HTMLButtonElement;pending:boolean}|null>(null);
  useEffect(()=>{originalReturn.current=null},[state.sourceIndex,state.patient?.patient_id]);
@@ -59,7 +70,6 @@ function App(){
   if(trigger?.isConnected&&!trigger.disabled)trigger.focus();
   else (sourcesHeading.current??heading.current)?.focus();
  }
- useEffect(()=>{if(moveFocus.current){heading.current?.focus();moveFocus.current=false}},[section]);
  const keyForReceipt=useRef(requestKey);
  useEffect(()=>{let active=true;const c=new AbortController();const timer=setTimeout(()=>c.abort(),5000);
   fetch('/health/ready',{signal:c.signal,credentials:'omit',redirect:'error',cache:'no-store'})
@@ -71,7 +81,7 @@ function App(){
  useEffect(()=>{if(!state.connected){setPatientId('');setConfirmed(false)}},[state.connected]);
  useEffect(()=>{const clear=()=>session.disconnect();window.addEventListener('pagehide',clear);return()=>window.removeEventListener('pagehide',clear)},[]);
   const busy=state.phase==='creating'||state.phase==='reading'||state.importOutcome==='sending'||state.questionSavePhase==='saving'||state.reviewReturnPhase==='saving'||state.evidenceWritePhase==='saving';
- function navigate(nextSection:string){originalReturn.current=null;session.dismissSourceQuotePacket();session.dismissSourceBrief();session.dismissEvidenceMetadata();session.dismissQuestionEvidence();session.dismissSourceImages();if(nextSection===section){heading.current?.focus();return}moveFocus.current=true;setSection(nextSection);}
+ function navigate(nextSection:string){passageResume.current=null;originalReturn.current=null;session.dismissSourceQuotePacket();session.dismissSourceBrief();session.dismissEvidenceMetadata();session.dismissQuestionEvidence();session.dismissSourceImages();if(nextSection===section){heading.current?.focus();return}moveFocus.current=true;setSection(nextSection);}
  function disconnect(){session.disconnect();setToken('');setPatientId('');setConfirmed(false);setSection('Overview');}
  return <div className="app">
   <a className="skip" href="#main">Skip to workspace</a>
@@ -139,7 +149,7 @@ function App(){
      </div>}
     </section>:section!=='Overview'?<section className="panel"><h2>{section} is not connected</h2><p>The existing reference application retains this workflow. No placeholder patient data, generated conclusions or clinical actions are shown here.</p><p>The source, evidence and review owners must be integrated with the same scoped patient API before this becomes available.</p><button onClick={()=>navigate('Overview')}>Return to overview</button></section>:<>
     <PatientContinuity state={state} onNavigate={navigate} busy={busy} onRefreshFollowthrough={caseId=>void session.loadFollowthrough(caseId)}/>
-    <SecondOpinionPreparation state={state} onNavigate={navigate}/>
+    <SecondOpinionPreparation state={state} onNavigate={navigate} onResumeQuestion={questionId=>{navigate('Investigations');if(state.patient)passageResume.current={patientId:state.patient.patient_id,questionId};void session.loadQuestionEvidence(questionId);}}/>
     <div className="grid">
      <section className="panel" aria-labelledby="access-heading"><span className="step">01 / ACCESS</span><h2 id="access-heading">Connect your session</h2><p>Permission is checked by the API on every request. Your credential stays in this tab’s memory and is cleared on disconnect or reload.</p>
       {!state.connected?<form onSubmit={e=>{e.preventDefault();session.connect(token);setToken('')}}><label htmlFor="credential">Synthetic access credential</label><input id="credential" name="credential" type="password" autoComplete="off" autoCapitalize="none" spellCheck={false} value={token} onChange={e=>setToken(e.target.value)} required minLength={32} maxLength={256}/><button type="submit" className="primary">Connect credential</button></form>:<div><p className="session-status">Credential present · grants checked by server</p><button onClick={disconnect}>Disconnect and clear</button></div>}

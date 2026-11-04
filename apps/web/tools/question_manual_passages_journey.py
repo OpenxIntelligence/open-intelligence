@@ -100,11 +100,18 @@ def exercise(cd,patient_id,token,credentials,write_grants,artifacts):
         # Unsent passage choices survive navigation and fresh authority checks;
         # neither navigation nor refresh is a passage write.
         assert cd.evaluate('window.__manualJourney.posts.length')==0
-        navigate('Overview');navigate('Investigations')
-        cd.wait('Boolean(document.querySelector('+json.dumps(row)+'))','same question after unsent passage navigation')
-        click(row+' [data-testid=authored-evidence-open]')
+        navigate('Overview')
+        agenda='[data-testid=second-opinion-agenda-item][data-question-id="'+question_id+'"]'
+        cd.wait('Boolean(document.querySelector('+json.dumps(agenda+' [data-testid=second-opinion-resume-passages]')+'))','unsent passage reminder on exact Overview question')
+        assert cd.evaluate("document.querySelector('[data-testid=second-opinion-passage-drafts]').textContent.includes('not yet attached')")
+        cd.evaluate('document.querySelector('+json.dumps(agenda)+').scrollIntoView()')
+        screenshot=cd.command('Page.captureScreenshot',{'format':'png'})
+        (artifacts/'manual-context-resume-agenda.png').write_bytes(base64.b64decode(screenshot['data']))
+        click(agenda+' [data-testid=second-opinion-resume-passages]')
         cd.wait("document.querySelectorAll('[data-testid=manual-context-selected] blockquote').length===2 && "
                 "document.querySelector('[data-testid=manual-context-status]')?.textContent.includes('restored')",'unsent text and PDF choices reauthorized')
+        cd.wait("document.activeElement?.id==='manual-context-heading'",'resume action focuses the freshly opened passage panel')
+        assert cd.evaluate('document.querySelector('+json.dumps(row+' [data-testid=question-unsent-passages]')+').textContent.includes("not yet attached")')
         click('[data-testid=evidence-refresh]')
         cd.wait("document.querySelectorAll('[data-testid=manual-context-selected] blockquote').length===2 && "
                 "Boolean(document.querySelector('[data-testid=manual-context-unsaved]'))",'evidence refresh retains unsent passage choices')
@@ -194,6 +201,7 @@ def exercise(cd,patient_id,token,credentials,write_grants,artifacts):
             recovery_survives_refresh_and_denial=True,unsaved_removal_blocks_report=True,
             preparation_navigation_preserves_retry=True,unsent_task_excluded_from_agenda=True,
             unsent_passage_navigation_reauthorized=True,unsent_passage_refresh_preserved=True,
+            overview_exact_question_resume=True,overview_resume_focuses_passages=True,
             unsent_passage_case_source_world_refresh_preserved=True,
             unsent_removal_refresh_preserved=True,unsent_navigation_passage_writes=0,
             navigation_task_writes=cd.evaluate('window.__manualJourney.taskWrites'),

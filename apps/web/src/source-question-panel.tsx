@@ -121,7 +121,8 @@ export function SourceQuestionPanel({state,session,busy,onReview}:{state:ViewSta
             Prepare a new question from the current source context before exporting a brief.</p>}
           <FollowthroughCreate key={item.question_id+':'+item.preflight_sha256}
             question={item} state={state} session={session} busy={busy}/>
-          <button type="button" data-testid="authored-evidence-open" disabled={busy||state.evidencePhase==='loading'} onClick={()=>void session.loadQuestionEvidence(item.question_id)}>Inspect evidence and human comparisons</button>
+          <button type="button" data-testid="authored-evidence-open" disabled={busy||state.evidencePhase==='loading'} onClick={()=>void session.loadQuestionEvidence(item.question_id)}>{state.manualPassageDraftQuestionIds.includes(item.question_id)?'Resume unsaved record passages':'Inspect evidence and human comparisons'}</button>
+          {state.manualPassageDraftQuestionIds.includes(item.question_id)&&<p className="muted" data-testid="question-unsent-passages">Unsent passage changes are retained in this session, not yet attached. Reopening rechecks their sources and permissions.</p>}
           <button type="button" data-testid="source-quote-packet-open"
            disabled={busy||state.sourceQuotePhase==='loading'}
            onClick={()=>void session.loadQuestionSourcePacket(item.question_id)}>

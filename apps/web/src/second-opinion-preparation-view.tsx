@@ -10,7 +10,7 @@ const summary={
  inputs_prepared:'The currently loaded records and questions are organized for preparation.',
 } as const;
 
-export function SecondOpinionPreparation({state,onNavigate}:{state:ViewState;onNavigate:(section:string)=>void}){
+export function SecondOpinionPreparation({state,onNavigate,onResumeQuestion}:{state:ViewState;onNavigate:(section:string)=>void;onResumeQuestion:(questionId:string)=>void}){
  const view=secondOpinionPreparation(state);
  if(!view)return null;
  return <section className="panel second-opinion-preparation" data-testid="second-opinion-preparation" data-state={view.state} aria-labelledby="second-opinion-heading">
@@ -36,12 +36,17 @@ export function SecondOpinionPreparation({state,onNavigate}:{state:ViewState;onN
    <h3 id="second-opinion-agenda-heading">Saved questions for discussion</h3>
    <p>These are your exact saved questions, not generated recommendations or clinically reviewed conclusions. Primary source status is from the last authorized read.</p>
    <p data-testid="second-opinion-context-scope">Attached passages and preserved reports need a separate freshness check in Investigations.</p>
+   {view.agenda&&state.manualPassageDraftQuestionIds.length>0&&<p data-testid="second-opinion-passage-drafts">
+    {state.manualPassageDraftQuestionIds.length} {state.manualPassageDraftQuestionIds.length===1?'question has':'questions have'} unsaved record-passage changes in this session, not yet attached.
+    {' '}Open the matching question to recheck and resume. Questions outside this preview are available in Investigations.
+   </p>}
    {!view.agenda?<p role="status" data-testid="second-opinion-agenda-unavailable">Questions have not been checked for this case, or that history is no longer available. Return to Investigations for an authorized read.</p>:
     view.agenda.total===0?<p data-testid="second-opinion-agenda-empty">No saved questions were returned for this case and grant. This does not establish that there are no care questions.</p>:<>
      <p className="small" data-testid="second-opinion-agenda-coverage">Showing {view.agenda.preview.length} of {view.agenda.total} saved {view.agenda.total===1?'question':'questions'} in the recorded order. Open Investigations to see the full history.</p>
      <ol className="second-opinion-agenda-list" aria-label="Saved discussion questions">
       {view.agenda.preview.map(item=><li key={item.questionId} data-testid="second-opinion-agenda-item" data-question-id={item.questionId} data-source-context={item.sourceContextState}>
        <p className="second-opinion-agenda-question">{item.text}</p>
+       {state.manualPassageDraftQuestionIds.includes(item.questionId)&&<button type="button" data-testid="second-opinion-resume-passages" onClick={()=>onResumeQuestion(item.questionId)}>Resume unsaved record passages</button>}
        <p className="small">Primary source version {item.sourceVersion}, line {item.sourceLine}. <strong>{item.sourceContextState==='source_reassessment_required'?'Source changed: reassessment required before relying on earlier preparation.':'Primary source context is current; not clinically reviewed.'}</strong></p>
        <section className="second-opinion-question-work" data-testid="second-opinion-question-work" data-work-state={item.work===null?'unavailable':'ready'} aria-label="Recorded follow-up for this question">
         <h4>Recorded follow-up</h4>

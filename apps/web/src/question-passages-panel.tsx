@@ -39,7 +39,7 @@ export function QuestionPassagesPanel({session,scope,busy,onContext,onSaved}:{se
   if(stamp===generation.current&&client.snapshot().packet&&client.snapshot().phase==='idle')onSaved();
  }
  return <section data-testid="question-manual-passages" aria-labelledby="manual-context-heading" className="evidence-import">
-  <h4 id="manual-context-heading">Additional passages from the patient’s records</h4>
+  <h4 id="manual-context-heading" tabIndex={-1}>Additional passages from the patient’s records</h4>
   <p>Attach exact saved text or PDF selections to this question. Their classifications are user-selected and unreviewed; comparisons still concern the primary structured observation.</p>
   <p role="status" data-testid="manual-context-status">{state.message} {message}</p>
   {binding.dirty&&<p role="status" data-testid="manual-context-unsaved">Passage additions or removals are unsaved. Retained in this session only. Save this set or discard these changes before preparing a report.</p>}

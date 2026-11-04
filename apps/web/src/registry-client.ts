@@ -40,6 +40,7 @@ export type ReviewReturnIntent=Readonly<{
 export type QuestionDraft = Readonly<{case_id:string;source_id:string;source_line:number;
   snapshot_fingerprint:string;question:string}>;
 export type ViewState = Readonly<EvidenceState & SourceImagesState & {
+  manualPassageDraftQuestionIds:readonly string[];
   connected: boolean; phase: 'disconnected' | 'idle' | 'reading' | 'creating' | 'ready' | 'error';
   patient: Patient | null; created: CreatedPatient | null; message: string;
   cases: ReadonlyArray<CaseBinding> | null; sourceIndex: SourceIndex | null;
@@ -115,7 +116,7 @@ const emptyInvestigation=()=>({questionDraft:null,composerPreview:null,composerP
   questionListMessage:'Open an authorized case to inspect saved source questions.',
   ...emptyEvidenceState(),...emptyBrief(),sourceQuotePacket:null,sourceQuotePhase:'idle' as const,
   sourceQuoteMessage:'Select a saved question to inspect its source quotation and evidence gaps.'});
-const fresh = (): ViewState => Object.freeze({connected:false,phase:'disconnected',patient:null,created:null,message:'Connect a local synthetic credential to use the patient registry.',cases:null,sourceIndex:null,recordsPhase:'idle',recordMessage:'Open an authorized fictional patient in Overview first.',...emptyIntake(),...emptyWorld(),...emptyInvestigation(),...emptyReview(),...emptyFollowthrough(),...emptyEvidence(),...emptySourceImages()});
+const fresh = (): ViewState => Object.freeze({manualPassageDraftQuestionIds:Object.freeze([]),connected:false,phase:'disconnected',patient:null,created:null,message:'Connect a local synthetic credential to use the patient registry.',cases:null,sourceIndex:null,recordsPhase:'idle',recordMessage:'Open an authorized fictional patient in Overview first.',...emptyIntake(),...emptyWorld(),...emptyInvestigation(),...emptyReview(),...emptyFollowthrough(),...emptyEvidence(),...emptySourceImages()});
 const emptyRecords=()=>({...emptyIntake(),...emptyWorld(),...emptySourceImages(),cases:null,sourceIndex:null,recordsPhase:'idle' as const,recordMessage:'Load the current authorized case mappings to inspect original source metadata.'});
 function exact(value: unknown, fields: string[]): value is Record<string,unknown> {
   return value !== null && typeof value==='object' && !Array.isArray(value) &&
@@ -171,7 +172,7 @@ export class RegistrySession {
       this.#state.patient?.patient_id===scope.patient_id&&this.#state.questionsCaseId===scope.case_id&&this.#state.questionListPhase==='ready'&&
       Boolean(this.#state.questions?.some(q=>q.question_id===scope.question_id&&q.case_id===scope.case_id&&q.patient_id===scope.patient_id));
     return {read:()=>current()?this.#manualPassageDrafts.get(key)??null:null,
-      write:draft=>{if(!current())return;if(draft===null)this.#manualPassageDrafts.delete(key);else{this.#manualDraftCase=scope.case_id;this.#manualPassageDrafts.set(key,draft);}}};
+      write:draft=>{if(!current())return;if(draft===null)this.#manualPassageDrafts.delete(key);else{this.#manualDraftCase=scope.case_id;this.#manualPassageDrafts.set(key,draft);}this.#publish({});}};
   };
   manualPassageIntentStore=(scope:import('./question-passages').PassageScope):import('./question-passages').ManualIntentStore=>{
     const key=JSON.stringify([scope.patient_id,scope.case_id,scope.question_id]);
@@ -270,7 +271,16 @@ export class RegistrySession {
   retryEvidenceWrite=()=>this.#evidenceSession.retry();
   snapshot=():ViewState=>this.#state;
   subscribe=(listener:()=>void):(()=>void)=>{this.#listeners.add(listener);return()=>this.#listeners.delete(listener);};
-  #publish(patch:Partial<ViewState>){this.#state=Object.freeze({...this.#state,...patch});for(const listener of this.#listeners)listener();}
+  #publish(patch:Partial<ViewState>){
+    const next={...this.#state,...patch},patient=next.patient?.patient_id,caseId=next.questionsCaseId;
+    const scoped=next.connected&&next.phase==='ready'&&next.patient?.status==='active'&&next.questionListPhase==='ready'&&
+      next.worldPhase==='ready'&&next.worldModel?.patient_id===patient&&next.worldModel?.case_id===caseId&&
+      next.cases?.some(c=>c.patient_id===patient&&c.case_id===caseId&&c.status==='active');
+    const ids=scoped?(next.questions??[]).filter(q=>q.patient_id===patient&&q.case_id===caseId&&
+      this.#manualPassageDrafts.has(JSON.stringify([patient,caseId,q.question_id]))).map(q=>q.question_id):[];
+    this.#state=Object.freeze({...next,manualPassageDraftQuestionIds:Object.freeze(ids)});
+    for(const listener of this.#listeners)listener();
+  }
   #resetEvidence(preserveCase?:string){
     this.#evidenceRead++;this.#evidenceWrite++;this.#savingEvidence=false;
     const intent=this.#state.evidenceLinkIntent;
