@@ -127,6 +127,15 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
         cd.command('Input.dispatchKeyEvent', {'type':'keyUp','key':name,'code':name,'windowsVirtualKeyCode':code})
     for width, height in ((390, 844), (320, 256)):
         cd.command('Emulation.setDeviceMetricsOverride', {'width':width,'height':height,'deviceScaleFactor':1,'mobile':False})
+        # CDP resizing returns before the application's resize/ResizeObserver
+        # measurement necessarily updates sticky context and reader bounds.
+        # Establish the requested layout before native keyboard interaction;
+        # retain the exact visibility assertion and do not scroll from the test.
+        cd.wait('''(() => {const h=document.querySelector('.topbar');
+          const size=Math.ceil(h.getBoundingClientRect().height),sticky=size<=innerHeight/2;
+          return h.dataset.sticky===String(sticky)&&
+            Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--workspace-offset'))===(sticky?size+24:24);
+        })()''', 'requested viewport context measurement is ready before keyboard input')
         cd.evaluate('''(() => {const p=document.querySelector('[data-testid=laboratory-local-original]');
           p.style.fontSize='32px';p.scrollTop=0;p.closest('details').querySelector('summary').focus();})()''')
         key('Tab', 9)
@@ -135,6 +144,7 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
           const r=p.getBoundingClientRect(),h=document.querySelector('.topbar');return {
           width:innerWidth,height:innerHeight,focused:document.activeElement===p,
           top:r.top,bottom:r.bottom,contextBottom:h.dataset.sticky==='false'?0:h.getBoundingClientRect().bottom,
+          contextOffset:getComputedStyle(document.documentElement).getPropertyValue('--workspace-offset'),sticky:h.dataset.sticky,
           scrollHeight:p.scrollHeight,clientHeight:p.clientHeight,requests:window.__oiLabRequests,
           writes:window.__oiLabWrites.length,confirmed:document.querySelector('[data-testid=laboratory-confirm]').checked};})()''')
         observations.append(observation)
