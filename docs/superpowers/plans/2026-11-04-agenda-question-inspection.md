@@ -28,8 +28,14 @@ Interface: `SecondOpinionPreparation` consumes `onResumeQuestion(questionId: str
 - [x] Inspect current source/branches and prove #461 includes #449. Independently verify the downloaded parent artifact and all 657 source blobs/modes.
 - [x] Add a rendered behavior regression: saved rows have one escaped, question-specific inspection action; draft rows keep resume; unavailable/foreign/disconnected contexts expose neither.
 - [x] Extend the actual browser journey with two distinct saved questions after passage correction. Require fresh per-question reads, empty unrelated context, preserved historical report, stale-report controls and zero navigation writes.
-- [ ] Observe the new rendered test fail on the unchanged parent UI.
+- [x] Observe the new rendered test fail on the unchanged parent UI.
 - [ ] Add the conditional saved-row action using the existing callback; run full hosted client/rights/build/browser acceptance.
 - [ ] Independent review and exact artifact verification; record final results and limits in the PR, Notion and Drive.
 
 The rendered test catches the missing ordinary saved-question action. The browser catches wrong-question routing, cached disclosure, lost correction status, missing focus and unintended writes. Existing parent tests cover uncertain-command and draft recovery. Full standalone API/restore verification is separate because backend bytes are unchanged.
+
+## Verification checkpoint
+
+Tests-first run [41883448597](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41883448597), head `0268f71bcf92ff1cf896d45482a1aff80dccb852`, passed 535 prior client tests and 13 rights controls. The one new rendered test failed with `0 !== 1` at the missing saved-question action. No tests were skipped; build/browser did not run after the expected failure.
+
+The production change is only the preparation row conditional: saved rows use the existing callback, draft rows retain their existing recovery action. Parent navigation/session/source/permission/backend behavior remains unchanged. Local 55 projection/passage tests passed via Node transformation; full local npm test is blocked by absent `tsc`. This is not build evidence. Final exact-head hosted acceptance, source review and artifact checks remain pending at this source checkpoint; the PR final receipt records their outcomes without moving tested code.
