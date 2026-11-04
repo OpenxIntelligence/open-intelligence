@@ -1,5 +1,23 @@
 # Connected laboratory originals and patient Journey
 
+## Current combined candidate — #480
+
+[Draft #480](https://github.com/OpenxIntelligence/open-intelligence/pull/480)
+connects this workspace and #473 keyboard reading to #471's verified laboratory
+and manual-task migration join, with #475 report navigation. The
+[combined contract](H1_LAB_MANUAL_CONVERGENCE.md) defines the current source,
+`0017_lab_manual_convergence` readiness and complete required acceptance.
+Local combined checks passed 513 client tests, TypeScript/Vite build and 13
+rights controls; installed-notice inspection passed for the unchanged profile
+with optional packages omitted. Omitted packages are not license-cleared.
+Final hosted results belong to #480's immutable-source receipt.
+
+The owner-specific statements below are preserved historical scope and
+verification records. Their earlier migration exclusions, local-only checks
+and optional-package installation failure are not the current combined status.
+
+## Preserved workspace owner scope — #472
+
 4 November 2026. Bounded continuation of source owner #115 and FHIR workstream
 #428 (workspace stage), extending draft #469 at
 `8ff6e9e5a0389a1142ca479a6705c599cbda88e7`. Observed main was
@@ -76,7 +94,7 @@ Backend backup/restore is unchanged and not rerun solely for this frontend
 increment. Migration convergence and integration of sibling UI branches remain
 separate reviewed work.
 
-## Journey-to-Records navigation — 4 November 2026
+## Preserved navigation owner checkpoint — #475 — 4 November 2026
 
 Each laboratory result's provenance disclosure now offers **Open report versions in Records**. The action navigates to Records and requests fresh source metadata for the exact case in the displayed World Model. The user then selects the immutable report version to inspect its original under the existing independent original-read permission and byte checks. Loading or busy context disables the action. No laboratory-to-question binding or clinical interpretation is added.
 
