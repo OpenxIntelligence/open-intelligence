@@ -15,6 +15,7 @@ from .database import Database
 from .access import Authentication, DenyAuthentication, SyntheticFileAuthentication
 from .patients import patient_router
 from .request_limits import PatientRequestLimit
+from .fhir_routes import fhir_router
 
 
 def _loopback_host(host: str) -> bool:
@@ -89,6 +90,7 @@ def create_app(settings: Settings | None = None, *, authentication: Authenticati
         return JSONResponse(status_code=422, content={"detail": "Invalid request"},
                             headers={"Cache-Control": "no-store"})
 
+    app.include_router(fhir_router())
     app.include_router(patient_router(database, authentication))
 
     return app
