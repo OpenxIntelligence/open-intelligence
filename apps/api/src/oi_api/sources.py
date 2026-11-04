@@ -45,6 +45,17 @@ class PostgresSourceVersions:
             raise TypeError("Canonical patient registry required")
         self.registry = registry
 
+    def _document_filter(self) -> str:
+        # Direct migration fixtures legitimately seed old structured-only
+        # schemas. HTTP separately requires the exact current migration head.
+        exists = self.registry._fetchone("SELECT to_regclass('clinical_source.document_intakes')")[0]
+        return ("AND source_id NOT IN (SELECT source_id FROM clinical_source.document_intakes) "
+                if exists is not None else "")
+
+    def _is_reviewed(self, source_id: str) -> bool:
+        return bool(self._document_filter() and self.registry._fetchone(
+            "SELECT source_id FROM clinical_source.document_intakes WHERE source_id=%s", (source_id,)))
+
     def _binding(self, patient_id: str, case_id: str, organization: str, purpose: str) -> int:
         PostgresRecordRequests(self.registry)._active_patient(patient_id, organization)
         # Row lock serializes same-case imports and revocation, including
@@ -82,6 +93,7 @@ class PostgresSourceVersions:
             "SELECT source_id,document_id,version,sha256,kind,event_date,issued_at,"
             "received_at,specimen_id,state,supersedes_id "
             "FROM clinical_source.source_versions WHERE case_id=%s "
+            + self._document_filter() +
             "ORDER BY document_id,version", (case_id,),
         )
         return self._source_metadata(rows)
@@ -106,6 +118,7 @@ class PostgresSourceVersions:
             "SELECT source_id,document_id,version,sha256,kind,event_date,issued_at,"
             "received_at,specimen_id,state,supersedes_id,raw "
             "FROM clinical_source.source_versions WHERE case_id=%s "
+            + self._document_filter() +
             "ORDER BY document_id,version", (case_id,),
         )
         if self._source_metadata(rows) != sources:
@@ -200,6 +213,8 @@ class PostgresSourceVersions:
         organization = _key(organization, "organization")
         with self.registry.transaction():
             binding_revision = self._binding(patient_id, case_id, organization, purpose)
+            if self._is_reviewed(source_id):
+                raise PatientRegistryDenied("Use the reviewed-document original endpoint")
             row = self.registry._fetchone(
                 "SELECT raw,sha256,document_id,version,state,source_id,case_id,"
                 "kind,event_date,issued_at,specimen_id,supersedes_id "
@@ -298,6 +313,8 @@ class PostgresSourceVersions:
                 "WHERE case_id=%s AND document_id=%s "
                 "ORDER BY version DESC LIMIT 1", (case_id, parsed.document_id),
             )
+            if old and self._is_reviewed(old[0]):
+                raise PatientRegistryConflict("Document format cannot change across intake owners")
             previously_seen = self.registry._fetchone(
                 "SELECT source_id,version FROM clinical_source.source_versions "
                 "WHERE case_id=%s AND document_id=%s AND sha256=%s",

@@ -7,6 +7,7 @@ The owned PostgreSQL container supplies restart and dump/restore evidence.
 
 from datetime import datetime, timedelta, timezone
 import hashlib
+import base64
 import json
 import os
 from pathlib import Path
@@ -179,6 +180,8 @@ def main():
                     FROM (SELECT source_id,case_id,document_id,version,sha256,
                       encode(sha256(raw),'hex') AS raw_sha256,octet_length(raw) AS byte_length,
                       state,supersedes_id FROM clinical_source.source_versions) s),
+                  'document_intakes', (SELECT json_agg(d ORDER BY d.source_id) FROM clinical_source.document_intakes d),
+                  'annotation_revisions', (SELECT json_agg(r ORDER BY r.source_id,r.revision) FROM clinical_source.annotation_revisions r),
                   'assertions', (SELECT json_agg(a ORDER BY a.assertion_id)
                     FROM clinical_source.assertions a),
                   'bindings', (SELECT json_agg(b ORDER BY b.case_id)
@@ -221,6 +224,27 @@ def main():
             original_path = source_path + "/" + source_ids[0]
             check_history()
 
+            document_path = patient_path + "/cases/" + CASE + "/documents"
+            document_raw = b"Independently fictional reviewed record\r\nMarker pending.\r\nCorrected passage.\r\n"
+            upload = {"synthetic": True, "filename": "fictional-review.txt", "original_base64": base64.b64encode(document_raw).decode()}
+            status, preview = request(document_path + "/preview", upload)
+            assert status == 200
+            intake = {**upload, "confirmed_case_id": CASE, "expected_sha256": preview["sha256"],
+                      "metadata": {"document_id": "DOC-REVIEWED", "kind": "pathology", "event_date": "2026-01-10",
+                                   "issued_at": "2026-01-11", "manual_transcription_confirmed": True},
+                      "findings": [{"key": "marker", "state": "pending", "quote": "Marker pending.", "line": 2}]}
+            status, document_saved = request(document_path, intake)
+            assert status == 201
+            saved_path = document_path + "/" + document_saved["source_id"]
+            correction = {"synthetic": True, "request_key": "CORRECTION-RECOVERY", "confirmed_case_id": CASE,
+                          "expected_sha256": preview["sha256"], "expected_revision_id": document_saved["annotation_revision_id"],
+                          "reason": "Correct fictional passage", "findings": [{"key": "passage", "state": "reported", "quote": "Corrected passage.", "line": 3}]}
+            status, correction_saved = request(saved_path + "/annotations", correction)
+            assert status == 201
+            status, document = request(saved_path)
+            assert status == 200 and document["preview"]["text"].encode() == document_raw
+            assert [r["revision"] for r in document["revisions"]] == [1, 2]
+
             # Each grant is independent. Changing the mounted fixture takes
             # effect without restarting; denied requests cannot mint receipts.
             for missing, paths in (
@@ -253,16 +277,22 @@ def main():
                 read_original(source_ids[0], ORIGINAL, 1, "superseded")
                 read_original(source_ids[1], AMENDED, 2, "current")
                 check_history()
-                print("Source originals, amendments and access receipts survived " + service + " restart")
+                status, recovered_document = request(saved_path)
+                assert status == 200 and recovered_document["preview"] == document["preview"]
+                assert recovered_document["revisions"] == document["revisions"]
+                status, recovered_correction = request(saved_path + "/annotations", correction)
+                assert status == 200 and recovered_correction["annotation_revision_id"] == correction_saved["annotation_revision_id"]
+                print("Source originals, amendments, reviewed selections and access receipts survived " + service + " restart")
 
             status, revoked = request(patient_path + "/case-bindings/" + CASE + "/revoke", {
                 "synthetic": True, "reason": "Withdraw the independently fictional Compose binding"})
             assert status == 200 and revoked["duplicate"] is False
             denied([source_path, original_path, source_path + "/" + source_ids[1]])
             before = snapshot()
-            assert len(before["sources"]) == 2 and len(before["assertions"]) == 2
+            assert len(before["sources"]) == 3 and len(before["assertions"]) == 2
+            assert len(before["document_intakes"]) == 1 and len(before["annotation_revisions"]) == 2
             assert before["bindings"][0]["status"] == "revoked"
-            for source, original in zip(before["sources"], (ORIGINAL, AMENDED)):
+            for source, original in zip([s for s in before["sources"] if s["document_id"] == "DOC-COMPOSE"], (ORIGINAL, AMENDED)):
                 assert source["sha256"] == source["raw_sha256"] == hashlib.sha256(original.encode("utf-8")).hexdigest()
                 assert source["byte_length"] == len(original.encode("utf-8"))
             dump = command(["exec", "-T", "db", "pg_dump", "-U", "oi_api", "-d",
@@ -273,6 +303,7 @@ def main():
                      "--exit-on-error", "--no-owner"], input=dump)
             assert snapshot(restored_database) == before, "Restore changed original hashes, anchors or history"
             assert history(restored_database) == check_history()
+            assert next(s for s in before["sources"] if s["document_id"] == "DOC-REVIEWED")["raw_sha256"] == hashlib.sha256(document_raw).hexdigest()
             print("PASS: scoped source HTTP, exact UTF-8 originals, amendment history, denial, "
                   "API/DB restart, durable access receipts, binding revocation and dump/restore")
         except Exception:

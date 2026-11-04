@@ -14,6 +14,7 @@ from oi_api.authored_evidence import PostgresQuestionEvidence as AuthoredEvidenc
 from oi_api.case_bindings import CanonicalCaseBindings
 from oi_api.composer_preflight import PostgresSourceComposerPreflight
 from oi_api.database import Database
+from oi_api.contracts import SCHEMA_REVISION
 from oi_api.evidence_catalog import fictional_records, seed_fictional_records
 from oi_api.migrate import migrate
 from oi_api.question_evidence import PostgresQuestionEvidence as MetadataEvidence
@@ -111,7 +112,7 @@ class EvidenceConvergenceMigrationTests(SourceVersionFixture):
             self.assertEqual(after[1][name], state)
         with self.engine.connect() as connection:
             self.assertEqual(connection.execute(text("SELECT version_num FROM public.alembic_version"))
-                             .scalars().all(), [MERGED_REVISION])
+                             .scalars().all(), [SCHEMA_REVISION])
         probe = Database(self.settings)
         self.addCleanup(probe.close)
         self.assertEqual(probe.check().status, "ready")
