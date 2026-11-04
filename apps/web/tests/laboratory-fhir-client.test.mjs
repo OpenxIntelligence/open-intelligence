@@ -158,16 +158,17 @@ test('a blocked World Model read cannot strand an in-flight import without recei
  assert.equal(session.snapshot().laboratoryPhase,'saved');assert.equal(session.snapshot().laboratoryReceipt.source_id,SID);
 });
 test('an overlapping text import cannot leave the laboratory preflight mutex stuck',async()=>{
- const digest=crypto.subtle.digest,hold=deferred();
+ const digest=crypto.subtle.digest,hold=deferred(),textReply=deferred();
  const raw=`OI-SYNTHETIC-REPORT/1\nPatient: ${CID}\nDocument: FICTIONAL-TEXT\nType: clinical\nEvent-Date: 2026-01-01\nIssued-At: 2026-01-02\nFinding: note|reported|Fictional text.\n`;
- const{session,calls}=await ready(url=>url.endsWith('/laboratory/fhir-r4/sources')?reply(RECEIPT,201):
-  reply({result:'imported',duplicate:false,source_id:SID,version:1},201));
+ const{session,calls}=await ready(url=>url.endsWith('/laboratory/fhir-r4/sources')?reply(RECEIPT,201):textReply.promise);
  try{
   crypto.subtle.digest=()=>hold.promise;
   const preparing=session.importLaboratory(CID,RAW,true);
-  await session.importSource(CID,raw,true);
+  const textImport=session.importSource(CID,raw,true);
   crypto.subtle.digest=digest;
   hold.resolve(await digest.call(crypto.subtle,'SHA-256',bytes(RAW)));await preparing;
+  assert.equal(session.snapshot().importOutcome,'sending');
+  textReply.resolve(reply({result:'imported',duplicate:false,source_id:SID,version:1},201));await textImport;
   await session.importLaboratory(CID,RAW,true);
   assert.equal(session.snapshot().laboratoryPhase,'saved');
   assert.equal(calls.filter(x=>x[0].endsWith('/laboratory/fhir-r4/sources')).length,1);

@@ -93,8 +93,8 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
         assert cd.evaluate('document.querySelector("[data-testid=laboratory-import]").disabled')
 
     def inspect(source_id, expected):
-        cd.evaluate('[...document.querySelectorAll("[data-testid=source-version]")].find(e=>e.textContent.includes(' + json.dumps(source_id) + ')).querySelector("[data-testid=open-original]").click()')
-        cd.wait('Boolean(document.querySelector("[data-testid=server-original]"))', 'authorized exact FHIR original')
+        cd.evaluate('[...document.querySelectorAll("[data-testid=source-version]")].find(e=>e.querySelector("[data-testid=source-verify] dl>div:first-child code").textContent===' + json.dumps(source_id) + ').querySelector("[data-testid=open-original]").click()')
+        cd.wait('document.querySelector("[data-testid=server-original]")?.textContent===' + json.dumps(expected.decode()), 'authorized exact FHIR original')
         actual = cd.evaluate('document.querySelector("[data-testid=server-original]").textContent')
         assert actual == expected.decode()
         assert hashlib.sha256(actual.encode()).hexdigest() == hashlib.sha256(expected).hexdigest()
@@ -172,7 +172,7 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     records()
     inspect(current['source_id'], amended)
     credentials[0]['actions'].remove('source_original_read');write_grants()
-    cd.evaluate('[...document.querySelectorAll("[data-testid=source-version]")].find(e=>e.textContent.includes(' + json.dumps(current['source_id']) + ')).querySelector("[data-testid=open-original]").click()')
+    cd.evaluate('[...document.querySelectorAll("[data-testid=source-version]")].find(e=>e.querySelector("[data-testid=source-verify] dl>div:first-child code").textContent===' + json.dumps(current['source_id']) + ').querySelector("[data-testid=open-original]").click()')
     cd.wait('!document.querySelector("[data-testid=server-original]") && document.querySelector("[data-testid=records-status]").textContent.includes("permission denied")', 'revoked laboratory original withheld')
     credentials[0]['actions'].append('source_original_read');write_grants()
     journey('1')
