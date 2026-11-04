@@ -29,7 +29,20 @@ function question(state='current_unreviewed_question'){
   question:'Could we discuss fictional marker & <unverified note>?',source_version:2,source_line:14,
   source_context_state:state};
 }
-const render=state=>renderToStaticMarkup(createElement(SecondOpinionPreparation,{state,onNavigate:()=>{}}));
+const render=state=>renderToStaticMarkup(createElement(SecondOpinionPreparation,{state,onNavigate:()=>{},onResumeQuestion:()=>{}}));
+
+test('saved agenda rows offer question-specific inspection and keep unsent passage recovery distinct',()=>{
+ const saved=question(),draft={...question(),question_id:'QUESTION-'+'C'.repeat(32),question:'Another fictional question'};
+ const state={...base(),questions:[saved,draft],manualPassageDraftQuestionIds:[draft.question_id]};
+ const html=render(state);
+ assert.equal((html.match(/data-testid="second-opinion-open-question"/g)||[]).length,1);
+ assert.equal((html.match(/data-testid="second-opinion-resume-passages"/g)||[]).length,1);
+ assert.match(html,/aria-label="Inspect records and reports for: Could we discuss fictional marker &amp; &lt;unverified note&gt;\?"/);
+ for(const patch of [{questionListPhase:'loading'},{questionListPhase:'error'},
+  {questionsCaseId:'CASE-OTHER'},{connected:false}]){
+  assert.doesNotMatch(render({...state,...patch}),/second-opinion-open-question|second-opinion-resume-passages/);
+ }
+});
 
 test('preparation separates primary question status from unchecked attached passages and reports',()=>{
  const html=render({...base(),questions:[question()]});

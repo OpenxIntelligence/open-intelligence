@@ -51,6 +51,11 @@ def exercise(cd,patient_id,token,credentials,write_grants,artifacts):
     question=operator(path+'/questions',dict(synthetic=True,request_key='MANUAL-WEB-QUESTION',source_id=source['source_id'],source_line=8,
         question=preflight['question'],expected_source_snapshot_sha256=world['snapshot_fingerprint'],expected_preflight_sha256=preflight['preflight_sha256']))
     question_id=question['question_id'];qpath=path+'/questions/'+question_id
+    other_text='Which separate fictional amber question needs verification?'
+    other_preflight=operator(path+'/composer/source-preflight',dict(synthetic=True,source_id=source['source_id'],source_line=8,
+        question=other_text,expected_source_snapshot_sha256=world['snapshot_fingerprint']))
+    other_question=operator(path+'/questions',dict(synthetic=True,request_key='MANUAL-WEB-OTHER-QUESTION',source_id=source['source_id'],source_line=8,
+        question=other_text,expected_source_snapshot_sha256=world['snapshot_fingerprint'],expected_preflight_sha256=other_preflight['preflight_sha256']))
     evidence=operator(qpath+'/evidence',dict(synthetic=True,request_key='MANUAL-WEB-EVIDENCE',content_item='abstract',
         original_text='OI-SYNTHETIC-EVIDENCE/1\nEvidence: MANUAL-CONTEXT-COMPARISON\nTitle: Independently fictional manual context example\nIssued-At: 2026-01-03\nRights: original-synthetic\nStatement: A separate fictional worksheet leaves the invented violet label uncertain.\n',
         permissions={item:{'store':'allowed','display':'allowed','redistribute':'allowed'} for item in ('metadata','abstract')}))
@@ -59,8 +64,9 @@ def exercise(cd,patient_id,token,credentials,write_grants,artifacts):
         evidence_sha256=ev['sha256'],rights_sha256=ev['rights_sha256'],expected_source_snapshot_sha256=world['snapshot_fingerprint'],
         expected_preflight_sha256=preflight['preflight_sha256'],quote='invented violet label uncertain',relation='unknown',applicability='unknown',
         rationale='This authored example requires independent source and relevance verification.'))
-    cd.evaluate("""(()=>{const original=window.fetch;window.__manualJourney={reads:[],posts:[],taskWrites:0,lose:true,restore:()=>{window.fetch=original;}};
+    cd.evaluate("""(()=>{const original=window.fetch;window.__manualJourney={reads:[],posts:[],taskWrites:0,allWrites:0,lose:true,restore:()=>{window.fetch=original;}};
         window.fetch=async(input,init)=>{const path=new URL(input instanceof Request?input.url:input,location.href).pathname;
+        if(['POST','PUT','PATCH','DELETE'].includes(init?.method))window.__manualJourney.allWrites++;
         if(path.endsWith('/followthrough')&&init?.method==='POST')window.__manualJourney.taskWrites++;
         const response=await original.call(window,input,init);
         if(path.endsWith('/manual-passages')){const body=await response.clone().json();
@@ -191,6 +197,43 @@ def exercise(cd,patient_id,token,credentials,write_grants,artifacts):
         assert historical['state']=='historical_reassessment_required' and historical['body']==report['body'] and historical['snapshot']==report['snapshot']
         screenshot=cd.command('Page.captureScreenshot',{'format':'png'})
         (artifacts/'manual-context-reassessment.png').write_bytes(base64.b64decode(screenshot['data']))
+        # Both actions use real, separately scoped reads. The second question has
+        # no attachments or report; it must never inherit the first question's.
+        navigation_posts=len(cd.evaluate('window.__manualJourney.posts'))
+        navigation_writes=cd.evaluate('window.__manualJourney.allWrites')
+        for target_id,target_text,expected_passages in ((other_question['question_id'],other_text,0),(question_id,preflight['question'],2)):
+            navigate('Overview')
+            target='[data-testid=second-opinion-agenda-item][data-question-id="'+target_id+'"]'
+            action=target+' [data-testid=second-opinion-open-question]'
+            cd.wait('Boolean(document.querySelector('+json.dumps(action)+'))','saved-question inspection action')
+            assert cd.evaluate('document.querySelector('+json.dumps(target)+').dataset.sourceContext')=='current_unreviewed_question'
+            assert cd.evaluate("document.querySelector('[data-testid=second-opinion-context-scope]').textContent.includes('separate freshness check')")
+            if target_id==question_id:
+                cd.evaluate('document.querySelector('+json.dumps(action)+').scrollIntoView({block:"center"})')
+                screenshot=cd.command('Page.captureScreenshot',{'format':'png'})
+                (artifacts/'manual-context-corrected-agenda.png').write_bytes(base64.b64decode(screenshot['data']))
+            prior_reads=len(cd.evaluate('window.__manualJourney.reads'))
+            click(action)
+            cd.wait("document.activeElement?.id==='manual-context-heading'",'saved-question action focuses attached records')
+            cd.wait("document.querySelector('[data-testid=evidence-panel] .evidence-question')?.textContent==="+json.dumps(target_text),'exact saved question inspected')
+            fresh='window.__manualJourney.reads.slice('+str(prior_reads)+').filter(r=>r.status===200 && r.body.question_id==='+json.dumps(target_id)+')'
+            cd.wait(fresh+'.length>0','new authorized passage read after agenda action')
+            latest=cd.evaluate(fresh+'.at(-1)')
+            assert latest['status']==200 and latest['body']['question_id']==target_id
+            assert len(latest['body']['passages'])==expected_passages
+            if expected_passages==0:
+                assert not cd.evaluate("Boolean(document.querySelector('[data-testid=evidence-report-open]'))")
+            else:
+                cd.wait("document.querySelector('[data-testid=manual-context-status]')?.textContent.includes('changed')",'corrected attached passage remains stale after Overview return')
+                click('[data-testid=evidence-report-select]')
+                assert cd.evaluate("document.querySelector('[data-testid=evidence-report-prepare]').disabled")
+                click('[data-testid=evidence-report-open]')
+                cd.wait("Boolean(document.querySelector('[data-testid=evidence-report-preview]'))",'same preserved historical report reopened')
+                reopened=operator(qpath+'/evidence-reports/'+report_id)
+                assert reopened['state']=='historical_reassessment_required' and reopened['body']==report['body'] and reopened['snapshot']==report['snapshot']
+        assert len(cd.evaluate('window.__manualJourney.posts'))==navigation_posts
+        assert cd.evaluate('window.__manualJourney.allWrites')==navigation_writes
+        assert cd.evaluate('window.__manualJourney.taskWrites')==0
         credentials[0]['actions'].remove('source_original_read');write_grants()
         cd.evaluate("[...document.querySelectorAll('[data-testid=question-manual-passages] button')].find(b=>b.textContent==='Refresh attached passages').click()")
         cd.wait("!document.querySelector('[data-testid=question-manual-passages]') && !document.querySelector('[data-testid=evidence-report-preview]')",'revoked original-read clears shared manual report disclosure')
@@ -202,6 +245,8 @@ def exercise(cd,patient_id,token,credentials,write_grants,artifacts):
             preparation_navigation_preserves_retry=True,unsent_task_excluded_from_agenda=True,
             unsent_passage_navigation_reauthorized=True,unsent_passage_refresh_preserved=True,
             overview_exact_question_resume=True,overview_resume_focuses_passages=True,
+            agenda_inspects_each_exact_saved_question=True,corrected_passage_overview_return_verified=True,
+            saved_question_navigation_passage_writes=0,saved_question_navigation_writes=0,
             unsent_passage_case_source_world_refresh_preserved=True,
             unsent_removal_refresh_preserved=True,unsent_navigation_passage_writes=0,
             navigation_task_writes=cd.evaluate('window.__manualJourney.taskWrites'),
