@@ -25,7 +25,7 @@ import {decodeQuestionEvidenceSearch,decodeQuestionEvidenceLinks,decodeQuestionE
 import type {QuestionEvidenceSearch,QuestionEvidenceLinks,QuestionEvidenceIntent,
   QuestionEvidenceReceipt} from './question-evidence-view.js';
 import {QuestionEvidenceSession,emptyEvidenceState} from './authored-evidence-session.js';
-import type {EvidenceState} from './authored-evidence-session.js';
+import type {EvidenceState,EvidenceDraftPatch} from './authored-evidence-session.js';
 import type {ContentItem,Permissions,Relation,Applicability} from './authored-evidence.js';
 export type Patient = Readonly<{
   patient_id: string; origin_org: string; created_at: string;
@@ -197,6 +197,10 @@ export class RegistrySession {
   prepareEvidenceReport=(questionId:string,assessmentIds:readonly string[])=>this.#evidenceSession.prepareReport(questionId,assessmentIds);
   readEvidenceReport=(questionId:string,reportId:string)=>this.#evidenceSession.readReport(questionId,reportId);
   loadEvidenceOriginal=(questionId:string,evidenceId:string)=>this.#evidenceSession.original(questionId,evidenceId);
+  selectEvidenceComparison=(questionId:string,evidenceId:string)=>this.#evidenceSession.beginComparison(questionId,evidenceId);
+  editEvidenceComparison=(patch:EvidenceDraftPatch)=>this.#evidenceSession.editComparison(patch);
+  discardEvidenceComparison=()=>this.#evidenceSession.discardComparison();
+  saveEvidenceComparison=()=>this.#evidenceSession.saveComparison();
   retryEvidenceWrite=()=>this.#evidenceSession.retry();
   snapshot=():ViewState=>this.#state;
   subscribe=(listener:()=>void):(()=>void)=>{this.#listeners.add(listener);return()=>this.#listeners.delete(listener);};
