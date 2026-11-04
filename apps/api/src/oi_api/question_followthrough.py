@@ -425,6 +425,8 @@ class PostgresQuestionFollowthrough:
                 raise PatientRegistryDenied("Follow-through target unavailable")
             if task["revision"] != expected_revision:
                 raise PatientRegistryConflict("Task revision changed; refresh before recording another transition")
+            if status == "completed" and task["manual_context_state"] == "reassessment_required":
+                raise PatientRegistryConflict("Manual-dependent task requires source reassessment before completion")
             if status not in TRANSITIONS[task["status"]]:
                 raise PatientRegistryConflict("Task transition unavailable; completion requires acknowledgment")
             if event_count >= MAX_EVENTS:
