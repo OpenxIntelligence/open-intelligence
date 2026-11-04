@@ -14,6 +14,7 @@ from pathlib import Path
 import re
 import secrets
 import subprocess
+import sys
 import tempfile
 import time
 from urllib.error import HTTPError, URLError
@@ -37,6 +38,45 @@ AMENDED = (
     "Finding: marker|negative|Independently fictional café marker — negative.\n"
 )
 ACCESS_EVENTS = "'source.read_authorized','source.original_read_authorized'"
+
+
+def assert_read_only_recovery(before, after, expected_events):
+    """Check complete recovery snapshots against the actual returned receipts."""
+    events_table = "identity.identity_domain_events"
+    event_sequence = "identity.identity_domain_events_id_seq"
+    assert before.keys() == after.keys(), "Snapshot coverage changed"
+    assert before["tables"].keys() == after["tables"].keys(), "Table coverage changed"
+    for table in before["tables"].keys() - {events_table}:
+        assert before["tables"][table] == after["tables"][table], "Read/retry changed " + table
+    for key in before.keys() - {"tables", "sequences"}:
+        assert before[key] == after[key], "Read/retry changed " + key
+    old_rows, new_rows = before["tables"][events_table], after["tables"][events_table]
+    old = {row["id"]: row for row in old_rows}
+    current = {row["id"]: row for row in new_rows}
+    assert len(old) == len(old_rows) and len(current) == len(new_rows), "Duplicate event identifier"
+    assert all(current.get(key) == row for key, row in old.items()), "Historical event changed"
+    fresh = sorted((row for key, row in current.items() if key not in old), key=lambda row: row["id"])
+    assert expected_events and len(fresh) == len(expected_events), "Missing or unexpected restored access event"
+    receipts = [event["metadata_json"]["receipt_id"] for event in expected_events]
+    assert len(receipts) == len(set(receipts)), "Reused returned receipt"
+    old_receipts = {row["metadata_json"].get("receipt_id") for row in old_rows}
+    assert not old_receipts.intersection(receipts), "Returned an old access receipt"
+    for actual, expected in zip(fresh, expected_events):
+        assert actual["id"] > max(old, default=0), "Access event is not appended"
+        assert {key: actual[key] for key in ("patient_id", "event_type", "metadata_json")} == expected, \
+            "Restored receipt differs from returned scope or action"
+        assert actual["event_type"] in {"source.document_read_authorized", "source.original_read_authorized"}, \
+            "Read/retry emitted a business event"
+    assert before["sequences"].keys() == after["sequences"].keys(), "Sequence coverage changed"
+    assert event_sequence in before["sequences"], "Access sequence absent"
+    for sequence in before["sequences"].keys() - {event_sequence}:
+        assert before["sequences"][sequence] == after["sequences"][sequence], "Business sequence changed"
+    prior_sequence = before["sequences"][event_sequence]
+    first_id = prior_sequence["last_value"] + int(prior_sequence["is_called"])
+    assert [row["id"] for row in fresh] == list(range(first_id, first_id + len(expected_events))), \
+        "Unaccounted access sequence allocation"
+    assert after["sequences"][event_sequence] == {"last_value": max(current), "is_called": True}, \
+        "Unexpected access sequence consumption"
 
 
 def main():
@@ -173,25 +213,71 @@ def main():
             assert history() == before, "Denied read created an authorization receipt"
 
         def snapshot(database="oi_api_synthetic"):
-            # sha256(bytea) is built into PG16; no extension or new dependency.
-            return query("""
-                SELECT json_build_object(
-                  'sources', (SELECT json_agg(s ORDER BY s.document_id,s.version)
-                    FROM (SELECT source_id,case_id,document_id,version,sha256,
-                      encode(sha256(raw),'hex') AS raw_sha256,octet_length(raw) AS byte_length,
-                      state,supersedes_id FROM clinical_source.source_versions) s),
-                  'document_intakes', (SELECT json_agg(d ORDER BY d.source_id) FROM clinical_source.document_intakes d),
-                  'annotation_revisions', (SELECT json_agg(r ORDER BY r.source_id,r.revision) FROM clinical_source.annotation_revisions r),
-                  'assertions', (SELECT json_agg(a ORDER BY a.assertion_id)
-                    FROM clinical_source.assertions a),
-                  'bindings', (SELECT json_agg(b ORDER BY b.case_id)
-                    FROM coordination.patient_case_bindings b),
-                  'patients', (SELECT json_agg(p ORDER BY p.patient_id)
-                    FROM identity.identity_patients p),
-                  'events', (SELECT json_agg(e ORDER BY e.id)
-                    FROM identity.identity_domain_events e),
-                  'revision', (SELECT version_num FROM public.alembic_version))
-            """, database)
+            # All application tables, including empty owners, exact bytea values,
+            # immutable receipts and events. No selected-column/count-only proof.
+            schemas = "('identity','clinical_source','investigation','coordination')"
+            tables = query("SELECT COALESCE(json_agg(schemaname || '.' || tablename "
+                           "ORDER BY schemaname,tablename),'[]'::json) FROM pg_tables WHERE "
+                           "schemaname IN " + schemas + " OR (schemaname='public' AND tablename='alembic_version')", database)
+            sequences = query("SELECT COALESCE(json_agg(schemaname || '.' || sequencename "
+                              "ORDER BY schemaname,sequencename),'[]'::json) FROM pg_sequences WHERE "
+                              "schemaname IN " + schemas, database)
+            assert tables and sequences
+            assert all(re.fullmatch(r"[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*", name) for name in tables + sequences)
+            table_sql = ",".join("'" + table + "',(SELECT COALESCE(json_agg(row ORDER BY row::text),'[]'::json) "
+                                 "FROM (SELECT to_jsonb(t) AS row FROM " + table + " t) v)" for table in tables)
+            sequence_sql = ",".join("'" + name + "',(SELECT json_build_object('last_value',last_value,"
+                                    "'is_called',is_called) FROM " + name + ")" for name in sequences)
+            return {
+                "tables": query("SELECT json_build_object(" + table_sql + ")", database),
+                "sequences": query("SELECT json_build_object(" + sequence_sql + ")", database),
+                "sequence_properties": query("SELECT COALESCE(json_agg(row ORDER BY row::text),'[]'::json) "
+                    "FROM (SELECT to_jsonb(s) - 'last_value' AS row FROM pg_sequences s WHERE schemaname IN "
+                    + schemas + ") v", database),
+            }
+
+        def serve_database(database):
+            # Same image/credentials/security/network; no migration or seed.
+            override = access / "restore.compose.json"
+            override.write_text(json.dumps({"services": {"api": {"environment": {
+                "OI_API_DATABASE_URL": "postgresql+pg8000://oi_api:oi_h1_synthetic_only@db:5432/" + database,
+            }}}}))
+            if str(override) not in compose:
+                compose.extend(["--file", str(override)])
+            command(["up", "--no-deps", "--force-recreate", "--detach", "api"])
+            ready()
+            result = command(["exec", "-T", "api", "python", "-c",
+                "from oi_api.config import Settings\n"
+                "from oi_api.database import make_engine\n"
+                "from sqlalchemy import text\n"
+                "engine = make_engine(Settings.from_env())\n"
+                "try:\n"
+                "    with engine.connect() as connection:\n"
+                "        print(connection.execute(text('SELECT current_database()')).scalar_one())\n"
+                "finally:\n"
+                "    engine.dispose()\n"], capture_output=True, text=True)
+            assert result.stdout.strip() == database, "Recreated API connected to wrong database"
+
+        def restore(source_database, target):
+            before = snapshot(source_database)
+            dump = command(["exec", "-T", "db", "pg_dump", "-U", "oi_api", "-d",
+                            source_database, "--format=custom"], capture_output=True).stdout
+            command(["exec", "-T", "db", "createdb", "-U", "oi_api", target])
+            command(["exec", "-T", "db", "pg_restore", "-U", "oi_api", "-d", target,
+                     "--exit-on-error", "--no-owner"], input=dump)
+            assert snapshot(target) == before, "Restore changed complete rows or sequence state"
+            serve_database(target)
+            assert snapshot(target) == before, "API startup changed restored history"
+            assert snapshot(source_database) == before, "Restore changed source database"
+            return before
+
+        def original_bytes(path):
+            req = Request(BASE + path, headers={"Authorization": "Bearer " + token})
+            with build_opener(ProxyHandler({})).open(req, timeout=5) as response:
+                assert response.status == 200
+                assert response.headers.get("Cache-Control") == "no-store"
+                assert response.headers.get("X-Content-Type-Options") == "nosniff"
+                return response.read(), response.headers
 
         save_access()
         try:
@@ -225,7 +311,7 @@ def main():
             check_history()
 
             document_path = patient_path + "/cases/" + CASE + "/documents"
-            document_raw = b"Independently fictional reviewed record\r\nMarker pending.\r\nCorrected passage.\r\n"
+            document_raw = "Independently fictional café record\r\nMarker pending.\r\nCorrected passage.\r\n".encode("utf-8")
             upload = {"synthetic": True, "filename": "fictional-review.txt", "original_base64": base64.b64encode(document_raw).decode()}
             status, preview = request(document_path + "/preview", upload)
             assert status == 200
@@ -244,6 +330,42 @@ def main():
             status, document = request(saved_path)
             assert status == 200 and document["preview"]["text"].encode() == document_raw
             assert [r["revision"] for r in document["revisions"]] == [1, 2]
+
+            # Reuse the repository's independently authored, deterministic PDF generator.
+            sys.path.insert(0, str(ROOT / "tests"))
+            from pdf_fixtures import text_pdf
+            pdf_raw = text_pdf([["Independently fictional recovery page one"],
+                                ["Marker pending.", "Corrected passage."]])
+            pdf_upload = {"synthetic": True, "filename": "fictional-recovery.pdf",
+                          "original_base64": base64.b64encode(pdf_raw).decode()}
+            status, pdf_preview = request(document_path + "/preview", pdf_upload)
+            assert status == 200 and pdf_preview["page_count"] == 2
+            pdf_intake = {**pdf_upload, "confirmed_case_id": CASE, "expected_sha256": pdf_preview["sha256"],
+                          "expected_extraction_sha256": pdf_preview["extraction_sha256"],
+                          "metadata": {**intake["metadata"], "document_id": "DOC-REVIEWED-PDF"},
+                          "findings": [{"key": "marker", "state": "pending", "quote": "Marker pending.", "line": 2}]}
+            status, pdf_saved = request(document_path, pdf_intake)
+            assert status == 201
+            pdf_path = document_path + "/" + pdf_saved["source_id"]
+            pdf_correction = {**correction, "expected_sha256": pdf_preview["sha256"],
+                              "expected_extraction_sha256": pdf_preview["extraction_sha256"],
+                              "expected_revision_id": pdf_saved["annotation_revision_id"],
+                              "findings": [{"key": "passage", "state": "reported", "quote": "Corrected passage.", "line": 3}]}
+            status, pdf_corrected = request(pdf_path + "/annotations", pdf_correction)
+            assert status == 201
+            status, pdf_document = request(pdf_path)
+            assert status == 200 and [r["revision"] for r in pdf_document["revisions"]] == [1, 2]
+            assert pdf_document["preview"]["lines"][1]["page"] == 2
+            assert pdf_document["preview"]["lines"][2]["page"] == 2
+            assert pdf_document["revisions"][1]["findings"][0]["line"] == 3
+            documents = [
+                dict(path=saved_path, raw=document_raw, saved=document_saved, intake=intake,
+                     correction=correction, corrected=correction_saved, document=document),
+                dict(path=pdf_path, raw=pdf_raw, saved=pdf_saved, intake=pdf_intake,
+                     correction=pdf_correction, corrected=pdf_corrected, document=pdf_document),
+            ]
+            status, document_index = request(document_path)
+            assert status == 200 and len(document_index["documents"]) == 2
 
             # Each grant is independent. Changing the mounted fixture takes
             # effect without restarting; denied requests cannot mint receipts.
@@ -284,28 +406,175 @@ def main():
                 assert status == 200 and recovered_correction["annotation_revision_id"] == correction_saved["annotation_revision_id"]
                 print("Source originals, amendments, reviewed selections and access receipts survived " + service + " restart")
 
+            # Back up while readable. Denial-only restore cannot establish that
+            # an allowed original/history can actually be served after recovery.
+            original_database = "oi_api_synthetic"
+            restored_database = "oi_api_test_documents_restore"
+            readable_before = restore(original_database, restored_database)
+            rows = readable_before["tables"]
+            assert len(rows["clinical_source.source_versions"]) == 4
+            assert len(rows["clinical_source.assertions"]) == 2
+            assert len(rows["clinical_source.document_intakes"]) == 2
+            assert len(rows["clinical_source.annotation_revisions"]) == 4
+            assert rows["public.alembic_version"] == [{"version_num": "0012_reviewed_documents"}]
+            for item in documents:
+                stored = next(row for row in rows["clinical_source.source_versions"]
+                              if row["source_id"] == item["saved"]["source_id"])
+                assert bytes.fromhex(stored["raw"][2:]) == item["raw"]
+                assert stored["sha256"] == hashlib.sha256(item["raw"]).hexdigest()
+
+            restored_events = []
+
+            def document_receipt(receipt_id, event_type, item=None):
+                assert re.fullmatch(r"ACCESS-[A-F0-9]{32}", receipt_id)
+                restored_events.append({"patient_id": patient, "event_type": event_type,
+                    "metadata_json": {"receipt_id": receipt_id, "case_id": CASE,
+                        "actor": credential["actor"], "purpose": "operations", "binding_revision": 1,
+                        "source_id": item["saved"]["source_id"] if item else None,
+                        "sha256": hashlib.sha256(item["raw"]).hexdigest() if item else None}})
+
+            def restored_index():
+                status, value = request(document_path)
+                assert status == 200 and value["documents"] == document_index["documents"]
+                assert (value["patient_id"], value["case_id"], value["synthetic"]) == (patient, CASE, True)
+                document_receipt(value["access_receipt_id"], "source.document_read_authorized")
+
+            def restored_document(item):
+                status, value = request(item["path"])
+                assert status == 200
+                assert {k: v for k, v in value.items() if k != "access_receipt_id"} == \
+                       {k: v for k, v in item["document"].items() if k != "access_receipt_id"}, \
+                       "Restored rendition, anchor or immutable correction history changed"
+                document_receipt(value["access_receipt_id"], "source.document_read_authorized", item)
+
+            def restored_original(item):
+                raw, headers = original_bytes(item["path"] + "/original")
+                assert raw == item["raw"], "Restored original bytes changed"
+                assert headers["X-Content-SHA256"] == hashlib.sha256(raw).hexdigest()
+                assert headers["Content-Disposition"] == 'attachment; filename="' + item["intake"]["filename"] + '"'
+                assert headers["Content-Type"].split(";")[0] == item["document"]["preview"]["media_type"].split(";")[0]
+                document_receipt(headers["X-Access-Receipt-ID"], "source.original_read_authorized", item)
+
+            def exact_retries(item):
+                for path, body, prior in ((document_path, item["intake"], item["saved"]),
+                                         (item["path"] + "/annotations", item["correction"], item["corrected"])):
+                    status, value = request(path, body)
+                    assert status == 200 and value == {**prior, "duplicate": True}, "Restored retry identity changed"
+
+            def readable_cycle():
+                restored_index()
+                for item in documents:
+                    restored_document(item)
+                    restored_original(item)
+                    exact_retries(item)
+
+            def no_effect_denial(path, body=None, *, authenticated=True, database=restored_database):
+                before = snapshot(database)
+                status, value = request(path, body, authenticated=authenticated)
+                assert status == (404 if authenticated else 401), "Restored authority did not fail closed"
+                assert set(value) == {"detail"} and isinstance(value["detail"], str), "Denial exposed document fields"
+                assert snapshot(database) == before, "Denied document request caused effects"
+
+            readable_cycle()
+            for service in ("api", "db"):
+                before = snapshot(restored_database)
+                command(["restart", service])
+                ready()
+                assert snapshot(restored_database) == before, "Restored restart changed durable state"
+                readable_cycle()
+
+            for missing in ("source_read", "source_original_read", "source_import", "patient_read"):
+                credential["actions"] = [action for action in actions if action != missing]
+                save_access()
+                if missing in ("source_read", "patient_read"):
+                    no_effect_denial(document_path)
+                else:
+                    restored_index()
+                for item in documents:
+                    if missing in ("source_read", "source_original_read", "patient_read"):
+                        no_effect_denial(item["path"])
+                    else:
+                        restored_document(item)
+                    if missing in ("source_original_read", "patient_read"):
+                        no_effect_denial(item["path"] + "/original")
+                    else:
+                        restored_original(item)
+                    if missing in ("source_import", "patient_read"):
+                        no_effect_denial(document_path, item["intake"])
+                    else:
+                        status, value = request(document_path, item["intake"])
+                        assert status == 200 and value == {**item["saved"], "duplicate": True}
+                    if missing in ("source_import", "source_original_read", "patient_read"):
+                        no_effect_denial(item["path"] + "/annotations", item["correction"])
+                    else:
+                        status, value = request(item["path"] + "/annotations", item["correction"])
+                        assert status == 200 and value == {**item["corrected"], "duplicate": True}
+
+            credential["actions"] = list(actions)
+            save_access()
+            for field, unavailable in (("patient_ids", []), ("purpose", "research")):
+                previous = credential[field]
+                credential[field] = unavailable
+                save_access()
+                no_effect_denial(document_path)
+                for item in documents:
+                    no_effect_denial(item["path"])
+                    no_effect_denial(item["path"] + "/original")
+                    no_effect_denial(item["path"] + "/annotations", item["correction"])
+                credential[field] = previous
+                save_access()
+            no_effect_denial(document_path, authenticated=False)
+            for item in documents:
+                no_effect_denial(item["path"].replace(CASE, "CASE-NOT-BOUND"))
+                no_effect_denial(item["path"].replace(CASE, "CASE-NOT-BOUND") + "/original")
+            readable_cycle()
+            assert_read_only_recovery(readable_before, snapshot(restored_database), restored_events)
+            assert snapshot(original_database) == readable_before, "Restored HTTP changed original database"
+            print("PASS RESTORED DOCUMENT HTTP: text/PDF exact bytes, page anchors, immutable history, "
+                  "exact retries, independent grants and restarts; restored-only access receipts")
+
+            # Revoke on the restored copy and back it up again. Keep every grant
+            # enabled so only the restored binding state can explain denial.
+            assert credential["actions"] == actions and credential["patient_ids"] == [patient]
+            assert credential["purpose"] == "operations"
             status, revoked = request(patient_path + "/case-bindings/" + CASE + "/revoke", {
                 "synthetic": True, "reason": "Withdraw the independently fictional Compose binding"})
             assert status == 200 and revoked["duplicate"] is False
-            denied([source_path, original_path, source_path + "/" + source_ids[1]])
-            before = snapshot()
-            assert len(before["sources"]) == 3 and len(before["assertions"]) == 2
-            assert len(before["document_intakes"]) == 1 and len(before["annotation_revisions"]) == 2
-            assert before["bindings"][0]["status"] == "revoked"
-            for source, original in zip([s for s in before["sources"] if s["document_id"] == "DOC-COMPOSE"], (ORIGINAL, AMENDED)):
-                assert source["sha256"] == source["raw_sha256"] == hashlib.sha256(original.encode("utf-8")).hexdigest()
-                assert source["byte_length"] == len(original.encode("utf-8"))
-            dump = command(["exec", "-T", "db", "pg_dump", "-U", "oi_api", "-d",
-                            "oi_api_synthetic", "--format=custom"], capture_output=True).stdout
-            restored_database = "oi_api_test_sources_restore"
-            command(["exec", "-T", "db", "createdb", "-U", "oi_api", restored_database])
-            command(["exec", "-T", "db", "pg_restore", "-U", "oi_api", "-d", restored_database,
-                     "--exit-on-error", "--no-owner"], input=dump)
-            assert snapshot(restored_database) == before, "Restore changed original hashes, anchors or history"
-            assert history(restored_database) == check_history()
-            assert next(s for s in before["sources"] if s["document_id"] == "DOC-REVIEWED")["raw_sha256"] == hashlib.sha256(document_raw).hexdigest()
+            revoked_database = "oi_api_test_documents_revoked"
+            revoked_before = restore(restored_database, revoked_database)
+            assert revoked_before["tables"]["coordination.patient_case_bindings"][0]["status"] == "revoked"
+            no_effect_denial(document_path, database=revoked_database)
+            for item in documents:
+                for path, body in ((item["path"], None), (item["path"] + "/original", None),
+                                   (document_path, item["intake"]),
+                                   (document_path + "/preview", {k: item["intake"][k] for k in ("synthetic", "filename", "original_base64")}),
+                                   (item["path"] + "/annotations", item["correction"])):
+                    no_effect_denial(path, body, database=revoked_database)
+            for path in (source_path, original_path, source_path + "/" + source_ids[1]):
+                status, value = request(path)
+                assert status == 404 and "access_receipt_id" not in value and "original_text" not in value
+            assert snapshot(revoked_database) == revoked_before, "Restored revoked requests changed state"
+            assert snapshot(restored_database) == revoked_before, "Revoked restore changed its source copy"
+            assert snapshot(original_database) == readable_before, "Recovery changed original database"
+            receipt = {"contract": "oi.source-document-recovery/1", "synthetic": True,
+                "schema_revision": "0012_reviewed_documents", "table_count": len(rows),
+                "sequence_count": len(readable_before["sequences"]),
+                "documents": [{"source_id": item["saved"]["source_id"],
+                    "sha256": hashlib.sha256(item["raw"]).hexdigest(), "byte_length": len(item["raw"]),
+                    "revision_ids": [r["revision_id"] for r in item["document"]["revisions"]]}
+                    for item in documents],
+                "restored_access_receipts": len(restored_events), "restored_readable_http": True,
+                "restored_binary_originals": True, "restored_exact_retries": True,
+                "restored_independent_grants": True, "restored_api_database_restart": True,
+                "restored_revoked_binding_denial": True, "original_database_unchanged": True}
+            output = os.environ.get("OI_SOURCE_ACCEPTANCE_FILE")
+            if output:
+                Path(output).parent.mkdir(parents=True, exist_ok=True)
+                Path(output).write_text(json.dumps(receipt, indent=2) + "\n")
             print("PASS: scoped source HTTP, exact UTF-8 originals, amendment history, denial, "
-                  "API/DB restart, durable access receipts, binding revocation and dump/restore")
+                  "API/DB restart, durable access receipts and complete dump/restore; actual restored "
+                  "text/PDF/history/retry HTTP, independent permissions and restored revoked binding")
+
         except Exception:
             command(["logs", "--no-color", "--tail", "80"], check=False)
             raise
