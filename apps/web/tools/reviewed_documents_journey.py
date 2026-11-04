@@ -4,6 +4,7 @@ import hashlib
 import json
 import time
 from urllib.request import Request, urlopen
+from urllib.error import HTTPError
 from pdf_fixtures import text_pdf
 from question_review_journey import QuestionReviewChecks
 
@@ -116,6 +117,17 @@ def exercise(cd,patient_id,directory,token,credentials,write_grants,artifacts,re
     listing=operator(prefix)['documents'];assert len(listing)==1;first=listing[0]['source_id']
     click('Inspect saved original and selection history')
     cd.wait("document.querySelector('[data-testid=reviewed-preview]')?.textContent.includes('Preserved selection history (1)')",'initial review')
+    initial_document=operator(prefix+'/'+first)
+    initial_revision=initial_document['revisions'][0]
+    initial_key=initial_revision['findings'][0]['key']
+    selection_path=prefix+'/'+first+'/selections/'+initial_revision['revision_id']+'/'+initial_key
+    initial_selection=operator(selection_path)
+    assert initial_selection['anchor']['quote']=='Marker pending.'
+    assert (initial_selection['anchor']['line'],initial_selection['anchor']['page'])==(2,2)
+    assert initial_selection['anchor']['original_sha256']==hashlib.sha256(raw).hexdigest()
+    assert initial_selection['anchor']['extraction_sha256']==initial_document['preview']['extraction_sha256']
+    assert initial_selection['anchor']['classification_origin']=='user_selected'
+    assert initial_selection['selection_state']=='current_unreviewed_selection'
     click('Remove finding-one');click('Select line 3 · page 2');click('Add exact passage')
     value('[data-testid=document-reason]','Correct the selected fictional passage')
     cd.evaluate("document.querySelector('[data-testid=document-confirm]').click();document.querySelector('[data-testid=save-reviewed]').click()")
@@ -125,6 +137,16 @@ def exercise(cd,patient_id,directory,token,credentials,write_grants,artifacts,re
     assert operator(source_path)['sources']==structured_sources, 'Manual selections must not enter the structured source index'
     saved=operator(prefix+'/'+first);assert saved['revisions'][0]['findings'][0]['line']==2
     assert saved['revisions'][1]['findings'][0]['line']==3
+    historical_selection=operator(selection_path)
+    assert historical_selection['anchor']==initial_selection['anchor']
+    assert historical_selection['anchor_sha256']==initial_selection['anchor_sha256']
+    assert historical_selection['selection_state']=='selection_reassessment_required'
+    current_revision=saved['revisions'][1]
+    current_selection_path=prefix+'/'+first+'/selections/'+current_revision['revision_id']+'/'+current_revision['findings'][0]['key']
+    current_selection=operator(current_selection_path)
+    assert current_selection['anchor']['quote']=='Second selected passage.'
+    assert (current_selection['anchor']['line'],current_selection['anchor']['page'])==(3,2)
+    assert current_selection['selection_state']=='current_unreviewed_selection'
     destination=artifacts/'reviewed-document-downloads';destination.mkdir(parents=True,exist_ok=True)
     cd.command('Browser.setDownloadBehavior',{'behavior':'allow','downloadPath':str(destination)})
     cd.evaluate("document.querySelector('[data-testid=download-reviewed]').click()")
@@ -137,6 +159,10 @@ def exercise(cd,patient_id,directory,token,credentials,write_grants,artifacts,re
     image=cd.command('Page.captureScreenshot',{'format':'png'});(artifacts/'h1-reviewed-document-mobile.png').write_bytes(base64.b64decode(image['data']))
     restart_api()
     assert operator(prefix+'/'+first)['revisions']==saved['revisions']
+    restored_selection=operator(selection_path)
+    assert restored_selection['anchor']==initial_selection['anchor']
+    assert restored_selection['anchor_sha256']==initial_selection['anchor_sha256']
+    assert restored_selection['access_receipt_id']!=initial_selection['access_receipt_id']
     review.navigate('Review')
     assert reason_value()==retained_reason, \
         'Inspecting and correcting a separate document must preserve the exact unsent verification reason'
@@ -186,6 +212,13 @@ def exercise(cd,patient_id,directory,token,credentials,write_grants,artifacts,re
         click('WEB-PDF · v1 · current')
         cd.wait("Boolean(document.querySelector('[data-testid=download-reviewed]'))",'saved PDF reopened after Review')
         credentials[0]['actions'].remove('source_original_read');write_grants()
+        try:
+            operator(selection_path)
+            raise AssertionError('A passage hash cannot substitute for original-read authority')
+        except HTTPError as denied:
+            assert denied.code==404
+            assert b'Marker pending.' not in denied.read()
+            denied.close()
         before=list(destination.iterdir());cd.evaluate("document.querySelector('[data-testid=download-reviewed]').click()")
         cd.wait("!document.querySelector('[data-testid=download-reviewed]')",'revoked original cleared')
         cd.wait("!document.querySelector('[data-testid=source-index]') && document.querySelector('[data-testid=records-status]').textContent.includes('Document access unavailable')",'document denial clears the shared Records scope')
@@ -228,6 +261,10 @@ def exercise(cd,patient_id,directory,token,credentials,write_grants,artifacts,re
     assert cd.evaluate("!document.querySelector('[data-testid=reviewed-file]') && !document.querySelector('[data-testid=source-statement]')"), 'Document-list denial clears both local intent and earlier server source text'
     credentials[0]['actions'].append('source_read');write_grants()
     assert operator(prefix+'/'+first)['revisions']==saved['revisions'], 'Denial and reauthorization must not mutate saved selections'
+    (artifacts/'document-selection-workflow.json').write_text(json.dumps(dict(
+        initial=initial_selection,historical=historical_selection,current=current_selection,
+        restored=restored_selection,original_permission_denial=True,clinical_approval=False),indent=2))
+    print('PASS DOCUMENT SELECTION REFERENCE: actual UI-authored PDF selections resolve through source-owned HTTP to exact original/extraction/revision/page/line; correction preserves historical anchor hash; restart preserves identity with fresh authority; original-read denial withholds passage. No canonical question or report is created from manual selections.')
     receipt=dict(patient_id=patient_id,case_id=CASE,source_id=first,original_sha256=hashlib.sha256(raw).hexdigest(),
         extraction_sha256=saved['preview']['extraction_sha256'],revision_ids=[r['revision_id'] for r in saved['revisions']],
         physical_page=2,selected_lines=[2,3],actual_download_equal=True,preview_did_not_persist=True,

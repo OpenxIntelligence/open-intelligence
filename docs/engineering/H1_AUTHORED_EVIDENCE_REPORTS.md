@@ -215,6 +215,8 @@ Contract `oi.h1-evidence-report/1`; flags as packet. Body and snapshot both null
 when content_withheld, otherwise immutable original string/object. A historical
 state is displayed outside the unchanged body. Every download requests this report
 again, checks scope, hashes, provenance and rights; it never downloads a cached body.
+The #316 continuation below adds the fresh status and access receipt to a download
+cover while retaining the original body as an exact, separately hashed section.
 
 ## React behavior and acceptance
 
@@ -484,3 +486,87 @@ follow-through, clinical domains or PDF/annotation workflows. Production identit
 consent, least-privilege operational recovery, independent clinical evaluation,
 merge and deployment remain separate gates. Only independently authored fictional
 inputs were used.
+
+## Fresh status in downloaded reports — draft #316
+
+[Draft #316](https://github.com/OpenxIntelligence/open-intelligence/pull/316)
+addresses OI-009/OI-010/OI-013 on #307's combined question/evidence/report owner.
+The API already projected an amended report as
+`historical_reassessment_required`, but the download helper exported only its
+immutable preparation. The general historical disclaimer in that body did not
+convey that the latest authorized read already required reassessment.
+
+The downloaded plain-text file now begins with the fresh response's current/
+unreviewed or historical/reassessment-required state, exact patient/case/question/
+report IDs, original preparation time and access receipt. It distinguishes the
+original body and snapshot digests from the complete downloaded file. After the
+fixed `--- BEGIN PRESERVED REPORT BODY ---` separator, the original body remains
+byte-for-byte unchanged, including Unicode and final newline. The recorded body
+length is UTF-8 bytes. The cover claims neither a new server timestamp nor a
+signature, delivery receipt, continuing grant, scientific appraisal or clinical
+approval. Already downloaded files cannot be recalled or updated.
+
+The existing fresh authorized read and current-session object-identity guard
+remain intact. Fresh denial, withholding or context change produces no Blob or
+cover-only download. There is no API, schema, migration, report renderer,
+dependency or grant change. Separate original evidence downloads remain exact
+original bytes. This does not implement report-specific professional review.
+
+Tests-first `596f9a808641c9966f9875b04fdc03acf1190525` (local equivalent
+`328a0b5b416ffd4376e0e2b5ec5df8cd1dd60956`) produced two intended missing-cover
+failures after valid fresh reads; withholding/denial and patient-switch negatives
+passed. The initial fixture's mismatched body/summary digest was corrected before
+recording these behavioral failures. All **270 client tests**, the TypeScript/
+Vite production build and the installed dependency rights gate subsequently
+passed locally. No new dependency was selected.
+
+Independent review found an inherited continuity-browser assertion that still
+equated the entire downloaded file with the prepared body. The first
+[hosted run 41661244447](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41661244447)
+independently failed at that exact assertion after its 270 client tests, build
+and dependency gates passed. The repair verifies the cover and original body/
+hash separately; it preserves the complete-file immutability check. Review also
+requested a separate `download_access_receipt_id` alongside each inspection
+receipt. Both findings are repaired in
+`db8923e502bcf0e631fb31546f5319155d8026f0`, tree
+`fe736251d6602dfbe799c56ac57ce0b95437e167` (local equivalent
+`f668d8d70e3528f696e4de13a5106fd4510febac`). Independent follow-up found no
+outstanding findings; focused verification accepted the valid Unicode file and
+rejected missing cover, changed file/body and incorrect digest.
+
+The existing real Chromium/PostgreSQL/FastAPI journey now downloads the same
+report before and after amendment, then a newly prepared replacement. Its
+version-2 receipts separately retain inspection and download access receipts,
+complete-file hashes and original body hashes. Independent export withdrawal,
+evidence withdrawal, API restart, same-question metadata continuity and earlier
+file preservation remain part of the journey.
+
+At that exact repaired head,
+[hosted run 41661787497](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41661787497)
+passed **270 client tests with zero skips**, the production build, dependency
+gates and the complete actual PostgreSQL/FastAPI/built-React Chromium journey.
+This change does not claim a newly run full API unit suite; the actual API is
+exercised by the connected browser workflow, and the backend implementation is
+unchanged from the verified #307 owner.
+
+[Artifact 13243036730](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41661787497/artifacts/13243036730)
+was downloaded and verified: archive SHA-256
+`3e6d68e7de55b58d2f6979974727eb0b390c2a28568bbe1cb18ce0abe9426d97`;
+recorded commit and all **400 archived source files** match the tested tree.
+Independent inspection of the three actual downloaded text files confirmed:
+
+| Download | Complete file bytes | Preserved body bytes | Result |
+| --- | ---: | ---: | --- |
+| Original report, current/unreviewed | 4,964 | 3,859 | Fresh read receipt and explicit unreviewed status |
+| Same report after amendment | 4,977 | 3,859 | Historical/reassessment warning; exact same original body/hash |
+| Newly authored replacement | 4,965 | 3,860 | New report identity; current/unreviewed and separate fresh receipt |
+
+Each receipt's complete-file hash and download access receipt match its retained
+file; body hashes match the exact suffix. The continuity receipt also keeps file
+and body hashes distinct. Original and historical downloads remain unchanged
+after withdrawal. The artifact expires on 10 November 2026; executable acceptance
+and this receipt remain in Git.
+
+The final evidence-only update also retains #307's four documentation updates at
+`c35219dc5eb244874a7df6e9bf00cfbfda18251f`. No tested code changes in that update.
+The work remains fictional-only, draft, unmerged and undeployed.

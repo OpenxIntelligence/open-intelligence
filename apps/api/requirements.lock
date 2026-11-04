@@ -1,3 +1,4 @@
+# Prepare through tools/prepare_dependencies.py; pydicom is the reviewed code-only build 1oi1.
 # Resolved 2026-11-02. Python 3.12, CPython, Linux x86_64 wheels only.
 # Install with --require-hashes --only-binary=:all:.
 # Scope and exact artifact/license evidence: dependency-license-inventory.json.
@@ -17,6 +18,7 @@ opentelemetry-api==1.45.2 --hash=sha256:2cbd737377e710ee740d261c94e93fa0f08e6d03
 pg8000==1.31.6 --hash=sha256:1ffe27af94fa5b37ce6885b98d591dc75562ff076859bf50ca7729af59345a80
 pydantic==2.14.1 --hash=sha256:9195d967ec791692a04438115466764fb8b9a27b31f14a760437694f40d6b454
 pydantic_core==2.50.1 --hash=sha256:93ba4e9d8210d941c200431a56b2c0400b131865947903937ed3ec5404307d2e
+pydicom==3.0.2 --hash=sha256:cbd2edf9051da7cce3f53184cc16dde1238b065845acfa0ceb241d0e8f06acc4
 python-dateutil==4.0.0 --hash=sha256:a5e246f79eb80475e691bf93862cead98decd8a498cf53ba0516fcdc0f50dc1c
 scramp==1.5.0 --hash=sha256:8280608f568e81da9e9c9d69cac1331b836622d9b48bf5c5e400e16129c6d1fa
 SQLAlchemy==2.0.55 --hash=sha256:6e7694e736d63b476d81a0eae7b304d9b747a3f0a1b7dc10134655c4cccf5eb7

@@ -35,6 +35,15 @@ for(const status of ['current_unreviewed','historical_reassessment_required']){
   assert.ok(cover.includes(`Original body UTF-8 bytes: ${Buffer.byteLength(original.body)}`));
   assert.equal(body,original.body);assert.equal(digest(body),original.body_sha256);
   assert.equal(s.snapshot().evidenceReport.body,original.body,'download does not rewrite stored/decoded report');
+  if(status==='historical_reassessment_required'){
+   assert.equal(s.snapshot().evidencePacket,null,'fresh report status invalidates the older packet');
+   const again=await captureDownload(()=>downloadEvidenceReport(s,questionId,reportId));
+   assert.equal(reads,3,'a historical-only preview still requires a fresh authorized read');
+   assert.equal(again.blobs.length,1);assert.equal(again.links.length,1);
+   const repeated=await again.blobs[0].text();
+   assert.equal(repeated.slice(repeated.indexOf(bodySeparator)+bodySeparator.length),original.body);
+   assert.equal(s.snapshot().evidencePacket,null,'export cannot restore stale comparison actions');
+  }
  });
 }
 

@@ -23,6 +23,7 @@ from open_intelligence.patient_registry import (
 )
 from open_intelligence.postgres_registry import PostgresPatientRegistry
 from oi_api.app import create_app
+from oi_api.contracts import SCHEMA_REVISION
 from oi_api.composer_preflight import SOURCE_SNAPSHOT_CONTRACT
 from oi_api.migrate import migrate
 from http_support import running_server
@@ -182,7 +183,7 @@ class FollowthroughMigrationGraphTests(unittest.TestCase):
         config = Config()
         config.set_main_option("script_location", str(Path(__file__).resolve().parents[1] / "migrations"))
         script = ScriptDirectory.from_config(config)
-        self.assertEqual(script.get_heads(), ["0012_reviewed_documents"])
+        self.assertEqual(script.get_heads(), [SCHEMA_REVISION])
         self.assertEqual(script.get_revision("0010_question_evidence").down_revision,
                          "0009_question_followthrough")
         self.assertEqual(script.get_revision("0009_question_followthrough").down_revision,
