@@ -75,3 +75,9 @@ result interpretation, model execution, clinical approval or deployment.
 Backend backup/restore is unchanged and not rerun solely for this frontend
 increment. Migration convergence and integration of sibling UI branches remain
 separate reviewed work.
+
+## Journey-to-Records navigation — 4 November 2026
+
+Each laboratory result's provenance disclosure now offers **Open report versions in Records**. The action navigates to Records and requests fresh source metadata for the exact case in the displayed World Model. The user then selects the immutable report version to inspect its original under the existing independent original-read permission and byte checks. Loading or busy context disables the action. No laboratory-to-question binding or clinical interpretation is added.
+
+Local verification: 512 client/rendered tests passed, including two new cases that fail on the parent implementation; TypeScript and the Vite production build passed. All 13 dependency-rights control tests passed, but installed-package inspection failed: optional `@napi-rs/lzma-linux-x64-gnu` has no actual LICENSE/NOTICE file (19 installed, one optional entry uninspected). The gate was not weakened; resolve this before merge/deployment. The inherited chunk-size warning remains. This increment has not run a real PostgreSQL/browser journey, and the parent's hosted results are not substituted for new execution.

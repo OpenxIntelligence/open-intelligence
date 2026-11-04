@@ -39,3 +39,23 @@ test('result order follows the validated server chronology without calculating a
 test('clearing the current projection removes all previously displayed lab values and locators',()=>{
  const html=render(null);assert.ok(!html.includes('world-laboratory-observation'));assert.ok(!html.includes('FICTIONAL-OBS-'));
 });
+
+function nodes(value){
+ if(!value||typeof value!=='object')return [];
+ if(Array.isArray(value))return value.flatMap(nodes);
+ return [value,...nodes(value.props?.children)];
+}
+test('laboratory provenance opens the exact projected case through the Records callback',()=>{
+ const calls=[],model=parseSourceWorldModel(projection(),patient,caseId);
+ const tree=WorldModelView({session:{},state:{patient:{patient_id:patient},cases:[],worldPhase:'ready',recordsPhase:'ready',worldMessage:'Fresh read',worldModel:model},busy:false,onOverview(){},onRecords:id=>calls.push(id)});
+ const buttons=nodes(tree).filter(n=>n.props?.['data-testid']==='world-laboratory-records');
+ assert.equal(buttons.length,3);assert.equal(calls.length,0);
+ buttons[0].props.onClick();assert.deepEqual(calls,['CASE-FICTIONAL-LAB']);
+ assert.equal(buttons[0].props.type,'button');
+});
+test('laboratory Records actions are unavailable while the scope is loading or busy',()=>{
+ for(const state of [{worldPhase:'loading',recordsPhase:'ready',busy:false},{worldPhase:'ready',recordsPhase:'loading-original',busy:false},{worldPhase:'ready',recordsPhase:'ready',busy:true}]){
+ const tree=WorldModelView({session:{},state:{patient:{patient_id:patient},cases:[],worldModel:parseSourceWorldModel(projection(),patient,caseId),...state},busy:state.busy,onOverview(){},onRecords(){}});
+ const buttons=nodes(tree).filter(n=>n.props?.['data-testid']==='world-laboratory-records');assert.equal(buttons.length,3);assert.ok(buttons.every(b=>b.props.disabled));
+ }
+});

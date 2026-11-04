@@ -9,6 +9,7 @@ type Props={
   showQuestions?:boolean;
   onInvestigations?:()=>void;
   onReview?:()=>void;
+  onRecords?:(caseId:string)=>void;
 };
 
 /** First-party PG read-only Patient World Model view.
@@ -16,7 +17,7 @@ type Props={
  * separate client-owned patient/source ledger. All clinical claims remain
  * attributed to the original fictional source and explicitly unreviewed.
  */
-export function WorldModelView({session,state,onOverview,busy,showQuestions=false,onInvestigations,onReview}:Props){
+export function WorldModelView({session,state,onOverview,busy,showQuestions=false,onInvestigations,onReview,onRecords}:Props){
   const loading=state.worldPhase==='loading'||state.recordsPhase.startsWith('loading');
   const model=state.worldModel;
   const laboratoryByRef=new Map(model?.laboratory_observations.map(item=>[item.source_id+':'+item.observation_reference,item])??[]);
@@ -77,7 +78,9 @@ export function WorldModelView({session,state,onOverview,busy,showQuestions=fals
                   <dt>Source identity</dt><dd><code>{item.source_id}</code></dd>
                   <dt>Original SHA-256</dt><dd><code>{item.source_sha256}</code></dd>
                 </dl>
-                <p>Open this report in Records to inspect its exact original. The reference above locates the reported result within that original.</p>
+                <p>The reference above locates this result within its exact original.</p>
+                {onRecords&&<button type="button" data-testid="world-laboratory-records" disabled={loading||busy}
+                  onClick={()=>onRecords(model.case_id)}>Open report versions in Records</button>}
               </details>
             </li>;
           })}</ol>
