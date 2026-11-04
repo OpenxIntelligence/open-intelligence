@@ -591,3 +591,199 @@ reference/browser and H1 web acceptance, plus the scoped owner/merge decision.
 Independently authored fictional inputs only. This bounded candidate is a draft;
 it does not establish human owner acceptance, clinical validation, production
 identity, whole-product commercial clearance, merge or deployment.
+
+## Unsent follow-up creation drafts — 3 November 2026
+
+Draft #379 continues #375 at `1bdc44ac8507ec3a05398c3965bed5fcae0d59eb`
+(tree `8adcccc18f34e6f28cd178af9f213834dbc34cc8`) under OI-007/009/010/013.
+Unsent coordination fields previously lived inside the mounted question form;
+leaving Investigations discarded them. The tests-first hosted run
+[41711236459](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41711236459)
+at `bf63226af9c99eb9c30c38d1bcc958673a678aa5` passed all 397 compiled
+client tests, build and dependency checks, then failed the new actual-browser
+assertion: `Same-case navigation discarded unsent follow-up title`.
+
+The correction stores unsent creation fields only in the existing tab's
+RegistrySession, bound to patient, case, question, source snapshot and preflight.
+Same-case navigation and matching source/question refreshes retain the literal
+fields. Changed snapshots, missing/changed questions, revoked scope, patient/case
+changes and disconnect clear them. The form never stores drafts in browser
+storage or sends a command until explicit submission. Successful task transitions
+retain another unsent creation draft; a confirmed creation consumes only its
+question's draft. Existing captured command bodies and retry keys remain the
+authority for uncertain writes, and edits are blocked until resolved or abandoned.
+Ordinary rejected input retains editable fields; denied access clears them.
+
+Local verification at the first implementation checkpoint: 46 follow-through
+session tests and 13 filesystem rights controls passed; Python helper syntax,
+whitespace and the existing synthetic-data boundary audit passed. New local
+tests use Node's TypeScript transform, not a typecheck. The full local `npm test`
+could not run because the pinned TypeScript toolchain is absent. Final hosted
+TypeScript/Vite/client/PG16/FastAPI/Chromium acceptance and independent source
+review are pending at this source checkpoint; the PR records subsequent
+exact-head results without rewriting this historical checkpoint.
+
+No backend, SQL, grants, dependencies or workflow changes. Status-transition
+input retention across navigation is not added by this slice. It is not durable
+autosave, a clinical order, notification or clinical approval. Synthetic only;
+draft, unmerged and undeployed. Main and other owners' branches are unchanged.
+
+### Status-change draft continuation — 3 November 2026
+
+The same draft #379 now also addresses unfinished status-change reasons and
+proposed owners. Tests-first [run 41715861398](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41715861398)
+at `fedd78104b5e40e6583765797878fb6876650438` passed all 401 inherited
+client tests, 13 rights controls and build, then reproduced the actual browser
+failure: `Same-case navigation discarded unsent transition owner`.
+
+These fields remain in the existing RegistrySession and are bound to the exact
+task, revision, status, recorded owner and original source/question context.
+Matching authorized task reads preserve them, including daily date-flag changes.
+A changed revision, source reassessment or missing task clears the old input.
+Case/patient/access/session boundaries clear both kinds of unsent work. Explicit
+clear and confirmed submission consume only the selected draft; unrelated tasks
+and creation drafts remain separate. The captured command and request key remain
+authoritative for uncertain writes even if later task history advances.
+
+At this implementation checkpoint, 54 follow-through session tests and 21
+attention controls passed locally using Node's TypeScript transform. The browser
+helper additionally exercises navigation, matching task refresh, explicit clear,
+successful submission, unrelated task creation, source amendment and case-roundtrip
+clearing. Final hosted compilation/build/database-backed browser acceptance and
+independent review are pending here; subsequent evidence is recorded on #379.
+This supersedes the earlier creation-only scope note without changing its
+historical verification record. No backend, migration, dependency, grant or
+workflow changes; memory-only synthetic engineering, no clinical action.
+
+### Preparation agenda and retained follow-up input — 3 November 2026
+
+This composition joins #395's question-linked preparation agenda at
+`48d543609d96915c907bfab9d6a0eda2648977de` and #379's retained creation/status
+fields at `61339216147154c2c3555933e6e1c7281f3c0460`. Both canonical owners and
+parent histories are preserved. The three draft runtime files are reused exactly;
+the shared browser helper retains both owners' acceptance scenarios.
+
+Two composed-session regressions and real Overview navigation/refresh assertions
+check that unsent task titles and proposed owners never appear as saved work.
+Matching reads preserve literal input; a denied task read clears both draft kinds
+and recorded work, while separately authorized questions remain readable.
+
+The tests-first checkpoint passed 426 inherited tests and failed the 14 added
+regressions on absent draft methods. The integrated candidate passes 440 client
+tests, 13 installed-rights filesystem controls, TypeScript/Vite build, Python helper
+compilation and the inherited synthetic-data audit locally. Full combined hosted
+PostgreSQL/API/Chromium acceptance and independent review are pending at this source
+checkpoint; the new draft PR records subsequent exact-head evidence. See the
+[bounded plan](../superpowers/plans/2026-11-03-preparation-followup-drafts.md).
+
+No backend, schema, grant, dependency or workflow changes. This does not implement
+durable autosave, a referral, appointment, external handoff or clinical approval.
+
+## Fresh report status invalidates stale comparison context — 3 November 2026
+
+Bounded continuation of OI-009/OI-010/OI-013 on #375, pinned to
+`1bdc44ac8507ec3a05398c3965bed5fcae0d59eb` (tree
+`8adcccc18f34e6f28cd178af9f213834dbc34cc8`). Its 423 source blobs and executable
+modes were verified against the retained hosted archive before editing. This
+continues the existing evidence owner; no API, schema, grants, dependencies or
+clinical authority change.
+
+**Reproduced problem:** a report may become historical after another authorized
+client amends evidence or replaces a comparison. A fresh report read disclosed
+that change but left the older packet and editable comparison draft marked
+current. Server write checks remained in force, but the displayed context and
+available actions contradicted the freshest known report status.
+
+The session now invalidates the older evidence packet and parallel original
+reads when a previously current report first returns historical. An exact unsent
+draft remains in memory, hidden and inactive until a matching fresh packet can
+be verified. An uncertain write retains its exact request and receipt-recovery
+path. Denial, malformed data and withheld content retain their stronger draft
+clearing behavior. A report already known to be historical does not invalidate
+an independently refreshed packet merely because the report remains historical.
+
+The verified historical report's immutable references permit only another fresh
+read of that exact report after packet invalidation, including download. They
+cannot start a comparison, authorize another report identity, change original
+body/snapshot hashes or promote the historical report to current. Every download
+still rechecks the API; case, patient, session and navigation boundaries continue
+to discard late reads. Previous files remain unchanged.
+
+**Observed local evidence:** clean baseline 397 client tests. The seven added
+session regressions initially produced five expected behavioral failures and two
+passing controls at local tests-first commit `14cf0ff` (published identical tree
+`d0dbaeec0987c8f74d353d4fe40e5b78710c102f` in
+`62e32889c460f9246f21a1d0a7bba599225070ba`); all 404 client tests then passed
+with zero failures, skips or cancellations. Production TypeScript/Vite build,
+13 filesystem rights controls, 18 installed-package inspections, synthetic-data
+boundary audit and Python browser-helper compilation passed. Two optional
+packages remain uninspected. The gate initially rejected a symlinked local
+dependency root; copying the same locked installed packages into this candidate
+resolved that setup issue without changing the gate. A repeated historical-only download
+check additionally exercises the actual Blob path.
+
+**Hosted acceptance requirement:** the browser journey must create a real
+amendment through the existing independently authorized HTTP helper while the
+browser still holds the original packet and an unfinished draft. It then opens
+the old report before refreshing evidence, verifies removal of stale comparison
+controls and hidden draft text, downloads the historical report with a fresh
+receipt, explicitly refreshes to the corrected evidence and discards the old
+draft before authoring a new comparison. No automatic comparison/report write is
+allowed. The existing denial, restart, recovery, withdrawal and retained-file
+checks remain in the journey. Independent runtime review found no blocker and
+reran all 404 tests; browser-helper and download review also found no actionable
+issue. These are automated engineering reviews, not human clinical approval.
+
+**Completed hosted acceptance — draft #378:** [run 41711007124](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41711007124),
+[job 126178719241](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41711007124/job/126178719241),
+passed on exact implementation head `807e3d9fd828be1bc1c3a75486e413c06d21d551`,
+tree `867d3f5b5a65963ff7d0a61b7a556eefffd0fd9d`. Hosted results: 404 client tests
+and 13 rights tests, zero failures or skips; TypeScript/Vite build, synthetic-data
+audit, frontend/backend dependency gates and actual PostgreSQL 16/FastAPI/built
+React/Chromium journey passed. The new external-amendment path and inherited
+review, source-reading, evidence, follow-through, denial and restart paths all
+completed. This frontend continuation does not claim a new full standalone
+backend/backup-restore run.
+
+Retained [artifact 13268033686](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41711007124/artifacts/13268033686):
+5,400,216 bytes; downloaded SHA-256
+`c791f530760193d4e67dfa7037e8b7041173addc71ae52a899b7254a7b4cc326`, matching
+the hosted receipt. Its recorded head and all 424 tracked source blobs/executable
+modes match the published implementation tree. All three retained report files
+match full-file/body hashes and fresh access receipts. The original and historical
+versions of the first report have identical 3,859-byte bodies; its later download
+adds historical status and a fresh receipt. The replacement report has its own
+3,860-byte body. The exact original-evidence file hash also matches. The retained
+workflow JSON confirms external amendment version 2, stale control invalidation,
+hidden draft retention and fresh historical-only download; the checked browser
+code asserts these behaviors and no implicit comparison writes. Artifact
+retention expires 10 November 2026.
+
+The subsequent documentation-only delivery records these results without
+changing the tested runtime, tests, browser probes, dependencies or workflows.
+
+Synthetic engineering only; unmerged and undeployed. This change does not prove
+scientific applicability, clinical usefulness, production identity or complete
+platform readiness.
+
+### Report freshness in the preparation workspace — 4 November 2026
+
+The continuation of #402 (`547039fb3ea3e2d520cbbc4e2318c5b97d99ceae`)
+incorporates #378 (`ecc8f6d8066178573c950ab537faea8094a1e81c`) while preserving
+both source parents. Its evidence-session runtime is reused byte-for-byte.
+Two composed-session checks verify that evidence-only report reassessment/denial
+cannot erase independently authorized follow-up drafts or change saved preparation
+work. Common session termination still clears both kinds of state. The real browser
+adds unsent creation and transition fields before an externally authored evidence
+amendment and requires those fields to survive the historical report read and
+freshly authorized download without creating task writes.
+
+Local tests first produced 442 passes and seven expected failures. The combined
+implementation passes all 449 client tests, 13 rights controls, installed-package
+inspection, TypeScript/Vite build, Python helper compilation and the synthetic-data
+audit. Independent review and exact combined hosted acceptance are pending at this
+source checkpoint; the new draft PR records subsequent results. See the
+[bounded plan](../superpowers/plans/2026-11-04-preparation-report-freshness.md).
+
+No backend, schema, grants, dependencies or workflow changes. This remains a draft
+synthetic engineering candidate; no clinical release, external handoff or deployment.
