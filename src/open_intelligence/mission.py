@@ -36,13 +36,18 @@ def _safe_event_details(raw: object) -> dict:
 
 
 def _known_statement(assertion: dict) -> dict:
-    return {
+    result = {
         "finding_key": assertion["finding_key"],
         "state": assertion["certainty"],
         "statement": assertion["quote"],
         "source_version_id": assertion["source_version_id"],
         "source_line": assertion["source_line"],
     }
+    if assertion.get("classification_origin") == "user_selected":
+        for key in ("classification_origin", "annotation_method", "clinical_review",
+                    "transcription_review_sha256"):
+            result[key] = assertion[key]
+    return result
 
 
 def _material_changes(events: list[dict]) -> list[dict]:

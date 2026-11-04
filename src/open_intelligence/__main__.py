@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import re
@@ -40,6 +42,7 @@ ROOT = Path(__file__).resolve().parents[2]
 WEB = ROOT / "web"
 SYNTHETIC = ROOT / "examples" / "synthetic"
 ID_PART = r"([A-Z][A-Z0-9-]{1,39})"
+DOCUMENT_BODY_BYTES = 131072
 
 # B-01 fictional-actor grants: workflow governance for the synthetic case
 # workspace. The header carries a FICTIONAL actor id only — this is not
@@ -65,7 +68,8 @@ class Handler(BaseHTTPRequestHandler):
         # Avoid logging source text, patient-like fields or query strings.
         print("[local demo]", fmt % args)
 
-    def _headers(self, status: int, kind: str, size: int) -> None:
+    def _headers(self, status: int, kind: str, size: int, *,
+                 filename: str | None = None) -> None:
         self.send_response(status)
         self.send_header("Content-Type", kind)
         self.send_header("Content-Length", str(size))
@@ -73,10 +77,15 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Security-Policy", "default-src 'self'; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
+        if filename is not None:
+            # The source owner returns a validated ASCII basename, never a
+            # client-supplied path or an untrusted Content-Disposition value.
+            self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
         self.end_headers()
 
-    def _send(self, status: int, body: bytes, kind: str) -> None:
-        self._headers(status, kind, len(body))
+    def _send(self, status: int, body: bytes, kind: str, *,
+              filename: str | None = None) -> None:
+        self._headers(status, kind, len(body), filename=filename)
         self.wfile.write(body)
 
     def _json(self, status: int, payload: dict | list) -> None:
@@ -85,7 +94,8 @@ class Handler(BaseHTTPRequestHandler):
     def _static(self, name: str, mime: str) -> None:
         self._send(200, (WEB / name).read_bytes(), mime)
 
-    def _body(self) -> dict:
+    def _body(self, max_bytes: int = MAX_SOURCE_BYTES + 8192, *,
+              strict: bool = False) -> dict:
         if self.headers.get("Content-Type", "").split(";", 1)[0].strip() != "application/json":
             raise InvalidInput("Only application/json is accepted")
         try:
@@ -94,15 +104,53 @@ class Handler(BaseHTTPRequestHandler):
             raise InvalidInput("Invalid Content-Length") from None
         if n <= 0:
             raise InvalidInput("Request body is required")
-        if n > MAX_SOURCE_BYTES + 8192:
+        if n > max_bytes:
             raise InvalidInput("Request body exceeds local-demo limit")
+
+        def unique_fields(pairs):
+            result = {}
+            for key, value in pairs:
+                if key in result:
+                    raise InvalidInput("Duplicate JSON fields are not accepted")
+                result[key] = value
+            return result
+
+        def reject_constant(_value):
+            raise InvalidInput("Non-finite JSON values are not accepted")
+
         try:
-            data = json.loads(self.rfile.read(n))
-        except (UnicodeDecodeError, json.JSONDecodeError):
+            raw = self.rfile.read(n)
+            data = (json.loads(raw, object_pairs_hook=unique_fields,
+                               parse_constant=reject_constant)
+                    if strict else json.loads(raw))
+        except InvalidInput:
+            raise
+        except (UnicodeDecodeError, ValueError, RecursionError):
             raise InvalidInput("Invalid JSON body") from None
         if not isinstance(data, dict):
             raise InvalidInput("JSON object required")
         return data
+
+    @staticmethod
+    def _document_bytes(data: dict, *, preview: bool) -> bytes:
+        required = {"filename", "content_base64"}
+        if not preview:
+            required |= {"metadata", "findings", "expected_sha256", "confirmed_case_id"}
+        if set(data) != required:
+            raise InvalidInput("Document intake requires exactly the documented fields")
+        encoded = data["content_base64"]
+        if (not isinstance(encoded, str) or not encoded
+                or len(encoded) > 4 * ((MAX_SOURCE_BYTES + 2) // 3)):
+            raise InvalidInput("Document content must be base64 for at most 64 KiB")
+        try:
+            raw = base64.b64decode(encoded, validate=True)
+        except (ValueError, binascii.Error):
+            raise InvalidInput("Invalid document base64") from None
+        if not raw or len(raw) > MAX_SOURCE_BYTES:
+            raise InvalidInput("Document must be nonempty and at most 64 KiB")
+        if base64.b64encode(raw).decode("ascii") != encoded:
+            raise InvalidInput("Document base64 must use its canonical encoding")
+        return raw
 
     def _host_allowed(self) -> bool:
         # Host validation prevents a remote-controlled domain resolving to
@@ -190,6 +238,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._static("app.js", "text/javascript; charset=utf-8")
             if path == "/mission.js":
                 return self._static("mission.js", "text/javascript; charset=utf-8")
+            if path == "/intake.js":
+                return self._static("intake.js", "text/javascript; charset=utf-8")
             if path == "/case_search.js":
                 return self._static("case_search.js", "text/javascript; charset=utf-8")
             if path == "/provenance.js":
@@ -323,6 +373,20 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, {"templates": [
                     {"id": template_id, "description": text[:160]}
                     for template_id, text in TEMPLATES.items()]})
+            source_download = re.fullmatch(rf"/api/cases/{ID_PART}/sources/([0-9]+)/download", path)
+            if source_download:
+                # Bound URL input before Python's decimal conversion and the
+                # source owner's SQLite integer lookup. Other source routes
+                # keep their existing behavior.
+                source_id_text = source_download[2]
+                if len(source_id_text) > 19:
+                    raise InvalidInput("Invalid source identifier")
+                source_id = int(source_id_text)
+                if not 1 <= source_id <= 9223372036854775807:
+                    raise InvalidInput("Invalid source identifier")
+                document = store.source_document(source_download[1], source_id)
+                return self._send(200, document["raw"], "text/plain; charset=utf-8",
+                                  filename=document["filename"])
             consent_list = re.fullmatch(rf"/api/cases/{ID_PART}/consents", path)
             if consent_list:
                 return self._json(200, {"consents": store.list_consents(consent_list[1])})
@@ -394,7 +458,11 @@ class Handler(BaseHTTPRequestHandler):
             gated_case = self._case_route_id(path)
             if gated_case is not None and not self._require_case_grant(store, gated_case, path):
                 return None
-            data = self._body()
+            document_upload = re.fullmatch(rf"/api/cases/{ID_PART}/documents(/preview)?", path)
+            # Base64 plus bounded annotations needs a larger envelope. All
+            # other routes keep their existing request-body limit unchanged.
+            data = (self._body(DOCUMENT_BODY_BYTES, strict=True)
+                    if document_upload else self._body())
             if path == "/api/bibliography/lookup":
                 if not self.allow_crossref_live:
                     return self._json(403, {"error": "Live Crossref lookup disabled by default; use explicit local server option"})
@@ -413,6 +481,17 @@ class Handler(BaseHTTPRequestHandler):
                 finally:
                     self.metadata_request_lock.release()
             try:
+                if document_upload:
+                    preview = document_upload[2] is not None
+                    raw = self._document_bytes(data, preview=preview)
+                    if preview:
+                        return self._json(200, store.preview_document(
+                            document_upload[1], raw, data["filename"]))
+                    return self._json(200, store.import_document(
+                        document_upload[1], raw, data["filename"],
+                        metadata=data["metadata"], findings=data["findings"],
+                        expected_sha256=data["expected_sha256"],
+                        confirmed_case_id=data["confirmed_case_id"]))
                 if path == "/api/cases":
                     store.add_case(data.get("case_id"), data.get("label"))
                     return self._json(201, {"result": "created"})
