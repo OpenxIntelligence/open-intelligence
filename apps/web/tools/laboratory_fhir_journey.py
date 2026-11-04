@@ -133,11 +133,15 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
         # retain the exact visibility assertion and do not scroll from the test.
         cd.wait('''(() => {const h=document.querySelector('.topbar');
           const size=Math.ceil(h.getBoundingClientRect().height),sticky=size<=innerHeight/2;
-          return h.dataset.sticky===String(sticky)&&
+          return innerWidth===''' + str(width) + '''&&innerHeight===''' + str(height) + '''&&h.dataset.sticky===String(sticky)&&
             Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--workspace-offset'))===(sticky?size+24:24);
         })()''', 'requested viewport context measurement is ready before keyboard input')
         cd.evaluate('''(() => {const p=document.querySelector('[data-testid=laboratory-local-original]');
           p.style.fontSize='32px';p.scrollTop=0;p.closest('details').querySelector('summary').focus();})()''')
+        before_keyboard = cd.evaluate('''(() => {const p=document.querySelector('[data-testid=laboratory-local-original]'),h=document.querySelector('.topbar');
+          const r=p.getBoundingClientRect(),hr=h.getBoundingClientRect();return {width:innerWidth,height:innerHeight,
+          top:r.top,bottom:r.bottom,headerTop:hr.top,headerBottom:hr.bottom,scrollY,
+          contextOffset:getComputedStyle(document.documentElement).getPropertyValue('--workspace-offset'),sticky:h.dataset.sticky};})()''')
         key('Tab', 9)
         cd.evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))')
         observation = cd.evaluate('''(() => {const p=document.querySelector('[data-testid=laboratory-local-original]');
@@ -147,6 +151,7 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
           contextOffset:getComputedStyle(document.documentElement).getPropertyValue('--workspace-offset'),sticky:h.dataset.sticky,
           scrollHeight:p.scrollHeight,clientHeight:p.clientHeight,requests:window.__oiLabRequests,
           writes:window.__oiLabWrites.length,confirmed:document.querySelector('[data-testid=laboratory-confirm]').checked};})()''')
+        observation['before_keyboard'] = before_keyboard
         observations.append(observation)
         (artifacts / 'laboratory-preview-keyboard.json').write_text(json.dumps(observations, indent=2))
         (artifacts / f'laboratory-preview-keyboard-{width}.png').write_bytes(base64.b64decode(cd.command('Page.captureScreenshot', {'format':'png'})['data']))
