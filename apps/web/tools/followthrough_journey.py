@@ -447,6 +447,11 @@ class FollowthroughChecks:
                              owner='Fictional second question coordinator')
         before = self.cd.evaluate('({reads:window.__oiFollowthroughChecks.reads.length,writes:window.__oiFollowthroughChecks.writes.length})')
         navigate(self.cd, 'Overview')
+        self.cd.wait("Boolean(document.querySelector('[data-testid=second-opinion-preparation]'))", 'second-opinion preparation summary')
+        assert self.cd.evaluate("document.querySelector('[data-testid=second-opinion-preparation]').dataset.state") == 'needs_reassessment'
+        second_opinion_text = self.cd.evaluate("document.querySelector('[data-testid=second-opinion-preparation]').textContent")
+        assert 'create a referral' in second_opinion_text and 'confirm an appointment' in second_opinion_text
+        assert 'Do not treat the earlier preparation as current.' in second_opinion_text
         self.assert_overview_counts({'all': 4, 'recheck': 1, 'overdue': 2, 'unassigned': 1, 'history': 2})
         previews = self.cd.evaluate("[...document.querySelectorAll('[data-testid=continuity-followthrough-task]')].map(e=>({task:e.dataset.taskId,question:e.dataset.questionId,text:e.textContent}))")
         assert {row['task'] for row in previews} == {self.task_ids[TITLE_OPEN], second}
