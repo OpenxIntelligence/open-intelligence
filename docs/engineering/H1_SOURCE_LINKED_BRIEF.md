@@ -199,3 +199,31 @@ Only independently authored fictional records are used. No Sid medical data,
 real-patient-derived fixture, external publication, model weight or licensed
 guideline is acquired by this workflow. The candidate's offline data guard is
 separate from still-open repository-wide historical data/workflow cleanup.
+
+## Patient continuity overview — salvaged follow-up on #292 (3 November 2026)
+
+The Overview offers a read-only preparation panel over the existing session:
+resume a source-bound question, distinguish a confirmed save from an unfinished
+or uncertain one, inspect current/unreviewed versus reassessment counts, and
+return to Records or Investigations. It creates no second task or patient store.
+This advances OI-007/009/010 and the founder's patient-centered direction.
+
+Counts cover only the loaded, active patient/case mapping and successful question
+history under its read receipt. Unknown, failed and loading histories never
+become zero. Mixed patient/case rows are withheld. A zero count does not imply
+no care needs; current source context is not clinical review. Drafts remain
+memory-only, with existing source fingerprints and idempotent recovery intact.
+Navigation sends no clinical action and performs no automatic read.
+
+Provenance: the panel, projection, unit tests and verification navigation are
+#292's (`integration/h1-overview-verification-continuity-20261103`); #286
+duplicated those base files byte-identically and is closed unmerged per review.
+This follow-up salvages only #286's unique coverage: the overview
+draft/retry/disconnect client test asserting `request_key` stability across
+uncertain retry, the `source_questions_journey.py` overview-count and
+draft-resume browser checks, and this note.
+
+Verification: UNVERIFIED — nothing was executed in this authoring session. The
+reviewer must run the client suite and the built-React/PostgreSQL/Chromium
+journey on the exact head before any merge claim. Synthetic software evidence
+is not clinical validation.

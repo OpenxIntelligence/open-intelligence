@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import {createHash} from 'node:crypto';
 import assert from 'node:assert/strict';
-import {RegistrySession} from '../.test-dist/registry-client.js';
+import {RegistrySession,patientContinuity} from '../.test-dist/registry-client.js';
 
 const PID='PAT-EXAMPLE-001',CASE='CASE-ALPHA',SID='SRC-'+'A'.repeat(32);
 const TOKEN='fictional_test_credential_000000000001';
@@ -114,6 +114,21 @@ async function ready(transport){
  assert.equal(s.snapshot().worldPhase,'ready');
  return fixture;
 }
+test('patient overview follows actual draft, uncertain retry, confirmed save and disconnect',async()=>{
+ const fixture=await ready(makeSession({failFirstWrite:true}));
+ const {s}=fixture;
+ s.chooseQuestionDraft(SID,8);s.changeQuestionDraft(QUESTION);
+ assert.equal(patientContinuity(s.snapshot()).draft,'unsaved');
+ await s.prepareDraftQuestion();await s.savePreparedQuestion();
+ assert.equal(patientContinuity(s.snapshot()).draft,'needs_attention');
+ const first=JSON.parse(fixture.requests.filter(([url])=>url===path+'/questions')[0][1].body);
+ s.dismissSourceBrief();s.dismissSourceQuotePacket();
+ await s.savePreparedQuestion();
+ const second=JSON.parse(fixture.requests.filter(([url])=>url===path+'/questions')[1][1].body);
+ assert.equal(first.request_key,second.request_key);
+ assert.equal(patientContinuity(s.snapshot()).draft,'saved');
+ s.disconnect();assert.equal(patientContinuity(s.snapshot()),null);
+});
 
 test('authored draft is tied to an exact current source and is not sent on selection alone',async()=>{
  const {s,requests}=await ready();
