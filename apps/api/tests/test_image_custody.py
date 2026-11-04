@@ -319,6 +319,62 @@ class ImageCustodyHTTPTests(SourceVersionFixture):
                                  (503, {"detail": "Patient registry unavailable"}))
             self.assertEqual(self.events("AND event_type LIKE '%read_authorized'"), [])
 
+    def test_index_withholds_all_metadata_when_a_stored_original_is_corrupted(self):
+        # An authorized synthetic fixture DBA bypasses the immutability trigger
+        # only to model storage damage. Ordinary image updates remain forbidden.
+        original = image_bytes()
+        with running_server(create_app(self.settings)) as base:
+            _, _, path = self.prepare(base)
+            first = image_request(base, path, raw=original)[1]
+            second = image_request(base, path, raw=image_bytes(sop_uid="2.25.104"))[1]
+            status, index, _ = image_request(base, path)
+            self.assertEqual(status, 200)
+            self.assertEqual({v["image_id"] for v in index["images"]},
+                             {first["image_id"], second["image_id"]})
+            before = self.events("AND event_type='image.read_authorized'")
+            expected = {"raw": original, "sha": hashlib.sha256(original).hexdigest(),
+                        "series": "2.25.102"}
+            corruptions = (
+                ("digest", {**expected, "sha": "0" * 64}),
+                ("identifier", {**expected, "series": "2.25.999"}),
+                ("bytes", {**expected, "raw": original[:-2] + b"XX"}),
+            )
+            for kind, altered in corruptions:
+                with self.subTest(corruption=kind):
+                    with self.engine.begin() as connection:
+                        connection.exec_driver_sql(
+                            "ALTER TABLE clinical_source.dicom_objects DISABLE TRIGGER oi_image_update_guard")
+                        connection.execute(text(
+                            "UPDATE clinical_source.dicom_objects "
+                            "SET raw=:raw,sha256=:sha,series_uid=:series "
+                            "WHERE image_id=:id"), {**altered, "id": first["image_id"]})
+                        connection.exec_driver_sql(
+                            "ALTER TABLE clinical_source.dicom_objects ENABLE TRIGGER oi_image_update_guard")
+                    try:
+                        code, denied, headers = image_request(base, path)
+                        self.assertEqual((code, denied),
+                                         (503, {"detail": "Patient registry unavailable"}))
+                        self.assertEqual(headers["Cache-Control"], "no-store")
+                        self.assertEqual(self.events("AND event_type='image.read_authorized'"),
+                                         before)
+                    finally:
+                        with self.engine.begin() as connection:
+                            connection.exec_driver_sql(
+                                "ALTER TABLE clinical_source.dicom_objects DISABLE TRIGGER oi_image_update_guard")
+                            connection.execute(text(
+                                "UPDATE clinical_source.dicom_objects "
+                                "SET raw=:raw,sha256=:sha,series_uid=:series "
+                                "WHERE image_id=:id"), {**expected, "id": first["image_id"]})
+                            connection.exec_driver_sql(
+                                "ALTER TABLE clinical_source.dicom_objects ENABLE TRIGGER oi_image_update_guard")
+            status, repaired, _ = image_request(base, path)
+            self.assertEqual(status, 200)
+            self.assertEqual({v["image_id"]: v["sha256"] for v in repaired["images"]},
+                             {first["image_id"]: expected["sha"],
+                              second["image_id"]: second["sha256"]})
+            self.assertEqual(len(self.events("AND event_type='image.read_authorized'")),
+                             len(before) + 1)
+
     def test_caller_metadata_overrides_and_unsupported_transport_are_rejected(self):
         with running_server(create_app(self.settings)) as base:
             patient, source, path = self.prepare(base)
