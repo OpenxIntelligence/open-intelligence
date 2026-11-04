@@ -213,3 +213,14 @@ h1:focus{outline:2px solid #174b48;outline-offset:5px}
 /* Explicit keyboard access to the bounded original-text reader. */
 .original-text:focus-visible{outline:3px solid #ba8639;outline-offset:3px}
 .original-panel .original-text{max-height:min(26rem,calc(100dvh - var(--workspace-offset,24px) - 48px))}
+
+
+/* Second-opinion preparation composes existing authorized reads; it never sends a referral. */
+.second-opinion-preparation{margin-bottom:24px}
+.second-opinion-checklist{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:18px 0}
+.second-opinion-checklist>div{min-width:0;border:1px solid #d5e1d9;border-radius:7px;padding:14px;background:#f9fcf7}
+.second-opinion-checklist dt{font-size:12px;color:#42594c;font-weight:650}
+.second-opinion-checklist dd{font-size:13px;line-height:1.5;margin:6px 0 0;overflow-wrap:anywhere}
+.second-opinion-note{padding:13px;border-left:3px solid #b28b52;background:#f8f3e9;color:#5e4728}
+.second-opinion-preparation[data-state=inputs_prepared] .second-opinion-note{border-left-color:#638673;background:#edf5ee;color:#294d3d}
+@media(max-width:700px){.second-opinion-checklist{grid-template-columns:1fr}.second-opinion-preparation .actions{align-items:stretch}.second-opinion-preparation .actions button{width:100%}}

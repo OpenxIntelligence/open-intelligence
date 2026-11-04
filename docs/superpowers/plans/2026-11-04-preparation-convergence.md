@@ -35,8 +35,8 @@
 
 - [x] Compare exact source trees before composing. Parent artifact SHA-256 and all 646 Git blobs/modes verified.
 - [x] Preserve current A/B/A case-switch assertions and image reader CSS; add donor preparation assertions. The current RegistrySession already contains the donor's draft protections; do not replace it.
-- [ ] Run the tests-first browser journey on the unchanged UI: expect missing preparation agenda.
-- [ ] Add the existing projection, view and styles, preserve current main rendering, and add donor client tests and compiler entrypoint.
+- [x] Run the tests-first browser journey on the unchanged UI: expect missing preparation agenda.
+- [x] Add the existing projection, view and styles, preserve current main rendering, and add donor client tests and compiler entrypoint.
 - [ ] Run focused session/projection tests; full hosted client/rights/build/actual PostgreSQL-FastAPI-Chromium gate. Parent results do not qualify this composition.
 - [ ] Independent whole-change review, resolve material findings, inspect retained source identity and receipts.
 - [ ] Record exact source/run identities, limitations and scoped acceptance in PR and canonical progress records.
@@ -50,3 +50,5 @@ Ruling: retain #413's final case-switch sequence, which checks empty case B then
 Ruling: do not replace historical engineering logs or the execution backlog with donor copies. Add one current bounded record so unrelated accepted work remains intact.
 
 Local full `npm test` is blocked because the pinned TypeScript toolchain is not installed in this fresh checkout. Node TypeScript transformation can run focused behavior checks but is not typechecking or build evidence; hosted verification remains required.
+
+Tests-first hosted run 41827963055 at `6db0214f9909c4ec1c157d4a88fdf5bcf22cd4c9`: 483 client tests, 13 rights controls and production build passed. The actual browser failed with `Timed out waiting for saved preparation question`, confirming the missing view. No assertions were weakened.
