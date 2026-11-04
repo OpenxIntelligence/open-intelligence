@@ -15,7 +15,7 @@ from pathlib import Path
 import time
 
 from open_intelligence.document_intake import preview_document
-from open_intelligence.pdf_worker import canonical_json
+from open_intelligence.pdf_worker import canonical_json, extractor_descriptor
 from open_intelligence.store import InvalidInput
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -78,6 +78,8 @@ def checks(case: Case, value: object) -> dict[str, bool]:
         'review_status': value.get('clinical_review') == 'not_performed',
     }
     if pdf:
+        result['extractor_identity'] = (canonical_json(value.get('extractor')) ==
+                                        canonical_json(extractor_descriptor()))
         # These controlled fixture streams emit one LF per authored line.
         expected_pages = [
             {'page': n, 'text': text, 'sha256': hashlib.sha256(text.encode()).hexdigest()}

@@ -1,6 +1,7 @@
 """Engineering baseline integrity; fixtures are independently fictional."""
 import copy
 import importlib.util
+import hashlib
 import json
 from pathlib import Path
 import tempfile
@@ -29,18 +30,24 @@ class ExtractionBaselineTests(unittest.TestCase):
         self.assertIsNone(report['review_minutes'])
 
     def test_bad_units_anchors_and_hashes_cannot_pass(self):
-        for field in ('text', 'page', 'sha256'):
-            def corrupt(raw, filename):
-                value = copy.deepcopy(preview_document(raw, filename))
-                if field == 'sha256':
-                    value['sha256'] = '0' * 64
-                elif field == 'text':
-                    value['lines'][0]['text'] += ' changed'
-                elif filename.endswith('.pdf'):
-                    value['lines'][0]['page'] = 99
-                return value
+        from open_intelligence.pdf_worker import make_rendition
+        case = self.module.corpus()[2]
+        original = make_rendition(['\n'.join(p) + '\n' for p in case.pages])
+        original.update(sha256=hashlib.sha256(case.raw).hexdigest(),
+                        byte_count=len(case.raw), clinical_review='not_performed')
+        self.assertTrue(all(self.module.checks(case, original).values()))
+        for field, expected_check in (('text', 'exact_lines_and_anchors'),
+                                      ('page', 'exact_lines_and_anchors'),
+                                      ('sha256', 'original_bytes')):
+            value = copy.deepcopy(original)
+            if field == 'sha256':
+                value['sha256'] = '0' * 64
+            elif field == 'text':
+                value['lines'][2]['text'] = value['lines'][2]['text'].replace('mg/L', 'g/L')
+            else:
+                value['lines'][0]['page'] = 99
             with self.subTest(field=field):
-                self.assertFalse(self.module.run_suite(adapter=corrupt)['passed'])
+                self.assertIs(self.module.checks(case, value)[expected_check], False)
 
     def test_errors_are_counted_without_exception_text(self):
         for error in (RuntimeError('SECRET SENTINEL'),
@@ -52,6 +59,20 @@ class ExtractionBaselineTests(unittest.TestCase):
             self.assertEqual(report['passed_count'], 0)
             self.assertEqual(report['error_count'], report['case_count'])
             self.assertNotIn('SECRET SENTINEL', json.dumps(report))
+
+    def test_missing_or_forged_extractor_cannot_pass_with_recomputed_hash(self):
+        from open_intelligence.pdf_worker import make_rendition, canonical_json
+        case = self.module.corpus()[2]
+        value = make_rendition(['\n'.join(p) + '\n' for p in case.pages])
+        value.update(sha256=hashlib.sha256(case.raw).hexdigest(),
+                     byte_count=len(case.raw), clinical_review='not_performed')
+        self.assertTrue(all(self.module.checks(case, value).values()))
+        for identity in (None, {}, [], {'name': 'pypdf', 'version': 'unqualified'}):
+            altered = copy.deepcopy(value)
+            altered['extractor'] = identity
+            payload = {k: altered[k] for k in ('text', 'lines', 'pages', 'page_count', 'extractor')}
+            altered['extraction_sha256'] = hashlib.sha256(canonical_json(payload)).hexdigest()
+            self.assertFalse(all(self.module.checks(case, altered).values()))
 
     def test_malformed_outputs_fail_and_do_not_leak(self):
         for value in (None, [], {'text': 'SECRET SENTINEL'}, {'lines': [None]}):

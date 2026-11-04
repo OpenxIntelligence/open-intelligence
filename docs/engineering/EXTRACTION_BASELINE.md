@@ -22,6 +22,7 @@ Each receipt includes raw case denominators, accepted versus expected-rejected c
 - Tests-first: seven new tests failed because the runner was absent.
 - Initial local implementation: six of seven tests passed. The full-corpus test failed because the local pypdf installation is 6.10.0 instead of the pinned 6.21.4. It reported two text successes, one oversized-text rejection and six PDF execution errors; no skip or false PDF pass is claimed.
 - Hosted workflow now explicitly checks out the PR head, executes the unchanged full reference Python/HTTP suite, and retains the real baseline JSON alongside source-under-test and existing browser receipts. Exact-head hosted results and independent review are recorded in the draft PR after execution.
+- Independent review found that a recomputed digest could hide a malformed extractor descriptor, and a preceding suite failure would suppress the diagnostic receipt step. A new regression reproduced the descriptor false pass; the runner now checks the complete pinned descriptor independently. The receipt step runs even after failure, without suppressing its exit code. Targeted corruption assertions use a known-valid controlled rendition so an unavailable local PDF worker cannot make those tests falsely pass. Controlled rendition checks are not actual PDF extraction evidence.
 
 ## Remaining comparison
 

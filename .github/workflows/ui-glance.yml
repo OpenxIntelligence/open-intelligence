@@ -37,6 +37,7 @@ jobs:
       - name: Python and HTTP regression suite
         run: python -m unittest discover -s tests -p 'test_*.py' -v
       - name: Built-in fictional extraction baseline receipt
+        if: always()
         run: |
           mkdir -p ui-artifacts
           python -m tools.extraction_baseline --output ui-artifacts/extraction-baseline.json
