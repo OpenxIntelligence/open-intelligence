@@ -217,9 +217,14 @@ class DocumentImageConvergenceMigrationTests(SourceVersionFixture):
         self.assertEqual(self.heads(), {DOCUMENT_REVISION, IMAGE_REVISION})
         self.readiness(False)
         before, definitions = self.snapshot(), self.schema_definition()
-        self.upgrade_preserving(before)
+        # The published 0013 join itself is deliberately DDL-free. Its
+        # 0014/0015 successors add real manual-context tables, so compare
+        # entire schema snapshots at the join, not after upgrading to head.
+        migrate(self.admin, "upgrade", JOINED_REVISION)
+        self.assertEqual(self.heads(), {JOINED_REVISION})
         self.assertEqual(self.snapshot(), before)
         self.assertEqual(self.schema_definition(), definitions)
+        self.readiness(False)
         migrate(self.admin, "downgrade", DOCUMENT_REVISION)
         self.assertEqual(self.heads(), {DOCUMENT_REVISION, IMAGE_REVISION})
         self.assertEqual(self.snapshot(), before)
