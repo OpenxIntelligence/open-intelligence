@@ -47,3 +47,31 @@ test('draft resume distinguishes confirmed, in-flight and uncertain saves',()=>{
 test('failed world read cannot reuse an earlier source index as the selected case',()=>{
  assert.equal(projection({...base(),worldPhase:'error',sourceIndex:{patient_id:'PAT-ONE',case_id:'CASE-ONE'}})?.caseId,null);
 });
+
+const checkedTasks=()=>({followthroughPhase:'ready',followthroughCaseId:'CASE-ONE',followthrough:{
+ contract:'oi.pg-question-followthrough/1',patient_id:'PAT-ONE',case_id:'CASE-ONE',
+ access_receipt_id:'ACCESS-'+'D'.repeat(32),evaluated_on:'2026-11-03',tasks:[],
+ synthetic:true,clinical_approval:false,external_notification_sent:false}});
+
+test('overview exposes a checked empty follow-up read separately from unchecked work',()=>{
+ assert.deepEqual(projection({...base(),...checkedTasks()})?.followthrough?.counts,
+  {all:0,recheck:0,overdue:0,unassigned:0,history:0});
+ assert.equal(projection(base())?.followthrough,null);
+});
+
+test('overview requires its own successfully loaded case before showing follow-up',()=>{
+ for(const patch of [{worldPhase:'error'},{worldPhase:'loading'},{worldModel:null},
+  {worldModel:{patient_id:'PAT-ONE',case_id:'CASE-OTHER',snapshot_fingerprint:'v1'}}]){
+  assert.equal(projection({...base(),...checkedTasks(),...patch})?.followthrough,null);
+ }
+});
+
+test('an independent follow-up read failure preserves the question counts and draft',()=>{
+ const state={...base(),...checkedTasks(),questions:[row('current_unreviewed_question')],
+  questionDraft:{case_id:'CASE-ONE',snapshot_fingerprint:'v1',question:'Fictional question'},
+  followthroughPhase:'error',followthrough:null};
+ const view=projection(state);
+ assert.equal(view?.followthrough,null);
+ assert.deepEqual(view?.questions,{current:1,reassessment:0});
+ assert.equal(view?.draft,'unsaved');
+});

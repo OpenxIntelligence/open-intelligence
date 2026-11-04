@@ -819,3 +819,162 @@ substitute for combined PostgreSQL/API/browser or restore acceptance. The
 preservation receipt checks 193 files: 192 unchanged, with only the API README
 changed; backend/shared runtime, tests, locks, migrations and recovery inputs
 remain unchanged.
+## Connected Review and follow-up chronology — 3 November 2026
+
+This continuation extends OI-007/009/010/013 on the verified Review-draft owner
+#368 `2d62b05357ad64524d561c2e05c903674cd4e54c`. Its source was recovered from
+artifact `13265501154`; the downloaded SHA-256
+`d0fa908782025a76312430cca3597ec691c2cb65ae83d2e9259ac04f74b174ed` matched,
+and all 423 blobs and modes reproduced tree
+`0544f4a2d58cf95fd48973adf4f68a475121f0b7`.
+
+The composition retains #368's exact unsent Review-reason ownership and combines
+#369 `3c028ddfb4b408571b36140a5e5b52115c7bd790` without overlapping application
+edits. Its three task decoder/test/browser files are reused exactly. The H1 web
+workflow is reused exactly from #367
+`bbf56762e73f50fbe6432768deb605ed03edf09b`, blob
+`0052ad3c134b55f681838b617db6df94835aa70f`: changes to shared source, reference
+tests and the existing data-boundary audit now trigger web acceptance, and that
+audit runs before package acquisition. It is a known-entrypoint source audit,
+not an egress sandbox or general patient-data scanner.
+
+The intended merge parents are #368, #369 and #360
+`f200dd107871d89703267ee0d1a14b2d1ca64d36`, in that order. The third parent
+preserves the original #330/#339 ancestry. Their runtime corrections and the
+patient-journey crosswalk remain represented; the current ledger retains the
+newer intake, draft and receipt-recovery history rather than copying every older
+paragraph verbatim. #367's other documentation changes remain a separate
+reconciliation. Existing contributor branches are not rewritten or retargeted.
+
+Independent boundary review identified an inherited Review decoder gap: question
+and return-history `created_at` fields accepted impossible calendar dates, year
+zero and hour-24 rollover through `Date.parse`. This is a client contract and
+disclosure defect, not evidence that the PostgreSQL owner emits invalid dates.
+The decoder now reuses the same existing strict, timezone-bearing
+seconds/up-to-six-fractional-digit validator as task and citation history. No
+date is rewritten, no new review owner is introduced, and the three-field
+immediate return receipt contract remains unchanged.
+
+Observed local reproduction: the 54 existing Review client tests passed. Adding
+five regressions produced four expected failures and 55 passing controls before
+the decoder change. The minimal correction passes all 59 Review tests, with
+zero failures, skips or cancellations. Tests cover both date fields, literal
+valid offsets/leap dates/microseconds, withholding a malformed refreshed inbox,
+preventing a new return, and retaining an uncertain return's exact reason/key
+and identical retry body. Receipt recovery cannot restore an invalid inbox;
+only a later valid read restores its projection. These local executions use
+Node's TypeScript transform, not a pinned compiler or production-build claim.
+The 13 filesystem rights controls and the existing data-boundary audit also pass.
+
+The actual-browser regression corrupts copies of authorized Review responses,
+retains the original values separately and checks removal of the queue, history
+and new-return controls without additional writes. Fresh valid reads must restore
+the original question/receipt identities, source anchors and timestamp text.
+Full composed client/build/rights and PostgreSQL/FastAPI/React/Chromium acceptance
+remains required at the published candidate. The draft PR receipt will record
+that exact head, run and artifact without changing this source checkpoint.
+
+Operational backend, migrations, shared source, reference tests, dependencies,
+permissions and the API workflow are unchanged. The recent full backend evidence
+on #365 and #367 remains separately attributed to its tested heads and identical
+backend inputs; it is not a new standalone API/backup-restore run here.
+
+The parent-chain review also found an omitted, test-only #193 method,
+`ReceivedRecordHTTPTests.test_amended_original_before_first_receipt_cannot_satisfy_request`,
+from commit `b00989c1887f094a1de03a4c6d9d6b8758260fb8`. Its production guard is
+already present; the exact 28-line regression should be reconciled in the next
+backend/whole-chain integration. Main changed shared source and browser inputs
+during this review (observed `c4798ae85004713593f83458abd2102be6729095` at
+14:38 EST). A future main composition needs a fresh pin and combined API,
+reference/browser and H1 web acceptance, plus the scoped owner/merge decision.
+
+Independently authored fictional inputs only. This bounded candidate is a draft;
+it does not establish human owner acceptance, clinical validation, production
+identity, whole-product commercial clearance, merge or deployment.
+
+## Unsent follow-up creation drafts — 3 November 2026
+
+Draft #379 continues #375 at `1bdc44ac8507ec3a05398c3965bed5fcae0d59eb`
+(tree `8adcccc18f34e6f28cd178af9f213834dbc34cc8`) under OI-007/009/010/013.
+Unsent coordination fields previously lived inside the mounted question form;
+leaving Investigations discarded them. The tests-first hosted run
+[41711236459](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41711236459)
+at `bf63226af9c99eb9c30c38d1bcc958673a678aa5` passed all 397 compiled
+client tests, build and dependency checks, then failed the new actual-browser
+assertion: `Same-case navigation discarded unsent follow-up title`.
+
+The correction stores unsent creation fields only in the existing tab's
+RegistrySession, bound to patient, case, question, source snapshot and preflight.
+Same-case navigation and matching source/question refreshes retain the literal
+fields. Changed snapshots, missing/changed questions, revoked scope, patient/case
+changes and disconnect clear them. The form never stores drafts in browser
+storage or sends a command until explicit submission. Successful task transitions
+retain another unsent creation draft; a confirmed creation consumes only its
+question's draft. Existing captured command bodies and retry keys remain the
+authority for uncertain writes, and edits are blocked until resolved or abandoned.
+Ordinary rejected input retains editable fields; denied access clears them.
+
+Local verification at the first implementation checkpoint: 46 follow-through
+session tests and 13 filesystem rights controls passed; Python helper syntax,
+whitespace and the existing synthetic-data boundary audit passed. New local
+tests use Node's TypeScript transform, not a typecheck. The full local `npm test`
+could not run because the pinned TypeScript toolchain is absent. Final hosted
+TypeScript/Vite/client/PG16/FastAPI/Chromium acceptance and independent source
+review are pending at this source checkpoint; the PR records subsequent
+exact-head results without rewriting this historical checkpoint.
+
+No backend, SQL, grants, dependencies or workflow changes. Status-transition
+input retention across navigation is not added by this slice. It is not durable
+autosave, a clinical order, notification or clinical approval. Synthetic only;
+draft, unmerged and undeployed. Main and other owners' branches are unchanged.
+
+### Status-change draft continuation — 3 November 2026
+
+The same draft #379 now also addresses unfinished status-change reasons and
+proposed owners. Tests-first [run 41715861398](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41715861398)
+at `fedd78104b5e40e6583765797878fb6876650438` passed all 401 inherited
+client tests, 13 rights controls and build, then reproduced the actual browser
+failure: `Same-case navigation discarded unsent transition owner`.
+
+These fields remain in the existing RegistrySession and are bound to the exact
+task, revision, status, recorded owner and original source/question context.
+Matching authorized task reads preserve them, including daily date-flag changes.
+A changed revision, source reassessment or missing task clears the old input.
+Case/patient/access/session boundaries clear both kinds of unsent work. Explicit
+clear and confirmed submission consume only the selected draft; unrelated tasks
+and creation drafts remain separate. The captured command and request key remain
+authoritative for uncertain writes even if later task history advances.
+
+At this implementation checkpoint, 54 follow-through session tests and 21
+attention controls passed locally using Node's TypeScript transform. The browser
+helper additionally exercises navigation, matching task refresh, explicit clear,
+successful submission, unrelated task creation, source amendment and case-roundtrip
+clearing. Final hosted compilation/build/database-backed browser acceptance and
+independent review are pending here; subsequent evidence is recorded on #379.
+This supersedes the earlier creation-only scope note without changing its
+historical verification record. No backend, migration, dependency, grant or
+workflow changes; memory-only synthetic engineering, no clinical action.
+
+### Preparation agenda and retained follow-up input — 3 November 2026
+
+This composition joins #395's question-linked preparation agenda at
+`48d543609d96915c907bfab9d6a0eda2648977de` and #379's retained creation/status
+fields at `61339216147154c2c3555933e6e1c7281f3c0460`. Both canonical owners and
+parent histories are preserved. The three draft runtime files are reused exactly;
+the shared browser helper retains both owners' acceptance scenarios.
+
+Two composed-session regressions and real Overview navigation/refresh assertions
+check that unsent task titles and proposed owners never appear as saved work.
+Matching reads preserve literal input; a denied task read clears both draft kinds
+and recorded work, while separately authorized questions remain readable.
+
+The tests-first checkpoint passed 426 inherited tests and failed the 14 added
+regressions on absent draft methods. The integrated candidate passes 440 client
+tests, 13 installed-rights filesystem controls, TypeScript/Vite build, Python helper
+compilation and the inherited synthetic-data audit locally. Full combined hosted
+PostgreSQL/API/Chromium acceptance and independent review are pending at this source
+checkpoint; the new draft PR records subsequent exact-head evidence. See the
+[bounded plan](../superpowers/plans/2026-11-03-preparation-followup-drafts.md).
+
+No backend, schema, grant, dependency or workflow changes. This does not implement
+durable autosave, a referral, appointment, external handoff or clinical approval.

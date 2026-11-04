@@ -6,6 +6,7 @@ import {RecordImportDisclosure} from './record-import-disclosure';
 import {ReviewedDocumentDisclosure} from './reviewed-documents-view';
 import {WorldModelView} from './world-model-view';
 import {PatientContinuity} from './patient-continuity-view';
+import {SecondOpinionPreparation} from './second-opinion-preparation-view';
 import {ReviewPanel,useReviewReasonDrafts} from './review-panel';
 import {SourceReading, emptySourceFilters} from './source-reading';
 import type {ReadingView} from './source-reading';
@@ -114,7 +115,8 @@ function App(){
       </section>}
      </div>}
     </section>:section!=='Overview'?<section className="panel"><h2>{section} is not connected</h2><p>The existing reference application retains this workflow. No placeholder patient data, generated conclusions or clinical actions are shown here.</p><p>The source, evidence and review owners must be integrated with the same scoped patient API before this becomes available.</p><button onClick={()=>navigate('Overview')}>Return to overview</button></section>:<>
-    <PatientContinuity state={state} onNavigate={navigate}/>
+    <PatientContinuity state={state} onNavigate={navigate} busy={busy} onRefreshFollowthrough={caseId=>void session.loadFollowthrough(caseId)}/>
+    <SecondOpinionPreparation state={state} onNavigate={navigate}/>
     <div className="grid">
      <section className="panel" aria-labelledby="access-heading"><span className="step">01 / ACCESS</span><h2 id="access-heading">Connect your session</h2><p>Permission is checked by the API on every request. Your credential stays in this tab’s memory and is cleared on disconnect or reload.</p>
       {!state.connected?<form onSubmit={e=>{e.preventDefault();session.connect(token);setToken('')}}><label htmlFor="credential">Synthetic access credential</label><input id="credential" name="credential" type="password" autoComplete="off" autoCapitalize="none" spellCheck={false} value={token} onChange={e=>setToken(e.target.value)} required minLength={32} maxLength={256}/><button type="submit" className="primary">Connect credential</button></form>:<div><p className="session-status">Credential present · grants checked by server</p><button onClick={disconnect}>Disconnect and clear</button></div>}

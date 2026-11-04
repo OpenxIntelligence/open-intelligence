@@ -1,36 +1,33 @@
-import {useEffect,useState} from 'react';
+import {useState} from 'react';
 import type {RegistrySession,ViewState} from './registry-client';
 import type {SourceQuestion} from './source-questions-view';
 import {canCreateFollowthrough,FOLLOWTHROUGH_TRANSITIONS,validFollowthroughDraft,
   validFollowthroughText,projectFollowthroughAttention,FOLLOWTHROUGH_FILTERS,
-  followthroughFilterForRead,matchesFollowthroughFilter} from './followthrough-view';
-import type {FollowthroughDraft,FollowthroughTask,FollowthroughStatus,FollowthroughFilterSelection} from './followthrough-view';
+  followthroughFilterForRead,matchesFollowthroughFilter,followthroughTransitionContext} from './followthrough-view';
+import type {FollowthroughDraft,FollowthroughTask,FollowthroughStatus,FollowthroughFilterSelection,FollowthroughUnsentTransition} from './followthrough-view';
 
 type Props={state:ViewState;session:RegistrySession;busy:boolean};
 const blankDraft=():FollowthroughDraft=>({title:'',detail:'',owner_label:'',due_date:null,review_trigger:'',reason:''});
 const labels:Record<FollowthroughStatus,string>={created:'Created',assigned:'Assigned',acknowledged:'Acknowledged',completed:'Completed',deferred:'Deferred'};
 
-/** The exact saved question is the entry point. Text remains in component memory only. */
+/** The exact saved question is the entry point. Unsent text stays in the tab session. */
 export function FollowthroughCreate({state,session,busy,question}:Props&{question:SourceQuestion}){
- const [open,setOpen]=useState(false),[draft,setDraft]=useState<FollowthroughDraft>(blankDraft);
+ const retained=state.followthroughDrafts[question.question_id];
+ const open=!!retained&&retained.patient_id===question.patient_id&&retained.case_id===question.case_id&&
+  retained.source_snapshot_sha256===question.source_snapshot_sha256&&retained.preflight_sha256===question.preflight_sha256;
+ const draft=open?retained.fields:blankDraft();
  const blocked=busy||state.followthroughWritePhase==='saving'||state.followthroughWritePhase==='unknown';
  const current=state.worldPhase==='ready'&&state.questionListPhase==='ready'&&canCreateFollowthrough(question,state.worldModel);
- const field=(key:keyof FollowthroughDraft,value:string|null)=>setDraft(previous=>({...previous,[key]:value}));
- useEffect(()=>{
-  // Only creation has revision 1; another task's transition must preserve this draft.
-  if(state.followthroughWritePhase==='saved'&&state.followthroughReceipt?.revision===1&&
-     state.followthroughReceipt.question_id===question.question_id){
-   setDraft(blankDraft());setOpen(false);
-  }
- },[state.followthroughReceipt,state.followthroughWritePhase,question.question_id]);
+ const field=(key:keyof FollowthroughDraft,value:string|null)=>session.editFollowthroughDraft(question.question_id,{...draft,[key]:value});
  return <div className="followthrough-create">
   <button type="button" data-testid="followthrough-open-create" disabled={blocked||!current}
-   onClick={()=>setOpen(true)}>Record follow-up work for this question</button>
+   onClick={()=>session.editFollowthroughDraft(question.question_id,draft)}>Record follow-up work for this question</button>
   {!current&&<p className="muted">New work needs a question prepared from the current source context. Earlier task history stays available below.</p>}
   {open&&<form data-testid="followthrough-create-form" className="followthrough-form"
     onSubmit={event=>{event.preventDefault();void session.createFollowthrough(question.question_id,draft);}}>
    <h4>Record the next piece of work</h4>
    <p>Record a coordination or verification task. The platform will not perform it, send a notification or issue a clinical order.</p>
+   <p className="muted">Unsent details stay in this tab while you inspect the same case. They clear when the source context or access changes, or when you disconnect or reload.</p>
    <fieldset disabled={blocked||!current}>
     <legend className="visually-hidden">Follow-up details</legend>
     <label>Task title
@@ -58,15 +55,16 @@ export function FollowthroughCreate({state,session,busy,question}:Props&{questio
     <p className="muted">Title, details and timing are retained as recorded in this first version. Assignment changes through defer and reassign, preserving history.</p>
     <div className="actions">
      <button type="submit" className="primary" data-testid="followthrough-create" disabled={!validFollowthroughDraft(draft)}>Record follow-up task</button>
-     <button type="button" data-testid="followthrough-cancel" onClick={()=>{setOpen(false);setDraft(blankDraft());}}>Clear draft</button>
+     <button type="button" data-testid="followthrough-cancel" onClick={()=>session.clearFollowthroughDraft(question.question_id)}>Clear draft</button>
     </div>
    </fieldset>
   </form>}
  </div>;
 }
 
-function TaskCard({task,session,disabled,hidden}:{task:FollowthroughTask;session:RegistrySession;disabled:boolean;hidden:boolean}){
- const [owner,setOwner]=useState(task.owner_label),[reason,setReason]=useState('');
+function TaskCard({task,session,disabled,hidden,draft}:{task:FollowthroughTask;session:RegistrySession;disabled:boolean;hidden:boolean;draft:FollowthroughUnsentTransition|undefined}){
+ const retained=draft?.context===followthroughTransitionContext(task)?draft.fields:null;
+ const owner=retained?.owner_label??task.owner_label,reason=retained?.reason??'';
  const choices=FOLLOWTHROUGH_TRANSITIONS[task.status];
  const actionLabels:Partial<Record<FollowthroughStatus,string>>={assigned:task.status==='deferred'?'Reassign task':'Assign task',
   acknowledged:'Record acknowledgment',completed:'Record completion',deferred:'Defer task'};
@@ -93,16 +91,20 @@ function TaskCard({task,session,disabled,hidden}:{task:FollowthroughTask;session
     <legend>Record a status change</legend>
     {choices.includes('assigned')&&<label>Owner for assignment
      <input data-testid="followthrough-transition-owner" value={owner} maxLength={80} autoComplete="off"
-      onChange={event=>setOwner(event.target.value)}/></label>}
+      onChange={event=>session.editFollowthroughTransitionDraft(task.task_id,{owner_label:event.target.value,reason})}/></label>}
     <label>Reason for this status change
      <textarea data-testid="followthrough-transition-reason" value={reason} rows={2} maxLength={600}
-      autoComplete="off" onChange={event=>setReason(event.target.value)}/></label>
+      autoComplete="off" onChange={event=>session.editFollowthroughTransitionDraft(task.task_id,{owner_label:owner,reason:event.target.value})}/></label>
     <div className="actions">{choices.map(status=><button key={status} type="button"
       data-testid={'followthrough-'+testIds[status]}
       disabled={!validFollowthroughText(reason,3,600)||(status==='assigned'&&!validFollowthroughText(owner,2,80))}
       onClick={()=>void session.transitionFollowthrough(task.task_id,{status,reason,owner_label:status==='assigned'?owner:''})}>
-       {actionLabels[status]}</button>)}</div>
+       {actionLabels[status]}</button>)}
+     {retained&&<button type="button" data-testid="followthrough-clear-transition"
+       onClick={()=>session.clearFollowthroughTransitionDraft(task.task_id)}>Clear unsent status change</button>}
+    </div>
    </fieldset>
+   <p className="muted">Unsent details stay in this tab while this task and its source context remain unchanged.</p>
    <p className="muted">A status change records an attributed assertion about work. Completion requires acknowledgment and does not approve the source or question.</p>
   </div>}
   <details className="followthrough-history"><summary>Attributed status history ({task.history.length})</summary>
@@ -179,6 +181,7 @@ export function FollowthroughPanel({state,session,busy}:Props){
      {attention.counts[filter]===0&&<p data-testid="followthrough-filter-empty">No recorded tasks match this filter in the last successful read.</p>}
      <ul id="followthrough-items" className="followthrough-items">{list.tasks.map(task=><TaskCard key={task.task_id+':'+task.revision}
       task={task} session={session} hidden={!matchesFollowthroughFilter(task,filter)}
+      draft={state.followthroughTransitionDrafts[task.task_id]}
       disabled={busy||saving||unknown||state.followthroughPhase!=='ready'}/>)}</ul>
     </>}
   </>}

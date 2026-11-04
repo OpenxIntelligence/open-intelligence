@@ -2,6 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {RegistrySession} from '../.test-dist/registry-client.js';
 import {projectFollowthroughAttention} from '../.test-dist/followthrough-view.js';
+import {secondOpinionPreparation} from '../.test-dist/second-opinion-preparation.js';
 
 // Independently authored fictional task and source context; transport is the only mock.
 const token='fictional_test_credential_000000000001';
@@ -58,6 +59,274 @@ async function open(s){s.connect(token);await s.read(pid);await s.loadCases();}
 async function ready(s){await open(s);await s.loadWorldModel(cid);await s.loadSavedQuestions(cid);}
 const basic=(url)=>response(url.endsWith('/world-model')?world(url.includes(otherCase)?otherCase:cid):
  url.endsWith('/questions')?questions():projection());
+
+test('manual passage denial clears preparation drafts while withholding recoverable reference-only intent',async()=>{
+ let writes=0;
+ const s=session(async(url,init)=>{if(init.method==='POST')writes++;
+  return url.endsWith('/manual-passages')?response({},403):basic(url);});
+ await ready(s);await s.loadFollowthrough(cid);
+ const scope={patient_id:pid,case_id:cid,question_id:qid};
+ const intent=JSON.stringify({synthetic:true,request_key:'FICTIONAL-MANUAL-RETRY',
+  expected_context_sha256:'e'.repeat(64),references:[]});
+ const store=s.manualPassageIntentStore(scope);store.write(intent);
+ s.editFollowthroughDraft(qid,fields());
+ s.editFollowthroughTransitionDraft(tid,{owner_label:'Unsent owner',reason:'Unsent reason'});
+ assert.equal(secondOpinionPreparation(s.snapshot()).agenda.preview[0].work.recordedCount,1);
+ await s.loadFollowthrough(cid);
+ assert.equal(store.read(),intent);
+ assert.deepEqual(s.snapshot().followthroughDrafts[qid].fields,fields());
+ await s.questionPassageRequest(cid,qid);
+ assert.equal(secondOpinionPreparation(s.snapshot()),null);
+ assert.deepEqual(s.snapshot().followthroughDrafts,{});
+ assert.deepEqual(s.snapshot().followthroughTransitionDrafts,{});
+ assert.equal(store.read(),null);
+ await s.loadCases();await s.loadWorldModel(cid);await s.loadSavedQuestions(cid);
+ assert.equal(store.read(),intent);
+ assert.deepEqual(s.snapshot().followthroughDrafts,{});
+ assert.equal(secondOpinionPreparation(s.snapshot()).agenda.preview[0].work,null);
+ s.disconnect();assert.equal(store.read(),null);assert.equal(writes,0);
+});
+
+test('preparation uses recorded work while unsent creation and owner drafts survive a matching refresh',async()=>{
+ let writes=0;const s=session(async(url,init)=>{if(init.method==='POST')writes++;return basic(url);});
+ await ready(s);await s.loadFollowthrough(cid);
+ const creation={...fields(),title:'Unsent preparation task'};
+ const transition={owner_label:'Unsent proposed owner',reason:'Check the source before assignment.'};
+ s.editFollowthroughDraft(qid,creation);s.editFollowthroughTransitionDraft(tid,transition);
+ for(let i=0;i<2;i++){
+  const view=secondOpinionPreparation(s.snapshot()),work=view.agenda.preview[0].work;
+  assert.equal(work.recordedCount,1);assert.equal(work.openCount,1);
+  assert.equal(work.preview[0].title,fields().title);
+  assert.equal(work.preview[0].ownerLabel,fields().owner_label);
+  assert.equal(work.preview[0].status,'created');
+  assert.equal(JSON.stringify(view).includes(creation.title),false);
+  assert.equal(JSON.stringify(view).includes(transition.owner_label),false);
+  await s.loadFollowthrough(cid);
+ }
+ assert.deepEqual(s.snapshot().followthroughDrafts[qid].fields,creation);
+ assert.deepEqual(s.snapshot().followthroughTransitionDrafts[tid].fields,transition);
+ assert.equal(writes,0);
+});
+
+test('preparation refresh hides unchecked work and task denial clears drafts without losing authorized questions',async()=>{
+ const held=deferred();let pending=false,writes=0;
+ const s=session(async(url,init)=>{if(init.method==='POST')writes++;
+  return pending&&url.endsWith('/followthrough')?held.promise:basic(url);});
+ await ready(s);await s.loadFollowthrough(cid);
+ s.editFollowthroughDraft(qid,fields());
+ s.editFollowthroughTransitionDraft(tid,{owner_label:'Proposed fictional owner',reason:'Unsent reassignment.'});
+ pending=true;const refresh=s.loadFollowthrough(cid);
+ const loading=secondOpinionPreparation(s.snapshot());
+ assert.equal(loading.agenda.preview[0].questionId,qid);
+ assert.equal(loading.agenda.preview[0].work,null);
+ assert.equal(loading.coordination,null);
+ assert.deepEqual(s.snapshot().followthroughDrafts[qid].fields,fields());
+ held.resolve(response({},403));await refresh;
+ const denied=secondOpinionPreparation(s.snapshot());
+ assert.equal(denied.agenda.preview[0].text,question().question);
+ assert.equal(denied.agenda.preview[0].work,null);
+ assert.deepEqual(s.snapshot().followthroughDrafts,{});
+ assert.deepEqual(s.snapshot().followthroughTransitionDrafts,{});
+ pending=false;await s.loadFollowthrough(cid);
+ assert.equal(secondOpinionPreparation(s.snapshot()).agenda.preview[0].work.recordedCount,1);
+ assert.deepEqual(s.snapshot().followthroughDrafts,{});
+ assert.deepEqual(s.snapshot().followthroughTransitionDrafts,{});
+ assert.equal(writes,0);
+});
+
+test('unsent follow-up fields survive same-case source and question refresh without writes',async()=>{
+ let writes=0;const s=session(async(url,init)=>{if(init.method==='POST')writes++;return basic(url);});
+ await ready(s);const draft={...fields(),title:'Still drafting',detail:'Literal unfinished text',due_date:'2026-12-09'};
+ s.editFollowthroughDraft(qid,draft);
+ await s.loadCases();
+ await s.loadWorldModel(cid);await s.loadSavedQuestions(cid);await s.loadFollowthrough(cid);
+ assert.deepEqual(s.snapshot().followthroughDrafts[qid].fields,draft);
+ assert.equal(s.snapshot().followthroughDrafts[qid].source_snapshot_sha256,snapshot);
+ assert.equal(Object.isFrozen(s.snapshot().followthroughDrafts[qid].fields),true);
+ assert.equal(writes,0);s.clearFollowthroughDraft(qid);
+ assert.deepEqual(s.snapshot().followthroughDrafts,{});assert.equal(writes,0);
+});
+
+test('unsent follow-up fields are cleared on changed source, missing question or denied scope',async()=>{
+ for(const change of ['amendment','missing','preflight','question-denial','world-denial','task-denial','case','patient','disconnect']){
+  let changed=false,writes=0;
+  const s=session(async(url,init)=>{
+   if(init.method==='POST')writes++;
+   if(changed&&url.endsWith('/world-model')&&change==='amendment')return response(world(cid,'d'.repeat(64)));
+   if(changed&&url.endsWith('/questions')&&change==='missing')return response(questions([]));
+   if(changed&&url.endsWith('/questions')&&change==='preflight')return response(questions([question({preflight_sha256:'e'.repeat(64)})]));
+   if(changed&&((change==='question-denial'&&url.endsWith('/questions'))||
+    (change==='world-denial'&&url.endsWith('/world-model'))||(change==='task-denial'&&url.endsWith('/followthrough'))))return response({},403);
+   return basic(url);
+  });
+  await ready(s);s.editFollowthroughDraft(qid,fields());changed=true;
+  if(change==='amendment'||change==='world-denial')await s.loadWorldModel(cid);
+  else if(change==='task-denial')await s.loadFollowthrough(cid);
+  else if(change==='case'){await s.loadWorldModel(otherCase);await s.loadWorldModel(cid);}
+  else if(change==='patient'){await s.read('PAT-OTHER-002');await s.read(pid);}
+  else if(change==='disconnect'){s.disconnect();s.connect(token);}
+  else await s.loadSavedQuestions(cid);
+  assert.deepEqual(s.snapshot().followthroughDrafts,{},change);assert.equal(writes,0,change);
+ }
+});
+
+test('task transitions preserve an unsent creation draft; exact creation recovery clears it once',async()=>{
+ const posts=[];let creates=0;
+ const s=session(async(url,init)=>{
+  if(init.method==='POST'){
+   posts.push(init.body);
+   if(url.endsWith('/transitions'))return response(receipt(2),201);
+   if(++creates===1)throw Error('Delivery lost after commit');
+   return response(receipt(1,true));
+  }
+  return basic(url);
+ });
+ await ready(s);s.editFollowthroughDraft(qid,fields());await s.loadFollowthrough(cid);
+ await s.transitionFollowthrough(tid,{status:'assigned',owner_label:'Fictional coordinator',reason:'Record the assignment.'});
+ assert.deepEqual(s.snapshot().followthroughDrafts[qid].fields,fields());
+ await s.createFollowthrough(qid,fields());const captured=s.snapshot().followthroughIntent;
+ assert.equal(s.snapshot().followthroughWritePhase,'unknown');
+ s.editFollowthroughDraft(qid,{...fields(),title:'Must not replace the captured write'});
+ s.clearFollowthroughDraft(qid);
+ assert.equal(s.snapshot().followthroughIntent,captured);
+ assert.deepEqual(s.snapshot().followthroughDrafts[qid].fields,fields());
+ await s.retryFollowthroughWrite();assert.equal(posts[1],posts[2]);
+ assert.equal(s.snapshot().followthroughReceipt.duplicate,true);
+ assert.deepEqual(s.snapshot().followthroughDrafts,{});
+ s.editFollowthroughDraft(qid,{...fields(),title:'A different unsent task'});
+ await s.loadSavedQuestions(cid);
+ assert.equal(s.snapshot().followthroughDrafts[qid].fields.title,'A different unsent task');
+ assert.equal(posts.length,3);
+});
+
+test('a refused follow-up input preserves editable fields unless access itself was denied',async()=>{
+ for(const status of [400,409,413,422,403,404]){
+  const s=session(async(url,init)=>init.method==='POST'?response({},status):basic(url));
+  await ready(s);s.editFollowthroughDraft(qid,fields());await s.createFollowthrough(qid,fields());
+  assert.equal(s.snapshot().followthroughWritePhase,'error');
+  assert.equal(s.snapshot().followthroughIntent,null);
+  if([403,404].includes(status))assert.deepEqual(s.snapshot().followthroughDrafts,{});
+  else assert.deepEqual(s.snapshot().followthroughDrafts[qid]?.fields,fields(),String(status));
+ }
+});
+
+test('unsent status-change fields survive matching task refresh and clear independently of creation fields',async()=>{
+ let writes=0;const s=session(async(url,init)=>{if(init.method==='POST')writes++;return basic(url);});
+ const draft={owner_label:'Proposed fictional owner',reason:'Still checking the source before assigning.'};
+ await ready(s);await s.loadFollowthrough(cid);s.editFollowthroughDraft(qid,fields());
+ s.editFollowthroughTransitionDraft(tid,draft);
+ await s.loadCases();await s.loadWorldModel(cid);await s.loadSavedQuestions(cid);await s.loadFollowthrough(cid);
+ assert.deepEqual(s.snapshot().followthroughTransitionDrafts[tid].fields,draft);
+ assert.equal(Object.isFrozen(s.snapshot().followthroughTransitionDrafts[tid].fields),true);
+ assert.deepEqual(s.snapshot().followthroughDrafts[qid].fields,fields());
+ assert.equal(writes,0);s.clearFollowthroughTransitionDraft(tid);
+ assert.deepEqual(s.snapshot().followthroughTransitionDrafts,{});
+ assert.deepEqual(s.snapshot().followthroughDrafts[qid].fields,fields());assert.equal(writes,0);
+});
+
+test('fresh task revision, source context or missing task discards an earlier unsent status change',async()=>{
+ for(const changed of [[],[taskRow(['created','assigned'])],
+  [taskRow(['created'],{source_context_state:'source_reassessment_required',needs_recheck:true})],
+  [taskRow(['created'],{source_snapshot_sha256:'d'.repeat(64)})],
+  [taskRow(['created'],{preflight_sha256:'e'.repeat(64)})]]){
+  let refresh=false,writes=0;
+  const s=session(async(url,init)=>{if(init.method==='POST')writes++;return response(projection(refresh?changed:[taskRow()]));});
+  await open(s);await s.loadFollowthrough(cid);
+  s.editFollowthroughTransitionDraft(tid,{owner_label:'Fictional owner',reason:'A reason for the earlier task context.'});
+  refresh=true;await s.loadFollowthrough(cid);
+  assert.deepEqual(s.snapshot().followthroughTransitionDrafts,{});assert.equal(writes,0);
+ }
+});
+
+test('status-change drafts cannot survive denied authority, patient/case changes or disconnect',async()=>{
+ for(const change of ['task','question','world','case','patient','disconnect']){
+  let denied=false;const s=session(async(url)=>denied&&url.endsWith('/'+({task:'followthrough',question:'questions',world:'world-model'}[change]))?
+   response({},403):basic(url));
+  await ready(s);await s.loadFollowthrough(cid);
+  s.editFollowthroughTransitionDraft(tid,{owner_label:'Fictional owner',reason:'Unsent private coordination note.'});denied=true;
+  if(change==='task')await s.loadFollowthrough(cid);
+  else if(change==='question')await s.loadSavedQuestions(cid);
+  else if(change==='world')await s.loadWorldModel(cid);
+  else if(change==='case'){await s.loadWorldModel(otherCase);await s.loadWorldModel(cid);}
+  else if(change==='patient'){await s.read('PAT-OTHER-002');await s.read(pid);}
+  else{s.disconnect();s.connect(token);}
+  assert.deepEqual(s.snapshot().followthroughTransitionDrafts,{},change);
+ }
+});
+
+test('a new evaluation date preserves status-change input for the same historical task',async()=>{
+ let tomorrow=false;
+ const s=session(async()=>response(projection([taskRow(['created'],{due_date:'2026-11-03',
+  source_context_state:'source_reassessment_required',needs_recheck:true,
+  is_due_soon:!tomorrow,is_overdue:tomorrow})],{evaluated_on:tomorrow?'2026-11-04':'2026-11-03'})));
+ await open(s);await s.loadFollowthrough(cid);
+ const draft={owner_label:'Fictional recheck owner',reason:'Keep this note while the revisit date passes.'};
+ s.editFollowthroughTransitionDraft(tid,draft);tomorrow=true;await s.loadFollowthrough(cid);
+ assert.deepEqual(s.snapshot().followthroughTransitionDrafts[tid].fields,draft);
+ assert.equal(s.snapshot().followthrough.tasks[0].is_overdue,true);
+});
+
+test('a confirmed transition consumes only its own task draft',async()=>{
+ const secondId='TASK-'+'D'.repeat(32);let assigned=false;
+ const second=taskRow(['created'],{task_id:secondId,history:[{...history()[0],event_id:eventId(101)}]});
+ const s=session(async(url,init)=>{
+  if(init.method==='POST'){assigned=true;return response(receipt(2),201);}
+  return response(projection([taskRow(assigned?['created','assigned']:['created']),second]));
+ });
+ await open(s);await s.loadFollowthrough(cid);
+ const first={owner_label:'Fictional coordinator',reason:'Assign this exact task.'};
+ const other={owner_label:'Another fictional coordinator',reason:'Leave this different task unfinished.'};
+ s.editFollowthroughTransitionDraft(tid,first);s.editFollowthroughTransitionDraft(secondId,other);
+ await s.transitionFollowthrough(tid,{...first,status:'assigned'});
+ assert.equal(s.snapshot().followthroughTransitionDrafts[tid],undefined);
+ assert.deepEqual(s.snapshot().followthroughTransitionDrafts[secondId].fields,other);
+ assert.equal(s.snapshot().followthroughReceipt.revision,2);
+});
+
+test('an uncertain transition keeps its exact intent when fresh task history clears obsolete input',async()=>{
+ const posts=[];let advanced=false;
+ const s=session(async(url,init)=>{
+  if(init.method==='POST'){posts.push(init.body);if(posts.length===1)throw Error('Receipt lost after commit');return response(receipt(2,true));}
+  return response(projection([taskRow(advanced?['created','assigned','acknowledged']:['created'])]));
+ });
+ await open(s);await s.loadFollowthrough(cid);
+ const draft={owner_label:'Fictional coordinator',reason:'Assign the recorded fictional work.'};
+ s.editFollowthroughTransitionDraft(tid,draft);await s.transitionFollowthrough(tid,{...draft,status:'assigned'});
+ const intent=s.snapshot().followthroughIntent;
+ s.editFollowthroughTransitionDraft(tid,{...draft,reason:'Changed draft must not replace captured intent.'});
+ s.clearFollowthroughTransitionDraft(tid);
+ assert.deepEqual(s.snapshot().followthroughTransitionDrafts[tid].fields,draft);
+ assert.equal(s.snapshot().followthroughIntent,intent);
+ advanced=true;await s.loadFollowthrough(cid);
+ assert.deepEqual(s.snapshot().followthroughTransitionDrafts,{});
+ assert.equal(s.snapshot().followthroughIntent,intent);
+ await s.retryFollowthroughWrite();assert.equal(posts[0],posts[1]);
+ assert.equal(JSON.parse(posts[1]).expected_revision,1);
+ assert.equal(s.snapshot().followthroughReceipt.revision,2);
+ assert.equal(s.snapshot().followthrough.tasks[0].revision,3);
+});
+
+test('status-change input requires a current authorized task and cannot be restored by a late read',async()=>{
+ const late=deferred();let hold=false;
+ const s=session(async()=>hold?late.promise:response(projection()));
+ await open(s);s.editFollowthroughTransitionDraft(tid,{owner_label:'Fictional owner',reason:'No task read exists.'});
+ assert.deepEqual(s.snapshot().followthroughTransitionDrafts,{});
+ await s.loadFollowthrough(cid);s.editFollowthroughTransitionDraft(tid,{owner_label:'Fictional owner',reason:'This authorized draft must clear.'});
+ hold=true;const pending=s.loadFollowthrough(cid);s.disconnect();late.resolve(response(projection()));await pending;
+ assert.deepEqual(s.snapshot().followthroughTransitionDrafts,{});assert.equal(s.snapshot().followthrough,null);
+});
+
+test('a refused status change preserves editable input but access denial clears it',async()=>{
+ for(const status of [400,409,413,422,403,404]){
+  const s=session(async(url,init)=>init.method==='POST'?response({},status):basic(url));
+  await ready(s);await s.loadFollowthrough(cid);
+  const draft={owner_label:'Fictional owner',reason:'Proposed assignment before explicit submission.'};
+  s.editFollowthroughTransitionDraft(tid,draft);await s.transitionFollowthrough(tid,{...draft,status:'assigned'});
+  assert.equal(s.snapshot().followthroughWritePhase,'error');assert.equal(s.snapshot().followthroughIntent,null);
+  if([403,404].includes(status))assert.deepEqual(s.snapshot().followthroughTransitionDrafts,{});
+  else assert.deepEqual(s.snapshot().followthroughTransitionDrafts[tid]?.fields,draft,String(status));
+ }
+});
 
 test('follow-through read uses the existing scoped session and immutable task history',async()=>{
  const calls=[];const s=session(async(url,init)=>{calls.push([url,init]);return response(projection());});
