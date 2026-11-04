@@ -30,6 +30,9 @@ class SourceWorldModelHTTPTests(SourceFixture):
             self.assertEqual(empty["case_id"], "CASE-ALPHA")
             self.assertEqual(empty["summary"]["current_sources"], 0)
             self.assertEqual(empty["observations"], [])
+            self.assertEqual(empty["laboratory_observations"], [])
+            self.assertEqual(empty["laboratory_timeline"], [])
+            self.assertEqual(empty["summary"]["current_laboratory_observations"], 0)
             self.assertFalse(empty["clinical_interpretation"])
             self.assertFalse(empty["composer_execution_authorized"])
             self.assertFalse(empty["research_review_invalidation_integrated"])
@@ -43,8 +46,8 @@ class SourceWorldModelHTTPTests(SourceFixture):
             self.assertNotEqual(world["snapshot_fingerprint"], empty["snapshot_fingerprint"])
             self.assertEqual(world["summary"], {
                 "current_sources": 1, "historical_sources": 0,
-                "current_observations": 1, "unresolved_observations": 1,
-                "source_disagreements": 0,
+                "current_observations": 1, "current_laboratory_observations": 0,
+                "unresolved_observations": 1, "source_disagreements": 0,
             })
             observation = world["observations"][0]
             self.assertEqual(observation["source_id"], original_id)
@@ -67,8 +70,8 @@ class SourceWorldModelHTTPTests(SourceFixture):
             self.assertNotEqual(amended["snapshot_fingerprint"], world["snapshot_fingerprint"])
             self.assertEqual(amended["summary"], {
                 "current_sources": 1, "historical_sources": 1,
-                "current_observations": 1, "unresolved_observations": 0,
-                "source_disagreements": 0,
+                "current_observations": 1, "current_laboratory_observations": 0,
+                "unresolved_observations": 0, "source_disagreements": 0,
             })
             self.assertEqual(amended["history"][0]["source_id"], original_id)
             self.assertEqual(amended["history"][0]["state"], "superseded")
