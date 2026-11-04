@@ -491,5 +491,65 @@ class ClinicalEncounterTests(unittest.TestCase):
             ('req-digest-update-001',)).fetchone()[0], 0)
 
 
+    def test_distinct_specialty_notes_preserve_facility_and_department_by_version(self):
+        """Two specialties contribute notes without merging their provenance."""
+        eid = self.begin()['encounter_id']
+        cardiology = self.ops.write_note(
+            'CASE-ONE', eid, 'NOTE-CARDIOLOGY', 'Fictional cardiac consultation',
+            expected_version=0, facility_id='ORG-HOSPITAL-ONE',
+            department_id='DEPT-CARDIOLOGY', note_kind='consultation',
+            request_key='req-cardiology-write-001', **self.actor)
+        primary = self.ops.write_note(
+            'CASE-ONE', eid, 'NOTE-PRIMARY', 'Fictional referring primary care history',
+            expected_version=0, facility_id='ORG-CLINIC-TWO',
+            department_id='DEPT-PRIMARYCARE', note_kind='history_and_physical',
+            request_key='req-primary-write-001', **self.actor)
+        self.assertEqual(cardiology['status'], 'draft')
+        self.assertEqual(primary['status'], 'draft')
+        self.ops.attest_note('CASE-ONE', eid, 'NOTE-CARDIOLOGY',
+                             expected_version=1, request_key='req-cardiology-attest-001',
+                             **self.actor)
+        self.ops.write_note('CASE-ONE', eid, 'NOTE-CARDIOLOGY', 'Corrected fictional consultation',
+                            expected_version=2, correction_reason='Corrected fictional summary',
+                            request_key='req-cardiology-correct-001', **self.actor)
+        history = self.ops.note_history('CASE-ONE', eid, 'NOTE-CARDIOLOGY', **self.actor)
+        self.assertEqual([h['version'] for h in history], [1, 2, 3])
+        self.assertEqual([h['facility_id'] for h in history], ['ORG-HOSPITAL-ONE'] * 3)
+        self.assertEqual([h['department_id'] for h in history], ['DEPT-CARDIOLOGY'] * 3)
+        self.assertEqual([h['note_kind'] for h in history], ['consultation'] * 3)
+        other = self.ops.note_history('CASE-ONE', eid, 'NOTE-PRIMARY', **self.actor)
+        self.assertEqual(len(other), 1)
+        self.assertEqual(other[0]['facility_id'], 'ORG-CLINIC-TWO')
+        self.assertEqual(other[0]['department_id'], 'DEPT-PRIMARYCARE')
+        self.assertEqual(other[0]['note_kind'], 'history_and_physical')
+
+    def test_note_provenance_participates_in_idempotent_command_identity(self):
+        """A different department cannot reuse the same receipt and silently relabel."""
+        eid = self.begin()['encounter_id']
+        args = dict(patient_id='CASE-ONE', encounter_id=eid, note_key='NOTE-001',
+                    body='Fictional note', expected_version=0,
+                    facility_id='ORG-HOSPITAL-ONE', department_id='DEPT-CARDIOLOGY',
+                    note_kind='consultation', request_key='req-provenance-001', **self.actor)
+        before = self.ops.write_note(**args)
+        self.assertEqual(self.ops.write_note(**args), before)
+        with self.assertRaises(ClinicalConflict):
+            self.ops.write_note(**dict(args, department_id='DEPT-PRIMARYCARE'))
+        self.assertEqual(len(self.ops.note_history('CASE-ONE', eid, 'NOTE-001', **self.actor)), 1)
+        with self.assertRaises(InvalidInput):
+            self.ops.write_note(**dict(args, note_kind='diagnosis_assumed'))
+        with self.assertRaises(InvalidInput):
+            self.ops.write_note(**dict(args, facility_id=''))
+
+    def test_absent_specialty_and_facility_remain_unknown(self):
+        """Legacy notes have no invented department, facility, or note classification."""
+        eid = self.begin()['encounter_id']
+        self.ops.write_note('CASE-ONE', eid, 'NOTE-LEGACY', 'Unclassified fictional note',
+                            expected_version=0, request_key='req-legacy-note-001', **self.actor)
+        history = self.ops.note_history('CASE-ONE', eid, 'NOTE-LEGACY', **self.actor)
+        self.assertIsNone(history[0]['facility_id'])
+        self.assertIsNone(history[0]['department_id'])
+        self.assertIsNone(history[0]['note_kind'])
+
+
 if __name__ == '__main__':
     unittest.main()
