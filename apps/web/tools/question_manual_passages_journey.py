@@ -33,20 +33,23 @@ def exercise(cd,patient_id,token,credentials,write_grants,artifacts):
         return "[...document.querySelectorAll('[data-testid=question-manual-passages] button')].find(b=>b.textContent==='Refresh attached passages')"
     def refresh_keeps_unsaved(kind):
         selected="[...document.querySelectorAll('[data-testid=manual-context-selected] li')].map(e=>e.textContent)"
-        before=cd.evaluate(selected)
-        reads=cd.evaluate('window.__manualJourney.reads.length')
-        posts=cd.evaluate('window.__manualJourney.posts.length')
-        cd.evaluate(refresh_button()+'.click()')
-        cd.evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))')
-        after=cd.evaluate(selected)
-        receipt=dict(kind=kind,before=before,after=after,
-            reads_before=reads,reads_after=cd.evaluate('window.__manualJourney.reads.length'),
-            posts_before=posts,posts_after=cd.evaluate('window.__manualJourney.posts.length'))
-        (artifacts/('manual-passage-refresh-'+kind+'.json')).write_text(json.dumps(receipt,indent=2))
-        assert after==before, 'Refreshing attached passages discarded unsaved '+kind
-        assert cd.evaluate("Boolean(document.querySelector('[data-testid=manual-context-unsaved]'))"), 'The draft must remain visibly unsaved'
-        assert cd.evaluate(refresh_button()+'.disabled'), 'Save or explicitly discard the draft before refreshing attachments'
-        assert receipt['reads_before']==receipt['reads_after'] and receipt['posts_before']==receipt['posts_after'], 'Blocked refresh must not request or persist anything'
+        for control,button in [('attachments',refresh_button()),('evidence',"document.querySelector('[data-testid=evidence-refresh]')")]:
+            before=cd.evaluate(selected)
+            reads=cd.evaluate('window.__manualJourney.reads.length')
+            posts=cd.evaluate('window.__manualJourney.posts.length')
+            requests=cd.evaluate('window.__manualJourney.requests.length')
+            cd.evaluate(button+'.click()')
+            cd.evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))')
+            after=cd.evaluate(selected)
+            receipt=dict(kind=kind,control=control,before=before,after=after,
+                reads_before=reads,reads_after=cd.evaluate('window.__manualJourney.reads.length'),
+                posts_before=posts,posts_after=cd.evaluate('window.__manualJourney.posts.length'),
+                requests_before=requests,requests_after=cd.evaluate('window.__manualJourney.requests.length'))
+            (artifacts/('manual-passage-refresh-'+kind+'-'+control+'.json')).write_text(json.dumps(receipt,indent=2))
+            assert after==before, 'Refreshing '+control+' discarded unsaved '+kind
+            assert cd.evaluate("Boolean(document.querySelector('[data-testid=manual-context-unsaved]'))"), 'The draft must remain visibly unsaved'
+            assert cd.evaluate(button+'.disabled'), 'Save or explicitly discard the draft before refreshing'
+            assert receipt['reads_before']==receipt['reads_after'] and receipt['posts_before']==receipt['posts_after'] and receipt['requests_before']==receipt['requests_after'], 'Blocked refresh must not request or persist anything'
     def navigate(label):
         cd.evaluate("[...document.querySelectorAll('nav[aria-label=\"Patient workspace\"] button')].find(b=>b.textContent.includes("+json.dumps(label)+')).click()')
     operator('/case-bindings',dict(synthetic=True,case_id=CASE,source_organization='FICT-ORIGIN',source_system='FICT-MANUAL',source_subject_ref='FICT-MANUAL-SUBJECT',review_ref='FICT-MANUAL-REVIEW'))
@@ -78,8 +81,9 @@ def exercise(cd,patient_id,token,credentials,write_grants,artifacts):
         evidence_sha256=ev['sha256'],rights_sha256=ev['rights_sha256'],expected_source_snapshot_sha256=world['snapshot_fingerprint'],
         expected_preflight_sha256=preflight['preflight_sha256'],quote='invented violet label uncertain',relation='unknown',applicability='unknown',
         rationale='This authored example requires independent source and relevance verification.'))
-    cd.evaluate("""(()=>{const original=window.fetch;window.__manualJourney={reads:[],posts:[],lose:true,restore:()=>{window.fetch=original;}};
+    cd.evaluate("""(()=>{const original=window.fetch;window.__manualJourney={reads:[],posts:[],requests:[],lose:true,restore:()=>{window.fetch=original;}};
         window.fetch=async(input,init)=>{const path=new URL(input instanceof Request?input.url:input,location.href).pathname;
+        window.__manualJourney.requests.push({path,method:init?.method??'GET'});
         const response=await original.call(window,input,init);
         if(path.endsWith('/manual-passages')){const body=await response.clone().json();
             if(init?.method==='POST'){window.__manualJourney.posts.push({body:String(init.body),status:response.status,response:body});
@@ -112,6 +116,7 @@ def exercise(cd,patient_id,token,credentials,write_grants,artifacts):
         refresh_keeps_unsaved('additions')
         click('[data-testid=manual-context-save]')
         cd.wait("Boolean(document.querySelector('[data-testid=manual-context-retry]'))",'lost committed response retains exact intent')
+        cd.wait("!document.querySelector('[data-testid=evidence-refresh]').disabled",'uncertain receipt recovery keeps evidence refresh available')
         click('[data-testid=evidence-refresh]')
         cd.wait("Boolean(document.querySelector('[data-testid=manual-context-retry]'))",'ordinary evidence refresh retains the exact uncertain passage intent')
         credentials[0]['actions'].remove('question_create');write_grants()

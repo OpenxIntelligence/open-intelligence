@@ -74,7 +74,7 @@ export function manualReportBinding(packet:ManualPacket|null,chosen:readonly Res
  const blocked=dirty||phase==='saving'||phase==='uncertain';
  return {context:phase==='idle'&&!blocked?packet:null,blocked,dirty};
 }
-export type ManualPanelStatus=Readonly<{scope:PassageScope;context:ManualContext|null;blocked:boolean}>;
+export type ManualPanelStatus=Readonly<{scope:PassageScope;context:ManualContext|null;blocked:boolean;dirty:boolean}>;
 export class QuestionPassageClient{
  #generation=0;#listeners=new Set<()=>void>();
  #state:State={phase:'idle',packet:null,pending:null,message:'Inspect the saved manual context for this question.'};
