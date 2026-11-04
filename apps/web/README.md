@@ -269,3 +269,30 @@ and last-read source-derived World Model. This is neither a clinical service
 nor a patient-identity/consent or licensed-literature workflow. No new package,
 API route or schema migration; this child reuses the original Overview
 projection and test assets from #288 atop #287's verified source workflow.
+
+
+### Recover an uncertain source-verification return from Overview
+
+An interrupted POST to record a fictional source-verification return can leave
+its outcome unknown. A same-session source refresh may clear the current World
+Model and question history, but must not silently replace the original
+question, reason, case, source fingerprint or idempotent return key.
+
+When the current patient has an **active exact case binding** matching the
+captured original return, Overview exposes a neutral recovery link even when
+its World Model is no longer loaded. It does not display the sensitive
+question/reason, imply the return succeeded, authorize clinical work, or retry
+automatically. It opens the original Review workflow; pressing its existing
+explicit **Retry this exact return** control asks the canonical API to recover
+the same immutable receipt under current permissions. A switched patient,
+other active case, revoked case, disconnected credential or completed return
+does not show this recovery tile.
+
+The H1 Chromium acceptance uses a one-shot synthetic **network-delivery
+interruption** for the original return POST; all source metadata reads and the
+subsequent exact retry go through the actual FastAPI/PostgreSQL 16 service.
+The test then refreshes sources to clear the World Model, follows Overview
+to recovery, saves exactly once, verifies the immutable return receipt, and
+restores a fresh World Model. This is a simulated network failure, not a
+test of independent external identity-provider or distributed revocation
+atomicity. No backend, source store, permission or schema change is made.

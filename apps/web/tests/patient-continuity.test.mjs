@@ -47,3 +47,44 @@ test('draft resume distinguishes confirmed, in-flight and uncertain saves',()=>{
 test('failed world read cannot reuse an earlier source index as the selected case',()=>{
  assert.equal(projection({...base(),worldPhase:'error',sourceIndex:{patient_id:'PAT-ONE',case_id:'CASE-ONE'}})?.caseId,null);
 });
+
+
+const uncertain=()=>({...base(),reviewReturnPhase:'unknown',
+ reviewReturnIntent:{patient_id:'PAT-ONE',case_id:'CASE-ONE',
+  question_id:'QUESTION-'+'A'.repeat(32),queue_fingerprint:'a'.repeat(64),
+  reason:'Independently verify the fictional original statement.'}});
+test('Overview preserves exact return-recovery navigation without a current World Model',()=>{
+ const state={...uncertain(),worldPhase:'idle',worldModel:null,questions:null};
+ const view=projection(state);
+ assert.equal(view?.caseId,null);
+ assert.equal(view?.questions,null);
+ assert.equal(view?.draft,null);
+ assert.equal(view?.recoveryCaseId,'CASE-ONE');
+});
+test('Overview never advertises uncertain return for another patient or revoked case',()=>{
+ const state=uncertain();
+ for(const change of [
+  {reviewReturnIntent:{...state.reviewReturnIntent,patient_id:'PAT-OTHER'}},
+  {reviewReturnIntent:{...state.reviewReturnIntent,case_id:'CASE-FOREIGN'}},
+  {cases:null},
+  {cases:[]},
+  {cases:[{patient_id:'PAT-ONE',case_id:'CASE-ONE',status:'revoked'}]},
+  {cases:[{patient_id:'PAT-OTHER',case_id:'CASE-ONE',status:'active'}]},
+ ]) assert.equal(projection({...state,...change})?.recoveryCaseId,null);
+});
+test('Overview does not turn a completed, failed, or absent return into recovery',()=>{
+ const state=uncertain();
+ for(const phase of ['saved','saving','idle','error']){
+  assert.equal(projection({...state,reviewReturnPhase:phase})?.recoveryCaseId,null);
+ }
+ assert.equal(projection({...state,reviewReturnIntent:null})?.recoveryCaseId,null);
+});
+test('Overview does not silently switch back to an older return from a different selected case',()=>{
+ const state=uncertain();
+ const other={patient_id:'PAT-ONE',case_id:'CASE-OTHER',status:'active'};
+ const switched={...state,cases:[state.cases[0],other],
+  worldModel:{patient_id:'PAT-ONE',case_id:'CASE-OTHER',snapshot_fingerprint:'v2'}};
+ assert.equal(projection(switched)?.caseId,'CASE-OTHER');
+ assert.equal(projection(switched)?.recoveryCaseId,null);
+ assert.equal(projection({...state,reviewReturnPhase:'unknown'})?.recoveryCaseId,'CASE-ONE');
+});

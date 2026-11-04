@@ -25,6 +25,16 @@ export function PatientContinuity({state,onNavigate}:{state:ViewState;onNavigate
     </>:<p>Question status has not been checked for the current case, or is unavailable. Open Questions to load the authorized history.</p>}
     <button type="button" data-testid="continuity-open-questions" onClick={()=>onNavigate('Investigations')}>Open questions</button>
    </div>
+   {view.recoveryCaseId&&<div className="continuity-item" data-testid="continuity-return-recovery">
+    <h3>Check an earlier verification return</h3>
+    <p>A previous return has an uncertain outcome for case <code>{view.recoveryCaseId}</code>.
+       The exact request remains in this tab. Opening Review does not create another
+       return, approve a clinical action, or imply a clinician was notified.</p>
+    <p>Review must check the current source permissions again. Use the original
+       return intent and request key when explicitly retrying.</p>
+    <button type="button" data-testid="continuity-recover-return"
+      onClick={()=>onNavigate('Review')}>Open exact return recovery</button>
+   </div>}
    {view.caseId&&<div className="continuity-item" data-testid="continuity-verification">
     <h3>Independent source verification</h3>
     <p>Inspect the authorized verification-return inbox for this case. A return is a documented
