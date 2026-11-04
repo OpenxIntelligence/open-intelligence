@@ -163,6 +163,7 @@ export class RegistrySession {
   }
   selectEvidenceComparison=(questionId:string,evidenceId:string)=>this.#evidenceSession.beginComparison(questionId,evidenceId);
   editEvidenceComparison=(patch:EvidenceDraftPatch)=>this.#evidenceSession.editComparison(patch);
+  acknowledgeRejectedEvidenceComparisonField=(field:'quote'|'rationale')=>this.#evidenceSession.acknowledgeRejectedField(field);
   discardEvidenceComparison=()=>this.#evidenceSession.discardComparison();
   saveEvidenceComparison=()=>this.#evidenceSession.saveComparison();
   dismissQuestionEvidence=()=>this.#evidenceSession.dismiss();

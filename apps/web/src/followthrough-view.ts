@@ -2,6 +2,7 @@
 import type {SourceQuestion} from './source-questions-view.js';
 import type {SourceWorldModel} from './source-world-model.js';
 import {canPrepareSourceBrief} from './source-brief.js';
+import {citationEvidenceTimestamp} from './evidence-timestamp.js';
 
 export type FollowthroughStatus='created'|'assigned'|'acknowledged'|'completed'|'deferred';
 export type FollowthroughDraft=Readonly<{
@@ -68,8 +69,9 @@ export function validFollowthroughDate(value:unknown):value is string{
  const time=Date.parse(value+'T00:00:00Z');return Number.isFinite(time)&&new Date(time).toISOString().slice(0,10)===value;
 }
 function instant(value:unknown):value is string{
- return typeof value==='string'&&value.length<=64&&validFollowthroughText(value,1,64)&&
-  /^\d{4}-\d{2}-\d{2}T.+(?:Z|[+-]\d{2}:\d{2})$/.test(value)&&Number.isFinite(Date.parse(value));
+ // Task and citation timestamps share PostgreSQL's seconds / up-to-six-digit
+ // microsecond wire format. Validate its calendar without Date.parse rollover.
+ return citationEvidenceTimestamp(value);
 }
 export function validFollowthroughDraft(draft:FollowthroughDraft):boolean{
  return validFollowthroughText(draft.title,3,160)&&validFollowthroughText(draft.detail,0,2000)&&

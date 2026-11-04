@@ -158,10 +158,36 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
     def assess(evidence, relation, quote, rationale, *, lose_response=False, contradictory_response=False):
         post_count = len([r for r in responses() if r['method'] == 'POST'])
         click(f'[data-testid=evidence-version][data-evidence-id="{evidence["evidence_id"]}"] [data-testid=evidence-select]')
-        value('[data-testid=evidence-quote]', quote)
+        if lose_response:
+            # The real editor must explain invalid input before any write. A
+            # rejected oversized edit keeps the earlier accepted text, survives
+            # an authorized refresh, and requires correction or explicit keep.
+            value('[data-testid=evidence-quote]', 'not present in the selected evidence statement')
+            cd.wait("document.querySelector('[data-testid=evidence-quote-error]')?.textContent.includes('copied exactly')",
+                    'field-linked exact-passage feedback')
+            assert cd.evaluate("document.querySelector('[data-testid=evidence-assess]').disabled")
+            value('[data-testid=evidence-quote]', quote)
+            value('[data-testid=evidence-rationale]', rationale)
+            value('[data-testid=evidence-rationale]', 'x' * 601)
+            cd.wait("document.querySelector('[data-testid=evidence-rationale-error]')?.textContent.includes('last rationale edit was rejected')",
+                    'rejected rationale is explicit')
+            assert cd.evaluate("document.querySelector('[data-testid=evidence-rationale]').value") == rationale
+            assert cd.evaluate("document.querySelector('[data-testid=evidence-assess]').disabled")
+            refresh_before = len(responses())
+            click('[data-testid=evidence-refresh]')
+            cd.wait('window.__oiAuthoredEvidenceChecks.responses.length>' + str(refresh_before)
+                    + " && Boolean(document.querySelector('[data-testid=evidence-rationale-keep]'))",
+                    'rejected edit warning survives authorized refresh')
+            assert cd.evaluate("document.querySelector('[data-testid=evidence-rationale]').value") == rationale
+            assert len([r for r in responses() if r['method'] == 'POST']) == post_count
+            click('[data-testid=evidence-rationale-keep]')
+            cd.wait("!document.querySelector('[data-testid=evidence-rationale-keep]')",
+                    'explicitly keep previous accepted rationale')
+        else:
+            value('[data-testid=evidence-quote]', quote)
+            value('[data-testid=evidence-rationale]', rationale)
         value('[data-testid=evidence-relation]', relation)
         value('[data-testid=evidence-applicability]', 'limited')
-        value('[data-testid=evidence-rationale]', rationale)
         assert len([r for r in responses() if r['method'] == 'POST']) == post_count
         # Editing is local. An unchanged fresh read must retain the exact draft,
         # and leaving the component must not silently discard it.
