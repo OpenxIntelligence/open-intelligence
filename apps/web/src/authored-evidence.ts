@@ -1,3 +1,5 @@
+import {decodeManualContext} from './question-passages.js';
+import type {ManualContext} from './question-passages.js';
 /** Human-authored fictional evidence contracts. No model or clinical authority. */
 import {decodeSourceQuestion} from './source-questions-view.js';
 import type {SourceQuestion} from './source-questions-view.js';
@@ -38,7 +40,7 @@ export type EvidenceOriginal=Readonly<{
 export type ReportSnapshot=Readonly<{
  question:SourceQuestion;selected_source:ComposerSource;
  comparisons:readonly Readonly<{assessment:EvidenceAssessment;evidence:EvidenceVersion}>[];
- prepared_at:string;actor_label:string;
+ prepared_at:string;actor_label:string;manual_passages?:ManualContext;
 }>;
 export type EvidenceReport=Readonly<{
  contract:'oi.h1-evidence-report/1';patient_id:string;case_id:string;question_id:string;report_id:string;
@@ -159,7 +161,7 @@ export async function decodeEvidenceReport(value:unknown,expected:SourceQuestion
   if(value.body!==null||value.snapshot!==null)throw Error('report withholding');
   return Object.freeze({...value} as EvidenceReport);
  }
- if(!text(value.body,1,131072)||new TextEncoder().encode(value.body).length>131072||await digest(value.body)!==value.body_sha256||!exact(value.snapshot,['question','selected_source','comparisons','prepared_at','actor_label']))throw Error('report bytes');
+ if(!text(value.body,1,131072)||new TextEncoder().encode(value.body).length>131072||await digest(value.body)!==value.body_sha256||!(exact(value.snapshot,['question','selected_source','comparisons','prepared_at','actor_label'])||exact(value.snapshot,['question','selected_source','comparisons','prepared_at','actor_label','manual_passages'])))throw Error('report bytes');
  const snap=value.snapshot,q=decodeSourceQuestion(snap.question,expected.patient_id,expected.case_id);
  if(!utc(q.created_at))throw Error('report question chronology');
  if(!sameQuestion(q,expected)||q.source_context_state!=='current_unreviewed_question'||q.source_snapshot_contract!=='oi.pg-source-world-model/1'||snap.prepared_at!==value.prepared_at||typeof snap.actor_label!=='string'||!KEY.test(snap.actor_label)||!Array.isArray(snap.comparisons)||snap.comparisons.length<1||snap.comparisons.length>20||value.state==='current_unreviewed'&&expected.source_context_state==='source_reassessment_required')throw Error('report snapshot');
@@ -171,8 +173,13 @@ export async function decodeEvidenceReport(value:unknown,expected:SourceQuestion
   return Object.freeze({assessment:a,evidence:e});
  }));
  unique(comparisons.map(c=>c.assessment.assessment_id));unique(comparisons.map(c=>c.evidence.evidence_key));
+ let manual:ManualContext|undefined;
+ if(Object.hasOwn(snap,'manual_passages')){
+  manual=await decodeManualContext(snap.manual_passages,expected);
+  if(manual.state!=='current_unreviewed'||manual.revision_id===null)throw Error('Invalid frozen manual context');
+ }
  if(await digest(canonicalEvidenceJson(snap))!==value.snapshot_sha256)throw Error('report snapshot digest');
- return Object.freeze({...value,snapshot:Object.freeze({...snap,question:q,selected_source:source,comparisons:Object.freeze(comparisons)})} as EvidenceReport);
+ return Object.freeze({...value,snapshot:Object.freeze({...snap,question:q,selected_source:source,comparisons:Object.freeze(comparisons),...(manual?{manual_passages:manual}:{})})} as EvidenceReport);
 }
 
 export async function decodeEvidenceOriginal(value:unknown,question:SourceQuestion,selected:EvidenceVersion):Promise<EvidenceOriginal>{

@@ -13,6 +13,7 @@ from open_intelligence.rights import normalize_permissions, permitted
 from .contracts import Contract
 from .patients import QuestionSourceState, SelectedComposerSource
 from .evidence_report import canonical_hash, packet_hash, quote_offset, visible_line
+from .question_passage_contracts import ManualContext
 
 Digest = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
 EID = Annotated[str, Field(pattern=r"^EVIDENCE-[0-9A-F]{32}$")]
@@ -111,6 +112,7 @@ class AssessEvidence(WriteEvidence):
 
 class PrepareEvidenceReport(WriteEvidence):
     expected_packet_sha256: Digest
+    expected_manual_context_sha256: Digest | None = None
     assessment_ids: list[AID] = Field(min_length=1, max_length=20)
 
     @field_validator("assessment_ids")
@@ -319,6 +321,21 @@ class ReportSnapshot(Contract):
         return self
 
 
+class ManualReportSnapshot(ReportSnapshot):
+    manual_passages: ManualContext
+
+    @model_validator(mode='after')
+    def manual_provenance(self):
+        c,q=self.manual_passages,self.question
+        if (c.patient_id,c.case_id,c.question_id)!=(q.patient_id,q.case_id,q.question_id) or c.state!='current_unreviewed' or c.revision_id is None:
+            raise ValueError('Exact current question manual context required')
+        return self
+
+
+def checked_report_snapshot(value):
+    return (ManualReportSnapshot if 'manual_passages' in value else ReportSnapshot)(**value).model_dump(mode='json')
+
+
 class EvidenceReport(Contract):
     contract: Literal["oi.h1-evidence-report/1"]
     patient_id: str
@@ -329,7 +346,7 @@ class EvidenceReport(Contract):
     state: ReportState
     body: str | None
     body_sha256: Digest
-    snapshot: ReportSnapshot | None
+    snapshot: ManualReportSnapshot | ReportSnapshot | None
     snapshot_sha256: Digest
     access_receipt_id: AccessID
     synthetic: Literal[True]
