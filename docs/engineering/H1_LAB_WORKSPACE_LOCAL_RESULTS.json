@@ -1,0 +1,70 @@
+{
+  "classification": "local development evidence only; full acceptance pending",
+  "reference": {
+    "command": "PYTHONPATH=src python -m unittest discover -s tests -v",
+    "exit_code": 1,
+    "tests_executed": 765,
+    "failure_entries": 9,
+    "error_entries": 8,
+    "failures_and_errors": [
+      "test_all_orthogonal_text_rotations_retain_page_anchors (test_pdf_intake.PdfIntakeTests.test_all_orthogonal_text_rotations_retain_page_anchors)",
+      "test_blank_middle_page_is_explicit_without_inventing_lines (test_pdf_intake.PdfIntakeTests.test_blank_middle_page_is_explicit_without_inventing_lines)",
+      "test_compressed_stream_limit_rejects_before_unbounded_expansion (test_pdf_intake.PdfIntakeTests.test_compressed_stream_limit_rejects_before_unbounded_expansion)",
+      "test_compressed_text_expansion_is_rejected_and_next_job_succeeds (test_pdf_intake.PdfIntakeTests.test_compressed_text_expansion_is_rejected_and_next_job_succeeds)",
+      "test_literal_whitespace_punctuation_and_markup_are_not_rewritten (test_pdf_intake.PdfIntakeTests.test_literal_whitespace_punctuation_and_markup_are_not_rewritten)",
+      "test_two_page_rendition_preserves_page_text_and_exact_global_anchors (test_pdf_intake.PdfIntakeTests.test_two_page_rendition_preserves_page_text_and_exact_global_anchors)",
+      "test_worker_protocol_rejects_boolean_numeric_alias_and_excessive_nesting (test_pdf_intake.PdfIntakeTests.test_worker_protocol_rejects_boolean_numeric_alias_and_excessive_nesting)",
+      "test_worker_timeout_is_bounded_and_does_not_break_next_job (test_pdf_intake.PdfIntakeTests.test_worker_timeout_is_bounded_and_does_not_break_next_job)",
+      "test_actions_attachments_forms_and_annotations_reject_as_unqualified_content (test_pdf_intake.PdfIntakeTests.test_actions_attachments_forms_and_annotations_reject_as_unqualified_content) (length=702)",
+      "test_actions_attachments_forms_and_annotations_reject_as_unqualified_content (test_pdf_intake.PdfIntakeTests.test_actions_attachments_forms_and_annotations_reject_as_unqualified_content) (length=960)",
+      "test_actions_attachments_forms_and_annotations_reject_as_unqualified_content (test_pdf_intake.PdfIntakeTests.test_actions_attachments_forms_and_annotations_reject_as_unqualified_content) (length=682)",
+      "test_actions_attachments_forms_and_annotations_reject_as_unqualified_content (test_pdf_intake.PdfIntakeTests.test_actions_attachments_forms_and_annotations_reject_as_unqualified_content) (length=751)",
+      "test_all_blank_and_graphics_only_documents_reject (test_pdf_intake.PdfIntakeTests.test_all_blank_and_graphics_only_documents_reject) (length=825)",
+      "test_all_blank_and_graphics_only_documents_reject (test_pdf_intake.PdfIntakeTests.test_all_blank_and_graphics_only_documents_reject) (length=618)",
+      "test_encrypted_inputs_reject_even_with_empty_open_password (test_pdf_intake.PdfIntakeTests.test_encrypted_inputs_reject_even_with_empty_open_password) (empty_password=False)",
+      "test_encrypted_inputs_reject_even_with_empty_open_password (test_pdf_intake.PdfIntakeTests.test_encrypted_inputs_reject_even_with_empty_open_password) (empty_password=True)",
+      "test_image_only_page_rejects_instead_of_returning_partial_document (test_pdf_intake.PdfIntakeTests.test_image_only_page_rejects_instead_of_returning_partial_document)"
+    ],
+    "observed_error": "PDF extraction requires the exact pinned pypdf 6.21.4 installation",
+    "local_pypdf": "5.9.0"
+  },
+  "web": {
+    "command": "npm --prefix apps/web test",
+    "exit_code": 1,
+    "test_entries": 496,
+    "passed": 491,
+    "failed": 5,
+    "skipped": 0,
+    "failed_modules": [
+      "evidence-continuity-panel.test.mjs",
+      "laboratory-world-panel.test.mjs",
+      "patient-continuity-panel.test.mjs",
+      "question-evidence-panel.test.mjs",
+      "source-images-panel.test.mjs"
+    ],
+    "observed_error": "React package unavailable"
+  },
+  "api": {
+    "tests_executed": 247,
+    "error_entries": 66,
+    "skipped": 27,
+    "observed_error": "pydicom unavailable; PostgreSQL not available"
+  },
+  "focused_client": {
+    "passed": 103,
+    "failed": 0,
+    "skipped": 0
+  },
+  "parser": {
+    "passed": 8
+  },
+  "dependency_gate_unit_controls": {
+    "passed": 13,
+    "installed_dependency_clearance": false
+  },
+  "hosted_combined": {
+    "api_postgresql_recovery": "pending",
+    "react_browser": "pending"
+  },
+  "review": "self-reviewed; independent review pending"
+}
