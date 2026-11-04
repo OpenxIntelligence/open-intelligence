@@ -679,7 +679,7 @@ class QuestionSourceReviewPacket(Contract):
     source_access_receipt_id: str = Field(pattern=r"^ACCESS-[0-9A-F]{32}$")
 
 
-def patient_router(database: Database, authentication: Authentication) -> APIRouter:
+def patient_router(database: Database, authentication: Authentication, *, image_archive=None) -> APIRouter:
     router = APIRouter(prefix="/v1/patients", tags=["Synthetic patient registry"])
     bearer = HTTPBearer(auto_error=False, scheme_name="SyntheticFixture",
                         description="Local synthetic fixture credential. Not a patient account or clinical consent.")
@@ -1267,7 +1267,7 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
         try:
             with registry(context) as patients:
                 records_authorized(patients, context, patient_id, "image_original_read")
-                return PostgresSourceImages(patients).original(
+                return PostgresSourceImages(patients, archive=image_archive).original(
                     patient_id, case_id, source_id, image_id, organization=context.organization,
                     actor=context.actor, purpose=context.purpose,
                     prepare_response=lambda raw, receipt: Response(

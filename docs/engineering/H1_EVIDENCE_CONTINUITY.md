@@ -567,3 +567,101 @@ remain incomplete. The next integration decision should inspect the existing
 reviewed-document, bibliography/rights and review-reason owners rather than
 creating another source, evidence or review implementation. No donor work is
 merged or closed by this contribution.
+
+
+## Archive originals with authored reports — continuation
+
+This bounded continuation starts from #327 delivery commit
+`50c68a331ccc25034ef53b1b78bec868921d0b17`, whose six documentation updates retain
+the verified runtime `9cdce3071f69f3d4c55556ff1c53d9f788d9b053` and its complete
+acceptance record above. The archive/report contribution below requires its own
+combined verification; no parent result is substituted for that execution.
+
+### Bounded next contribution
+
+Connect archived originals to that same image/question/citation/task/comparison/
+report workflow. The product experience and canonical owners already exist;
+this continuation must extend their retrieval and recovery behavior without
+creating another patient, source, question, evidence, report or event ledger.
+
+| Input | Exact revision | Contribution retained |
+| --- | --- | --- |
+| #327 | `9cdce3071f69f3d4c55556ff1c53d9f788d9b053` | Verified image-inspection UI, authored reports, source reading and all six recovery gates |
+| #331 | `55ea8f96868125ee802d840e779a76f1b8c8e3b3` | Verified archive disclosure, independent grants, no-fallback failures and restored archive/question/task/citation history |
+| #332 | `f7136bbc5ef7c7224bf5ed7172c82ddab83dc49d` | Additional exact citation/search audit accounting and context assertions for selective reuse |
+
+#331's source-original response correction from #304 is already present in
+#327. Preserve its complete JSON preparation and shared `_validated_original`
+unchanged; only the existing original-image route receives the trusted archive
+reader. Keep #311's strict citation contract, #316's fresh download cover and all
+19 current migration revision files (the 18 parent revisions and #327's join).
+The existing DDL-free
+`0012_image_report_convergence` remains the only current head. No new migration,
+dependency, model, permission, public API field or frontend change is required.
+
+### Combined acceptance contract
+
+- Use only stored canonical identifiers after source/custody/authority preflight.
+  Release owner locks during archive I/O, then validate current binding, source
+  and exact bytes in a fresh transaction before response preparation, final
+  authorization and receipt commit. Never fall back to intact local bytes when
+  the configured archive fails. Image-index reads must not fetch originals.
+- On the same v1/v2 imaging questions, preserve citations, verification returns,
+  task events, authored comparisons, report body/hash, preparation time, source
+  snapshot and exact-command origins. Deliberate image relinking cannot make an
+  old report current or replace its immutable body. Existing retry authority and
+  rights rules continue to govern the original request and receipt.
+- Keep image metadata, image originals, authored-content reads, report export and
+  citation metadata independently governed. Content withdrawal withholds the
+  affected report/original content without silently revoking independently
+  permitted images or metadata. Revoked patient binding denies the scoped reads
+  and retries before any archive invocation or new receipt.
+- Preserve #327's complete row digests, schema/catalog state and sequences.
+  Read-only cycle comparisons may exclude exactly `ACCESS_SNAPSHOT_KEYS`:
+  `events`, `rows:identity.identity_domain_events`, and
+  `sequence:identity.identity_domain_events_id_seq`. Preserve every business row
+  and sequence plus the complete prior event prefix; account for each appended
+  read event and reject business writes.
+- Adapt #332's per-question citation counts, exact patient/case/actor metadata,
+  query digest, zero-result count and empty-result-manifest checks to the actual
+  combined read schedule. Added authored-report reads need their own exact
+  scoped accounting; do not copy numerical expectations from a shorter scenario.
+- Retain all six actual HTTP/restart/dump/restore gates. Extend the current image
+  helper in place with the bounded read-only file fixture, report reads/retries,
+  independent denials and withholding through archive failures and service
+  restarts. New access receipts belong only to the actively restored database;
+  the source and required intermediate snapshots remain unchanged.
+
+### Verification and limits
+
+This archive/report candidate's implementation and exact-head acceptance are
+in progress. The parent results above and #331's 487 API/282 reference/219 web
+passes are separate evidence; neither proves the new combined candidate.
+Record actual local checks, hosted API/browser results, all six recovery gates
+and any failed attempts in the continuation PR and existing canonical records.
+
+The first local contract check generated OpenAPI from the immutable #327 parent
+and compared it with both default and archive-injected applications. All three
+are equal: **32 paths and 82 schemas**. All **21 migration-directory files** are
+byte-identical to that parent. The source-original, authored-evidence and strict
+citation owners, frontend, workflow and dependency declarations remain unchanged.
+These are contract/preservation checks, not PostgreSQL or recovery execution.
+The local focused run passed **37 tests with zero failures/errors/skips**:
+five image-ordering, 12 citation-contract, 16 authored-evidence-contract and four
+convergence-contract checks. The 14 retained archive methods and three extended
+archive/report methods are collected, but their PostgreSQL behavior is not yet
+claimed from local execution. Actual withdrawal is distinct from grant removal:
+the new scenarios require original-content denial, a `content_withheld` report
+with preserved identifiers/hash/preparation time, permitted independent image
+reads and original command-receipt recovery.
+Full API discovery collects **550 executions and 503 distinct test IDs**. The 47
+repeated historical source-version/source-question IDs come from unchanged
+imported suites; all 17 added archive methods appear exactly once. Collection is
+not a database pass, and these counts are not independent clinical examples.
+
+The file fixture is absent from the normal API image, has no environment-based
+activation and does not qualify live PACS, network transport or external archive
+backup. Preserve #248 HOLD. All records, images and evidence are independently
+authored fiction. The reports contain human-authored comparisons, not model
+execution, scientific appraisal or clinical approval. Draft integration does not
+establish deployment, production identity/consent or real-patient readiness.
