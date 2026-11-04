@@ -2,6 +2,8 @@
 .intake-panel,.original-panel{border:1px solid #c7d8cf;background:#f6faf6;border-radius:8px;padding:20px;margin:18px 0}
 .original-text{white-space:pre-wrap;overflow-wrap:anywhere;max-height:26rem;overflow:auto;background:white;border:1px solid #d7e0d8;border-radius:6px;padding:16px;font-size:12px;line-height:1.65}
 .original-panel code,.intake-panel code{overflow-wrap:anywhere;word-break:break-all}
+.intake-panel select{width:100%;min-width:0;max-width:100%;font:inherit;color:inherit;background:#fff;border:1px solid #a9b6b3;border-radius:6px;padding:11px 12px;margin:6px 0 14px;min-height:44px}
+.intake-panel select:focus-visible{outline:3px solid #ba8639;outline-offset:3px}
 #original-file{max-width:100%;font-size:13px}
 @media(max-width:600px){.intake-panel,.original-panel{padding:12px}.original-text{padding:10px}}
 

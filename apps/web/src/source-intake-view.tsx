@@ -2,6 +2,7 @@ import {useEffect,useRef,useState} from 'react';
 import {prepareSource} from './source-intake';
 import type {PreparedSource} from './source-intake';
 import type {RegistrySession} from './registry-client';
+import {LaboratoryIntake} from './laboratory-fhir-view';
 /** File selection never uploads; a context change discards the unsubmitted local preview. */
 export function SourceIntake({session,caseId,patientId,sending}:{session:RegistrySession;caseId:string;patientId:string;sending:boolean}){
  const [prepared,setPrepared]=useState<PreparedSource|null>(null),[name,setName]=useState('');
@@ -21,7 +22,7 @@ export function SourceIntake({session,caseId,patientId,sending}:{session:Registr
    setMessage(data.declaredCase===caseId?'Inspect the exact original below before confirming import.':'Different declared case: it will be quarantined, not attached or relabeled.');
   }catch(e){if(request===generation.current)setMessage(e instanceof Error?e.message:'Unable to inspect this file.');}
  }
- return <section className="intake-panel" aria-labelledby="source-intake-heading" data-testid="source-intake">
+ return <><section className="intake-panel" aria-labelledby="source-intake-heading" data-testid="source-intake">
   <h3 id="source-intake-heading">Add an original fictional record</h3>
   <p>Patient <code>{patientId}</code> · case <code>{caseId}</code>. Only authored <code>OI-SYNTHETIC-REPORT/1</code> UTF-8 text with LF line endings is supported here. No PDF extraction or clinical inference.</p>
   <form onSubmit={e=>{e.preventDefault();if(prepared)void session.importSource(caseId,prepared.text,confirmed)}}>
@@ -33,5 +34,5 @@ export function SourceIntake({session,caseId,patientId,sending}:{session:Registr
    <div className="actions"><button className="primary" data-testid="import-original" disabled={!prepared||!confirmed||sending}>{sending?'Import in progress…':'Import this original'}</button><button type="button" onClick={discard} disabled={sending}>Discard selection</button></div>
   </form>
   <p className="small muted">The server rechecks authority. A missing reply can leave the outcome unknown; no automatic retry or rollback is assumed.</p>
- </section>;
+ </section><LaboratoryIntake session={session} patientId={patientId} caseId={caseId} disabled={sending}/></>;
 }
