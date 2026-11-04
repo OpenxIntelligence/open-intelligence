@@ -24,7 +24,7 @@ The connected account listed the product repository and three other repositories
 | Clinical encounter PostgreSQL parity | [#301](https://github.com/OpenxIntelligence/open-intelligence/pull/301), `611b86e3f0fefd61d0937216141e05262d2b55a9` | Separate clinical owner and adapter; not proof of an integrated EHR. |
 | Local semantic proposal harness | [#476](https://github.com/OpenxIntelligence/open-intelligence/pull/476), `4f1c613abe1f90c185e1f2f9edb816e3bf81fa3c` | Research-only metadata mapping and scoring; not clinical reasoning or bioinformatics execution. |
 
-At inspection, #481's React, reference, Crossref and UI workflows reported success; its API workflow was still running. Those external run statuses are not locally reproduced evidence or artifact verification for this audit. Head movement after this snapshot does not retroactively update these findings.
+At inspection, #481's React, reference, Crossref and UI workflows reported success; its API workflow was still running. Those external run statuses are not locally reproduced evidence or artifact verification for this audit. Head movement after this snapshot does not retroactively update these findings. The repair was subsequently reconciled with main `840b41c31f6902fe89b7e714dff038f42ca84a74` (agentic-infrastructure documentation only). The merge was clean; no additional runtime, test, dependency or migration changes were introduced.
 
 ## Evidence index: owners, storage, API, UI and tests
 
