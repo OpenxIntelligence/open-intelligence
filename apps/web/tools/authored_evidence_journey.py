@@ -45,7 +45,7 @@ _OBSERVE = r"""() => {
     const path=new URL(input instanceof Request?input.url:input,location.href).pathname;
     const method=init?.method??'GET';
     const result=await fetch.call(window,input,init);
-    if(/\/questions\/QUESTION-[0-9A-F]{32}\/evidence(?:[/-]|$)/.test(path)){
+    if(/\/questions\/QUESTION-[0-9A-F]{32}\/(?:evidence(?:[/-]|$)|manual-passages$)/.test(path)){
       const payload=await result.clone().json();
       state.responses.push({path,method,status:result.status,payload,body:method==='POST'?String(init?.body??''):null});
       if(state.loseAssessment&&method==='POST'&&path.endsWith('/evidence-assessments')&&result.ok){
@@ -68,7 +68,7 @@ _OBSERVE = r"""() => {
 
 
 def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
-             write_grants, directory, artifacts, restart_api, add_synthetic, on_report=None):
+             write_grants, directory, artifacts, restart_api, add_synthetic, on_report=None, manual_document=None):
     artifacts = Path(artifacts)
     artifacts.mkdir(parents=True, exist_ok=True)
     directory = Path(directory)
@@ -76,7 +76,7 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
     credentials[0]['actions'] = sorted(set(previous_actions) | {
         'patient_read', 'source_read', 'question_read', 'authored_evidence_read',
         'authored_evidence_import', 'authored_evidence_assess', 'authored_evidence_withdraw',
-        'authored_evidence_original_read', 'evidence_report_export'})
+        'authored_evidence_original_read', 'evidence_report_export', 'source_original_read'})
     write_grants()
     cd.evaluate('(' + _OBSERVE + ')()')
     scope = f'/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}'
@@ -248,6 +248,45 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
         assert evidence['statement'][assessment['quote_start']:assessment['quote_start'] + len(quote)] == quote
         return assessment
 
+    def attach_manual():
+        assert manual_document is not None
+        try:
+            cd.wait("Boolean(document.querySelector('[data-testid=manual-context-documents]'))",
+                    'fresh manual context before selecting reviewed records')
+        except Exception:
+            diagnostic = cd.evaluate("({text:document.querySelector('main')?.innerText,manual:document.querySelector('[data-testid=question-manual-passages]')?.innerText,responses:window.__oiAuthoredEvidenceChecks.responses.filter(r=>r.path.endsWith('/manual-passages'))})")
+            (artifacts / 'manual-context-failure.json').write_text(json.dumps(diagnostic, ensure_ascii=False, indent=2))
+            print('MANUAL CONTEXT DIAGNOSTIC', json.dumps(diagnostic, ensure_ascii=False))
+            raise
+        before=len(responses())
+        click('[data-testid=manual-context-documents]')
+        cd.wait("Array.from(document.querySelectorAll('[data-testid=manual-context-document]')).some("
+                "e=>e.textContent.includes("+json.dumps(manual_document['document_id'])+"))",
+                'reviewed record available to question context')
+        cd.evaluate("Array.from(document.querySelectorAll('[data-testid=manual-context-document]')).find("
+                    "e=>e.textContent.includes("+json.dumps(manual_document['document_id'])+")).click()")
+        cd.wait("Array.from(document.querySelectorAll('[data-testid=manual-context-add]')).some("
+                "e=>e.textContent.includes("+json.dumps(manual_document['selection_key'])+"))",
+                'exact saved passage available')
+        cd.evaluate("Array.from(document.querySelectorAll('[data-testid=manual-context-add]')).find("
+                    "e=>e.textContent.includes("+json.dumps(manual_document['selection_key'])+")).click()")
+        cd.wait("document.querySelector('[data-testid=manual-context-selected]')?.textContent.includes("
+                +json.dumps(manual_document['quote'])+")", 'manual passage selected locally')
+        click('[data-testid=manual-context-save]')
+        cd.wait('window.__oiAuthoredEvidenceChecks.responses.slice('+str(before)
+                +").some(r=>r.path.endsWith('/manual-passages')&&r.method==='POST'&&r.status===201)",
+                'exact question passage set committed')
+        cd.wait("document.querySelector('[data-testid=manual-context-status]')?.textContent.includes('Manual context inspected')",
+                'saved manual context re-read')
+        context=last('/manual-passages','GET',200)
+        assert len(context['passages'])==1
+        passage=context['passages'][0]
+        assert passage['anchor']['document_id']==manual_document['document_id']
+        assert passage['anchor']['quote']==manual_document['quote']
+        assert passage['anchor']['selection_key']==manual_document['selection_key']
+        assert passage['selection_state']=='current_unreviewed_selection'
+        return context
+
     def report(assessment_ids):
         # Selection is explicit, never automatically selected by relation.
         for aid in assessment_ids:
@@ -409,6 +448,14 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
             'The correction requires a new explicit human proposal; no conclusion is carried forward.')
         second_report = report([corrected_assessment['assessment_id'], counter_assessment['assessment_id']])
         second_path, second_bytes, second_access = download(second_report)
+        manual_report = manual_path = manual_bytes = manual_access = manual_context = None
+        if manual_document is not None:
+            manual_context=attach_manual()
+            manual_report=report([corrected_assessment['assessment_id'], counter_assessment['assessment_id']])
+            assert manual_report['snapshot']['manual_passages']['context_sha256']==manual_context['context_sha256']
+            assert manual_document['quote'] in manual_report['body']
+            assert 'ADDITIONAL MANUAL RECORD CONTEXT' in manual_report['body']
+            manual_path,manual_bytes,manual_access=download(manual_report)
 
         cd.command('Emulation.setDeviceMetricsOverride', {'width': 390, 'height': 844,
                    'deviceScaleFactor': 1, 'mobile': False})
@@ -429,7 +476,7 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
             + ")?.textContent.includes('withdrawn')",
             'withdrawal receipt and fresh packet settle before navigation')
         inspect()
-        for report_value in (first_report, second_report):
+        for report_value in tuple(r for r in (first_report, second_report, manual_report) if r is not None):
             inspect()
             open_report(report_value['report_id'])
             withheld = last('/evidence-reports/' + report_value['report_id'])
@@ -452,7 +499,10 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
                          'download_access_receipt_id': access}
                         for r, p, b, access in ((first_report, downloaded_path, downloaded, download_access),
                                                 (historical, historical_path, historical_bytes, historical_access),
-                                                (second_report, second_path, second_bytes, second_access))],
+                                                (second_report, second_path, second_bytes, second_access),
+                                                *(((manual_report, manual_path, manual_bytes, manual_access),) if manual_report is not None else ()))],
+            'manual_passage_report_verified': manual_report is not None,
+            'manual_context_sha256': manual_context['context_sha256'] if manual_context is not None else None,
             'actual_api_restart_preserved_report': True,
             'lost_response_exact_retry_recovered_once': True,
             'contradictory_receipt_exact_retry_recovered_once': True,
@@ -475,7 +525,7 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
         print('PASS QUESTION EVIDENCE: actual authored abstract/API-output imports, supporting and contradictory '
               'human proposals, lost-response and contradictory-receipt exact recovery, immutable report and fresh downloaded bytes, '
               'separate export revocation, API restart, amendment/reassessment, historical content withdrawal '
-              'and 390px layout. Independently fictional only; no clinical approval or model execution.')
+              'manual reviewed-record context when supplied, and 390px layout. Independently fictional only; no clinical approval or model execution.')
     finally:
         cd.evaluate('window.__oiAuthoredEvidenceChecks.restore()')
         credentials[0]['actions'] = previous_actions
