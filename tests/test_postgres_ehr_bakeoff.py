@@ -11,6 +11,7 @@ from pathlib import Path
 import sqlite3
 import unittest
 import uuid
+from unittest.mock import patch
 
 from open_intelligence.clinical_encounters import (
     ClinicalEncounters, ClinicalConflict, ClinicalAuthorizationError,
@@ -23,7 +24,7 @@ from test_postgres_registry_bakeoff import DSN, REQUIRE, asyncpg, pg8000, pg_con
 MODULE = "open_intelligence.postgres_encounters"
 AVAILABLE = importlib.util.find_spec(MODULE) is not None
 if AVAILABLE:
-    from open_intelligence.postgres_encounters import PostgresClinicalEncounters
+    from open_intelligence.postgres_encounters import PostgresClinicalEncounters, _Rows
 ROOT = Path(__file__).resolve().parents[1]
 ACTOR = dict(actor="CLINICIAN-ONE", purpose="care")
 
@@ -47,7 +48,7 @@ class PostgresEHRParityTests(unittest.TestCase):
         async def install():
             db = await asyncpg.connect(dsn=DSN)
             try:
-                for name in ("001_contract.sql", "002_registry_port.sql", "003_encounter_port.sql"):
+                for name in ("001_contract.sql", "002_registry_port.sql", "003_encounter_port.sql", "004_note_provenance.sql"):
                     await db.execute((ROOT / "tools/research/postgres_bakeoff" / name).read_text())
             finally:
                 await db.close()
@@ -62,6 +63,7 @@ class PostgresEHRParityTests(unittest.TestCase):
         self.pid = self.pg.create_patient(organization=self.org, request_key="CREATE-ONE", **ACTOR)["patient_id"]
         self.ehr = PostgresClinicalEncounters(self.pg, self.policy)
         sql = sqlite3.connect(":memory:")
+        sql.row_factory = sqlite3.Row  # Oracle uses the same named-row contract as CaseStore.
         self.addCleanup(sql.close)
         self.oracle_registry = PatientRegistry(sql, self.policy)
         self.sid = self.oracle_registry.create_patient(organization=self.org, request_key="CREATE-ONE", **ACTOR)["patient_id"]
@@ -224,6 +226,111 @@ class PostgresEHRParityTests(unittest.TestCase):
             self.ehr.list_encounters(self.pid,**ACTOR)
         with self.assertRaises(PatientRegistryDenied):
             self.ehr.schedule(self.pid,"ENCOUNTER-ONE","outpatient","2026-11-01",request_key="SCHEDULE-ENCOUNTER-ONE",**ACTOR)
+
+
+    def test_real_postgres_current_note_integrity_rejects_tampered_read(self):
+        """Live PG domain refuses to attest a mismatched current note body/hash.
+
+        Intercept only the selected returned row to emulate damaged restored
+        storage: no immutable trigger is disabled on a shared test database.
+        All commands and other reads still execute on real PostgreSQL.
+        """
+        eid = self.start()
+        self.ehr.write_note(self.pid, eid, "NOTE-ONE", "Original independent synthetic note",
+                            expected_version=0, request_key="DRAFT-CORRUPT-ONE", **ACTOR)
+        original = self.ehr._execute
+
+        def inject_corrupt_body(sql, parameters=()):
+            result = original(sql, parameters)
+            if "JOIN clinical_note_versions v" in sql and "v.sha256" in sql:
+                row = result.fetchone()
+                if row is not None:
+                    altered = dict(row)
+                    altered["body"] = "Altered synthetic note after its source hash"
+                    return _Rows([altered])
+            return result
+
+        with patch.object(self.ehr, "_execute", side_effect=inject_corrupt_body):
+            with self.assertRaisesRegex(ClinicalConflict, "integrity"):
+                self.ehr.attest_note(self.pid, eid, "NOTE-ONE",
+                                     expected_version=1, request_key="ATTEST-CORRUPT-ONE", **ACTOR)
+        self.assertEqual(len(self.ehr.note_history(self.pid, eid, "NOTE-ONE", **ACTOR)), 1)
+        self.assertEqual(self.count("ehr.clinical_encounter_commands"), 3)
+
+    def test_real_postgres_historical_notes_fail_closed_on_digest_mismatch(self):
+        """A historical-row discrepancy is rejected before client disclosure."""
+        eid = self.start()
+        self.ehr.write_note(self.pid, eid, "NOTE-ONE", "First fictional version",
+                            expected_version=0, request_key="DRAFT-HISTORY-ONE", **ACTOR)
+        self.ehr.write_note(self.pid, eid, "NOTE-ONE", "Second fictional version",
+                            expected_version=1, request_key="DRAFT-HISTORY-TWO", **ACTOR)
+        original = self.ehr._execute
+
+        def inject_historical_corruption(sql, parameters=()):
+            result = original(sql, parameters)
+            if "JOIN clinical_note_versions v" in sql and "ORDER BY v.version" in sql:
+                rows = result.fetchall()
+                if rows:
+                    rows[0] = dict(rows[0], body="Altered historical fictional text")
+                return _Rows(rows)
+            return result
+
+        with patch.object(self.ehr, "_execute", side_effect=inject_historical_corruption):
+            with self.assertRaisesRegex(ClinicalConflict, "integrity"):
+                self.ehr.note_history(self.pid, eid, "NOTE-ONE", **ACTOR)
+        self.assertEqual(len(self.ehr.note_history(self.pid, eid, "NOTE-ONE", **ACTOR)), 2)
+
+
+
+    def test_specialty_note_provenance_parity_across_sqlite_and_postgres(self):
+        """Both first-party stores retain department/facility and note kind per version."""
+        normalized = []
+        for ehr, pid in ((self.oracle, self.sid), (self.ehr, self.pid)):
+            eid = self.start(ehr, pid)
+            a = ehr.write_note(
+                pid, eid, "NOTE-ONCOLOGY", "Independent fictional oncology consultation",
+                expected_version=0, facility_id="ORG-CANCER-CENTER",
+                department_id="DEPT-ONCOLOGY", note_kind="consultation",
+                request_key="NOTE-ONCOLOGY-ONE", **ACTOR)
+            b = ehr.write_note(
+                pid, eid, "NOTE-NEPHROLOGY", "Independent fictional kidney clinic history",
+                expected_version=0, facility_id="ORG-COMMUNITY-HOSPITAL",
+                department_id="DEPT-NEPHROLOGY", note_kind="history_and_physical",
+                request_key="NOTE-NEPHROLOGY-ONE", **ACTOR)
+            self.assertEqual(a["version"], 1)
+            self.assertEqual(b["version"], 1)
+            ehr.attest_note(pid, eid, "NOTE-ONCOLOGY", expected_version=1,
+                            request_key="NOTE-ONCOLOGY-ATTEST", **ACTOR)
+            ehr.write_note(pid, eid, "NOTE-ONCOLOGY", "Revised fictional consultation",
+                           expected_version=2, correction_reason="Correct synthetic wording",
+                           request_key="NOTE-ONCOLOGY-AMEND", **ACTOR)
+            oncology = ehr.note_history(pid, eid, "NOTE-ONCOLOGY", **ACTOR)
+            renal = ehr.note_history(pid, eid, "NOTE-NEPHROLOGY", **ACTOR)
+            self.assertEqual([r["facility_id"] for r in oncology], ["ORG-CANCER-CENTER"] * 3)
+            self.assertEqual([r["department_id"] for r in oncology], ["DEPT-ONCOLOGY"] * 3)
+            self.assertEqual([r["note_kind"] for r in oncology], ["consultation"] * 3)
+            self.assertEqual((renal[0]["facility_id"], renal[0]["department_id"], renal[0]["note_kind"]),
+                             ("ORG-COMMUNITY-HOSPITAL", "DEPT-NEPHROLOGY", "history_and_physical"))
+            normalized.append([{k: r[k] for k in ("version", "status", "body",
+                               "facility_id", "department_id", "note_kind")} for r in oncology])
+        self.assertEqual(normalized[0], normalized[1])
+
+    def test_provenance_relabel_replay_conflicts_and_unknown_remains_null(self):
+        eid = self.start()
+        args = dict(patient_id=self.pid, encounter_id=eid, note_key="NOTE-ONE",
+                    body="Independent fictional note", expected_version=0,
+                    department_id="DEPT-RADIOLOGY", facility_id="ORG-CANCER-CENTER",
+                    note_kind="progress", request_key="NOTE-PROVENANCE-ONE", **ACTOR)
+        first = self.ehr.write_note(**args)
+        self.assertEqual(self.ehr.write_note(**args), first)
+        with self.assertRaises(ClinicalConflict):
+            self.ehr.write_note(**dict(args, department_id="DEPT-PATHOLOGY"))
+        self.ehr.write_note(self.pid, eid, "NOTE-UNKNOWN", "Unknown provenance",
+                            expected_version=0, request_key="NOTE-UNKNOWN-ONE", **ACTOR)
+        unknown = self.ehr.note_history(self.pid, eid, "NOTE-UNKNOWN", **ACTOR)[0]
+        self.assertIsNone(unknown["facility_id"])
+        self.assertIsNone(unknown["department_id"])
+        self.assertIsNone(unknown["note_kind"])
 
 
 if __name__ == "__main__":

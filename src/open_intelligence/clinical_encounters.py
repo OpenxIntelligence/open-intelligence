@@ -19,6 +19,7 @@ are not mock functions or pre-rendered example responses.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import re
 import sqlite3
@@ -37,6 +38,10 @@ ACTOR_RE = re.compile(r"[A-Za-z0-9_.:-]{3,100}\Z")
 PURPOSES = frozenset({"care", "operations", "research"})
 KINDS = frozenset({"outpatient", "inpatient", "telehealth", "telephone", "procedure", "other"})
 STATES = frozenset({"scheduled", "in_progress", "completed", "cancelled"})
+NOTE_KINDS = frozenset({
+    "history_and_physical", "consultation", "progress", "procedure",
+    "operative", "discharge", "referral", "nursing", "other",
+})
 TRANSITIONS = {
     "scheduled": frozenset({"in_progress", "cancelled"}),
     "in_progress": frozenset({"completed", "cancelled"}),
@@ -76,6 +81,9 @@ CREATE TABLE IF NOT EXISTS clinical_note_versions (
  created_at TEXT NOT NULL,
  supersedes_id INTEGER REFERENCES clinical_note_versions(id),
  amendment_reason TEXT,
+ facility_id TEXT,
+ department_id TEXT,
+ note_kind TEXT,
  UNIQUE(note_id,version)
 );
 CREATE INDEX IF NOT EXISTS idx_clinical_note_version ON clinical_note_versions(note_id,version);
@@ -225,11 +233,26 @@ class ClinicalEncounters:
 
     def _note(self, encounter_id: int, note_key: str):
         row = self._execute("""SELECT n.*,v.id AS version_id,v.status,v.body,v.sha256,
-                              v.amendment_reason FROM clinical_note_headers n
+                              v.amendment_reason,v.facility_id,v.department_id,v.note_kind FROM clinical_note_headers n
                               JOIN clinical_note_versions v ON v.note_id=n.id AND v.version=n.latest_version
                               WHERE n.encounter_id=? AND n.note_key=?""",
                                     (encounter_id, note_key)).fetchone()
+        if row is not None:
+            self._check_note_integrity(row)
         return row
+
+    @staticmethod
+    def _check_note_integrity(row: sqlite3.Row | dict) -> None:
+        """Reject mismatched stored text and digest before clinical use.
+
+        This detects changed/corrupt bytes on a restored or faulty store,
+        but is not proof of source authenticity or a clinical signature.
+        """
+        body, digest = row["body"], row["sha256"]
+        if (not isinstance(body, str) or not isinstance(digest, str)
+                or not hmac.compare_digest(
+                    hashlib.sha256(body.encode("utf-8")).hexdigest(), digest)):
+            raise ClinicalConflict("Clinical note integrity mismatch; source review required")
 
     def _command(self, patient_id: str, actor: str, purpose: str, action: str,
                  request_key: str, data: dict[str, Any], mutate: Callable[[], dict]) -> dict:
@@ -243,8 +266,14 @@ class ClinicalEncounters:
             if previous:
                 if previous["operation"] != action or previous["request_hash"] != digest:
                     raise ClinicalConflict("Idempotency key reused for a different command")
+                # An older successful command does not authorize its disclosure
+                # after current permission has been revoked.
+                self._allow(actor, patient_id, action, purpose)
                 return json.loads(previous["result_json"])
             result = mutate()
+            # Revalidate the grant before persisting command, event and receipt.
+            # PG also enforces its own transaction-exit policy check.
+            self._allow(actor, patient_id, action, purpose)
             self._execute("""INSERT INTO clinical_encounter_commands
                (patient_id,request_key,operation,request_hash,result_json,occurred_at)
                VALUES(?,?,?,?,?,?)""", (patient_id, request_key, action, digest,
@@ -300,13 +329,21 @@ class ClinicalEncounters:
 
     def write_note(self, patient_id: str, encounter_id: int, note_key: str, body: str,
                    *, expected_version: int, correction_reason: str | None = None,
+                   facility_id: str | None = None, department_id: str | None = None,
+                   note_kind: str | None = None,
                    actor: str, purpose: str, request_key: str) -> dict:
+        """Create an attributed note version; labels are not credential proof."""
         note_key = valid_id(note_key)
         body = _safe_text(body, "Note body", 20000)
         if type(expected_version) is not int or expected_version < 0:
             raise InvalidInput("Expected note version must be nonnegative")
         if correction_reason is not None:
             correction_reason = _safe_text(correction_reason, "Correction reason", 500)
+        for field, value in (("facility_id", facility_id), ("department_id", department_id)):
+            if value is not None:
+                _opaque(value, field)
+        if note_kind is not None and note_kind not in NOTE_KINDS:
+            raise InvalidInput("Unknown clinical note kind")
         def mutate():
             encounter = self._encounter(patient_id, encounter_id)
             if encounter["status"] in {"cancelled", "scheduled"}:
@@ -333,13 +370,23 @@ class ClinicalEncounters:
                 state = "draft_correction" if was_attested else prior["status"]
                 self._execute("UPDATE clinical_note_headers SET latest_version=? WHERE id=?",
                                       (version, note_id))
+            # Unspecified attribution carries forward, without inventing
+            # specialty/facility for legacy rows or rewriting older versions.
+            effective_facility = facility_id if facility_id is not None else (
+                prior["facility_id"] if prior is not None else None)
+            effective_department = department_id if department_id is not None else (
+                prior["department_id"] if prior is not None else None)
+            effective_kind = note_kind if note_kind is not None else (
+                prior["note_kind"] if prior is not None else None)
             digest = hashlib.sha256(body.encode("utf-8")).hexdigest()
             self._execute("""INSERT INTO clinical_note_versions
-              (note_id,version,status,body,sha256,authored_by,created_at,supersedes_id,amendment_reason)
-              VALUES(?,?,?,?,?,?,?,?,?)""", (note_id, version, state, body, digest,
+              (note_id,version,status,body,sha256,authored_by,created_at,supersedes_id,amendment_reason,
+               facility_id,department_id,note_kind)
+              VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""", (note_id, version, state, body, digest,
                                                actor, now_utc(), prior_version_id,
                                                correction_reason if correction_reason else (
-                                                   prior["amendment_reason"] if prior is not None else None)))
+                                                   prior["amendment_reason"] if prior is not None else None),
+                                               effective_facility, effective_department, effective_kind))
             self.host.append_event(patient_id, "clinical_note_draft_saved", encounter_id=encounter_id,
                               note_id=note_id, version=version, actor=actor, purpose=purpose,
                               correction_pending=(state == "draft_correction"))
@@ -349,7 +396,11 @@ class ClinicalEncounters:
                              {"encounter_id": encounter_id, "note_key": note_key,
                               "body_sha256": hashlib.sha256(body.encode("utf-8")).hexdigest(),
                               "expected_version": expected_version,
-                              "correction_reason": correction_reason}, mutate)
+                              "correction_reason": correction_reason,
+                              **({"facility_id": facility_id, "department_id": department_id,
+                                  "note_kind": note_kind}
+                                 if any(x is not None for x in (
+                                     facility_id, department_id, note_kind)) else {})}, mutate)
 
     def attest_note(self, patient_id: str, encounter_id: int, note_key: str, *,
                     expected_version: int, actor: str, purpose: str,
@@ -371,10 +422,13 @@ class ClinicalEncounters:
             self._execute("UPDATE clinical_note_headers SET latest_version=? WHERE id=?",
                                   (version, prior["id"]))
             self._execute("""INSERT INTO clinical_note_versions
-              (note_id,version,status,body,sha256,authored_by,created_at,supersedes_id,amendment_reason)
-              VALUES(?,?,?,?,?,?,?,?,?)""", (prior["id"], version, state, prior["body"],
+              (note_id,version,status,body,sha256,authored_by,created_at,supersedes_id,amendment_reason,
+               facility_id,department_id,note_kind)
+              VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""", (prior["id"], version, state, prior["body"],
                                                prior["sha256"], actor, now_utc(),
-                                               prior["version_id"], prior["amendment_reason"]))
+                                               prior["version_id"], prior["amendment_reason"],
+                                               prior["facility_id"], prior["department_id"],
+                                               prior["note_kind"]))
             self.host.append_event(patient_id, "clinical_note_attestation_recorded",
                               encounter_id=encounter_id, note_id=prior["id"], version=version,
                               actor=actor, purpose=purpose, corrected=(state == "attested_correction"))
@@ -386,18 +440,24 @@ class ClinicalEncounters:
 
     def list_encounters(self, patient_id: str, *, actor: str, purpose: str) -> list[dict]:
         self._allow(actor, patient_id, "encounter.read", purpose)
-        return [dict(row) for row in self._execute(
+        rows = [dict(row) for row in self._execute(
             "SELECT * FROM clinical_encounters WHERE patient_id=? ORDER BY service_date,id",
             (patient_id,)).fetchall()]
+        self._allow(actor, patient_id, "encounter.read", purpose)
+        return rows
 
     def note_history(self, patient_id: str, encounter_id: int, note_key: str, *,
                      actor: str, purpose: str) -> list[dict]:
         self._allow(actor, patient_id, "note.read", purpose)
         self._encounter(patient_id, encounter_id)
         note_key = valid_id(note_key)
-        return [dict(row) for row in self._execute("""
+        rows = [dict(row) for row in self._execute("""
           SELECT v.id,v.version,v.status,v.body,v.sha256,v.authored_by,v.created_at,
-                 v.supersedes_id,v.amendment_reason
+                 v.supersedes_id,v.amendment_reason,v.facility_id,v.department_id,v.note_kind
           FROM clinical_note_headers n JOIN clinical_note_versions v ON v.note_id=n.id
           WHERE n.encounter_id=? AND n.note_key=? ORDER BY v.version
           """, (encounter_id, note_key)).fetchall()]
+        for row in rows:
+            self._check_note_integrity(row)
+        self._allow(actor, patient_id, "note.read", purpose)
+        return rows
