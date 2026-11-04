@@ -4,7 +4,8 @@ import {QuestionPassageClient,decodeManualContext,decodeSelection} from '../.tes
 import * as manualModule from '../.test-dist/question-passages.js';
 import {decodeEvidenceReport} from '../.test-dist/authored-evidence.js';
 import {RegistrySession} from '../.test-dist/registry-client.js';
-import {question,report,reportId,patientId,caseId,questionId,hash,ready,transportFor,response,packet,world,deferred} from './authored-evidence-fixtures.mjs';
+import {activeComparisonDraft} from '../.test-dist/authored-evidence-session.js';
+import {question,report,reportId,patientId,caseId,questionId,evidenceId,hash,ready,transportFor,response,packet,world,deferred} from './authored-evidence-fixtures.mjs';
 
 const scope={patient_id:patientId,case_id:caseId,question_id:questionId};
 function sign(value){const {context_sha256,access_receipt_id,...content}=value;return {...value,context_sha256:hash(content)};}
@@ -147,4 +148,45 @@ test('unsaved additions and removals block report binding until explicit save or
  assert.equal(manualModule.manualReportBinding(packet,saved,'saving').blocked,true);
  assert.equal(manualModule.manualReportBinding(null,[],'uncertain').blocked,true);
  assert.equal(manualModule.manualReportBinding(packet,saved,'idle').context.context_sha256,packet.context_sha256);
+});
+
+test('historical report with frozen manual passages hides rejected comparison until a fresh matching read',async()=>{
+ const {access_receipt_id,...frozen}=context();
+ const historical=report();historical.snapshot.manual_passages=frozen;
+ historical.snapshot_sha256=hash(historical.snapshot);historical.state='historical_reassessment_required';
+ const earlier=packet();earlier.reports[0].snapshot_sha256=historical.snapshot_sha256;
+ let writes=0;
+ const session=new RegistrySession(transportFor((url,init)=>{
+  if(init.method==='POST')writes++;
+  return response(url.includes('/evidence-reports/')?historical:earlier);
+ }));
+ await ready(session);await session.loadQuestionEvidence(questionId);
+ session.selectEvidenceComparison(questionId,evidenceId);
+ session.editEvidenceComparison({rationale:'A fictional comparison with uncertainty and manual context.'});
+ const draft=session.snapshot().evidenceComparisonDraft;
+ session.editEvidenceComparison({rationale:'x'.repeat(601)});
+ await session.readEvidenceReport(questionId,reportId);
+ assert.deepEqual(session.snapshot().evidenceReport.snapshot.manual_passages,frozen);
+ assert.equal(session.snapshot().evidenceComparisonDraft,draft);
+ assert.equal(activeComparisonDraft(session.snapshot()),null);
+ assert.equal(session.acknowledgeRejectedEvidenceComparisonField('rationale'),false);
+ await session.saveEvidenceComparison();assert.equal(writes,0);
+ await session.loadQuestionEvidence(questionId);
+ assert.equal(activeComparisonDraft(session.snapshot()),draft);
+ assert.deepEqual(session.snapshot().evidenceRejectedFields,['rationale']);
+ await session.saveEvidenceComparison();assert.equal(writes,0);
+});
+
+for(const status of [401,403,404])test(`manual passage denial ${status} clears rejected edits without resurrecting them`,async()=>{
+ const session=await sessionFor(()=>response({},status));
+ session.selectEvidenceComparison(questionId,evidenceId);
+ session.editEvidenceComparison({rationale:'An independently fictional draft before manual-context denial.'});
+ session.editEvidenceComparison({quote:'x'.repeat(401),rationale:'x'.repeat(601)});
+ assert.deepEqual(session.snapshot().evidenceRejectedFields,['quote','rationale']);
+ assert.equal((await session.questionPassageRequest(caseId,questionId)).status,status);
+ assert.equal(session.snapshot().evidenceComparisonDraft,null);
+ assert.deepEqual(session.snapshot().evidenceRejectedFields,[]);
+ await ready(session);await session.loadQuestionEvidence(questionId);
+ assert.equal(session.snapshot().evidenceComparisonDraft,null);
+ assert.deepEqual(session.snapshot().evidenceRejectedFields,[]);
 });
