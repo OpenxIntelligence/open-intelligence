@@ -50,8 +50,13 @@ existing API recovery stages remain in place. Successful acceptance adds the
 `manual_task_dependency_recovery` receipt to the existing source-document recovery
 artifact; the receipt is written only after every new assertion succeeds.
 
-Local compilation, the synthetic-data audit and 13 existing recovery-oracle tests
-pass at this source checkpoint. Docker/PostgreSQL are unavailable locally; full
+Local compilation, the synthetic-data audit, 13 existing recovery-oracle tests
+and four new negative-control tests pass at this source checkpoint. Retries retain
+exact business state while allowing only their expected scoped access audits;
+negative controls reject lost dependencies, unexpected events and sequence drift.
+The broader local reference run executed 765 tests with nine failures and eight
+errors because the local pypdf installation differs from the pinned 6.21.4. No
+reference-suite success is claimed; hosted CI installs the reviewed locked runtime. Docker/PostgreSQL are unavailable locally; full
 hosted acceptance is pending and must be tied to this candidate's exact head.
 The separate #471/#473 frontend integration work is not included or claimed tested
 by this recovery-only extension. No merge, deployment or clinical validation.
