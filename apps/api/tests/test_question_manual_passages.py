@@ -99,7 +99,11 @@ class QuestionManualPassagesHTTPTests(EvidenceFixture):
             patient, question, payload, doc, path, _, command = self.setup_manual(base)
             receipt, original = self.save(base, path, command)
             scope = dict(patient_id=patient, case_id='CASE-ALPHA',
-                         question_id=question, organization='ORG-ALPHA')
+                         question_id=question, organization='ORG-ALPHA',
+                         # The stored intent digest was computed with the
+                         # TOKEN_A credential's purpose ("operations");
+                         # rows_locked -> intent requires the same key.
+                         purpose='operations')
             dependency = {key: scope[key] for key in ('patient_id', 'case_id', 'question_id')}
             dependency.update(revision_id=receipt['revision_id'],
                               references_sha256=fingerprint(command['references']))
