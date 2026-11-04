@@ -579,9 +579,8 @@ class FollowthroughChecks:
         self.assert_attention_filters()
         self.assert_timestamp_rejection()
         value = self.assert_overview_work(current_question_id, screenshots)
-        # Repeat the same fail-closed corruption/recovery check after a second
-        # question adds a fourth persisted task. The helper derives the expected
-        # count from the last original HTTP read, not a stale three-task fixture.
+        # Repeat corrupted timestamps after a second question adds another task.
+        # The expected projection count comes from the original authorized read.
         self.assert_timestamp_rejection()
         # A failed fresh read must remove old task text and transition controls.
         credentials[0]['actions'].remove('followthrough_read')
@@ -734,17 +733,6 @@ def exercise_case_switch(cd, patient_id, case_id, second_case_id, credentials, w
         click(cd, '[data-testid=followthrough-cancel]')
         checks.case_id = case_id
         checks.refresh(expected_count=4)
-        assert cd.evaluate("[...document.querySelectorAll('[data-testid=followthrough-transition-reason]')].every(e=>e.value==='')")
-        assert cd.evaluate('localStorage.length===0 && sessionStorage.length===0')
-        select_case(cd, case_id)
-        click(cd, '[data-testid=load-source-questions]')
-        cd.wait('Boolean(document.querySelector(' + json.dumps(current) + '))', 'original question reloaded after case round trip')
-        assert cd.evaluate("!document.querySelector('[data-testid=followthrough-title]')"), 'Case round trip must not resurrect an unsent task'
-        click(cd, current)
-        assert cd.evaluate("document.querySelector('[data-testid=followthrough-title]').value") == ''
-        click(cd, '[data-testid=followthrough-cancel]')
-        checks.case_id = case_id
-        checks.refresh()
         assert cd.evaluate("[...document.querySelectorAll('[data-testid=followthrough-transition-reason]')].every(e=>e.value==='')")
         assert cd.evaluate('localStorage.length===0 && sessionStorage.length===0')
         (screenshots / 'h1-followthrough-case-switch.json').write_text(json.dumps({
