@@ -118,6 +118,9 @@ function exact(value: unknown, fields: string[]): value is Record<string,unknown
 function boundedKey(value: unknown): value is string { return typeof value==='string' && KEY.test(value); }
 async function json(response: Response, limit=65536): Promise<unknown> {
   if(!/^application\/json(?:\s*;|$)/i.test(response.headers.get('Content-Type') || '')) throw Error('contract');
+  return JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(await boundedBytes(response,limit)));
+}
+async function boundedBytes(response:Response,limit:number):Promise<Uint8Array>{
   const declared=response.headers.get('Content-Length');
   if(declared && (!/^\d+$/.test(declared) || Number(declared)>limit)) throw Error('contract');
   // Bounded streaming read also covers absent or dishonest Content-Length.
@@ -128,7 +131,7 @@ async function json(response: Response, limit=65536): Promise<unknown> {
       if(size>limit){await reader.cancel();throw Error('contract');}parts.push(value); }
   } finally {reader.releaseLock();}
   const all=new Uint8Array(size);let offset=0;for(const p of parts){all.set(p,offset);offset+=p.length;}
-  return JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(all));
+  return all;
 }
 function patient(value: unknown, expected: string): Patient {
   if(!exact(value,['patient_id','origin_org','created_at','status','revision']) ||
@@ -143,6 +146,30 @@ function created(value: unknown): CreatedPatient {
   return Object.freeze(value as CreatedPatient);
 }
 export class RegistrySession {
+  async documentRequest(caseId:string,path:string,body?:string):Promise<import('./reviewed-documents').DocumentReply>{
+    if(!/^CASE-[A-Z0-9-]{1,35}$/.test(caseId)||!/^$|^\/preview$|^\/SRC-[A-F0-9]{32}(?:\/(?:original|annotations))?$/.test(path))throw Error('Invalid document path');
+    const scope=this.#scope,read=this.#read,records=this.#records,patient=this.#state.patient?.patient_id;
+    const current=()=>scope===this.#scope&&read===this.#read&&records===this.#records&&patient===this.#state.patient?.patient_id&&this.#state.sourceIndex?.case_id===caseId;
+    if(!patient||!this.#token||!current())throw Error('Recheck patient and case access');
+    const control=new AbortController();this.#controllers.add(control);
+    try{
+      const response=await this.transport('/v1/patients/'+encodeURIComponent(patient)+'/cases/'+encodeURIComponent(caseId)+'/documents'+path,this.#init(control,body));
+      let value:unknown;
+      if(path.endsWith('/original')&&response.status===200){
+        value=await boundedBytes(response,65536);
+      }else{
+        // 64 revisions × 30 quotes × 1200 code points × at most 12 JSON bytes
+        // (escaped surrogate pairs), plus bounded findings metadata and 64 KiB rendition.
+        // 32 MiB covers the complete permitted history; streaming still limits bad peers.
+        value=await json(response,32*1024*1024);
+      }
+      if(!current())throw Error('Patient or case changed');
+      if(response.status===401)this.#httpError(401);
+      if(body===undefined&&response.status===200&&path!=='/preview'&&!path.endsWith('/original')&&
+        (!value||typeof value!=='object'||(value as {patient_id?:string}).patient_id!==patient||(value as {case_id?:string}).case_id!==caseId))throw Error('Wrong document scope');
+      return{status:response.status,body:value,headers:response.headers};
+    }finally{this.#controllers.delete(control);}
+  }
   #token=''; #scope=0; #read=0; #records=0; #state:ViewState=fresh();
   #worldRead=0; #composerRead=0; #questionRead=0; #questionWrite=0; #briefRead=0;
   #questionKey=''; #questionFingerprint=''; #savingQuestion=false;
