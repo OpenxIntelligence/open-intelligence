@@ -151,6 +151,20 @@ test('unsaved additions and removals block report binding until explicit save or
 });
 
 function draftStore(){let value=null;return {read:()=>value,write:next=>{value=next;}};}
+
+test('manual draft reminders notify subscribers, include removals, and withhold during question recheck',async()=>{
+ let fail=false;const fallback=transportFor(()=>response(packet()));
+ const session=new RegistrySession((url,init)=>fail&&url.endsWith('/questions')?response({},503):fallback(url,init));
+ await ready(session);const store=session.manualPassageDraftStore(scope);let notifications=0;
+ const stop=session.subscribe(()=>notifications++);
+ store.write(Object.freeze({expected_context_sha256:context().context_sha256,references:Object.freeze([])}));
+ assert.deepEqual(session.snapshot().manualPassageDraftQuestionIds,[questionId]);assert.equal(notifications,1);
+ fail=true;await session.loadSavedQuestions(caseId);assert.deepEqual(session.snapshot().manualPassageDraftQuestionIds,[]);
+ fail=false;await session.loadSavedQuestions(caseId);assert.deepEqual(session.snapshot().manualPassageDraftQuestionIds,[questionId]);
+ session.manualPassageDraftStore(scope).write(null);assert.deepEqual(session.snapshot().manualPassageDraftQuestionIds,[]);
+ store.write(Object.freeze({expected_context_sha256:context().context_sha256,references:Object.freeze([ref()])}));
+ session.disconnect();assert.deepEqual(session.snapshot().manualPassageDraftQuestionIds,[]);stop();
+});
 function selectionReply(p=context().passages[0]){return {status:200,body:{...p,contract:'oi.reviewed-document-selection/1',synthetic:true,clinical_approval:false,model_execution:false,access_receipt_id:context().access_receipt_id}};}
 
 test('unsaved additions resume only after fresh context and exact selection checks, without writes',async()=>{
