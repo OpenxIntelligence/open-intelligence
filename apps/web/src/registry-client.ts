@@ -1,5 +1,8 @@
 /** Transient UI state over the canonical patient API; never an authority or ledger. */
 export {patientContinuity} from './patient-continuity.js';
+import {SecondOpinionPacketSession,emptySecondOpinion} from './second-opinion-packet-session.js';
+import type {SecondOpinionState} from './second-opinion-packet-session.js';
+import type {PacketDraftPatch} from './second-opinion-packets.js';
 import {parseCaseBindingList, parseSourceIndex} from './source-contracts.js';
 import {decodeQuestionSourcePacket} from './source-quote-review-packet.js';
 import type {QuestionSourceReviewPacket} from './source-quote-review-packet.js';
@@ -37,7 +40,7 @@ export type ReviewReturnIntent=Readonly<{
 }>;
 export type QuestionDraft = Readonly<{case_id:string;source_id:string;source_line:number;
   snapshot_fingerprint:string;question:string}>;
-export type ViewState = Readonly<EvidenceState & {
+export type ViewState = Readonly<EvidenceState & SecondOpinionState & {
   connected: boolean; phase: 'disconnected' | 'idle' | 'reading' | 'creating' | 'ready' | 'error';
   patient: Patient | null; created: CreatedPatient | null; message: string;
   cases: ReadonlyArray<CaseBinding> | null; sourceIndex: SourceIndex | null;
@@ -109,7 +112,7 @@ const emptyInvestigation=()=>({questionDraft:null,composerPreview:null,composerP
   questionListMessage:'Open an authorized case to inspect saved source questions.',
   ...emptyEvidenceState(),...emptyBrief(),sourceQuotePacket:null,sourceQuotePhase:'idle' as const,
   sourceQuoteMessage:'Select a saved question to inspect its source quotation and evidence gaps.'});
-const fresh = (): ViewState => Object.freeze({connected:false,phase:'disconnected',patient:null,created:null,message:'Connect a local synthetic credential to use the patient registry.',cases:null,sourceIndex:null,recordsPhase:'idle',recordMessage:'Open an authorized fictional patient in Overview first.',...emptyIntake(),...emptyWorld(),...emptyInvestigation(),...emptyReview(),...emptyFollowthrough(),...emptyEvidence()});
+const fresh = (): ViewState => Object.freeze({connected:false,phase:'disconnected',patient:null,created:null,message:'Connect a local synthetic credential to use the patient registry.',cases:null,sourceIndex:null,recordsPhase:'idle',recordMessage:'Open an authorized fictional patient in Overview first.',...emptyIntake(),...emptyWorld(),...emptyInvestigation(),...emptyReview(),...emptyFollowthrough(),...emptyEvidence(),...emptySecondOpinion()});
 const emptyRecords=()=>({...emptyIntake(),...emptyWorld(),cases:null,sourceIndex:null,recordsPhase:'idle' as const,recordMessage:'Load the current authorized case mappings to inspect original source metadata.'});
 function exact(value: unknown, fields: string[]): value is Record<string,unknown> {
   return value !== null && typeof value==='object' && !Array.isArray(value) &&
@@ -153,7 +156,12 @@ export class RegistrySession {
   #inspectionQuestionId:string|null=null;
   #listeners=new Set<()=>void>(); #controllers=new Set<AbortController>(); #creating=false; #uploading=false;
   #evidenceSession:QuestionEvidenceSession;
+  #packetSession:SecondOpinionPacketSession;
   constructor(private readonly transport:Transport=(url,init)=>fetch(url,init)) {
+    this.#packetSession=new SecondOpinionPacketSession({snapshot:this.snapshot,publish:patch=>this.#publish(patch),
+      scope:()=>[this.#scope,this.#read,this.#worldRead,this.#questionRead].join(':'),
+      request:(url,control,body)=>this.transport(url,this.#init(control,body)),json,
+      add:control=>this.#controllers.add(control),remove:control=>this.#controllers.delete(control),expire:()=>this.#httpError(401)});
     this.#evidenceSession=new QuestionEvidenceSession({snapshot:this.snapshot,
       publish:patch=>this.#publish(patch),scope:()=>[this.#scope,this.#read,this.#worldRead,this.#questionRead].join(':'),
       selectedQuestion:()=>this.#inspectionQuestionId,
@@ -161,6 +169,12 @@ export class RegistrySession {
       add:control=>this.#controllers.add(control),remove:control=>this.#controllers.delete(control),
       expire:()=>this.#httpError(401)});
   }
+  loadSecondOpinionPackets=(caseId:string)=>this.#packetSession.load(caseId);
+  editSecondOpinionPacket=(patch:PacketDraftPatch)=>this.#packetSession.edit(patch);
+  clearSecondOpinionPacket=()=>this.#packetSession.clear();
+  saveSecondOpinionPacket=(confirmed:boolean)=>this.#packetSession.save(confirmed);
+  retrySecondOpinionPacket=()=>this.#packetSession.retry();
+  abandonSecondOpinionPacket=()=>this.#packetSession.abandon();
   selectEvidenceComparison=(questionId:string,evidenceId:string)=>this.#evidenceSession.beginComparison(questionId,evidenceId);
   editEvidenceComparison=(patch:EvidenceDraftPatch)=>this.#evidenceSession.editComparison(patch);
   discardEvidenceComparison=()=>this.#evidenceSession.discardComparison();
@@ -177,7 +191,7 @@ export class RegistrySession {
   retryEvidenceWrite=()=>this.#evidenceSession.retry();
   snapshot=():ViewState=>this.#state;
   subscribe=(listener:()=>void):(()=>void)=>{this.#listeners.add(listener);return()=>this.#listeners.delete(listener);};
-  #publish(patch:Partial<ViewState>){this.#state=Object.freeze({...this.#state,...patch});for(const listener of this.#listeners)listener();}
+  #publish(patch:Partial<ViewState>){const next={...this.#state,...patch};this.#state=Object.freeze({...next,...this.#packetSession.reconcile(next)});for(const listener of this.#listeners)listener();}
   #resetEvidence(preserveCase?:string){
     this.#evidenceRead++;this.#evidenceWrite++;this.#savingEvidence=false;
     const intent=this.#state.evidenceLinkIntent;
@@ -210,12 +224,12 @@ export class RegistrySession {
     this.#reviewKey='';this.#reviewIntent='';
     return emptyReview();
   }
-  #resetInvestigation(preserveReviewCase?:string,preserveFollowthroughCase=preserveReviewCase,preserveEvidenceCase=preserveReviewCase,preserveAuthoredEvidenceCase=preserveReviewCase){
+  #resetInvestigation(preserveReviewCase?:string,preserveFollowthroughCase=preserveReviewCase,preserveEvidenceCase=preserveReviewCase,preserveAuthoredEvidenceCase=preserveReviewCase,preservePacketCase=preserveReviewCase){
     this.#inspectionQuestionId=null;
     this.#worldRead++;this.#composerRead++;this.#questionRead++;this.#questionWrite++;this.#briefRead++;this.#quoteRead++;
     this.#questionKey='';this.#questionFingerprint='';this.#savingQuestion=false;
     return {...emptyInvestigation(),...this.#resetReview(preserveReviewCase),...this.#resetFollowthrough(preserveFollowthroughCase),
-      ...this.#resetEvidence(preserveEvidenceCase),...this.#evidenceSession.reset(preserveAuthoredEvidenceCase)};
+      ...this.#resetEvidence(preserveEvidenceCase),...this.#evidenceSession.reset(preserveAuthoredEvidenceCase),...this.#packetSession.reset(preservePacketCase)};
   }
   #resetWorld(preserveReviewCase?:string){
     this.#publish({...emptyWorld(),...this.#resetInvestigation(preserveReviewCase)});
@@ -263,10 +277,14 @@ export class RegistrySession {
   }
   async read(id:string):Promise<void>{
     const scope=this.#scope, request=++this.#read;
+    const pendingPacket=this.#state.secondOpinionIntent;
+    const preservePacket=pendingPacket&&pendingPacket.patient_id===id&&['saving','unknown'].includes(this.#state.secondOpinionWritePhase)?pendingPacket:null;
     const pendingEvidence=this.#state.evidenceWriteIntent;
     const preserveEvidence=pendingEvidence?.patient_id===id&&
       ['saving','unknown'].includes(this.#state.evidenceWritePhase)?pendingEvidence:null;
     this.#records++;this.#publish({patient:null,...emptyRecords(),...this.#resetInvestigation(),
+      ...(preservePacket?{secondOpinionIntent:preservePacket,secondOpinionWritePhase:'unknown' as const,
+        secondOpinionWriteMessage:'Patient access is being rechecked. The captured packet command remains uncertain; restore case access before exact recovery.'}:{}),
       ...(preserveEvidence?{evidenceWriteIntent:preserveEvidence,evidenceWritePhase:'unknown' as const,
         evidenceWriteMessage:'The same patient is being rechecked. The earlier evidence write remains uncertain; reload its case authority before exact receipt recovery.'}:{})});
     if(!this.#token){this.#publish({message:'Connect an authorized synthetic credential first.'});return;}
@@ -318,20 +336,21 @@ export class RegistrySession {
     const retainedCase=this.#state.reviewReturnIntent?.case_id,
       retainedFollowthroughCase=this.#state.followthroughIntent?.case_id,
       retainedEvidenceCase=this.#state.evidenceLinkIntent?.case_id,
-      retainedAuthoredEvidenceCase=this.#state.evidenceWriteIntent?.case_id;
+      retainedAuthoredEvidenceCase=this.#state.evidenceWriteIntent?.case_id,
+      retainedPacketCase=this.#state.secondOpinionIntent?.case_id??this.#state.secondOpinionDraft?.case_id;
     const scope=this.#scope,read=this.#read,request=++this.#records;
     const current=()=>scope===this.#scope && read===this.#read &&
       request===this.#records && this.#state.patient?.patient_id===patientId;
     const control=new AbortController();this.#controllers.add(control);
     const timeout=setTimeout(()=>control.abort(),10000);
-    this.#publish({...emptyIntake(),...emptyWorld(),...this.#resetInvestigation(retainedCase,retainedFollowthroughCase,retainedEvidenceCase,retainedAuthoredEvidenceCase),cases:null,sourceIndex:null,recordsPhase:'loading-cases',recordMessage:'Checking current case mapping permissions…'});
+    this.#publish({...emptyIntake(),...emptyWorld(),...this.#resetInvestigation(retainedCase,retainedFollowthroughCase,retainedEvidenceCase,retainedAuthoredEvidenceCase,retainedPacketCase),cases:null,sourceIndex:null,recordsPhase:'loading-cases',recordMessage:'Checking current case mapping permissions…'});
     try{
       const res=await this.transport('/v1/patients/'+encodeURIComponent(patientId)+'/case-bindings',this.#init(control));
       if(!current())return;
       if(res.status===401){this.#httpError(401);return;}
       if(res.status!==200){
         this.#publish({cases:null,sourceIndex:null,recordsPhase:'error',
-          ...([403,404].includes(res.status)?{...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence(),...this.#evidenceSession.reset()}:{}),
+          ...([403,404].includes(res.status)?{...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence(),...this.#evidenceSession.reset(),...this.#packetSession.reset()}:{}),
           recordMessage:'Case mappings unavailable or permission changed. No records are shown.'});
         return;
       }
@@ -341,6 +360,7 @@ export class RegistrySession {
       this.#publish({...((pendingCase&&!mappings.some(item=>item.case_id===pendingCase&&item.status==='active'))?this.#resetFollowthrough():{}),
         ...(retainedEvidenceCase&&!mappings.some(item=>item.case_id===retainedEvidenceCase&&item.status==='active')?this.#resetEvidence():{}),
         ...(retainedAuthoredEvidenceCase&&!mappings.some(item=>item.case_id===retainedAuthoredEvidenceCase&&item.status==='active')?this.#evidenceSession.reset():{}),
+        ...(retainedPacketCase&&!mappings.some(item=>item.case_id===retainedPacketCase&&item.status==='active')?this.#packetSession.reset():{}),
         cases:mappings,sourceIndex:null,recordsPhase:'ready',
         ...(retainedCase&&!mappings.some(item=>item.case_id===retainedCase&&item.status==='active')?this.#resetReview():{}),
         recordMessage:mappings.length===0?'No permitted fictional case mappings were returned.':'Select an active case to check its original source metadata.'});
@@ -372,7 +392,7 @@ export class RegistrySession {
       if(res.status===401){this.#httpError(401);return;}
       if(res.status!==200){
         this.#publish({cases:null,sourceIndex:null,recordsPhase:'error',
-          ...([403,404].includes(res.status)?{...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence(),...this.#evidenceSession.reset()}:{}),
+          ...([403,404].includes(res.status)?{...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence(),...this.#evidenceSession.reset(),...this.#packetSession.reset()}:{}),
           recordMessage:'Sources unavailable, denied or mapping revoked. Reload case permissions.'});
         return;
       }
@@ -589,7 +609,7 @@ export class RegistrySession {
       if(!current())return;
       if(response.status===401){this.#httpError(401);return;}
       if(response.status!==200){
-        this.#publish({...emptyWorld(),...([403,404].includes(response.status)?{...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence(),...this.#evidenceSession.reset()}:{}),worldPhase:'error',
+        this.#publish({...emptyWorld(),...([403,404].includes(response.status)?{...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence(),...this.#evidenceSession.reset(),...this.#packetSession.reset()}:{}),worldPhase:'error',
           worldMessage:'World Model source scope unavailable or revoked. Previous snapshot cleared.'});
         return;
       }
@@ -712,7 +732,7 @@ export class RegistrySession {
         source_id:sourceId,source_line:sourceLine,question};
       const res=await this.transport(url,this.#init(control,JSON.stringify(payload)));
       if(!current())return;
-      if(res.status===401){this.#httpError(res.status);return;}
+      if(res.status===401){this.#httpError(401);return;}
       if(res.status!==200){
         // A failed preflight must not leave stale patient observations visible
         // as though they remained currently permitted. Only the exact earlier
@@ -781,7 +801,7 @@ export class RegistrySession {
       });
       const res=await this.transport(url,this.#init(control,body));
       if(!current())return;
-      if(res.status===401){this.#httpError(res.status);return;}
+      if(res.status===401){this.#httpError(401);return;}
       if(![200,201].includes(res.status)){
         if(![403,404,409,413,422].includes(res.status))throw Error('unconfirmed');
         if(res.status===409){
@@ -837,7 +857,7 @@ export class RegistrySession {
         '/source-review-packet';
       const res=await this.transport(path,this.#init(controller));
       if(!current())return;
-      if(res.status===401){this.#httpError(res.status);return;}
+      if(res.status===401){this.#httpError(401);return;}
       if(res.status!==200){
         this.#publish({sourceQuotePacket:null,sourceQuotePhase:'error',
           sourceQuoteMessage:'Source quote packet unavailable or not authorized. Previous quote cleared.'});
@@ -884,7 +904,7 @@ export class RegistrySession {
         encodeURIComponent(caseId)+'/questions';
       const res=await this.transport(url,this.#init(controller));
       if(!current())return;
-      if(res.status===401){this.#httpError(res.status);return;}
+      if(res.status===401){this.#httpError(401);return;}
       if(res.status!==200){
         this.#publish({...([403,404].includes(res.status)?{...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence(),...this.#evidenceSession.reset(),reviewPhase:'error' as const,
           reviewMessage:'Question or source access is unavailable. Previous review content is cleared.'}:{}),
@@ -1329,7 +1349,7 @@ export class RegistrySession {
       if(res.status===401){this.#httpError(401);return;}
       if([403,404,409,413,422].includes(res.status)){
         this.#publish({cases:null,sourceIndex:null,original:null,recordsPhase:'error',importOutcome:'rejected',
-          ...([403,404].includes(res.status)?{...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence(),...this.#evidenceSession.reset()}:{}),
+          ...([403,404].includes(res.status)?{...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence(),...this.#evidenceSession.reset(),...this.#packetSession.reset()}:{}),
           importMessage:'The server rejected this import. Reload current case permissions; no success is claimed.'});return;
       }
       if(![200,201].includes(res.status))throw Error('unconfirmed');

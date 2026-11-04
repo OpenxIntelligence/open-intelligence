@@ -1,0 +1,14 @@
+.packet-panel{margin-bottom:24px;min-width:0}
+.packet-panel code,.packet-panel button,.packet-panel p{overflow-wrap:anywhere;white-space:normal}
+.packet-panel button{max-width:100%}.packet-panel input:not([type=checkbox]){width:100%;max-width:100%}
+.packet-compose{margin:18px 0;border:1px solid #c6d8c9;border-radius:8px;padding:16px;background:#f9fcf7}
+.packet-compose>summary{cursor:pointer;font-weight:600;min-height:44px;align-content:center}
+.packet-compose>summary:focus-visible{outline:3px solid #ba8639;outline-offset:3px}
+.packet-compose fieldset{min-width:0;border:0;padding:0}.packet-compose form{margin-top:16px}
+.packet-compose legend{font-weight:600;margin-bottom:12px}.packet-compose .packet-options{margin:18px 0}
+.packet-option{align-items:flex-start;padding:12px;border:1px solid #d5e1d9;border-radius:7px;background:#fff;margin:8px 0;min-width:0}
+.packet-option>input{flex:none;margin-top:4px}.packet-option>span{min-width:0;overflow-wrap:anywhere}.packet-source-id{display:block;margin-top:5px}
+.packet-warning{padding:14px;background:#f8f3e9;border-left:3px solid #b28b52}
+.packet-list{list-style:none;padding:0;display:grid;gap:16px}.packet-list>li{min-width:0;padding:16px;border:1px solid #c6d8c9;border-radius:8px}
+.packet-list h4{font-size:16px;margin:0}.packet-list li p{margin:8px 0}.packet-list details li{margin:10px 0}
+@media(max-width:600px){.packet-panel .actions{align-items:stretch}.packet-panel .actions button{width:100%}.packet-compose{padding:12px}.packet-list>li{padding:12px}}
