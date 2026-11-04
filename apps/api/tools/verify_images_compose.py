@@ -29,6 +29,8 @@ from urllib.error import HTTPError, URLError
 from urllib.request import ProxyHandler, Request, build_opener
 import uuid
 
+from oi_api.contracts import SCHEMA_REVISION
+
 
 ROOT = Path(__file__).resolve().parents[3]
 BASE = "http://127.0.0.1:8000"
@@ -40,7 +42,7 @@ STUDY = "2.25.112026110301"
 SERIES = "2.25.112026110302"
 SOPS = ("2.25.112026110303", "2.25.112026110304")
 MAX_IMAGE_BYTES = 2_097_152
-EXPECTED_SCHEMA_REVISION = "0013_document_image_convergence"
+EXPECTED_SCHEMA_REVISION = SCHEMA_REVISION
 QUEUE_CONTRACT = "oi.synthetic-question-review-return-queue/2"
 RETURN_FINGERPRINT_CONTRACT = "oi.synthetic-source-review-return/2"
 RETURN_REASON = "Please independently verify this fictional imaging source and its uncertainty."
