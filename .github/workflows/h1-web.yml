@@ -64,9 +64,9 @@ jobs:
           npm run build 2>&1 | tee ../../verification-web/build.txt
       - name: Preserve upstream reviewed backend dependency gate
         run: |
-          python -m pip download --require-hashes --only-binary=:all: --dest /tmp/oi-h1-wheels -r apps/api/requirements.lock
+          python apps/api/tools/prepare_dependencies.py --wheel-dir /tmp/oi-h1-wheels
           python apps/api/tools/check_dependencies.py --wheel-dir /tmp/oi-h1-wheels --sbom /tmp/oi-h1-sbom.json
-          python -m pip install --no-index --find-links /tmp/oi-h1-wheels --require-hashes -r apps/api/requirements.lock
+          python -m pip install --force-reinstall --no-deps --no-index --find-links /tmp/oi-h1-wheels --require-hashes -r apps/api/requirements.lock
           python -m pip check
       - name: Actual PostgreSQL API and built React browser journey
         shell: bash
