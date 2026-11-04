@@ -680,8 +680,10 @@ def main() -> None:
             # than only at the store layer: a byte-identical re-import and a
             # wrong-patient import must both be refused without new facts.
             cd.evaluate("""(() => {
+              const before = readyCase();
               const picker = document.querySelector('#case-picker');
               picker.value = 'CASE-ALPHA'; picker.dispatchEvent(new Event('change'));
+              if (readyCase() !== before) throw Error('Same-case picker event reset the loaded case');
             })()""")
             cd.wait("document.querySelector('#case-heading')?.textContent === 'Fictional case Alpha'",
                     "return to Alpha for rejection checks")

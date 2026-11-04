@@ -178,6 +178,9 @@ async function initialize() {
     const picker = el('case-picker');
     picker.addEventListener('keydown', focusOverviewFromCasePicker);
     picker.addEventListener('change', () => {
+      // A repeated selection is not a new case. Keep loaded authority and drafts
+      // intact rather than making a valid same-case action race a redundant read.
+      if (picker.value === caseId) return;
       if (documentIntake.hasDraft()) {
         picker.value = caseId;
         notice('Add the record or discard its intake before switching cases.', true);
