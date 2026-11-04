@@ -196,6 +196,8 @@ async function initialize() {
             'workspace-question-text', 'workspace-status-reason', 'workspace-status-answer',
             'visit-date', 'visit-type', 'visit-notes', 'visit-anchor',
             'visit-amend-date', 'visit-amend-type', 'visit-amend-notes', 'visit-amend-anchor',
+            'option-label', 'dependency-anchor', 'task-label', 'task-owner',
+            'threat-description', 'threat-anchor', 'reviewer-label', 'review-scope',
             'counterevidence-reason', 'safety-detail',
             'flag-reason', 'dimension-note',
             'synthesis-note-text', 'synthesis-note-author',
@@ -211,7 +213,9 @@ async function initialize() {
       active = null; // Reject writes while the next case is loading.
       draftQuestionFilter = null;
       draftFilterCaseId = null;
-      for (const id of ['question-text', 'question-owner', 'owner-label-input', 'note-text',
+      for (const id of ['option-label', 'dependency-anchor', 'task-label', 'task-owner',
+        'threat-description', 'threat-anchor', 'reviewer-label', 'review-scope',
+        'question-text', 'question-owner', 'owner-label-input', 'note-text',
         'report-text', 'evidence-rationale', 'draft-observations',
         'draft-summary', 'draft-assumptions', 'synthesis-note-text', 'synthesis-note-author',
         'counterevidence-reason', 'safety-detail',
@@ -1602,6 +1606,7 @@ el('option-dependency-form').addEventListener('submit', async event => {
       deadline_basis: el('dependency-basis').value, anchor: el('dependency-anchor').value,
     });
     if (requestedCase !== caseId) return;
+    el('dependency-anchor').value = '';
     notice('Dependency #' + created.dependency_id + ' added.'); await refresh();
   } catch (err) { notice(err.message, true); }
 });
@@ -1679,7 +1684,7 @@ el('option-review-form').addEventListener('submit', async event => {
       snapshot_id: el('review-snapshot-choice').value === '' ? null : Number(el('review-snapshot-choice').value),
     });
     if (requestedCase !== caseId) return;
-    el('review-scope').value = '';
+    el('reviewer-label').value = ''; el('review-scope').value = '';
     notice('Reviewer action recorded: ' + outcome.result + '.'); await refresh();
   } catch (err) { notice(err.message, true); }
 });
