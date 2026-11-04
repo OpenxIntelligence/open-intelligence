@@ -213,3 +213,11 @@ h1:focus{outline:2px solid #174b48;outline-offset:5px}
 /* Explicit keyboard access to the bounded original-text reader. */
 .original-text:focus-visible{outline:3px solid #ba8639;outline-offset:3px}
 :is(.original-panel,.intake-panel) .original-text{max-height:min(26rem,calc(100dvh - var(--workspace-offset,24px) - 48px))}
+
+/* Bounded, source-derived patient preparation shortcuts; not clinical triage. */
+.continuity-preparation{margin:18px 0;background:#fff}
+.continuity-preparation-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,235px),1fr));gap:12px;list-style:none;padding:0;margin:14px 0}
+.continuity-preparation-list li{min-width:0;border:1px solid #d5e1d9;border-radius:7px;padding:14px;background:#f9fcf7;overflow-wrap:anywhere}
+.continuity-preparation-list h4{font-size:15px;margin:0 0 8px}
+.continuity-preparation-list p{font-size:13px;margin:8px 0}
+@media(max-width:600px){.continuity-preparation-list{grid-template-columns:minmax(0,1fr)}.continuity-preparation-list button{width:100%}}
