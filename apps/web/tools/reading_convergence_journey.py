@@ -91,6 +91,27 @@ def exercise(cd):
         cd.wait('document.documentElement.scrollWidth<=innerWidth+1', 'doubled text and spacing containment')
         (out/'reading-large-text-390.png').write_bytes(base64.b64decode(cd.command('Page.captureScreenshot', {'format':'png'})['data']))
         cd.evaluate("for(const [e] of window.__readingSizes){for(const p of ['font-size','line-height','letter-spacing','word-spacing'])e.style.removeProperty(p)};delete window.__readingSizes")
+        # An exact current quotation is actionable without inventing
+        # clinical authority. Re-check canonical source/current line on the
+        # actual PG16 API before opening an in-memory question draft.
+        assert cd.evaluate("document.querySelectorAll('[data-testid=source-to-question]').length===1"), 'only the current original may offer a question handoff'
+        original = cd.evaluate("document.querySelector('[data-testid=source-to-question]').closest('[data-testid=source-finding]').textContent")
+        assert 'line 9' in original and 'Amended fictional marker' in original
+        before = cd.evaluate("window.__readingRequests")
+        cd.evaluate("document.querySelector('[data-testid=source-to-question]').click()")
+        cd.wait("Boolean(document.querySelector('[data-view=investigations]')) && Boolean(document.querySelector('[data-testid=question-draft-editor]'))",
+                'freshly authorized source-linked draft from original reading')
+        assert cd.evaluate("window.__readingRequests") == before + 1, 'handoff must perform one fresh World Model read, not a question save or model execution'
+        assert cd.evaluate("document.querySelector('[data-testid=question-draft-editor]').textContent.includes('line 9')"), 'current v2 source line retained'
+        assert cd.evaluate("document.querySelector('[data-testid=question-draft-editor] code').textContent.startsWith('SRC-')"), 'original source ID retained'
+        assert cd.evaluate("!document.querySelector('[data-testid=composer-context]') && !document.querySelector('[data-testid=saved-source-question]')"), 'handoff cannot implicitly preflight or save'
+        navigate('Records')
+        navigate('Investigations')
+        assert cd.evaluate("Boolean(document.querySelector('[data-testid=question-draft-editor]'))"), 'same-patient navigation preserves deliberate unfinished question'
+        cd.evaluate("document.querySelector('[data-testid=discard-question-draft]').click()")
+        cd.wait("!document.querySelector('[data-testid=question-draft-editor]')", 'draft explicitly discarded before later question flows')
+        navigate('Records')
+        print('PASS READING QUESTION HANDOFF: actual quoted v2 statement, one fresh PG source revalidation, no auto-preflight/write, editable draft, navigation continuity and explicit discard.')
         print('PASS READING CONVERGENCE: actual source response; current/historical filter; source-adjacent quotations; retained reading state with no requests; refresh reset; keyboard provenance and focus recovery; 320/390/768/1280 layouts and doubled-text/short-height checks.')
     finally:
         cd.evaluate("if(window.__readingFetch){window.fetch=window.__readingFetch;delete window.__readingFetch;delete window.__readingRequests}")
