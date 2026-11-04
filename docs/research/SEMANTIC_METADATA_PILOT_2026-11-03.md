@@ -17,11 +17,11 @@
 | Correct abstentions on negatives | 24 |
 | False acceptances on negatives | 0 |
 | Exact overall accuracy (not a clinical metric) | 63.0% |
-| Total separate safety and harness tests | 30 / 30 passed locally |
+| Total separate safety and harness tests | 42 / 42 passed locally |
 | NVIDIA Auto Ontology inference executed | **No** |
 | SQL / patient-data access / external model calls | **No / No / 0** |
 
-The baseline is intentionally *not* tuned to the synonymous language of the reference questions. It only matches literal field/concept names from the known, bounded read-only H1 source projection. It is an engineering floor, **not a clinically meaningful comparator or proof of safety**. The challenge set is authored with the harness, not independently adjudicated; before technology adoption, add held-out and expert-reviewed challenges with separate gold labels. Timing on this local machine is not an apples-to-apples vendor measurement; vendor latency and cost are unmeasured.
+The baseline matches literal field/concept names from the known, bounded read-only H1 source projection, plus a small guard-phrase list for unsafe or out-of-scope wording. Several guard phrases mirror the negative cases' wording, so the 24/24 abstention rate on these authored cases is not independent evidence that the guards generalize; it shows the guards fire on the cases they were written against. It is an engineering floor, **not a clinically meaningful comparator or proof of safety**. The challenge set is authored with the harness, not independently adjudicated; before technology adoption, add held-out and expert-reviewed challenges with separate gold labels. Timing on this local machine is not an apples-to-apples vendor measurement; vendor latency and cost are unmeasured.
 
 Frozen case set canonical SHA-256: `338d79a7536f953f917f464c2c554ae8654c3bbbba1009ee895c88cbe06b96bc`.  
 Projection vocabulary canonical SHA-256: `901fd03a30ed825db93be9f3ebf71f8b70fd81a562cea585a1ee00e748f2ae6f`.
@@ -31,7 +31,7 @@ Projection vocabulary canonical SHA-256: `901fd03a30ed825db93be9f3ebf71f8b70fd81
 - `tools/semantic_contract_probe.py` — a static schema-only projection vocabulary and fail-closed, unreviewed candidate mapping contract; no direct connection to Postgres or any service.
 - `tools/semantic_benchmark.py` — a pure standard-library evaluator with a literal baseline, strict gold-case validation, and an **optional offline replay** mode for external semantic mapping proposals. External replays must provide all challenge IDs, hash the exact manifest and case set, include no SQL/row values/extra keys and retain `unreviewed_proposal` status.
 - `tests/fixtures/semantic_benchmark_cases_v1.json` — 54 independently fictional metadata questions: source identity/version, finding and specimen context, report date/custody, contradiction references, ambiguity, updates, missing fields and unsafe cross-case requests.
-- `tests/test_semantic_benchmark.py` — 19 regression methods covering calibration, deterministic reproducibility, stale IDs, wrong mapping, replay completeness, unsafe payloads and false-review promotion. Together with the 11 earlier boundary tests, 30 tests pass locally.
+- `tests/test_semantic_benchmark.py` — 21 regression methods covering calibration, deterministic reproducibility, stale IDs, wrong mapping, replay completeness, unsafe payloads and false-review promotion. Together with the 11 earlier boundary tests and the 10 native-model tests, 42 tests pass locally.
 - `.github/workflows/semantic-metadata-pilot.yml` — narrowly scoped synthetic-only CI with pinned checkout/Python action SHAs, stdlib tests, frozen-case gate, and source-hash/commit receipts. **Hosted results must be checked on the final PR head; no run is claimed by this document.**
 
 ## Reproduce without credentials

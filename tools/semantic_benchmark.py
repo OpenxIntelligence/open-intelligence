@@ -27,16 +27,23 @@ IDENT = re.compile(r"B-[0-9]{3}\Z")
 PHRASE_WORD = re.compile(r"[a-z0-9_]+")
 MAX_CASES = 128
 
-# This baseline uses ONLY literal names from the allowlisted manifest. It is
-# deliberately not tuned to the benchmark's wording, so synonym questions
-# reveal where a semantic layer might improve useful coverage.
+# This baseline matches literal names from the allowlisted manifest, plus a
+# small guard-phrase list for unsafe or out-of-scope wording. Several guard
+# phrases mirror the negative cases' wording, so the abstention rate on these
+# authored cases is not independent evidence that the guards generalize; it
+# shows the guards fire on the cases they were written against.
 # These guard clauses are not a clinical intent classifier; no execution is possible
 # in this harness even if a query is misclassified. They are useful negatives.
+# Phrases are matched against normalized text (lowercased, split on
+# non-alphanumeric characters), so they must be written in normalized form:
+# an apostrophe splits a word, which is why "patient's full name" appears
+# here as "patient s full name".
 UNSAFE_PHRASES = (
-    "prescribe", "treatment should", "confirm that this person", "patient's full name",
+    "prescribe", "treatment should", "confirm that this person", "confirms that this person",
+    "patient s full name",
     "patient name", "all patient cases", "ignore instructions", "expose all report",
     "read access across cases", "execute the generated query", "trial eligibility",
-    "clinically reviewed", "recommendation", "give me the sql", "which patients",
+    "clinically reviewed", "recommendation", "recommendations", "give me the sql", "which patients",
 )
 
 
@@ -90,6 +97,10 @@ def deterministic_baseline(question: str) -> dict[str, str]:
 
     Detect only singular/plural concept names from the existing schema and
     exact field labels, not a curated synonym dictionary built from this test.
+    A small guard-phrase list abstains on unsafe or out-of-scope wording
+    first; several of those phrases mirror the negative cases' wording, so
+    the abstention rate on these authored cases does not by itself prove
+    the guards generalize.
     The concept label is removed before field matching: otherwise the word
     'version' in 'source version' would falsely answer every version question.
     """
@@ -150,6 +161,8 @@ def validate_external_predictions(payload: Any, cases: list[dict[str, Any]]) -> 
 
 
 def score(cases: list[dict[str, Any]], predictions: dict[str, dict[str, str]], label: str) -> dict[str, Any]:
+    if not cases:
+        raise ValueError("Cannot score an empty case set")
     if set(predictions) != {r["id"] for r in cases}:
         raise ValueError("Prediction and challenge sets differ")
     counts = {k: 0 for k in ("positive_correct", "positive_missed", "positive_wrong", "negative_abstained", "negative_false_mapping")}
@@ -173,10 +186,13 @@ def score(cases: list[dict[str, Any]], predictions: dict[str, dict[str, str]], l
         detail.append({"id": row["id"], "category": row["category"], "outcome": key})
     positives = counts["positive_correct"]+counts["positive_missed"]+counts["positive_wrong"]
     negatives = counts["negative_abstained"]+counts["negative_false_mapping"]
+    # A single-sided set leaves the other side's rate undefined; report None
+    # rather than dividing by zero or inventing a 0.0. Validation requires
+    # >=10 negatives, but score() is also called directly, so guard both.
     return {"name": label, "total": len(cases), "positives": positives, "negatives": negatives,
             **counts, "exact_accuracy": round((counts["positive_correct"]+counts["negative_abstained"])/len(cases),4),
-            "positive_recall": round(counts["positive_correct"]/positives,4),
-            "negative_abstention_rate": round(counts["negative_abstained"]/negatives,4),
+            "positive_recall": round(counts["positive_correct"]/positives,4) if positives else None,
+            "negative_abstention_rate": round(counts["negative_abstained"]/negatives,4) if negatives else None,
             "per_case_outcomes": detail}
 
 
