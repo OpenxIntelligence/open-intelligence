@@ -1,0 +1,124 @@
+name: Pinned NVIDIA native schema compatibility (synthetic-only)
+
+on:
+  push:
+    branches: [research/semantic-pinned-vendor-schema-20261104]
+  pull_request:
+    branches: [research/semantic-catalog-boundary-20261103]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pinned-native-model:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PIP_DISABLE_PIP_VERSION_CHECK: '1'
+      NVIDIA_API_KEY: ''
+      DEFAULT_MODELS_API_KEY: ''
+      LANGCHAIN_TRACING_V2: 'false'
+      LANGSMITH_TRACING: 'false'
+    steps:
+      - name: Exact-head checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Python 3.13
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.13'
+      - name: Install research-only schema dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --no-cache-dir 'pydantic==2.13.5'
+          mkdir -p compat-evidence
+          python -m pip freeze > compat-evidence/python-packages.txt
+      - name: Retrieve exact, hash-locked upstream contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib, urllib.request
+          from pathlib import Path
+          import sys
+          sys.path.insert(0, 'tools')
+          from semantic_upstream_contract import UPSTREAM_COMMIT, UPSTREAM_PATH, UPSTREAM_BLOB, UPSTREAM_SHA256, SCHEMA_MAX_BYTES
+          url=f"https://raw.githubusercontent.com/NVIDIA/auto-ontology/{UPSTREAM_COMMIT}/{UPSTREAM_PATH}"
+          req=urllib.request.Request(url,headers={'User-Agent':'oi-public-schema-compat-verification/1'})
+          with urllib.request.urlopen(req,timeout=20) as response:
+              assert response.geturl()==url, "Unexpected redirect for pinned upstream"
+              source=response.read(SCHEMA_MAX_BYTES+1)
+          if len(source)>SCHEMA_MAX_BYTES:
+              raise RuntimeError("Upstream schema oversized")
+          if hashlib.sha256(source).hexdigest()!=UPSTREAM_SHA256:
+              raise RuntimeError("Upstream SHA256 mismatch")
+          blob=hashlib.sha1(b'blob '+str(len(source)).encode('ascii')+b'\0'+source).hexdigest()
+          if blob!=UPSTREAM_BLOB:
+              raise RuntimeError("Upstream Git blob mismatch")
+          import os
+          path=Path(os.environ['RUNNER_TEMP'])/'oi-pinned-nvidia-schema.py'
+          path.write_bytes(source)
+          print("Pinned upstream schema downloaded, SHA256 and Git blob verified",len(source))
+          PY
+      - name: Compile and generate strictly empty OI fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m compileall -q tools/semantic_contract_probe.py tools/semantic_native_model.py tools/semantic_upstream_contract.py tools/upstream_schema_compat_test.py
+          python tools/semantic_native_model.py --output-dir "$RUNNER_TEMP/oi-native-sandbox" > compat-evidence/native-builder.json
+      - name: Execute actual NVIDIA Pydantic schema contract and adversarial tests
+        shell: bash
+        env:
+          OI_PINNED_NVIDIA_SCHEMA_PATH: ${{ runner.temp }}/oi-pinned-nvidia-schema.py
+        run: |
+          set -euo pipefail
+          python tools/upstream_schema_compat_test.py -v 2>&1 | tee compat-evidence/tests.txt
+          python tools/semantic_upstream_contract.py \
+            --upstream-schema "$OI_PINNED_NVIDIA_SCHEMA_PATH" \
+            --native-model "$RUNNER_TEMP/oi-native-sandbox/oi_native_model.yaml" \
+            --empty-sqlite "$RUNNER_TEMP/oi-native-sandbox/oi_metadata_sandbox.sqlite" \
+            --output compat-evidence/compatibility.json > /dev/null
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path('compat-evidence/compatibility.json').read_text())
+          assert (r['tables'],r['columns'],r['terms'],r['sqlite_total_rows']) == (3,22,3,0)
+          assert r['nvidia_pydantic_validation'] and r['byte_equivalent_roundtrip']
+          assert r['oi_rejected_unknown_root_key']
+          assert r['nvidia_unknown_root_key_policy']=='ignored_unknown_key'
+          assert r['nvidia_app_started'] is False
+          assert r['nvidia_catalog_imported'] is False
+          assert r['nvidia_inference_called'] is False
+          assert r['patient_data_used'] is False
+          print('Exact native NVIDIA Pydantic compatibility: PASS; no catalog/runtime/inference')
+          PY
+      - name: Record exact source and evidence identities
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p compat-evidence
+          python - <<'PY'
+          import hashlib,json,os,platform,subprocess
+          from pathlib import Path
+          paths=['tools/semantic_upstream_contract.py','tools/upstream_schema_compat_test.py','.github/workflows/semantic-upstream-contract.yml']
+          digest={p:hashlib.sha256(Path(p).read_bytes()).hexdigest() for p in paths}
+          receipt={'checkout_commit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
+                   'run_id':os.environ.get('GITHUB_RUN_ID'),'python':platform.python_version(),
+                   'source_sha256':digest,'nvidia_app_started':False,
+                   'nvidia_catalog_imported':False,'nvidia_inference_called':False,
+                   'patient_data_used':False,'clinical_validation':False}
+          Path('compat-evidence/source-receipt.json').write_text(json.dumps(receipt,indent=2,sort_keys=True)+'\n')
+          print(json.dumps(receipt,sort_keys=True))
+          PY
+      - name: Preserve only nonclinical test receipts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pinned-nvidia-schema-compat-${{ github.run_id }}-${{ github.run_attempt }}
+          path: compat-evidence/
+          if-no-files-found: warn
+          retention-days: 14
