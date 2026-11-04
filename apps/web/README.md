@@ -241,3 +241,31 @@ changes during both the request and asynchronous hash verification.
 No result is claimed until the hosted job has passed on this branch's **final
 commit**. Keep parent #193, original frontend #181, patient workspace #179 and
 the separate UX source-owner branches in draft review; do not auto-merge.
+
+
+### One-patient Overview to questions and independent verification
+
+The H1 Overview reuses the existing canonical RegistrySession to display the
+last-authorized patient preparation, in-tab unfinished question, and source
+reassessment counts only when the selected case and question history have
+passed the read-state and patient/case checks. Unknown or inaccessible history
+is not misrepresented as an empty review queue.
+
+**Open verification returns** is available for a current active patient/case
+binding. It navigates to the original separately permission-checked Review
+workspace, where the user must explicitly refresh the inbox. Overview cannot
+submit a return, assign or notify a professional, or approve a clinical action.
+
+Rail, Overview and contextual navigation share a single state-clearing action
+for old/late original quotation packets and source brief previews, without
+silently abandoning same-session authored question drafts or uncertain
+verification-return recovery intent. The existing patient/source/case question,
+access receipt and return histories remain the only owners of those domains.
+
+The real PostgreSQL 16 to FastAPI to built React Chromium journey verifies
+the fourth connected fictional question's immutable return and then follows
+Overview to Review, Questions and Records, with the exact same case, receipt,
+and last-read source-derived World Model. This is neither a clinical service
+nor a patient-identity/consent or licensed-literature workflow. No new package,
+API route or schema migration; this child reuses the original Overview
+projection and test assets from #288 atop #287's verified source workflow.

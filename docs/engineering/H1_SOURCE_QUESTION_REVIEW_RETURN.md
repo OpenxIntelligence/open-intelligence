@@ -62,6 +62,19 @@ claimed by this contribution.
 
 ## Why this integration is necessary
 
+### Subsequent connected-workflow repair
+
+[Draft #287](https://github.com/OpenxIntelligence/open-intelligence/pull/287)
+selectively reuses #278's complete-JSON preparation for queue/new/duplicate
+return responses, without importing its image or migration scope. JSON encoding
+now precedes the final refreshed authority, source-access receipt and commit
+inside the same source-owner transaction. The corresponding client repair keeps
+the original uncertain return intent through eligible same-case import and
+temporary case-metadata failure; authoritative denial or identity changes still
+discard it. The complete authored-question/quotation/return/brief browser
+acceptance uses exact saved-question IDs, including multiple questions for one
+source. [Combined evidence and limits](../project-state/IMPLEMENTATION_EVIDENCE.md).
+
 The existing clinical reference work (#82 → #150/#165/#175/#210) derives its
 review queue from canonical work and persists only immutable append-only review
 receipts. Its original review adapter restricts a nonterminal return to a

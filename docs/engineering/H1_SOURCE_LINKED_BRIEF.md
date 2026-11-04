@@ -109,6 +109,17 @@ after reassessment. Earlier source bytes and question fields are preserved.
 
 ## Acceptance and verification record
 
+### Subsequent whole-question convergence
+
+[Draft #287](https://github.com/OpenxIntelligence/open-intelligence/pull/287)
+connects this unchanged brief owner to authored questions, separately authorized
+exact-quotation inspection and canonical verification-return history. The real
+browser acceptance follows the same authored question through all those steps,
+checks unchanged source provenance after a return and performs another freshly
+authorized download. Review return remains nonterminal and does not alter the
+brief's explicit no-clinical-approval state. [Combined evidence](../project-state/IMPLEMENTATION_EVIDENCE.md)
+is separate from the historical acceptance record below.
+
 The new tests first reproduced missing behavior: the new API route returned
 404 instead of its required authentication refusal; ten new client cases failed
 on the absent preparation workflow while the 21 existing source-question cases

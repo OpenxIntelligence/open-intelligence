@@ -4,6 +4,7 @@ import {RegistrySession} from './registry-client';
 import {SourceIntake} from './source-intake-view';
 import {WorldModelView} from './world-model-view';
 import {ReviewPanel} from './review-panel';
+import {PatientContinuity} from './patient-continuity-view';
 import './styles.css';
 import './source-intake.css';
 const session=new RegistrySession();
@@ -25,24 +26,32 @@ function App(){
  useEffect(()=>{if(!state.connected){setPatientId('');setConfirmed(false)}},[state.connected]);
  useEffect(()=>{const clear=()=>session.disconnect();window.addEventListener('pagehide',clear);return()=>window.removeEventListener('pagehide',clear)},[]);
   const busy=state.phase==='creating'||state.phase==='reading'||state.importOutcome==='sending'||state.questionSavePhase==='saving'||state.reviewReturnPhase==='saving';
+ function navigate(nextSection:string){
+  // Navigation changes only the local view; revoke transient quotation/brief
+  // previews and late responses without discarding authored drafts or an
+  // uncertain verification-return intent from the same active patient/case.
+  session.dismissSourceQuotePacket();
+  session.dismissSourceBrief();
+  setSection(nextSection);
+ }
  function disconnect(){session.disconnect();setToken('');setPatientId('');setConfirmed(false);setSection('Overview');}
  return <div className="app">
   <a className="skip" href="#main">Skip to workspace</a>
   <aside className="rail" aria-label="Workspace navigation">
    <div className="brand"><span className="mark" aria-hidden="true">oi</span><span>Open<br/>Intelligence</span></div>
    <div className="environment">Development · fictional identities only</div>
-   <nav aria-label="Patient workspace">{navigation.map(name=><button type="button" key={name} aria-current={name===section?'page':undefined} onClick={()=>setSection(name)}><span>{name}</span>{name==='Records'?<span className="nav-hint">Original records</span>:name==='Journey'?<span className="nav-hint">Source view</span>:name==='Investigations'?<span className="nav-hint">Source questions</span>:name==='Review'?<span className="nav-hint">Verification returns</span>:null}</button>)}</nav>
+   <nav aria-label="Patient workspace">{navigation.map(name=><button type="button" key={name} aria-current={name===section?'page':undefined} onClick={()=>navigate(name)}><span>{name}</span>{name==='Records'?<span className="nav-hint">Original records</span>:name==='Journey'?<span className="nav-hint">Source view</span>:name==='Investigations'?<span className="nav-hint">Source questions</span>:name==='Review'?<span className="nav-hint">Verification returns</span>:null}</button>)}</nav>
    <div className="rail-note">One patient context.<br/>Original sources.<br/>Human clinical authority.</div>
   </aside>
   <div className="body"><header className="topbar"><span>Patient workspace <span className="muted">/ {section}</span></span><span className={'connection '+readiness} data-testid="readiness">{readiness==='checking'?'Checking API':readiness==='ready'?'PostgreSQL API ready':'API unavailable'}</span></header>
    <main id="main" tabIndex={-1}>
     <div className="heading"><div><p className="eyebrow">OPEN INTELLIGENCE · H1</p><h1>{section==='Overview'?'Start with the right patient.':section}</h1><p className="lede">{section==='Overview'?'A connected foundation for the patient’s story, evidence and care.':section==='Records'?'Inspect authorized fictional case mappings, original source history and unreviewed source statements.':section==='Journey'?'View source-linked chronology, uncertainty and disagreements without implying clinical assessment.':section==='Investigations'?'Prepare exact source context, save a question and inspect its current or reassessment status. No AI execution or clinical approval.':'Inspect saved questions, record a source verification return and preserve its history as sources change. Clinical approval remains unavailable.'}</p></div></div>
     <div className="boundary" role="note"><strong>Development workspace, not a clinical service.</strong> Use operator-issued synthetic credentials and fictional identities only. These are not patient accounts, verified consent or professional sign-off.</div>
-    {section==='Journey'||section==='Investigations'?<WorldModelView session={session} state={state} busy={busy} showQuestions={section==='Investigations'} onOverview={()=>setSection('Overview')} onInvestigations={()=>setSection('Investigations')} onReview={()=>setSection('Review')}/>:section==='Review'?<ReviewPanel key={state.patient?.patient_id??'no-patient'} session={session} state={state} busy={busy} onOverview={()=>setSection('Overview')} onInvestigations={()=>setSection('Investigations')}/>:section==='Records'?<section className="panel records-workspace" data-testid="records-workspace" aria-labelledby="records-heading">
+    {section==='Journey'||section==='Investigations'?<WorldModelView session={session} state={state} busy={busy} showQuestions={section==='Investigations'} onOverview={()=>navigate('Overview')} onInvestigations={()=>navigate('Investigations')} onReview={()=>navigate('Review')}/>:section==='Review'?<ReviewPanel key={state.patient?.patient_id??'no-patient'} session={session} state={state} busy={busy} onOverview={()=>navigate('Overview')} onInvestigations={()=>navigate('Investigations')}/>:section==='Records'?<section className="panel records-workspace" data-testid="records-workspace" aria-labelledby="records-heading">
      <span className="step">CANONICAL SOURCE OWNER / ORIGINALS</span>
      <h2 id="records-heading">Original source records</h2>
      <p>Shows source-reported information from the existing scoped PostgreSQL API. Original-text inspection and deliberate import require separate server permissions. AI interpretation, clinical decisions, verified identity and consent are not supplied by this screen. Information is current only at its last successful check.</p>
-     {!state.patient?<div data-testid="records-no-patient"><p>Open an authorized fictional patient in Overview before loading records.</p><button onClick={()=>setSection('Overview')}>Go to patient overview</button></div>:
+     {!state.patient?<div data-testid="records-no-patient"><p>Open an authorized fictional patient in Overview before loading records.</p><button onClick={()=>navigate('Overview')}>Go to patient overview</button></div>:
      <div>
       <p className="record-scope" data-testid="records-patient"><strong>Selected patient:</strong> <code>{state.patient.patient_id}</code></p>
       <button className="primary" data-testid="load-cases" disabled={state.recordsPhase.startsWith('loading')||busy} onClick={()=>void session.loadCases()}>Check authorized cases</button>
@@ -91,6 +100,7 @@ function App(){
       </section>}
      </div>}
     </section>:section!=='Overview'?<section className="panel"><h2>{section} is not connected</h2><p>The existing reference application retains this workflow. No placeholder patient data, generated conclusions or clinical actions are shown here.</p><p>The source, evidence and review owners must be integrated with the same scoped patient API before this becomes available.</p><button onClick={()=>setSection('Overview')}>Return to overview</button></section>:<>
+    <PatientContinuity state={state} onNavigate={navigate}/>
     <div className="grid">
      <section className="panel" aria-labelledby="access-heading"><span className="step">01 / ACCESS</span><h2 id="access-heading">Connect your session</h2><p>Permission is checked by the API on every request. Your credential stays in this tab’s memory and is cleared on disconnect or reload.</p>
       {!state.connected?<form onSubmit={e=>{e.preventDefault();session.connect(token);setToken('')}}><label htmlFor="credential">Synthetic access credential</label><input id="credential" name="credential" type="password" autoComplete="off" autoCapitalize="none" spellCheck={false} value={token} onChange={e=>setToken(e.target.value)} required minLength={32} maxLength={256}/><button type="submit" className="primary">Connect credential</button></form>:<div><p className="session-status">Credential present · grants checked by server</p><button onClick={disconnect}>Disconnect and clear</button></div>}
