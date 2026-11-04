@@ -23,6 +23,28 @@ The browser journeys require an installed Chrome or Chromium executable. GitHub 
 
 For the demonstration: create a question in `CASE-ALPHA`, save an investigation draft linked to the pathology document, acknowledge it in demo mode, load the example amendment, and import it. The prior investigation becomes `stale`, the question reopens, and the original source remains accessible. Draft a replacement against the amended document. `CASE-BETA` remains unaffected.
 
+### Add an ordinary text record
+
+The **Add a record** section accepts UTF-8 `.txt` files without a custom report
+header. Use `examples/synthetic/plaintext-record.txt`, which is independently
+fictional. Preview the file, select exact source passages if needed, enter the
+record's document reference/type/dates, and confirm its case and transcription.
+The original bytes, including BOM and CRLF if present, remain unchanged. The
+saved source appears in the existing timeline, source reader, question/draft
+workspace and Composer. Download retrieves the original file, not generated
+text. An amendment uses the same document reference and latest version number.
+
+Selected passages and their statuses are explicitly labeled as manual entries,
+with clinical review not performed, throughout patient views, AI inputs and
+exports. They are not inferred or verified clinical facts. The existing
+structured fixture importer is retained under **Structured development fixtures**.
+
+This increment supports text up to 64 KiB, 512 lines and 30 selected single-line
+passages within a 128 KiB request. PDF/OCR and post-save annotation editing are
+not implemented. Saving an original with no passages does not allow adding
+passages afterward in this version. See the [intake contract and verification
+record](docs/engineering/DOCUMENT_INTAKE.md) for API, source ownership and limits.
+
 **Scope and warnings:** this is local-only software with no authentication, no access controls suitable for PHI, no clinical inference, no live literature or trials, and no clinical review. Never insert real patient data. The supported structured test format is `OI-SYNTHETIC-REPORT/1`, not a general-purpose clinical document parser. Source statements are author-supplied within report bytes. There is no treatment recommender, trial matching, or AI agent. The demo reviewer acknowledgment cannot attest professional credentials. The engineering controls are not evidence of medical safety or regulatory status.
 
 The project distribution license remains undecided. Public source visibility is not an open-source license grant. All test reports and UI code are independently authored for this repository.
@@ -164,6 +186,373 @@ Remaining proof step: a live-server run against the real API with
 the operator key set, before the demo. The API completion itself
 was verified separately on 2026-10-31.
 
+## Consolidated case packet export
+
+One printable, downloadable packet per fictional case, composed from
+existing projections and never re-derived.
+
+```text
+GET /api/cases/{CASE-ID}/packet
+GET /api/cases/{CASE-ID}/packet?format=text
+```
+
+- JSON by default; plain text on `?format=text` (`text/plain`).
+- Backend: `src/open_intelligence/packet.py` calls `CaseStore.state()`,
+  `build_patient_mission`, `case_timeline`, `changes_since_review`,
+  `list_investigations`/`get_investigation`, and
+  `case_discovery_links`, then assembles. Options reuse
+  `state()["options"]` (which itself comes from `option_view`), so
+  citations stay identical to the individual views.
+- Cover block carries case id, fictional/demo marking, a
+  generated-from statement, and the report position (ledger `as_of`
+  event plus source/statement/question/draft counts). Every
+  page-equivalent block repeats the fictional marking. A limitations
+  block keeps unknowns unknown and pending pending; hypotheses stay
+  labeled `kind=hypothesis`, `review_state=pending`, separate from
+  facts. Amendments supersede in history; nothing is deleted.
+- Global catalogs (`evidence_versions`, `rights_sources`,
+  `discovery_items`) are shared across cases and are excluded to
+  preserve strict case isolation. Case-scoped links to them
+  (assessments, broker links, discovery links) are included with
+  anchors. Bibliography and the cross-case incoming board are not
+  case data and are excluded.
+- Unknown case ids return `422 Unknown case` through the existing
+  store boundary, as elsewhere.
+- UI: a `Case packet` section in the case view with `Download packet
+  (JSON)`, `Download packet (text)`, and `Print packet` buttons, plus
+  a plain-language summary. Rendering is `textContent`-only via the
+  existing `node()`/`pill()` helpers, reuses existing CSS classes
+  only, labels every item fictional, and follows the existing
+  case-switch guards (`readyCase`, `requested !== caseId`,
+  `clear('packet-summary')`). Print uses a new `@media print` hook
+  for `#packet` following the existing print patterns (hide actions,
+  high-contrast fictional pills).
+- Tests: `tests/test_packet_export.py` (store + HTTP + UI-contract).
+  Seeded packets equal their builders citation-for-citation; empty
+  packets state emptiness without invention; text has no markup
+  leakage; every block carries the fictional marking; isolation
+  holds; unknown ids return 422.
+
+Nothing in this slice was executed here: files were authored only.
+A reviewer runs the full suite, commits, pushes, and opens a draft PR.
+## Patient attention list (read-only projection)
+
+One plain-language list of everything still open for the patient — derived,
+never invented. No new tables; the projection composes only existing ledger
+rows. Fictional/demo data only.
+
+```text
+GET /api/cases/{CASE-ID}/patient-attention
+```
+
+Each entry carries a plain-language title (framing at most 30 words), a kind,
+a recorded date where one exists, and a citation to its record id:
+
+- `open_question`: questions with state `open` (citation: question id).
+- `pending_review`: draft snapshots awaiting demo review, and discussion
+  items with review state `needs_review` (citation: snapshot or option id).
+- `follow_up`: open preparation tasks (`not_started`, `in_progress`,
+  `blocked`), sourced deadline dependencies, and recorded threats
+  (citation: task, dependency, or threat id). Completing a task (`done` or
+  `cancelled`) removes it on the next read.
+- `unanswered`: stale snapshots whose question is still open (citation:
+  snapshot id).
+
+Ordering uses recorded YYYY-MM-DD dates only (sourced deadline and threat
+dates), oldest first. Entries without a recorded date sort last with the
+explicit marker `no date recorded`. No urgency, priority, or clinical meaning
+is inferred, and no soonness filter is applied. Nothing here authorizes,
+schedules, or executes anything. Deadlines and threats for withdrawn,
+expired, or rejected discussion items stay historical in the Options panel
+and are not listed here.
+
+The patient view now includes a "What needs attention" panel under the same
+record, with FICTIONAL labels on every item, text-only rendering, and the
+same case-switch guards as the rest of the workspace. An empty case shows an
+honest empty state that does not imply completeness. Unknown case ids return
+422, as elsewhere.
+
+Verification: see `tests/test_patient_attention.py` (store, HTTP, and
+UI-contract checks). This slice was authored without execution; a reviewer
+runs the suite, commits, pushes, and opens a draft PR.
+## Visit records slice (FICTIONAL recorded history)
+
+Visits are plain recorded history — dates and notes, never directives,
+never due dates. The slice is additive: two new tables, three new routes,
+one new case-view panel, and `tests/test_visit_records.py`. No existing
+table, route, test, or review-authority behavior was changed.
+
+- Tables: `visits` (one logical record per case) plus append-only
+  `visit_versions` (recorded date, free-text visit type, notes, optional
+  source anchor, review state `recorded`, current/superseded state,
+  `previous_id` chain). Amendments supersede the old version and append a
+  new current version; history rows are never updated or deleted.
+- Routes: `POST /api/cases/{case}/visits` records version 1;
+  `POST /api/cases/{case}/visits/{id}/amend` appends the next version;
+  `GET /api/cases/{case}/visits` lists this case's visits with full
+  history in version order. Unknown case ids return 422, as elsewhere.
+- Descriptive-only guard at write time, same class as the existing
+  option/discovery guards: directive and prescriptive wording (should,
+  must, need to, order, start/stop treatment, seek care, watch for,
+  effective/proven/benefit, and equivalents such as recommend, prescribe,
+  or eligible) is rejected in visit type, notes, and source anchor with a
+  clear error. Base verb forms are rejected while past-tense history
+  (ordered, started) stays writable. Recorded dates are history only: JSON
+  and UI label them "recorded date — not a clinical due date".
+- UI: a "Visits" panel in the case view with FICTIONAL labels throughout,
+  per-visit history (oldest first), and "no source recorded" wherever a
+  visit carries no source anchor. Rendering uses textContent only with
+  existing CSS classes; the case-switch guard and clearing cover every new
+  field, and stale in-flight responses are discarded after case changes.
+- Review state is always `recorded`: visits are unreviewed history, never
+  a clinical conclusion, instruction, or treatment guide. Amending a visit
+  touches no other record, and no case's visits appear in another case.
+
+Run the new checks with the usual suite (`python -m unittest discover -s
+tests -v`); the slice adds store, HTTP, and UI-contract coverage. Nothing
+here was executed by the authoring agent; a reviewer runs the suite.
+## Case search and triage list (read-only)
+
+Find fictional cases and see work counts at a glance, without leaking
+one case's contents into another view. This slice adds no tables, no
+writes, no clinical urgency, and no treatment logic.
+
+```text
+GET /api/cases?search=<substring>&sort=recent|id
+```
+
+- `GET /api/cases` without a query still returns the existing
+  id-ordered `[{case_id, label, synthetic}]` rows unchanged.
+- With `search` or `sort` present, each item returns only:
+  `case_id`, `label`, `created_at`, `last_activity_at`,
+  `last_activity_event_id`, `synthetic`, and
+  `counts: {sources, open_questions, pending_reviews,
+  overdue_follow_ups}`. No source text, finding quotes, question
+  text, draft summaries, or notes appear in the list payload.
+- Search matches case id and display label substrings only,
+  case-insensitive. Empty search returns all cases. A term matching
+  nothing returns `[]`, never an error.
+- `sort=id` orders by case id (existing order). `sort=recent`
+  orders by latest recorded activity (latest event id per case).
+  Any other sort returns the existing `422` boundary.
+- Counts derive from the same tables and state filters the case
+  views use: current sources (`state='current'`), open questions
+  (`state='open'`), drafts awaiting demo review
+  (`snapshots.state='draft'`). Stale snapshots are preserved
+  history; their rework signal is the reopened open question.
+  `overdue_follow_ups` is always `0` because the demo ledger
+  contains no follow-up due dates, urgency, or priority — none is
+  shown or inferred. This is not a clinical triage list.
+
+The `#case-search` panel provides a search box and sort control,
+plain-language counts, a `FICTIONAL` label on every item, an honest
+empty state, and an `Open this case` action that reuses the existing
+case-picker change path (including its unfinished-draft guard) and
+loads the unchanged case view. Rendering uses `textContent` only,
+reuses existing CSS classes, clears the list on every response, and
+discards stale responses by sequence. The search box and sort are
+global list controls, not per-case drafts, so a case switch does not
+clear them; the list refreshes after workspace changes via the
+existing event list.
+
+Files: `src/open_intelligence/case_search.py` (new read-only
+projection), `web/case_search.js` (new renderer),
+`tests/test_case_search.py` (store + HTTP + UI-contract),
+`src/open_intelligence/__main__.py` (query handling and static
+route only), `web/index.html` (new section, nav link, script tag
+only). No existing behavior, contract, or test was changed.
+
+Reviewer to run (not run here; shell execution is blocked in this
+authoring session):
+
+```bash
+PYTHONPATH=src python -m compileall -q src
+node --check web/case_search.js
+PYTHONPATH=src python -m unittest tests.test_case_search -v
+PYTHONPATH=src python -m unittest discover -s tests
+```
+
+Limitations: no pagination, no follow-up ledger, no urgency model,
+and no cross-case clinical comparison. The list shows workflow
+counts only and must not be described as clinical triage.
+## Investigation workspace slice
+
+Durable investigation questions that survive amendments and stay linked to
+their evidence. All records below are fictional demo data; nothing here is
+clinically reviewed and nothing selects a treatment.
+
+- New append-only tables: `workspace_questions` (question text, status,
+  created timestamp plus derived created date), `workspace_question_history`
+  (every status change with its reason and preserved answer), and
+  `workspace_question_links` (question-to-source-version records).
+  Statuses are restricted to `open`, `in_progress`, `answered`,
+  `needs_review` in both SQL checks and Python validation.
+- Routes (case-scoped; unknown case returns 422 as elsewhere):
+  `POST /api/cases/{case}/workspace-questions` creates a question;
+  `GET .../workspace-questions` lists questions with links and history;
+  `POST .../workspace-questions/{id}/links` links a current source version;
+  `POST .../workspace-questions/{id}/links/{link}/unlink` supersedes a link
+  (the row is kept, never deleted);
+  `POST .../workspace-questions/{id}/status` records a human status change
+  with a required reason. Answer text is only accepted when marking a
+  question `answered`.
+- Questions are never auto-answered: only the explicit status route moves a
+  question to `answered`. When a linked source version is amended, every
+  `answered` question with an active link to the superseded version reopens
+  to `needs_review` in the same import transaction; its prior answer is
+  preserved in history and its current answer reads back empty. Unlinked or
+  unanswered questions are untouched, as is every other case.
+- UI: an "Investigations" panel (`#workspace-investigations`) in the case
+  view lists each question with its status pill, linked sources as
+  `DOCUMENT@VERSION` with source and link states, and per-question history.
+  Every item carries a FICTIONAL label; answers render only for `answered`
+  questions while history keeps earlier recorded answers for review.
+  Rendering uses existing CSS classes and text-only DOM updates, follows
+  the case-switch guards, and discards stale responses after a case change.
+- Tests: `tests/test_investigations.py` covers the store
+  (create → link → answer → amend → `needs_review` with history intact,
+  reason/answer rules, append-only links, case isolation), the HTTP routes
+  (including 422 for unknown cases and cross-case links), and the UI/server
+  contract (panel markup, case-scoped text-only renderer, route presence).
+
+Limitations: no authentication or real-patient support; amendment reopening
+applies only to source-version amendments, not to evidence or rights changes;
+the demo reviewer label is unverified and is not clinical sign-off.
+## Source provenance and amendment history
+
+A read-only projection over existing sources, snapshots, and events.
+No new tables, no new writes. Every call reads live ledger state, so an
+amendment appears as a new chain link and chain event the moment its
+import commits. Superseded versions stay retrievable with anchors intact.
+
+```text
+GET /api/cases/{CASE-ID}/provenance
+```
+
+Per source document, the payload lists the ordered chain original →
+amendments. Each link carries version number, received date
+(`received_at` plus `received_date`), exact anchor (`DOCUMENT@VERSION`),
+state (`current`/`superseded`), supersession links, the import event that
+recorded it, and the saved investigations citing it with their ledger
+review state quoted verbatim (`draft`, `reviewed_in_demo`, `stale`).
+Per-document `chain_events` record each receipt and which investigations
+were marked stale. Unknown case IDs return 422 with `Unknown case`, as
+elsewhere. Case isolation holds: only the requested case's rows appear.
+
+The portal adds a **Provenance** panel after the timeline. It lists
+documents, expands each chain oldest-first, marks superseded versions
+explicitly while keeping them viewable with anchors, and shows citing
+work in plain language. Every item is labeled FICTIONAL. Rendering uses
+existing CSS classes and `textContent` only, follows the selected case,
+clears on case switch, discards stale responses, and refreshes when the
+ledger changes. It makes no medical judgment and suggests no treatment.
+
+Falsifiable coverage lives in `tests/test_provenance.py` (store +
+HTTP + UI-contract): a twice-amended source shows a 3-link ordered chain
+with correct flags, superseded text stays retrievable, a single-version
+source shows one link, citing review states match the ledger exactly,
+case isolation holds, and unknown cases return 422.
+## Consent and identity records slice (display and history only)
+
+Fictional consent entries and identity-qualifier notes are inspectable
+records. This slice adds no identity resolution, matching, or cross-case
+logic, no treatment selection, and no clinical approval.
+
+Tables (additive, in `src/open_intelligence/store.py`):
+
+- `consent_records`: one row per fictional consent (`scope_text`,
+  `date_recorded`, current `status`, optional same-case source anchor,
+  `review_state='display_only'`).
+- `consent_versions`: append-only history. Version 1 is `active`;
+  withdrawal appends a `withdrawn` version with a reason. Prior versions
+  stay, never deleted.
+- `identity_qualifiers`: one fictional note per row (`qualifier_text`,
+  required `anchor_source_version_id` in the same case, optional
+  `anchor_line`, `date_recorded`, `review_state='display_only'`).
+
+Statuses are restricted to `active` and `withdrawn`. Withdrawing changes
+only its own status pointer and version chain; no other consent,
+qualifier, source, question, or snapshot is touched. Qualifiers never
+alter any existing identity field.
+
+Routes (all case-scoped; unknown case returns 422 `Unknown case`):
+
+```text
+POST /api/cases/{CASE-ID}/consents
+POST /api/cases/{CASE-ID}/consents/{ID}/withdraw
+GET  /api/cases/{CASE-ID}/consents
+POST /api/cases/{CASE-ID}/identity-qualifiers
+GET  /api/cases/{CASE-ID}/identity-qualifiers
+```
+
+`GET /api/cases/{CASE-ID}/state` also includes `consents` (with ordered
+`versions`) and `identity_qualifiers` (with `anchor_label`) for the
+current case only.
+
+UI: the case view has a `Consent & identity` panel (`web/index.html`,
+`web/consent.js`) with plain-word forms, current consents, full history
+per consent oldest-first, and qualifier notes with source anchors.
+Every item carries a FICTIONAL label. Rendering uses `textContent` only,
+never `innerHTML` with data. Case switching guards unfinished consent
+text and clears consent inputs; stale responses are discarded by
+sequence, and lists are cleared on switch so no case's data appears in
+another case's view.
+
+Verify with:
+
+```bash
+PYTHONPATH=src python -m unittest tests.test_consent_identity -v
+```
+
+Limitations: fictional/demo records only, no real consent management, no
+verified identity, no access control, no clinical meaning. Physician
+authority preserved; hypotheses stay separate from facts.
+## Clinician overview projection
+
+The case view now includes a read-only **Clinician overview** panel. It
+organizes the recorded file for one fictional case; it makes no care decision.
+
+```text
+GET /api/cases/{CASE-ID}/clinician-overview
+```
+
+The projection is pure: `build_clinician_overview(state)` derives six
+sections from the current `CaseStore.state()` snapshot with no new tables
+and no writes — current sources with version numbers, open questions,
+pending reviews, follow-up tasks, goals count, and journey stage. Every
+item carries a citation to its source version or record id. Pending
+reviews list draft snapshots, stale snapshots whose question is still
+open, options with `needs_review`, and quarantined deliveries — the same
+ledger the workspace already shows, not a second truth. Follow-up tasks
+list preparation tasks that are not `done` or `cancelled`, exactly as
+recorded. Historical stale snapshots whose question was later addressed
+stay in history but leave pending. Goals are not recorded in the current
+synthetic ledger, so the count is honestly `0` with an explicit note.
+Journey stage is a workflow label only (`awaiting_sources`,
+`ready_to_define_question`, `investigation_in_progress`,
+`review_required`, `reviewed_in_demo`); it is `review_required` whenever
+pending is non-empty, including drafts waiting for acknowledgment.
+
+Both the JSON and the panel display the exact disclaimer:
+
+```text
+Summary of the recorded case file only — not a clinical recommendation, not a treatment decision.
+```
+
+The projection's own wording avoids authorize/prescribe/order/
+recommend/direct-care language; the disclaimer carries the word
+"recommendation" only in negated form. Verbatim question, task, and
+option labels are quoted ledger facts. Empty sections render honest
+empty text, never invented content. The renderer uses existing CSS
+classes and `textContent` only, labels every item FICTIONAL, follows the
+selected case, discards stale responses after case switches, and
+refreshes when the workspace changes. Unknown case ids return `422`
+with `Unknown case`, as elsewhere.
+
+This slice adds no identity, consent, goals ledger, PHI support,
+diagnostic inference, treatment selection, or clinical approval. See
+`tests/test_clinician_overview.py` for the store, HTTP, and UI-contract
+checks, including case isolation and a view-wide directive-wording scan.
 ## Evidence quality and limitations panel
 
 Each fictional source version can carry zero or more human-authored

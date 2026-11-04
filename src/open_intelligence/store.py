@@ -303,6 +303,14 @@ CREATE TABLE IF NOT EXISTS assertions (
   source_line INTEGER NOT NULL,
   UNIQUE(source_version_id,finding_key)
 );
+CREATE TABLE IF NOT EXISTS document_intake_metadata (
+  source_version_id INTEGER PRIMARY KEY REFERENCES source_versions(id),
+  filename TEXT NOT NULL, media_type TEXT NOT NULL,
+  extraction_method TEXT NOT NULL, annotation_method TEXT NOT NULL,
+  manual_transcription_confirmed INTEGER NOT NULL CHECK(manual_transcription_confirmed=1),
+  clinical_review TEXT NOT NULL CHECK(clinical_review='not_performed'),
+  review_sha256 TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS questions (
   id INTEGER PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(case_id),
   question TEXT NOT NULL, state TEXT NOT NULL CHECK(state IN ('open','addressed')),
@@ -605,6 +613,95 @@ CREATE TABLE IF NOT EXISTS biological_inventory_assertions (
 CREATE INDEX IF NOT EXISTS idx_biological_assets_case ON biological_assets(case_id, asset_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_assertions_asset ON biological_inventory_assertions(asset_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_assertions_source ON biological_inventory_assertions(source_version_id);
+-- Visit records: plain recorded history, never directives or due dates.
+-- visits holds one logical record identity per case; visit_versions holds
+-- the append-only version chain. An amendment supersedes the old version
+-- and appends a new current version with a previous_id link; history rows
+-- are never updated or deleted. review_state is always 'recorded': visits
+-- are unreviewed history, never a clinical conclusion or instruction.
+CREATE TABLE IF NOT EXISTS visits (
+  id INTEGER PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(case_id),
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS visit_versions (
+  id INTEGER PRIMARY KEY, visit_id INTEGER NOT NULL REFERENCES visits(id),
+  case_id TEXT NOT NULL REFERENCES cases(case_id),
+  version INTEGER NOT NULL,
+  recorded_date TEXT NOT NULL,
+  visit_type TEXT NOT NULL,
+  notes TEXT NOT NULL,
+  source_anchor TEXT,
+  review_state TEXT NOT NULL CHECK(review_state IN ('recorded')),
+  state TEXT NOT NULL CHECK(state IN ('current','superseded')),
+  previous_id INTEGER REFERENCES visit_versions(id),
+  created_at TEXT NOT NULL,
+  UNIQUE(visit_id,version)
+);
+CREATE INDEX IF NOT EXISTS idx_visits_case ON visits(case_id, id);
+CREATE INDEX IF NOT EXISTS idx_visit_versions_visit ON visit_versions(visit_id, version);
+CREATE INDEX IF NOT EXISTS idx_visit_versions_case ON visit_versions(case_id, state);
+-- Investigation workspace: durable questions that survive amendments and stay
+-- linked to exact source versions. Questions are never auto-answered: only an
+-- explicit recorded status change moves them, and an amendment only reopens an
+-- answered question to needs_review. Links are append-only records; unlinking
+-- supersedes a link row, never deletes it. History rows are never updated.
+CREATE TABLE IF NOT EXISTS workspace_questions (
+  id INTEGER PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(case_id),
+  question TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('open','in_progress','answered','needs_review')),
+  answer TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS workspace_question_history (
+  id INTEGER PRIMARY KEY,
+  question_id INTEGER NOT NULL REFERENCES workspace_questions(id),
+  case_id TEXT NOT NULL REFERENCES cases(case_id),
+  previous_status TEXT CHECK(previous_status IN ('open','in_progress','answered','needs_review')),
+  new_status TEXT NOT NULL CHECK(new_status IN ('open','in_progress','answered','needs_review')),
+  reason TEXT NOT NULL, answer TEXT, recorded_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS workspace_question_links (
+  id INTEGER PRIMARY KEY,
+  question_id INTEGER NOT NULL REFERENCES workspace_questions(id),
+  case_id TEXT NOT NULL REFERENCES cases(case_id),
+  source_version_id INTEGER NOT NULL REFERENCES source_versions(id),
+  state TEXT NOT NULL CHECK(state IN ('active','superseded')),
+  reason TEXT NOT NULL, created_at TEXT NOT NULL,
+  superseded_at TEXT, superseded_reason TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_workspace_questions_case ON workspace_questions(case_id, id);
+CREATE INDEX IF NOT EXISTS idx_workspace_history_question ON workspace_question_history(question_id, id);
+CREATE INDEX IF NOT EXISTS idx_workspace_links_question ON workspace_question_links(question_id, id);
+CREATE INDEX IF NOT EXISTS idx_workspace_links_source ON workspace_question_links(source_version_id);
+-- Consent & identity slice: display and history only. No identity
+-- resolution, matching, or cross-case logic. Consent versions are
+-- append-only; withdrawal adds a withdrawn version and updates only the
+-- current-status pointer. Qualifiers are notes attached to source anchors
+-- the case already has; they never alter identity fields.
+CREATE TABLE IF NOT EXISTS consent_records (
+  id INTEGER PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(case_id),
+  scope_text TEXT NOT NULL, date_recorded TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('active','withdrawn')),
+  anchor_source_version_id INTEGER REFERENCES source_versions(id),
+  review_state TEXT NOT NULL CHECK(review_state IN ('display_only')) DEFAULT 'display_only',
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS consent_versions (
+  id INTEGER PRIMARY KEY, consent_id INTEGER NOT NULL REFERENCES consent_records(id),
+  version INTEGER NOT NULL, status TEXT NOT NULL CHECK(status IN ('active','withdrawn')),
+  reason TEXT, date_recorded TEXT NOT NULL, recorded_at TEXT NOT NULL,
+  UNIQUE(consent_id, version)
+);
+CREATE TABLE IF NOT EXISTS identity_qualifiers (
+  id INTEGER PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(case_id),
+  qualifier_text TEXT NOT NULL, anchor_source_version_id INTEGER NOT NULL REFERENCES source_versions(id),
+  anchor_line INTEGER, date_recorded TEXT NOT NULL,
+  review_state TEXT NOT NULL CHECK(review_state IN ('display_only')) DEFAULT 'display_only',
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_consents_case ON consent_records(case_id);
+CREATE INDEX IF NOT EXISTS idx_consent_versions_consent ON consent_versions(consent_id);
+CREATE INDEX IF NOT EXISTS idx_identity_qualifiers_case ON identity_qualifiers(case_id);
+CREATE INDEX IF NOT EXISTS idx_identity_qualifiers_anchor ON identity_qualifiers(anchor_source_version_id);
 -- Evidence quality and limitations (append-only, descriptive only): one row
 -- per human-authored note about one exact source version. No rating, score,
 -- or inference is stored here; absence of a row means "not assessed", never
@@ -1218,51 +1315,33 @@ class CaseStore:
             "SELECT id,actor,case_id,route,result,occurred_at FROM access_log "
             "WHERE case_id=? ORDER BY id", (case_id,)).fetchall())
 
-    def _invalidate_investigations_for_source(self, case_id: str,
-                                              source_version_id: int) -> list[int]:
-        """Stale only investigations whose durable claims cite one source version.
 
-        Investigation freshness must not depend on whether a human snapshot was
-        also created. Stored claim citations are the durable dependency boundary
-        available in this reference ledger; malformed legacy claim payloads fail
-        closed because they cannot prove independence from the amended source.
+    def _stale_case_model_investigations(self, case_id: str) -> list[int]:
+        """Invalidate model runs when their case-wide source context changes.
+
+        Every live/replay prompt can inspect current case assertions. Its final
+        citations, or even an abstention with no claims, are not a complete
+        dependency record. Until captured input dependencies are persisted,
+        source imports conservatively stale all current runs for THIS case.
+        Independently authored snapshots retain anchor-specific invalidation.
+        Caller owns the source-import transaction; no extra event is emitted.
         """
-        affected: list[int] = []
-        question_ids: set[int] = set()
+        if not self.db.in_transaction:
+            raise InvalidInput("Model invalidation requires the source transaction")
         rows = self.db.execute(
-            """SELECT id,question_id,claims_json FROM investigations
-            WHERE case_id=? AND stale=0 ORDER BY id""", (case_id,)).fetchall()
-        for row in rows:
-            try:
-                claims = json.loads(row["claims_json"])
-            except (TypeError, json.JSONDecodeError):
-                claims = None
-            if not isinstance(claims, list):
-                depends_on_source = True
-            else:
-                depends_on_source = any(
-                    isinstance(claim, dict)
-                    and isinstance(claim.get("citations"), list)
-                    and any(
-                        isinstance(citation, dict)
-                        and citation.get("type") == "source"
-                        and type(citation.get("id")) is int
-                        and citation["id"] == source_version_id
-                        for citation in claim["citations"]
-                    )
-                    for claim in claims
-                )
-            if depends_on_source:
-                affected.append(int(row["id"]))
-                question_ids.add(int(row["question_id"]))
-        if affected:
-            marks = ",".join("?" for _ in affected)
-            self.db.execute(f"UPDATE investigations SET stale=1 WHERE id IN ({marks})", affected)
-            qmarks = ",".join("?" for _ in question_ids)
-            self.db.execute(
-                f"UPDATE questions SET state='open' WHERE case_id=? AND id IN ({qmarks})",
-                [case_id, *sorted(question_ids)])
-        return affected
+            "SELECT id FROM investigations WHERE case_id=? AND stale=0 ORDER BY id",
+            (case_id,)).fetchall()
+        if not rows:
+            return []
+        # Reopen only questions belonging to runs that are newly stale.
+        self.db.execute(
+            """UPDATE questions SET state='open' WHERE case_id=? AND id IN
+            (SELECT question_id FROM investigations WHERE case_id=? AND stale=0)""",
+            (case_id, case_id))
+        self.db.execute(
+            "UPDATE investigations SET stale=1 WHERE case_id=? AND stale=0",
+            (case_id,))
+        return [int(row["id"]) for row in rows]
 
     def import_report(self, case_id: str, raw: bytes, *,
                       assignee_label: str | None = None, due_date: str | None = None) -> dict:
@@ -1278,151 +1357,235 @@ class CaseStore:
         digest = hashlib.sha256(raw).hexdigest()
         with self.db:
             self.db.execute("BEGIN IMMEDIATE")
-            if report.patient_id != case_id:
-                # Idempotent quarantine across repeated wrong-case deliveries.
-                existing = self.db.execute(
-                    "SELECT id FROM quarantine WHERE target_case_id=? AND sha256=? ORDER BY id LIMIT 1",
-                    (case_id, digest)).fetchone()
-                if existing:
-                    return {"result": "quarantined", "reason": "patient_mismatch",
-                            "quarantine_id": existing["id"], "duplicate": True}
-                cur = self.db.execute(
-                    "INSERT INTO quarantine (target_case_id,declared_patient_id,sha256,raw,reason,received_at) VALUES (?,?,?,?,?,?)",
-                    (case_id, report.patient_id, digest, raw, "patient_mismatch", now_utc()))
-                self._event(case_id, "source_quarantined", quarantine_id=cur.lastrowid, reason="patient_mismatch")
-                return {"result": "quarantined", "reason": "patient_mismatch", "quarantine_id": cur.lastrowid}
-            duplicate = self.db.execute(
-                "SELECT id,version FROM source_versions WHERE case_id=? AND document_id=? AND sha256=?",
-                (case_id, report.document_id, digest)).fetchone()
-            if duplicate:
-                return {"result": "duplicate", "source_id": duplicate["id"], "version": duplicate["version"]}
-            previous = self.db.execute(
-                "SELECT id,version,kind,event_date,specimen_id FROM source_versions WHERE case_id=? AND document_id=? ORDER BY version DESC LIMIT 1",
-                (case_id, report.document_id)).fetchone()
-            if previous and report.amends != (report.document_id, previous["version"]):
-                raise InvalidInput("Changed document requires Amends: DOCUMENT-ID@LATEST-VERSION")
-            if not previous and report.amends is not None:
-                raise InvalidInput("First document version cannot have Amends")
-            if previous and (previous["kind"], previous["event_date"], previous["specimen_id"]) != (report.kind, report.event_date, report.specimen_id):
-                raise InvalidInput("Amendment cannot change report type, event date, or specimen; create a distinct document")
-            version = previous["version"] + 1 if previous else 1
-            if previous:
-                self.db.execute("UPDATE source_versions SET state='superseded' WHERE id=?", (previous["id"],))
-            cur = self.db.execute(
-                """INSERT INTO source_versions
-                (case_id,document_id,version,sha256,raw,kind,event_date,issued_at,received_at,specimen_id,state,supersedes_id)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (case_id, report.document_id, version, digest, raw, report.kind, report.event_date,
-                 report.issued_at, now_utc(), report.specimen_id, "current", previous["id"] if previous else None))
-            source_id = cur.lastrowid
-            for finding in report.findings:
-                self.db.execute("""INSERT INTO assertions
-                    (case_id,source_version_id,finding_key,certainty,quote,source_line)
-                    VALUES (?,?,?,?,?,?)""",
-                    (case_id, source_id, finding.key, finding.state, finding.quote, finding.line))
-            invalidated = []
-            invalidated_options = []
-            if previous:
-                invalidated = [row[0] for row in self.db.execute(
-                    """SELECT snapshots.id FROM snapshots JOIN snapshot_sources
-                    ON snapshots.id=snapshot_sources.snapshot_id
-                    WHERE snapshots.case_id=? AND snapshot_sources.source_version_id=? AND snapshots.state!='stale'""",
-                    (case_id, previous["id"])).fetchall()]
-                # Investigation invalidation is independent of snapshot existence
-                # and exact to the stored source citations. This avoids both the
-                # no-snapshot freshness gap and blanket same-case invalidation.
-                self._invalidate_investigations_for_source(case_id, previous["id"])
-                if invalidated:
-                    marks = ",".join("?" for _ in invalidated)
-                    self.db.execute(f"UPDATE snapshots SET state='stale' WHERE id IN ({marks})", invalidated)
-                    self.db.execute(f"""UPDATE questions SET state='open' WHERE case_id=? AND id IN
-                        (SELECT question_id FROM snapshots WHERE id IN ({marks}))""", [case_id, *invalidated])
-                # OI-021, same transaction: only options in THIS case that
-                # cite the superseded version or a stale snapshot reopen.
-                invalidated_options = self._invalidate_options(
-                    snapshot_ids=set(invalidated), source_version_ids={previous["id"]},
-                    evidence_version_ids=set())
-                if invalidated_options:
-                    self._event(case_id, "option_review_reopened",
-                                source_version_id=previous["id"],
-                                invalidated_options=invalidated_options)
-            invalidated_inventory = []
-            if previous:
-                # Anchor-exact, like snapshots: only assertions citing the
-                # superseded version go stale. Assertions on other versions,
-                # assets themselves, and all historic rows are preserved.
-                # Deliberate scope boundary (OI-020): staleness does NOT
-                # propagate transitively to derivative assets; each child's
-                # own assertion anchor and parent chain stay visible, so a
-                # reader can see a parent's assertions went stale.
-                invalidated_inventory = [row[0] for row in self.db.execute(
-                    """SELECT id FROM biological_inventory_assertions
-                    WHERE case_id=? AND source_version_id=? AND state='current'""",
-                    (case_id, previous["id"])).fetchall()]
-                if invalidated_inventory:
-                    marks = ",".join("?" for _ in invalidated_inventory)
-                    self.db.execute(f"UPDATE biological_inventory_assertions SET state='stale' WHERE id IN ({marks})",
-                                    invalidated_inventory)
-            invalidated_bio_explanations = []
-            invalidated_bio_assays = []
-            if previous:
-                # Anchor-exact, like snapshots and inventory rows: only
-                # explanations and assay observations citing the superseded
-                # version go stale. Competing hypotheses on other versions
-                # survive untouched, and history is preserved.
-                invalidated_bio_explanations = [row[0] for row in self.db.execute(
-                    """SELECT id FROM bio_explanations
-                    WHERE case_id=? AND source_version_id=? AND state='current'""",
-                    (case_id, previous["id"])).fetchall()]
-                if invalidated_bio_explanations:
-                    marks = ",".join("?" for _ in invalidated_bio_explanations)
-                    self.db.execute(f"UPDATE bio_explanations SET state='stale' WHERE id IN ({marks})",
-                                    invalidated_bio_explanations)
-                invalidated_bio_assays = [row[0] for row in self.db.execute(
-                    """SELECT id FROM bio_assay_observations
-                    WHERE case_id=? AND source_version_id=? AND state='current'""",
-                    (case_id, previous["id"])).fetchall()]
-                if invalidated_bio_assays:
-                    marks = ",".join("?" for _ in invalidated_bio_assays)
-                    self.db.execute(f"UPDATE bio_assay_observations SET state='stale' WHERE id IN ({marks})",
-                                    invalidated_bio_assays)
-            # Second-opinion and survivorship records stay case-scoped and
-            # anchor-exact like snapshots: only rows pinning the superseded
-            # version (or the invalidated original conclusion) reopen.
-            invalidated_second_opinions, invalidated_survivorship = self._invalidate_care_records(
-                case_id, previous["id"] if previous else None, invalidated)
-            # B-05: record the explicit match decision that bound these bytes
-            # to this case. Duplicates return before this point, so the
-            # original link is never duplicated either.
-            self.db.execute(
-                """INSERT INTO subject_links
-                (case_id,source_version_id,declared_subject_id,decision,decided_at,actor_label)
-                VALUES (?,?,?,?,?,?)""",
-                (case_id, source_id, report.patient_id,
-                 self.SUBJECT_LINK_DECISION, now_utc(), self.SUBJECT_LINK_ACTOR))
-            event_id = self._event(case_id, "source_imported", document_id=report.document_id,
-                        version=version, source_id=source_id, amends_id=previous["id"] if previous else None,
-                        invalidated_snapshots=invalidated, invalidated_options=invalidated_options,
-                        invalidated_inventory_assertions=invalidated_inventory,
-                        invalidated_bio_explanations=invalidated_bio_explanations,
-                        invalidated_bio_assay_observations=invalidated_bio_assays,
-                        invalidated_second_opinions=invalidated_second_opinions,
-                        invalidated_survivorship_items=invalidated_survivorship)
-            if previous is not None and invalidated:
-                self._create_re_review_tasks(
-                    case_id=case_id, snapshot_ids=invalidated, cause="source_amendment",
-                    invalidating_event_id=event_id, assignee_label=assignee_label, due_date=due_date,
-                    superseding_source_version_id=source_id,
-                    superseded_source_version_id=previous["id"],
-                    finding_diff=self._source_finding_diff(previous["id"], source_id))
-            return {"result": "imported", "source_id": source_id, "version": version,
-                    "invalidated_snapshots": invalidated, "invalidated_options": invalidated_options,
-                    "invalidated_inventory_assertions": invalidated_inventory,
-                    "invalidated_bio_explanations": invalidated_bio_explanations,
-                    "invalidated_bio_assay_observations": invalidated_bio_assays,
-                    "invalidated_second_opinions": invalidated_second_opinions,
-                    "invalidated_survivorship_items": invalidated_survivorship}
+            return self._import_report_in_transaction(
+                case_id, raw, report, digest,
+                assignee_label=assignee_label, due_date=due_date)
 
+    def preview_document(self, case_id: str, raw: bytes, filename: str) -> dict:
+        """Read-only plain-text preview; no inferred assertions or persistent upload."""
+        from .document_intake import preview_text
+        case_id = self._case(case_id)
+        return {"case_id": case_id, **preview_text(raw, filename)}
+
+    def _document_intake_receipts(self, case_id: str) -> dict[int, dict]:
+        """Read existing source-linked receipts inside the caller snapshot."""
+        rows = self._dicts(self.db.execute(
+            """SELECT d.* FROM document_intake_metadata d
+            JOIN source_versions s ON s.id=d.source_version_id WHERE s.case_id=?""",
+            (case_id,)).fetchall())
+        receipts = {}
+        for row in rows:
+            source_id = row.pop("source_version_id")
+            row["manual_transcription_confirmed"] = bool(row["manual_transcription_confirmed"])
+            receipts[source_id] = row
+        return receipts
+
+    def import_document(self, case_id: str, raw: bytes, filename: str,
+                        metadata: dict, findings: list[dict],
+                        expected_sha256: str, confirmed_case_id: str) -> dict:
+        """Commit explicitly confirmed manual transcription to the original ledger.
+
+        The reviewed annotations are immutable for a given original. A filename
+        change is an idempotent retry, retaining the original upload filename.
+        All source, freshness, event and intake receipt writes share one lock.
+        """
+        from .document_intake import review_text
+        case_id = self._case(case_id)
+        report, receipt = review_text(case_id, raw, filename, metadata, findings,
+                                      expected_sha256, confirmed_case_id)
+        digest = hashlib.sha256(raw).hexdigest()
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            # Check the original across this case, so changing a document ID
+            # cannot silently reuse identical bytes with different annotations.
+            duplicate = self.db.execute(
+                """SELECT s.id,s.version,d.review_sha256 FROM source_versions s
+                LEFT JOIN document_intake_metadata d ON d.source_version_id=s.id
+                WHERE s.case_id=? AND s.sha256=? ORDER BY s.id LIMIT 1""",
+                (case_id, digest)).fetchone()
+            if duplicate is not None:
+                if duplicate["review_sha256"] != receipt["review_sha256"]:
+                    raise InvalidInput("Original bytes already exist with different metadata or findings")
+                return {"result": "duplicate", "source_id": duplicate["id"], "version": duplicate["version"]}
+            result = self._import_report_in_transaction(case_id, raw, report, digest)
+            self.db.execute(
+                """INSERT INTO document_intake_metadata
+                (source_version_id,filename,media_type,extraction_method,annotation_method,
+                 manual_transcription_confirmed,clinical_review,review_sha256)
+                VALUES (?,?,?,?,?,?,?,?)""",
+                (result["source_id"], receipt["filename"], receipt["media_type"],
+                 receipt["extraction_method"], receipt["annotation_method"],
+                 int(receipt["manual_transcription_confirmed"]), receipt["clinical_review"],
+                 receipt["review_sha256"]))
+            self._event(case_id, "document_transcription_confirmed",
+                        source_id=result["source_id"], sha256=digest,
+                        review_sha256=receipt["review_sha256"],
+                        extraction_method=receipt["extraction_method"],
+                        annotation_method=receipt["annotation_method"],
+                        clinical_review="not_performed")
+            return result
+
+    def _import_report_in_transaction(self, case_id: str, raw: bytes,
+                                      report: ParsedReport, digest: str, *,
+                                      assignee_label: str | None = None,
+                                      due_date: str | None = None) -> dict:
+        """Shared source/version/assertion persistence under the caller write lock."""
+        if not self.db.in_transaction:
+            raise InvalidInput("Source import requires its owning write transaction")
+        if report.patient_id != case_id:
+            # Idempotent quarantine across repeated wrong-case deliveries.
+            existing = self.db.execute(
+                "SELECT id FROM quarantine WHERE target_case_id=? AND sha256=? ORDER BY id LIMIT 1",
+                (case_id, digest)).fetchone()
+            if existing:
+                return {"result": "quarantined", "reason": "patient_mismatch",
+                        "quarantine_id": existing["id"], "duplicate": True}
+            cur = self.db.execute(
+                "INSERT INTO quarantine (target_case_id,declared_patient_id,sha256,raw,reason,received_at) VALUES (?,?,?,?,?,?)",
+                (case_id, report.patient_id, digest, raw, "patient_mismatch", now_utc()))
+            self._event(case_id, "source_quarantined", quarantine_id=cur.lastrowid, reason="patient_mismatch")
+            return {"result": "quarantined", "reason": "patient_mismatch", "quarantine_id": cur.lastrowid}
+        duplicate = self.db.execute(
+            "SELECT id,version FROM source_versions WHERE case_id=? AND document_id=? AND sha256=?",
+            (case_id, report.document_id, digest)).fetchone()
+        if duplicate:
+            return {"result": "duplicate", "source_id": duplicate["id"], "version": duplicate["version"]}
+        previous = self.db.execute(
+            "SELECT id,version,kind,event_date,specimen_id FROM source_versions WHERE case_id=? AND document_id=? ORDER BY version DESC LIMIT 1",
+            (case_id, report.document_id)).fetchone()
+        if previous and report.amends != (report.document_id, previous["version"]):
+            raise InvalidInput("Changed document requires Amends: DOCUMENT-ID@LATEST-VERSION")
+        if not previous and report.amends is not None:
+            raise InvalidInput("First document version cannot have Amends")
+        if previous and (previous["kind"], previous["event_date"], previous["specimen_id"]) != (report.kind, report.event_date, report.specimen_id):
+            raise InvalidInput("Amendment cannot change report type, event date, or specimen; create a distinct document")
+        version = previous["version"] + 1 if previous else 1
+        if previous:
+            self.db.execute("UPDATE source_versions SET state='superseded' WHERE id=?", (previous["id"],))
+        cur = self.db.execute(
+            """INSERT INTO source_versions
+            (case_id,document_id,version,sha256,raw,kind,event_date,issued_at,received_at,specimen_id,state,supersedes_id)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (case_id, report.document_id, version, digest, raw, report.kind, report.event_date,
+             report.issued_at, now_utc(), report.specimen_id, "current", previous["id"] if previous else None))
+        source_id = cur.lastrowid
+        for finding in report.findings:
+            self.db.execute("""INSERT INTO assertions
+                (case_id,source_version_id,finding_key,certainty,quote,source_line)
+                VALUES (?,?,?,?,?,?)""",
+                (case_id, source_id, finding.key, finding.state, finding.quote, finding.line))
+        invalidated = []
+        invalidated_options = []
+        invalidated_workspace = []
+        if previous:
+            invalidated = [row[0] for row in self.db.execute(
+                """SELECT snapshots.id FROM snapshots JOIN snapshot_sources
+                ON snapshots.id=snapshot_sources.snapshot_id
+                WHERE snapshots.case_id=? AND snapshot_sources.source_version_id=? AND snapshots.state!='stale'""",
+                (case_id, previous["id"])).fetchall()]
+            if invalidated:
+                marks = ",".join("?" for _ in invalidated)
+                self.db.execute(f"UPDATE snapshots SET state='stale' WHERE id IN ({marks})", invalidated)
+                self.db.execute(f"""UPDATE questions SET state='open' WHERE case_id=? AND id IN
+                    (SELECT question_id FROM snapshots WHERE id IN ({marks}))""", [case_id, *invalidated])
+            # OI-021, same transaction: only options in THIS case that
+            # cite the superseded version or a stale snapshot reopen.
+            invalidated_options = self._invalidate_options(
+                snapshot_ids=set(invalidated), source_version_ids={previous["id"]},
+                evidence_version_ids=set())
+            if invalidated_options:
+                self._event(case_id, "option_review_reopened",
+                            source_version_id=previous["id"],
+                            invalidated_options=invalidated_options)
+            # Investigation workspace, same transaction: only ANSWERED
+            # questions in THIS case with an ACTIVE link to the superseded
+            # version reopen to needs_review. The system never answers a
+            # question; it only asks for another human review, preserving
+            # the prior answer in history.
+            invalidated_workspace = self._reopen_workspace_questions(
+                case_id, previous["id"], report.document_id, version)
+        # Even a new, non-amended source can change the model's case-wide input.
+        newly_stale_model_ids = self._stale_case_model_investigations(case_id)
+        invalidated_inventory = []
+        if previous:
+            # Anchor-exact, like snapshots: only assertions citing the
+            # superseded version go stale. Assertions on other versions,
+            # assets themselves, and all historic rows are preserved.
+            # Deliberate scope boundary (OI-020): staleness does NOT
+            # propagate transitively to derivative assets; each child's
+            # own assertion anchor and parent chain stay visible, so a
+            # reader can see a parent's assertions went stale.
+            invalidated_inventory = [row[0] for row in self.db.execute(
+                """SELECT id FROM biological_inventory_assertions
+                WHERE case_id=? AND source_version_id=? AND state='current'""",
+                (case_id, previous["id"])).fetchall()]
+            if invalidated_inventory:
+                marks = ",".join("?" for _ in invalidated_inventory)
+                self.db.execute(f"UPDATE biological_inventory_assertions SET state='stale' WHERE id IN ({marks})",
+                                invalidated_inventory)
+        invalidated_bio_explanations = []
+        invalidated_bio_assays = []
+        if previous:
+            # Anchor-exact, like snapshots and inventory rows: only
+            # explanations and assay observations citing the superseded
+            # version go stale. Competing hypotheses on other versions
+            # survive untouched, and history is preserved.
+            invalidated_bio_explanations = [row[0] for row in self.db.execute(
+                """SELECT id FROM bio_explanations
+                WHERE case_id=? AND source_version_id=? AND state='current'""",
+                (case_id, previous["id"])).fetchall()]
+            if invalidated_bio_explanations:
+                marks = ",".join("?" for _ in invalidated_bio_explanations)
+                self.db.execute(f"UPDATE bio_explanations SET state='stale' WHERE id IN ({marks})",
+                                invalidated_bio_explanations)
+            invalidated_bio_assays = [row[0] for row in self.db.execute(
+                """SELECT id FROM bio_assay_observations
+                WHERE case_id=? AND source_version_id=? AND state='current'""",
+                (case_id, previous["id"])).fetchall()]
+            if invalidated_bio_assays:
+                marks = ",".join("?" for _ in invalidated_bio_assays)
+                self.db.execute(f"UPDATE bio_assay_observations SET state='stale' WHERE id IN ({marks})",
+                                invalidated_bio_assays)
+        # Second-opinion and survivorship records stay case-scoped and
+        # anchor-exact like snapshots: only rows pinning the superseded
+        # version (or the invalidated original conclusion) reopen.
+        invalidated_second_opinions, invalidated_survivorship = self._invalidate_care_records(
+            case_id, previous["id"] if previous else None, invalidated)
+        # B-05: record the explicit match decision that bound these bytes
+        # to this case. Duplicates return before this point, so the
+        # original link is never duplicated either.
+        self.db.execute(
+            """INSERT INTO subject_links
+            (case_id,source_version_id,declared_subject_id,decision,decided_at,actor_label)
+            VALUES (?,?,?,?,?,?)""",
+            (case_id, source_id, report.patient_id,
+             self.SUBJECT_LINK_DECISION, now_utc(), self.SUBJECT_LINK_ACTOR))
+        event_id = self._event(case_id, "source_imported", document_id=report.document_id,
+                    version=version, source_id=source_id, amends_id=previous["id"] if previous else None,
+                    invalidated_snapshots=invalidated, invalidated_options=invalidated_options,
+                    invalidated_model_investigation_ids=newly_stale_model_ids,
+                    invalidated_inventory_assertions=invalidated_inventory,
+                    invalidated_bio_explanations=invalidated_bio_explanations,
+                    invalidated_bio_assay_observations=invalidated_bio_assays,
+                    invalidated_second_opinions=invalidated_second_opinions,
+                    invalidated_survivorship_items=invalidated_survivorship,
+                    invalidated_workspace_questions=invalidated_workspace)
+        if previous is not None and invalidated:
+            self._create_re_review_tasks(
+                case_id=case_id, snapshot_ids=invalidated, cause="source_amendment",
+                invalidating_event_id=event_id, assignee_label=assignee_label, due_date=due_date,
+                superseding_source_version_id=source_id,
+                superseded_source_version_id=previous["id"],
+                finding_diff=self._source_finding_diff(previous["id"], source_id))
+        return {"result": "imported", "source_id": source_id, "version": version,
+                "invalidated_snapshots": invalidated, "invalidated_options": invalidated_options,
+                "invalidated_model_investigation_ids": newly_stale_model_ids,
+                "invalidated_inventory_assertions": invalidated_inventory,
+                "invalidated_bio_explanations": invalidated_bio_explanations,
+                "invalidated_bio_assay_observations": invalidated_bio_assays,
+                "invalidated_second_opinions": invalidated_second_opinions,
+                "invalidated_survivorship_items": invalidated_survivorship,
+                "invalidated_workspace_questions": invalidated_workspace}
     # ---- B-05: explicit subject binding + reversible quarantine correction ----
     SUBJECT_LINK_DECISION = "bound_by_declared_id_equality"
     SUBJECT_LINK_ACTOR = "declared-id-equality"
@@ -3781,6 +3944,198 @@ class CaseStore:
                         source_version_id=source_version_id)
             return int(cur.lastrowid)
 
+    # ---- Consent & identity records: display/history only ----
+    # No identity resolution, matching, or cross-case logic. Consents are
+    # append-only version chains (active -> withdrawn); qualifiers are notes
+    # attached to source anchors the case already has. Neither alters any
+    # existing identity field, and withdrawal touches only its own chain.
+    CONSENT_STATUSES = frozenset({"active", "withdrawn"})
+
+    @staticmethod
+    def _check_consent_scope(value: object) -> str:
+        if not isinstance(value, str) or not 5 <= len(value.strip()) <= 500:
+            raise InvalidInput("Consent scope must have 5–500 characters")
+        return value.strip()
+
+    @staticmethod
+    def _check_qualifier_text(value: object) -> str:
+        if not isinstance(value, str) or not 5 <= len(value.strip()) <= 500:
+            raise InvalidInput("Identity note must have 5–500 characters")
+        return value.strip()
+
+    @staticmethod
+    def _check_withdraw_reason(value: object) -> str:
+        if not isinstance(value, str) or not 10 <= len(value.strip()) <= 600:
+            raise InvalidInput("Withdrawal requires a 10–600 character reason")
+        return value.strip()
+
+    def _consent_anchor_label(self, anchor_id: int | None) -> str | None:
+        if anchor_id is None:
+            return None
+        row = self.db.execute(
+            "SELECT document_id,version FROM source_versions WHERE id=?",
+            (anchor_id,)).fetchone()
+        if not row:
+            return None
+        return f"{row['document_id']}@{row['version']} (# {anchor_id})"
+
+    def record_consent(self, case_id: str, scope_text: object, date_recorded: object,
+                       anchor_source_version_id: object = None) -> int:
+        """Record one fictional consent as active (version 1). Display only."""
+        case_id = self._case(case_id)
+        scope = self._check_consent_scope(scope_text)
+        recorded = valid_date(date_recorded) if isinstance(date_recorded, str) else None
+        if recorded is None:
+            raise InvalidInput("Dates must use YYYY-MM-DD")
+        if anchor_source_version_id is not None:
+            if type(anchor_source_version_id) is not int or anchor_source_version_id < 1:
+                raise InvalidInput("Anchor source version ID must be a positive integer")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            if anchor_source_version_id is not None:
+                anchor = self.db.execute(
+                    "SELECT 1 FROM source_versions WHERE id=? AND case_id=?",
+                    (anchor_source_version_id, case_id)).fetchone()
+                if not anchor:
+                    raise InvalidInput("Anchor source not in this case")
+            stamped = now_utc()
+            cur = self.db.execute("""INSERT INTO consent_records
+                (case_id,scope_text,date_recorded,status,anchor_source_version_id,review_state,created_at)
+                VALUES (?,?,?,'active',?,'display_only',?)""",
+                (case_id, scope, recorded, anchor_source_version_id, stamped))
+            consent_id = int(cur.lastrowid)
+            self.db.execute("""INSERT INTO consent_versions
+                (consent_id,version,status,reason,date_recorded,recorded_at)
+                VALUES (?,1,'active',NULL,?,?)""",
+                (consent_id, recorded, stamped))
+            self._event(case_id, "consent_recorded", consent_id=consent_id, version=1)
+            return consent_id
+
+    def withdraw_consent(self, case_id: str, consent_id: int, reason: object,
+                         date_recorded: object = None) -> int:
+        """Append a withdrawn version; prior active version stays in history.
+
+        Only this consent's status pointer and its own version chain change.
+        No other consent, qualifier, source, question, or snapshot is touched.
+        """
+        case_id = self._case(case_id)
+        if type(consent_id) is not int or consent_id < 1:
+            raise InvalidInput("Invalid consent ID")
+        why = self._check_withdraw_reason(reason)
+        if date_recorded is None:
+            recorded = datetime.now(timezone.utc).date().isoformat()
+        elif isinstance(date_recorded, str):
+            recorded = valid_date(date_recorded)
+        else:
+            raise InvalidInput("Dates must use YYYY-MM-DD")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            row = self.db.execute(
+                "SELECT status FROM consent_records WHERE id=? AND case_id=?",
+                (consent_id, case_id)).fetchone()
+            if not row:
+                raise InvalidInput("Consent not in this case")
+            if row["status"] == "withdrawn":
+                raise InvalidInput("Consent is already withdrawn")
+            latest = self.db.execute(
+                "SELECT MAX(version) AS v FROM consent_versions WHERE consent_id=?",
+                (consent_id,)).fetchone()
+            new_version = int(latest["v"] or 0) + 1
+            self.db.execute("""INSERT INTO consent_versions
+                (consent_id,version,status,reason,date_recorded,recorded_at)
+                VALUES (?,?,'withdrawn',?,?,?)""",
+                (consent_id, new_version, why, recorded, now_utc()))
+            self.db.execute("UPDATE consent_records SET status='withdrawn' WHERE id=?",
+                            (consent_id,))
+            self._event(case_id, "consent_withdrawn",
+                        consent_id=consent_id, version=new_version)
+            return new_version
+
+    def list_consents(self, case_id: str) -> list[dict]:
+        """Current consents with full ordered history, this case only."""
+        case_id = self._case(case_id)
+        rows = self.db.execute(
+            "SELECT * FROM consent_records WHERE case_id=? ORDER BY id",
+            (case_id,)).fetchall()
+        out: list[dict] = []
+        for row in rows:
+            item = dict(row)
+            versions = self._dicts(self.db.execute(
+                "SELECT version,status,reason,date_recorded,recorded_at"
+                " FROM consent_versions WHERE consent_id=? ORDER BY version",
+                (item["id"],)).fetchall())
+            item["versions"] = versions
+            item["anchor_label"] = self._consent_anchor_label(item["anchor_source_version_id"])
+            item["fictional"] = True
+            item["synthetic"] = True
+            out.append(item)
+        return out
+
+    def add_identity_qualifier(self, case_id: str, qualifier_text: object,
+                               anchor_source_version_id: object, date_recorded: object,
+                               anchor_line: object = None) -> int:
+        """Record one fictional note attached to an anchor this case already has.
+
+        No identity field is created, matched, merged, or altered. The anchor
+        must be a source version in this same case; cross-case anchors fail.
+        """
+        case_id = self._case(case_id)
+        text = self._check_qualifier_text(qualifier_text)
+        recorded = valid_date(date_recorded) if isinstance(date_recorded, str) else None
+        if recorded is None:
+            raise InvalidInput("Dates must use YYYY-MM-DD")
+        if type(anchor_source_version_id) is not int or anchor_source_version_id < 1:
+            raise InvalidInput("Anchor source version ID must be a positive integer")
+        if anchor_line is not None:
+            if type(anchor_line) is not int or anchor_line < 1:
+                raise InvalidInput("Anchor line must be a positive integer")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            source = self.db.execute(
+                "SELECT raw FROM source_versions WHERE id=? AND case_id=?",
+                (anchor_source_version_id, case_id)).fetchone()
+            if not source:
+                raise InvalidInput("Anchor source not in this case")
+            if anchor_line is not None:
+                line_count = len(bytes(source["raw"]).decode("utf-8").splitlines())
+                if anchor_line > line_count:
+                    raise InvalidInput("Anchor line not in source version")
+            cur = self.db.execute("""INSERT INTO identity_qualifiers
+                (case_id,qualifier_text,anchor_source_version_id,anchor_line,
+                 date_recorded,review_state,created_at)
+                VALUES (?,?,?,?,?,'display_only',?)""",
+                (case_id, text, anchor_source_version_id, anchor_line,
+                 recorded, now_utc()))
+            qualifier_id = int(cur.lastrowid)
+            self._event(case_id, "identity_qualifier_added",
+                        qualifier_id=qualifier_id,
+                        anchor_source_version_id=anchor_source_version_id)
+            return qualifier_id
+
+    def list_identity_qualifiers(self, case_id: str) -> list[dict]:
+        """Qualifier notes with anchors, this case only. No resolution."""
+        case_id = self._case(case_id)
+        rows = self.db.execute(
+            """SELECT q.*, s.document_id, s.version AS source_version
+            FROM identity_qualifiers q
+            LEFT JOIN source_versions s ON s.id=q.anchor_source_version_id
+            WHERE q.case_id=? ORDER BY q.id""",
+            (case_id,)).fetchall()
+        out: list[dict] = []
+        for row in rows:
+            item = dict(row)
+            if item["document_id"] is None:
+                label = f"source #{item['anchor_source_version_id']} (unavailable)"
+            else:
+                label = f"{item['document_id']}@{item['source_version']} (# {item['anchor_source_version_id']})"
+            if item["anchor_line"] is not None:
+                label += f", line {item['anchor_line']}"
+            item["anchor_label"] = label
+            item["fictional"] = True
+            item["synthetic"] = True
+            out.append(item)
+        return out
+
     # ---- Patient goals + lived experience (fictional patient words) ----
     # Patient words stay patient words. These methods never create
     # assertions, snapshots, options, or mission entries, and they accept
@@ -4505,6 +4860,215 @@ class CaseStore:
                  timestamp))
             self._event(case_id, "demo_review_acknowledged", snapshot_id=snapshot_id)
 
+    # ---- Investigation workspace: durable questions linked to source versions ----
+    WORKSPACE_STATUSES = frozenset({"open", "in_progress", "answered", "needs_review"})
+
+    def _workspace_question(self, case_id: str, question_id: int) -> sqlite3.Row:
+        if type(question_id) is not int or question_id < 1:
+            raise InvalidInput("Invalid investigation question ID")
+        row = self.db.execute("SELECT * FROM workspace_questions WHERE id=? AND case_id=?",
+                              (question_id, case_id)).fetchone()
+        if not row:
+            raise InvalidInput("Investigation question not in this case")
+        return row
+
+    @staticmethod
+    def _workspace_reason(reason: object) -> str:
+        if not isinstance(reason, str) or not 5 <= len(reason.strip()) <= 600:
+            raise InvalidInput("A status change requires a recorded reason of 5–600 characters")
+        return reason.strip()
+
+    @staticmethod
+    def _workspace_answer(answer: object) -> str:
+        if not isinstance(answer, str) or not 10 <= len(answer.strip()) <= 3000:
+            raise InvalidInput("A recorded answer must have 10–3000 characters")
+        return answer.strip()
+
+    def create_workspace_question(self, case_id: str, question: str) -> int:
+        """Record one durable investigation question, starting open with no answer."""
+        self._case(case_id)
+        if not isinstance(question, str) or not 5 <= len(question.strip()) <= 500:
+            raise InvalidInput("Question must have 5–500 characters")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            stamp = now_utc()
+            cur = self.db.execute("""INSERT INTO workspace_questions
+                (case_id,question,status,answer,created_at,updated_at) VALUES (?,?,?,NULL,?,?)""",
+                (case_id, question.strip(), "open", stamp, stamp))
+            question_id = int(cur.lastrowid)
+            self.db.execute("""INSERT INTO workspace_question_history
+                (question_id,case_id,previous_status,new_status,reason,answer,recorded_at)
+                VALUES (?,?,NULL,?,?,NULL,?)""",
+                (question_id, case_id, "open", "Question recorded", stamp))
+            self._event(case_id, "workspace_question_created", workspace_question_id=question_id)
+            return question_id
+
+    def link_workspace_source(self, case_id: str, question_id: int,
+                              source_version_id: int, reason: object = None) -> int:
+        """Link one current source version to one question in the same case.
+
+        Links are append-only records. Only one ACTIVE link per
+        (question, source version) may exist; unlinking supersedes the old
+        row so the same version can be linked again as a new record.
+        """
+        self._case(case_id)
+        if type(source_version_id) is not int or source_version_id < 1:
+            raise InvalidInput("Source version ID must be a positive integer")
+        link_reason = ""
+        if reason is not None:
+            if not isinstance(reason, str) or not reason.strip() or len(reason.strip()) > 600:
+                raise InvalidInput("Link reason must have 1–600 characters")
+            link_reason = reason.strip()
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            self._workspace_question(case_id, question_id)
+            source = self.db.execute("SELECT state FROM source_versions WHERE id=? AND case_id=?",
+                                     (source_version_id, case_id)).fetchone()
+            if not source:
+                raise InvalidInput("Source version not in this case")
+            if source["state"] != "current":
+                raise InvalidInput("Only a current source version can be newly linked")
+            existing = self.db.execute("""SELECT id FROM workspace_question_links
+                WHERE question_id=? AND source_version_id=? AND state='active'""",
+                (question_id, source_version_id)).fetchone()
+            if existing:
+                raise InvalidInput("This source version is already linked to the question")
+            cur = self.db.execute("""INSERT INTO workspace_question_links
+                (question_id,case_id,source_version_id,state,reason,created_at)
+                VALUES (?,?,?,?,?,?)""",
+                (question_id, case_id, source_version_id, "active", link_reason, now_utc()))
+            self._event(case_id, "workspace_question_linked",
+                        workspace_question_id=question_id, link_id=cur.lastrowid,
+                        source_version_id=source_version_id)
+            return int(cur.lastrowid)
+
+    def unlink_workspace_source(self, case_id: str, question_id: int,
+                                link_id: int, reason: object = None) -> dict:
+        """Supersede one active link. The row is kept as history, never deleted."""
+        self._case(case_id)
+        if type(link_id) is not int or link_id < 1:
+            raise InvalidInput("Invalid link ID")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            self._workspace_question(case_id, question_id)
+            link = self.db.execute("""SELECT state FROM workspace_question_links
+                WHERE id=? AND question_id=? AND case_id=?""",
+                (link_id, question_id, case_id)).fetchone()
+            if not link:
+                raise InvalidInput("Link not found for this question")
+            if link["state"] != "active":
+                raise InvalidInput("This link is already superseded")
+            superseded_reason = None
+            if reason is not None:
+                if not isinstance(reason, str) or not reason.strip() or len(reason.strip()) > 600:
+                    raise InvalidInput("Unlink reason must have 1–600 characters")
+                superseded_reason = reason.strip()
+            self.db.execute("""UPDATE workspace_question_links
+                SET state='superseded', superseded_at=?, superseded_reason=? WHERE id=?""",
+                (now_utc(), superseded_reason, link_id))
+            self._event(case_id, "workspace_question_unlinked",
+                        workspace_question_id=question_id, link_id=link_id)
+            return {"result": "unlinked", "link_id": link_id}
+
+    def set_workspace_question_status(self, case_id: str, question_id: int,
+                                      status: str, reason: str, answer: object = None) -> dict:
+        """Record one HUMAN status change. Nothing in this module moves a
+        question to 'answered' on its own: the system never auto-answers."""
+        self._case(case_id)
+        if not isinstance(status, str) or status not in self.WORKSPACE_STATUSES:
+            raise InvalidInput("Unknown investigation question status")
+        clean_reason = self._workspace_reason(reason)
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            current = self._workspace_question(case_id, question_id)
+            previous = current["status"]
+            if status == "answered":
+                clean_answer = self._workspace_answer(answer)
+                if previous == "answered" and current["answer"] == clean_answer:
+                    raise InvalidInput("Question already has this status and answer")
+            else:
+                if answer is not None:
+                    raise InvalidInput("Answer text is only accepted when marking a question answered")
+                clean_answer = None
+                if previous == status:
+                    raise InvalidInput("Question already has this status")
+            preserved = current["answer"] if previous == "answered" else None
+            history_answer = clean_answer if status == "answered" else preserved
+            stamp = now_utc()
+            self.db.execute("UPDATE workspace_questions SET status=?, answer=?, updated_at=? WHERE id=?",
+                            (status, clean_answer, stamp, question_id))
+            self.db.execute("""INSERT INTO workspace_question_history
+                (question_id,case_id,previous_status,new_status,reason,answer,recorded_at)
+                VALUES (?,?,?,?,?,?,?)""",
+                (question_id, case_id, previous, status, clean_reason, history_answer, stamp))
+            self._event(case_id, "workspace_question_status_changed",
+                        workspace_question_id=question_id,
+                        previous_status=previous, status=status)
+            return {"result": "status_recorded", "workspace_question_id": question_id,
+                    "previous_status": previous, "status": status}
+
+    def _reopen_workspace_questions(self, case_id: str, superseded_source_id: int,
+                                    document_id: str, new_version: int) -> list[int]:
+        """Reopen ANSWERED questions with an ACTIVE link to a superseded version.
+
+        Caller must own a write transaction. Only the given case is touched.
+        The prior answer is preserved in history; the question itself keeps no
+        current answer until a human records a new one.
+        """
+        rows = self.db.execute("""SELECT DISTINCT q.id,q.answer FROM workspace_questions q
+            JOIN workspace_question_links l ON l.question_id=q.id
+            WHERE q.case_id=? AND l.case_id=? AND l.source_version_id=?
+            AND l.state='active' AND q.status='answered' ORDER BY q.id""",
+            (case_id, case_id, superseded_source_id)).fetchall()
+        reopened = []
+        for row in rows:
+            stamp = now_utc()
+            self.db.execute("UPDATE workspace_questions SET status='needs_review', answer=NULL, updated_at=? WHERE id=?",
+                            (stamp, row["id"]))
+            self.db.execute("""INSERT INTO workspace_question_history
+                (question_id,case_id,previous_status,new_status,reason,answer,recorded_at)
+                VALUES (?,?, 'answered','needs_review',?,?,?)""",
+                (row["id"], case_id,
+                 f"Linked source {document_id} was amended to version {new_version}; "
+                 "the recorded answer needs human review.",
+                 row["answer"], stamp))
+            reopened.append(int(row["id"]))
+        if reopened:
+            self._event(case_id, "workspace_question_reopened",
+                        source_version_id=superseded_source_id, reopened_questions=reopened)
+        return reopened
+
+    def list_workspace_questions(self, case_id: str) -> list[dict]:
+        """Durable questions with their links and full status history.
+
+        The current answer is exposed ONLY while the status is answered;
+        unanswered questions always read back answer None even though prior
+        answers remain visible inside their own history entries.
+        """
+        self._case(case_id)
+        out = []
+        for row in self.db.execute("SELECT * FROM workspace_questions WHERE case_id=? ORDER BY id",
+                                   (case_id,)).fetchall():
+            question_id = int(row["id"])
+            links = []
+            for link in self.db.execute("""SELECT l.*,
+                v.document_id, v.version, v.state AS source_state
+                FROM workspace_question_links l
+                JOIN source_versions v ON v.id=l.source_version_id
+                WHERE l.question_id=? ORDER BY l.id""", (question_id,)).fetchall():
+                links.append({**dict(link),
+                              "source_anchor": f"{link['document_id']}@{link['version']}"})
+            history = self._dicts(self.db.execute(
+                "SELECT * FROM workspace_question_history WHERE question_id=? ORDER BY id",
+                (question_id,)).fetchall())
+            data = dict(row)
+            data["created_date"] = data["created_at"][:10]
+            if data["status"] != "answered":
+                data["answer"] = None
+            data["links"] = links
+            data["history"] = history
+            out.append(data)
+        return out
     # ---- Clinician review queue + sign-off receipts ----
     # The queue is a derived projection over the existing ledger: human
     # investigation drafts, model investigations, amended source versions,
@@ -5059,6 +5623,11 @@ class CaseStore:
             FROM assertions JOIN source_versions ON source_versions.id=assertions.source_version_id
             WHERE assertions.case_id=? AND source_versions.state='current' ORDER BY assertions.id""",
             (case_id,)).fetchall())
+        from .document_intake import classification_provenance
+        intake_by_source = self._document_intake_receipts(case_id)
+        for assertion in assertions:
+            if assertion["source_version_id"] in intake_by_source:
+                assertion.update(classification_provenance(intake_by_source[assertion["source_version_id"]]))
         assessments = self._dicts(self.db.execute(
             """SELECT a.id,a.relation,a.applicability,a.rationale,v.statement
             FROM evidence_assessments a JOIN evidence_versions v ON v.id=a.evidence_version_id
@@ -5142,11 +5711,21 @@ class CaseStore:
                 """SELECT id,document_id,version,sha256,kind,event_date,issued_at,received_at,
                 specimen_id,state,supersedes_id FROM source_versions WHERE case_id=?
                 ORDER BY event_date,document_id,version""", (case_id,)).fetchall())
+            from .document_intake import classification_provenance
+            intake_by_source = self._document_intake_receipts(case_id)
+            for source in source_rows:
+                if source["id"] in intake_by_source:
+                    receipt = intake_by_source[source["id"]]
+                    source["document_intake"] = receipt
+                    source.update(classification_provenance(receipt))
             assert_rows = self._dicts(self.db.execute(
                 """SELECT assertions.id,source_version_id,finding_key,certainty,quote,source_line
                 FROM assertions JOIN source_versions ON source_versions.id=assertions.source_version_id
                 WHERE assertions.case_id=? AND source_versions.state='current' ORDER BY assertions.id""",
                 (case_id,)).fetchall())
+            for assertion in assert_rows:
+                if assertion["source_version_id"] in intake_by_source:
+                    assertion.update(classification_provenance(intake_by_source[assertion["source_version_id"]]))
             snapshot_rows = self._dicts(self.db.execute(
                 "SELECT * FROM snapshots WHERE case_id=? ORDER BY id DESC", (case_id,)).fetchall())
             for snapshot in snapshot_rows:
@@ -5190,12 +5769,16 @@ class CaseStore:
                 FROM evidence_assessments a JOIN evidence_versions v ON v.id=a.evidence_version_id
                 WHERE a.case_id=? ORDER BY a.id DESC""", (case_id,)).fetchall())
             option_projection = self.option_view(case_id)
+            consent_rows = self.list_consents(case_id)
+            qualifier_rows = self.list_identity_qualifiers(case_id)
             from .followthrough import followthrough_view_in_transaction
             followthrough_projection = followthrough_view_in_transaction(self, case_id)
             return {
                 "followthrough": followthrough_projection,
                 "broker_links": broker_rows,
                 "rights_sources": rights_rows,
+                "consents": consent_rows,
+                "identity_qualifiers": qualifier_rows,
                 "biological_assets": self._dicts(self.db.execute(
                     "SELECT * FROM biological_assets WHERE case_id=? ORDER BY id", (case_id,)).fetchall()),
                 "biological_inventory_assertions": self._dicts(self.db.execute(
@@ -5266,6 +5849,30 @@ class CaseStore:
             raise InvalidInput("Source not in this case")
         return bytes(row["raw"]).decode("utf-8")
 
+    def source_document(self, case_id: str, source_id: int) -> dict:
+        """Retrieve exact original bytes and safe download metadata for one case."""
+        self._case(case_id)
+        if type(source_id) is not int or not 1 <= source_id <= 9223372036854775807:
+            raise InvalidInput("Source ID must be a bounded positive integer")
+        row = self.db.execute(
+            """SELECT s.id,s.document_id,s.version,s.raw,s.sha256,d.filename,d.media_type,
+            d.extraction_method,d.annotation_method,d.manual_transcription_confirmed
+            FROM source_versions s LEFT JOIN document_intake_metadata d ON d.source_version_id=s.id
+            WHERE s.case_id=? AND s.id=?""", (case_id, source_id)).fetchone()
+        if row is None:
+            raise InvalidInput("Source not in this case")
+        raw = bytes(row["raw"])
+        return {
+            "source_id": row["id"], "document_id": row["document_id"], "version": row["version"],
+            "raw": raw, "sha256": row["sha256"], "byte_count": len(raw),
+            "filename": row["filename"] or f"{row['document_id']}-v{row['version']}.txt",
+            "media_type": row["media_type"] or "text/plain; charset=utf-8",
+            "extraction_method": row["extraction_method"] or "synthetic-authored-format-v1",
+            "annotation_method": row["annotation_method"] or "source-authored-finding-lines",
+            "manual_transcription_confirmed": bool(row["manual_transcription_confirmed"]),
+            "clinical_review": "not_performed",
+        }
+
     def export_markdown(self, case_id: str, snapshot_id: int) -> str:
         self._case(case_id)
         if type(snapshot_id) is not int or snapshot_id < 1:
@@ -5280,6 +5887,7 @@ class CaseStore:
                 raise InvalidInput("Investigation not in this case")
             sources = self.db.execute("""SELECT v.* FROM source_versions v JOIN snapshot_sources ss ON ss.source_version_id=v.id
                 WHERE ss.snapshot_id=? ORDER BY v.document_id,v.version""", (snapshot_id,)).fetchall()
+            intake_by_source = self._document_intake_receipts(case_id)
             lines = ["# Open Intelligence — synthetic investigation", "",
                      "> Research demonstration only. No clinical review or patient-specific treatment recommendation.", "",
                      f"Case: `{case_id}` | Investigation: {snapshot_id} | State: **{snapshot['state']}**",
@@ -5297,8 +5905,17 @@ class CaseStore:
                 longest = max((len(run) for run in re.findall(r"`+", raw_text)), default=0)
                 fence = "`" * max(3, longest + 1)
                 lines.extend([f"### {source['document_id']}@{source['version']} — {source['state']}", "",
-                              f"SHA-256: `{source['sha256']}` | Event: {source['event_date']} | Issued: {source['issued_at']}", "",
-                              fence + "text", raw_text, fence, ""])
+                              f"SHA-256: `{source['sha256']}` | Event: {source['event_date']} | Issued: {source['issued_at']}", ""])
+                if source["id"] in intake_by_source:
+                    receipt = intake_by_source[source["id"]]
+                    lines.extend([
+                        "Manual transcription provenance: `classification_origin=user_selected` | "
+                        f"`annotation_method={receipt['annotation_method']}` | `clinical_review=not_performed`",
+                        f"Transcription review SHA-256: `{receipt['review_sha256']}`",
+                        "The literal quote is primary; user-selected classifications are not source-authored "
+                        "or clinically verified. Transcription confirmation is not clinical approval.", "",
+                    ])
+                lines.extend([fence + "text", raw_text, fence, ""])
             evidence = self.db.execute("""SELECT a.*,v.evidence_key,v.version,v.state AS evidence_state,
                 v.title,v.sha256,v.raw,v.rights,v.statement_line FROM snapshot_evidence se
                 JOIN evidence_assessments a ON a.id=se.assessment_id
@@ -5325,6 +5942,176 @@ class CaseStore:
                           "- Amendments can make previous investigations stale; see the state above.", ""])
             return "\n".join(lines)
 
+    # ---- Visit records: plain recorded history, never directives ----
+    VISIT_RECORDED_DATE_LABEL = "recorded date — not a clinical due date"
+    VISIT_MISSING_SOURCE_LABEL = "no source recorded"
+    VISIT_DISCLAIMER = ("Fictional visit history only. Visits record what happened, "
+                        "never what should happen next. Dates are recorded dates, "
+                        "not clinical due dates. No directive, recommendation, "
+                        "or treatment guidance is stored here.")
+    # Descriptive-only guard, same class as the existing option/discovery
+    # clinical-language guards: directive and prescriptive wording is rejected
+    # at write time in every author-controlled text field. Base verb forms
+    # (order, start treatment) are rejected while past-tense history
+    # (ordered, started) stays writable, so a recorded event can still be
+    # described. This is a narrow guard, not a language classifier: human
+    # review remains the gate, and the disclaimer states what visits are not.
+    _VISIT_DIRECTIVE_LANGUAGE = re.compile(
+        r"\bshould\b"
+        r"|\bmust\b"
+        r"|\bneed\s+to\b|\bneeds?\b"
+        r"|\border\b"
+        r"|\bstart\s+(treatment|therapy|medication|drug|infusion)\b"
+        r"|\bstop\s+(treatment|therapy|medication|drug|infusion)\b"
+        r"|\bseek\b"
+        r"|\bwatch\s+for\b"
+        r"|\beffectiv\w*\b|\befficac\w*\b"
+        r"|\bproven\b|\bbenefit\w*\b"
+        r"|\brecommend\w*\b|\bprescri\w*\b|\beligib\w*\b"
+        r"|\bdos(e|age)\b"
+        r"|\bbest\s+(treatment|therapy|option|drug)\b", re.IGNORECASE)
+
+    @staticmethod
+    def _check_visit_text(text: object, field: str, low: int, high: int) -> str:
+        if not isinstance(text, str) or not low <= len(text.strip()) <= high:
+            raise InvalidInput(f"Visit {field} must have {low}–{high} characters")
+        if CaseStore._VISIT_DIRECTIVE_LANGUAGE.search(text):
+            raise InvalidInput(f"Visit {field} must be descriptive history only; "
+                               "directive or prescriptive wording is not accepted")
+        return text.strip()
+
+    @staticmethod
+    def _check_visit_anchor(anchor: object) -> str | None:
+        if anchor is None:
+            return None
+        if not isinstance(anchor, str):
+            raise InvalidInput("Visit source anchor must be text or absent")
+        if not anchor.strip():
+            return None
+        return CaseStore._check_visit_text(anchor, "source anchor", 1, 300)
+
+    @staticmethod
+    def _project_visit_version(row: dict) -> dict:
+        anchor = row["source_anchor"]
+        return {
+            "id": row["id"],
+            "visit_id": row["visit_id"],
+            "version": row["version"],
+            "recorded_date": row["recorded_date"],
+            "recorded_date_label": CaseStore.VISIT_RECORDED_DATE_LABEL,
+            "visit_type": row["visit_type"],
+            "notes": row["notes"],
+            "source_anchor": anchor,
+            "source_display": anchor if anchor else CaseStore.VISIT_MISSING_SOURCE_LABEL,
+            "review_state": row["review_state"],
+            "state": row["state"],
+            "previous_id": row["previous_id"],
+            "created_at": row["created_at"],
+        }
+
+    def record_visit(self, case_id: str, recorded_date: str, visit_type: str,
+                     notes: str, source_anchor: str | None = None) -> dict:
+        """Record one fictional visit as plain history (version 1, current).
+
+        A missing source anchor is allowed and stays NULL; readers render it
+        as 'no source recorded'. The recorded date is history only, never a
+        due date. Emits only a visit_recorded event; no other record changes.
+        """
+        case_id = self._case(case_id)
+        recorded_date = valid_date(recorded_date)
+        visit_type = self._check_visit_text(visit_type, "visit type", 1, 120)
+        notes = self._check_visit_text(notes, "notes", 1, 2000)
+        source_anchor = self._check_visit_anchor(source_anchor)
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            cur = self.db.execute("INSERT INTO visits (case_id,created_at) VALUES (?,?)",
+                                  (case_id, now_utc()))
+            visit_id = int(cur.lastrowid)
+            vcur = self.db.execute("""INSERT INTO visit_versions
+                (visit_id,case_id,version,recorded_date,visit_type,notes,source_anchor,
+                 review_state,state,previous_id,created_at)
+                VALUES (?,?,1,?,?,?,?,'recorded','current',NULL,?)""",
+                (visit_id, case_id, recorded_date, visit_type, notes,
+                 source_anchor, now_utc()))
+            version_id = int(vcur.lastrowid)
+            self._event(case_id, "visit_recorded", visit_id=visit_id,
+                        version_id=version_id, version=1)
+            return {"visit_id": visit_id, "version_id": version_id, "version": 1}
+
+    def amend_visit(self, case_id: str, visit_id: int, recorded_date: str,
+                    visit_type: str, notes: str,
+                    source_anchor: str | None = None) -> dict:
+        """Append a new current version; the old version is superseded.
+
+        History rows are never updated or deleted: only the single previous
+        current row flips to superseded, and only within this visit. No other
+        visit, source, question, or investigation is touched.
+        """
+        case_id = self._case(case_id)
+        if type(visit_id) is not int or visit_id < 1:
+            raise InvalidInput("Invalid visit ID")
+        recorded_date = valid_date(recorded_date)
+        visit_type = self._check_visit_text(visit_type, "visit type", 1, 120)
+        notes = self._check_visit_text(notes, "notes", 1, 2000)
+        source_anchor = self._check_visit_anchor(source_anchor)
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            if not self.db.execute("SELECT 1 FROM visits WHERE id=? AND case_id=?",
+                                   (visit_id, case_id)).fetchone():
+                raise InvalidInput("Visit not in this case")
+            current = self.db.execute("""SELECT * FROM visit_versions
+                WHERE visit_id=? AND case_id=? AND state='current'
+                ORDER BY version DESC LIMIT 1""", (visit_id, case_id)).fetchone()
+            if not current:
+                raise InvalidInput("Visit has no current version to amend")
+            new_version = int(current["version"]) + 1
+            vcur = self.db.execute("""INSERT INTO visit_versions
+                (visit_id,case_id,version,recorded_date,visit_type,notes,source_anchor,
+                 review_state,state,previous_id,created_at)
+                VALUES (?,?,?,?,?,?,?,'recorded','current',?,?)""",
+                (visit_id, case_id, new_version, recorded_date, visit_type,
+                 notes, source_anchor, current["id"], now_utc()))
+            self.db.execute("UPDATE visit_versions SET state='superseded' WHERE id=?",
+                            (current["id"],))
+            version_id = int(vcur.lastrowid)
+            self._event(case_id, "visit_amended", visit_id=visit_id,
+                        version_id=version_id, version=new_version,
+                        supersedes_id=current["id"])
+            return {"visit_id": visit_id, "version_id": version_id,
+                    "version": new_version, "supersedes_id": current["id"]}
+
+    def list_visits(self, case_id: str) -> dict:
+        """List this case's visits with full version history, oldest first.
+
+        Strictly case-scoped: only rows carrying this case_id are read.
+        History arrays are in version order; the current version is also
+        projected separately for convenient rendering.
+        """
+        self._case(case_id)
+        with self.db:
+            self.db.execute("BEGIN")
+            visits = self._dicts(self.db.execute(
+                "SELECT id,case_id,created_at FROM visits WHERE case_id=? ORDER BY id",
+                (case_id,)).fetchall())
+            out = []
+            for visit in visits:
+                versions = self._dicts(self.db.execute(
+                    "SELECT * FROM visit_versions WHERE visit_id=? AND case_id=? ORDER BY version",
+                    (visit["id"], case_id)).fetchall())
+                projected = [self._project_visit_version(v) for v in versions]
+                current = next((v for v in projected if v["state"] == "current"), None)
+                out.append({
+                    "visit_id": visit["id"],
+                    "created_at": visit["created_at"],
+                    "current": current,
+                    "history": projected,
+                })
+            return {
+                "visits": out,
+                "recorded_date_label": self.VISIT_RECORDED_DATE_LABEL,
+                "disclaimer": self.VISIT_DISCLAIMER,
+                "synthetic": True,
+            }
     # ---- Evidence quality and limitations (descriptive only) ----
     # Append-only human notes about one exact source version. Recording
     # never updates source_versions, assertions, questions, snapshots, or
