@@ -16,6 +16,9 @@ import {decodeReviewQueue,decodeReviewReturnResult,validReturnReason,FICTIONAL_R
 import type {ReviewQueue,ReviewReturnResult} from './review-queue-view.js';
 import {canPrepareSourceBrief,decodeSourceBrief} from './source-brief.js';
 import type {SourceBrief} from './source-brief.js';
+import {QuestionEvidenceSession,emptyEvidenceState} from './authored-evidence-session.js';
+import type {EvidenceState} from './authored-evidence-session.js';
+import type {ContentItem,Permissions,Relation,Applicability} from './authored-evidence.js';
 export type Patient = Readonly<{
   patient_id: string; origin_org: string; created_at: string;
   status: 'active' | 'suspended'; revision: number;
@@ -26,7 +29,7 @@ export type ReviewReturnIntent=Readonly<{
 }>;
 export type QuestionDraft = Readonly<{case_id:string;source_id:string;source_line:number;
   snapshot_fingerprint:string;question:string}>;
-export type ViewState = Readonly<{
+export type ViewState = Readonly<EvidenceState & {
   connected: boolean; phase: 'disconnected' | 'idle' | 'reading' | 'creating' | 'ready' | 'error';
   patient: Patient | null; created: CreatedPatient | null; message: string;
   cases: ReadonlyArray<CaseBinding> | null; sourceIndex: SourceIndex | null;
@@ -77,7 +80,7 @@ const emptyInvestigation=()=>({questionDraft:null,composerPreview:null,composerP
   questionSaveMessage:'Save a verified preflight to create one unreviewed source-linked question.',
   questions:null,questionsAccessReceiptId:null,questionsCaseId:null,questionListPhase:'idle' as const,
   questionListMessage:'Open an authorized case to inspect saved source questions.',
-  ...emptyBrief(),sourceQuotePacket:null,sourceQuotePhase:'idle' as const,
+  ...emptyEvidenceState(),...emptyBrief(),sourceQuotePacket:null,sourceQuotePhase:'idle' as const,
   sourceQuoteMessage:'Select a saved question to inspect its source quotation and evidence gaps.'});
 const fresh = (): ViewState => Object.freeze({connected:false,phase:'disconnected',patient:null,created:null,message:'Connect a local synthetic credential to use the patient registry.',cases:null,sourceIndex:null,recordsPhase:'idle',recordMessage:'Open an authorized fictional patient in Overview first.',...emptyIntake(),...emptyWorld(),...emptyInvestigation(),...emptyReview()});
 const emptyRecords=()=>({...emptyIntake(),...emptyWorld(),cases:null,sourceIndex:null,recordsPhase:'idle' as const,recordMessage:'Load the current authorized case mappings to inspect original source metadata.'});
@@ -120,7 +123,24 @@ export class RegistrySession {
   #quoteRead=0;
   #inspectionQuestionId:string|null=null;
   #listeners=new Set<()=>void>(); #controllers=new Set<AbortController>(); #creating=false; #uploading=false;
-  constructor(private readonly transport:Transport=(url,init)=>fetch(url,init)) {}
+  #evidenceSession:QuestionEvidenceSession;
+  constructor(private readonly transport:Transport=(url,init)=>fetch(url,init)) {
+    this.#evidenceSession=new QuestionEvidenceSession({snapshot:this.snapshot,
+      publish:patch=>this.#publish(patch),scope:()=>[this.#scope,this.#read,this.#worldRead,this.#questionRead].join(':'),
+      selectedQuestion:()=>this.#inspectionQuestionId,
+      request:(url,control,body)=>this.transport(url,this.#init(control,body)),json,
+      add:control=>this.#controllers.add(control),remove:control=>this.#controllers.delete(control),
+      expire:()=>this.#httpError(401)});
+  }
+  dismissQuestionEvidence=()=>this.#evidenceSession.dismiss();
+  loadQuestionEvidence=(questionId:string)=>{this.#focusSavedQuestion(questionId);return this.#evidenceSession.load(questionId);};
+  importQuestionEvidence=(questionId:string,text:string,item:ContentItem,permissions:Permissions)=>this.#evidenceSession.import(questionId,text,item,permissions);
+  assessQuestionEvidence=(questionId:string,evidenceId:string,quote:string,relation:Relation,applicability:Applicability,rationale:string)=>this.#evidenceSession.assess(questionId,evidenceId,quote,relation,applicability,rationale);
+  withdrawQuestionEvidence=(questionId:string,evidenceId:string,reason:string)=>this.#evidenceSession.withdraw(questionId,evidenceId,reason);
+  prepareEvidenceReport=(questionId:string,assessmentIds:readonly string[])=>this.#evidenceSession.prepareReport(questionId,assessmentIds);
+  readEvidenceReport=(questionId:string,reportId:string)=>this.#evidenceSession.readReport(questionId,reportId);
+  loadEvidenceOriginal=(questionId:string,evidenceId:string)=>this.#evidenceSession.original(questionId,evidenceId);
+  retryEvidenceWrite=()=>this.#evidenceSession.retry();
   snapshot=():ViewState=>this.#state;
   subscribe=(listener:()=>void):(()=>void)=>{this.#listeners.add(listener);return()=>this.#listeners.delete(listener);};
   #publish(patch:Partial<ViewState>){this.#state=Object.freeze({...this.#state,...patch});for(const listener of this.#listeners)listener();}
@@ -139,7 +159,7 @@ export class RegistrySession {
     this.#inspectionQuestionId=null;
     this.#worldRead++;this.#composerRead++;this.#questionRead++;this.#questionWrite++;this.#briefRead++;this.#quoteRead++;
     this.#questionKey='';this.#questionFingerprint='';this.#savingQuestion=false;
-    return {...emptyInvestigation(),...this.#resetReview(preserveReviewCase)};
+    return {...emptyInvestigation(),...this.#evidenceSession.reset(preserveReviewCase),...this.#resetReview(preserveReviewCase)};
   }
   #resetWorld(preserveReviewCase?:string){
     this.#publish({...emptyWorld(),...this.#resetInvestigation(preserveReviewCase)});
@@ -154,6 +174,7 @@ export class RegistrySession {
     this.#inspectionQuestionId=questionId;
     this.dismissSourceBrief();
     this.dismissSourceQuotePacket();
+    this.dismissQuestionEvidence();
   }
   dismissSourceBrief=()=>{
     this.#briefRead++;
@@ -185,7 +206,12 @@ export class RegistrySession {
   }
   async read(id:string):Promise<void>{
     const scope=this.#scope, request=++this.#read;
-    this.#records++;this.#publish({patient:null,...emptyRecords(),...this.#resetInvestigation()});
+    const pendingEvidence=this.#state.evidenceWriteIntent;
+    const preserveEvidence=pendingEvidence?.patient_id===id&&
+      ['saving','unknown'].includes(this.#state.evidenceWritePhase)?pendingEvidence:null;
+    this.#records++;this.#publish({patient:null,...emptyRecords(),...this.#resetInvestigation(),
+      ...(preserveEvidence?{evidenceWriteIntent:preserveEvidence,evidenceWritePhase:'unknown' as const,
+        evidenceWriteMessage:'The same patient is being rechecked. The earlier evidence write remains uncertain; reload its case authority before exact receipt recovery.'}:{})});
     if(!this.#token){this.#publish({message:'Connect an authorized synthetic credential first.'});return;}
     if(!boundedKey(id)){this.#publish({phase:'error',message:'Use an opaque patient ID, not a name or URL.'});return;}
     const control=new AbortController();this.#controllers.add(control);
@@ -227,7 +253,7 @@ export class RegistrySession {
       this.#publish({...emptyRecords(),...this.#resetInvestigation(),recordsPhase:'error',recordMessage:'Open an authorized fictional patient in Overview first.',...emptyIntake()});
       return;
     }
-    const retainedCase=this.#state.reviewReturnIntent?.case_id;
+    const retainedCase=this.#state.reviewReturnIntent?.case_id??this.#state.evidenceWriteIntent?.case_id;
     const scope=this.#scope,read=this.#read,request=++this.#records;
     const current=()=>scope===this.#scope && read===this.#read &&
       request===this.#records && this.#state.patient?.patient_id===patientId;
@@ -710,6 +736,7 @@ export class RegistrySession {
   }
 
   async loadSavedQuestions(caseId:string):Promise<void>{
+    this.dismissQuestionEvidence();
     this.dismissSourceQuotePacket();
     const patientId=this.#state.patient?.patient_id;
     const query=++this.#questionRead,scope=this.#scope,patientRead=this.#read,worldRead=this.#worldRead;

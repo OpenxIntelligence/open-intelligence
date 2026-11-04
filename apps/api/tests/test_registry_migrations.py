@@ -19,7 +19,7 @@ from oi_api.migrate import migrate
 from open_intelligence.postgres_registry import PostgresPatientRegistry
 
 
-REGISTRY_REVISION = "0008_review_convergence"
+REGISTRY_REVISION = "0010_authored_evidence_origin"
 BASELINE_REVISION = "0001_h1_shell"
 TABLES = {"identity_patients", "identity_create_receipts", "identity_domain_events"}
 
@@ -59,6 +59,19 @@ class RegistryMigrationTests(unittest.TestCase):
         # unexpected dependent object must stop cleanup rather than be erased.
         with self.engine.begin() as connection:
             connection.execute(text("DROP TABLE IF EXISTS public.oi_registry_external_reference"))
+            connection.execute(text("DROP TABLE IF EXISTS investigation.evidence_command_origins"))
+            connection.execute(text("DROP FUNCTION IF EXISTS investigation.guard_evidence_command_origin_insert()"))
+            connection.execute(text("DROP TABLE IF EXISTS investigation.evidence_commands"))
+            connection.execute(text("DROP TABLE IF EXISTS investigation.question_evidence_reports"))
+            connection.execute(text("DROP TABLE IF EXISTS investigation.question_evidence_assessments"))
+            connection.execute(text("DROP TABLE IF EXISTS investigation.case_evidence_withdrawals"))
+            connection.execute(text("DROP TABLE IF EXISTS investigation.case_evidence_versions"))
+            connection.execute(text("DROP FUNCTION IF EXISTS investigation.require_evidence_command_origin()"))
+            connection.execute(text("DROP FUNCTION IF EXISTS investigation.guard_case_evidence_scope()"))
+            connection.execute(text("DROP FUNCTION IF EXISTS investigation.guard_case_evidence_version()"))
+            connection.execute(text("DROP FUNCTION IF EXISTS investigation.guard_case_evidence_withdrawal()"))
+            connection.execute(text("DROP FUNCTION IF EXISTS investigation.guard_question_evidence_assessment()"))
+            connection.execute(text("DROP FUNCTION IF EXISTS investigation.guard_question_evidence_report()"))
             connection.execute(text("DROP TABLE IF EXISTS investigation.question_review_receipts"))
             connection.execute(text("DROP FUNCTION IF EXISTS investigation.guard_review_return_insert()"))
             connection.execute(text("DROP TABLE IF EXISTS investigation.source_questions"))

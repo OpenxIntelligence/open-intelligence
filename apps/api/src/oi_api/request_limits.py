@@ -17,6 +17,8 @@ class PatientRequestLimit:
                 route.endswith("/questions") or route.endswith("/composer/source-preflight") or
                 ("/questions/" in route and route.endswith("/return-for-verification")) or
                 ("/questions/" in route and route.endswith("/brief")) or
+                ("/questions/" in route and route.endswith(("/evidence", "/evidence-assessments", "/evidence-reports"))) or
+                ("/questions/" in route and "/evidence/" in route and route.endswith("/withdraw")) or
                 ("/record-requests/" in route and route.endswith("/cancel")) or
                 ("/case-bindings/" in route and route.endswith("/revoke"))
             )
@@ -36,7 +38,7 @@ class PatientRequestLimit:
             try:
                 if int(length) < 0:
                     raise ValueError()
-                if int(length) > (72_000 if route.endswith('/sources') else 16_384):
+                if int(length) > (210_000 if route.endswith('/evidence') else 72_000 if route.endswith('/sources') else 16_384):
                     await reject(413, "Request body too large")
                     return
             except ValueError:
@@ -50,7 +52,7 @@ class PatientRequestLimit:
                     if message["type"] == "http.disconnect":
                         return
                     chunk = message.get("body", b"")
-                    if len(content) + len(chunk) > (72_000 if route.endswith('/sources') else 16_384):
+                    if len(content) + len(chunk) > (210_000 if route.endswith('/evidence') else 72_000 if route.endswith('/sources') else 16_384):
                         await reject(413, "Request body too large")
                         return
                     content.extend(chunk)

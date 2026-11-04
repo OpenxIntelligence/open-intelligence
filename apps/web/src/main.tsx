@@ -25,8 +25,8 @@ function App(){
  useEffect(()=>{if(state.created) setPatientId(state.created.patient_id)},[state.created]);
  useEffect(()=>{if(!state.connected){setPatientId('');setConfirmed(false)}},[state.connected]);
  useEffect(()=>{const clear=()=>session.disconnect();window.addEventListener('pagehide',clear);return()=>window.removeEventListener('pagehide',clear)},[]);
-  const busy=state.phase==='creating'||state.phase==='reading'||state.importOutcome==='sending'||state.questionSavePhase==='saving'||state.reviewReturnPhase==='saving';
- function navigate(nextSection:string){session.dismissSourceQuotePacket();session.dismissSourceBrief();setSection(nextSection);}
+  const busy=state.phase==='creating'||state.phase==='reading'||state.importOutcome==='sending'||state.questionSavePhase==='saving'||state.reviewReturnPhase==='saving'||state.evidenceWritePhase==='saving';
+ function navigate(nextSection:string){session.dismissSourceQuotePacket();session.dismissSourceBrief();session.dismissQuestionEvidence();setSection(nextSection);}
  function disconnect(){session.disconnect();setToken('');setPatientId('');setConfirmed(false);setSection('Overview');}
  return <div className="app">
   <a className="skip" href="#main">Skip to workspace</a>
