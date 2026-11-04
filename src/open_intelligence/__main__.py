@@ -27,6 +27,7 @@ from .investigation import (
 )
 from .clinician_overview import build_clinician_overview
 from .mission import build_patient_mission
+from .patient_attention import case_patient_attention
 from .provenance import case_provenance
 from .patient_report import build_patient_report, render_text
 from .owned_questions import question_gap_rollup
@@ -290,6 +291,9 @@ class Handler(BaseHTTPRequestHandler):
             timeline = re.fullmatch(rf"/api/cases/{ID_PART}/timeline", path)
             if timeline:
                 return self._json(200, case_timeline(store, timeline[1]))
+            attention = re.fullmatch(rf"/api/cases/{ID_PART}/patient-attention", path)
+            if attention:
+                return self._json(200, case_patient_attention(store, attention[1]))
             evidence_quality = re.fullmatch(rf"/api/cases/{ID_PART}/evidence-quality", path)
             if evidence_quality:
                 return self._json(200, store.evidence_quality(evidence_quality[1]))

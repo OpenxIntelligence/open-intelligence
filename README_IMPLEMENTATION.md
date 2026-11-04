@@ -164,6 +164,46 @@ Remaining proof step: a live-server run against the real API with
 the operator key set, before the demo. The API completion itself
 was verified separately on 2026-10-31.
 
+## Patient attention list (read-only projection)
+
+One plain-language list of everything still open for the patient — derived,
+never invented. No new tables; the projection composes only existing ledger
+rows. Fictional/demo data only.
+
+```text
+GET /api/cases/{CASE-ID}/patient-attention
+```
+
+Each entry carries a plain-language title (framing at most 30 words), a kind,
+a recorded date where one exists, and a citation to its record id:
+
+- `open_question`: questions with state `open` (citation: question id).
+- `pending_review`: draft snapshots awaiting demo review, and discussion
+  items with review state `needs_review` (citation: snapshot or option id).
+- `follow_up`: open preparation tasks (`not_started`, `in_progress`,
+  `blocked`), sourced deadline dependencies, and recorded threats
+  (citation: task, dependency, or threat id). Completing a task (`done` or
+  `cancelled`) removes it on the next read.
+- `unanswered`: stale snapshots whose question is still open (citation:
+  snapshot id).
+
+Ordering uses recorded YYYY-MM-DD dates only (sourced deadline and threat
+dates), oldest first. Entries without a recorded date sort last with the
+explicit marker `no date recorded`. No urgency, priority, or clinical meaning
+is inferred, and no soonness filter is applied. Nothing here authorizes,
+schedules, or executes anything. Deadlines and threats for withdrawn,
+expired, or rejected discussion items stay historical in the Options panel
+and are not listed here.
+
+The patient view now includes a "What needs attention" panel under the same
+record, with FICTIONAL labels on every item, text-only rendering, and the
+same case-switch guards as the rest of the workspace. An empty case shows an
+honest empty state that does not imply completeness. Unknown case ids return
+422, as elsewhere.
+
+Verification: see `tests/test_patient_attention.py` (store, HTTP, and
+UI-contract checks). This slice was authored without execution; a reviewer
+runs the suite, commits, pushes, and opens a draft PR.
 ## Visit records slice (FICTIONAL recorded history)
 
 Visits are plain recorded history — dates and notes, never directives,
