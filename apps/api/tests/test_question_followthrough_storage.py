@@ -353,7 +353,25 @@ class FollowthroughPostgresTests(SourceVersionFixture):
             self.assertEqual(status,201,saved)
         binding=dict(patient_id=self.patient,case_id=CASE,question_id=self.question,
                      revision_id=saved["revision_id"],references_sha256=fingerprint([ref]))
-        manual_task=self.create_task(key="TASK-MANUAL-BOUND",manual_dependency=binding)
+        # Verify the actual HTTP Pydantic boundary, then exact-retry from the
+        # same first-party PostgreSQL task owner across a fresh connection.
+        self.creds[0]["actions"].extend(("followthrough_create","followthrough_read"))
+        self.write()
+        command=dict(synthetic=True,request_key="TASK-MANUAL-BOUND",
+            title="Prepare the fictional source packet",detail="",owner_label="",
+            due_date="2026-11-04",review_trigger="",
+            reason="Recorded for the next fictional discussion.",
+            source_snapshot_contract=SOURCE_SNAPSHOT_CONTRACT,
+            expected_source_snapshot_sha256=self.preflight["source_snapshot_sha256"],
+            expected_preflight_sha256=self.preflight["preflight_sha256"],
+            manual_dependency=binding)
+        path=f"/v1/patients/{self.patient}/cases/{CASE}/questions/{self.question}/followthrough"
+        with running_server(create_app(self.settings)) as base:
+            status,manual_task,_=request(base,path,token=TOKEN_A,body=command)
+            self.assertEqual(status,201,manual_task)
+            retry_status,retry,_=request(base,path,token=TOKEN_A,body=command)
+            self.assertEqual(retry_status,200,retry)
+            self.assertEqual(retry,manual_task|{"duplicate":True})
         self.assertEqual(self.create_task(key="TASK-MANUAL-BOUND",manual_dependency=binding),
                          manual_task|{"duplicate":True})
         tasks={item["task_id"]:item for item in self.listing()["tasks"]}
