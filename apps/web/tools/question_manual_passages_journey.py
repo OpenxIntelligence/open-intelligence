@@ -19,7 +19,8 @@ def exercise(cd,patient_id,token,credentials,write_grants,artifacts):
     credentials[0]['actions']=sorted(set(actions)|{
         'patient_read','case_binding_create','case_binding_read','source_import','source_read','source_original_read',
         'composer_context_read','question_create','question_read','authored_evidence_read','authored_evidence_import',
-        'authored_evidence_assess','evidence_report_export'})
+        'authored_evidence_assess','evidence_report_export',
+        'review_queue_read','review_return','followthrough_read','followthrough_create'})
     write_grants()
     root='/v1/patients/'+patient_id
     def operator(path,body=None):
@@ -131,6 +132,39 @@ def exercise(cd,patient_id,token,credentials,write_grants,artifacts):
         wait_for(lambda:any(p.is_file() and not p.name.endswith('.crdownload') for p in destination.iterdir()),'actual manual report download')
         download=next(p for p in destination.iterdir() if p.is_file() and not p.name.endswith('.crdownload')).read_bytes()
         assert download.partition(b'--- BEGIN PRESERVED REPORT BODY ---\n')[2]==report['body'].encode()
+        # A preserved manual-context report must connect to the SAME question's
+        # governed Review and operational follow-through, without promoting a
+        # user-selected passage to a source assertion or clinical decision.
+        queue=operator(path+'/review-queue')
+        review_item=next(item for item in queue['items'] if item['question_id']==question_id)
+        assert review_item['queue_fingerprint'] and review_item['review_state']=='awaiting_independent_verification'
+        review_receipt=operator(qpath+'/return-for-verification',dict(
+            synthetic=True,request_key='MANUAL-WEB-RETURN',
+            expected_queue_fingerprint=review_item['queue_fingerprint'],
+            reason='Independently verify the fictional violet wording before any decision.'))
+        assert review_receipt['question_id']==question_id and review_receipt['duplicate'] is False
+        returned=next(item for item in operator(path+'/review-queue')['items']
+                      if item['question_id']==question_id)
+        assert returned['current_return_receipt_id']==review_receipt['receipt_id']
+        assert returned['review_state']=='returned_for_independent_verification'
+        assert returned['clinical_approval'] is False and returned['reviewer_identity_verified'] is False
+        task_command=dict(synthetic=True,request_key='MANUAL-WEB-FOLLOWTHROUGH',
+            title='Verify fictional violet source wording',
+            detail='Revisit the fictional question and its preserved manual-context report.',
+            owner_label='',review_trigger='After independent fictional source verification',
+            reason='Track an accountable next step without claiming a clinical decision.',
+            source_snapshot_contract='oi.pg-source-world-model/1',
+            expected_source_snapshot_sha256=world['snapshot_fingerprint'],
+            expected_preflight_sha256=preflight['preflight_sha256'])
+        task_receipt=operator(qpath+'/followthrough',task_command)
+        task_retry=operator(qpath+'/followthrough',task_command)
+        assert task_retry['duplicate'] is True and task_retry['task_id']==task_receipt['task_id']
+        assert task_retry['event_id']==task_receipt['event_id']
+        task=next(item for item in operator(path+'/followthrough')['tasks']
+                  if item['task_id']==task_receipt['task_id'])
+        assert task['question_id']==question_id and task['source_id']==source['source_id']
+        assert task['status']=='created' and task['revision']==1 and task['clinical_approval'] is False
+        assert task['source_snapshot_sha256']==world['snapshot_fingerprint']
         doc,preview=docs[1]
         operator(document_path+'/'+doc['source_id']+'/annotations',dict(synthetic=True,request_key='MANUAL-WEB-CORRECTION',
             expected_revision_id=doc['annotation_revision_id'],confirmed_case_id=CASE,expected_sha256=preview['sha256'],
@@ -141,18 +175,48 @@ def exercise(cd,patient_id,token,credentials,write_grants,artifacts):
         assert cd.evaluate("document.querySelector('[data-testid=evidence-report-prepare]').disabled")
         historical=operator(qpath+'/evidence-reports/'+report_id)
         assert historical['state']=='historical_reassessment_required' and historical['body']==report['body'] and historical['snapshot']==report['snapshot']
+        # Manual correction affects the report, not the primary structured
+        # question's Review receipt or the independently recorded task history.
+        # This checks truthful separation; task-level manual-dependency
+        # reassessment is a future product contract, not silently inferred here.
+        after_task=next(item for item in operator(path+'/followthrough')['tasks']
+                        if item['task_id']==task_receipt['task_id'])
+        assert after_task['history']==task['history'] and after_task['question_id']==question_id
+        after_review=next(item for item in operator(path+'/review-queue')['items']
+                          if item['question_id']==question_id)
+        assert after_review['current_return_receipt_id']==review_receipt['receipt_id']
+        assert after_review['clinical_approval'] is False
         screenshot=cd.command('Page.captureScreenshot',{'format':'png'})
         (artifacts/'manual-context-reassessment.png').write_bytes(base64.b64decode(screenshot['data']))
         credentials[0]['actions'].remove('source_original_read');write_grants()
         cd.evaluate("[...document.querySelectorAll('[data-testid=question-manual-passages] button')].find(b=>b.textContent==='Refresh attached passages').click()")
         cd.wait("!document.querySelector('[data-testid=question-manual-passages]') && !document.querySelector('[data-testid=evidence-report-preview]')",'revoked original-read clears shared manual report disclosure')
+        # Distinct Review/task grants still work when a supplementary original
+        # is withheld. They must not carry the denied manual quotation.
+        scoped_tasks=operator(path+'/followthrough')['tasks']
+        scoped_reviews=operator(path+'/review-queue')['items']
+        assert next(item for item in scoped_tasks
+                    if item['task_id']==task_receipt['task_id'])['clinical_approval'] is False
+        assert next(item for item in scoped_reviews
+                    if item['question_id']==question_id)['current_return_receipt_id']==review_receipt['receipt_id']
+        # Independently authorized workflow metadata must not disclose an
+        # exact quotation whose document-original permission was revoked.
+        denied_quote='A fictional violet label is pending.'
+        assert denied_quote not in json.dumps(scoped_tasks,ensure_ascii=False), (
+            'Task metadata leaked the revoked manual-document quotation')
+        assert denied_quote not in json.dumps(scoped_reviews,ensure_ascii=False), (
+            'Review metadata leaked the revoked manual-document quotation')
         (artifacts/'question-manual-context-workflow.json').write_text(json.dumps(dict(
             patient_id=patient_id,case_id=CASE,question_id=question_id,context=saved_context,
             report_id=report_id,report_body_sha256=report['body_sha256'],historical_state=historical['state'],
             exact_retry=True,download_bytes_equal=True,revoked_original_read_withholds=True,
             recovery_survives_refresh_and_denial=True,unsaved_removal_blocks_report=True,
+            same_question_review_receipt_id=review_receipt['receipt_id'],
+            same_question_followthrough_task_id=task_receipt['task_id'],
+            task_exact_retry_one_record=True,manual_correction_preserves_task_history=True,
+            independently_authorized_review_and_task_survive_original_denial=True,
             structured_assertion_count=1,clinical_approval=False),indent=2))
-        print('PASS QUESTION MANUAL CONTEXT: actual text/PDF selection, one canonical question, lost-response exact retry, immutable report/download, correction invalidation and original-read denial')
+        print('PASS QUESTION MANUAL CONTEXT + HANDOFF: actual text/PDF selection, one canonical question, exact retry, immutable report/download, independent Review return and task, correction invalidation and original-read denial')
     finally:
         cd.evaluate('window.__manualJourney?.restore()')
         credentials[0]['actions']=actions;write_grants()
