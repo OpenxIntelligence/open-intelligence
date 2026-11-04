@@ -124,6 +124,73 @@ def main():
                     raise RuntimeError('Synthetic evidence API did not become ready')
                 time.sleep(0.25)
 
+        def serve_database(database):
+            # Recreate the actual API, retaining its image, credentials mount,
+            # security options and network. Do not run a new migration/seed.
+            override = access / 'restore.compose.json'
+            override.write_text(json.dumps({'services': {'api': {'environment': {
+                'OI_API_DATABASE_URL': 'postgresql+pg8000://oi_api:oi_h1_synthetic_only@db:5432/' + database,
+            }}}}))
+            if str(override) not in compose:
+                compose.extend(['--file', str(override)])
+            command(['up', '--no-deps', '--force-recreate', '--detach', 'api'])
+            ready()
+            # A denial-only checkpoint cannot prove target identity by emitting
+            # an access event. Query through this API container's normal engine.
+            result = command(['exec', '-T', 'api', 'python', '-c',
+                'from oi_api.config import Settings\n'
+                'from oi_api.database import make_engine\n'
+                'from sqlalchemy import text\n'
+                'engine = make_engine(Settings.from_env())\n'
+                'try:\n'
+                '    with engine.connect() as connection:\n'
+                '        print(connection.execute(text("SELECT current_database()")).scalar_one())\n'
+                'finally:\n'
+                '    engine.dispose()\n'], capture_output=True, text=True)
+            assert result.stdout.strip() == database, 'Recreated API connected to the wrong database'
+
+        def restore(source_database, restored_database):
+            before = snapshot(source_database)
+            dump = command(['exec', '-T', 'db', 'pg_dump', '-U', 'oi_api', '-d',
+                            source_database, '--format=custom'], capture_output=True).stdout
+            command(['exec', '-T', 'db', 'createdb', '-U', 'oi_api', restored_database])
+            command(['exec', '-T', 'db', 'pg_restore', '-U', 'oi_api', '-d', restored_database,
+                     '--exit-on-error', '--no-owner'], input=dump)
+            assert snapshot(restored_database) == before, 'Restore changed complete history or sequences'
+            serve_database(restored_database)
+            assert snapshot(restored_database) == before, 'API startup changed restored history'
+            return before
+
+        def assert_restored_reads(before, database, receipt_ids):
+            after = snapshot(database)
+            # Reads and exact retries may append access events only. The source
+            # copy must stay completely unchanged, including sequence state.
+            assert snapshot() == before, 'Restored HTTP unexpectedly touched the original database'
+            for table in before.keys() - {'identity.identity_domain_events', 'sequence_state'}:
+                assert after[table] == before[table], 'Restored read/retry changed ' + table
+            event_sequence = ('identity', 'identity_domain_events_id_seq')
+            for state in (before, after):
+                assert sum((s['schemaname'], s['sequencename']) == event_sequence
+                           for s in state['sequence_state']) == 1
+            def non_access_sequences(state):
+                return [s for s in state['sequence_state']
+                        if (s['schemaname'], s['sequencename']) != event_sequence]
+            assert non_access_sequences(after) == non_access_sequences(before), \
+                'Restored read/retry consumed a business-object sequence'
+            old = {row['id']: row for row in before['identity.identity_domain_events']}
+            current = {row['id']: row for row in after['identity.identity_domain_events']}
+            assert all(current.get(key) == row for key, row in old.items()), 'Historical event changed'
+            fresh = [row for key, row in current.items() if key not in old]
+            assert fresh, 'No restored access event: API may still target the original database'
+            assert len(receipt_ids) == len(set(receipt_ids)), 'Reused an access receipt'
+            # Each actual read response must be attested in the restored copy.
+            for receipt_id in receipt_ids:
+                assert receipt_id in json.dumps(fresh), 'Returned receipt missing from restored database'
+                assert receipt_id not in json.dumps(list(old.values())), 'Returned an old access receipt'
+            assert all(row['event_type'] == 'source.read_authorized' for row in fresh), \
+                'Exact retry unexpectedly emitted a new business event'
+            return len(fresh)
+
         save_access()
         try:
             command(['config', '--quiet'])
@@ -188,12 +255,15 @@ def main():
                 assert request(url + '/evidence-assessments', intent) == (200, duplicate)
                 return result['assessment_id'], intent, duplicate
 
+            report_commands = []
+
             def make_report(ids, key):
                 intent = {'synthetic': True, 'request_key': key, 'assessment_ids': ids,
                           'expected_packet_sha256': packet()['packet_sha256']}
                 status, result = request(url + '/evidence-reports', intent)
                 assert status == 201, result
                 assert request(url + '/evidence-reports', intent) == (200, {**result, 'duplicate': True})
+                report_commands.append((intent, {**result, 'duplicate': True}))
                 status, report = request(url + '/evidence-reports/' + result['report_id'])
                 assert status == 200 and report['state'] == 'current_unreviewed'
                 assert report['body_sha256'] == hashlib.sha256(report['body'].encode()).hexdigest()
@@ -227,6 +297,30 @@ def main():
                     assert reread[field] == first[field]
                 print('Canonical evidence, authored comparisons and report survived ' + service + ' restart')
 
+            # Row equality is insufficient: serve a readable backup through the
+            # real HTTP API and prove its access receipts exist only in the copy.
+            readable_database = 'oi_api_test_evidence_readable_restore'
+            readable_before = restore('oi_api_synthetic', readable_database)
+            readable_receipts = []
+            for row, text in ((support, support_text), (counter, counter_text)):
+                status, original = request(url + '/evidence/' + row['evidence_id'] + '/original')
+                assert status == 200 and original['original_text'].encode() == text.encode()
+                assert (original['patient_id'], original['case_id'], original['evidence_id'], original['sha256']) == \
+                    (patient, CASE, row['evidence_id'], row['sha256'])
+                readable_receipts.append(original['access_receipt_id'])
+            status, recovered = request(url + '/evidence-reports/' + first['report_id'])
+            assert status == 200 and recovered['state'] == 'current_unreviewed'
+            for field in ('report_id', 'body', 'body_sha256', 'snapshot', 'snapshot_sha256', 'prepared_at'):
+                assert recovered[field] == first[field], 'Restored report changed ' + field
+            readable_receipts.append(recovered['access_receipt_id'])
+            for _, intent, duplicate in (a1, a2):
+                assert request(url + '/evidence-assessments', intent) == (200, duplicate)
+            assert request(url + '/evidence-reports', report_commands[0][0]) == (200, report_commands[0][1])
+            readable_access_count = assert_restored_reads(readable_before, readable_database, readable_receipts)
+            serve_database('oi_api_synthetic')
+            assert snapshot() == readable_before
+            print('PASS RESTORED READABLE HTTP: exact originals/report/retries; restored-only access receipts')
+
             amended = import_evidence(evidence('INK-SUPPORT',
                 'The corrected invented café 🧪 worksheet leaves the ink example uncertain.', amends=1),
                 'abstract', 'IMPORT-SUPPORT-V2')
@@ -253,6 +347,26 @@ def main():
                 assert status == 200 and withheld['state'] == 'content_withheld'
                 assert withheld['body'] is withheld['snapshot'] is None
                 assert withheld['body_sha256'] == prior['body_sha256']
+
+            # Test class-specific rights before any withdrawal can mask them.
+            rights_database = 'oi_api_test_evidence_rights_restore'
+            rights_before = restore('oi_api_synthetic', rights_database)
+            rights_receipts = []
+            status, latest_original = request(url + '/evidence/' + changed['evidence_id'] + '/original')
+            assert status == 200 and hashlib.sha256(latest_original['original_text'].encode()).hexdigest() == changed['sha256']
+            rights_receipts.append(latest_original['access_receipt_id'])
+            for prior in (first, second):
+                status, withheld = request(url + '/evidence-reports/' + prior['report_id'])
+                assert status == 200 and withheld['state'] == 'content_withheld'
+                assert withheld['body'] is withheld['snapshot'] is None
+                assert withheld['body_sha256'] == prior['body_sha256']
+                rights_receipts.append(withheld['access_receipt_id'])
+            denied_before = snapshot(rights_database)
+            assert request(url + '/evidence/' + support['evidence_id'] + '/original')[0] == 404
+            assert snapshot(rights_database) == denied_before
+            rights_access_count = assert_restored_reads(rights_before, rights_database, rights_receipts)
+            serve_database('oi_api_synthetic')
+            assert snapshot() == rights_before
             withdrawal = {'synthetic': True, 'request_key': 'WITHDRAW-SUPPORT',
                           'reason': 'Withdraw the independently fictional evidence family for verification.'}
             withdraw_url = url + '/evidence/' + changed['evidence_id'] + '/withdraw'
@@ -274,14 +388,67 @@ def main():
             assert before['public.alembic_version'] == [{'version_num': SCHEMA_REVISION}]
             encoded_events = json.dumps(before['identity.identity_domain_events'], ensure_ascii=False)
             assert token not in encoded_events and 'invented café' not in encoded_events
-            dump = command(['exec', '-T', 'db', 'pg_dump', '-U', 'oi_api', '-d',
-                            'oi_api_synthetic', '--format=custom'], capture_output=True).stdout
             restored = 'oi_api_test_evidence_restore'
-            command(['exec', '-T', 'db', 'createdb', '-U', 'oi_api', restored])
-            command(['exec', '-T', 'db', 'pg_restore', '-U', 'oi_api', '-d', restored,
-                     '--exit-on-error', '--no-owner'], input=dump)
-            assert snapshot(restored) == before, 'Restore changed complete canonical evidence/report history'
-            receipt = {'contract': 'oi.h1-evidence-recovery-acceptance/1', 'patient_id': patient,
+            assert restore('oi_api_synthetic', restored) == before
+            withheld_receipts = []
+            restored_packet = packet()
+            assert restored_packet['question']['source_context_state'] == 'source_reassessment_required'
+            withdrawn_rows = [e for e in restored_packet['evidence'] if e['evidence_key'] == 'INK-SUPPORT']
+            assert len(withdrawn_rows) == 3
+            assert all(e['state'] == 'withdrawn' and e['title'] is e['statement'] is None for e in withdrawn_rows)
+            withheld_receipts.append(restored_packet['access_receipt_id'])
+            for prior in (first, second):
+                status, withheld = request(url + '/evidence-reports/' + prior['report_id'])
+                assert status == 200 and withheld['state'] == 'content_withheld'
+                assert withheld['body'] is withheld['snapshot'] is None
+                for field in ('report_id', 'prepared_at', 'body_sha256', 'snapshot_sha256'):
+                    assert withheld[field] == prior[field]
+                withheld_receipts.append(withheld['access_receipt_id'])
+            status, original = request(url + '/evidence/' + counter['evidence_id'] + '/original')
+            assert status == 200 and original['original_text'] == counter_text
+            withheld_receipts.append(original['access_receipt_id'])
+            for _, intent, duplicate in (a1, a2, a3):
+                assert request(url + '/evidence-assessments', intent) == (200, duplicate)
+            for intent, duplicate in report_commands:
+                assert request(url + '/evidence-reports', intent) == (200, duplicate)
+            assert request(withdraw_url, withdrawal) == (200, {**withdrawn, 'duplicate': True})
+            withheld_access_count = assert_restored_reads(before, restored, withheld_receipts)
+
+            # Rights and independent action grants still apply after recovery;
+            # denied/stale requests cannot write receipts, events or new rows.
+            denied_before = snapshot(restored)
+            assert request(url + '/evidence/' + support['evidence_id'] + '/original')[0] == 404
+            # Latest api_output was readable at the rights-only checkpoint.
+            # Its denial here therefore requires the restored withdrawal.
+            assert request(url + '/evidence/' + changed['evidence_id'] + '/original')[0] == 404
+            assert request(url + '/evidence-assessments', {**a2[1], 'request_key': 'RESTORED-STALE-ASSESSMENT'})[0] == 409
+            assert snapshot(restored) == denied_before
+            credential['actions'].remove('evidence_report_export'); save_access()
+            status, denied = request(url + '/evidence-reports/' + first['report_id'])
+            assert status == 404 and 'body' not in denied
+            assert request(url + '/evidence-reports', report_commands[0][0])[0] == 404
+            assert snapshot(restored) == denied_before
+            credential['actions'] = list(actions); save_access()
+
+            # Persist revocation in the recovered copy, then restore that copy
+            # again: an active fixture credential cannot revive its case binding.
+            status, revoked = request(patient_path + '/case-bindings/' + CASE + '/revoke', {
+                'synthetic': True, 'reason': 'Revoke the independently fictional recovered binding.'})
+            assert status == 200 and revoked['duplicate'] is False
+            revoked_database = 'oi_api_test_evidence_revoked_restore'
+            revoked_before = restore(restored, revoked_database)
+            assert revoked_before['coordination.patient_case_bindings'][0]['status'] == 'revoked'
+            for path, intent in ((url + '/evidence', None),
+                                 (url + '/evidence/' + counter['evidence_id'] + '/original', None),
+                                 (url + '/evidence-reports/' + first['report_id'], None),
+                                 (url + '/evidence-assessments', a2[1]),
+                                 (url + '/evidence-reports', report_commands[0][0])):
+                status, denied = request(path, intent)
+                assert status == 404 and not ({'body', 'snapshot', 'original_text', 'access_receipt_id'} & denied.keys())
+            assert snapshot(revoked_database) == revoked_before, 'Denied restored binding caused effects'
+            assert snapshot(restored) == revoked_before, 'Revoked restore touched its source database'
+            assert snapshot() == before, 'Restored verification changed original database'
+            receipt = {'contract': 'oi.h1-evidence-recovery-acceptance/2', 'patient_id': patient,
                        'case_id': CASE, 'question_id': question_id, 'source_id': source['source_id'],
                        'evidence_ids': [e['evidence_id'] for e in (support, counter, amended, changed)],
                        'assessment_ids': [a1[0], a2[0], a3[0]],
@@ -291,13 +458,24 @@ def main():
                        'schema_revision': SCHEMA_REVISION, 'api_restart': True, 'database_restart': True,
                        'complete_dump_restore_equal': True, 'rights_class_change_withholds_history': True,
                        'withdrawal_preserves_history': True, 'source_amendment_rejects_new_stale_assessment': True,
+                       'restored_readable_http': True, 'restored_withheld_http': True,
+                       'restored_rights_class_change_withholds_history': True,
+                       'restored_withdrawal_denies_previously_readable_original': True,
+                       'api_database_target_verified': True, 'business_sequences_unchanged_on_retry': True,
+                       'restored_exact_retry_identity': True, 'restored_independent_export_denial': True,
+                       'restored_revoked_binding_denial': True, 'original_database_unchanged': True,
+                       'restored_readable_access_events': readable_access_count,
+                       'restored_rights_access_events': rights_access_count,
+                       'restored_withheld_access_events': withheld_access_count,
                        'clinical_approval': False, 'model_executed': False}
             if destination := os.environ.get('OI_EVIDENCE_ACCEPTANCE_FILE'):
                 path = Path(destination); path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(json.dumps(receipt, indent=2) + '\n', encoding='utf-8')
             print('PASS EVIDENCE RECOVERY: actual HTTP case evidence, immutable originals/comparisons/report, '
                   'content-specific rights, exact retry after evidence/source amendment, historical withholding, '
-                  'API/DB restart and complete PostgreSQL dump/restore equality; no clinical/model execution.')
+                  'API/DB restart, complete dump/restore equality and actual restored HTTP; '
+                  'readable/withheld reports, same-key recovery, independent grants and restored revoked binding; '
+                  'original database unchanged; no clinical/model execution.')
         except Exception:
             command(['logs', '--no-color', '--tail', '80'], check=False)
             raise
