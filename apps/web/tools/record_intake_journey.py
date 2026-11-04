@@ -42,9 +42,19 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, screen
 
     records()
     assert len(operator(index_path)['sources']) == 0
+    assert cd.evaluate("document.querySelector('[data-testid=record-import-disclosure]').open"), 'An empty case starts with import expanded'
     cd.command('DOM.enable')
 
+    def toggle_import():
+        cd.evaluate("document.querySelector('[data-testid=record-import-disclosure]>summary').focus()")
+        cd.command('Input.dispatchKeyEvent', {'type':'rawKeyDown','key':'Enter','code':'Enter','windowsVirtualKeyCode':13})
+        cd.command('Input.dispatchKeyEvent', {'type':'char','key':'Enter','text':'\r','windowsVirtualKeyCode':13})
+        cd.command('Input.dispatchKeyEvent', {'type':'keyUp','key':'Enter','code':'Enter','windowsVirtualKeyCode':13})
+
     def upload(raw, name, expected, source_count):
+        if not cd.evaluate("document.querySelector('[data-testid=record-import-disclosure]').open"):
+            toggle_import()
+            cd.wait("document.querySelector('[data-testid=record-import-disclosure]').open", 'keyboard opens import')
         original_count=len(operator(index_path)['sources'])
         filename=directory/name;filename.write_bytes(raw)
         document=cd.command('DOM.getDocument')
@@ -56,6 +66,25 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, screen
         # Selecting a file does not write; only the subsequent explicit submission does.
         assert len(operator(index_path)['sources']) == original_count
         cd.evaluate("document.querySelector('#original-confirm').click()")
+        toggle_import()
+        cd.wait("!document.querySelector('[data-testid=record-import-disclosure]').open", 'keyboard collapses import with a selection')
+        assert cd.evaluate("document.activeElement===document.querySelector('[data-testid=record-import-disclosure]>summary')"), 'Focus remains on the visible disclosure'
+        assert len(operator(index_path)['sources']) == original_count, 'Collapse must not import'
+        toggle_import()
+        cd.wait("document.querySelector('[data-testid=record-import-disclosure]').open", 'keyboard restores import')
+        assert cd.evaluate("document.querySelector('[data-testid=local-original]').textContent")==raw.decode(), 'Exact preview survives collapse'
+        assert cd.evaluate("document.querySelector('#original-confirm').checked"), 'Confirmation survives collapse'
+        assert cd.evaluate("document.querySelector('#original-file').files[0].name")==name, 'Selected File survives collapse'
+        assert len(operator(index_path)['sources']) == original_count, 'Reopen must not import'
+        if name == 'original.txt':
+            viewport=cd.evaluate('({width:innerWidth,height:innerHeight})')
+            cd.command('Emulation.setDeviceMetricsOverride',{'width':390,'height':844,'deviceScaleFactor':1,'mobile':False})
+            cd.evaluate("document.querySelector('[data-testid=record-import-disclosure]>summary').scrollIntoView({block:'start'})")
+            cd.wait('document.documentElement.scrollWidth<=innerWidth+1', 'expanded import stays within narrow viewport')
+            (screenshots/'import-expanded-390.png').write_bytes(base64.b64decode(cd.command('Page.captureScreenshot',{'format':'png'})['data']))
+            cd.command('Emulation.setDeviceMetricsOverride',{**viewport,'deviceScaleFactor':1,'mobile':False})
+
+
         cd.evaluate("document.querySelector('[data-testid=import-original]').click()")
         cd.wait("document.querySelector('[data-testid=import-receipt]')?.dataset.result==="+json.dumps(expected)+
                 " && Boolean(document.querySelector('[data-testid=source-index]'))", 'confirmed '+expected+' receipt')
@@ -103,7 +132,9 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, screen
     # Current source/mapping access is independently rechecked, not inferred from prior successful load.
     credentials[0]['actions'].remove('source_read');write_grants()
     cd.evaluate("[...document.querySelectorAll('[data-testid=case-row]')].find(e=>e.textContent.includes('CASE-WEB-INTAKE')).querySelector('[data-testid=load-sources]').click()")
-    cd.wait("!document.querySelector('[data-testid=source-index]')",'source metadata cleared on denied recheck')
+    cd.wait("document.querySelector('[data-testid=records-status]')?.textContent==='Sources unavailable, denied or mapping revoked. Reload case permissions.' && !document.querySelector('[data-testid=load-cases]').disabled",'completed source denial before restoring any grant')
+    assert cd.evaluate("!document.querySelector('[data-testid=source-index]')"), 'Denied source metadata remains cleared'
     cd.evaluate("[...document.querySelectorAll('nav button')].find(e=>e.textContent==='Overview').click()")
     cd.wait("Boolean(document.querySelector('[data-testid=patient-card]'))",'original identity journey preserved')
+    print('PASS IMPORT DISCLOSURE: empty case starts open; native keyboard collapse/reopen preserves exact selected File, preview and confirmation; zero implicit imports; original duplicate/amendment/quarantine and denial checks retained.')
     print('PASS RECORDS: actual disk file preview with zero auto-upload; exact UTF-8/hash import; duplicate; amendment and old original; foreign-case quarantine; independent original-read denial and source-read clearing; no clinical approval; 390px containment.')
