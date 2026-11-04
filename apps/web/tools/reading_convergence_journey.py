@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 
 
-def exercise(cd):
+def exercise(cd, credentials, write_grants):
     out = Path(os.environ.get('OI_WEB_ARTIFACT_DIR', 'apps/web/.evidence'))
     out.mkdir(parents=True, exist_ok=True)
 
@@ -33,6 +33,76 @@ def exercise(cd):
     assert cd.evaluate("Boolean(document.querySelector('#source-filter'))"), 'Loaded source versions need a response-scoped filter'
     assert cd.evaluate("Boolean(document.querySelector('#reading-view'))"), 'Patient and clinical reading layouts must share the existing session'
     assert cd.evaluate("document.querySelector('[data-testid=readiness]').getAttribute('role')==='status'"), 'Readiness needs noninterrupting status semantics'
+    # Inspect Chromium's computed names, not just the presence of ARIA attributes.
+    cd.command('Accessibility.enable', {})
+    ax = cd.command('Accessibility.getFullAXTree', {})['nodes']
+    names = [n.get('name', {}).get('value', '') for n in ax
+             if not n.get('ignored') and n.get('role', {}).get('value') == 'button']
+    assert 'Inspect original v1: DOC-ONE' in names
+    assert 'Inspect original v2: DOC-ONE' in names
+    expected_questions = cd.evaluate("[...document.querySelectorAll('[data-testid=source-finding]')].filter(e=>e.querySelector('[data-testid=ask-source-question]')).map(e=>{const heading=e.closest('[data-testid=source-version]').querySelector('h4').textContent;const [doc,version]=heading.split(' · v');const line=e.querySelector('p').textContent.match(/line (\\d+)/)[1];return 'Ask about this statement: '+doc+', version '+version+', line '+line+', '+e.querySelector('strong').textContent})")
+    assert expected_questions, 'Actual loaded quotations must expose question controls'
+    assert all(name in names for name in expected_questions), 'Computed button names must identify the exact visible quotation'
+    assert 'Ask about this statement' not in names, 'Repeated unqualified quotation controls must be disambiguated'
+    (out/'source-action-accessibility.json').write_text(json.dumps({'originals': [n for n in names if n.startswith('Inspect original')], 'questions': expected_questions}, indent=2))
+    cd.command('Accessibility.disable', {})
+    print('PASS SOURCE ACTION NAMES: Chromium computed names retain visible labels and identify document, original version and exact quotation line/key.')
+    previous_original_actions = list(credentials[0]['actions'])
+    credentials[0]['actions'] = sorted(set(previous_original_actions) | {'source_original_read'})
+    write_grants()
+    try:
+        # Follow the actual separately authorized original read, then return to its trigger.
+        for width, version in ((1280, 2), (390, 1)):
+            cd.command('Emulation.setDeviceMetricsOverride', {'width':width,'height':900,'deviceScaleFactor':1,'mobile':False})
+            cd.evaluate("window.__originalOpener=[...document.querySelectorAll('[data-testid=open-original]')].find(e=>e.textContent==='Inspect original v"+str(version)+"');window.__originalOpener.focus()")
+            key('Enter',13)
+            cd.wait("document.activeElement===document.querySelector('#opened-original')", 'verified original receives keyboard focus')
+            assert cd.evaluate("document.querySelector('#opened-original').textContent.endsWith('v"+str(version)+"')")
+            cd.wait("(()=>{const r=document.activeElement.getBoundingClientRect();const h=document.querySelector('.topbar');return r.top>=0&&r.bottom<=innerHeight&&(h.dataset.sticky==='false'||r.top>=h.getBoundingClientRect().bottom)})()", 'original heading is visible below patient context')
+            (out/f'original-focus-{width}.png').write_bytes(base64.b64decode(cd.command('Page.captureScreenshot', {'format':'png'})['data']))
+            key('Tab',9)
+            assert cd.evaluate("document.activeElement===document.querySelector('[data-testid=close-original]')"), 'Tab from original heading reaches its close action'
+            key('Tab',9)
+            assert cd.evaluate("document.activeElement===document.querySelector('[data-testid=server-original]')"), 'Tab reaches the bounded original text'
+            if width == 390:
+                # Text enlargement creates real overflow using the actual verified original.
+                cd.evaluate("document.querySelector('[data-testid=server-original]').style.fontSize='32px'")
+                assert cd.evaluate("document.activeElement.scrollHeight>document.activeElement.clientHeight"), 'Enlarged original must exercise internal scrolling'
+                key('PageDown',34)
+                cd.wait("document.querySelector('[data-testid=server-original]').scrollTop>0", 'keyboard scrolls enlarged original text')
+                cd.wait("(()=>{const r=document.activeElement.getBoundingClientRect();const h=document.querySelector('.topbar');return r.bottom<=innerHeight&&r.top>=(h.dataset.sticky==='false'?0:h.getBoundingClientRect().bottom)})()", 'entire focused original text area is visible below patient context')
+                (out/'original-keyboard-scroll-390.png').write_bytes(base64.b64decode(cd.command('Page.captureScreenshot', {'format':'png'})['data']))
+                cd.evaluate("document.querySelector('[data-testid=server-original]').style.removeProperty('font-size')")
+            cd.command('Input.dispatchKeyEvent', {'type':'rawKeyDown','key':'Tab','code':'Tab','windowsVirtualKeyCode':9,'modifiers':8})
+            cd.command('Input.dispatchKeyEvent', {'type':'keyUp','key':'Tab','code':'Tab','windowsVirtualKeyCode':9,'modifiers':8})
+            assert cd.evaluate("document.activeElement===document.querySelector('[data-testid=close-original]')"), 'Shift+Tab returns to Close original without trapping focus'
+            key('Enter',13)
+            cd.wait("!document.querySelector('[data-testid=opened-original]')&&document.activeElement===window.__originalOpener", 'close returns to exact source-version button')
+        # If a local filter removes the opener, return to the source heading, not a detached node.
+        cd.evaluate("window.__originalOpener.focus()")
+        key('Enter',13)
+        cd.wait("document.activeElement===document.querySelector('#opened-original')", 'second historical read')
+        value('#source-filter','NO-MATCH-FOCUS')
+        cd.wait("Boolean(document.querySelector('[data-testid=source-no-match]'))", 'opener filtered out')
+        cd.evaluate("document.querySelector('[data-testid=close-original]').focus()")
+        key('Enter',13)
+        cd.wait("document.activeElement===document.querySelector('#sources-heading')", 'filtered opener uses visible source-heading fallback')
+        assert cd.evaluate("document.querySelector('#source-filter').value==='NO-MATCH-FOCUS'"), 'Closing originals must not rewrite local filters'
+        cd.evaluate("document.querySelector('[data-testid=clear-source-filters]').click()")
+        # Returning to the section must retain its ordinary navigation focus.
+        cd.evaluate("document.querySelector('[data-testid=open-original]').click()")
+        cd.wait("document.activeElement===document.querySelector('#opened-original')", 'current original before navigation')
+        navigate('Overview');navigate('Records')
+        assert cd.evaluate("document.activeElement===document.querySelector('h1')"), 'An earlier read cannot steal section navigation focus'
+        cd.evaluate("document.querySelector('[data-testid=close-original]').click()")
+        cd.wait("document.activeElement===document.querySelector('#sources-heading')", 'navigation discards stale return target')
+        cd.evaluate('delete window.__originalOpener')
+        cd.command('Emulation.setDeviceMetricsOverride', {'width':1280,'height':1000,'deviceScaleFactor':1,'mobile':False})
+        print('PASS ORIGINAL KEYBOARD SCROLL: native Tab reaches original text; PageDown scrolls enlarged mobile text; Shift+Tab exits to Close original.')
+        print('PASS ORIGINAL FOCUS: actual current/historical original read focuses visible heading; native keyboard close restores exact opener; filtered-out opener falls back without clearing filters; navigation does not replay old focus.')
+    finally:
+        credentials[0]['actions'] = previous_original_actions
+        write_grants()
     cd.evaluate("window.__readingFetch=window.fetch;window.__readingRequests=0;window.fetch=(input,init)=>{if(String(input).includes('/v1/'))window.__readingRequests++;return window.__readingFetch(input,init)}")
     try:
         value('#source-filter', 'DOC-ONE')
