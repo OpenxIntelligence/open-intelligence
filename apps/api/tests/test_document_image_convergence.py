@@ -57,9 +57,12 @@ class DocumentImageConvergenceContractTests(unittest.TestCase):
 
     def test_single_join_preserves_both_published_document_and_image_histories(self):
         script = graph()
-        self.assertEqual(script.get_heads(), [JOINED_REVISION],
-                         "The two published original owners need one explicit joining head")
-        self.assertEqual(SCHEMA_REVISION, JOINED_REVISION)
+        self.assertEqual(script.get_heads(), [SCHEMA_REVISION],
+                         "The complete history must have exactly one current head")
+        self.assertEqual(script.get_revision("0014_question_passages").down_revision,
+                         JOINED_REVISION)
+        self.assertEqual(script.get_revision(SCHEMA_REVISION).down_revision,
+                         "0014_question_passages")
         self.assertEqual(set(script.get_revision(JOINED_REVISION).down_revision),
                          {DOCUMENT_REVISION, IMAGE_REVISION})
         self.assertEqual(script.get_revision(DOCUMENT_REVISION).down_revision, "0011_evidence_convergence")
@@ -73,8 +76,8 @@ class DocumentImageConvergenceMigrationTests(SourceVersionFixture):
     seed_metadata_task = evidence_upgrades.EvidenceConvergenceMigrationTests.seed_metadata_task
 
     def require_graph(self):
-        self.assertEqual(graph().get_heads(), [JOINED_REVISION],
-                         "Document/image migration convergence has not been implemented")
+        self.assertEqual(graph().get_heads(), [SCHEMA_REVISION],
+                         "The document/image join and manual-context successors must form one head")
 
     @staticmethod
     def image_helpers():
@@ -144,7 +147,9 @@ class DocumentImageConvergenceMigrationTests(SourceVersionFixture):
         self.assertEqual(after[0], before[0])
         for name, state in before[1].items():
             self.assertEqual(after[1][name], state, name)
-        self.assertEqual(self.heads(), {JOINED_REVISION})
+        self.assertEqual(self.heads(), {SCHEMA_REVISION})
+        self.assertEqual(self.snapshot()[0]["investigation.question_passage_revisions"], [],
+                         "Upgrading historical cases must not manufacture manual selections")
         self.readiness(True)
 
     def reopen(self, flow):
@@ -216,9 +221,13 @@ class DocumentImageConvergenceMigrationTests(SourceVersionFixture):
         self.assertEqual(self.heads(), {DOCUMENT_REVISION, IMAGE_REVISION})
         self.readiness(False)
         before, definitions = self.snapshot(), self.schema_definition()
-        self.upgrade_preserving(before)
+        # The historical 0013 join is strictly DDL-free and reversible.
+        # New 0014/0015 manual-context schema must not be mistaken for that join.
+        migrate(self.admin, "upgrade", JOINED_REVISION)
+        self.assertEqual(self.heads(), {JOINED_REVISION})
         self.assertEqual(self.snapshot(), before)
         self.assertEqual(self.schema_definition(), definitions)
+        self.readiness(False)
         migrate(self.admin, "downgrade", DOCUMENT_REVISION)
         self.assertEqual(self.heads(), {DOCUMENT_REVISION, IMAGE_REVISION})
         self.assertEqual(self.snapshot(), before)
