@@ -188,6 +188,7 @@ class LaboratoryFHIRHTTPTests(unittest.TestCase):
             self.assertFalse(receipt["duplicate"])
             self.assertEqual(receipt["version"], 1)
             self.assertEqual(receipt["observation_count"], 1)
+            self.assertEqual(receipt["original_sha256"], hashlib.sha256(raw.encode()).hexdigest())
             source_id = receipt["source_id"]
             self.assertEqual(self.lab_counts(), (1, 1, 1, 1))
 
@@ -232,6 +233,7 @@ class LaboratoryFHIRHTTPTests(unittest.TestCase):
             self.assertEqual(retry[0], 200, retry[1])
             self.assertTrue(retry[1]["duplicate"])
             self.assertEqual(retry[1]["source_id"], source_id)
+            self.assertEqual(retry[1]["original_sha256"], first[1]["original_sha256"])
             self.assertEqual(self.lab_counts(), (1, 1, 1, 1))
 
             changed = example()

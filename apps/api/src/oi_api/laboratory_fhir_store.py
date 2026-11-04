@@ -71,17 +71,18 @@ class PostgresLaboratoryFHIR:
 
     def _receipt(self, source_id: str, *, duplicate: bool) -> dict:
         row = self.registry._fetchone(
-            "SELECT s.version,count(o.observation_reference) "
+            "SELECT s.version,count(o.observation_reference),s.sha256 "
             "FROM clinical_source.source_versions s "
             "JOIN clinical_source.fhir_laboratory_sources f ON f.source_id=s.source_id "
             "LEFT JOIN clinical_source.fhir_laboratory_observations o ON o.source_id=f.source_id "
-            "WHERE s.source_id=%s GROUP BY s.version",
+            "WHERE s.source_id=%s GROUP BY s.version,s.sha256",
             (source_id,),
         )
         if row is None:
             raise PatientRegistryError("FHIR laboratory receipt integrity failure")
         return {"source_id": source_id, "version": row[0],
-                "observation_count": row[1], "duplicate": duplicate}
+                "observation_count": row[1], "duplicate": duplicate,
+                "original_sha256": row[2]}
 
     def import_bundle(self, patient_id: str, case_id: str, prepared: PreparedLaboratoryBundle, *,
                       organization: str, actor: str, purpose: str, request_key: str,
@@ -142,7 +143,7 @@ class PostgresLaboratoryFHIR:
                 "f.specimen_reference,f.report_reference "
                 "FROM clinical_source.source_versions s "
                 "LEFT JOIN clinical_source.fhir_laboratory_sources f ON f.source_id=s.source_id "
-                "WHERE s.case_id=%s AND s.document_id=%s AND s.state='current' FOR UPDATE",
+                "WHERE s.case_id=%s AND s.document_id=%s AND s.state='current' FOR UPDATE OF s",
                 (case_id, document_id),
             )
             if old is not None and old[6] is None:
