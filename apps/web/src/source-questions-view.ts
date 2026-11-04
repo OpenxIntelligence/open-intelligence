@@ -33,6 +33,27 @@ export function decodeSavedQuestion(value:unknown):SavedQuestion{
    typeof value.duplicate!=='boolean')throw Error('contract');
  return Object.freeze(value as SavedQuestion);
 }
+/** Shared row validation for question history and a fresh, question-bound brief. */
+export function decodeSourceQuestion(row:unknown,patient:string,caseId:string):SourceQuestion{
+ if(!exact(row,QFIELDS)||typeof row.question_id!=='string'||!QID.test(row.question_id)||
+   row.patient_id!==patient||row.case_id!==caseId||
+   typeof row.question!=='string'||row.question.length<8||row.question.length>500||
+   /[\u0000-\u001f\u007f]/.test(row.question)||
+   typeof row.source_id!=='string'||!SID.test(row.source_id)||
+   !positive(row.source_line)||row.source_line>10000||
+   typeof row.source_sha256!=='string'||!HEX.test(row.source_sha256)||
+   !positive(row.source_version)||
+   typeof row.source_snapshot_sha256!=='string'||!HEX.test(row.source_snapshot_sha256)||
+   !['oi.pg-source-world-model/1','oi.synthetic-postgres-world-model-sources/1'].includes(String(row.source_snapshot_contract))||
+   (row.source_snapshot_contract!=='oi.pg-source-world-model/1'&&row.source_context_state!=='source_reassessment_required')||
+   typeof row.preflight_sha256!=='string'||!HEX.test(row.preflight_sha256)||
+   typeof row.created_at!=='string'||!/\d{4}-\d{2}-\d{2}T.+(?:Z|[+-]\d{2}:\d{2})$/.test(row.created_at)||
+   !Number.isFinite(Date.parse(row.created_at))||
+   !['current_unreviewed_question','source_reassessment_required'].includes(String(row.source_context_state))||
+   row.human_review_state!=='not_submitted'||row.clinical_approval!==false||
+   row.model_executed!==false)throw Error('contract');
+ return Object.freeze({...row} as SourceQuestion);
+}
 export function decodeSourceQuestions(value:unknown,patient:string,caseId:string):SourceQuestionHistory{
  if(!exact(value,['contract','access_receipt_id','patient_id','case_id','questions','synthetic',
                   'clinical_review_connected','clinical_approval'])||
@@ -44,25 +65,10 @@ export function decodeSourceQuestions(value:unknown,patient:string,caseId:string
    value.questions.length>250)throw Error('contract');
  const ids=new Set<string>();
  const questions=Object.freeze(value.questions.map((row:unknown)=>{
-   if(!exact(row,QFIELDS)||typeof row.question_id!=='string'||!QID.test(row.question_id)||
-     ids.has(row.question_id)||row.patient_id!==patient||row.case_id!==caseId||
-     typeof row.question!=='string'||row.question.length<8||row.question.length>500||
-     /[\u0000-\u001f\u007f]/.test(row.question)||
-     typeof row.source_id!=='string'||!SID.test(row.source_id)||
-     !positive(row.source_line)||row.source_line>10000||
-     typeof row.source_sha256!=='string'||!HEX.test(row.source_sha256)||
-     !positive(row.source_version)||
-     typeof row.source_snapshot_sha256!=='string'||!HEX.test(row.source_snapshot_sha256)||
-     !['oi.pg-source-world-model/1','oi.synthetic-postgres-world-model-sources/1'].includes(String(row.source_snapshot_contract))||
-     (row.source_snapshot_contract!=='oi.pg-source-world-model/1'&&row.source_context_state!=='source_reassessment_required')||
-     typeof row.preflight_sha256!=='string'||!HEX.test(row.preflight_sha256)||
-     typeof row.created_at!=='string'||!/\d{4}-\d{2}-\d{2}T.+(?:Z|[+-]\d{2}:\d{2})$/.test(row.created_at)||
-     !Number.isFinite(Date.parse(row.created_at))||
-     !['current_unreviewed_question','source_reassessment_required'].includes(String(row.source_context_state))||
-     row.human_review_state!=='not_submitted'||row.clinical_approval!==false||
-     row.model_executed!==false)throw Error('contract');
-   ids.add(row.question_id);
-   return Object.freeze({...row} as SourceQuestion);
+   const question=decodeSourceQuestion(row,patient,caseId);
+   if(ids.has(question.question_id))throw Error('contract');
+   ids.add(question.question_id);
+   return question;
  }));
  return Object.freeze({contract:'oi.synthetic-source-questions/2',
    access_receipt_id:value.access_receipt_id,questions});

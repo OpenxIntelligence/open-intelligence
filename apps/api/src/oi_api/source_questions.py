@@ -7,8 +7,9 @@ records source access before the same transaction commits. No review is implied.
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timezone
 import hmac
+import re
 from typing import TypeVar
 import uuid
 
@@ -21,6 +22,7 @@ from .case_bindings import _case_id
 from .composer_preflight import PostgresSourceComposerPreflight, SHA256, SOURCE_SNAPSHOT_CONTRACT
 from .sources import PostgresSourceVersions, _source_id
 from .source_world_model import project_source_world_model
+from .source_brief import render_source_brief
 
 LEGACY_SNAPSHOT_CONTRACT = "oi.synthetic-postgres-world-model-sources/1"
 QUESTION_LIST_CONTRACT = "oi.synthetic-source-questions/2"
@@ -52,6 +54,101 @@ class PostgresSourceQuestions:
             "source_snapshot_contract": SOURCE_SNAPSHOT_CONTRACT,
             "preflight_sha256": preflight_sha256,
         })
+
+    @staticmethod
+    def _question_state(row: tuple, world: dict) -> dict:
+        """One projection for saved-question history and its readable brief."""
+        (qid, pid, cid, question, sid, line, digest, version,
+         old_fingerprint, preflight_sha, created_at, snapshot_contract) = row
+        anchors = {(item["source_id"], item["source_line"]):
+                   (item["source_sha256"], item["document_version"])
+                   for item in world["observations"]}
+        current = (snapshot_contract == SOURCE_SNAPSHOT_CONTRACT
+                   and anchors.get((sid, line)) == (digest, version)
+                   and hmac.compare_digest(old_fingerprint, world["snapshot_fingerprint"]))
+        return {
+            "question_id": qid, "patient_id": pid, "case_id": cid,
+            "question": question, "source_id": sid, "source_line": line,
+            "source_sha256": digest, "source_version": version,
+            "source_snapshot_sha256": old_fingerprint,
+            "source_snapshot_contract": snapshot_contract,
+            "preflight_sha256": preflight_sha,
+            "created_at": created_at.isoformat() if isinstance(created_at, datetime) else str(created_at),
+            "source_context_state": ("current_unreviewed_question" if current
+                                     else "source_reassessment_required"),
+            "human_review_state": "not_submitted",
+            "clinical_approval": False, "model_executed": False,
+        }
+
+    def prepare_brief(self, patient_id: str, case_id: str, question_id: str, *,
+                      organization: str, actor: str, purpose: str,
+                      source_snapshot_contract: str,
+                      expected_source_snapshot_sha256: str,
+                      expected_preflight_sha256: str,
+                      recheck_authority: Callable[[], None],
+                      prepare_response: Callable[[dict], PreparedResponse] | None = None) -> dict | PreparedResponse:
+        """Prepare a current saved question under its sole source owner's lock.
+
+        Export does not create or approve a question, rerun a model, or change
+        review state. Only the existing source-read receipt is committed.
+        """
+        patient_id = _key(patient_id, "patient_id")
+        case_id = _case_id(case_id)
+        organization = _key(organization, "organization")
+        actor = _key(actor, "actor")
+        if (purpose != "operations" or type(question_id) is not str
+                or re.fullmatch(r"QUESTION-[0-9A-F]{32}", question_id) is None):
+            raise PatientRegistryDenied("Question brief unavailable")
+        if source_snapshot_contract != SOURCE_SNAPSHOT_CONTRACT:
+            raise PatientRegistryConflict("Question source contract requires reassessment")
+        if any(type(value) is not str or not SHA256.fullmatch(value) for value in (
+                expected_source_snapshot_sha256, expected_preflight_sha256)):
+            raise PatientRegistryError("Question brief fingerprints must be SHA-256")
+
+        def prepare(index):
+            for action in ("patient_read", "question_read", "source_read", "source_brief_export"):
+                self.registry._allow(actor, patient_id, action, purpose)
+            row = self.registry._fetchone(
+                "SELECT question_id,patient_id,case_id,question,source_id,"
+                "source_line,source_sha256,source_version,source_snapshot_sha256,"
+                "preflight_sha256,created_at,source_snapshot_contract "
+                "FROM investigation.source_questions "
+                "WHERE patient_id=%s AND case_id=%s AND origin_org=%s AND question_id=%s",
+                (patient_id, case_id, organization, question_id),
+            )
+            if row is None:
+                raise PatientRegistryDenied("Question brief unavailable")
+            world = project_source_world_model(index)
+            question = self._question_state(row, world)
+            if (question["source_context_state"] != "current_unreviewed_question"
+                    or not hmac.compare_digest(question["source_snapshot_sha256"],
+                                               expected_source_snapshot_sha256)
+                    or not hmac.compare_digest(question["preflight_sha256"],
+                                               expected_preflight_sha256)):
+                raise PatientRegistryConflict("Question context changed; reassessment required")
+            # Reuse the source-only calculation, not its composer permission:
+            # this independent read/export grant cannot create a question or run AI.
+            preflight = PostgresSourceComposerPreflight(self.registry).preview_locked(
+                patient_id, case_id, organization=organization, actor=actor,
+                purpose=purpose, expected_source_snapshot_sha256=expected_source_snapshot_sha256,
+                source_id=question["source_id"], source_line=question["source_line"],
+                question=question["question"], source_index=index,
+            )
+            selected = preflight["selected_source"]
+            if (not hmac.compare_digest(preflight["preflight_sha256"], expected_preflight_sha256)
+                    or (selected["source_id"], selected["line"], selected["sha256"], selected["version"])
+                    != (question["source_id"], question["source_line"],
+                        question["source_sha256"], question["source_version"])):
+                raise PatientRegistryConflict("Question preflight changed; reassessment required")
+            result = render_source_brief(world, question, selected,
+                                         prepared_at=datetime.now(timezone.utc))
+            return prepare_response(result) if prepare_response is not None else result
+
+        with self.registry.transaction():
+            return PostgresSourceVersions(self.registry).list_locked(
+                patient_id, case_id, organization=organization, actor=actor, purpose=purpose,
+                prepare_response=prepare, recheck_authority=recheck_authority,
+            )
 
     def create(self, patient_id: str, case_id: str, *, organization: str,
                actor: str, purpose: str, request_key: str,
@@ -144,6 +241,57 @@ class PostgresSourceQuestions:
                 prepare_response=save, recheck_authority=recheck_authority,
             )
 
+    def project_locked(self, patient_id: str, case_id: str, *, organization: str,
+                       source_index: dict) -> list[dict]:
+        """Project question freshness from the source owner's validated context.
+
+        Called only inside ``PostgresSourceVersions.list_locked`` preparation.
+        This helper owns question freshness, not source materialization, grants,
+        transactions or receipts. Both question history and review use it.
+        """
+        if not self.registry._transaction_active:
+            raise PatientRegistryError("Question projection requires caller transaction")
+        patient_id = _key(patient_id, "patient_id")
+        case_id = _case_id(case_id)
+        organization = _key(organization, "organization")
+        if (source_index.get("patient_id"), source_index.get("case_id")) != (patient_id, case_id):
+            raise PatientRegistryDenied("Question source context unavailable")
+        world = project_source_world_model(source_index)
+        rows = self.registry._fetchall(
+            "SELECT question_id,patient_id,case_id,question,source_id,"
+            "source_line,source_sha256,source_version,source_snapshot_sha256,"
+            "preflight_sha256,created_at,source_snapshot_contract "
+            "FROM investigation.source_questions "
+            "WHERE patient_id=%s AND case_id=%s AND origin_org=%s "
+            "ORDER BY created_at,question_id LIMIT 251",
+            (patient_id, case_id, organization),
+        )
+        if len(rows) > 250:
+            raise PatientRegistryError("Question list exceeds bounded read limit")
+        anchors = {(item["source_id"], item["source_line"]):
+                   (item["source_sha256"], item["document_version"])
+                   for item in world["observations"]}
+        results = []
+        for (qid, pid, cid, question, sid, line, digest, version,
+             old_fingerprint, preflight_sha, created_at, snapshot_contract) in rows:
+            current = (snapshot_contract == SOURCE_SNAPSHOT_CONTRACT
+                       and anchors.get((sid, line)) == (digest, version)
+                       and hmac.compare_digest(old_fingerprint, world["snapshot_fingerprint"]))
+            results.append({
+                "question_id": qid, "patient_id": pid, "case_id": cid,
+                "question": question, "source_id": sid, "source_line": line,
+                "source_sha256": digest, "source_version": version,
+                "source_snapshot_sha256": old_fingerprint,
+                "source_snapshot_contract": snapshot_contract,
+                "preflight_sha256": preflight_sha,
+                "created_at": created_at.isoformat() if isinstance(created_at, datetime) else str(created_at),
+                "source_context_state": ("current_unreviewed_question" if current
+                                         else "source_reassessment_required"),
+                "human_review_state": "not_submitted",
+                "clinical_approval": False, "model_executed": False,
+            })
+        return results
+
     def list(self, patient_id: str, case_id: str, *, organization: str,
              actor: str, purpose: str, recheck_authority: Callable[[], None],
              prepare_response: Callable[[dict], PreparedResponse] | None = None) -> dict | PreparedResponse:
@@ -152,42 +300,10 @@ class PostgresSourceQuestions:
         organization = _key(organization, "organization")
         if purpose != "operations":
             raise PatientRegistryDenied("Question intake unavailable")
-
         def prepare(index):
-            world = project_source_world_model(index)
-            rows = self.registry._fetchall(
-                "SELECT question_id,patient_id,case_id,question,source_id,"
-                "source_line,source_sha256,source_version,source_snapshot_sha256,"
-                "preflight_sha256,created_at,source_snapshot_contract "
-                "FROM investigation.source_questions "
-                "WHERE patient_id=%s AND case_id=%s AND origin_org=%s "
-                "ORDER BY created_at,question_id LIMIT 251",
-                (patient_id, case_id, organization),
+            results = self.project_locked(
+                patient_id, case_id, organization=organization, source_index=index,
             )
-            if len(rows) > 250:
-                raise PatientRegistryError("Question list exceeds bounded read limit")
-            anchors = {(item["source_id"], item["source_line"]):
-                       (item["source_sha256"], item["document_version"])
-                       for item in world["observations"]}
-            results = []
-            for (qid, pid, cid, question, sid, line, digest, version,
-                 old_fingerprint, preflight_sha, created_at, snapshot_contract) in rows:
-                current = (snapshot_contract == SOURCE_SNAPSHOT_CONTRACT
-                           and anchors.get((sid, line)) == (digest, version)
-                           and hmac.compare_digest(old_fingerprint, world["snapshot_fingerprint"]))
-                results.append({
-                    "question_id": qid, "patient_id": pid, "case_id": cid,
-                    "question": question, "source_id": sid, "source_line": line,
-                    "source_sha256": digest, "source_version": version,
-                    "source_snapshot_sha256": old_fingerprint,
-                    "source_snapshot_contract": snapshot_contract,
-                    "preflight_sha256": preflight_sha,
-                    "created_at": created_at.isoformat() if isinstance(created_at, datetime) else str(created_at),
-                    "source_context_state": ("current_unreviewed_question" if current
-                                             else "source_reassessment_required"),
-                    "human_review_state": "not_submitted",
-                    "clinical_approval": False, "model_executed": False,
-                })
             result = {
                 "contract": QUESTION_LIST_CONTRACT,
                 "patient_id": patient_id, "case_id": case_id,

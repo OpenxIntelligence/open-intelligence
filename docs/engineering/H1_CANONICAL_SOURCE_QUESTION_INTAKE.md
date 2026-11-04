@@ -56,7 +56,28 @@ reassessment and OI-013 authorization/recovery. This slice adds no model,
 licensed knowledge, clinical review owner or new dependency. Clinical evidence
 investigation and report/review convergence remain separate.
 
+### Saved-question brief continuation
+
+The next bounded consumer is the
+[source-linked brief](H1_SOURCE_LINKED_BRIEF.md). It reads this same immutable
+question and canonical snapshot, recomputes the saved preflight under the
+source-owner locks, and requires a separate `source_brief_export` grant before
+returning literal source context. It adds no question, report or approval store.
+Downloads repeat that authorized preparation. Legacy or stale questions retain
+their original history and require reassessment; this brief does not submit
+clinical review or supply a biomedical answer.
+
 ## Patient value and exact scope
+
+### Authored-question and source-inspection convergence
+
+[Draft #287](https://github.com/OpenxIntelligence/open-intelligence/pull/287) joins
+the existing #280 authored-question/quotation consumer to #276's review-return,
+intake-authority and brief owners. User-authored text passes the same canonical
+source-line preflight and immutable question owner. The separately authorized
+`source-review-packet` is a read-only original-source projection, prepared as
+complete JSON before final authority and commit. It introduces no evidence or
+clinical-review record. [Implementation and verification trace](../project-state/IMPLEMENTATION_EVIDENCE.md).
 
 A patient/care-team member using the synthetic React Investigations workspace
 can inspect the authorized, original-source World Model, prepare an exact
