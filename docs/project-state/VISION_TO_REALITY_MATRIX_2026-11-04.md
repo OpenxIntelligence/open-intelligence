@@ -1,5 +1,12 @@
 # Open Intelligence — Vision-to-Reality Master Matrix (live audit baseline)
 
+## Current evidence update — 4 November 2026, 18:36 UTC
+
+The [mandate reconciliation](mandate-20261104/README.md) and its machine-readable views now map all 30 founding domains, 35 official technology/license inspections, 20 required failure scenarios and the 26-wheel observed runtime BOM to the existing backlog. They supplement this status matrix and the 70-area architecture crosswalk.
+
+Draft #463 at `eb944c0ab88e38630404b920c5aadcc445658125` has passed all five applicable workflows. Draft #469 at `8ff6e9e5a0389a1142ca479a6705c599cbda88e7` has passed 709 API/PostgreSQL tests, 765 reference tests, 484 client tests, 13 rights controls, production build, real browser acceptance and all seven recovery stages, including dedicated native FHIR custody. See the [exact receipt](mandate-20261104/Open_Intelligence_Verification_Receipt.json). These results supersede earlier pending labels for those exact heads. Neither draft is merged or clinically validated; the separate 0016 migration lineages still require intentional reconciliation.
+
+
 **Assessment date:** 2026-11-04. **Status:** first-pass evidence inventory; not a clinical readiness or repository-wide completeness certification. **Source:** live GitHub repository and current Notion/Drive canonical product thesis. **Observed main:** [a5a5482f815ceb3c322cdfb32ab8b18c1c0e8709](https://github.com/OpenxIntelligence/open-intelligence/commit/a5a5482f815ceb3c322cdfb32ab8b18c1c0e8709). Recheck this SHA before using the matrix for a merge/release decision.
 
 ## Evaluation framework
