@@ -27,6 +27,8 @@ from .case_bindings import _case_id
 from .composer_preflight import PostgresSourceComposerPreflight, SHA256, SOURCE_SNAPSHOT_CONTRACT
 from .source_questions import PostgresSourceQuestions
 from .sources import PostgresSourceVersions
+from .question_passages import QuestionPassages
+from .followthrough_contracts import ManualTaskDependency
 
 CONTRACT = "oi.pg-question-followthrough/1"
 MAX_TASKS = 250
@@ -105,7 +107,8 @@ def _timestamp(value: datetime) -> str:
     return value.isoformat()
 
 
-def _project_task(task: dict, history: list[dict], question: dict, evaluated_on: str) -> dict:
+def _project_task(task: dict, history: list[dict], question: dict, evaluated_on: str,
+                  manual_state: dict | None = None) -> dict:
     """Read-only lifecycle projection from the canonical question's freshness."""
     if (not history or any(task[name] != question[name] for name in ANCHOR_FIELDS)
             or task["purpose"] != "operations"
@@ -150,7 +153,10 @@ def _project_task(task: dict, history: list[dict], question: dict, evaluated_on:
         "owner_label": effective_owner, "due_date": due,
         "created_at": _timestamp(task["created_at"]), "status": previous, "revision": len(history),
         "source_context_state": question["source_context_state"],
-        "needs_recheck": bool(is_open and question["source_context_state"] != "current_unreviewed_question"),
+        "manual_dependency_revision_id": (manual_state["dependency_revision_id"] if manual_state else None),
+        "manual_context_state": (manual_state["state"] if manual_state else None),
+        "needs_recheck": bool(is_open and (question["source_context_state"] != "current_unreviewed_question"
+                                         or (manual_state is not None and manual_state["needs_recheck"]))),
         "is_overdue": bool(is_open and due and due < evaluated_on),
         "is_due_soon": bool(is_open and due and evaluated_on <= due <= soon),
         "clinical_approval": False, "history": output_history,
@@ -201,20 +207,47 @@ class PostgresQuestionFollowthrough:
             "WHERE patient_id=%s AND case_id=%s AND origin_org=%s ORDER BY task_id,revision LIMIT 751",
             (patient_id, case_id, organization),
         )
-        if len(rows) > MAX_TASKS or len(events) > MAX_EVENTS:
+        manual_rows = self.registry._fetchall(
+            "SELECT task_id,question_id,revision_id,patient_id,case_id,origin_org,references_sha256 "
+            "FROM coordination.question_followthrough_manual_dependencies "
+            "WHERE patient_id=%s AND case_id=%s AND origin_org=%s LIMIT 251",
+            (patient_id, case_id, organization),
+        )
+        if len(rows) > MAX_TASKS or len(events) > MAX_EVENTS or len(manual_rows) > MAX_TASKS:
             raise PatientRegistryError("Follow-through exceeds bounded read limit")
         histories = {}
         for row in events:
             event = dict(zip(EVENT_FIELDS, row))
             histories.setdefault(event["task_id"], []).append(event)
+        manual_by_task = {}
+        for row in manual_rows:
+            entry = dict(zip(("task_id", "question_id", "revision_id", "patient_id",
+                              "case_id", "origin_org", "references_sha256"), row))
+            if entry["task_id"] in manual_by_task:
+                raise PatientRegistryError("Duplicate manual task dependency")
+            manual_by_task[entry["task_id"]] = entry
         output = []
         for row in rows:
             task = dict(zip(TASK_FIELDS, row))
             question = questions.get(task["question_id"])
             if question is None:
                 raise PatientRegistryError("Task question unavailable in canonical context")
-            output.append(_project_task(task, histories.pop(task["task_id"], []), question, evaluated_on))
-        if histories:
+            bound = manual_by_task.pop(task["task_id"], None)
+            manual_state = None
+            if bound is not None:
+                if (bound["question_id"] != task["question_id"]
+                        or bound["patient_id"] != patient_id
+                        or bound["case_id"] != case_id
+                        or bound["origin_org"] != organization):
+                    raise PatientRegistryError("Manual task dependency origin mismatch")
+                scope = dict(patient_id=patient_id, case_id=case_id, organization=organization,
+                             question_id=task["question_id"], purpose="operations", actor=task["actor"])
+                dependency = {k:bound[k] for k in (
+                    "patient_id", "case_id", "question_id", "revision_id", "references_sha256")}
+                manual_state = QuestionPassages(self.registry).manual_dependency_state_locked(scope, dependency)
+            output.append(_project_task(task, histories.pop(task["task_id"], []), question,
+                                        evaluated_on, manual_state))
+        if histories or manual_by_task:
             raise PatientRegistryError("Task history lacks its scoped origin")
         return output, questions, len(events)
 
