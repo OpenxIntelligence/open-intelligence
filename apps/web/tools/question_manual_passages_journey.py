@@ -193,10 +193,19 @@ def exercise(cd,patient_id,token,credentials,write_grants,artifacts):
         cd.wait("!document.querySelector('[data-testid=question-manual-passages]') && !document.querySelector('[data-testid=evidence-report-preview]')",'revoked original-read clears shared manual report disclosure')
         # Distinct Review/task grants still work when a supplementary original
         # is withheld. They must not carry the denied manual quotation.
-        assert next(item for item in operator(path+'/followthrough')['tasks']
+        scoped_tasks=operator(path+'/followthrough')['tasks']
+        scoped_reviews=operator(path+'/review-queue')['items']
+        assert next(item for item in scoped_tasks
                     if item['task_id']==task_receipt['task_id'])['clinical_approval'] is False
-        assert next(item for item in operator(path+'/review-queue')['items']
+        assert next(item for item in scoped_reviews
                     if item['question_id']==question_id)['current_return_receipt_id']==review_receipt['receipt_id']
+        # Independently authorized workflow metadata must not disclose an
+        # exact quotation whose document-original permission was revoked.
+        denied_quote='A fictional violet label is pending.'
+        assert denied_quote not in json.dumps(scoped_tasks,ensure_ascii=False), (
+            'Task metadata leaked the revoked manual-document quotation')
+        assert denied_quote not in json.dumps(scoped_reviews,ensure_ascii=False), (
+            'Review metadata leaked the revoked manual-document quotation')
         (artifacts/'question-manual-context-workflow.json').write_text(json.dumps(dict(
             patient_id=patient_id,case_id=CASE,question_id=question_id,context=saved_context,
             report_id=report_id,report_body_sha256=report['body_sha256'],historical_state=historical['state'],
