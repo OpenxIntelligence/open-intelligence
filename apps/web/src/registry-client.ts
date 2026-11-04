@@ -17,9 +17,9 @@ import type {ReviewQueue,ReviewReturnResult} from './review-queue-view.js';
 import {canPrepareSourceBrief,decodeSourceBrief} from './source-brief.js';
 import type {SourceBrief} from './source-brief.js';
 import {canCreateFollowthrough,decodeFollowthrough,decodeFollowthroughReceipt,
-  validFollowthroughDraft,validFollowthroughTransition} from './followthrough-view.js';
-import type {FollowthroughDraft,FollowthroughIntent,FollowthroughList,
-  FollowthroughReceipt,FollowthroughTransition} from './followthrough-view.js';
+  validFollowthroughDraft,validFollowthroughTransition,followthroughTransitionContext,FOLLOWTHROUGH_TRANSITIONS} from './followthrough-view.js';
+import type {FollowthroughDraft,FollowthroughUnsentDraft,FollowthroughIntent,FollowthroughList,
+  FollowthroughReceipt,FollowthroughTransition,FollowthroughTransitionFields,FollowthroughUnsentTransition} from './followthrough-view.js';
 import {decodeQuestionEvidenceSearch,decodeQuestionEvidenceLinks,decodeQuestionEvidenceReceipt,
   validEvidenceQuery} from './question-evidence-view.js';
 import type {QuestionEvidenceSearch,QuestionEvidenceLinks,QuestionEvidenceIntent,
@@ -59,6 +59,8 @@ export type ViewState = Readonly<EvidenceState & {
   reviewReturnMessage:string;reviewReturnIntent:ReviewReturnIntent|null;
   sourceBrief:SourceBrief|null;briefPhase:'idle'|'loading'|'ready'|'error';briefMessage:string;
   followthrough:FollowthroughList|null;followthroughCaseId:string|null;
+  followthroughDrafts:Readonly<Record<string,FollowthroughUnsentDraft>>;
+  followthroughTransitionDrafts:Readonly<Record<string,FollowthroughUnsentTransition>>;
   followthroughPhase:'idle'|'loading'|'ready'|'error';followthroughMessage:string;
   followthroughReceipt:FollowthroughReceipt|null;followthroughIntent:FollowthroughIntent|null;
   followthroughWritePhase:'idle'|'saving'|'saved'|'unknown'|'error';followthroughWriteMessage:string;
@@ -92,6 +94,8 @@ const emptyReview=()=>({reviewQueue:null,reviewPhase:'idle' as const,
 const emptyBrief=()=>({sourceBrief:null,briefPhase:'idle' as const,
   briefMessage:'Prepare a source-linked brief from a current saved question. Each download checks permission again.'});
 const emptyFollowthrough=()=>({followthrough:null,followthroughCaseId:null,followthroughPhase:'idle' as const,
+  followthroughDrafts:Object.freeze({}) as Readonly<Record<string,FollowthroughUnsentDraft>>,
+  followthroughTransitionDrafts:Object.freeze({}) as Readonly<Record<string,FollowthroughUnsentTransition>>,
   followthroughMessage:'Choose an authorized case to inspect work recorded for its saved questions.',
   followthroughReceipt:null,followthroughIntent:null,followthroughWritePhase:'idle' as const,
   followthroughWriteMessage:'No follow-up action is in progress.'});
@@ -187,13 +191,18 @@ export class RegistrySession {
   #resetFollowthrough(preserveCase?:string){
     this.#followRead++;this.#followWrite++;this.#savingFollowthrough=false;
     const intent=this.#state.followthroughIntent;
+    const drafts=Object.freeze(Object.fromEntries(Object.entries(this.#state.followthroughDrafts)
+      .filter(([,draft])=>draft.patient_id===this.#state.patient?.patient_id&&draft.case_id===preserveCase)));
+    const transitionDrafts=Object.freeze(Object.fromEntries(Object.entries(this.#state.followthroughTransitionDrafts)
+      .filter(([,draft])=>draft.patient_id===this.#state.patient?.patient_id&&draft.case_id===preserveCase)));
     if(intent&&intent.patient_id===this.#state.patient?.patient_id&&intent.case_id===preserveCase&&
        ['saving','unknown'].includes(this.#state.followthroughWritePhase)){
-      return {...emptyFollowthrough(),followthroughCaseId:preserveCase,followthroughIntent:intent,
+      return {...emptyFollowthrough(),followthroughDrafts:drafts,followthroughTransitionDrafts:transitionDrafts,
+        followthroughCaseId:preserveCase,followthroughIntent:intent,
         followthroughWritePhase:'unknown' as const,followthroughWriteMessage:
           'The earlier write outcome is uncertain. Retry its exact recorded intent to recover the receipt, or explicitly abandon recovery.'};
     }
-    return {...emptyFollowthrough(),followthroughCaseId:preserveCase??null};
+    return {...emptyFollowthrough(),followthroughDrafts:drafts,followthroughTransitionDrafts:transitionDrafts,followthroughCaseId:preserveCase??null};
   }
   #resetReview(preserveCase?:string){
     this.#reviewRead++;this.#reviewWrite++;this.#savingReview=false;
@@ -312,7 +321,8 @@ export class RegistrySession {
       return;
     }
     const retainedCase=this.#state.reviewReturnIntent?.case_id,
-      retainedFollowthroughCase=this.#state.followthroughIntent?.case_id,
+      retainedFollowthroughCase=this.#state.followthroughIntent?.case_id??Object.values(this.#state.followthroughDrafts)[0]?.case_id??
+        Object.values(this.#state.followthroughTransitionDrafts)[0]?.case_id,
       retainedEvidenceCase=this.#state.evidenceLinkIntent?.case_id,
       retainedAuthoredEvidenceCase=this.#state.evidenceWriteIntent?.case_id;
     const scope=this.#scope,read=this.#read,request=++this.#records;
@@ -333,7 +343,8 @@ export class RegistrySession {
       }
       const mappings=parseCaseBindingList(await json(res),patientId);
       if(!current())return;
-      const pendingCase=this.#state.followthroughIntent?.case_id;
+      const pendingCase=this.#state.followthroughIntent?.case_id??Object.values(this.#state.followthroughDrafts)[0]?.case_id??
+        Object.values(this.#state.followthroughTransitionDrafts)[0]?.case_id;
       this.#publish({...((pendingCase&&!mappings.some(item=>item.case_id===pendingCase&&item.status==='active'))?this.#resetFollowthrough():{}),
         ...(retainedEvidenceCase&&!mappings.some(item=>item.case_id===retainedEvidenceCase&&item.status==='active')?this.#resetEvidence():{}),
         ...(retainedAuthoredEvidenceCase&&!mappings.some(item=>item.case_id===retainedAuthoredEvidenceCase&&item.status==='active')?this.#evidenceSession.reset():{}),
@@ -592,6 +603,9 @@ export class RegistrySession {
       const model=parseSourceWorldModel(await json(response,1048576),patientId,caseId);
       if(!current())return;
       this.#publish({worldModel:model,worldPhase:'ready',
+        followthroughDrafts:Object.freeze(Object.fromEntries(Object.entries(this.#state.followthroughDrafts)
+          .filter(([,draft])=>draft.patient_id===patientId&&draft.case_id===caseId&&
+            draft.source_snapshot_sha256===model.snapshot_fingerprint))),
         worldMessage:'Source-derived snapshot verified at last read; no clinical assessment or AI execution is authorized.'});
     }catch(_){
       if(current())this.#publish({...emptyWorld(),worldPhase:'error',
@@ -892,6 +906,10 @@ export class RegistrySession {
       if(!current())return;
       const pendingEvidence=this.#state.evidenceLinkIntent;
       this.#publish({questions:history.questions,questionsAccessReceiptId:history.access_receipt_id,
+        followthroughDrafts:Object.freeze(Object.fromEntries(Object.entries(this.#state.followthroughDrafts)
+          .filter(([id,draft])=>draft.patient_id===patientId&&draft.case_id===caseId&&history.questions.some(item=>
+            item.question_id===id&&item.preflight_sha256===draft.preflight_sha256&&
+            item.source_snapshot_sha256===draft.source_snapshot_sha256&&item.source_context_state==='current_unreviewed_question')))),
         ...(pendingEvidence&&!history.questions.some(item=>item.question_id===pendingEvidence.question_id)?this.#resetEvidence():{}),
         questionsCaseId:caseId,questionListPhase:'ready',
         questionListMessage:history.questions.length?
@@ -1104,7 +1122,11 @@ export class RegistrySession {
       if(control.signal.aborted)throw Error('task timeout');
       const value=decodeFollowthrough(await json(res,4194304),patientId,caseId);
       if(!current())return;if(control.signal.aborted)throw Error('task timeout');
-      this.#publish({followthrough:value,followthroughPhase:'ready',followthroughMessage:value.tasks.length?
+      this.#publish({followthrough:value,followthroughPhase:'ready',
+        followthroughTransitionDrafts:Object.freeze(Object.fromEntries(Object.entries(this.#state.followthroughTransitionDrafts)
+          .filter(([id,draft])=>draft.patient_id===patientId&&draft.case_id===caseId&&value.tasks.some(task=>
+            task.task_id===id&&draft.context===followthroughTransitionContext(task))))),
+        followthroughMessage:value.tasks.length?
         'Recorded work and attributed history, checked at this read. Source changes do not approve a new conclusion.':
         'No follow-up tasks are visible for this case.'});
     }catch(_){if(current())this.#publish({followthrough:null,followthroughPhase:'error',
@@ -1119,6 +1141,28 @@ export class RegistrySession {
       return true;
     }
     return false;
+  }
+
+  /** Memory only; no command or request key is allocated until explicit submission. */
+  editFollowthroughDraft(questionId:string,fields:FollowthroughDraft):void{
+    if(this.#followthroughBlocked())return;
+    const patientId=this.#state.patient?.patient_id,model=this.#state.worldModel;
+    const question=this.#state.questions?.find(item=>item.question_id===questionId);
+    if(!this.#token||!patientId||this.#state.phase!=='ready'||this.#uploading||
+       this.#state.worldPhase!=='ready'||this.#state.questionListPhase!=='ready'||!model||!question||
+       this.#state.questionsCaseId!==model.case_id||!canCreateFollowthrough(question,model)||
+       !this.#state.cases?.some(row=>row.case_id===model.case_id&&row.status==='active'))return;
+    const draft=Object.freeze({patient_id:patientId,case_id:model.case_id,
+      source_snapshot_sha256:question.source_snapshot_sha256,preflight_sha256:question.preflight_sha256,
+      fields:Object.freeze({...fields})});
+    this.#publish({followthroughCaseId:model.case_id,
+      followthroughDrafts:Object.freeze({...this.#state.followthroughDrafts,[questionId]:draft})});
+  }
+
+  clearFollowthroughDraft(questionId:string):void{
+    if(this.#followthroughBlocked())return;
+    const drafts={...this.#state.followthroughDrafts};delete drafts[questionId];
+    this.#publish({followthroughDrafts:Object.freeze(drafts)});
   }
 
   async createFollowthrough(questionId:string,draft:FollowthroughDraft):Promise<void>{
@@ -1138,6 +1182,25 @@ export class RegistrySession {
       reason:draft.reason,source_snapshot_contract:'oi.pg-source-world-model/1' as const,
       expected_source_snapshot_sha256:question.source_snapshot_sha256,expected_preflight_sha256:question.preflight_sha256});
     await this.#writeFollowthrough(Object.freeze({kind:'create',patient_id:patientId,case_id:model.case_id,question_id:questionId,body}));
+  }
+
+  editFollowthroughTransitionDraft(taskId:string,fields:FollowthroughTransitionFields):void{
+    if(this.#followthroughBlocked())return;
+    const patientId=this.#state.patient?.patient_id,list=this.#state.followthrough;
+    const task=list?.tasks.find(item=>item.task_id===taskId);
+    if(!this.#token||!patientId||this.#state.phase!=='ready'||this.#uploading||
+       this.#state.followthroughPhase!=='ready'||!list||list.patient_id!==patientId||!task||
+       FOLLOWTHROUGH_TRANSITIONS[task.status].length===0||
+       !this.#state.cases?.some(row=>row.case_id===list.case_id&&row.status==='active'))return;
+    const draft=Object.freeze({patient_id:patientId,case_id:list.case_id,
+      context:followthroughTransitionContext(task),fields:Object.freeze({...fields})});
+    this.#publish({followthroughTransitionDrafts:Object.freeze({...this.#state.followthroughTransitionDrafts,[taskId]:draft})});
+  }
+
+  clearFollowthroughTransitionDraft(taskId:string):void{
+    if(this.#followthroughBlocked())return;
+    const drafts={...this.#state.followthroughTransitionDrafts};delete drafts[taskId];
+    this.#publish({followthroughTransitionDrafts:Object.freeze(drafts)});
   }
 
   async transitionFollowthrough(taskId:string,draft:FollowthroughTransition):Promise<void>{
@@ -1195,7 +1258,10 @@ export class RegistrySession {
       if(!current())return;
       if(res.status===401){this.#httpError(401);return;}
       if([400,403,404,409,413,422].includes(res.status)){
-        this.#publish({...this.#resetFollowthrough(),followthroughCaseId:intent.case_id,followthroughWritePhase:'error',followthroughWriteMessage:res.status===409?
+        const drafts=this.#state.followthroughDrafts,transitionDrafts=this.#state.followthroughTransitionDrafts;
+        this.#publish({...this.#resetFollowthrough(),...(![403,404].includes(res.status)?
+          {followthroughDrafts:drafts,followthroughTransitionDrafts:transitionDrafts}:{}),
+          followthroughCaseId:intent.case_id,followthroughWritePhase:'error',followthroughWriteMessage:res.status===409?
           'The saved source context, task revision or request intent changed. Refresh the case and recorded work before a new action.':
           'This write was refused by the current grant or input contract. No successful action is assumed.'});return;
       }
@@ -1203,7 +1269,11 @@ export class RegistrySession {
       const saved=decodeFollowthroughReceipt(await json(res),intent);
       if(!current())return;if(control.signal.aborted){uncertain();return;}
       if((res.status===200)!==saved.duplicate)throw Error('task receipt status');
-      this.#publish({followthroughReceipt:saved,followthroughIntent:null,followthroughWritePhase:'saved',followthroughWriteMessage:saved.duplicate?
+      const drafts={...this.#state.followthroughDrafts},transitionDrafts={...this.#state.followthroughTransitionDrafts};
+      if(intent.kind==='create')delete drafts[intent.question_id];
+      else delete transitionDrafts[intent.task_id];
+      this.#publish({followthroughDrafts:Object.freeze(drafts),followthroughTransitionDrafts:Object.freeze(transitionDrafts),
+        followthroughReceipt:saved,followthroughIntent:null,followthroughWritePhase:'saved',followthroughWriteMessage:saved.duplicate?
         'Original task receipt recovered. The same request was not recorded twice.':
         'Follow-up work recorded. No clinical approval, order or external notification was created.'});
       this.#savingFollowthrough=false;

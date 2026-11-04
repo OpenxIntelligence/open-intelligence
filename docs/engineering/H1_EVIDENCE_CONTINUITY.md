@@ -622,3 +622,66 @@ The earlier exact-head #390 web/API success applies only to `427f5222`. This ref
 After refreshed head `73f6eb838a966399173bc753833048d567b3ea3a` completed both H1 hosted gates successfully, `main` advanced once more from `c2aa2054fa746fb26576150f27ec1f229b003f6f` to `e7c6b02e06ff76d0276ffa11cf09215c0b6f65b0` via QA cycle-1 fixes #346.
 
 The accepted commit changes `src/open_intelligence/changes.py`, `src/open_intelligence/discovery.py`, `src/open_intelligence/investigation.py`, `src/open_intelligence/store.py`, `web/app.js`, and adds `tests/test_qa_c1_remaining.py`. The overlapping integration files are direct accepted-main successors; no H1-specific chronology, workflow, evidence-report, follow-through, or dependency-gate change is displaced. The refreshed candidate takes those exact accepted blobs and must again pass exact-head H1 web and API/recovery workflows before merge. Earlier successful runs remain evidence for their own immutable heads only.
+
+## Unsent follow-up creation drafts — 3 November 2026
+
+Draft #379 continues #375 at `1bdc44ac8507ec3a05398c3965bed5fcae0d59eb`
+(tree `8adcccc18f34e6f28cd178af9f213834dbc34cc8`) under OI-007/009/010/013.
+Unsent coordination fields previously lived inside the mounted question form;
+leaving Investigations discarded them. The tests-first hosted run
+[41711236459](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41711236459)
+at `bf63226af9c99eb9c30c38d1bcc958673a678aa5` passed all 397 compiled
+client tests, build and dependency checks, then failed the new actual-browser
+assertion: `Same-case navigation discarded unsent follow-up title`.
+
+The correction stores unsent creation fields only in the existing tab's
+RegistrySession, bound to patient, case, question, source snapshot and preflight.
+Same-case navigation and matching source/question refreshes retain the literal
+fields. Changed snapshots, missing/changed questions, revoked scope, patient/case
+changes and disconnect clear them. The form never stores drafts in browser
+storage or sends a command until explicit submission. Successful task transitions
+retain another unsent creation draft; a confirmed creation consumes only its
+question's draft. Existing captured command bodies and retry keys remain the
+authority for uncertain writes, and edits are blocked until resolved or abandoned.
+Ordinary rejected input retains editable fields; denied access clears them.
+
+Local verification at the first implementation checkpoint: 46 follow-through
+session tests and 13 filesystem rights controls passed; Python helper syntax,
+whitespace and the existing synthetic-data boundary audit passed. New local
+tests use Node's TypeScript transform, not a typecheck. The full local `npm test`
+could not run because the pinned TypeScript toolchain is absent. Final hosted
+TypeScript/Vite/client/PG16/FastAPI/Chromium acceptance and independent source
+review are pending at this source checkpoint; the PR records subsequent
+exact-head results without rewriting this historical checkpoint.
+
+No backend, SQL, grants, dependencies or workflow changes. Status-transition
+input retention across navigation is not added by this slice. It is not durable
+autosave, a clinical order, notification or clinical approval. Synthetic only;
+draft, unmerged and undeployed. Main and other owners' branches are unchanged.
+
+### Status-change draft continuation — 3 November 2026
+
+The same draft #379 now also addresses unfinished status-change reasons and
+proposed owners. Tests-first [run 41715861398](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41715861398)
+at `fedd78104b5e40e6583765797878fb6876650438` passed all 401 inherited
+client tests, 13 rights controls and build, then reproduced the actual browser
+failure: `Same-case navigation discarded unsent transition owner`.
+
+These fields remain in the existing RegistrySession and are bound to the exact
+task, revision, status, recorded owner and original source/question context.
+Matching authorized task reads preserve them, including daily date-flag changes.
+A changed revision, source reassessment or missing task clears the old input.
+Case/patient/access/session boundaries clear both kinds of unsent work. Explicit
+clear and confirmed submission consume only the selected draft; unrelated tasks
+and creation drafts remain separate. The captured command and request key remain
+authoritative for uncertain writes even if later task history advances.
+
+At this implementation checkpoint, 54 follow-through session tests and 21
+attention controls passed locally using Node's TypeScript transform. The browser
+helper additionally exercises navigation, matching task refresh, explicit clear,
+successful submission, unrelated task creation, source amendment and case-roundtrip
+clearing. Final hosted compilation/build/database-backed browser acceptance and
+independent review are pending here; subsequent evidence is recorded on #379.
+This supersedes the earlier creation-only scope note without changing its
+historical verification record. No backend, migration, dependency, grant or
+workflow changes; memory-only synthetic engineering, no clinical action.
