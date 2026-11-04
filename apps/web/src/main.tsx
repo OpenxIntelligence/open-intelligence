@@ -23,7 +23,7 @@ function WorkspaceContext({section,patientId,readiness,view,onViewChange}:{secti
   return()=>{observer.disconnect();window.removeEventListener('resize',measure);document.documentElement.style.removeProperty('--workspace-offset');};
  },[]);
  return <header ref={header} className="topbar" aria-label="Current workspace context">
-  <div className="workspace-context"><span className="workspace-location">Patient workspace <span className="muted">/ {section}</span></span>
+  <div className="workspace-context"><div className="workspace-location-row"><span className="workspace-location">Patient workspace <span className="muted">/ {section}</span></span><a className="workspace-navigation-link" href="#workspace-navigation">Change section</a></div>
    <span className="workspace-identity" data-testid="workspace-identity">{patientId?<><span className="workspace-context-label">Authorized fictional patient</span> <code>{patientId}</code></>:<span className="muted">No authorized patient open</span>}</span>
   </div>
   <div className="reading-controls"><div><label htmlFor="reading-view">Reading layout</label><select id="reading-view" value={view} onChange={e=>onViewChange(e.target.value as ReadingView)} aria-describedby="reading-view-help"><option value="patient">Patient reading</option><option value="clinical">Clinical reading</option></select><span id="reading-view-help">Presentation only · permissions unchanged</span></div>
@@ -43,7 +43,25 @@ function App(){
  useEffect(()=>{setSourceFilters({scope:state.sourceIndex,...emptySourceFilters})},[state.sourceIndex]);
  const heading=useRef<HTMLHeadingElement>(null),moveFocus=useRef(false);
  const originalHeading=useRef<HTMLHeadingElement>(null),sourcesHeading=useRef<HTMLHeadingElement>(null);
+ const sourceEntry=useRef<{patientId:string;caseId:string;trigger:HTMLButtonElement}|null>(null);
  const originalReturn=useRef<{sourceId:string;trigger:HTMLButtonElement;pending:boolean}|null>(null);
+ useEffect(()=>{
+  const requested=sourceEntry.current;if(!requested)return;
+  if(section!=='Records'||requested.patientId!==state.patient?.patient_id||
+     (state.recordsPhase!=='loading-sources'&&state.recordsPhase!=='ready')){sourceEntry.current=null;return;}
+  if(state.recordsPhase!=='ready')return;
+  sourceEntry.current=null;
+  if(state.sourceIndex?.case_id===requested.caseId&&
+     (document.activeElement===requested.trigger||document.activeElement===document.body)){
+   sourcesHeading.current?.focus({preventScroll:true});
+   sourcesHeading.current?.scrollIntoView({block:'start'});
+  }
+ },[state.sourceIndex,state.recordsPhase,state.patient?.patient_id,section]);
+ function inspectSources(caseId:string,trigger:HTMLButtonElement){
+  originalReturn.current=null;
+  sourceEntry.current=state.patient?{patientId:state.patient.patient_id,caseId,trigger}:null;
+  void session.loadSources(caseId);
+ }
  useEffect(()=>{originalReturn.current=null},[state.sourceIndex,state.patient?.patient_id]);
  useEffect(()=>{
   const requested=originalReturn.current;
@@ -70,14 +88,14 @@ function App(){
  useEffect(()=>{if(!state.connected){setPatientId('');setConfirmed(false)}},[state.connected]);
  useEffect(()=>{const clear=()=>session.disconnect();window.addEventListener('pagehide',clear);return()=>window.removeEventListener('pagehide',clear)},[]);
   const busy=state.phase==='creating'||state.phase==='reading'||state.importOutcome==='sending'||state.questionSavePhase==='saving'||state.reviewReturnPhase==='saving'||state.evidenceWritePhase==='saving';
- function navigate(nextSection:string){originalReturn.current=null;session.dismissSourceQuotePacket();session.dismissSourceBrief();session.dismissEvidenceMetadata();session.dismissQuestionEvidence();session.dismissSourceImages();if(nextSection===section){heading.current?.focus();return}moveFocus.current=true;setSection(nextSection);}
- function disconnect(){session.disconnect();setToken('');setPatientId('');setConfirmed(false);setSection('Overview');}
- return <div className="app">
+ function navigate(nextSection:string){sourceEntry.current=null;originalReturn.current=null;session.dismissSourceQuotePacket();session.dismissSourceBrief();session.dismissEvidenceMetadata();session.dismissQuestionEvidence();session.dismissSourceImages();if(nextSection===section){heading.current?.focus();return}moveFocus.current=true;setSection(nextSection);}
+ function disconnect(){sourceEntry.current=null;session.disconnect();setToken('');setPatientId('');setConfirmed(false);setSection('Overview');}
+ return <div className="app" onFocusCapture={()=>{if(sourceEntry.current&&document.activeElement!==sourceEntry.current.trigger)sourceEntry.current=null;}}>
   <a className="skip" href="#main">Skip to workspace</a>
   <aside className="rail" aria-label="Workspace navigation">
    <div className="brand"><span className="mark" aria-hidden="true">oi</span><span>Open<br/>Intelligence</span></div>
    <div className="environment">Development · fictional identities only</div>
-   <nav aria-label="Patient workspace">{navigation.map(name=><button type="button" key={name} aria-current={name===section?'page':undefined} onClick={()=>navigate(name)}><span>{name}</span>{name==='Records'?<span className="nav-hint">Original records</span>:name==='Journey'?<span className="nav-hint">Source view</span>:name==='Investigations'?<span className="nav-hint">Source questions</span>:name==='Review'?<span className="nav-hint">Verification returns</span>:null}</button>)}</nav>
+   <nav id="workspace-navigation" tabIndex={-1} aria-label="Patient workspace">{navigation.map(name=><button type="button" key={name} aria-current={name===section?'page':undefined} onClick={()=>navigate(name)}><span>{name}</span>{name==='Records'?<span className="nav-hint">Original records</span>:name==='Journey'?<span className="nav-hint">Source view</span>:name==='Investigations'?<span className="nav-hint">Source questions</span>:name==='Review'?<span className="nav-hint">Verification returns</span>:null}</button>)}</nav>
    <div className="rail-note">One patient context.<br/>Original sources.<br/>Human clinical authority.</div>
   </aside>
   <div className="body"><WorkspaceContext section={section} patientId={state.patient?.patient_id??null} readiness={readiness} view={view} onViewChange={setView}/>
@@ -108,7 +126,7 @@ function App(){
          <div><strong><code>{item.case_id}</code></strong><span className="record-state"> {item.status}</span></div>
          <p>Origin: {item.source_organization} · System: {item.source_system} · Version {item.revision}</p>
          <p>Fictional identity verification: not established. Clinical sources automatically linked: no.</p>
-         <button data-testid="load-sources" disabled={item.status!=='active'||state.recordsPhase.startsWith('loading')||busy} onClick={()=>void session.loadSources(item.case_id)}>Inspect source versions</button>
+         <button data-testid="load-sources" disabled={item.status!=='active'||state.recordsPhase.startsWith('loading')||busy} onClick={event=>inspectSources(item.case_id,event.currentTarget)}>Inspect source versions</button>
         </li>)}</ul>}
       </section>}
       {state.sourceIndex&&<section className="records-detail" data-testid="source-index" aria-labelledby="sources-heading">
