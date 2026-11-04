@@ -38,7 +38,11 @@ class ManualContextContracts(unittest.TestCase):
             registry._transaction_active=True
             registry._fetchone.return_value=(None,)
             registry._fetchall.return_value=[(revision,)]
-            self.assertIsNone(QuestionPassages(registry).metadata_locked({})['revision_id'])
+            legacy_context = QuestionPassages(registry).metadata_locked({})
+            self.assertEqual(
+                {key: legacy_context[key] for key in ('revision_id','revision','references','state')},
+                dict(revision_id=None,revision=0,references=[],state='current_unreviewed'),
+                'A known pre-passage owner must expose only empty unreviewed metadata')
             with self.assertRaisesRegex(RuntimeError,'owner unavailable'):
                 QuestionPassages(registry).metadata_locked({},revision_id='PASSAGES-'+'A'*32)
         for revisions in ([], [('0014_question_passages',)], [('0015_manual_report_context',)],
