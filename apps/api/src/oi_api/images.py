@@ -155,6 +155,9 @@ class PostgresSourceImages:
                     case_id=case_id, source_id=source_id, source_version=source["version"],
                     source_sha256=source["sha256"], image_id=row["image_id"],
                     sha256=row["sha256"], byte_count=row["byte_count"])
+                # Event persistence is I/O: changed authority must also roll
+                # back the original/link and its event, not release the body.
+                recheck_authority()
             return prepared
 
     def list(self, patient_id: str, case_id: str, source_id: str, *, organization: str,
@@ -190,6 +193,7 @@ class PostgresSourceImages:
                 recheck_authority=recheck_authority,
                 source_id=source_id, source_version=source["version"], source_sha256=source["sha256"],
                 snapshot_sha256=snapshot, image_count=len(images))
+            recheck_authority()
             return prepared
 
     def original(self, patient_id: str, case_id: str, source_id: str, image_id: str, *,
@@ -255,4 +259,5 @@ class PostgresSourceImages:
                 recheck_authority=recheck_authority,
                 source_id=source_id, source_version=source["version"], source_sha256=source["sha256"],
                 image_id=image_id, sha256=row["sha256"], byte_count=len(raw))
+            recheck_authority()
             return prepared

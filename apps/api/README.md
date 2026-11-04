@@ -525,7 +525,9 @@ All routes below use the prefix
 
 Each also requires patient_read, the exact patient grant, the persisted
 organization, active case binding and matching purpose. They refresh the same
-credential before committing. Existing source_read/source_original_read grants
+credential after preparing the response, then again after appending an image
+event or disclosure receipt and before committing. An identical import appends
+no new event and still requires its existing fresh check. Existing source_read/source_original_read grants
 do not disclose image metadata or bytes. Query parameters and content encoding
 are rejected; callers cannot override image UIDs, expected digest or backend URL.
 
@@ -579,6 +581,13 @@ commit failure in test_image_disclosure_authority.py. JSON responses validate th
 existing model and encode inside the source transaction, keeping duplicate
 imports at 200 and new objects/links at 201. The existing image
 custody, migration, bounded parser and HTTP ingress tests remain separate.
+`test_image_audit_authority.py` exercises withdrawal during the real audit append,
+so a late denial must roll back new originals, amendment links and disclosure
+receipts as well as withhold the already prepared response. Local and archive
+originals share this check. This closes the audit-I/O interval; an external
+credential file is not transactionally atomic with database commit or HTTP
+delivery. See the [audit-boundary execution record](../../docs/superpowers/plans/2026-11-03-image-audit-final-authority.md)
+for the tests-first result, exact hosted verification and remaining limits.
 See the [implementation record](../../docs/superpowers/plans/2026-11-03-h1-image-custody.md)
 for scope, alternatives and remaining boundaries.
 
