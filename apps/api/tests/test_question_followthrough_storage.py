@@ -385,6 +385,11 @@ class FollowthroughPostgresTests(SourceVersionFixture):
         self.assertEqual(after[manual_task["task_id"]]["manual_context_state"],"reassessment_required")
         self.assertTrue(after[manual_task["task_id"]]["needs_recheck"])
         self.assertEqual(after[manual_task["task_id"]]["revision"],1)
+        self.transition(manual_task["task_id"],1,"assigned",key="MANUAL-ASSIGNED")
+        self.transition(manual_task["task_id"],2,"acknowledged",key="MANUAL-ACK")
+        with self.assertRaises(PatientRegistryConflict):
+            self.transition(manual_task["task_id"],3,"completed",key="MANUAL-STALE-COMPLETE")
+        self.assertEqual(next(t for t in self.listing()["tasks"] if t["task_id"]==manual_task["task_id"])["revision"],3)
         self.assertEqual(self.create_task(key="TASK-MANUAL-BOUND",manual_dependency=binding),
                          manual_task|{"duplicate":True})
         with self.assertRaises(PatientRegistryConflict):
