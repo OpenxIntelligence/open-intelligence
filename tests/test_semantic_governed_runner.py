@@ -211,6 +211,42 @@ class ModelRunnerBoundaryTests(unittest.TestCase):
         self.assertEqual(result["results"][0]["status"], "abstain")
 
 
+    def test_missing_or_null_completion_reason_is_not_accepted(self):
+        for marker in ("omit", None):
+            obj = json.loads(model_reply({"status": "abstain"}))
+            if marker == "omit":
+                obj["choices"][0].pop("finish_reason")
+            else:
+                obj["choices"][0]["finish_reason"] = None
+            value = runner.parse_model_output(json.dumps(obj).encode())
+            with self.subTest(reason=marker):
+                self.assertEqual(value["status"], "invalid")
+                self.assertEqual(value["invalid_code"], "truncated")
+
+    def test_redirect_is_never_followed_even_to_same_loopback(self):
+        hits = []
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *_args):
+                return
+            def do_POST(self):
+                hits.append(self.path)
+                self.send_response(302)
+                self.send_header("Location", f"http://127.0.0.1:{self.server.server_port}/v1/chat/completions")
+                self.end_headers()
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        worker = threading.Thread(target=server.serve_forever, daemon=True)
+        worker.start()
+        try:
+            endpoint = f"http://127.0.0.1:{server.server_port}/v1/chat/completions"
+            with self.assertRaises((ValueError, HTTPError)):
+                runner.send_loopback(endpoint, runner.request_body(self.packet["tasks"][0], self.packet, "test-double"), 2.0)
+        finally:
+            server.shutdown()
+            server.server_close()
+            worker.join(timeout=3)
+        self.assertEqual(len(hits), 1)
+
+
 class SeparateGoldScorerTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
