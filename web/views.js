@@ -337,17 +337,27 @@
   let changes = null;
   let changesCase = null;
   let changesSequence = 0;
+  // Case whose changes fetch failed. While a case has no successful load and
+  // no recorded failure, its change status is still loading: paintHome must
+  // not claim nothing changed until a load succeeds for that case.
+  let changesErrorCase = null;
   async function loadChanges(state) {
     const sequence = ++changesSequence;
     const requested = state.case.case_id;
+    if (changesErrorCase === requested) changesErrorCase = null;
     try {
       const data = await api('/api/cases/' + encodeURIComponent(requested) + '/changes-since-review');
       if (sequence !== changesSequence || requested !== caseId) return;
       changes = data;
       changesCase = requested;
+      changesErrorCase = null;
       paintHome(ready());
       paintAttention(ready());
-    } catch (_) { /* The existing Review & changes panel reports errors. */ }
+    } catch (_) {
+      if (sequence !== changesSequence || requested !== caseId) return;
+      changesErrorCase = requested;
+      paintHome(ready());
+    }
   }
 
   const UNRESOLVED = ['pending', 'indeterminate', 'conflicting', 'not-reported', 'not-assessed'];
@@ -405,7 +415,14 @@
     else { action.textContent = 'Open my records'; action.href = '#pt-results'; }
     body.append(action);
     for (const item of amendments) body.append(changeBox(state, item));
-    if (!amendments.length) body.append(make('p', 'Nothing has changed since your care team’s last review.', 'view-status'));
+    // The reassurance below is only true once a load has succeeded for this
+    // case. While the fetch is pending or failed, say so instead of claiming
+    // nothing changed.
+    const changesKnown = changesCase === state.case.case_id && changes;
+    if (!changesKnown) body.append(make('p', changesErrorCase === state.case.case_id
+      ? 'We could not check for updates since your care team’s last review. Please try again later.'
+      : 'Checking for updates since your care team’s last review.', 'view-status'));
+    else if (!amendments.length) body.append(make('p', 'Nothing has changed since your care team’s last review.', 'view-status'));
   }
 
   function paintPrepare(state) {
