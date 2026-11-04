@@ -146,6 +146,7 @@ class HTTPContractTests(unittest.TestCase):
             "/v1/patients/{patient_id}/cases/{case_id}/documents/{source_id}/annotations",
             "/v1/patients/{patient_id}/cases/{case_id}/documents/{source_id}/original",
             "/v1/patients/{patient_id}/cases/{case_id}/documents/{source_id}/selections/{revision_id}/{selection_key}",
+            "/v1/patients/{patient_id}/cases/{case_id}/laboratory/fhir-r4/preview",
             "/v1/patients/{patient_id}/cases/{case_id}/followthrough",
             "/v1/patients/{patient_id}/cases/{case_id}/followthrough/{task_id}/transitions",
             "/v1/patients/{patient_id}/cases/{case_id}/questions",
@@ -172,6 +173,10 @@ class HTTPContractTests(unittest.TestCase):
             "/v1/patients/{patient_id}/record-requests/{request_id}/cancel",
             "/v1/patients/{patient_id}/record-requests/{request_id}/receive",
         })
+        preview = schema["paths"]["/v1/patients/{patient_id}/cases/{case_id}/laboratory/fhir-r4/preview"]["post"]
+        self.assertEqual(preview["operationId"], "preview_fictional_fhir_r4_lab_v1")
+        self.assertEqual(preview["security"], [{"SyntheticFixture": []}])
+        self.assertIn("503", preview["responses"])
         self.assertEqual(schema["paths"]["/v1/patients"]["post"]["security"], [{"SyntheticFixture": []}])
         self.assertEqual(schema["paths"]["/v1/patients/{patient_id}/cases/{case_id}/world-model"]["get"]["security"], [{"SyntheticFixture": []}])
         queue = schema["paths"]["/v1/patients/{patient_id}/cases/{case_id}/review-queue"]["get"]
