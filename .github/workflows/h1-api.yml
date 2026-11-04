@@ -6,6 +6,8 @@ on:
       - 'apps/api/**'
       - 'src/**'
       - 'tests/**'
+      # Laboratory browser acceptance crosses source custody and migration owners.
+      - 'apps/web/tools/laboratory_fhir_journey.py'
       - 'tools/audit_ci_data_boundaries.py'
       - '.github/workflows/h1-api.yml'
   workflow_dispatch:

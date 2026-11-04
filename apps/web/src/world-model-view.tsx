@@ -9,6 +9,7 @@ type Props={
   showQuestions?:boolean;
   onInvestigations?:()=>void;
   onReview?:()=>void;
+  onRecords?:(caseId:string)=>void;
 };
 
 /** First-party PG read-only Patient World Model view.
@@ -16,9 +17,10 @@ type Props={
  * separate client-owned patient/source ledger. All clinical claims remain
  * attributed to the original fictional source and explicitly unreviewed.
  */
-export function WorldModelView({session,state,onOverview,busy,showQuestions=false,onInvestigations,onReview}:Props){
+export function WorldModelView({session,state,onOverview,busy,showQuestions=false,onInvestigations,onReview,onRecords}:Props){
   const loading=state.worldPhase==='loading'||state.recordsPhase.startsWith('loading');
   const model=state.worldModel;
+  const laboratoryByRef=new Map(model?.laboratory_observations.map(item=>[item.source_id+':'+item.observation_reference,item])??[]);
   return <section className="panel source-world" aria-labelledby="world-heading" data-testid="world-workspace" data-view={showQuestions?'investigations':'journey'}>
     <span className="step">SOURCE-LINKED PATIENT CONTEXT / SYNTHETIC ONLY</span>
     <h2 id="world-heading">{showQuestions?'Source-linked investigations':'Patient World Model — source-only view'}</h2>
@@ -55,9 +57,37 @@ export function WorldModelView({session,state,onOverview,busy,showQuestions=fals
           <p>{item.kind} · specimen {item.specimen_id??'not recorded'} · issued {item.issued_at}</p>
           <details><summary>Exact source receipt</summary><p><code>{item.source_id}</code></p><p>SHA-256 <code>{item.sha256}</code></p></details>
         </li>)}</ol>}
-        <h3>Original source-reported observations</h3>
+        {model.laboratory_observations.length>0&&<section aria-labelledby="laboratory-results-heading" data-testid="world-laboratory-results">
+          <h3 id="laboratory-results-heading">Laboratory results (<span data-testid="world-laboratory-count">{model.summary.current_laboratory_observations}</span>)</h3>
+          <p>Values, units and dates are reported by the source. An absent result is not a negative result. Clinical interpretation and reference-range assessment have not been performed.</p>
+          <ol className="world-observations">{model.laboratory_timeline.map(entry=>{
+            const item=laboratoryByRef.get(entry.source_id+':'+entry.observation_reference)!;
+            return <li key={item.source_id+':'+item.observation_reference} data-testid="world-laboratory-observation">
+              <p><strong>LOINC {item.loinc_code}</strong> · <time dateTime={item.effective_at}>{item.effective_at}</time></p>
+              <p data-testid="world-laboratory-value">{item.status==='reported_value'?<><strong>{item.value_text}</strong> <code>{item.unit_code}</code> (UCUM)</>:<>Result absent · source reason: <strong>{item.absent_reason}</strong></>}</p>
+              <p>{item.specimen_type_text} · Source-reported, not clinically reviewed</p>
+              <details><summary>Inspect result provenance</summary>
+                <dl>
+                  <dt>Original report</dt><dd>{item.document_id} · version {item.document_version}</dd>
+                  <dt>Observation reference</dt><dd><code>{item.observation_reference}</code></dd>
+                  <dt>Report reference</dt><dd><code>{item.report_reference}</code></dd>
+                  <dt>Specimen reference</dt><dd><code>{item.specimen_reference}</code></dd>
+                  <dt>Specimen collected</dt><dd><time dateTime={item.specimen_collected_at}>{item.specimen_collected_at}</time></dd>
+                  <dt>Result effective</dt><dd><time dateTime={item.effective_at}>{item.effective_at}</time></dd>
+                  <dt>Result issued</dt><dd><time dateTime={item.issued_at}>{item.issued_at}</time></dd>
+                  <dt>Source identity</dt><dd><code>{item.source_id}</code></dd>
+                  <dt>Original SHA-256</dt><dd><code>{item.source_sha256}</code></dd>
+                </dl>
+                <p>The reference above locates this result within its exact original.</p>
+                {onRecords&&<button type="button" data-testid="world-laboratory-records" disabled={loading||busy}
+                  onClick={()=>onRecords(model.case_id)}>Open report versions in Records</button>}
+              </details>
+            </li>;
+          })}</ol>
+        </section>}
+        <h3>Original source-reported statements</h3>
         <p>These are literal reported statements, not established clinical facts. A missing or pending item must never be interpreted as a negative finding.</p>
-        {model.observations.length===0?<p>No source-reported observations are available.</p>:
+        {model.observations.length===0?<p>No additional source-reported statements are available.</p>:
         <ul className="world-observations">{model.observations.map(item=><li key={item.source_id+':'+item.source_line} data-testid="world-observation">
           <p><strong>{item.finding_key}</strong> · <span data-testid="world-reported-state">{item.reported_state}</span> · {item.event_date}</p>
           <blockquote data-testid="world-statement">{item.source_statement}</blockquote>
