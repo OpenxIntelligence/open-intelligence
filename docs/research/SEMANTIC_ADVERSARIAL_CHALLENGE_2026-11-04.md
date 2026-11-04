@@ -45,7 +45,7 @@ The new positive correct rate is 2/36 (5.6%); negative abstention is 32/36 (88.9
 
 ## Verified receipt and reproducibility
 
-The first exact-head workflow finished **59/59** Python tests (42 inherited semantic checks + 17 new adversarial checks), no failures or skips, and generated the challenge report. [Artifact 13368264053](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41925545482/artifacts/13368264053) was independently downloaded and checked against the GitHub ZIP digest `sha256:9315fce4f398a1f4778a186b56940da4524596686f445e422b30a95c523ef478`. ZIP integrity, receipt commit SHA and JSON metrics were checked. Dataset canonical digest: `36f490872174bcf2bebf9662aaead236d9b3632f41275a650e172b4defaf3132`.
+The initial exact-head workflow finished **59/59** Python tests (42 inherited semantic checks + 17 new adversarial checks), no failures or skips, and generated the challenge report; this is **historical evidence superseded by the complete 74-test run below**. [Artifact 13368264053](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41925545482/artifacts/13368264053) was independently downloaded and checked against the GitHub ZIP digest `sha256:9315fce4f398a1f4778a186b56940da4524596686f445e422b30a95c523ef478`. ZIP integrity, receipt commit SHA and JSON metrics were checked. Dataset canonical digest: `36f490872174bcf2bebf9662aaead236d9b3632f41275a650e172b4defaf3132`.
 
 Reproduce the baseline without a provider credential:
 
@@ -59,11 +59,30 @@ python tools/semantic_adversarial_eval.py \
 
 An external prediction file, if later supplied, is **not authenticated vendor evidence** by this harness. Its entries must pass all strict existing mapping tests; the source and model runtime cannot be proven from the JSON. Do not describe replay scores as NVIDIA, clinician-reviewed, or live data unless verified through a separate trusted execution receipt.
 
+## Question-only packet and updated verification
+
+To create a safer **input boundary** for a separately approved future model experiment, the research branch now contains `tools/semantic_question_packet.py` and **15 new regression checks**. It emits a deterministic `oi.synthetic-semantic-question-packet/1` file containing 72 fictional questions, three source-projection concepts, 22 allowlisted field names, and non-authorizing constraints. It **omits all answer mappings and negative-case category labels**, does not call a model or database, refuses changed prompts when checked against the locked synthetic reference corpus, and writes exclusively to a new output path.
+
+The packet is **not** NVIDIA's inference API schema and is **not truly blinded**: the original reference labels are visible elsewhere in this public research repository. Before a credible vendor comparison, a separate trusted runner must keep independently adjudicated gold labels outside the model's input context and must record inference provenance instead of trusting a model-supplied receipt.
+
+**Latest verified test result:** [exact-head GitHub run 41926176834](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41926176834), source `a5890d6a37d01a9e9d015a35aede69b55264797d`, **74/74** Python tests passed. The unchanged baseline produced **2/36** valid field mappings and **4/36** false mappings on negative cases (1 unsafe, 3 false joins). All fields, source manifests and the 72-item question packet were confirmed through the hosted artifact. [Artifact 13369332682](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41926176834/artifacts/13369332682), GitHub ZIP digest `sha256:26b66f18fd1dcdde9252b4120dc96aaa0e7bc06dcb6d4a2c3fbd0574cece0026`, was independently downloaded, hash-verified and ZIP-integrity checked; its `questions-only.json`, `report.json`, `receipt.json` and `tests.txt` were inspected. This is an exact head **prior to this documentation-only update**; later commits require their own receipt.
+
+The input-only packet does not authorize importing clinical sources, granting cases, prescribing, running SQL, making patient conclusions or calling hosted models. Passing its safety-structure tests does not demonstrate compliance, real access control or clinical correctness.
+
+Reproduce the packet locally:
+
+```bash
+python tools/semantic_question_packet.py \
+  --challenge tests/fixtures/semantic_adversarial_challenge_v2.json \
+  --original tests/fixtures/semantic_benchmark_cases_v1.json \
+  --output /tmp/oi-questions-only.json
+```
+
 ## Decision and next real evaluation
 
 1. **Do not promote the baseline or Auto Ontology into a patient-facing AI system.** A metadata field lookup is never a grant to access a case, merge subjects/specimens, infer clinical significance, perform treatment selection or send records.
 2. Preserve this v2 challenge unchanged; do not tune guard phrases to its failures and then claim held-out generalization. If engineering updates are made, version a fresh training/development set and compare against a truly independent, unreleased challenge with prespecified criteria.
-3. Develop an authorized **question-only task packet** for the NVIDIA sandbox that exposes only fictional questions and approved field names, never gold labels, patient text, live data or unrestricted SQL. A trusted test runner must independently record model endpoint/version, invocation ID, task scope, latency, token counts, egress policy, request/response digests and declared costs. A model response cannot sign its own provenance.
+3. Use the now-implemented **question-only packet** as an input-only artifact for a separately authorized NVIDIA sandbox test. It excludes gold labels from the input but is not a blinded study, because the public corpus contains the answers. A trusted model runner must independently record endpoint/version, invocation ID, task scope, latency, token counts, egress policy, request/response hashes and costs. A model response cannot sign its own provenance; independent adjudication is still required.
 4. Independently review and adjudicate the source versions, specimen/assay/time relationships, missing/negative/unknown semantics and clinical intent classes. Do not infer that field-only metadata can answer questions requiring record values, cross-case permissions or actual clinical judgment.
 5. Measure exact field-mapping correctness, false joins, unsafe-field acceptance, abstention, reviewer correction burden, latency and total cost **on genuine model-generated outputs**. Predefine stop conditions before running. Passing this small corpus must not constitute clinical release clearance.
 6. Reconcile integration owners, licenses, model weights, patient privacy, identity and authorization before any real record access. The existing Open Intelligence architecture remains authoritative.
