@@ -197,7 +197,30 @@ function download(text:string,name:string):void{
 export async function downloadEvidenceReport(session:RegistrySession,questionId:string,reportId:string):Promise<void>{
  const value=await session.readEvidenceReport(questionId,reportId);
  if(!value||value.body===null||session.snapshot().evidenceReport!==value)return;
- download(value.body,'open-intelligence-evidence-'+reportId+'.txt');
+ // The stored body is immutable. Its current status belongs to this fresh read,
+ // so keep the two distinct in the exported file without rewriting provenance.
+ const historical=value.state==='historical_reassessment_required';
+ const cover=[
+  'OPEN INTELLIGENCE — EVIDENCE REPORT DOWNLOAD',
+  'Status returned for this access: '+(historical?'HISTORICAL — REASSESSMENT REQUIRED':'CURRENT — UNREVIEWED'),
+  historical?'The source or comparison basis has changed. Reassess before preparing a current report.':'Current source and comparison basis at this access; human review has not been performed.',
+  'No clinical approval or model execution. This status is not scientific validation.',
+  'Status and permissions can change. Reopen through the authorized application before further use.',
+  '',
+  'Patient: '+value.patient_id+' | Case: '+value.case_id,
+  'Question: '+value.question_id+' | Report: '+value.report_id,
+  'Original preparation time: '+value.prepared_at,
+  'Access receipt: '+value.access_receipt_id,
+  'The receipt identifies the authorized read; it is not a signature, delivery receipt or continuing access grant.',
+  'Original body SHA-256: '+value.body_sha256,
+  'Original snapshot SHA-256: '+value.snapshot_sha256,
+  'Original body UTF-8 bytes: '+new TextEncoder().encode(value.body).length,
+  'The body digest covers only the unchanged section below, excluding this download cover.',
+  '',
+  '--- BEGIN PRESERVED REPORT BODY ---',
+  '',
+ ].join('\n');
+ download(cover+value.body,'open-intelligence-evidence-'+reportId+'.txt');
 }
 export async function downloadEvidenceOriginal(session:RegistrySession,questionId:string,evidenceId:string):Promise<void>{
  const value=await session.loadEvidenceOriginal(questionId,evidenceId);

@@ -19,7 +19,11 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
     assert {'evidence_read', 'evidence_link', 'authored_evidence_read', 'evidence_report_export'} <= set(previous_actions)
     assert report['question_id'] == question_id
     assert report['snapshot']['selected_source']['source_id'] == source_id
-    assert downloaded_path.read_bytes() == downloaded == report['body'].encode('utf-8')
+    assert downloaded_path.read_bytes() == downloaded
+    cover, separator, preserved_body = downloaded.partition(b'--- BEGIN PRESERVED REPORT BODY ---\n')
+    assert separator and 'CURRENT — UNREVIEWED'.encode('utf-8') in cover
+    assert preserved_body == report['body'].encode('utf-8')
+    assert hashlib.sha256(preserved_body).hexdigest() == report['body_sha256']
 
     def metadata(kind):
         return cd.evaluate('window.__oiMetadataEvidenceChecks.' + kind)
@@ -133,13 +137,14 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
         assert history()['links'][0]['link_id'] == link['link_id']
         assert downloaded_path.read_bytes() == downloaded
         receipt = {
-            'contract': 'oi.h1-evidence-continuity-browser/1',
+            'contract': 'oi.h1-evidence-continuity-browser/2',
             'patient_id': patient_id, 'case_id': case_id, 'question_id': question_id,
             'source_id': source_id, 'source_snapshot_sha256': saved['body']['expected_source_snapshot_sha256'],
             'preflight_sha256': saved['body']['expected_preflight_sha256'],
             'metadata_link': saved['payload'], 'metadata_sha256': found['metadata_sha256'],
             'metadata_access_receipt_id': linked['source_access_receipt_id'],
-            'report_id': report['report_id'], 'report_body_sha256': hashlib.sha256(downloaded).hexdigest(),
+            'report_id': report['report_id'], 'report_body_sha256': report['body_sha256'],
+            'download_sha256': hashlib.sha256(downloaded).hexdigest(),
             'report_snapshot_sha256': report['snapshot_sha256'],
             'fresh_report_access_receipt_id': reopened['access_receipt_id'],
             'metadata_denial_status': denied_metadata['status'], 'report_denial_status': denied_report['status'],
