@@ -103,7 +103,11 @@ def register_laboratory_fhir_routes(router, *, principal, registry,
                     )
                     # Serialize before the final fresh authentication/grant
                     # check. A failure cannot expose partially prepared data.
-                    response = JSONResponse(content=result.model_dump(mode="json"))
+                    response = JSONResponse(
+                        content=result.model_dump(mode="json"),
+                        headers={"Cache-Control": "no-store",
+                                 "X-Content-Type-Options": "nosniff"},
+                    )
                     final_authority(request, context, patients, patient_id,
                                     ("source_import",))
                     # A preview is not a source receipt or proof of delivery.
