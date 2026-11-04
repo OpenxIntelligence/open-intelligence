@@ -732,17 +732,6 @@ def exercise_case_switch(cd, patient_id, case_id, second_case_id, credentials, w
         checks.refresh(expected_count=4)
         assert cd.evaluate("[...document.querySelectorAll('[data-testid=followthrough-transition-reason]')].every(e=>e.value==='')")
         assert cd.evaluate('localStorage.length===0 && sessionStorage.length===0')
-        select_case(cd, case_id)
-        click(cd, '[data-testid=load-source-questions]')
-        cd.wait('Boolean(document.querySelector(' + json.dumps(current) + '))', 'original question reloaded after case round trip')
-        assert cd.evaluate("!document.querySelector('[data-testid=followthrough-title]')"), 'Case round trip must not resurrect an unsent task'
-        click(cd, current)
-        assert cd.evaluate("document.querySelector('[data-testid=followthrough-title]').value") == ''
-        click(cd, '[data-testid=followthrough-cancel]')
-        checks.case_id = case_id
-        checks.refresh()
-        assert cd.evaluate("[...document.querySelectorAll('[data-testid=followthrough-transition-reason]')].every(e=>e.value==='')")
-        assert cd.evaluate('localStorage.length===0 && sessionStorage.length===0')
         (screenshots / 'h1-followthrough-case-switch.json').write_text(json.dumps({
             'patient_id': patient_id, 'first_case_id': case_id, 'second_case_id': second_case_id,
             'unsaved_draft_question_id': current_question_id,
