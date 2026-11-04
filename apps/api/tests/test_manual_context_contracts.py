@@ -31,12 +31,18 @@ def manual_snapshot():
 
 class ManualContextContracts(unittest.TestCase):
     def test_only_known_legacy_schemas_may_lack_manual_metadata(self):
-        for revision in ('0010_authored_evidence_origin','0011_evidence_convergence','0012_reviewed_documents','0013_document_image_convergence'):
+        for revision in ('0010_authored_evidence_origin','0011_evidence_convergence',
+                         '0012_reviewed_documents','0012_image_report_convergence',
+                         '0013_document_image_convergence'):
             registry=Mock()
             registry._transaction_active=True
             registry._fetchone.return_value=(None,)
             registry._fetchall.return_value=[(revision,)]
-            self.assertIsNone(QuestionPassages(registry).metadata_locked({})['revision_id'])
+            legacy_context = QuestionPassages(registry).metadata_locked({})
+            self.assertEqual(
+                {key: legacy_context[key] for key in ('revision_id','revision','references','state')},
+                dict(revision_id=None,revision=0,references=[],state='current_unreviewed'),
+                'A known pre-passage owner must expose only empty unreviewed metadata')
             with self.assertRaisesRegex(RuntimeError,'owner unavailable'):
                 QuestionPassages(registry).metadata_locked({},revision_id='PASSAGES-'+'A'*32)
         for revisions in ([], [('0014_question_passages',)], [('0015_manual_report_context',)],
