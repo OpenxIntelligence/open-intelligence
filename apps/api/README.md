@@ -1,16 +1,84 @@
 # Open Intelligence H1 patient registry API
 
+## Current combined candidate — draft #381
+
+The isolated [document/image candidate #381](https://github.com/OpenxIntelligence/open-intelligence/pull/381) composes the frozen #377 document/evidence/review candidate with #370 image/archive/report continuity, corrected #376 audit-tail tests, #373 fixture lifespan and verified #378/#379/#380/#382 frontend corrections. Its own hosted acceptance is pending. Historical owner receipts below do not qualify this composition.
+
+Current runtime readiness requires the single `0013_document_image_convergence` head. Both published 0012 histories and their immutable originals, annotations, citations, reports and tasks remain intact. The new join has no DDL. The combined dependency inventory retains the existing 26 exact runtime artifacts, full notices and code-only pydicom boundary; no new component or permission is selected.
+
+Tests-first source `ecda925d887c55e496dc3e6748337a8ddebd34ac`, tree `61f0bd922adafe0f6ef2d4711c7f0627d5710989`, ran 441 API/PostgreSQL test executions in [41711711965](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41711711965) and failed seven assertions solely in the five new route/graph/convergence methods. No test errors or skips were reported. The unchanged document browser baseline passed 415 client tests, 13 rights controls, build and actual browser execution in [41711711889](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41711711889). These are baseline results, not a final combined pass.
+
+The pinned accepted-main input remains `c4798ae85004713593f83458abd2102be6729095` through #377. This does not claim reconciliation with a subsequently moving main. Main and owner branches are untouched. The source-only review identified a separate shared source/document audit-tail authority gap; a regression and repair must be verified before completion.
+
+Draft, unmerged, undeployed and independently fictional only. Manual passage provenance in canonical investigations, amended-record reconciliation adoption, production identity/consent, qualified external archive access, clinical evaluation and distribution decisions remain explicit separate contracts. PACS adoption remains HOLD. See the [execution plan](https://github.com/OpenxIntelligence/open-intelligence/blob/integration/h1-document-image-continuity-20261103/docs/superpowers/plans/2026-11-03-document-image-convergence.md) for frozen inputs, rulings and acceptance.
+
+## Preserved owner checkpoints
+
+> **Pinned-main reconciliation:** #354 remains the document owner at `7b16a9a900737f07adb03e35362922c886424e9b`. This dependent source checkpoint preserves that concurrent update, includes accepted main `c4798ae` and records #374 ancestry. See the [convergence gate](../../docs/engineering/H1_EVIDENCE_CONVERGENCE_MERGE_GATE.md) for the exact composition and its separate verification requirements. The earlier checkpoint below retains its original scope.
+
 This is the FastAPI/PostgreSQL 16 composition root for [issue #112](https://github.com/OpenxIntelligence/open-intelligence/issues/112).
 It mounts the existing canonical patient registry and a small synthetic record-request operational domain, with migrations and durable event receipts.
 The Python/SQLite prototype remains the evidence/investigation reference. This
 branch now connects canonical PostgreSQL sources, source questions and
+nonterminal verification-return receipts, bounded fictional evidence metadata
+links, case-owned fictional evidence originals, human-authored comparisons,
+immutable evidence reports and question-linked follow-through. The latter
+owners are composed in the #307 → #322 → #328 lineage; see the
+[current checkpoint](../../docs/project-state/PROJECT_STATE.md) and
+[continuity evidence](../../docs/engineering/H1_EVIDENCE_CONTINUITY.md).
+Qualified biomedical retrieval, scientific/model appraisal and professional
+clinical approval remain separate work. Current source/evidence/report software
+does not establish those capabilities or a merged/clinical release.
+
+## Reviewed ordinary documents
+
+Records uses source-owned ordinary text/PDF intake and immutable selection history.
+See [routes, grants, bounds and verification](../../docs/engineering/H1_REVIEWED_DOCUMENTS.md).
+Manual classifications remain separate from structured source assertions.
+
+### Current reviewed-document convergence checkpoint
+
+On 3 November 2026, the local continuation of existing draft #354 composes
+`d9b81f08a97998e8f95d2a1cc7c43b4165e99862` with the frozen #368/#369/#362/#367
+inputs in the [current candidate record](../../docs/engineering/H1_CONNECTED_RIGHTS_CONVERGENCE.md#current-candidate--reviewed-document-convergence-in-354).
+**Local composition verified; exact combined hosted acceptance pending.**
+Main `c4798ae85004713593f83458abd2102be6729095` remains the Python/SQLite
+reference; the H1 candidate is unmerged and undeployed.
+
+The existing source recovery probe now includes #362's restored-database
+reviewed-document HTTP assertions: exact text/PDF bytes, immutable selections,
+retry identities, independent grants and restored revoked-binding denial.
+Those checks must execute on the new combined head before acceptance is claimed.
+The production API, published migration history and exact dependency set remain
+unchanged. Manual selections do not enter structured investigation provenance;
+real identity/consent, professional review and clinical validation remain open.
+
 nonterminal verification-return receipts, and bounded fictional evidence
-metadata links. Evidence appraisal and report persistence remain separate
-integration work.
+metadata links, human-authored comparisons and immutable reports. The current
+draft #327 also connects source-bound original-image custody. All interpretations
+remain human-authored and clinically unreviewed; no model or live biomedical
+retrieval is enabled by this integration.
+
+### Connected archive verification continuation
+
+The socket/report continuation in [draft #361](https://github.com/OpenxIntelligence/open-intelligence/pull/361)
+uses the existing image, question, citation and authored-report owners. Its first
+[API run](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41687984400)
+reached the configured 20-minute job deadline: 615 API test executions and 287
+reference tests passed, and all six recovery helpers printed success, but the
+final recovery step was recorded as cancelled and the resolved container/package
+inventory did not execute. That run is **incomplete**, not a successful job.
+
+This follow-up gives the unchanged full job a bounded 30-minute budget. It keeps
+every existing test, no-skip rule, recovery assertion and rights check. New
+exact-head API and browser results are required before this continuation is
+qualified; see the [existing execution record](../../docs/superpowers/plans/2026-11-03-h1-socket-report-continuity.md).
+The same-process synthetic socket fixture does not establish production archive
+isolation, external-archive recovery, patient identity or clinical readiness.
 
 ## Question-scoped fictional evidence metadata
 
-Apply the current migration head (`0011_evidence_convergence`) explicitly:
+Apply the current migration head (`0013_document_image_convergence`) explicitly:
 
 ```bash
 PYTHONPATH=apps/api/src:src python -m oi_api.migrate upgrade head
@@ -57,7 +125,8 @@ and verifies redacted metadata and restored patient-binding denial over HTTP.
 The synthetic task increment extends the existing saved-question/source owner
 with immutable task origins and append-only operational status history. See
 [the follow-through contract and verification ledger](../../docs/engineering/H1_QUESTION_FOLLOWTHROUGH.md).
-Apply migration `0009_question_followthrough` explicitly. The three versioned
+Task storage originated in `0009_question_followthrough`; apply `upgrade head`
+for the current combined application. The three versioned
 routes list tasks, create a task from an exact saved question and append a legal
 transition. Independent `followthrough_read`, `followthrough_create` and
 `followthrough_update` grants supplement patient, question and source access.
@@ -233,8 +302,9 @@ report **no clinical interpretation** and **no integrated research-review
 invalidation**; original-source amendments do not yet automatically reissue
 Composer or clinician review. Outside records requests are not sent to real
 institutions. A synthetic case-binding review label is **not verified identity,
-patient consent or rights to source content**. No PDF/DICOM ingestion or
-real-patient medical record is supported.
+patient consent or rights to source content**. This text-source contract does
+not accept PDFs or DICOM. The separate source-bound image API below accepts only
+its bounded independently fictional CT profile; real-patient records remain excluded.
 
 The received-record continuation above now links an existing exact original to
 its request through the same event owner. Source-derived questions and verification
@@ -309,18 +379,20 @@ Typed response preparation, final grant refresh, source-access receipt and the
 return/event write share the existing transaction. A failure rolls them back.
 See [ownership, provenance and verification](../../docs/engineering/H1_SOURCE_QUESTION_REVIEW_RETURN.md).
 
-### Concurrent image-owner boundary
+### Preserved image and evidence migration histories
 
-The separate [image/question convergence #260](https://github.com/OpenxIntelligence/open-intelligence/pull/260)
-is draft at `90dfe49fab082f3698fc82b3e8224cf7d30e5c4f`, with
-`0008_merge_image_questions`. Its image functionality and validation are not
-included in this review-return branch. A later combined owner must preserve
-both original 0008 histories, add an explicit merge of `0008_merge_image_questions`
-and `0008_review_convergence`, and require that new single head in readiness.
-Populated upgrades from both sides must retain image bytes/links, questions,
-receipts, source contracts and events. Image activity must leave review content
-fingerprints unchanged; report amendment must invalidate dependent work without
-relinking images silently reviving an old question.
+The current draft preserves the existing image/review merge history through
+`0011_image_evidence_merge` and the authored-evidence merge history through
+`0011_evidence_convergence`. One DDL-free `0012_image_report_convergence` joins
+those two heads. Every published migration retains its original bytes. Serving
+requires the exact new single head, while legitimate populated parent upgrades
+are tested before exposing current HTTP behavior.
+
+Image bytes and links keep the source owner's patient/case boundary. An image
+import or deliberate relink cannot make an old question/report current or confer
+metadata, authored-content, review, task or export authority. See the existing
+[convergence record](../../docs/engineering/H1_EVIDENCE_CONTINUITY.md) for exact
+candidate status, tests-first evidence and remaining acceptance.
 
 ### Authored evidence and comparison reports
 
@@ -483,14 +555,123 @@ Replace access.json atomically to change grants. Changes apply on the next
 request; an already authorized synchronous request may finish. This is not a
 distributed consent/revocation service.
 
+## Source-bound original images (0006_image_custody)
+
+This increment is based on PR #222 at `911b0767c671ae6f40caf20f204aedf1e9df2ab0`.
+The original source, canonical identity and event journal keep their existing
+owners. Images add immutable `clinical_source.dicom_objects` and
+`clinical_source.source_image_links` children. The source report is still the
+existing original text format; binary bytes do not enter that parser.
+
+All routes below use the prefix
+`/v1/patients/{patient_id}/cases/{case_id}/sources/{source_id}/images`.
+
+| Method / suffix | Additional action | Result |
+|---|---|---|
+| POST collection, exact `Content-Type: application/dicom` | image_import | 201 for new original or explicit new source link; 200 for identical retry; server-derived image ID, digest and identifiers. |
+| GET collection | image_read | Source-bound metadata index and committed access receipt. |
+| GET /{image_id} | image_original_read | Exact original bytes, application/dicom, no-store, generic download filename and X-OI-Access-Receipt. |
+
+Each also requires patient_read, the exact patient grant, the persisted
+organization, active case binding and matching purpose. They refresh the same
+credential before committing. Existing source_read/source_original_read grants
+do not disclose image metadata or bytes. Query parameters and content encoding
+are rejected; callers cannot override image UIDs, expected digest or backend URL.
+
+The parent must be a current imaging report whose original bytes, hash, case,
+type, dates and amendment edge pass the existing validator. `PatientID` must
+exactly equal its locked source binding's `source_subject_ref`,
+`IssuerOfPatientID` must equal `source_organization + "/" + source_system`,
+and StudyDate must equal the report event date. Both source keys forbid `/`,
+so equal subject/system strings from different source organizations remain
+distinct. A qualified issuer longer than 64 bytes is outside this profile. This development convention does not verify the authenticity of an
+external institution or a clinical patient; source_identity_verified stays false.
+
+Same case/SOP with changed bytes returns conflict. Report amendment immediately
+makes the old link unavailable to current-image routes. An explicit import of
+the same bytes against the amendment creates a new immutable link to the same
+image ID; original bytes are not duplicated or moved. Historical source text
+remains readable through its original endpoint. Stored original-image reads
+recompute the digest, reparse metadata and compare both to custody and binding.
+
+The bounded profile is one uncompressed Explicit VR Little Endian CT object,
+single frame, 16-bit MONOCHROME2. The parser validates file framing, lengths,
+unique ordered tags, file-meta identity, identifiers, date and pixel geometry
+before using the typed parser; it performs no pixel decoding or clinical
+interpretation. Unsupported syntax, sequences and malformed input fail closed.
+Maximum input is 2 MiB, with 256 originals/64 MiB per case and no bundled-file imports.
+These are development limits, not a claim of general CT-study ingestion.
+
+Read receipts contain opaque IDs, hashes and counts, not raw image identifiers,
+originals or tokens. The whole buffered response is withheld until final access
+checks and event commit succeed. The case lock serializes local reads and
+amendment/revocation; a receipt records a grant for prepared disclosure, not
+client delivery or distributed revocation atomicity. No separate PACS endpoint
+is deployed or protected by this change.
+
+Run the combined question/image restart/restore acceptance with Docker available:
+
+    python apps/api/tools/verify_images_compose.py
+
+It creates two independently authored originals and canonical source-linked
+questions, checks exact bytes and independent grants, restarts API/PostgreSQL,
+amends the report and explicitly relinks the same images. The v1 question keeps
+its original anchor and requires reassessment; a fresh v2 question remains
+separate. Active and revoked snapshots undergo actual pg_dump/pg_restore. The
+same API image is pointed at each restored database to check reopened question
+history, same-key retries, exact image bytes and denied revoked access. A fresh
+receipt in the restored database, absent from the original database, confirms
+which database served the restored HTTP response.
+The API/database cases also cover final credential changes during real image
+response preparation and JSON encoding, encoder failure, and deferred database
+commit failure in test_image_disclosure_authority.py. JSON responses validate the
+existing model and encode inside the source transaction, keeping duplicate
+imports at 200 and new objects/links at 201. The existing image
+custody, migration, bounded parser and HTTP ingress tests remain separate.
+See the [implementation record](../../docs/superpowers/plans/2026-11-03-h1-image-custody.md)
+for scope, alternatives and remaining boundaries.
+
+### Archive reads with the existing evidence-report workspace
+
+The archive continuation extends the verified #327 image/report owner with #331's
+optional trusted `image_archive` argument to `create_app`. Only original-image
+retrieval uses that reader. Metadata lists remain local, and the archive receives
+only the stored Study/Series/SOP identifiers after source/authority preflight.
+Owner locks are released during I/O; a new transaction revalidates current
+binding, source and exact bytes, prepares the complete response, refreshes
+authority and commits its receipt. Archive failure withholds the original without
+falling back to intact local bytes. No URL override, environment activation,
+dependency, schema, permission or public API field is introduced.
+
+The same patient, source and question keep their citation, verification return,
+task, authored comparison and immutable report. Image access does not grant
+authored-content or report access, and content withdrawal does not itself revoke
+independently permitted image or metadata reads. Amendment and explicit image
+relinking do not rewrite old report bodies, hashes, preparation times or source
+snapshots. Fresh report status and current content rights continue to govern
+disclosure through the existing report owner.
+
+All six recovery probes remain required. The combined image probe additionally
+recreates the API serving an actually restored database with a bounded file
+archive. Its original files and fixture module are read-only mounts; only a
+synthetic identifier trace is writable. The default API image has no fixture or
+archive activation setting. Report-aware recovery must preserve complete business
+rows and sequences, prior events and exact retries, and account for only the
+expected read receipts in the restored copy. Missing/changed archive objects,
+independent grants, content withholding and revoked bindings remain separate
+acceptance conditions. Exact combined verification belongs to this continuation's
+PR and the [existing evidence continuity record](../../docs/engineering/H1_EVIDENCE_CONTINUITY.md).
+This controlled file fixture does not qualify live PACS or an external archive's
+backup, and it adds no model execution or clinical interpretation.
+
 ## Run without containers
 
 Use Python 3.12 on the reviewed platform. Download is an explicit build step:
 
     python3.12 -m venv /tmp/oi-h1-api-venv
-    /tmp/oi-h1-api-venv/bin/python -m pip download --require-hashes --only-binary=:all: --dest /tmp/oi-h1-wheels -r apps/api/requirements.lock
+    /tmp/oi-h1-api-venv/bin/python apps/api/tools/prepare_dependencies.py --wheel-dir /tmp/oi-h1-wheels
     python3.12 apps/api/tools/check_dependencies.py --wheel-dir /tmp/oi-h1-wheels --sbom /tmp/oi-h1-sbom.json
-    /tmp/oi-h1-api-venv/bin/python -m pip install --no-index --find-links /tmp/oi-h1-wheels --require-hashes -r apps/api/requirements.lock
+    /tmp/oi-h1-api-venv/bin/python -m pip install --no-deps --no-index --find-links /tmp/oi-h1-wheels --require-hashes -r apps/api/requirements.lock
     /tmp/oi-h1-api-venv/bin/python -m pip check
     PYTHONPATH=apps/api/src:src /tmp/oi-h1-api-venv/bin/python -m oi_api
 
@@ -514,7 +695,7 @@ URLs, SQL, source text and rejected validation inputs.
 | Route | Behavior |
 |---|---|
 | GET /health | Process liveness; 200 even if the database is unavailable. |
-| GET /health/ready | 200 only for PostgreSQL major 16 at revision 0011_evidence_convergence; bounded 503 otherwise. |
+| GET /health/ready | 200 only for PostgreSQL major 16 at revision 0012_image_report_convergence; bounded 503 otherwise. |
 | GET /v1 | Reports synthetic_patient_registry stage, implemented synthetic capabilities and the configured authentication mode. |
 | GET /v1/openapi.json | Local typed contract, including bearer security; no CDN documentation UI. |
 | POST /v1/patients | Authenticated synthetic creation; trusted actor/org/purpose; 201 for new identity or 200 for identical retry. |
@@ -526,7 +707,7 @@ capability. Authentication is deny_all, synthetic_fixture or trusted_provider.
 All responses use Cache-Control: no-store. External or ambiguous Host headers
 are rejected. Ordinary POST bodies are bounded to 16 KiB; original source imports to 72,000
 bytes and authored evidence imports to 210,000 JSON bytes (decoded originals stay
-limited to 32 KiB). Chunked bodies have the same bounds and a five-second deadline. Malformed/duplicate credentials are rejected.
+limited to 32 KiB); source-bound binary image inputs are limited to 2 MiB. Chunked bodies have the same bounds and a five-second deadline. Malformed/duplicate credentials are rejected.
 Conflict is 409, invalid input 422, oversized body 413, read timeout 408, and
 unavailable authority/database 503.
 
@@ -609,16 +790,22 @@ API restart, database restart and backup/restore. Docker and Chromium are absent
 in this local session. Hosted results must be attached to the exact PR head;
 this description or passing local tests alone does not prove those operations.
 
-**Current continuation:** [draft #307](../../docs/engineering/H1_EVIDENCE_CONTINUITY.md)
+**Historical evidence-convergence checkpoint:** [draft #307](../../docs/engineering/H1_EVIDENCE_CONTINUITY.md)
 converges the existing metadata/citation, authored-content/report and follow-through
 owners without copying PostgreSQL state into a competing SQLite chart. Its
 DDL-free `0011_evidence_convergence` joins the two published `0010` lineages;
-serving requires that exact single head. Original migration files and receipt
+serving at that checkpoint required that exact single head. The current document
+candidate explicitly upgrades to `0013_document_image_convergence`; original migration files and receipt
 meanings remain unchanged. Citation identity grants no content/assessment rights.
 Actual combined acceptance, populated upgrades and restored HTTP are recorded
 with the exact candidate head in that bounded receipt. Live permitted biomedical
-retrieval, full clinical/PDF/annotation parity, accounts, consent, EHR/LIS,
+retrieval, full clinical/annotation parity, accounts, consent, EHR/LIS,
 professional review and complete MRT-01 remain incomplete.
+
+The current #354 continuation retains ordinary text/PDF custody and manual
+selection history, adds the existing restored-document verification, and awaits
+its own combined API/recovery and browser result. See the current checkpoint
+above; historical local or parent-hosted counts are not substituted.
 
 See the [bounded implementation/continuation record](../../docs/superpowers/plans/2026-11-02-h1-patient-registry.md)
 for audit scope and regressions. No merge, deployment or clinical validation is
