@@ -8,7 +8,15 @@ export type FollowthroughStatus='created'|'assigned'|'acknowledged'|'completed'|
 export type FollowthroughDraft=Readonly<{
  title:string;detail:string;owner_label:string;due_date:string|null;review_trigger:string;reason:string;
 }>;
+/** Unsent presentation input, bound to an already authorized question context. */
+export type FollowthroughUnsentDraft=Readonly<{
+ patient_id:string;case_id:string;source_snapshot_sha256:string;preflight_sha256:string;fields:FollowthroughDraft;
+}>;
 export type FollowthroughTransition=Readonly<{status:FollowthroughStatus;owner_label:string;reason:string}>;
+export type FollowthroughTransitionFields=Readonly<Pick<FollowthroughTransition,'owner_label'|'reason'>>;
+export type FollowthroughUnsentTransition=Readonly<{
+ patient_id:string;case_id:string;context:string;fields:FollowthroughTransitionFields;
+}>;
 export type FollowthroughEvent=Readonly<{
  event_id:string;revision:number;previous_status:FollowthroughStatus|null;status:FollowthroughStatus;
  owner_label:string;actor_label:string;reason:string;recorded_at:string;
@@ -44,6 +52,12 @@ export const FOLLOWTHROUGH_TRANSITIONS:Readonly<Record<FollowthroughStatus,reado
  created:Object.freeze(['assigned','deferred'] as const),assigned:Object.freeze(['acknowledged','deferred'] as const),
  acknowledged:Object.freeze(['completed','deferred'] as const),deferred:Object.freeze(['assigned'] as const),completed:Object.freeze([]),
 });
+/** Only task revision/provenance binds editable input; daily due flags do not. */
+export function followthroughTransitionContext(task:FollowthroughTask):string{
+ return JSON.stringify([task.patient_id,task.case_id,task.task_id,task.question_id,task.revision,task.status,
+  task.owner_label,task.source_id,task.source_line,task.source_version,task.source_sha256,
+  task.source_snapshot_contract,task.source_snapshot_sha256,task.preflight_sha256,task.source_context_state]);
+}
 const canonical='oi.pg-source-world-model/1',legacy='oi.synthetic-postgres-world-model-sources/1';
 const taskFields=['task_id','question_id','patient_id','case_id','title','detail','owner_label','due_date','review_trigger',
  'created_at','status','revision','source_id','source_line','source_sha256','source_version','source_snapshot_contract',
