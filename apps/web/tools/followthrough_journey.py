@@ -272,6 +272,10 @@ class FollowthroughChecks:
             fill(self.cd, question + ' [data-testid=followthrough-' + name + ']', value)
         for section in ('Journey', 'Records', 'Overview', 'Review'):
             navigate(self.cd, section)
+            if section == 'Overview':
+                self.assert_preparation_uses_saved_work(completed, draft_fields.values())
+                self.refresh_overview(expected_count=1)
+                self.assert_preparation_uses_saved_work(completed, draft_fields.values())
             navigate(self.cd, 'Investigations')
             self.cd.evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve(true))))')
             for name, expected in draft_fields.items():
@@ -312,7 +316,8 @@ class FollowthroughChecks:
         for name, value in draft_fields.items():
             fill(self.cd, question + ' [data-testid=followthrough-' + name + ']', value)
         self.draft_checks = {'same_case_navigation': True, 'fresh_source_question_reads': True,
-                             'denied_read_cleared_draft': True, 'navigation_writes': 0}
+                             'denied_read_cleared_draft': True, 'navigation_writes': 0,
+                             'preparation_refresh_preserves_unsent_creation': True}
         self.cd.evaluate('document.querySelector(' + json.dumps(question + ' [data-testid=followthrough-create-form]')
                          + ").scrollIntoView({block:'center'})")
         image = self.cd.command('Page.captureScreenshot', {'format': 'png'})
@@ -336,6 +341,10 @@ class FollowthroughChecks:
             fill(self.cd, self.row(completed) + ' [data-testid=followthrough-transition-' + name + ']', value)
         for section in ('Journey', 'Records', 'Overview', 'Review'):
             navigate(self.cd, section)
+            if section == 'Overview':
+                self.assert_preparation_uses_saved_work(completed, transition_fields.values())
+                self.refresh_overview(expected_count=1)
+                self.assert_preparation_uses_saved_work(completed, transition_fields.values())
             navigate(self.cd, 'Investigations')
             for name, expected in transition_fields.items():
                 actual = self.cd.evaluate('document.querySelector(' + json.dumps(
@@ -391,6 +400,7 @@ class FollowthroughChecks:
             assert all(event['event_id'] in history and event['reason'] in history for event in row['history'])
         assert self.before_amendment[self.task_ids[TITLE_OPEN]]['is_overdue'] is True
         self.draft_checks['status_change_navigation_and_matching_refresh'] = True
+        self.draft_checks['preparation_keeps_recorded_owner_and_preserves_unsent_transition'] = True
         self.draft_checks['explicit_status_draft_clear_without_writes'] = True
         self.draft_checks['unrelated_creation_preserves_status_draft'] = True
         click(self.cd, question + ' [data-testid=followthrough-open-create]')
@@ -533,6 +543,20 @@ class FollowthroughChecks:
             '/v1/patients/' + self.patient_id + '/cases/' + self.case_id + '/followthrough')
         return value
 
+    def assert_preparation_uses_saved_work(self, task_id, unsent_values):
+        """Unsent form state must not enter the saved-question work projection."""
+        selector = '[data-testid=second-opinion-agenda-item][data-question-id="' + self.question_id + '"]'
+        self.cd.wait('Boolean(document.querySelector(' + json.dumps(selector) + '))', 'saved preparation question')
+        item = self.cd.evaluate('(()=>{const e=document.querySelector(' + json.dumps(selector) + ');return {'
+                               'text:e.textContent,recorded:Number(e.querySelector("[data-testid=second-opinion-question-work-summary]")?.dataset.recordedCount),'
+                               'tasks:[...e.querySelectorAll("[data-testid=second-opinion-question-task]")].map(t=>t.dataset.taskId)}})()')
+        assert item['recorded'] == 1 and item['tasks'] == [task_id]
+        recorded = next(task for task in self.projection()['tasks'] if task['task_id'] == task_id)
+        assert recorded['title'] in item['text']
+        if recorded['owner_label']:
+            assert recorded['owner_label'] in item['text']
+        assert all(value not in item['text'] for value in unsent_values if value), 'Unsent fields appeared as recorded preparation work'
+
     def assert_overview_work(self, current_question_id, screenshots):
         """Two real questions share one case summary without changing task ownership."""
         assert current_question_id != self.question_id
@@ -546,6 +570,52 @@ class FollowthroughChecks:
                              owner='Fictional second question coordinator')
         before = self.cd.evaluate('({reads:window.__oiFollowthroughChecks.reads.length,writes:window.__oiFollowthroughChecks.writes.length})')
         navigate(self.cd, 'Overview')
+        self.cd.wait("Boolean(document.querySelector('[data-testid=second-opinion-preparation]'))", 'second-opinion preparation summary')
+        assert self.cd.evaluate("document.querySelector('[data-testid=second-opinion-preparation]').dataset.state") == 'needs_reassessment'
+        # These questions were saved through the real canonical PostgreSQL API.
+        # Verify the read-only agenda uses their exact IDs and does not turn
+        # source reassessment into a reviewed clinical recommendation.
+        self.cd.wait("document.querySelectorAll('[data-testid=second-opinion-agenda-item]').length===3",
+                     'all three saved questions are visible in the second-opinion agenda')
+        agenda = self.cd.evaluate("[...document.querySelectorAll('[data-testid=second-opinion-agenda-item]')].map(e=>({id:e.dataset.questionId,state:e.dataset.sourceContext,question:e.querySelector('.second-opinion-agenda-question')?.textContent,provenance:e.textContent}))")
+        assert {self.question_id, current_question_id}.issubset({row['id'] for row in agenda})
+        assert len(agenda) == 3 and sum(row['state'] == 'source_reassessment_required' for row in agenda) == 1
+        assert sum(row['state'] == 'current_unreviewed_question' for row in agenda) == 2
+        assert all(row['question'] and row['question'].strip() for row in agenda)
+        assert all('Primary source version' in row['provenance'] for row in agenda)
+        assert any(row['state'] == 'source_reassessment_required' for row in agenda)
+        assert self.cd.evaluate("document.querySelector('[data-testid=second-opinion-agenda-coverage]').textContent.includes('Showing 3 of 3 saved questions')")
+        assert self.cd.evaluate("!document.querySelector('[data-testid=second-opinion-agenda-unavailable]')")
+        # The same separately authorized task read supplies the question-specific
+        # status; no new request, task owner, or independent authorization is made.
+        question_work = self.cd.evaluate("[...document.querySelectorAll('[data-testid=second-opinion-agenda-item]')].map(e=>({question:e.dataset.questionId,work:e.querySelector('[data-testid=second-opinion-question-work]')?.dataset.workState,recorded:Number(e.querySelector('[data-testid=second-opinion-question-work-summary]')?.dataset.recordedCount??0),open:Number(e.querySelector('[data-testid=second-opinion-question-work-summary]')?.dataset.openCount??0),history:Number(e.querySelector('[data-testid=second-opinion-question-work-summary]')?.dataset.historyCount??0),tasks:[...e.querySelectorAll('[data-testid=second-opinion-question-task]')].map(x=>x.dataset.taskId),text:e.textContent}))")
+        work_by_question = {row['question']: row for row in question_work}
+        assert len(work_by_question) == 3 and all(row['work'] == 'ready' for row in question_work)
+        first_work = work_by_question[self.question_id]
+        second_work = work_by_question[current_question_id]
+        assert (first_work['recorded'], first_work['open'], first_work['history']) == (3, 1, 2)
+        assert (second_work['recorded'], second_work['open'], second_work['history']) == (1, 1, 0)
+        assert first_work['tasks'] == [self.task_ids[TITLE_OPEN]]
+        assert second_work['tasks'] == [second]
+        assert 'Source changed: recorded work requires reassessment.' in first_work['text']
+        assert 'Fictional second question coordinator' in second_work['text']
+        assert any(row['recorded'] == 0 for row in question_work)
+        # Inspect the actual per-question work layout, not only the older
+        # case-wide task card. These are fictional, permission-scoped views.
+        screenshots.mkdir(parents=True, exist_ok=True)
+        for width, height, suffix in ((1440, 1100, 'desktop'), (390, 844, 'mobile')):
+            self.cd.command('Emulation.setDeviceMetricsOverride', {
+                'width': width, 'height': height, 'deviceScaleFactor': 1, 'mobile': False})
+            self.cd.wait('window.innerWidth===' + str(width), 'question-linked agenda viewport')
+            self.cd.evaluate("document.querySelector('[data-testid=second-opinion-agenda]').scrollIntoView({block:'start'})")
+            assert self.cd.evaluate('document.documentElement.scrollWidth<=window.innerWidth+1'), 'Question-linked agenda must not overflow horizontally'
+            image = self.cd.command('Page.captureScreenshot', {'format': 'png'})
+            (screenshots / ('h1-second-opinion-task-context-' + suffix + '.png')).write_bytes(base64.b64decode(image['data']))
+        self.cd.command('Emulation.setDeviceMetricsOverride', {
+            'width': 1440, 'height': 1100, 'deviceScaleFactor': 1, 'mobile': False})
+        second_opinion_text = self.cd.evaluate("document.querySelector('[data-testid=second-opinion-preparation]').textContent")
+        assert 'create a referral' in second_opinion_text and 'confirm an appointment' in second_opinion_text
+        assert 'Do not treat the earlier preparation as current.' in second_opinion_text
         self.assert_overview_counts({'all': 4, 'recheck': 1, 'overdue': 2, 'unassigned': 1, 'history': 2})
         previews = self.cd.evaluate("[...document.querySelectorAll('[data-testid=continuity-followthrough-task]')].map(e=>({task:e.dataset.taskId,question:e.dataset.questionId,text:e.textContent}))")
         assert {row['task'] for row in previews} == {self.task_ids[TITLE_OPEN], second}
@@ -591,6 +661,8 @@ class FollowthroughChecks:
         assert self.cd.evaluate("document.querySelector('[data-testid=continuity-followthrough-status]').dataset.phase") == 'error'
         assert self.cd.evaluate("!document.querySelector('[data-testid=continuity-followthrough-count-all]') && !document.querySelector('[data-testid=continuity-followthrough-task]')")
         assert self.cd.evaluate("Boolean(document.querySelector('[data-testid=continuity-reassessment]'))"), 'Independent task denial must preserve readable question context'
+        assert self.cd.evaluate("document.querySelectorAll('[data-testid=second-opinion-question-task]').length===0"), 'A denied task read must not expose any earlier question-linked task'
+        assert self.cd.evaluate("document.querySelectorAll('[data-testid=second-opinion-question-work-unavailable]').length===3"), 'Independent task denial must not turn question work into empty counts'
         card = self.cd.evaluate("document.querySelector('[data-testid=continuity-followthrough]').textContent")
         for row in value['tasks']:
             assert row['title'] not in card and row['task_id'] not in card
