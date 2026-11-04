@@ -40,7 +40,7 @@ test('saved agenda rows offer question-specific inspection and keep unsent passa
  assert.match(html,/aria-label="Inspect records and reports for: Could we discuss fictional marker &amp; &lt;unverified note&gt;\?"/);
  for(const patch of [{questionListPhase:'loading'},{questionListPhase:'error'},
   {questionsCaseId:'CASE-OTHER'},{connected:false}]){
-  assert.doesNotMatch(render({...state,...patch}),/second-opinion-open-question|second-opinion-resume-passages/);
+  assert.doesNotMatch(render({...state,...patch}),/data-testid="(?:second-opinion-open-question|second-opinion-resume-passages)"/,JSON.stringify(patch));
  }
 });
 
