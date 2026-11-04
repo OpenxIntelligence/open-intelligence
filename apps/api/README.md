@@ -602,6 +602,14 @@ interpretation. Unsupported syntax, sequences and malformed input fail closed.
 Maximum input is 2 MiB, with 256 originals/64 MiB per case and no bundled-file imports.
 These are development limits, not a claim of general CT-study ingestion.
 
+Image index reads also validate the exact bounded set of linked DICOM originals
+against immutable source context, stored SHA-256 and parsed patient/study/series/
+SOP identifiers. A corrupt original withholds the complete index and its new
+access receipt rather than displaying unverified image metadata. This adds up to
+64 MiB of DICOM byte reads and parsing within the existing synthetic case
+transaction; production-scale performance and external archive manifests
+remain separate qualifications.
+
 Read receipts contain opaque IDs, hashes and counts, not raw image identifiers,
 originals or tokens. The whole buffered response is withheld until final access
 checks and event commit succeed. The case lock serializes local reads and
