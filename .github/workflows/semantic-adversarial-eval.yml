@@ -1,0 +1,114 @@
+name: Adversarial semantic mapping evaluation (synthetic only)
+
+on:
+  push:
+    branches: [research/semantic-adversarial-challenge-20261104]
+  pull_request:
+    branches: [research/semantic-disposable-vendor-import-20261104]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  assess:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      NVIDIA_API_KEY: ''
+      DEFAULT_MODELS_API_KEY: ''
+      EMBED_API_KEY: ''
+      REASONING_API_KEY: ''
+      CONNECTION_STRINGS: ''
+      LANGCHAIN_TRACING_V2: 'false'
+      LANGSMITH_TRACING: 'false'
+    steps:
+      - name: Checkout exact authored head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Python 3.13, standard library only
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.13'
+      - name: Compile and execute previous and new synthetic regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p semantic-challenge-evidence
+          python -m compileall -q tools/semantic_adversarial_eval.py tools/semantic_benchmark.py tools/semantic_question_packet.py tests/test_semantic_adversarial_eval.py tests/test_semantic_question_packet.py
+          python -m unittest discover -s tests -p 'test_semantic*.py' -v 2>&1 | tee semantic-challenge-evidence/tests.txt
+      - name: Record disjoint challenge baseline and risk taxonomy
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/semantic_adversarial_eval.py \
+            --cases tests/fixtures/semantic_adversarial_challenge_v2.json \
+            --original tests/fixtures/semantic_benchmark_cases_v1.json \
+            --output semantic-challenge-evidence/report.json >/dev/null
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path('semantic-challenge-evidence/report.json').read_text())
+          assert r['contract']=='oi.semantic-adversarial-challenge-report/1'
+          assert r['challenge_size']==72
+          assert r['reference_status']=='author_labeled_synthetic_not_independently_adjudicated'
+          assert r['no_provider_called'] and r['no_patient_records_accessed'] and r['no_sql_executed']
+          assert not r['clinical_validation'] and not r['adoption_approved']
+          assert not r['model_generated_semantics_tested']
+          assert len(r['methods'])==1
+          m=r['methods'][0]
+          assert m['positive_correct']+m['positive_abstained']+m['positive_wrong']==36
+          assert m['negative_abstained']+m['negative_false_mapping']==36
+          assert m['unsafe_false_mappings']+m['false_join_mappings']>0
+          print('Novel synthetic challenge measured; no inference, no model claim')
+          print(json.dumps({k:m[k] for k in ('positive_correct','positive_abstained','positive_wrong','negative_abstained','negative_false_mapping','unsafe_false_mappings','false_join_mappings')},sort_keys=True))
+          PY
+      - name: Generate label-free task packet for a future governed model run
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/semantic_question_packet.py --output semantic-challenge-evidence/questions-only.json > semantic-challenge-evidence/question-packet-receipt.json
+          python - <<'PY'
+          import json,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from semantic_question_packet import validate_packet
+          questions=json.loads(Path('semantic-challenge-evidence/questions-only.json').read_text())
+          cases=json.loads(Path('tests/fixtures/semantic_adversarial_challenge_v2.json').read_text())
+          original=json.loads(Path('tests/fixtures/semantic_benchmark_cases_v1.json').read_text())
+          check=validate_packet(questions,cases,original)
+          assert (check['task_count'],check['concepts'],check['allowed_fields'])==(72,3,22)
+          assert check['outbound_model_invocations']==0 and not check['hidden_answers_included']
+          print('Question-only input packet: PASS; no gold, no patient records, no model calls')
+          PY
+      - name: Exact-head and source-hash receipt
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p semantic-challenge-evidence
+          python - <<'PY'
+          import hashlib,json,os,platform,subprocess
+          from pathlib import Path
+          paths=['tools/semantic_adversarial_eval.py','tools/semantic_question_packet.py',
+                 'tests/test_semantic_adversarial_eval.py','tests/test_semantic_question_packet.py',
+                 'tests/fixtures/semantic_adversarial_challenge_v2.json',
+                 '.github/workflows/semantic-adversarial-eval.yml']
+          receipt={'commit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
+                   'run_id':os.environ.get('GITHUB_RUN_ID'),
+                   'python':platform.python_version(),
+                   'file_sha256':{p:hashlib.sha256(Path(p).read_bytes()).hexdigest() for p in paths},
+                   'real_patients':False,'nvidia_model_execution':False,
+                   'adjudicated_by_external_clinician':False,'clinical_validation':False}
+          Path('semantic-challenge-evidence/receipt.json').write_text(json.dumps(receipt,sort_keys=True,indent=2)+'\n')
+          print(json.dumps(receipt,sort_keys=True))
+          PY
+      - name: Upload inspectable synthetic-only report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: oi-adversarial-semantic-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: semantic-challenge-evidence/
+          if-no-files-found: warn
+          retention-days: 14
