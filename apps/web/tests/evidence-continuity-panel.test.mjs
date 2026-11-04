@@ -6,7 +6,7 @@ import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {build} from 'vite';
 import {RegistrySession} from '../.test-dist/registry-client.js';
-import {ready,transportFor,response,packet,questionId,patientId,caseId} from './authored-evidence-fixtures.mjs';
+import {ready,transportFor,response,packet,questionId,patientId,caseId,evidenceId,assessmentId,original,permissions} from './authored-evidence-fixtures.mjs';
 
 let SourceQuestionPanel;
 before(async()=>{
@@ -53,4 +53,66 @@ test('same-question evidence and follow-up attention coexist, with denied work d
  assert.doesNotMatch(deniedHtml,/data-testid="followthrough-attention"/,'denied work cannot display old counts');
  assert.match(deniedHtml,/Fictional comparison manuscript/,'independent task denial must not replace the evidence owner');
  assert.equal(writes,0,'reading and presentation do not create tasks or evidence');
+});
+
+for(const phase of ['saving','unknown']){
+ test(`comparison draft copy never claims an unconfirmed ${phase} submission is unsaved`,async()=>{
+  let release;const delivery=new Promise(resolve=>{release=resolve;});
+  const s=new RegistrySession(transportFor((url,init)=>init.method==='POST'?delivery:response(packet())));
+  await ready(s);await s.loadQuestionEvidence(questionId);
+  assert.equal(s.selectEvidenceComparison(questionId,evidenceId),true);
+  assert.equal(s.editEvidenceComparison({quote:'café experiment',relation:'supports',applicability:'limited',
+   rationale:'Independently authored comparison; applicability remains uncertain.'}),true);
+  const saving=s.saveEvidenceComparison();
+  try{
+   if(phase==='unknown'){
+    release(response({assessment_id:assessmentId,question_id:questionId,duplicate:true},201));await saving;
+   }
+   assert.equal(s.snapshot().evidenceWritePhase,phase);
+   const html=renderToStaticMarkup(createElement(SourceQuestionPanel,{state:s.snapshot(),session:s,busy:false}));
+   const draft=html.match(/<section[^>]*data-testid="evidence-draft-status"[\s\S]*?<\/section>/)?.[0];
+   assert.ok(draft,'the original comparison remains available for exact recovery');
+   assert.doesNotMatch(draft,/not saved as an assessment|restored after a fresh matching/);
+   assert.match(draft,phase==='unknown'?/An evidence submission has an unknown outcome/:/An evidence submission is in progress/);
+   assert.match(draft,/data-testid="evidence-draft-discard"[^>]*disabled/);
+  }finally{
+   release(response({assessment_id:assessmentId,question_id:questionId,duplicate:false},201));await saving;
+  }
+ });
+}
+
+test('an unknown import never describes a retained comparison as submitted',async()=>{
+ const posts=[];
+ const s=new RegistrySession(transportFor((url,init)=>{
+  if(init.method==='POST'){
+   posts.push({url,body:init.body});
+   if(posts.length===1)throw Error('Import response lost after delivery.');
+   return response({evidence_id:evidenceId,version:1,duplicate:true});
+  }
+  return response(packet());
+ }));
+ await ready(s);await s.loadQuestionEvidence(questionId);
+ assert.equal(s.selectEvidenceComparison(questionId,evidenceId),true);
+ assert.equal(s.editEvidenceComparison({quote:'café experiment',relation:'supports',applicability:'limited',
+  rationale:'This independently authored comparison has not been submitted.'}),true);
+ const retained=s.snapshot().evidenceComparisonDraft;
+ await s.importQuestionEvidence(questionId,original,'abstract',permissions());
+ const intent=s.snapshot().evidenceWriteIntent;
+ assert.equal(s.snapshot().evidenceWritePhase,'unknown');assert.equal(intent.kind,'import');
+ assert.equal(s.snapshot().evidenceComparisonDraft,retained);
+ assert.equal(posts.length,1);assert.ok(posts[0].url.endsWith('/evidence'));
+ const html=renderToStaticMarkup(createElement(SourceQuestionPanel,{state:s.snapshot(),session:s,busy:false}));
+ const draft=html.match(/<section[^>]*data-testid="evidence-draft-status"[\s\S]*?<\/section>/)?.[0];
+ assert.ok(draft,'the unrelated import must preserve the working comparison');
+ assert.doesNotMatch(draft,/This comparison may already have been saved/);
+ assert.match(draft,/An evidence submission has an unknown outcome/);
+ assert.match(draft,/data-testid="evidence-draft-discard"[^>]*disabled/);
+ assert.match(html,/data-testid="evidence-write-retry"/);
+ assert.equal(s.discardEvidenceComparison(),false);
+ assert.equal(s.editEvidenceComparison({rationale:'Cannot replace input during recovery.'}),false);
+ assert.equal(s.snapshot().evidenceWriteIntent,intent);
+ await s.retryEvidenceWrite();
+ assert.equal(s.snapshot().evidenceWritePhase,'saved');
+ assert.deepEqual(posts,[posts[0],posts[0]],'retry preserves the import path and exact request body');
+ assert.equal(s.snapshot().evidenceComparisonDraft,retained,'an import receipt cannot clear a comparison');
 });
