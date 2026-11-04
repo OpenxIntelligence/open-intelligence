@@ -34,6 +34,24 @@ const project=s=>view.projectFollowthroughAttention?.(s);
 const match=(row,filter)=>view.matchesFollowthroughFilter?.(row,filter);
 const selected=(selection,attention)=>view.followthroughFilterForRead?.(selection,attention);
 
+test('explicit manual-dependent work is flagged without staling source-only work',()=>{
+ const manual=task(2,'created',{manual_dependency_revision_id:'PASSAGES-'+'E'.repeat(32),
+  manual_context_state:'reassessment_required',needs_recheck:true});
+ const attention=project(state([task(1),manual]));
+ assert.equal(attention?.counts.recheck,1);
+ assert.equal(attention?.counts.all,2);
+ assert.equal(match(manual,'recheck'),true);
+ assert.equal(match(task(1),'recheck'),false);
+ const current=task(3,'created',{manual_dependency_revision_id:'PASSAGES-'+'F'.repeat(32),
+  manual_context_state:'current_unreviewed'});
+ assert.equal(project(state([current]))?.counts.recheck,0);
+ for(const forged of [
+  {manual_dependency_revision_id:null,manual_context_state:'reassessment_required',needs_recheck:true},
+  {manual_dependency_revision_id:'PASSAGES-INVALID',manual_context_state:'reassessment_required',needs_recheck:true},
+  {manual_dependency_revision_id:'PASSAGES-'+'E'.repeat(32),manual_context_state:null,needs_recheck:true},
+ ])assert.throws(()=>state([task(4,'created',forged)]));
+});
+
 test('a successful empty read is known zero, not unavailable',()=>{
  const result=project(state());
  assert.deepEqual(result?.counts,{all:0,recheck:0,overdue:0,unassigned:0,history:0});
