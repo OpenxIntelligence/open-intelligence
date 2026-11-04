@@ -368,6 +368,7 @@
           <input id="amend-note-noted-date" type="date" required>
           <button class="button secondary" type="submit">Save changed version (keeps the earlier wording)</button>
         </form>
+      </section>
       <section class="panel" id="patient-report" aria-labelledby="patient-report-title">
         <div class="panel-head"><div><div class="eyebrow">PATIENT REPORT · READ-ONLY · PRINTABLE</div><h2 id="patient-report-title">Plain-language case report</h2></div><span class="pill pill-warn">FICTIONAL DEMO — not a real patient</span></div>
         <p class="muted"><strong>Fictional demo report. This is not a real patient file, not clinical advice, and not reviewed by a clinician.</strong> <span id="report-reading-note"></span></p>
@@ -449,8 +450,8 @@
             </form>
             <form id="question-note-form">
               <label for="note-question-choice">Question</label><select id="note-question-choice"></select>
-              <label for="note-text">Needed-evidence note (human-authored, kept as versions)</label>
-              <textarea id="note-text" rows="2" minlength="15" maxlength="800" required placeholder="Describe what evidence is still needed for this question."></textarea>
+              <label for="question-note-text">Needed-evidence note (human-authored, kept as versions)</label>
+              <textarea id="question-note-text" rows="2" minlength="15" maxlength="800" required placeholder="Describe what evidence is still needed for this question."></textarea>
               <button type="submit" class="button secondary">Append note</button>
             </form>
             <div class="subhead">Per-question gap rollup</div>
@@ -1099,6 +1100,7 @@
         <div class="subhead">Dev aggregate</div><div id="metrics-dev" class="metrics" aria-live="polite"></div>
         <div class="subhead">Held-out aggregate</div><div id="metrics-heldout" class="metrics" aria-live="polite"></div>
         <div class="subhead">Run record</div><div id="metrics-run" class="cards" aria-live="polite"></div>
+      </section>
       <section class="panel" id="re-review-tasks" aria-labelledby="re-review-heading">
         <div class="panel-head"><div><div class="eyebrow">REVIEW · FOLLOW-UP OWNERSHIP</div><h2 id="re-review-heading">Re-review tasks</h2></div><span class="pill pill-warn">FICTIONAL DEMO DATA — not a real patient</span></div>
         <p class="muted">Each task records one earlier draft that a source, evidence, or rights change marked stale, the fictional owner label recorded for follow-up, and what changed. A task closes only when a new draft on current sources is named or when a reviewer records that no change is needed. Rows appear in creation order; nothing here is ordered by importance.</p>

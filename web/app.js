@@ -199,7 +199,7 @@ async function initialize() {
             'counterevidence-reason', 'safety-detail',
             'flag-reason', 'dimension-note',
             'synthesis-note-text', 'synthesis-note-author',
-            'owner-label-input', 'note-text'].some(id => el(id).value.trim())) ||
+            'question-note-text', 'owner-label-input', 'note-text'].some(id => el(id).value.trim())) ||
           [...el('review-awaiting').querySelectorAll('input, textarea')].some(x => x.value.trim())) {
         picker.value = caseId;
         notice('Save or explicitly clear the unfinished investigation draft before switching cases.', true);
@@ -212,7 +212,7 @@ async function initialize() {
       draftQuestionFilter = null;
       draftFilterCaseId = null;
       for (const id of ['question-text', 'question-owner', 'owner-label-input', 'note-text',
-        'report-text', 'evidence-rationale', 'draft-observations',
+        'question-note-text', 'report-text', 'evidence-rationale', 'draft-observations',
         'draft-summary', 'draft-assumptions', 'synthesis-note-text', 'synthesis-note-author',
         'counterevidence-reason', 'safety-detail',
         'bio-mechanism', 'bio-result-note',
@@ -1419,10 +1419,10 @@ el('question-note-form').addEventListener('submit', async event => {
     const requestedCase = readyCase();
     const qid = Number(el('note-question-choice').value);
     await api('/api/cases/' + requestedCase + '/questions/' + qid + '/evidence-notes', {
-      note: el('note-text').value,
+      note: el('question-note-text').value,
     });
     if (requestedCase !== caseId) return;
-    el('note-text').value = ''; notice('Needed-evidence note appended.'); await refresh();
+    el('question-note-text').value = ''; notice('Needed-evidence note appended.'); await refresh();
   } catch (err) { notice(err.message, true); }
 });
 el('rollup-button').addEventListener('click', async () => {
