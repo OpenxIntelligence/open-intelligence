@@ -125,7 +125,7 @@ def parse_model_output(raw: bytes) -> dict[str, str | None]:
         if type(outer) is not dict or type(outer.get("choices")) is not list or len(outer["choices"]) != 1:
             raise ValueError("Unexpected outer response")
         choice = outer["choices"][0]
-        if type(choice) is not dict or choice.get("finish_reason") not in ("stop", None):
+        if type(choice) is not dict or choice.get("finish_reason") != "stop":
             return {"status": "invalid", "invalid_code": "truncated", "response_sha256": response_sha}
         message = choice["message"]
         if type(message) is not dict or message.get("role") != "assistant" or type(message.get("content")) is not str:
