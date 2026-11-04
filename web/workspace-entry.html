@@ -1,0 +1,30 @@
+      <details class="panel workspace-start" id="workspace-start" aria-labelledby="workspace-start-title">
+        <summary id="workspace-start-title">Workspace setup &amp; next steps</summary>
+        <p class="muted">Create a workspace, add its original sources, investigate a question and review the dated report. An amendment reopens affected work without erasing the earlier record.</p>
+        <ol id="journey-steps" class="journey-steps" aria-label="Case workflow progress"></ol>
+        <details id="new-case-panel" class="input-disclosure">
+          <summary>Create a new case workspace</summary>
+          <p class="muted">Development environment: use an independently authored fictional alias and reference. This is not a patient account, identity verification or a consent record.</p>
+          <form id="case-create-form">
+            <div class="intake-fields">
+              <div><label for="case-create-alias">Fictional case alias</label><input id="case-create-alias" type="text" maxlength="65" required autocomplete="off" placeholder="Example Gamma"></div>
+              <div><label for="case-create-code">Case reference</label><input id="case-create-code" type="text" minlength="2" maxlength="40" pattern="[A-Z][A-Z0-9\-]{1,39}" required autocomplete="off" placeholder="CASE-GAMMA" aria-describedby="case-code-help"><p id="case-code-help" class="muted tiny">Use this exact reference in the source's Patient header.</p></div>
+            </div>
+            <label class="intake-confirm"><input id="case-create-confirm" type="checkbox" required>Only independently authored fictional data; no actual patient information.</label>
+            <button class="button" id="case-create-submit" type="submit">Create workspace</button>
+            <p id="case-create-status" role="status" aria-live="polite" class="muted"></p>
+          </form>
+        </details>
+      </details>
+      <details class="panel" id="source-intake" aria-labelledby="source-intake-title">
+        <summary id="source-intake-title">Add original records</summary>
+        <p class="pill" id="source-intake-case">No workspace selected</p>
+        <p class="muted">Choose an original UTF-8 .txt report with LF line endings using the OI-SYNTHETIC-REPORT/1 format (maximum 64 KiB). Inspect it before import. This version does not extract PDFs, scans or medical findings automatically.</p>
+        <form id="source-upload-form">
+          <label for="source-file">Original fictional report</label><input id="source-file" type="file" accept=".txt,text/plain" aria-describedby="source-upload-status">
+          <p id="source-upload-status" role="status" aria-live="polite" class="muted">Nothing is uploaded automatically.</p>
+          <details id="source-preview-details" hidden><summary>Inspect exact original text</summary><pre id="source-upload-preview" class="intake-preview"></pre></details>
+          <label class="intake-confirm"><input id="source-upload-confirm" type="checkbox" required>This source is independently authored fictional text, not an actual or disguised patient record.</label>
+          <button class="button" id="source-upload-submit" type="submit" disabled>Import original source</button>
+        </form>
+      </details>
