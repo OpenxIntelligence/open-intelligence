@@ -117,6 +117,18 @@
 .continuity-item h3{font-size:17px;margin:0 0 12px}
 .continuity code,.continuity button{overflow-wrap:anywhere;white-space:normal}
 .continuity button{max-width:100%}
+.continuity-followthrough{margin:20px 0;background:#fff}
+.continuity-followthrough-counts{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:18px 0}
+.continuity-followthrough-counts>div{min-width:0;border:1px solid #d5e1d9;border-radius:6px;padding:12px;background:#f9fcf7}
+.continuity-followthrough-counts dt{font-size:12px;line-height:1.4;color:#42594c}.continuity-followthrough-counts dd{font-size:24px;font-weight:650;margin:6px 0 0}
+.continuity-followthrough-tasks{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:12px;list-style:none;margin:16px 0;padding:0}
+.continuity-followthrough-tasks>li{min-width:0;border:1px solid #d5e1d9;border-radius:6px;padding:14px;background:#f9fcf7;overflow-wrap:anywhere}
+.continuity-followthrough-tasks h4{font-size:15px;line-height:1.45;margin:0 0 8px}.continuity-followthrough-tasks p{margin:8px 0;font-size:13px}
+.continuity-followthrough-tasks dl{margin:12px 0}.continuity-followthrough-tasks dl>div{margin:10px 0}.continuity-followthrough-tasks dt{font-size:12px;color:#42594c}.continuity-followthrough-tasks dd{font-size:13px;margin:3px 0 0}
+.continuity-followthrough-date-note{display:block;margin-top:4px;color:#725724}
+.continuity-followthrough-flag,.continuity-followthrough-recovery{padding:12px;border-left:3px solid #b28b52;background:#f8f3e9;color:#6b4b25}
+.continuity-followthrough-recovery{margin:14px 0}.continuity-followthrough-recovery p{margin:0 0 12px}
+@media(max-width:600px){.continuity-followthrough-counts{grid-template-columns:repeat(2,minmax(0,1fr))}.continuity-followthrough .actions{align-items:stretch}.continuity-followthrough .actions button{width:100%}}
 .question-draft{margin:15px 0 20px;padding:18px;border:1px solid #c6d8c9;border-radius:9px;background:#f9fcf7;min-width:0}
 .question-draft h3{margin:7px 0 12px}
 .question-draft label{display:block;font-size:13px;font-weight:600;margin:14px 0 7px}
@@ -187,3 +199,17 @@ h1:focus{outline:2px solid #174b48;outline-offset:5px}
 .skip{top:0;transform:translateY(calc(-100% - 20px));max-width:calc(100vw - 20px)}.skip:focus{transform:none;top:10px}
 @media(max-width:900px){.topbar{gap:12px}.reading-controls{width:100%}.reading-controls>div{flex:1 1 180px}}
 @media(max-width:600px){.source-filters{grid-template-columns:minmax(0,1fr);gap:0}.source-reading.clinical .source-dates,.source-reading.patient .source-dates{grid-template-columns:minmax(0,1fr)}.source-list .source-row{padding:12px}.connection{white-space:normal}.reading-controls{gap:8px}.reading-controls>div{flex:1 1 100%}.topbar{padding:12px 16px}}
+/* Existing records lead; importing stays discoverable without dominating reading. */
+.record-import-disclosure{margin:18px 0;border:1px solid #c6d8c9;border-radius:8px;padding:0 16px;background:#f9fcf7;min-width:0}
+.record-import-disclosure>summary{min-height:48px;align-content:center;padding:12px 0;font-weight:600;color:#174b48;cursor:pointer;overflow-wrap:anywhere}
+.record-import-disclosure>summary:focus-visible{outline:3px solid #ba8639;outline-offset:3px}
+.record-import-disclosure>.intake-panel{margin:12px 0 16px}
+.source-image-section{margin-top:14px;min-width:0}
+.source-image-inspection{margin-top:12px;padding:14px;border:1px solid #c6d8c9;border-radius:8px;background:#f9fcf7;min-width:0}
+.source-image-inspection h5{font-size:1rem;margin:0}.source-image-inspection code{overflow-wrap:anywhere;word-break:break-all}
+.source-image-list{padding-left:20px}.source-image-list>li+li{margin-top:18px}.source-image-list button{margin-top:10px;max-width:100%;white-space:normal}
+#opened-original:focus,#sources-heading:focus{outline:2px solid #174b48;outline-offset:5px}
+
+/* Explicit keyboard access to the bounded original-text reader. */
+.original-text:focus-visible{outline:3px solid #ba8639;outline-offset:3px}
+.original-panel .original-text{max-height:min(26rem,calc(100dvh - var(--workspace-offset,24px) - 48px))}

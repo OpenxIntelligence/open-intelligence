@@ -1,6 +1,8 @@
 /** Source-owned H1 review inbox + immutable nonterminal return receipts.
  * This is not clinical approval, verified clinician identity or notification.
  */
+import {citationEvidenceTimestamp as time} from './evidence-timestamp.js';
+
 export const FICTIONAL_RETURN_REASON =
   'Please independently verify this fictional source quotation and uncertainty.';
 export type SourceSnapshotContract='oi.pg-source-world-model/1'|'oi.synthetic-postgres-world-model-sources/1';
@@ -55,10 +57,6 @@ function exact(value:unknown,keys:readonly string[]):value is Record<string,unkn
 }
 function nonneg(value:unknown):value is number{
  return typeof value==='number'&&Number.isSafeInteger(value)&&value>=0;
-}
-function time(value:unknown):value is string{
- return typeof value==='string'&&/^\d{4}-\d{2}-\d{2}T.+(?:Z|[+-]\d{2}:\d{2})$/.test(value)&&
- Number.isFinite(Date.parse(value));
 }
 function visible(value:unknown,min:number,max:number):value is string{
  return typeof value==='string'&&value.length>=min&&value.length<=max&&
