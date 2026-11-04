@@ -18,7 +18,15 @@ function WorkspaceContext({section,patientId,readiness,view,onViewChange}:{secti
  useLayoutEffect(()=>{
   const element=header.current;if(!element)return;
   const measure=()=>{const height=Math.ceil(element.getBoundingClientRect().height);const sticky=height<=window.innerHeight/2;
-   element.dataset.sticky=String(sticky);document.documentElement.style.setProperty('--workspace-offset',`${sticky?height+24:24}px`);};
+   element.dataset.sticky=String(sticky);document.documentElement.style.setProperty('--workspace-offset',`${sticky?height+24:24}px`);
+   // Resizing can change both the sticky header and the reader's height after
+   // native focus already scrolled it. Reconcile only the still-focused reader.
+   const active=document.activeElement;
+   if(active instanceof HTMLElement&&active.matches('.original-text')){
+    const rect=active.getBoundingClientRect(),contextBottom=sticky?element.getBoundingClientRect().bottom:0;
+    if(rect.top<contextBottom||rect.bottom>window.innerHeight)active.scrollIntoView({block:'center'});
+   }
+  };
   measure();const observer=new ResizeObserver(measure);observer.observe(element);window.addEventListener('resize',measure);
   return()=>{observer.disconnect();window.removeEventListener('resize',measure);document.documentElement.style.removeProperty('--workspace-offset');};
  },[]);
