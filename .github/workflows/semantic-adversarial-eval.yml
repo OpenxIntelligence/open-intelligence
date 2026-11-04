@@ -37,7 +37,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p semantic-challenge-evidence
-          python -m compileall -q tools/semantic_adversarial_eval.py tools/semantic_benchmark.py tests/test_semantic_adversarial_eval.py
+          python -m compileall -q tools/semantic_adversarial_eval.py tools/semantic_benchmark.py tools/semantic_question_packet.py tests/test_semantic_adversarial_eval.py tests/test_semantic_question_packet.py
           python -m unittest discover -s tests -p 'test_semantic*.py' -v 2>&1 | tee semantic-challenge-evidence/tests.txt
       - name: Record disjoint challenge baseline and risk taxonomy
         shell: bash
@@ -65,6 +65,24 @@ jobs:
           print('Novel synthetic challenge measured; no inference, no model claim')
           print(json.dumps({k:m[k] for k in ('positive_correct','positive_abstained','positive_wrong','negative_abstained','negative_false_mapping','unsafe_false_mappings','false_join_mappings')},sort_keys=True))
           PY
+      - name: Generate label-free task packet for a future governed model run
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/semantic_question_packet.py --output semantic-challenge-evidence/questions-only.json > semantic-challenge-evidence/question-packet-receipt.json
+          python - <<'PY'
+          import json,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from semantic_question_packet import validate_packet
+          questions=json.loads(Path('semantic-challenge-evidence/questions-only.json').read_text())
+          cases=json.loads(Path('tests/fixtures/semantic_adversarial_challenge_v2.json').read_text())
+          original=json.loads(Path('tests/fixtures/semantic_benchmark_cases_v1.json').read_text())
+          check=validate_packet(questions,cases,original)
+          assert (check['task_count'],check['concepts'],check['allowed_fields'])==(72,3,22)
+          assert check['outbound_model_invocations']==0 and not check['hidden_answers_included']
+          print('Question-only input packet: PASS; no gold, no patient records, no model calls')
+          PY
       - name: Exact-head and source-hash receipt
         if: always()
         shell: bash
@@ -73,7 +91,8 @@ jobs:
           python - <<'PY'
           import hashlib,json,os,platform,subprocess
           from pathlib import Path
-          paths=['tools/semantic_adversarial_eval.py','tests/test_semantic_adversarial_eval.py',
+          paths=['tools/semantic_adversarial_eval.py','tools/semantic_question_packet.py',
+                 'tests/test_semantic_adversarial_eval.py','tests/test_semantic_question_packet.py',
                  'tests/fixtures/semantic_adversarial_challenge_v2.json',
                  '.github/workflows/semantic-adversarial-eval.yml']
           receipt={'commit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
