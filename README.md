@@ -77,6 +77,11 @@ an unmerged engineering candidate, with no clinical approval or deployment claim
 
 ## Start here
 
+**Connected H1 application candidate:** [run the persistent fictional demo](docs/H1_DEMO.md).
+Its [consolidation record](docs/engineering/H1_ACCEPTED_DEMO_CONVERGENCE.md)
+identifies the retained implementation branches and final verification gates.
+The historical checkpoints below do not establish acceptance of this candidate.
+
 | Document | Purpose |
 |---|---|
 | [First-principles plan](docs/FIRST_PRINCIPLES_PLAN.md) | Product direction, workflow, architecture, evidence, evaluation, and expansion |

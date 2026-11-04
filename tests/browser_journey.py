@@ -714,11 +714,9 @@ def main() -> None:
               picker.value = 'CASE-ALPHA'; picker.dispatchEvent(new Event('change'));
               if (readyCase() !== before) throw Error('Same-case picker event reset the loaded case');
             })()""")
-            # Re-selecting the SAME case preserves its old visible heading while
-            # the change handler intentionally clears active until refresh
-            # completes. A heading-only wait can pass before readyCase() would
-            # authorize the next import, misdiagnosing a safe loading denial as
-            # a duplicate-import failure. Wait for the real case-bound guard.
+            # Same-case selection retains readiness. Still verify the actual
+            # case-bound write guard rather than treating a visible heading as
+            # authority for the next duplicate or wrong-patient import check.
             cd.wait("""(() => {
               if (document.querySelector('#case-heading')?.textContent !== 'Fictional case Alpha')
                 return false;
