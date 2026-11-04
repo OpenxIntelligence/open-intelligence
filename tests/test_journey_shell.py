@@ -7,7 +7,13 @@ from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from open_intelligence.__main__ import Handler, seed
+from open_intelligence.__main__ import (
+    FICTIONAL_ACTOR_HEADER,
+    FICTIONAL_ACTOR_PURPOSE,
+    Handler,
+    seed,
+)
+from open_intelligence.store import CaseStore
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -124,6 +130,13 @@ class JourneyShellHttpTests(unittest.TestCase):
         cls.tmp = tempfile.TemporaryDirectory()
         cls.path = str(Path(cls.tmp.name) / "journey-shell-http.sqlite")
         seed(cls.path)
+        store = CaseStore(cls.path)
+        try:
+            for case_id in ("CASE-ALPHA", "CASE-BETA"):
+                store.create_grant("FICTIONAL-NAVIGATOR-A", case_id,
+                                   FICTIONAL_ACTOR_PURPOSE, "2020-01-01", "2999-12-31")
+        finally:
+            store.close()
         bound_handler = type(
             "BoundJourneyShellHandlerForTest", (Handler,), {"db_path": cls.path}
         )
@@ -142,7 +155,8 @@ class JourneyShellHttpTests(unittest.TestCase):
         cls.tmp.cleanup()
 
     def request_json(self, path: str):
-        request = Request(f"http://127.0.0.1:{self.port}{path}")
+        request = Request(f"http://127.0.0.1:{self.port}{path}",
+                      headers={FICTIONAL_ACTOR_HEADER: "FICTIONAL-NAVIGATOR-A"})
         try:
             with urlopen(request, timeout=5) as response:
                 return response.status, json.loads(response.read())
@@ -150,7 +164,8 @@ class JourneyShellHttpTests(unittest.TestCase):
             return error.code, json.loads(error.read())
 
     def request_text(self, path: str):
-        request = Request(f"http://127.0.0.1:{self.port}{path}")
+        request = Request(f"http://127.0.0.1:{self.port}{path}",
+                      headers={FICTIONAL_ACTOR_HEADER: "FICTIONAL-NAVIGATOR-A"})
         try:
             with urlopen(request, timeout=5) as response:
                 return response.status, response.read().decode("utf-8")
@@ -241,6 +256,13 @@ class DraftFilterHttpTests(unittest.TestCase):
         cls.tmp = tempfile.TemporaryDirectory()
         cls.path = str(Path(cls.tmp.name) / "draft-filter-http.sqlite")
         seed(cls.path)
+        store = CaseStore(cls.path)
+        try:
+            for case_id in ("CASE-ALPHA", "CASE-BETA"):
+                store.create_grant("FICTIONAL-NAVIGATOR-A", case_id,
+                                   FICTIONAL_ACTOR_PURPOSE, "2020-01-01", "2999-12-31")
+        finally:
+            store.close()
         bound_handler = type(
             "BoundDraftFilterHandlerForTest", (Handler,), {"db_path": cls.path}
         )
@@ -259,7 +281,8 @@ class DraftFilterHttpTests(unittest.TestCase):
         cls.tmp.cleanup()
 
     def request_json(self, path: str):
-        request = Request(f"http://127.0.0.1:{self.port}{path}")
+        request = Request(f"http://127.0.0.1:{self.port}{path}",
+                      headers={FICTIONAL_ACTOR_HEADER: "FICTIONAL-NAVIGATOR-A"})
         try:
             with urlopen(request, timeout=5) as response:
                 return response.status, json.loads(response.read())
@@ -267,7 +290,8 @@ class DraftFilterHttpTests(unittest.TestCase):
             return error.code, json.loads(error.read())
 
     def request_text(self, path: str):
-        request = Request(f"http://127.0.0.1:{self.port}{path}")
+        request = Request(f"http://127.0.0.1:{self.port}{path}",
+                      headers={FICTIONAL_ACTOR_HEADER: "FICTIONAL-NAVIGATOR-A"})
         try:
             with urlopen(request, timeout=5) as response:
                 return response.status, response.read().decode("utf-8")
