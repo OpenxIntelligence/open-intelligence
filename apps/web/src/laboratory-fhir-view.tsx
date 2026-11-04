@@ -43,7 +43,7 @@ export function LaboratoryIntake({session,patientId,caseId,disabled=false}:{
       {file&&<details open><summary>{name} · {file.byteCount} original bytes</summary>
         <p className="small">Original SHA-256 <code>{file.sha256}</code></p>
         <pre className="original-text" data-testid="laboratory-local-original" tabIndex={0} role="region"
-          aria-label="Selected laboratory JSON, not imported" onFocus={event=>event.currentTarget.scrollIntoView({block:'center'})}>{file.text}</pre>
+          aria-label="Selected laboratory JSON, not imported" onFocus={event=>event.currentTarget.scrollIntoView({block:'start'})}>{file.text}</pre>
       </details>}
       <label htmlFor="laboratory-predecessor">Report version being replaced</label>
       <select id="laboratory-predecessor" data-testid="laboratory-predecessor" value={previous} disabled={locked}
