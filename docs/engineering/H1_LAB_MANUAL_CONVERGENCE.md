@@ -25,3 +25,41 @@ The new four-test migration suite and the inherited document/image historical-gr
 Local checks: eight pure FHIR parser tests, Python compilation, whitespace checks, one-head static graph and byte-for-byte preservation of both published migration files passed. Local checks do not substitute for PostgreSQL or Chromium. Combined hosted acceptance is pending at this source checkpoint; the draft PR records results tied to its exact head. Historical parent passes do not qualify this composition.
 
 No dependency, external service, production identity mechanism, clinical interpretation, licensing decision or deployment is introduced. Review-return manual binding, clinical validation and production release remain separate work.
+
+## Laboratory workspace continuation — 4 November 2026
+
+The current candidate builds on #471 at `95bf73d23172c15bcf326183494030e6597ed449`.
+It retains every backend, migration, permission, runtime dependency and manual-task
+file from that source. The interface comes from #473 at
+`9ea4560fc03be567e8383f9b145fc8eaef0cd140` (including #472), with the bounded
+Journey-to-Records action from #475 at `254876cb933548d796cbb755eb6029674cb8efed`.
+The existing `main.tsx` navigation and backlog entries are reconciled explicitly.
+No separate patient, source, question or task owner is introduced.
+
+The connected workflow imports fictional FHIR JSON only after explicit
+confirmation, preserves exact uncertain-write retries, shows source-reported
+laboratory values and missing results, and opens fresh exact-case report versions
+from Journey. It preserves keyboard reading of local JSON/text and existing
+document/image/question/report/review/task workflows. Selecting report versions
+does not disclose an original or imply clinical interpretation.
+
+The extended real browser scenario checks Journey navigation before and after
+amendment and after independent original-read permission is withdrawn. Each
+navigation must issue exactly one source-index GET, show the expected immutable
+source IDs, make no import, and show no original. Explicit current and historical
+original reads retain byte/hash checks; a denied original remains withheld.
+The existing browser receipt now includes those observed navigation requests.
+
+The full backend gate also runs when this laboratory browser acceptance changes.
+Its early populated migration checks, all seven recovery stages, no-skips rule,
+40-minute budget and package/notice controls remain intact. Frontend dependency
+installation retains the existing `--omit=optional --ignore-scripts` profile;
+omitted native optional packages are not claimed to have cleared rights review.
+
+Combined hosted verification is pending at this source checkpoint. Exact head,
+workflow results, artifact hashes and review findings belong to the draft PR's
+final receipt. Historical owner results remain valid only for their own heads.
+The existing bundle-size advisory, lack of a manual-dependency creation UI and
+lack of a dedicated populated-manual-dependency dump/restore scenario remain
+explicit limitations. No merge, deployment, external FHIR connection or clinical
+qualification follows from this composition.

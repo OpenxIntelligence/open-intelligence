@@ -1,6 +1,23 @@
 # Open Intelligence
 
-## Current combined candidate — draft #381
+## Current laboratory workspace integration candidate
+
+This branch combines #471's laboratory custody and manual-task migration join
+with #473's laboratory workspace and keyboard reading, plus #475's
+Journey-to-Records navigation. Current API readiness requires
+`0017_lab_manual_convergence`. Published migrations and backend owners are
+unchanged from #471. The combined source must pass its own API/PostgreSQL,
+seven recovery probes, React/build/rights and real browser checks; earlier
+owner results are not combined acceptance. See the
+[current contract](docs/engineering/H1_LAB_MANUAL_CONVERGENCE.md) and this
+branch's draft PR for immutable source and completed verification receipts.
+
+The demonstration uses independently authored fictional data. It remains
+draft, unmerged and undeployed. Start the H1 application using
+[the API instructions](apps/api/README.md) and
+[the web instructions](apps/web/README.md).
+
+## Historical combined candidate — draft #381
 
 The isolated [document/image candidate #381](https://github.com/OpenxIntelligence/open-intelligence/pull/381) composes the frozen #377 document/evidence/review candidate with #370 image/archive/report continuity, corrected #376 audit-tail tests, #373 fixture lifespan and verified #378/#379/#380/#382 frontend corrections. Its own hosted acceptance is pending. Historical owner receipts below do not qualify this composition.
 
