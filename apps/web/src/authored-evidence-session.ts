@@ -277,13 +277,14 @@ export class QuestionEvidenceSession{
   }
   await this.#start(scope.question,'withdrawal','/evidence/'+encodeURIComponent(evidenceId)+'/withdraw',{reason});
  }
- async prepareReport(questionId:string,assessmentIds:readonly string[]):Promise<void>{
+ async prepareReport(questionId:string,assessmentIds:readonly string[],manualContextSha256?:string):Promise<void>{
   const scope=this.#canStart(questionId);if(!scope)return;
   const ids=[...assessmentIds].sort();
   if(scope.packet.question.source_context_state!=='current_unreviewed_question'||scope.packet.source_snapshot_sha256!==this.host.snapshot().worldModel?.snapshot_fingerprint||ids.length<1||ids.length>20||new Set(ids).size!==ids.length||ids.some(id=>!scope.packet.assessments.some(a=>a.assessment_id===id&&a.state==='current_unreviewed'))){
    this.#invalid('Select 1–20 current human-authored comparisons from the inspected question.');return;
   }
-  await this.#start(scope.question,'report','/evidence-reports',{expected_packet_sha256:scope.packet.packet_sha256,assessment_ids:ids});
+  if(manualContextSha256!==undefined&&!/^[0-9a-f]{64}$/.test(manualContextSha256)){this.#invalid('Refresh the exact manual context before preparing a report.');return;}
+  await this.#start(scope.question,'report','/evidence-reports',{expected_packet_sha256:scope.packet.packet_sha256,assessment_ids:ids,...(manualContextSha256?{expected_manual_context_sha256:manualContextSha256}:{})});
  }
  async #start(q:SourceQuestion,kind:EvidenceWriteKind,suffix:string,fields:Record<string,unknown>):Promise<void>{
   const body=canonicalEvidenceJson({synthetic:true,request_key:'EVIDENCE-REQUEST-'+crypto.randomUUID(),...fields});

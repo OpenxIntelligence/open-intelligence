@@ -22,7 +22,7 @@ from open_intelligence.store import InvalidInput, parse_report, parse_synthetic_
 from .case_bindings import _case_id
 from .composer_preflight import PostgresSourceComposerPreflight
 from .authored_evidence_contracts import (AssessEvidence, EvidenceAssessment, EvidenceVersion,
-                                 PrepareEvidenceReport, ReportSnapshot)
+                                 PrepareEvidenceReport, checked_report_snapshot)
 from .evidence_report import (canonical_hash, canonical_json, human_content_allowed,
                               packet_hash, quote_offset, render_evidence_report, visible_line)
 from .patients import QuestionSourceState
@@ -30,6 +30,7 @@ from .question_review_returns import _question_id
 from .source_questions import PostgresSourceQuestions
 from .source_world_model import project_source_world_model
 from .sources import PostgresSourceVersions
+from .question_passages import QuestionPassages
 
 MAX_EVIDENCE = 100
 MAX_ASSESSMENTS = 200
@@ -66,15 +67,28 @@ class PostgresQuestionEvidence:
         self.registry = registry
 
     def _run(self, patient_id, case_id, question_id, *, organization, actor, purpose,
-             action, operation, recheck_authority, prepare_response):
+             action, operation, recheck_authority, prepare_response, recheck_original_authority=None):
         patient_id = _key(patient_id, "patient_id")
         case_id = _case_id(case_id)
         question_id = _question_id(question_id)
         organization, actor = _key(organization, "organization"), _key(actor, "actor")
         if purpose != "operations":
             raise PatientRegistryDenied("Evidence unavailable")
+        needs_original = False
+        prepared_context = None
+        def require_original():
+            nonlocal needs_original
+            needs_original = True
+            self.registry._allow(actor, patient_id, 'source_original_read', purpose)
+        def recheck():
+            recheck_authority()
+            if needs_original:
+                require_original()
+                if recheck_original_authority is not None:
+                    recheck_original_authority()
 
         def prepare(index):
+            nonlocal prepared_context
             for permission in {"patient_read", "source_read", "question_read", "authored_evidence_read", action}:
                 self.registry._allow(actor, patient_id, permission, purpose)
             world = project_source_world_model(index)
@@ -89,15 +103,27 @@ class PostgresQuestionEvidence:
             question = QuestionSourceState(**PostgresSourceQuestions._question_state(row, world)).model_dump(mode="json")
             context = {"patient_id": patient_id, "case_id": case_id, "question_id": question_id,
                        "organization": organization, "actor": actor, "purpose": purpose,
-                       "index": index, "world": world, "question": question}
+                       "index": index, "world": world, "question": question,
+                       "require_original": require_original}
+            context['manual_meta'] = QuestionPassages(self.registry).metadata_locked(context)
             context.update(self._read_evidence(context))
+            prepared_context = context
             result = operation(context)
             return prepare_response(result) if prepare_response is not None else result
 
         with self.registry.transaction():
-            return PostgresSourceVersions(self.registry).list_locked(
+            response = PostgresSourceVersions(self.registry).list_locked(
                 patient_id, case_id, organization=organization, actor=actor, purpose=purpose,
-                prepare_response=prepare, recheck_authority=recheck_authority)
+                prepare_response=prepare, recheck_authority=recheck)
+            if needs_original:
+                audited_references=prepared_context.get('manual_reads', [])
+                self.registry.append_event(patient_id, 'investigation.report_manual_context_access_prepared',
+                    case_id=case_id, question_id=question_id, actor=actor,
+                    receipt_id=prepared_context['index']['access_receipt_id'],
+                    reference_count=len(audited_references),
+                    references_sha256=canonical_hash(audited_references))
+            recheck()
+            return response
 
     @staticmethod
     def _scope(c):
@@ -265,7 +291,7 @@ class PostgresQuestionEvidence:
             for rid, qid, prepared_at, body, body_sha, snapshot, snapshot_sha, actor in rows:
                 _id(rid, "REPORT")
                 origin = self._origin(c, "report", rid)
-                checked = ReportSnapshot(**snapshot).model_dump(mode="json")
+                checked = checked_report_snapshot(snapshot)
                 if (checked != snapshot or canonical_hash(snapshot) != snapshot_sha
                         or hashlib.sha256(body.encode("utf-8")).hexdigest() != body_sha
                         or render_evidence_report(snapshot, renderer=origin["report_renderer"]) != body
@@ -278,6 +304,18 @@ class PostgresQuestionEvidence:
                     raise ValueError()
                 self._source_at_preparation(c, snapshot["selected_source"])
                 allowed, current = True, c["question"]["source_context_state"] == "current_unreviewed_question"
+                frozen = snapshot.get('manual_passages')
+                if frozen is not None:
+                    frozen_current = QuestionPassages(self.registry).verify_frozen_metadata_locked(c, frozen)
+                    expected_payload = dict(synthetic=True, request_key=origin['request_key'],
+                        expected_packet_sha256=origin['expected_packet_sha256'],
+                        expected_manual_context_sha256=frozen['context_sha256'],
+                        assessment_ids=sorted(row['assessment']['assessment_id'] for row in snapshot['comparisons']))
+                    if self._intent(dict(c, actor=actor), 'report', expected_payload) != origin['intent_sha256']:
+                        raise ValueError()
+                    current = current and frozen_current
+                else:
+                    current = current and c['manual_meta']['revision_id'] is None
                 for comparison in snapshot["comparisons"]:
                     a = stored[comparison["assessment"]["assessment_id"]]
                     e = c["versions"][a["evidence_id"]]
@@ -291,6 +329,8 @@ class PostgresQuestionEvidence:
                 result.append({"report_id": rid, "question_id": qid, "prepared_at": snapshot["prepared_at"],
                                "body_sha256": body_sha, "snapshot_sha256": snapshot_sha, "state": state,
                                "body": body, "snapshot": snapshot})
+        except PatientRegistryDenied:
+            raise
         except Exception:
             raise RuntimeError("Stored report integrity check failed") from None
         return result
@@ -346,7 +386,7 @@ class PostgresQuestionEvidence:
                       and origin["report_renderer"] == "oi.h1-evidence-text/1") or
                      (origin["packet_binding"] == "explicit_digest" and type(origin["expected_packet_sha256"]) is str
                       and re.fullmatch(r"[0-9a-f]{64}", origin["expected_packet_sha256"]) is not None
-                      and origin["report_renderer"] == "oi.h1-evidence-text/2"))
+                      and origin["report_renderer"] in {"oi.h1-evidence-text/2", "oi.h1-evidence-text/3"}))
         if not valid:
             raise RuntimeError("Stored evidence origin contract is invalid")
         return origin
@@ -408,6 +448,8 @@ class PostgresQuestionEvidence:
                     raise ValueError()
             else:
                 raise ValueError()
+        except PatientRegistryDenied:
+            raise
         except Exception:
             raise RuntimeError("Stored evidence command integrity check failed") from None
         return {**result, "duplicate": True}
@@ -441,7 +483,7 @@ class PostgresQuestionEvidence:
                 (operation, result["report_id" if is_report else "assessment_id"], *self._scope(c),
                  c["question_id"], key, intent, payload["expected_packet_sha256"] if is_report else None,
                  "explicit_digest" if is_report else "not_applicable",
-                 "oi.h1-evidence-text/2" if is_report else None, c["actor"], c["purpose"]))
+                 c.get('report_renderer', 'oi.h1-evidence-text/2') if is_report else None, c["actor"], c["purpose"]))
         return {**result, "duplicate": duplicate}
 
     def import_evidence(self, patient_id, case_id, question_id, *, payload, **kwargs):
@@ -567,12 +609,22 @@ class PostgresQuestionEvidence:
         return self._run(patient_id, case_id, question_id, action="authored_evidence_assess", operation=operation, **kwargs)
 
     def create_report(self, patient_id, case_id, question_id, *, payload, **kwargs):
-        normalized = PrepareEvidenceReport(**payload).model_dump(mode="json")
+        # Omitted optional fields stay omitted in historical command digests.
+        normalized = PrepareEvidenceReport(**payload).model_dump(mode="json", exclude_none=True)
         def operation(c):
             def apply():
                 packet = self._packet(c)
                 if not hmac.compare_digest(packet["packet_sha256"], normalized["expected_packet_sha256"]):
                     raise PatientRegistryConflict("Inspected evidence context changed")
+                manual_meta = c['manual_meta']
+                expected_manual = normalized.get('expected_manual_context_sha256')
+                manual = None
+                if manual_meta['revision_id'] is not None or expected_manual is not None:
+                    manual = QuestionPassages(self.registry).context_locked(c)
+                    if expected_manual != manual['context_sha256']:
+                        raise PatientRegistryConflict('Inspected manual passage context changed')
+                    if manual['state'] != 'current_unreviewed':
+                        raise PatientRegistryConflict('Manual passages require reassessment before a new report')
                 selected = self._current_source(c, c["question"]["source_snapshot_sha256"], c["question"]["preflight_sha256"])
                 assessments = {a["assessment_id"]: a for a in packet["assessments"]}
                 versions = {e["evidence_id"]: e for e in packet["evidence"]}
@@ -589,7 +641,10 @@ class PostgresQuestionEvidence:
                     raise PatientRegistryError("Question report exceeds bounded history limit")
                 snapshot = {"question": c["question"], "selected_source": selected, "comparisons": comparisons,
                             "prepared_at": datetime.now(timezone.utc).isoformat(), "actor_label": c["actor"]}
-                body = render_evidence_report(snapshot)
+                if manual is not None and manual['revision_id'] is not None:
+                    snapshot['manual_passages'] = manual
+                    c['report_renderer'] = 'oi.h1-evidence-text/3'
+                body = render_evidence_report(snapshot, renderer=c.get('report_renderer', 'oi.h1-evidence-text/2'))
                 rid = _new("REPORT")
                 self.registry._execute(
                     "INSERT INTO investigation.question_evidence_reports "
@@ -616,6 +671,11 @@ class PostgresQuestionEvidence:
             result = dict(matches[0])
             if result["state"] == "content_withheld":
                 result["body"] = result["snapshot"] = None
+            elif result["snapshot"].get("manual_passages") is not None:
+                # Only the report actually disclosing frozen manual text needs
+                # current original-read authority and exact source re-resolution.
+                QuestionPassages(self.registry).verify_frozen_locked(
+                    c, result["snapshot"]["manual_passages"])
             return {"contract": "oi.h1-evidence-report/1", "patient_id": c["patient_id"],
                     "case_id": c["case_id"], "access_receipt_id": c["index"]["access_receipt_id"], **result, **FLAGS}
         return self._run(patient_id, case_id, question_id, action="evidence_report_export", operation=operation, **kwargs)

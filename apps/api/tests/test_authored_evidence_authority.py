@@ -437,5 +437,5 @@ class QuestionEvidenceAuthorityTests(EvidenceFixture):
             self.assertEqual(self.persisted_state(), before)
             with self.engine.connect() as db:
                 revision = db.execute(text("SELECT version_num FROM public.alembic_version")).scalar_one()
-            self.assertEqual(revision, "0012_reviewed_documents")
+            self.assertEqual(revision, "0014_manual_report_context")
             self.assertEqual(len(self.packet(base, p, q)["evidence"]), 1)

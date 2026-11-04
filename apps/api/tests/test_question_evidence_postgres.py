@@ -269,7 +269,7 @@ class QuestionEvidencePostgresTests(SourceVersionFixture):
             migrate(self.admin, "downgrade", "0009_question_followthrough")
         with self.engine.connect() as connection:
             self.assertEqual(connection.execute(text("SELECT version_num FROM public.alembic_version")).scalar_one(),
-                             "0012_reviewed_documents")
+                             "0014_manual_report_context")
             self.assertEqual(connection.execute(text("SELECT count(*) FROM investigation.evidence_rights_decisions")).scalar_one(), before)
 
     def test_audit_failure_withholds_disclosure_and_rolls_back_citation(self):
