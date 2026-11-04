@@ -169,20 +169,28 @@ class PostgresSourceImages:
              prepare_response: Callable[[dict], PreparedResponse] | None = None) -> dict | PreparedResponse:
         with self.registry.transaction():
             revision, source, binding = self._scope(patient_id, case_id, source_id, organization, purpose)
-            fields = tuple(name for name in _FIELDS if name != "raw")
+            # A metadata index also discloses source-bound image identities.
+            # Check the current custody budget before fetching any bytea.
+            count, size = self.registry._fetchone(
+                "SELECT count(*),coalesce(sum(o.byte_count),0) "
+                "FROM clinical_source.dicom_objects o JOIN clinical_source.source_image_links l "
+                "ON l.image_id=o.image_id WHERE o.case_id=%s AND l.source_id=%s",
+                (case_id, source_id))
+            if count > MAX_CASE_IMAGES or size > MAX_CASE_IMAGE_BYTES:
+                raise ImageIntegrityError("Image index exceeds custody profile")
             rows = self.registry._fetchall(
-                "SELECT " + ",".join("o." + name for name in fields)
+                "SELECT " + ",".join("o." + name for name in _FIELDS)
                 + " FROM clinical_source.dicom_objects o JOIN clinical_source.source_image_links l "
                 "ON l.image_id=o.image_id WHERE o.case_id=%s AND l.source_id=%s ORDER BY o.image_id LIMIT %s",
                 (case_id, source_id, MAX_CASE_IMAGES + 1))
-            if len(rows) > MAX_CASE_IMAGES:
-                raise ImageIntegrityError("Image index exceeds custody profile")
+            if len(rows) != count:
+                raise ImageIntegrityError("Image index changed during validation")
             images = []
             for values in rows:
-                row = dict(zip(fields, values))
-                if (row["patient_id"], row["issuer"], row["study_date"]) != (
-                        binding[2], self._issuer(binding), source["event_date"]):
-                    raise ImageIntegrityError("Stored image context failure")
+                row = dict(zip(_FIELDS, values))
+                # Reuse original-read hash and DICOM identity validation.
+                # One bad original withholds all metadata and the new receipt.
+                self._validated_object(row, source, binding)
                 images.append(self._metadata(row, source_id))
             result = {"patient_id": patient_id, "case_id": case_id, "source_id": source_id,
                       "images": images, "synthetic": True, "source_identity_verified": False}
