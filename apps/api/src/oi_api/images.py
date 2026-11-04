@@ -172,7 +172,7 @@ class PostgresSourceImages:
             # A metadata index also discloses source-bound image identities.
             # Check the current custody budget before fetching any bytea.
             count, size = self.registry._fetchone(
-                "SELECT count(*),coalesce(sum(o.byte_count),0) "
+                "SELECT count(*),coalesce(sum(byte_count),0) "
                 "FROM clinical_source.dicom_objects o JOIN clinical_source.source_image_links l "
                 "ON l.image_id=o.image_id WHERE o.case_id=%s AND l.source_id=%s",
                 (case_id, source_id))
