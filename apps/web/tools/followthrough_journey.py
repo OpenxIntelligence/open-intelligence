@@ -489,7 +489,7 @@ class FollowthroughChecks:
             assert self.cd.evaluate("!document.querySelector('[data-testid=followthrough-transition-reason]')")
             assert self.cd.evaluate('window.__oiFollowthroughChecks.writes.length') == writes
             assert self.projection()['tasks'] == original_tasks
-            restored = self.refresh()
+            restored = self.refresh(expected_count=len(original_tasks))
             assert restored['tasks'] == original_tasks
             for task in original_tasks:
                 self.wait_task(task['task_id'], task['status'], task['revision'])
@@ -579,6 +579,10 @@ class FollowthroughChecks:
         self.assert_attention_filters()
         self.assert_timestamp_rejection()
         value = self.assert_overview_work(current_question_id, screenshots)
+        # Repeat the same fail-closed corruption/recovery check after a second
+        # question adds a fourth persisted task. The helper derives the expected
+        # count from the last original HTTP read, not a stale three-task fixture.
+        self.assert_timestamp_rejection()
         # A failed fresh read must remove old task text and transition controls.
         credentials[0]['actions'].remove('followthrough_read')
         write_grants()
