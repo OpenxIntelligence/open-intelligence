@@ -130,6 +130,8 @@ class PreparedLaboratoryBundle:
     specimen_collected_at: str
     observations: tuple[dict, ...]
     report_reference: str | None
+    report_effective_at: str | None
+    report_issued_at: str | None
     authority: str = "synthetic_source_unreviewed"
     clinical_review: str = "not_performed"
     persisted: bool = False
@@ -240,6 +242,8 @@ def prepare_laboratory_bundle(raw: bytes, *, expected_subject_reference: str) ->
                        absent_reason=absent["code"])
         result_rows.append(row)
     report_ref = None
+    report_effective = None
+    report_issued = None
     if reports:
         report_ref, report = next(iter(reports.items()))
         _shape(report, {"resourceType", "id", "status", "category", "code",
@@ -256,11 +260,12 @@ def prepare_laboratory_bundle(raw: bytes, *, expected_subject_reference: str) ->
         if (type(report["result"]) is not list or len(report["result"]) != len(observations)
                 or {_reference(x, "Observation") for x in report["result"]} != set(observations)):
             _reject("Report result references incomplete, duplicated or external")
-        _instant(report["effectiveDateTime"])
-        _instant(report["issued"])
+        report_effective = _instant(report["effectiveDateTime"])
+        report_issued = _instant(report["issued"])
     return PreparedLaboratoryBundle(
         source_sha256=hashlib.sha256(raw).hexdigest(), original_bytes=raw,
         subject_reference=subject, specimen_reference=specimen_ref,
         specimen_type_text=spec_type, specimen_collected_at=collected,
         observations=tuple(result_rows), report_reference=report_ref,
+        report_effective_at=report_effective, report_issued_at=report_issued,
     )

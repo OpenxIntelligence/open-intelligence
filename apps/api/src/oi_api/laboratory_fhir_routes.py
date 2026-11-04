@@ -13,6 +13,7 @@ from open_intelligence.patient_registry import PatientRegistryDenied
 
 from .contracts import Contract
 from .laboratory_fhir_r4 import LaboratoryBundleRejected, prepare_laboratory_bundle
+from .laboratory_fhir_store import PostgresLaboratoryFHIR
 from .sources import PostgresSourceVersions
 from .laboratory_fhir_store import PostgresLaboratoryFHIR
 
@@ -20,6 +21,21 @@ from .laboratory_fhir_store import PostgresLaboratoryFHIR
 class LabFHIRPreviewRequest(Contract):
     synthetic: StrictBool
     bundle_json: str = Field(min_length=1, max_length=65_536)
+
+
+class LabFHIRImportRequest(Contract):
+    synthetic: StrictBool
+    request_key: str = Field(min_length=3, max_length=128)
+    expected_previous_source_id: str | None = Field(
+        default=None, pattern=r"^SRC-[0-9A-F]{32}$")
+    bundle_json: str = Field(min_length=1, max_length=65_536)
+
+
+class LabFHIRImportReceipt(Contract):
+    source_id: str
+    version: int = Field(ge=1)
+    observation_count: int = Field(ge=1, le=16)
+    duplicate: bool
 
 
 class LabObservationPreview(Contract):
@@ -74,6 +90,53 @@ class LabFHIRPreviewResponse(Contract):
 
 def register_laboratory_fhir_routes(router, *, principal, registry,
                                     records_authorized, final_authority, errors):
+    @router.post("/{patient_id}/cases/{case_id}/laboratory/fhir-r4/sources",
+                 response_model=LabFHIRImportReceipt, status_code=201,
+                 responses={200: {"model": LabFHIRImportReceipt}, **errors},
+                 operation_id="import_fictional_fhir_r4_lab_v1")
+    def import_laboratory_bundle(request: Request, patient_id: str, case_id: str,
+                                 payload: LabFHIRImportRequest,
+                                 context=Depends(principal)):
+        if payload.synthetic is not True or context.purpose != "operations" or request.query_params:
+            raise HTTPException(404, "Laboratory import unavailable")
+        try:
+            with registry(context) as patients:
+                records_authorized(patients, context, patient_id, "source_import")
+                # Resolve the active qualified external subject only to validate
+                # the incoming bundle. The write owner locks and rechecks this
+                # same binding again before any persistence.
+                with patients.transaction():
+                    PostgresSourceVersions(patients)._binding(
+                        patient_id, case_id, context.organization, context.purpose)
+                    binding = patients._fetchone(
+                        "SELECT source_subject_ref FROM coordination.patient_case_bindings "
+                        "WHERE case_id=%s AND patient_id=%s AND status='active'",
+                        (case_id, patient_id),
+                    )
+                    if binding is None:
+                        raise PatientRegistryDenied("Source mapping unavailable")
+                try:
+                    parsed = prepare_laboratory_bundle(
+                        payload.bundle_json.encode("utf-8"),
+                        expected_subject_reference="Patient/" + binding[0])
+                except LaboratoryBundleRejected:
+                    raise HTTPException(422, "Unsupported fictional laboratory bundle") from None
+                return PostgresLaboratoryFHIR(patients).import_bundle(
+                    patient_id, case_id, parsed,
+                    organization=context.organization, actor=context.actor,
+                    purpose=context.purpose, request_key=payload.request_key,
+                    expected_previous_source_id=payload.expected_previous_source_id,
+                    prepare_response=lambda result: JSONResponse(
+                        content=LabFHIRImportReceipt(**result).model_dump(mode="json"),
+                        status_code=200 if result["duplicate"] else 201,
+                        headers={"Cache-Control": "no-store",
+                                 "X-Content-Type-Options": "nosniff"}),
+                    recheck_authority=lambda: final_authority(
+                        request, context, patients, patient_id, ("source_import",)),
+                )
+        except PatientRegistryDenied:
+            raise HTTPException(404, "Laboratory import unavailable") from None
+
     @router.post("/{patient_id}/cases/{case_id}/laboratory/fhir-r4/preview",
                  response_model=LabFHIRPreviewResponse, responses=errors,
                  operation_id="preview_fictional_fhir_r4_lab_v1")
