@@ -1,0 +1,148 @@
+name: Disposable NVIDIA catalog import (synthetic only)
+
+on:
+  push:
+    branches: [research/semantic-disposable-vendor-import-20261104]
+  pull_request:
+    branches: [research/semantic-pinned-vendor-schema-20261104]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  actual-vendor-catalog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      OI_DISPOSABLE_VENDOR_IMPORT: ONLY_SYNTHETIC_AND_EMPTY
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_PORT: '5432'
+      POSTGRES_USER: oi_sandbox_ci
+      POSTGRES_PASSWORD: synthetic-only-not-production
+      POSTGRES_DATABASE: oi_nvidia_import_sandbox
+      CONNECTION_STRINGS: ''
+      NVIDIA_API_KEY: ''
+      DEFAULT_MODELS_API_KEY: ''
+      REASONING_API_KEY: ''
+      NON_REASONING_API_KEY: ''
+      EMBED_API_KEY: ''
+      RERANK_API_KEY: ''
+      LANGCHAIN_TRACING_V2: 'false'
+      LANGSMITH_TRACING: 'false'
+      PIP_DISABLE_PIP_VERSION_CHECK: '1'
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: oi_sandbox_ci
+          POSTGRES_PASSWORD: synthetic-only-not-production
+          POSTGRES_DB: oi_nvidia_import_sandbox
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U oi_sandbox_ci -d oi_nvidia_import_sandbox"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 15
+    steps:
+      - name: Checkout exact Open Intelligence candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Checkout exact NVIDIA Auto Ontology source separately
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: NVIDIA/auto-ontology
+          ref: cdaf61e1bd0cf3820d11d72b43bb460816aebbd3
+          persist-credentials: false
+          path: vendor-auto-ontology
+      - name: Python 3.12
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Verify source and generate zero-row fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p vendor-evidence
+          test "$(git -C vendor-auto-ontology rev-parse HEAD)" = "cdaf61e1bd0cf3820d11d72b43bb460816aebbd3"
+          python -m compileall -q tools/semantic_vendor_catalog_probe.py tools/semantic_native_model.py tools/semantic_contract_probe.py
+          python tools/semantic_native_model.py --output-dir "$RUNNER_TEMP/oi-empty-vendor-source" > vendor-evidence/fixture-receipt.json
+          python - <<'PY'
+          import json,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from semantic_native_model import validate_native_model,verify_empty_sqlite
+          p=Path(__import__('os').environ['RUNNER_TEMP'])/'oi-empty-vendor-source'
+          r=validate_native_model(json.loads((p/'oi_native_model.yaml').read_text()))
+          assert (r['table_count'],r['column_count'],r['term_count'])==(3,22,3)
+          assert sum(verify_empty_sqlite(p/'oi_metadata_sandbox.sqlite').values())==0
+          print('Zero-row metadata fixture and first-party preflight: PASS')
+          PY
+      - name: Install pinned vendor runtime dependencies in disposable environment
+        working-directory: vendor-auto-ontology
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --no-cache-dir 'uv==0.11.29'
+          uv sync --frozen --no-dev
+          uv pip freeze --python .venv/bin/python > ../vendor-evidence/vendor-installed-packages.txt
+      - name: Migrate only disposable vendor catalog
+        working-directory: vendor-auto-ontology
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run --no-sync alembic upgrade head
+      - name: Execute NVIDIA native import and scoped export with egress restricted
+        working-directory: vendor-auto-ontology
+        shell: bash
+        env:
+          HTTPS_PROXY: http://127.0.0.1:9
+          HTTP_PROXY: http://127.0.0.1:9
+          NO_PROXY: localhost,127.0.0.1
+        run: |
+          set -euo pipefail
+          uv run --no-sync python ../tools/semantic_vendor_catalog_probe.py \
+            --native-model "$RUNNER_TEMP/oi-empty-vendor-source/oi_native_model.yaml" \
+            --empty-sqlite "$RUNNER_TEMP/oi-empty-vendor-source/oi_metadata_sandbox.sqlite" \
+            --output ../vendor-evidence/import-export.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          result=json.loads(Path('../vendor-evidence/import-export.json').read_text())
+          assert result['vendor_importer_executed'] and result['vendor_exporter_executed']
+          assert result['vendor_catalog_counts']['catalog_column']==22
+          assert result['vendor_catalog_counts']['term']==3
+          assert result['zero_source_rows']
+          assert result['model_inference_executed'] is False
+          assert result['embeddings_executed'] is False
+          print('NVIDIA isolated importer and exporter verified with zero data')
+          PY
+      - name: Capture exact source identities and negative evidence
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p vendor-evidence
+          python - <<'PY'
+          from pathlib import Path
+          import json,hashlib,os,subprocess
+          files=['tools/semantic_vendor_catalog_probe.py','.github/workflows/semantic-vendor-import.yml']
+          out={'oi_commit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
+               'nvidia_upstream_commit':subprocess.check_output(['git','-C','vendor-auto-ontology','rev-parse','HEAD'],text=True).strip(),
+               'run_id':os.environ.get('GITHUB_RUN_ID'),
+               'source_sha256':{name:hashlib.sha256(Path(name).read_bytes()).hexdigest() for name in files},
+               'only_synthetic_schema':True,'patient_data':False,
+               'nvidia_model_inference':False,'clinical_validation':False}
+          Path('vendor-evidence/source-receipt.json').write_text(json.dumps(out,sort_keys=True,indent=2)+'\n')
+          print(json.dumps(out,sort_keys=True))
+          PY
+      - name: Preserve small synthetic-only evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: isolated-nvidia-import-${{ github.run_id }}-${{ github.run_attempt }}
+          path: vendor-evidence/
+          if-no-files-found: warn
+          retention-days: 14
