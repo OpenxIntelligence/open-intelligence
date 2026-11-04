@@ -338,6 +338,35 @@ def main() -> None:
                     f"Checkbox group lacks an accessible name: {group_name}"
                 )
 
+            # Browser-level case-scoped draft regression: no unfinished Alpha
+            # narrative may be silently rebound to Beta. Check the selected
+            # case and the input value after each rejected case switch.
+            for draft_field in (
+                "scoped-decision-note", "scoped-dissent-rationale",
+                "ft-title", "ft-detail", "ft-reason", "ft-update-reason",
+                "option-label", "dependency-anchor", "task-label", "task-owner",
+                "threat-description", "threat-anchor", "reviewer-label", "review-scope",
+            ):
+                cd.evaluate("""(fieldId => {
+                  const field = document.getElementById(fieldId);
+                  if (!field) throw new Error('Missing draft field: ' + fieldId);
+                  field.value = 'Unsent CASE-ALPHA text for ' + fieldId;
+                  const picker = document.querySelector('#case-picker');
+                  picker.value = 'CASE-BETA';
+                  picker.dispatchEvent(new Event('change'));
+                })(""" + json.dumps(draft_field) + ")")
+                assert cd.evaluate("document.querySelector('#case-picker').value") == "CASE-ALPHA", (
+                    f"unfinished {draft_field} switched into another synthetic case"
+                )
+                assert cd.evaluate(
+                    "document.getElementById(" + json.dumps(draft_field) + ").value"
+                ) == "Unsent CASE-ALPHA text for " + draft_field, (
+                    f"blocked case switch erased draft field {draft_field}"
+                )
+                cd.evaluate("""(fieldId => {
+                  document.getElementById(fieldId).value = '';
+                })(""" + json.dumps(draft_field) + ")")
+
             cd.evaluate("""(() => {
               const picker = document.querySelector('#case-picker');
               picker.value = 'CASE-BETA';
