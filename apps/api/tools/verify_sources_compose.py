@@ -103,6 +103,8 @@ def assert_read_only_recovery(before, after, expected_events):
 
 
 def main():
+    from manual_task_recovery import verify_manual_task_restore
+
     project = "oi-h1-source-proof-" + uuid.uuid4().hex[:12]
     compose = ["docker", "compose", "--project-name", project,
                "--file", str(ROOT / "apps/api/compose.yaml"),
@@ -648,6 +650,13 @@ def main():
                 "restored_exact_selection_references": sum(len(item["selections"]) for item in documents),
                 "restored_independent_grants": True, "restored_api_database_restart": True,
                 "restored_revoked_binding_denial": True, "original_database_unchanged": True}
+            # Extend this same real Compose/complete-row restore gate. The
+            # independent patient keeps the original source proof unchanged.
+            receipt["manual_task_dependency_recovery"] = verify_manual_task_restore(
+                request=request, snapshot=snapshot, restore=restore, command=command,
+                ready=ready, credential=credential, save_access=save_access,
+                source_database=revoked_database)
+            assert snapshot(original_database) == readable_before, "Manual-task recovery changed original sources"
             output = os.environ.get("OI_SOURCE_ACCEPTANCE_FILE")
             if output:
                 Path(output).parent.mkdir(parents=True, exist_ok=True)

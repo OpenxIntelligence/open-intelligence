@@ -25,3 +25,33 @@ The new four-test migration suite and the inherited document/image historical-gr
 Local checks: eight pure FHIR parser tests, Python compilation, whitespace checks, one-head static graph and byte-for-byte preservation of both published migration files passed. Local checks do not substitute for PostgreSQL or Chromium. Combined hosted acceptance is pending at this source checkpoint; the draft PR records results tied to its exact head. Historical parent passes do not qualify this composition.
 
 No dependency, external service, production identity mechanism, clinical interpretation, licensing decision or deployment is introduced. Review-return manual binding, clinical validation and production release remain separate work.
+
+## Populated manual-task recovery extension
+
+The existing source Compose gate now also invokes `apps/api/tools/manual_task_recovery.py`.
+This closes the specific missing acceptance case recorded on #471: backup/restore
+with a populated optional manual-task dependency. It continues OI-006/OI-009 and
+#442, using the existing patient, source, question, passage and task APIs.
+
+Two acknowledged tasks share a current source question. Only one explicitly
+binds the saved manual-passage revision and reference digest. The gate compares
+all application rows and sequence state across a readable restore, then proves
+the original task anchors, timestamps, history and command receipts through HTTP
+and API/database restarts. A correction made on the restored copy must stale only
+the manual-dependent task. Its completion must fail without writes; the source-only
+control must still complete. A second restore preserves that stale state and the
+original dependency, with exact retries and independent permission denials. A
+third restore preserves a revoked binding and denies task/context reads and writes.
+Source-context freshness is asserted throughout so source staleness cannot explain
+the manual-dependent completion denial. The original database stays unchanged.
+
+The helper adds no production behavior, schema, dependency or workflow. All seven
+existing API recovery stages remain in place. Successful acceptance adds the
+`manual_task_dependency_recovery` receipt to the existing source-document recovery
+artifact; the receipt is written only after every new assertion succeeds.
+
+Local compilation, the synthetic-data audit and 13 existing recovery-oracle tests
+pass at this source checkpoint. Docker/PostgreSQL are unavailable locally; full
+hosted acceptance is pending and must be tied to this candidate's exact head.
+The separate #471/#473 frontend integration work is not included or claimed tested
+by this recovery-only extension. No merge, deployment or clinical validation.
