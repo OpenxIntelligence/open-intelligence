@@ -14,6 +14,15 @@ The initial repository is a planning foundation. Implement bounded work against 
 - Keep research findings, extension proposals, accepted decisions, implemented behavior and validation evidence distinct. An architectural change requires an explicit scoped proposal and accepted review; a research document cannot approve a vendor, dependency, product pivot or clinical function.
 - Preserve the full platform ambition. A proposed cohort, first customer, commercial model or initial workflow does not narrow the architecture without a separately recorded decision.
 
+## Founder directive — full first-party healthcare ecosystem (accepted 2 November 2026)
+
+- The product scope is the **complete first-party healthcare ecosystem**: EHR/EMR, oncology, LIS/LIMS, pathology, RIS/PACS, genomics, medication and treatment, patient/professional, research, AI/ML/agents, enterprise operations and shared clinical/data/security infrastructure. Implementing a bounded vertical slice never narrows that scope.
+- **NO NEXT.JS.** Next.js has been explicitly rejected for new Open Intelligence frontend, backend and first-party product code. Old hackathon Next.js ADRs/BOMs are historical evidence and have no implementation authority. Do not add its packages, scaffolders or project files.
+- **Selected AI-native engineering reference baseline (2 November 2026):** React + TypeScript + Vite for an independently served clinical web interface; Python with a vetted FastAPI API adapter for first-party intelligence/scientific and immediate domain services; stable PostgreSQL for domain-owned transactional persistence and versioned object storage for DICOM/WSI/genomics; provider-independent, host-authorized model/tool/run contracts. This is a technology direction for planned implementation, **not third-party package/version clearance, a live cloud-model approval, or a mandate to rewrite functioning code**. Spring Boot/.NET remain benchmarkable options for specific domains; do not introduce new languages or frameworks without workload-backed justification. See the canonical Notion technology decision and the binding rights gate.
+- Evaluate every technology against the commercial freedom policy: actual corresponding source, independently forkable/modifiable/self-hostable commercial use, redistribution, patents/trademarks, transitive dependencies, data, fonts, weights, terminology and NOTICE. Unknown rights = HOLD; no AI-issued procurement clearance.
+- Domain components must be first-party owned in scope, with named operational data owners, versioned API and event contracts, patient/specimen/study identity, consent, source provenance, temporal and uncertainty semantics, idempotent recovery and human clinical authority. Existing code can be reused or replaced only through a verified, reversible decision.
+- Read the superseding decision and reference journey in docs/FIRST_PRINCIPLES_PLAN.md; follow relevant existing backlog/PR ownership. Do not create a parallel canonical patient ledger or architecture, and do not claim clinical validation from synthetic demonstrations.
+
 ## Product principles
 
 - Preserve the full longitudinal oncology and biological research ambition.
@@ -42,7 +51,7 @@ The initial repository is a planning foundation. Implement bounded work against 
 
 Prefer deterministic software for authorization, source identity, validation, versioning, job state, and publication state. Model outputs are inspectable proposals governed by typed task contracts and allowed tools.
 
-The backend, model provider, and detailed application stack remain undecided. Select them using the workflow requirements and a bounded comparison, rather than treating an earlier candidate as an approved dependency.
+The reference implementation direction is selected above. Exact package versions, dependency closure, domain service extraction, authorized model providers, production storage migration, clinical validation and legal commercialization are **not** automatically approved. Preserve existing source/evidence/authority contracts and require equivalent integration tests before any migration; model selection is never patient-controlled or an authorization grant.
 
 ## Completion reports
 
