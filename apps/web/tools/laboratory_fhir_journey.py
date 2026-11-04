@@ -102,8 +102,9 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     raw = fictional_bundle()
     records()
     cd.evaluate('''(() => {
-      window.__oiLabFetch=window.fetch;window.__oiLabWrites=[];window.__oiLabDrop=true;
+      window.__oiLabFetch=window.fetch;window.__oiLabWrites=[];window.__oiLabDrop=true;window.__oiLabRequests=0;
       window.fetch=async(input,init)=>{
+        window.__oiLabRequests++;
         const laboratory=String(input).endsWith('/laboratory/fhir-r4/sources')&&init?.method==='POST';
         if(laboratory)window.__oiLabWrites.push(JSON.parse(init.body));
         const response=await window.__oiLabFetch(input,init);
@@ -111,9 +112,51 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
         return response;
       };
     })()''')
+    requests_before_selection = cd.evaluate('window.__oiLabRequests')
     select(raw, 'fictional-lab.json')
     assert operator(source_path)['sources'] == []
     assert cd.evaluate('window.__oiLabWrites.length') == 0
+
+    # Native keyboard reading must expose the whole bounded preview, including
+    # with enlarged text, before any confirmation or canonical import.
+    viewport = cd.evaluate('({width:innerWidth,height:innerHeight})')
+    observations = []
+    def key(name, code):
+        cd.command('Input.dispatchKeyEvent', {'type':'rawKeyDown','key':name,'code':name,'windowsVirtualKeyCode':code})
+        cd.command('Input.dispatchKeyEvent', {'type':'keyUp','key':name,'code':name,'windowsVirtualKeyCode':code})
+    for width, height in ((390, 844), (320, 256)):
+        cd.command('Emulation.setDeviceMetricsOverride', {'width':width,'height':height,'deviceScaleFactor':1,'mobile':False})
+        cd.evaluate('''(() => {const p=document.querySelector('[data-testid=laboratory-local-original]');
+          p.style.fontSize='32px';p.scrollTop=0;p.closest('details').querySelector('summary').focus();})()''')
+        key('Tab', 9)
+        cd.evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))')
+        observation = cd.evaluate('''(() => {const p=document.querySelector('[data-testid=laboratory-local-original]');
+          const r=p.getBoundingClientRect(),h=document.querySelector('.topbar');return {
+          width:innerWidth,height:innerHeight,focused:document.activeElement===p,
+          top:r.top,bottom:r.bottom,contextBottom:h.dataset.sticky==='false'?0:h.getBoundingClientRect().bottom,
+          scrollHeight:p.scrollHeight,clientHeight:p.clientHeight,requests:window.__oiLabRequests,
+          writes:window.__oiLabWrites.length,confirmed:document.querySelector('[data-testid=laboratory-confirm]').checked};})()''')
+        observations.append(observation)
+        (artifacts / 'laboratory-preview-keyboard.json').write_text(json.dumps(observations, indent=2))
+        (artifacts / f'laboratory-preview-keyboard-{width}.png').write_bytes(base64.b64decode(cd.command('Page.captureScreenshot', {'format':'png'})['data']))
+        assert observation['focused'], 'Native Tab must enter the laboratory original before report-version selection'
+        assert observation['clientHeight'] > 0 and observation['scrollHeight'] > observation['clientHeight'], 'Enlarged JSON must exercise a bounded scrollable reader'
+        assert observation['top'] >= observation['contextBottom'] and observation['bottom'] <= height, 'Entire laboratory reader must be visible below patient context'
+        tree = cd.command('Accessibility.getFullAXTree')['nodes']
+        assert any(node.get('role', {}).get('value') == 'region' and
+                   node.get('name', {}).get('value') == 'Selected laboratory JSON, not imported' for node in tree), 'Keyboard reader needs an accessible name that distinguishes local inspection from import'
+        key('PageDown', 34)
+        cd.wait('document.querySelector("[data-testid=laboratory-local-original]").scrollTop>0', 'PageDown scrolls exact laboratory JSON')
+        assert cd.evaluate('document.querySelector("[data-testid=laboratory-local-original]").textContent') == raw.decode()
+        assert cd.evaluate('!document.querySelector("[data-testid=laboratory-confirm]").checked && document.querySelector("[data-testid=laboratory-import]").disabled'), 'Reading must not confirm or import'
+        key('Tab', 9)
+        assert cd.evaluate('document.activeElement===document.querySelector("[data-testid=laboratory-predecessor]")'), 'Tab must exit the reader to existing report-version selection'
+        assert cd.evaluate('window.__oiLabRequests') == requests_before_selection, 'Local keyboard inspection must make no request'
+        assert cd.evaluate('window.__oiLabWrites.length') == 0
+    assert operator(source_path)['sources'] == [], 'Keyboard inspection must not create a source'
+    cd.evaluate('document.querySelector("[data-testid=laboratory-local-original]").style.removeProperty("font-size")')
+    cd.command('Emulation.setDeviceMetricsOverride', {**viewport,'deviceScaleFactor':1,'mobile':False})
+    print('PASS LABORATORY PREVIEW KEYBOARD: native Tab/PageDown/Tab; named visible reader at 390px and 320x256; exact local JSON; unchecked confirmation; zero requests and no source writes.')
     cd.evaluate('document.querySelector("[data-testid=laboratory-confirm]").click();document.querySelector("[data-testid=laboratory-import]").click()')
     cd.wait('Boolean(document.querySelector("[data-testid=laboratory-retry]"))', 'unknown outcome exposes exact manual retry')
     first, = operator(source_path)['sources']
@@ -180,7 +223,7 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     cd.evaluate('[...document.querySelectorAll(".world-cases li")].find(e=>e.textContent.includes(' + json.dumps(CASE) + ')).querySelector("[data-testid=world-load]").click()')
     cd.wait('!document.querySelector("[data-testid=world-projection]") && document.querySelector("[data-testid=world-status]").textContent.includes("unavailable or revoked")', 'revoked laboratory projection cleared')
     credentials[0]['actions'].append('source_read');write_grants()
-    cd.evaluate('window.fetch=window.__oiLabFetch;delete window.__oiLabFetch;delete window.__oiLabWrites;delete window.__oiLabDrop')
+    cd.evaluate('window.fetch=window.__oiLabFetch;delete window.__oiLabFetch;delete window.__oiLabWrites;delete window.__oiLabDrop;delete window.__oiLabRequests')
     navigate('Overview')
     (artifacts / 'laboratory-fhir-workflow.json').write_text(json.dumps({
         'synthetic': True, 'case_id': CASE, 'original_source_id': first['source_id'],
