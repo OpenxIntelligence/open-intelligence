@@ -1,10 +1,12 @@
 # Open Intelligence
 
-**An AI-native oncology intelligence platform.**
+**A patient-centered, clinically governed healthcare intelligence and operations platform, initially focused on oncology.**
 
 Open Intelligence aims to help patients and care teams maintain an evolving understanding of a person's cancer, investigate important questions, and connect new findings to inspectable evidence.
 
-The vision includes longitudinal clinical records, imaging, pathology, molecular and other biological data, specialized AI assistance, and usable patient and physician experiences. Clinical decisions remain with qualified professionals.
+The destination is a complete first-party healthcare ecosystem: EHR, oncology, laboratory, pathology, imaging/PACS, genomics, pharmacy, research, care coordination and institutional operations. Its first connected experience helps patients and authorized professionals organize information, investigate questions, inspect evidence, review interpretations and follow agreed work through to outcomes. Clinical authority remains with qualified professionals.
+
+**Founding clarification — 2 November 2026:** Sid Sijbrandij's public narrative is one source of workflow requirements. His medical data is not a platform input, engineering dependency or evaluation corpus. There is no manual or ethics-note opt-in exception. All current engineering and evaluation uses independently authored synthetic patients; the capability we build must generalize across people, cancers and care circumstances. See [the existing plan](docs/FIRST_PRINCIPLES_PLAN.md) and [the data-boundary work package](docs/engineering/PATIENT_DATA_CI_BOUNDARY_2026-11-02.md).
 
 Repository context: Meta Global AI Developer Hackathon, Indie track.
 
@@ -14,7 +16,9 @@ The repository now contains an **original, local synthetic-only Python/SQLite re
 
 The local prototype has **no real-patient authorization, verified clinician identity, production access control, clinical inference, treatment recommendations, comprehensive EHR interoperability, or licensed full-text literature analysis**. Do not enter actual patient records or treat demo acknowledgments as clinical sign-off. Scientific model and production architecture choices remain under review.
 
-**Last verified main baseline (31 October 2026):** commit [`9bef888`](https://github.com/OpenxIntelligence/open-intelligence/commit/9bef88863a3049c44a71c5ae0a1e131459ff70ba), with [synthetic application/Chromium CI](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41233998409) and [Crossref contract CI](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41233998357) passing. Later commits require their own verification. The [IV-01–03 synthetic evaluation packet (PR #24)](https://github.com/OpenxIntelligence/open-intelligence/pull/24) remains an unmerged draft and is **not** independent clinical validation.
+**Inspected main baseline (2 November 2026):** commit [`52ea683`](https://github.com/OpenxIntelligence/open-intelligence/commit/52ea683fbe3537b17a05066dceff2ba01f758c5d). The application baseline ran 236 synthetic tests successfully during this audit. Current implementation, proposed changes, unmerged domain work and verification limits are distinguished in [implementation status](docs/IMPLEMENTATION_STATUS.md). Test success is not independent clinical validation.
+
+**Bounded implementation target:** Python/FastAPI/PostgreSQL with React/Vite/TypeScript; Next.js is excluded. This is the selected migration target, not the stack of the existing Python/SQLite prototype.
 
 ## Start here
 
