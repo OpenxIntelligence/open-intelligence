@@ -315,7 +315,8 @@ class PostgresQuestionFollowthrough:
                owner_label: str, due_date: str | None, review_trigger: str, reason: str,
                source_snapshot_contract: str, expected_source_snapshot_sha256: str,
                expected_preflight_sha256: str, recheck_authority: Callable[[], None],
-               prepare_response: Callable[[dict], PreparedResponse] | None = None) -> dict | PreparedResponse:
+               prepare_response: Callable[[dict], PreparedResponse] | None = None,
+               manual_dependency: dict | None = None) -> dict | PreparedResponse:
         patient_id, case_id, organization, actor = self._scope(patient_id, case_id, organization, actor, purpose)
         question_id = _identifier(question_id, "QUESTION")
         request_key = _key(request_key, "request_key")
@@ -326,13 +327,18 @@ class PostgresQuestionFollowthrough:
         if any(type(v) is not str or SHA256.fullmatch(v) is None
                for v in (expected_source_snapshot_sha256, expected_preflight_sha256)):
             raise PatientRegistryError("Task source fingerprints must be SHA-256")
+        bound = ManualTaskDependency(**manual_dependency).model_dump(mode="json") if manual_dependency is not None else None
+        if bound is not None and any(bound[k] != v for k,v in (
+                ("patient_id", patient_id), ("case_id", case_id), ("question_id", question_id))):
+            raise PatientRegistryDenied("Manual dependency scope differs from task question")
         final = self._authority(patient_id, actor, purpose, "followthrough_create", recheck_authority)
         intent = _digest({"operation": "followthrough.create", "patient_id": patient_id,
                           "case_id": case_id, "question_id": question_id, "organization": organization,
                           "actor": actor, "purpose": purpose, "request_key": request_key, **fields,
                           "source_snapshot_contract": source_snapshot_contract,
                           "source_snapshot_sha256": expected_source_snapshot_sha256,
-                          "preflight_sha256": expected_preflight_sha256})
+                          "preflight_sha256": expected_preflight_sha256,
+                          **({"manual_dependency": bound} if bound is not None else {})})
 
         def prepare(index):
             prior = self._prior(patient_id, case_id, organization, request_key, intent)
@@ -357,6 +363,12 @@ class PostgresQuestionFollowthrough:
                 question=question["question"], source_index=index)
             if not hmac.compare_digest(preflight["preflight_sha256"], expected_preflight_sha256):
                 raise PatientRegistryConflict("Saved question preflight requires reassessment")
+            if bound is not None:
+                scope = dict(patient_id=patient_id, case_id=case_id, question_id=question_id,
+                             organization=organization, actor=actor, purpose=purpose)
+                state = QuestionPassages(self.registry).manual_dependency_state_locked(scope, bound)
+                if state["needs_recheck"]:
+                    raise PatientRegistryConflict("Selected manual passage dependency requires reassessment")
             task_id = "TASK-" + uuid.uuid4().hex.upper()
             self.registry._execute(
                 "INSERT INTO coordination.question_followthrough_tasks "
@@ -369,6 +381,14 @@ class PostgresQuestionFollowthrough:
                  question["source_sha256"], question["source_version"], source_snapshot_contract,
                  expected_source_snapshot_sha256, expected_preflight_sha256),
             )
+            if bound is not None:
+                self.registry._execute(
+                    "INSERT INTO coordination.question_followthrough_manual_dependencies "
+                    "(task_id,question_id,revision_id,patient_id,case_id,origin_org,references_sha256) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                    (task_id, question_id, bound["revision_id"], patient_id, case_id,
+                     organization, bound["references_sha256"]),
+                )
             result = self._append(patient_id=patient_id, case_id=case_id, organization=organization,
                 actor=actor, purpose=purpose, task_id=task_id, question_id=question_id,
                 request_key=request_key, intent=intent, revision=1, previous_status=None,
