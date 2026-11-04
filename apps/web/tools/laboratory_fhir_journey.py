@@ -134,6 +134,8 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
           const r=p.getBoundingClientRect(),h=document.querySelector('.topbar');return {
           width:innerWidth,height:innerHeight,focused:document.activeElement===p,
           top:r.top,bottom:r.bottom,contextBottom:h.dataset.sticky==='false'?0:h.getBoundingClientRect().bottom,
+          scrollY,headerSticky:h.dataset.sticky,headerHeight:h.getBoundingClientRect().height,
+          scrollInset:getComputedStyle(document.documentElement).scrollPaddingTop,
           scrollHeight:p.scrollHeight,clientHeight:p.clientHeight,requests:window.__oiLabRequests,
           writes:window.__oiLabWrites.length,confirmed:document.querySelector('[data-testid=laboratory-confirm]').checked};})()''')
         observations.append(observation)

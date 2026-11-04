@@ -45,12 +45,29 @@ when JSON escaping expanded its transport. The route now shares the laboratory
 preview's bounded 800,000-byte envelope and unchanged five-second read timeout;
 the parser's 65,536-byte original limit remains unchanged. All ten ingress tests pass.
 
-The final local reference run uses the verified locked wheels: 770 tests passed.
+The pre-review local reference run uses the verified locked wheels: 770 tests passed.
 An earlier run with the host's different pypdf installation failed 17 PDF checks;
 that environment mismatch is not hidden or counted as a pass. The 26 reference
 source-dialog/accessibility tests pass. After splitting runtime packaging, the
 production JavaScript chunks are 332.41 kB (application) and 221.70 kB (React),
 with the original 500 kB advisory limit unchanged. This is packaging evidence,
 not a measured interaction-latency improvement.
+
+Independent final source review passed 82 focused client tests, ten ingress
+tests and five initial setup tests. It found one concrete startup race: ownership
+state was initialized before the operator lock. The new two-caller regression
+failed on that ordering. Initialization now runs under an exclusive sibling
+lock acquired before any state-directory creation or ownership read. All six
+setup tests pass. The final complete suite/CI must include this repair.
+The reviewer found no further important scoped source issue. The demo-specific
+browser checks report bytes through the API; report-download and Overview-return
+controls also retain coverage in the broader combined browser journey.
+
+The post-lock local reference suite passed 771 tests. The first combined hosted
+browser run exposed a short-screen laboratory focus regression: at 320×256 the
+focused reader lay below the viewport after the patient header resized. Its
+focus alignment now waits for that layout and checks that focus still belongs
+to the reader. The existing whole-reader visibility assertion is unchanged;
+the repaired head must pass it and the complete browser journey before acceptance.
 
 Independently fictional fixtures only. No live models or external clinical connector, real identity/consent, professional approval, recipient authorization or acknowledged external handoff is introduced. Session drafts remain memory-only. Manual-only documents and laboratory results do not acquire a new question-creation path here. Package checks do not resolve the project's distribution license or qualify clinical use.

@@ -3,7 +3,9 @@ import importlib.util
 import json
 from pathlib import Path
 import tempfile
+import threading
 import unittest
+from unittest.mock import patch
 
 SCRIPT = Path(__file__).resolve().parents[1] / 'tools/h1_demo.py'
 
@@ -65,6 +67,43 @@ class DemoSetupTests(unittest.TestCase):
             self.assertEqual(command[command.index('--project-name') + 1], state['project'])
             self.assertNotIn('--volumes', command + ['stop'])
             self.assertNotIn('down', command + ['stop'])
+
+    def test_contending_start_cannot_load_or_initialize_ownership_before_lock(self):
+        demo = self.module()
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp) / 'demo'
+            started, release = threading.Event(), threading.Event()
+            calls, errors = [], []
+            original_load = demo.load_or_create
+
+            def tracked_load(path):
+                calls.append(threading.current_thread().name)
+                return original_load(path)
+
+            def running(path, state):
+                started.set()
+                if not release.wait(5):
+                    raise RuntimeError('test did not release the first operator')
+
+            def first():
+                try:
+                    demo.main(['up', '--fictional-only', '--state-dir', str(directory)])
+                except Exception as exc:
+                    errors.append(exc)
+
+            with patch.object(demo, 'load_or_create', side_effect=tracked_load), patch.object(demo, 'up', side_effect=running):
+                thread = threading.Thread(target=first, name='first-demo-operator')
+                thread.start()
+                try:
+                    self.assertTrue(started.wait(5))
+                    before = (directory / 'state.json').read_bytes()
+                    with self.assertRaises(BlockingIOError):
+                        demo.main(['up', '--fictional-only', '--state-dir', str(directory)])
+                    self.assertEqual(calls, ['first-demo-operator'])
+                    self.assertEqual((directory / 'state.json').read_bytes(), before)
+                finally:
+                    release.set(); thread.join(5)
+            self.assertEqual(errors, [])
 
 
 if __name__ == '__main__':

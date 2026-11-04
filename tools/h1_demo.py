@@ -164,11 +164,19 @@ def main(argv=None):
     if args.command == 'up' and not args.fictional_only:
         parser.error('up requires --fictional-only; never use actual patient data')
     directory = args.state_dir.resolve()
-    if args.command != 'up' and not (directory / 'state.json').is_file():
+    if args.command == 'up':
+        directory.parent.mkdir(parents=True, exist_ok=True)
+    elif not (directory / 'state.json').is_file():
         parser.error('No existing demo state')
-    state = load_or_create(directory)
-    with (directory / 'operator.lock').open('w') as lock:
+    # This sibling lock exists before the state directory. A competing first
+    # start must acquire it before reading, creating or replacing ownership.
+    lock_path = directory.with_name(directory.name + '.operator.lock')
+    descriptor = os.open(lock_path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(descriptor, 'w') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if args.command != 'up' and not (directory / 'state.json').is_file():
+            parser.error('No existing demo state')
+        state = load_or_create(directory)
         if args.command == 'up':
             up(directory, state)
         elif args.command == 'credentials':
