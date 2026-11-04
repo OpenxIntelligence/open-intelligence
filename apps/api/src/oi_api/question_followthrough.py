@@ -33,6 +33,17 @@ from .followthrough_contracts import ManualTaskDependency
 CONTRACT = "oi.pg-question-followthrough/1"
 MAX_TASKS = 250
 MAX_EVENTS = 750
+# Published migration fixtures deliberately seed the canonical task owner at
+# historical revisions before 0016. The current API readiness gate *requires*
+# 0016; only these known pre-0016 test schemas may have no manual child table.
+PRE_MANUAL_TASK_REVISIONS = frozenset({
+    "0009_question_followthrough", "0009_question_evidence",
+    "0009_image_review_merge", "0010_question_evidence",
+    "0010_authored_evidence_origin", "0011_evidence_convergence",
+    "0011_image_evidence_merge", "0012_image_report_convergence",
+    "0012_reviewed_documents", "0013_document_image_convergence",
+    "0014_question_passages", "0015_manual_report_context",
+})
 PreparedResponse = TypeVar("PreparedResponse")
 TASK_FIELDS = (
     "task_id", "question_id", "patient_id", "case_id", "origin_org", "actor", "purpose",
@@ -207,12 +218,29 @@ class PostgresQuestionFollowthrough:
             "WHERE patient_id=%s AND case_id=%s AND origin_org=%s ORDER BY task_id,revision LIMIT 751",
             (patient_id, case_id, organization),
         )
-        manual_rows = self.registry._fetchall(
-            "SELECT task_id,question_id,revision_id,patient_id,case_id,origin_org,references_sha256 "
-            "FROM coordination.question_followthrough_manual_dependencies "
-            "WHERE patient_id=%s AND case_id=%s AND origin_org=%s LIMIT 251",
-            (patient_id, case_id, organization),
-        )
+        # Historical migration acceptance exercises task reads at published
+        # pre-0016 schema heads. Those schemas cannot contain a manual-task
+        # dependency, so an absent child is valid *only* for exact known heads.
+        # A missing child at current 0016, an unknown revision or an unversioned
+        # database must fail closed instead of silently staling no tasks.
+        present = self.registry._fetchone(
+            "SELECT to_regclass('coordination.question_followthrough_manual_dependencies')")
+        if present is None:
+            raise PatientRegistryError("Manual task dependency schema status unavailable")
+        if present[0] is None:
+            revisions = self.registry._fetchall(
+                "SELECT version_num FROM public.alembic_version ORDER BY version_num")
+            if (not 1 <= len(revisions) <= 2
+                    or any(row[0] not in PRE_MANUAL_TASK_REVISIONS for row in revisions)):
+                raise PatientRegistryError("Manual task dependency owner unavailable at this schema")
+            manual_rows = []
+        else:
+            manual_rows = self.registry._fetchall(
+                "SELECT task_id,question_id,revision_id,patient_id,case_id,origin_org,references_sha256 "
+                "FROM coordination.question_followthrough_manual_dependencies "
+                "WHERE patient_id=%s AND case_id=%s AND origin_org=%s LIMIT 251",
+                (patient_id, case_id, organization),
+            )
         if len(rows) > MAX_TASKS or len(events) > MAX_EVENTS or len(manual_rows) > MAX_TASKS:
             raise PatientRegistryError("Follow-through exceeds bounded read limit")
         histories = {}
