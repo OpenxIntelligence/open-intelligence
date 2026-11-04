@@ -8,6 +8,9 @@ from sqlalchemy import text
 
 from oi_api.app import create_app
 from oi_api.config import Settings
+from oi_api.database import Database
+from oi_api.question_passages import QuestionPassages
+from oi_api.reviewed_documents import fingerprint
 from open_intelligence.postgres_registry import PostgresPatientRegistry
 from http_support import running_server
 from test_patients import TOKEN_A, TOKEN_B, request
@@ -89,6 +92,55 @@ class QuestionManualPassagesHTTPTests(EvidenceFixture):
             self.assertEqual(again['context_sha256'],packet['context_sha256'])
             self.assertEqual(again['passages'],packet['passages'])
             self.assertNotEqual(again['access_receipt_id'],packet['access_receipt_id'])
+
+    def test_real_pg_read_only_manual_dependency_tracks_revision_and_correction(self):
+        # Actual disposable PostgreSQL acceptance; no new task/Review owner.
+        with running_server(create_app(self.settings)) as base:
+            patient, question, payload, doc, path, _, command = self.setup_manual(base)
+            receipt, original = self.save(base, path, command)
+            scope = dict(patient_id=patient, case_id='CASE-ALPHA',
+                         question_id=question, organization='ORG-ALPHA')
+            dependency = {key: scope[key] for key in ('patient_id', 'case_id', 'question_id')}
+            dependency.update(revision_id=receipt['revision_id'],
+                              references_sha256=fingerprint(command['references']))
+            database = Database(self.settings)
+            try:
+                def read():
+                    with database.registry_connection() as connection:
+                        owner = QuestionPassages(PostgresPatientRegistry(connection))
+                        with owner.registry.transaction():
+                            return owner.manual_dependency_state_locked(scope, dependency)
+                state = read()
+                self.assertEqual(state['state'], 'current_unreviewed')
+                self.assertFalse(state['needs_recheck'])
+                self.assertEqual(state['dependency_revision_id'], receipt['revision_id'])
+                self.assertNotIn('Marker pending.',str(state))
+
+                # Annotation correction retains the original frozen revision
+                # but makes only this explicitly linked dependency stale.
+                self.correct(base, patient, payload, doc)
+                corrected = read()
+                self.assertTrue(corrected['needs_recheck'])
+                self.assertEqual(corrected['state'], 'reassessment_required')
+                self.assertEqual(corrected['dependency_revision_id'],receipt['revision_id'])
+                stale = request(base, path, token=TOKEN_A)[1]
+                _, cleared = self.save(base, path, command | dict(
+                    request_key='PG-DEPENDENCY-CLEAR',
+                    expected_context_sha256=stale['context_sha256'], references=[]))
+                self.assertEqual(cleared['revision'], 2)
+                after_clear = read()
+                self.assertEqual(after_clear['current_revision_id'], cleared['revision_id'])
+                self.assertTrue(after_clear['needs_recheck'])
+                self.assertNotIn('Marker pending.',str(after_clear))
+                # The reader is read-only; no independent task, review or
+                # extra passage revision is written by these inspections.
+                with self.engine.connect() as connection:
+                    count = connection.execute(text(
+                        'SELECT count(*) FROM investigation.question_passage_revisions'
+                    )).scalar_one()
+                    self.assertEqual(count, 2)
+            finally:
+                database.close()
 
     def test_changed_intent_stale_writer_and_foreign_or_forged_reference_fail_closed(self):
         with running_server(create_app(self.settings)) as base:
