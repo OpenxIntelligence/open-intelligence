@@ -320,7 +320,7 @@ class FollowthroughPostgresTests(SourceVersionFixture):
             self.transition(created["task_id"], 4, "assigned", key="REOPEN-COMPLETED")
         self.assertEqual(self.rows(), before)
 
-    def test_optional_manual_dependency_storage_is_scoped_and_immutable(self):
+    def test_optional_manual_task_binding_and_targeted_reassessment(self):
         # No dependency row is implicitly created for a source-only task.
         task = self.create_task(key="SOURCE-ONLY-TASK")
         table = "coordination.question_followthrough_manual_dependencies"
@@ -351,19 +351,51 @@ class FollowthroughPostgresTests(SourceVersionFixture):
                 synthetic=True,request_key="TASK-MANUAL-DEPENDENCY",
                 expected_context_sha256=current["context_sha256"],references=[ref]))
             self.assertEqual(status,201,saved)
-        values=dict(task_id=task["task_id"],question_id=self.question,
-                    revision_id=saved["revision_id"],patient_id=self.patient,
-                    case_id=CASE,origin_org="ORG-ALPHA",
-                    references_sha256=fingerprint([ref]))
-        statement=text("INSERT INTO "+table+" ("+",".join(values)+") VALUES ("+
-                       ",".join(":"+key for key in values)+")")
-        with self.engine.begin() as db:
-            db.execute(statement,values)
+        binding=dict(patient_id=self.patient,case_id=CASE,question_id=self.question,
+                     revision_id=saved["revision_id"],references_sha256=fingerprint([ref]))
+        manual_task=self.create_task(key="TASK-MANUAL-BOUND",manual_dependency=binding)
+        self.assertEqual(self.create_task(key="TASK-MANUAL-BOUND",manual_dependency=binding),
+                         manual_task|{"duplicate":True})
+        tasks={item["task_id"]:item for item in self.listing()["tasks"]}
+        self.assertIsNone(tasks[task["task_id"]]["manual_context_state"])
+        self.assertFalse(tasks[task["task_id"]]["needs_recheck"])
+        self.assertEqual(tasks[manual_task["task_id"]]["manual_context_state"],"current_unreviewed")
+        self.assertFalse(tasks[manual_task["task_id"]]["needs_recheck"])
+        self.assertEqual(tasks[manual_task["task_id"]]["manual_dependency_revision_id"],
+                         saved["revision_id"])
+        self.assertNotIn("Marker pending.",str(tasks))
+
         with self.engine.connect() as db:
-            row=db.execute(text("SELECT revision_id,references_sha256 FROM "+table),
-                           {}).one()
-            self.assertEqual(row[0],saved["revision_id"])
-            self.assertEqual(row[1],fingerprint([ref]))
+            row=db.execute(text("SELECT task_id,revision_id,references_sha256 FROM "+table)).one()
+            self.assertEqual(row[0],manual_task["task_id"])
+            self.assertEqual(row[1],saved["revision_id"])
+            self.assertEqual(row[2],fingerprint([ref]))
+        with running_server(create_app(self.settings)) as base:
+            correction=dict(synthetic=True,request_key="TASK-ANNOTATION-CORRECTION",
+                expected_revision_id=doc["annotation_revision_id"],
+                confirmed_case_id=CASE,expected_sha256=payload["expected_sha256"],
+                reason="Recheck the fictional quotation",
+                findings=[dict(key="marker",state="indeterminate",quote="pending.",line=2)])
+            code,result,_=request(base,docs+"/"+doc["source_id"]+"/annotations",
+                                  token=TOKEN_A,body=correction)
+            self.assertEqual(code,201,result)
+        after={item["task_id"]:item for item in self.listing()["tasks"]}
+        self.assertIsNone(after[task["task_id"]]["manual_context_state"])
+        self.assertFalse(after[task["task_id"]]["needs_recheck"])
+        self.assertEqual(after[manual_task["task_id"]]["manual_context_state"],"reassessment_required")
+        self.assertTrue(after[manual_task["task_id"]]["needs_recheck"])
+        self.assertEqual(after[manual_task["task_id"]]["revision"],1)
+        self.assertEqual(self.create_task(key="TASK-MANUAL-BOUND",manual_dependency=binding),
+                         manual_task|{"duplicate":True})
+        with self.assertRaises(PatientRegistryConflict):
+            self.create_task(key="TASK-MANUAL-STALE",manual_dependency=binding)
+        with self.assertRaises(PatientRegistryDenied):
+            self.create_task(key="TASK-MANUAL-CROSS-CASE",
+                             manual_dependency=binding|{"case_id":"CASE-BETA"})
+        self.creds[0]["actions"].remove("source_original_read");self.write()
+        hidden=self.listing()["tasks"]
+        self.assertNotIn("Marker pending.",str(hidden))
+        self.assertTrue(next(t for t in hidden if t["task_id"]==manual_task["task_id"])["needs_recheck"])
         for statement in (
             "UPDATE "+table+" SET references_sha256='"+("f"*64)+"'",
             "DELETE FROM "+table,
