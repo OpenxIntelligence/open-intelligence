@@ -181,8 +181,10 @@ def main():
                     replacement_question_id=replacement_question_id,
                     authored_question_id=authored_question_id)
                 # Add the fourth question only after both three-question checks.
-                exercise_connected_question_review(cd,pid,case,new_receipt['source_id'],amended,
+                connected = exercise_connected_question_review(cd,pid,case,new_receipt['source_id'],amended,
                     credentials,write_grants,questions)
+                from overview_verification_journey import exercise as exercise_overview_verification
+                exercise_overview_verification(cd,pid,case,connected['return_receipt_id'])
             # Current source metadata access is independent from the historical original bytes.
             # World Model recheck must clear the old view after source-read grant withdrawal.
             credentials[0]['actions'].remove('source_read');write_grants()
