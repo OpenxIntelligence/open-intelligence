@@ -1,6 +1,7 @@
 """Bound the small identity command before JSON parsing, including chunked HTTP."""
 
 import asyncio
+import re
 
 from starlette.responses import JSONResponse
 
@@ -11,10 +12,12 @@ class PatientRequestLimit:
 
     async def __call__(self, scope, receive, send):
         route = scope.get("path", "")
+        image_upload = re.fullmatch(r"/v1/patients/[^/]+/cases/[^/]+/sources/[^/]+/images", route) is not None
         bounded = route == "/v1/patients" or (
             route.startswith("/v1/patients/") and (
                 route.endswith("/record-requests") or route.endswith("/case-bindings") or route.endswith("/sources") or
                 route.endswith("/questions") or route.endswith("/composer/source-preflight") or
+                route.endswith("/documents") or "/documents/" in route or
                 ("/questions/" in route and route.endswith("/return-for-verification")) or
                 ("/questions/" in route and route.endswith("/brief")) or
                 ("/questions/" in route and route.endswith("/followthrough")) or
@@ -25,7 +28,7 @@ class PatientRequestLimit:
                 ("/record-requests/" in route and route.endswith("/cancel")) or
                 ("/case-bindings/" in route and route.endswith("/revoke"))
             )
-        )
+        ) or image_upload
         if scope["type"] != "http" or scope["method"] != "POST" or not bounded:
             await self.app(scope, receive, send)
             return
@@ -35,13 +38,14 @@ class PatientRequestLimit:
                                     headers={"Cache-Control": "no-store", "Connection": "close"})
             await response(scope, receive, send)
 
+        limit = 2_097_152 if image_upload else (210_000 if route.endswith('/evidence') else 262_144 if '/documents' in route else 72_000 if route.endswith('/sources') else 16_384)
         headers = dict(scope["headers"])
         length = headers.get(b"content-length")
         if length is not None:
             try:
                 if int(length) < 0:
                     raise ValueError()
-                if int(length) > (210_000 if route.endswith('/evidence') else 72_000 if route.endswith('/sources') else 16_384):
+                if int(length) > limit:
                     await reject(413, "Request body too large")
                     return
             except ValueError:
@@ -55,7 +59,7 @@ class PatientRequestLimit:
                     if message["type"] == "http.disconnect":
                         return
                     chunk = message.get("body", b"")
-                    if len(content) + len(chunk) > (210_000 if route.endswith('/evidence') else 72_000 if route.endswith('/sources') else 16_384):
+                    if len(content) + len(chunk) > limit:
                         await reject(413, "Request body too large")
                         return
                     content.extend(chunk)

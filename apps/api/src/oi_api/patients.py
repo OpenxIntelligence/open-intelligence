@@ -6,7 +6,7 @@ import hashlib
 import hmac
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import Field, StrictBool, field_validator, model_validator
@@ -28,6 +28,7 @@ from .source_questions import PostgresSourceQuestions
 from .question_review_returns import PostgresQuestionReviewReturns
 from .source_brief import MAX_ENVELOPE_BYTES, check_brief_size
 from .question_source_review_packet import PostgresQuestionSourcePacket
+from .images import PostgresSourceImages
 
 
 class CreatePatient(Contract):
@@ -443,6 +444,36 @@ class SourceQuestionsList(Contract):
     clinical_approval: Literal[False] = False
 
 
+class SourceImage(Contract):
+    image_id: str
+    source_id: str
+    case_id: str
+    sha256: str
+    byte_count: int = Field(ge=132, le=2_097_152)
+    study_uid: str
+    series_uid: str
+    sop_uid: str
+    modality: Literal["CT"]
+    study_date: str
+
+
+class SourceImageReceipt(SourceImage):
+    result: Literal["imported", "linked", "duplicate"]
+    synthetic: Literal[True]
+    source_identity_verified: Literal[False]
+    clinical_interpretation: Literal[False]
+
+
+class SourceImageIndex(Contract):
+    patient_id: str
+    case_id: str
+    source_id: str
+    images: list[SourceImage]
+    access_receipt_id: str
+    synthetic: Literal[True]
+    source_identity_verified: Literal[False]
+
+
 class ReturnForVerification(Contract):
     synthetic: StrictBool
     request_key: str = Field(min_length=3, max_length=128)
@@ -648,7 +679,7 @@ class QuestionSourceReviewPacket(Contract):
     source_access_receipt_id: str = Field(pattern=r"^ACCESS-[0-9A-F]{32}$")
 
 
-def patient_router(database: Database, authentication: Authentication) -> APIRouter:
+def patient_router(database: Database, authentication: Authentication, *, image_archive=None) -> APIRouter:
     router = APIRouter(prefix="/v1/patients", tags=["Synthetic patient registry"])
     bearer = HTTPBearer(auto_error=False, scheme_name="SyntheticFixture",
                         description="Local synthetic fixture credential. Not a patient account or clinical consent.")
@@ -665,7 +696,7 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
                         return False
                     if action == "patient_create":
                         return subject == context.organization
-                    if action not in {"patient_read", "record_request_create", "record_request_read", "record_request_cancel", "record_request_receive", "case_binding_create", "case_binding_read", "case_binding_revoke", "source_import", "source_read", "source_original_read", "composer_context_read", "question_create", "question_read", "review_queue_read", "review_return", "source_brief_export", "review_packet_read", "followthrough_read", "followthrough_create", "followthrough_update", "evidence_read", "evidence_link", "authored_evidence_read", "authored_evidence_import", "authored_evidence_assess", "authored_evidence_withdraw", "authored_evidence_original_read", "evidence_report_export"} or subject not in context.patient_ids:
+                    if action not in {"patient_read", "record_request_create", "record_request_read", "record_request_cancel", "record_request_receive", "case_binding_create", "case_binding_read", "case_binding_revoke", "source_import", "source_read", "source_original_read", "composer_context_read", "question_create", "question_read", "image_import", "image_read", "image_original_read", "review_queue_read", "review_return", "source_brief_export", "review_packet_read", "followthrough_read", "followthrough_create", "followthrough_update", "evidence_read", "evidence_link", "authored_evidence_read", "authored_evidence_import", "authored_evidence_assess", "authored_evidence_withdraw", "authored_evidence_original_read", "evidence_report_export"} or subject not in context.patient_ids:
                         return False
                     cursor = connection.cursor()
                     try:
@@ -688,7 +719,7 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
             # DB-API errors, schema failures and provider details stay private.
             raise HTTPException(503, "Patient registry unavailable") from None
 
-    errors = {code: {"model": Error} for code in (401, 403, 404, 408, 409, 413, 422, 503)}
+    errors = {code: {"model": Error} for code in (401, 403, 404, 408, 409, 413, 415, 422, 503)}
 
     @router.post("", response_model=CreatedPatient, status_code=201,
                  responses={200: {"model": CreatedPatient}, **errors}, operation_id="create_patient_v1")
@@ -1159,6 +1190,19 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
         except PatientRegistryDenied:
             raise HTTPException(404, "Source unavailable") from None
 
+    from .laboratory_fhir_routes import register_laboratory_fhir_routes
+    register_laboratory_fhir_routes(
+        router, principal=principal, registry=registry,
+        records_authorized=records_authorized,
+        final_authority=final_question_authority, errors=errors,
+    )
+
+    from .document_routes import register_document_routes
+    register_document_routes(router, principal=principal, registry=registry,
+        records_authorized=records_authorized, final_authority=final_question_authority)
+    from .question_passage_routes import register_question_passage_routes
+    register_question_passage_routes(router, principal=principal, registry=registry,
+        records_authorized=records_authorized, final_authority=final_question_authority)
     from .followthrough_routes import register_followthrough_routes
     register_followthrough_routes(
         router, principal=principal, registry=registry,
@@ -1174,4 +1218,79 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
     from .authored_evidence_routes import register_evidence_routes as register_authored_evidence_routes
     register_authored_evidence_routes(router, principal=principal, registry=registry,
         records_authorized=records_authorized, final_question_authority=final_question_authority, errors=errors)
+    @router.post("/{patient_id}/cases/{case_id}/sources/{source_id}/images",
+                 response_model=SourceImageReceipt, status_code=201,
+                 responses={200: {"model": SourceImageReceipt}, **errors},
+                 operation_id="import_source_image_v1")
+    def import_source_image(request: Request, patient_id: str, case_id: str, source_id: str,
+                            original: bytes = Body(media_type="application/dicom"),
+                            context: Principal = Depends(principal)):
+        if request.query_params:
+            raise HTTPException(422, "Invalid request")
+        if (request.headers.getlist("content-type") != ["application/dicom"]
+                or request.headers.getlist("content-encoding")):
+            raise HTTPException(415, "Unsupported image transport")
+        try:
+            with registry(context) as patients:
+                records_authorized(patients, context, patient_id, "image_import")
+                return PostgresSourceImages(patients).import_original(
+                    patient_id, case_id, source_id, original, organization=context.organization,
+                    actor=context.actor, purpose=context.purpose,
+                    # Validate and encode the actual body before the image
+                    # owner's final authority check, event and commit. Returning
+                    # a DTO would let FastAPI encode it after those boundaries.
+                    prepare_response=lambda result: JSONResponse(
+                        SourceImageReceipt(**result).model_dump(mode="json"),
+                        status_code=200 if result["result"] == "duplicate" else 201,
+                        headers={"Cache-Control": "no-store"}),
+                    recheck_authority=lambda: refresh_source_authority(
+                        request, context, patients, patient_id, "image_import"))
+        except PatientRegistryDenied:
+            raise HTTPException(404, "Image unavailable") from None
+
+    @router.get("/{patient_id}/cases/{case_id}/sources/{source_id}/images",
+                response_model=SourceImageIndex, responses=errors,
+                operation_id="list_source_images_v1")
+    def list_source_images(request: Request, patient_id: str, case_id: str, source_id: str,
+                           context: Principal = Depends(principal)):
+        if request.query_params:
+            raise HTTPException(422, "Invalid request")
+        try:
+            with registry(context) as patients:
+                records_authorized(patients, context, patient_id, "image_read")
+                return PostgresSourceImages(patients).list(
+                    patient_id, case_id, source_id, organization=context.organization,
+                    actor=context.actor, purpose=context.purpose,
+                    prepare_response=lambda result: JSONResponse(
+                        SourceImageIndex(**result).model_dump(mode="json"),
+                        headers={"Cache-Control": "no-store"}),
+                    recheck_authority=lambda: refresh_source_authority(
+                        request, context, patients, patient_id, "image_read"))
+        except PatientRegistryDenied:
+            raise HTTPException(404, "Image unavailable") from None
+
+    @router.get("/{patient_id}/cases/{case_id}/sources/{source_id}/images/{image_id}",
+                response_class=Response,
+                responses={200: {"content": {"application/dicom": {"schema": {"type": "string", "format": "binary"}}}}, **errors},
+                operation_id="read_original_source_image_v1")
+    def original_source_image(request: Request, patient_id: str, case_id: str, source_id: str,
+                               image_id: str, context: Principal = Depends(principal)):
+        if request.query_params:
+            raise HTTPException(422, "Invalid request")
+        try:
+            with registry(context) as patients:
+                records_authorized(patients, context, patient_id, "image_original_read")
+                return PostgresSourceImages(patients, archive=image_archive).original(
+                    patient_id, case_id, source_id, image_id, organization=context.organization,
+                    actor=context.actor, purpose=context.purpose,
+                    prepare_response=lambda raw, receipt: Response(
+                        raw, media_type="application/dicom", headers={
+                            "Content-Disposition": 'attachment; filename="original.dcm"',
+                            "X-OI-Access-Receipt": receipt, "X-Content-Type-Options": "nosniff",
+                            "Content-Security-Policy": "default-src 'none'", "Cache-Control": "no-store",
+                        }),
+                    recheck_authority=lambda: refresh_source_authority(
+                        request, context, patients, patient_id, "image_original_read"))
+        except PatientRegistryDenied:
+            raise HTTPException(404, "Image unavailable") from None
     return router
