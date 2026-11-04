@@ -92,6 +92,7 @@ def main():
                 value('[data-testid=evidence-applicability]', 'limited')
                 value('[data-testid=evidence-rationale]', 'Fictional methods context only; it cannot resolve the missing assay result.')
                 click('[data-testid=evidence-assess]'); click('[data-testid=evidence-report-select]'); click('[data-testid=evidence-report-prepare]')
+                click('[data-testid=evidence-report-open]')
                 cd.wait("Boolean(document.querySelector('[data-testid=evidence-report-body]'))", 'preserved report')
                 body = cd.evaluate("document.querySelector('[data-testid=evidence-report-body]').textContent")
                 click('[data-testid=followthrough-open-create]')
@@ -126,6 +127,15 @@ def main():
                     'task_id': before[0]['task_id'], 'repeat_setup_same_identity': True,
                     'restart_preserves_report_and_task': True, 'clinical_approval': False}, indent=2) + '\n')
                 print('PASS PERSISTENT DEMO: exact seeded original → authored question → fictional evidence → preserved report → follow-up; repeated setup and restart retain identities and history.')
+            except Exception:
+                if cd:
+                    (artifacts / 'h1-demo-failure.png').write_bytes(base64.b64decode(cd.command('Page.captureScreenshot', {'format':'png'})['data']))
+                    (artifacts / 'h1-demo-failure-status.json').write_text(json.dumps(cd.evaluate('''({
+                      statuses:[...document.querySelectorAll('[role=status]')].map(e=>e.textContent),
+                      reports:document.querySelectorAll('[data-testid=evidence-report-row]').length,
+                      tasks:document.querySelectorAll('[data-testid=followthrough-task]').length
+                    })'''), indent=2) + '\n')
+                raise
             finally:
                 if cd: cd.close()
                 for process in (browser, web):

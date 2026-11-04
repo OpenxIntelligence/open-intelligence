@@ -69,5 +69,9 @@ focused reader lay below the viewport after the patient header resized. Its
 focus alignment now waits for that layout and checks that focus still belongs
 to the reader. The existing whole-reader visibility assertion is unchanged;
 the repaired head must pass it and the complete browser journey before acceptance.
+The next hosted run passed the unchanged short-screen assertion and the complete
+combined browser journey. Its separate demo walkthrough then exposed a missing
+explicit report-open action in the new test and guide. Both now recheck and open
+the saved report before inspecting its body; no application permission gate changed.
 
 Independently fictional fixtures only. No live models or external clinical connector, real identity/consent, professional approval, recipient authorization or acknowledged external handoff is introduced. Session drafts remain memory-only. Manual-only documents and laboratory results do not acquire a new question-creation path here. Package checks do not resolve the project's distribution license or qualify clinical use.
