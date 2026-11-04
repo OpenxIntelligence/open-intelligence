@@ -168,3 +168,50 @@ Use the existing eight-state implementation vocabulary in [PRODUCT_REQUIREMENTS.
 The existing [50-row audit in PR #459](https://github.com/OpenxIntelligence/open-intelligence/pull/459) remains the **observed evidence layer**. This document is its **70-area target/contract layer**, not a superseding implementation-state matrix. Keep the canonical [OI-001..OI-021 execution backlog](https://github.com/OpenxIntelligence/open-intelligence/blob/main/docs/EXECUTION_BACKLOG.csv) as the source of work IDs; use the `backlog_refs` column in the companion CSV as suggested associations and confirm them before assigning work.
 
 **Verification needed before subsequent status promotion:** live main and moving PR heads, actual CI run conclusions, full H1 merge/migration history, negative authorization and output leak tests, later source/knowledge rights, and any additional clinical/evaluation protocol. No changes to code, credentials, sensitive data, dependencies, clinical intended use, release authorization or licensing are made by this crosswalk.
+
+## 9. Storage, API, model/agent and integration overlay
+
+The **same 70 rows** in the [machine-readable crosswalk CSV](CAPABILITY_ARCHITECTURE_CROSSWALK_2026-11-04.csv) have four additional fields: `data_store_or_plane`, `proposed_api_or_event_port`, `model_agent_or_deterministic_role`, and `candidate_external_integrations_rights_gated`. These are **design interfaces**, not claims that named routes, datasets, packages or providers have been installed. The exact API URI, schema, deployment topology and artifact rights need per-workstream acceptance.
+
+| Domain owner | Initial storage/canonical boundary | Proposed typed port | Eligible computation/integration direction |
+| --- | --- | --- | --- |
+| IDENTITY | PostgreSQL patient/actor/relationship/consent and audit | `IdentityGrantPort` | Deterministic identity/permission; OIDC, SMART scope adapters later |
+| SOURCE | PostgreSQL intake/versions/receipts + access-controlled original-object storage | `SourceIntakePort` | Manual upload and qualified FHIR/HL7/DICOM/portal adapters; OCR candidate only |
+| CLINICAL | PostgreSQL typed and temporal Patient World Model | `PatientWorldModelPort` | Clinical-domain rules; FHIR/oncology terminology as projections |
+| EVIDENCE | PostgreSQL source/claims/rights/applied-evidence edges; lexical index | `EvidenceSearchPort` | Crossref/PubMed/Europe PMC/ClinicalTrials and licensed guidelines by source/usage entitlement |
+| BIOLOGY | PostgreSQL specimen/assay/variant and typed biological edges; research objects | `BiologyAssayPort` | VEP, ClinVar, CIViC, Reactome, omics pipelines only when validated |
+| INVESTIGATION | PostgreSQL questions, frozen runs, checkpoints, source-linked reports | `InvestigationRunPort` | Replaceable models, deterministic tools, verifier; agent delegation maturity-gated |
+| THERAPEUTICS | Versioned compound/target/experiment research data, never clinical orders | `TherapeuticResearchPort` | ChEMBL/PubChem/PDB/RDKit/MD only with exact-artifact research and rights gates |
+| ACTIONS | PostgreSQL canonical review/decision/task and durable receipts | `ReviewAndTaskPort` | No automated clinician approval; scheduling/messaging adapters qualified separately |
+| PATIENT | Read-only authorized projections over shared canonical data | `PatientContextPort` | React/Vite/TypeScript; explanation model gated by provenance/evaluation |
+| RESEARCH | Separate permissioned analysis objects/jobs, approved projections | `ResearchComputePort` | Jupyter/R/Nextflow/ML under enclave and reproducibility gates |
+| ASSURANCE | Policy/audit/QMS/risk receipts across domains | `PolicyAndSafetyPort` | Final-action authority, redaction, KMS/SIEM and function-specific review |
+| PLATFORM | PostgreSQL 16 + outbox/FTS; qualified object storage, no automatic new stores | `PlatformDataPort` | Accepted FastAPI/SQLAlchemy/Alembic + CI/restore; no mandatory H1 vector search |
+| ENTERPRISE | First-party org/tenant/entitlement/usage records | `TenantManagementPort` | Enterprise SSO, billing and analytics only after privacy/tenant requirements |
+| PROGRAM / GOVERNANCE | GitHub canonical backlog/ADR/evidence, Notion/Drive supporting docs | `MilestoneReceiptPort` / `ArchitectureDecisionPort` | No clinical authority or automated maturity promotion |
+
+### Existing code anchor versus proposed port
+
+Current merged source examples include `apps/api/src/oi_api/{patients,access,sources,source_world_model,question_evidence,question_followthrough}.py` and the source-linked reference implementation under `src/open_intelligence`. These files are **evidence to inspect**, not authorization to import an entirely new implementation. `*Port` names above are **proposed interface labels only**; do not misrepresent them as live URLs or create duplicate tables/owners around them. Reuse existing interfaces when the scope already exists.
+
+### Architecture route for an authorized research question
+
+```mermaid
+flowchart LR
+  A[Patient and care team] --> P[Authorized patient context]
+  X[Originals and interop] --> S[Source custody and typed clinical world]
+  S --> P
+  K[Licensed/public scientific knowledge] --> E[Rights-aware evidence store]
+  P --> Q[Durable question and research runner]
+  E --> Q
+  B[Qualified specimen and biological models] --> Q
+  Q --> V[Independent verification]
+  V --> H[Human review and decision]
+  H --> T[Canonical care task and action receipt]
+  T --> R[Versioned monitoring and reassessment]
+  S --> R
+  E --> R
+  R --> Q
+```
+
+**Non-negotiable separation:** passing a scientific model or PubMed metadata retrieval through a port never creates an accepted patient observation, eligible trial, authorized clinical order, validated target or product release. Every transition is a policy-checked, attributable and reversible event or an explicitly reviewed clinical/scientific decision.
