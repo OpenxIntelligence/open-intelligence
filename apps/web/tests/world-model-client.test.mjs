@@ -44,7 +44,7 @@ const world=()=>({
 const clone=x=>structuredClone(x);
 const laboratoryWorld=()=>{
   const w=world();
-  const labSource={...source(),source_id:'SRC-'+'L'.repeat(32),document_id:'FHIRLAB-FICTIONAL',
+  const labSource={...source(),source_id:'SRC-'+'C'.repeat(32),document_id:'FHIRLAB-FICTIONAL',
     sha256:'e'.repeat(64),kind:'laboratory',event_date:'2026-04-03',issued_at:'2026-04-04',
     specimen_id:'Specimen/FICTIONAL-SPECIMEN-A'};
   w.current_sources.push(labSource);

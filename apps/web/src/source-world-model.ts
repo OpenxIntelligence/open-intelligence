@@ -151,11 +151,18 @@ function obs(v:unknown,current:Map<string,SourceVersion>):WorldObservation{
 }
 export function parseSourceWorldModel(raw:unknown,expectedPatient:string,expectedCase:string):SourceWorldModel{
   if(!PID.test(expectedPatient)||!CASE.test(expectedCase))return error();
-  const v=shape(raw,['contract','patient_id','case_id','access_receipt_id','synthetic','authority',
+  if(raw===null||typeof raw!=='object'||Array.isArray(raw))return error();
+  const supplied=raw as Record<string,unknown>;
+  const hasLaboratory=Object.hasOwn(supplied,'laboratory_observations')||
+    Object.hasOwn(supplied,'laboratory_timeline');
+  if(hasLaboratory&&
+     (!Object.hasOwn(supplied,'laboratory_observations')||
+      !Object.hasOwn(supplied,'laboratory_timeline')))return error();
+  const baseKeys=['contract','patient_id','case_id','access_receipt_id','synthetic','authority',
     'clinical_interpretation','research_review_invalidation_integrated',
     'composer_execution_authorized','snapshot_fingerprint','as_of_received_at',
-    'summary','current_sources','history','observations','laboratory_observations',
-    'laboratory_timeline','unresolved_refs','conflicts','limitations']);
+    'summary','current_sources','history','observations','unresolved_refs','conflicts','limitations'];
+  const v=shape(raw,hasLaboratory?[...baseKeys,'laboratory_observations','laboratory_timeline']:baseKeys);
   if(v.contract!=='oi.pg-source-world-model/1'||v.patient_id!==expectedPatient||
      v.case_id!==expectedCase||v.synthetic!==true||
      typeof v.access_receipt_id!=='string'||!RECEIPT.test(v.access_receipt_id)||
@@ -165,13 +172,15 @@ export function parseSourceWorldModel(raw:unknown,expectedPatient:string,expecte
      v.composer_execution_authorized!==false||
      !SHA.test(str(v.snapshot_fingerprint,64)))return error();
   if(v.as_of_received_at!==null)stamp(v.as_of_received_at);
+  const laboratoryRaw=hasLaboratory?v.laboratory_observations:[];
+  const timelineRaw=hasLaboratory?v.laboratory_timeline:[];
   if(!Array.isArray(v.current_sources)||!Array.isArray(v.history)||
-     !Array.isArray(v.observations)||!Array.isArray(v.laboratory_observations)||
-     !Array.isArray(v.laboratory_timeline)||!Array.isArray(v.unresolved_refs)||
+     !Array.isArray(v.observations)||!Array.isArray(laboratoryRaw)||
+     !Array.isArray(timelineRaw)||!Array.isArray(v.unresolved_refs)||
      !Array.isArray(v.conflicts)||!Array.isArray(v.limitations)||
      v.current_sources.length>512||v.history.length>512||
-     v.observations.length>4096||v.laboratory_observations.length>4096||
-     v.laboratory_timeline.length>4096||v.unresolved_refs.length>4096||
+     v.observations.length>4096||laboratoryRaw.length>4096||
+     timelineRaw.length>4096||v.unresolved_refs.length>4096||
      v.conflicts.length>1024||v.limitations.length>32)return error();
   const current=v.current_sources.map(source),history=v.history.map(source);
   if(current.some(s=>s.state!=='current')||history.some(s=>s.state!=='superseded'))return error();
@@ -179,14 +188,14 @@ export function parseSourceWorldModel(raw:unknown,expectedPatient:string,expecte
   for(const s of [...current,...history]){if(ids.has(s.source_id))return error();ids.add(s.source_id);}
   const currentById=new Map(current.map(s=>[s.source_id,s]));
   const observations=v.observations.map(x=>obs(x,currentById));
-  const laboratory=v.laboratory_observations.map(x=>labObs(x,currentById));
+  const laboratory=laboratoryRaw.map(x=>labObs(x,currentById));
   const laboratoryById=new Map<string,WorldLaboratoryObservation>();
   for(const x of laboratory){
     const key=x.source_id+':'+x.observation_reference;
     if(laboratoryById.has(key))return error();
     laboratoryById.set(key,x);
   }
-  const timeline=v.laboratory_timeline.map(x=>labTimeline(x,laboratoryById));
+  const timeline=timelineRaw.map(x=>labTimeline(x,laboratoryById));
   if(timeline.length!==laboratory.length||
      new Set(timeline.map(x=>x.source_id+':'+x.observation_reference)).size!==laboratory.length)return error();
   const refOf=(x:WorldRef)=>x.source_id+':'+x.source_line;
@@ -220,14 +229,18 @@ export function parseSourceWorldModel(raw:unknown,expectedPatient:string,expecte
       status:'unresolved_source_disagreement' as const,reported_states:Object.freeze([...states].sort()),
       source_refs:Object.freeze(refs),clinical_interpretation:'not_performed' as const});
   });
-  const summary=shape(v.summary,['current_sources','historical_sources','current_observations',
-    'current_laboratory_observations','unresolved_observations','source_disagreements']);
+  const summary=shape(v.summary,hasLaboratory?
+    ['current_sources','historical_sources','current_observations','current_laboratory_observations',
+     'unresolved_observations','source_disagreements']:
+    ['current_sources','historical_sources','current_observations',
+     'unresolved_observations','source_disagreements']);
   const counts={current_sources:current.length,historical_sources:history.length,
     current_observations:observations.length+laboratory.length,
     current_laboratory_observations:laboratory.length,
     unresolved_observations:unresolved.length+laboratory.filter(x=>x.status==='reported_absent').length,
     source_disagreements:conflicts.length};
   for(const [key,value] of Object.entries(counts)){
+    if(key==='current_laboratory_observations'&&!hasLaboratory)continue;
     if(count(summary[key])!==value)return error();
   }
   if(v.limitations.some(x=>typeof x!=='string'||!x||x.length>512))return error();
