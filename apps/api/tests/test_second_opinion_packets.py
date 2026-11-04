@@ -14,6 +14,8 @@ from test_source_questions import SourceQuestionHTTPTests as QuestionFixture
 
 
 class SecondOpinionPacketHTTPTests(SourceFixture):
+    path=staticmethod(QuestionFixture.path)
+    model_path=staticmethod(QuestionFixture.model_path)
     world=QuestionFixture.world
     preflight=QuestionFixture.preflight
     prepared=QuestionFixture.prepared
@@ -28,7 +30,7 @@ class SecondOpinionPacketHTTPTests(SourceFixture):
         self.write()
 
     @staticmethod
-    def path(patient,case="CASE-ALPHA"):
+    def packet_path(patient,case="CASE-ALPHA"):
         return f"/v1/patients/{patient}/cases/{case}/second-opinion-packets"
 
     def question(self,base):
@@ -49,10 +51,10 @@ class SecondOpinionPacketHTTPTests(SourceFixture):
             "source_ids":[source],"question_ids":[question_id],
         }
         body.update(overrides)
-        return request(base,self.path(patient,case),token=token,body=body)
+        return request(base,self.packet_path(patient,case),token=token,body=body)
 
     def listing(self,base,patient,*,token=TOKEN_A,case="CASE-ALPHA"):
-        return request(base,self.path(patient,case),token=token)
+        return request(base,self.packet_path(patient,case),token=token)
 
     def counts(self):
         with self.engine.connect() as db:
