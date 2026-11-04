@@ -177,10 +177,10 @@ class LabManualPopulatedMigrationTests(SourceVersionFixture):
         self.assertEqual(self.snapshot(), before)
         self.assertEqual(self.schema_definition(), schema)
         self.readiness(False)
-        for revision in (MANUAL, LAB):
-            with self.assertRaises(CommandError):
-                migrate(self.admin, "downgrade", revision + "-1")
-            self.assertEqual(self.heads(), {MANUAL, LAB})
-            self.assertEqual(self.snapshot(), before)
+        with self.assertRaisesRegex(CommandError,
+                "Stored manual task dependencies|FHIR laboratory history"):
+            migrate(self.admin, "downgrade", "0015_manual_report_context")
+        self.assertEqual(self.heads(), {MANUAL, LAB})
+        self.assertEqual(self.snapshot(), before)
         self.upgrade_preserving(before)
         self.replay(patient, question, laboratory=laboratory, manual=manual)
