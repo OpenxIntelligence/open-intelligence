@@ -225,14 +225,17 @@ export class QuestionEvidenceSession{
   if(!patch||typeof patch!=='object'||Array.isArray(patch))return false;
   const validText=(v:unknown,max:number)=>typeof v==='string'&&Array.from(v).length<=max&&
    new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(new TextEncoder().encode(v))===v;
+  const invalidFields=Object.entries(patch).filter(([key,value])=>
+   key==='quote'&&!validText(value,400)||key==='rationale'&&!validText(value,600))
+   .map(([key])=>key as 'quote'|'rationale');
+  if(invalidFields.length){
+   const state=this.host.snapshot();
+   const rejected=Object.freeze([...new Set([...state.evidenceRejectedFields,...invalidFields])]);
+   this.host.publish({evidenceRejectedFields:rejected,
+    evidenceDraftMessage:'The comparison edit was rejected. Previous accepted text is still shown; correct or explicitly keep every rejected field before saving.'});
+   return false;
+  }
   for(const [key,value] of Object.entries(patch)){
-   if(key==='quote'&&!validText(value,400)||key==='rationale'&&!validText(value,600)){
-    const field=key as 'quote'|'rationale',state=this.host.snapshot();
-    const rejected=Object.freeze([...new Set([...state.evidenceRejectedFields,field])]);
-    this.host.publish({evidenceRejectedFields:rejected,
-     evidenceDraftMessage:`The ${field==='quote'?'passage':'rationale'} edit was rejected. The previous accepted text is still shown; correct the field or explicitly keep the previous text before saving.`});
-    return false;
-   }
    if(key==='relation'?!['supports','contradicts','context','unknown'].includes(value as string):
       key==='applicability'?!['applicable','limited','not_applicable','unknown'].includes(value as string):
       key!=='quote'&&key!=='rationale')return false;

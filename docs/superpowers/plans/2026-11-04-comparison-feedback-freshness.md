@@ -28,3 +28,12 @@ helper compilation, whitespace and synthetic-data audit passed. Independent revi
 and exact-head hosted acceptance remain pending. Upstream #388's successful run
 is not proof of this combination.
 Synthetic-only draft engineering; no merge, deployment or clinical approval.
+
+Independent review identified a multi-field controller edge case: a bulk edit
+with both oversized passage and rationale marked only the first rejected field.
+A regression reproduced this before repair. The controller now collects every
+rejected text field while leaving accepted draft input unchanged. Correcting one
+field cannot authorize the other; both field orders are covered. The final local
+suite has 458 passing tests and the production build passes. This supplements the
+initial 457-test checkpoint; final hosted acceptance and repair review remain
+separately attributable in the PR receipt.
