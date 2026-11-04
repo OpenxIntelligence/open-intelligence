@@ -7,7 +7,7 @@ from alembic import op
 from alembic.util.exc import CommandError
 from sqlalchemy import text
 
-revision = "0016_manual_task_dependency_origin"
+revision = "0016_manual_task_dependency"
 down_revision = "0015_manual_report_context"
 branch_labels = None
 depends_on = None
