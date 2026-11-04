@@ -351,6 +351,8 @@ class FollowthroughPostgresTests(SourceVersionFixture):
                 synthetic=True,request_key="TASK-MANUAL-DEPENDENCY",
                 expected_context_sha256=current["context_sha256"],references=[ref]))
             self.assertEqual(status,201,saved)
+            second_question,_=create_question(self,base,self.patient,self.source_id,
+                request_key="TASK-MANUAL-DEPENDENCY-QUESTION-2")
         values=dict(task_id=task["task_id"],question_id=self.question,
                     revision_id=saved["revision_id"],patient_id=self.patient,
                     case_id=CASE,origin_org="ORG-ALPHA",
@@ -364,6 +366,45 @@ class FollowthroughPostgresTests(SourceVersionFixture):
                            {}).one()
             self.assertEqual(row[0],saved["revision_id"])
             self.assertEqual(row[1],fingerprint([ref]))
+        # Scope fixtures: a revision with no references, and a revision owned
+        # by a second question, each copied from the saved revision so every
+        # other scope conjunct still holds; only the probed conjunct fails.
+        # (UPDATE on revisions is immutable, so new rows are inserted.)
+        empty_revision="PASSAGES-"+"E"*32
+        other_revision="PASSAGES-"+"F"*32
+        revision_columns=("revision_id,revision,patient_id,case_id,origin_org,"
+            "question_id,request_key,intent_sha256,references_json,command_json,"
+            "actor,purpose")
+        with self.engine.begin() as db:
+            db.execute(text(
+                "INSERT INTO investigation.question_passage_revisions ("
+                +revision_columns+") SELECT :empty_id,(SELECT coalesce(max(revision),0)+1 FROM "
+                "investigation.question_passage_revisions WHERE question_id=:question),"
+                "patient_id,case_id,origin_org,question_id,'TASK-MANUAL-DEPENDENCY-EMPTY',"
+                "intent_sha256,'[]'::jsonb,command_json,actor,purpose FROM "
+                "investigation.question_passage_revisions WHERE revision_id=:saved"),
+                {"empty_id":empty_revision,"question":self.question,
+                 "saved":saved["revision_id"]})
+            db.execute(text(
+                "INSERT INTO investigation.question_passage_revisions ("
+                +revision_columns+") SELECT :other_id,(SELECT coalesce(max(revision),0)+1 FROM "
+                "investigation.question_passage_revisions WHERE question_id=:other),"
+                "patient_id,case_id,origin_org,:other,'TASK-MANUAL-DEPENDENCY-OTHER',"
+                "intent_sha256,references_json,command_json,actor,purpose FROM "
+                "investigation.question_passage_revisions WHERE revision_id=:saved"),
+                {"other_id":other_revision,"other":second_question,
+                 "saved":saved["revision_id"]})
+        for label,change in (
+            ("wrong case",dict(case_id="CASE-WRONG")),
+            ("wrong patient",dict(patient_id="PATIENT-WRONG")),
+            ("wrong origin",dict(origin_org="ORG-BETA")),
+            ("empty references",dict(revision_id=empty_revision)),
+            ("other question revision",dict(revision_id=other_revision)),
+        ):
+            with self.subTest(label=label),self.assertRaises(DBAPIError) as caught:
+                with self.engine.begin() as db:
+                    db.execute(statement,{**values,**change})
+            self.assertIn("OI-MANUAL-TASK-DEPENDENCY-SCOPE",str(caught.exception))
         for statement in (
             "UPDATE "+table+" SET references_sha256='"+("f"*64)+"'",
             "DELETE FROM "+table,
