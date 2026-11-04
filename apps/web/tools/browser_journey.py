@@ -238,7 +238,7 @@ def main():
                 from authored_evidence_journey import exercise as exercise_evidence
                 from evidence_continuity_journey import exercise as exercise_evidence_continuity
                 exercise_evidence(cd,pid,case,connected_question['question_id'],new_receipt['source_id'],
-                    credentials,write_grants,directory,questions.artifacts,restart_api,
+                    credentials,write_grants,directory,questions.artifacts,restart_api,add_synthetic,
                     on_report=lambda report,path,body:exercise_evidence_continuity(cd,pid,case,
                         connected_question['question_id'],new_receipt['source_id'],credentials,
                         write_grants,questions.artifacts,report,path,body))
