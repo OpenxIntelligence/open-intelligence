@@ -16,7 +16,9 @@ export type EvidenceComparisonDraft=Readonly<{
 export type EvidenceDraftPatch=Readonly<Partial<Pick<EvidenceComparisonDraft,
  'quote'|'relation'|'applicability'|'rationale'>>>;
 const emptyComparisonDraft=(message='No unfinished evidence comparison.')=>({
- evidenceComparisonDraft:null as EvidenceComparisonDraft|null,evidenceDraftMessage:message,
+ evidenceComparisonDraft:null as EvidenceComparisonDraft|null,
+ evidenceRejectedFields:Object.freeze([]) as readonly ('quote'|'rationale')[],
+ evidenceDraftMessage:message,
 });
 
 /** A retained draft is not disclosure authority. Only a fresh matching packet
@@ -63,7 +65,8 @@ export function evidenceSelectionMode(state:ViewState,evidenceId:string):'compar
 }
 
 export type EvidenceState={
- evidenceComparisonDraft:EvidenceComparisonDraft|null;evidenceDraftMessage:string;
+ evidenceComparisonDraft:EvidenceComparisonDraft|null;
+ evidenceRejectedFields:readonly ('quote'|'rationale')[];evidenceDraftMessage:string;
  evidencePacket:EvidencePacket|null;evidencePhase:'idle'|'loading'|'ready'|'error';evidenceMessage:string;
  evidenceReport:EvidenceReport|null;evidenceReportPhase:'idle'|'loading'|'ready'|'error';evidenceReportMessage:string;
  evidenceOriginal:EvidenceOriginal|null;
@@ -213,7 +216,8 @@ export class QuestionEvidenceSession{
    evidence_id:e.evidence_id,evidence_sha256:e.sha256,rights_sha256:e.rights_sha256,
    evidence_key:e.evidence_key,evidence_version:e.version,statement_line:e.statement_line,content_item:e.content_item,
    quote:Array.from(e.statement).slice(0,400).join(''),relation:'unknown',applicability:'unknown',rationale:'',dirty:false});
-  this.host.publish({evidenceComparisonDraft:draft,evidenceDraftMessage:'Unsaved comparison. Its exact source, evidence and rights are captured; nothing has been submitted.'});return true;
+  this.host.publish({evidenceComparisonDraft:draft,evidenceRejectedFields:Object.freeze([]),
+   evidenceDraftMessage:'Unsaved comparison. Its exact source, evidence and rights are captured; nothing has been submitted.'});return true;
  }
  editComparison(patch:EvidenceDraftPatch):boolean{
   const draft=activeComparisonDraft(this.host.snapshot());
@@ -221,14 +225,32 @@ export class QuestionEvidenceSession{
   if(!patch||typeof patch!=='object'||Array.isArray(patch))return false;
   const validText=(v:unknown,max:number)=>typeof v==='string'&&Array.from(v).length<=max&&
    new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(new TextEncoder().encode(v))===v;
-  for(const [key,value] of Object.entries(patch)){
-   if(key==='quote'? !validText(value,400):key==='rationale'? !validText(value,600):
-      key==='relation'? !['supports','contradicts','context','unknown'].includes(value as string):
-      key==='applicability'? !['applicable','limited','not_applicable','unknown'].includes(value as string):true)return false;
+  const invalidFields=Object.entries(patch).filter(([key,value])=>
+   key==='quote'&&!validText(value,400)||key==='rationale'&&!validText(value,600))
+   .map(([key])=>key as 'quote'|'rationale');
+  if(invalidFields.length){
+   const state=this.host.snapshot();
+   const rejected=Object.freeze([...new Set([...state.evidenceRejectedFields,...invalidFields])]);
+   this.host.publish({evidenceRejectedFields:rejected,
+    evidenceDraftMessage:'The comparison edit was rejected. Previous accepted text is still shown; correct or explicitly keep every rejected field before saving.'});
+   return false;
   }
-  if(!Object.entries(patch).some(([key,value])=>draft[key as keyof EvidenceComparisonDraft]!==value))return true;
-  this.host.publish({evidenceComparisonDraft:Object.freeze({...draft,...patch,dirty:true}),
+  for(const [key,value] of Object.entries(patch)){
+   if(key==='relation'?!['supports','contradicts','context','unknown'].includes(value as string):
+      key==='applicability'?!['applicable','limited','not_applicable','unknown'].includes(value as string):
+      key!=='quote'&&key!=='rationale')return false;
+  }
+  const state=this.host.snapshot(),cleared=Object.keys(patch).filter(key=>key==='quote'||key==='rationale');
+  const rejected=Object.freeze(state.evidenceRejectedFields.filter(field=>!cleared.includes(field)));
+  if(!Object.entries(patch).some(([key,value])=>draft[key as keyof EvidenceComparisonDraft]!==value)&&rejected.length===state.evidenceRejectedFields.length)return true;
+  this.host.publish({evidenceComparisonDraft:Object.freeze({...draft,...patch,dirty:true}),evidenceRejectedFields:rejected,
    evidenceDraftMessage:'Unfinished comparison retained in this session only. Save explicitly or discard it.'});return true;
+ }
+ acknowledgeRejectedField(field:'quote'|'rationale'):boolean{
+  const state=this.host.snapshot(),draft=activeComparisonDraft(state);
+  if(!draft||this.#draftLocked()||!state.evidenceRejectedFields.includes(field))return false;
+  this.host.publish({evidenceRejectedFields:Object.freeze(state.evidenceRejectedFields.filter(value=>value!==field)),
+   evidenceDraftMessage:`Kept the previous accepted ${field==='quote'?'passage':'rationale'}. Review the comparison before saving.`});return true;
  }
  discardComparison():boolean{
   if(this.#draftLocked()){
@@ -240,6 +262,9 @@ export class QuestionEvidenceSession{
   const draft=activeComparisonDraft(this.host.snapshot());
   if(!draft||this.#draftLocked()){
    this.host.publish({evidenceDraftMessage:'A fresh matching question, source, evidence and rights check is required before submitting this draft.'});return;
+  }
+  if(this.host.snapshot().evidenceRejectedFields.length){
+   this.host.publish({evidenceDraftMessage:'Resolve or explicitly acknowledge the rejected comparison edit before saving. The earlier accepted text will not be submitted silently.'});return;
   }
   await this.assess(draft.question_id,draft.evidence_id,draft.quote,draft.relation,draft.applicability,draft.rationale);
  }
