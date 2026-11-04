@@ -1,6 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {RegistrySession} from '../.test-dist/registry-client.js';
+import {projectFollowthroughAttention} from '../.test-dist/followthrough-view.js';
 
 // Independently authored fictional task and source context; transport is the only mock.
 const token='fictional_test_credential_000000000001';
@@ -142,6 +143,48 @@ test('distinct valid task and creation-event timestamps survive the real Postgre
  assert.equal(s.snapshot().followthroughPhase,'ready');
  assert.equal(s.snapshot().followthrough.tasks[0].created_at,row.created_at);
  assert.equal(s.snapshot().followthrough.tasks[0].history[0].recorded_at,recorded);
+});
+
+// Fault-injected wire responses, not claims that the real API emits these values.
+for(const field of ['created_at','recorded_at']){
+ for(const invalid of ['2026-02-30T10:00:00Z','2026-02-29T10:00:00Z',
+  '2026-04-31T10:00:00+00:00','1900-02-29T10:00:00Z','0000-01-01T10:00:00Z',
+  '2026-11-03T24:00:00Z','2026-11-03T10:00Z','2026-11-03T10:00:00.1234567Z']){
+  test('invalid follow-up '+field+' '+invalid+' withholds refreshed history and controls',async()=>{
+   const row=taskRow(['created','assigned']);
+   if(field==='created_at')row.created_at=invalid;
+   else row.history[1].recorded_at=invalid;
+   let bad=false,writes=0;
+   const s=session(async(url,init)=>{if(init.method==='POST')writes++;
+    return response(projection(bad?[row]:[taskRow(['created','assigned'])]));});
+   await open(s);await s.loadFollowthrough(cid);
+   assert.equal(s.snapshot().followthroughPhase,'ready');
+   assert.equal(projectFollowthroughAttention(s.snapshot()).counts.all,1);
+   bad=true;await s.loadFollowthrough(cid);
+   assert.equal(s.snapshot().followthroughPhase,'error');
+   assert.equal(s.snapshot().followthrough,null);
+   assert.equal(projectFollowthroughAttention(s.snapshot()),null);
+   await s.transitionFollowthrough(tid,{status:'acknowledged',owner_label:'',reason:'Fictional acknowledgment.'});
+   assert.equal(writes,0);
+   bad=false;await s.loadFollowthrough(cid);
+   assert.equal(s.snapshot().followthroughPhase,'ready');
+   assert.equal(s.snapshot().followthrough.tasks[0].task_id,tid);
+  });
+ }
+}
+
+test('follow-up timestamps preserve valid seconds, microseconds, offsets and leap dates literally',async()=>{
+ for(const stamp of ['2026-11-03T10:00:00Z','2026-11-03T10:00:00.1+00:00',
+  '2026-11-03T10:00:00.123456+05:30','2026-11-03T10:00:00.000001-04:00',
+  '2000-02-29T10:00:00Z','2024-02-29T23:59:59.999999Z']){
+  const row=taskRow(['created','assigned'],{created_at:stamp});
+  row.history[1].recorded_at=stamp;
+  const s=session(async()=>response(projection([row])));await open(s);await s.loadFollowthrough(cid);
+  assert.equal(s.snapshot().followthroughPhase,'ready',stamp);
+  assert.equal(s.snapshot().followthrough.tasks[0].created_at,stamp);
+  assert.equal(s.snapshot().followthrough.tasks[0].history[1].recorded_at,stamp);
+  assert.deepEqual(s.snapshot().followthrough.tasks[0].history.map(e=>e.revision),[1,2]);
+ }
 });
 
 test('task history accepts the canonical 3–128 character actor range without hiding legal long actors',async()=>{
