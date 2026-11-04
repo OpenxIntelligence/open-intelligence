@@ -127,6 +127,8 @@ def exercise(cd, patient_id, token, credentials, write_grants, add_synthetic, ar
         assert cd.evaluate("Boolean(document.querySelector('[data-testid=packet-question]'))"), 'Independent questions stay readable'
         credentials[0]['actions'].append('second_opinion_packet_read'); write_grants()
         amended = original.replace('Issued-At: 2026-01-11', 'Issued-At: 2026-01-12').replace(
+            'Specimen: FICTIONAL-SPECIMEN\n',
+            'Specimen: FICTIONAL-SPECIMEN\nAmends: PACKET-DOC@1\n').replace(
             'marker|not-reported|Independently fictional packet marker remains unresolved.',
             'marker|negative|Independently fictional amended packet marker is reported negative.')
         assert add_synthetic(case_root + '/sources', {'synthetic': True, 'original_text': amended})[0] == 201
