@@ -43,13 +43,39 @@ older root candidate's merge conflict is not evidence that this new tree passes.
 Required on the new combined tree: independent source review; full client,
 rights and production build; full PostgreSQL contracts with no skips; full
 reference suite; actual browser journeys; six restart/restore/revocation probes;
-and exact source/run/artifact receipts. Keep all migration history, backend
-runtime, grants, pinned dependencies and workflow gates unchanged from #445.
+and exact source/run/artifact receipts. Keep all migration history, grants,
+pinned dependencies and workflow gates unchanged from #445. The single backend
+exception found by expanded review is the ingress repair described below.
 
 The #445 533-test and browser receipt qualifies only the earlier pinned head.
 New combined verification is pending at this publication checkpoint. The final
 PR receipt must identify its exact head/tree and close each pending gate before
 a merge decision. No merge or deployment is performed by this source change.
+
+## Expanded interface review and ingress repair
+
+The initial reconciliation review approved source dispositions, with one stale
+browser comment corrected. Expanded review inspected the route/permission wiring,
+document/PDF and manual-passage owners, frozen report context, image/archive
+boundary, published migration graph and exact dependency inventory.
+
+The expanded review found incomplete ingress coverage: manual-passage, received-record
+and laboratory-preview POSTs bypassed body buffering limits. Manual passage and
+receipt commands now use the existing 16,384-byte/five-second limit. Laboratory
+preview uses an 800,000-byte envelope limit, allowing the schema's 65,536 characters
+even when encoded as twelve-byte JSON surrogate escapes. The laboratory parser's
+own stricter original-byte limit remains unchanged. No grant, source owner,
+schema, dependency or migration is broadened.
+
+Nine ASGI tests exercise declared, chunked and underdeclared excess, invalid
+length, slow/disconnected input, byte-identical delivery of 20 maximal source
+references, and the maximum escaped laboratory envelope. An OpenAPI inventory
+probes every registered patient POST before downstream parsing. The original
+manual tests reproduced the bypass; the expanded inventory then isolated both
+remaining omissions and chunked bypasses (four failing subtests) before repair.
+A new full PostgreSQL/recovery and browser run must qualify the repaired head.
+Green reference/client/browser runs on `dc83537e38184ab186863611d44c289ee5c31a79`
+predate this repair and remain historical evidence only.
 
 ## Demo handoff
 
