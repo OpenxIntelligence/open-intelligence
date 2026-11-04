@@ -116,6 +116,12 @@ class NoRedirect(HTTPRedirectHandler):
 
 
 def fetch(url: str, limit: int) -> tuple[bytes,dict]:
+    # Disabled per issue 122: case-specific dataset acquisition is not permitted.
+    # This matches public_case_intake.fetch_catalog() and single_cell_probe.acquire(),
+    # which fail closed with PermissionError. Parser utilities below (parse_gct,
+    # gene_summary, compare_profiles, validate_key) are unchanged and are tested
+    # only with fictional fixtures.
+    raise PermissionError('Sid patient dataset access is disabled: Open Intelligence studies public narratives and uses independent synthetic fixtures, not these records.')
     allowed={CATALOG_URL,BASE+'rna-seq/reprocessed/README.md'}|{
         BASE+validate_key(s,x) for s in SAMPLES for x in ('.gene_tpm.gct.gz','.metrics.tsv')}
     if url not in allowed:raise ValueError('URL outside fixed read scope')
