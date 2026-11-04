@@ -432,3 +432,51 @@ The composed client keeps an unfinished comparison across authorized refresh/nav
 Observed local checks: baseline 310 client tests; tests-first 50 failures/322 passes; composed 372 client tests and 13 filesystem controls passed, zero failures/skips; 18 installed packages inspected, two optional uninspected, zero gate errors; TypeScript/Vite build and browser-helper compilation passed. Calendar-validation bypass makes both composition tests fail; restoring it makes both pass. Protected backend/migration/grant/lock/workflow and chronology/gate files remain byte-identical.
 
 New exact-head hosted browser verification and independent review remain pending at this publication checkpoint; their results belong in the draft PR receipt. Ancestor runs are not combined acceptance. No standalone full API/backup-restore execution, production identity, real patient use, professional clinical review, model activation, merge or deployment is claimed.
+
+## Truthful retained-comparison status continuation — 3 November 2026
+
+A live reconciliation found #363 `ecadf0d45871e6581d65fa542390f2959ab26394`
+already contains the #355/#359 convergence. This continuation starts from that
+exact tree rather than opening another composition. All 419 blobs and modes
+reproduce tree `f73caaca42a5fe1728e852764851a3564bbe065a`; its 163 production,
+backend and workflow files match the independently reviewed original candidate.
+The local reconstructed snapshot is not the upstream commit identity.
+
+The independent review found no Critical or Important issue and one Minor copy
+issue: a dirty comparison can coexist with an unrelated evidence import. If the
+import response is lost, the global write phase is unknown, but the draft banner
+previously said the comparison might already have been saved. The banner now
+describes the pending evidence submission without assigning that submission to
+the comparison. The adjacent exact-intent status still identifies the action and
+question. Draft locking, disclosure checks, receipt verification and retry bytes
+remain unchanged; no duplicate intent-matching logic was introduced.
+
+The new rendered regression uses the real session and composed panel. It fails
+on the unchanged #363 runtime with the inaccurate save claim, then passes with
+the two-line copy correction. It also verifies that the retained draft stays
+locked, retry preserves the exact import path/body, and an import receipt cannot
+clear the comparison. Two complementary receipt/chronology regressions cover
+both contradictory status/duplicate pairs, invalid assessment timestamps, cleared
+report access, frozen recovery identity and valid refresh after receipt recovery.
+Those two tests previously failed on unchanged #355 and pass on #363; #363's own
+two draft/chronology composition tests remain intact.
+
+Local acceptance: **375 compiled client tests**, **13 filesystem dependency-gate
+tests**, zero failures/skips/cancellations; production TypeScript/Vite build
+passes. The installed gate records 18 inspected artifacts, two optional artifacts
+explicitly uninspected, and zero errors. The full change is limited to six paths.
+All backend, migration, grants, package/lock, chronology, dependency-gate and
+browser-journey code remains byte-identical to #363.
+
+The patient-journey capability crosswalk is retained byte-for-byte from #360
+`f200dd107871d89703267ee0d1a14b2d1ca64d36` at
+`docs/research/PATIENT_JOURNEY_CAPABILITY_CROSSWALK_2026-11-03.md`. It remains
+complementary research, not acceptance evidence for the whole program. Existing
+OI-004/007/008/009/010/013 source owners remain authoritative.
+
+Plan: `docs/superpowers/plans/2026-11-03-evidence-recovery-status.md`. Publish an
+isolated draft targeting #363 and record the new head's actual hosted receipt in
+its PR body. No new hosted success is claimed at this local checkpoint; the web
+journey does not constitute a fresh standalone full API/backup-restore suite.
+Independently authored fictional inputs only; no external notification, model
+activation, real-patient processing, clinical approval, merge or deployment.
