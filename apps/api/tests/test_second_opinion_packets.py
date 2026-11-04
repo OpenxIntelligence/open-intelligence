@@ -3,10 +3,12 @@ import json
 import unittest
 from unittest.mock import patch
 
+from alembic.util.exc import CommandError
 from sqlalchemy import text
 
 from http_support import running_server
 from oi_api.app import create_app
+from oi_api.migrate import migrate
 from open_intelligence.postgres_registry import PostgresPatientRegistry
 from test_patients import TOKEN_A,TOKEN_B,request
 from test_source_versions import SourceVersionHTTPTests as SourceFixture,AMENDED
@@ -173,6 +175,20 @@ class SecondOpinionPacketHTTPTests(SourceFixture):
                 status,body,_=self.listing(base,patient)
             self.assertEqual(status,404)
             self.assertNotIn("Focused fictional",json.dumps(body))
+
+    def test_populated_downgrade_is_refused_and_packets_survive(self):
+        with running_server(create_app(self.settings)) as base:
+            patient,source,preflight,qid=self.question(base)
+            self.assertEqual(self.create_packet(base,patient,source,preflight,qid)[0],201)
+            before=self.counts()
+            self.assertEqual(before[0],1)
+            with self.assertRaisesRegex(CommandError,"requires explicit reconciliation before downgrade"):
+                migrate(self.admin,"downgrade","0011_evidence_convergence")
+            self.assertEqual(self.counts(),before)
+            with self.engine.connect() as connection:
+                self.assertEqual(connection.execute(text(
+                    "SELECT version_num FROM public.alembic_version"
+                )).scalars().all(),["0012_second_opinion_packets"])
 
 
 if __name__=="__main__":

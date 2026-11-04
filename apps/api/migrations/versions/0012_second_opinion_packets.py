@@ -154,6 +154,8 @@ def upgrade():
 
 def downgrade():
     conn = op.get_bind()
+    if conn.execute(text("SELECT EXISTS(SELECT 1 FROM coordination.second_opinion_packets)")).scalar_one():
+        raise CommandError("Second-opinion packet history requires explicit reconciliation before downgrade")
     for statement in (
         "DROP TABLE coordination.second_opinion_packet_questions",
         "DROP TABLE coordination.second_opinion_packet_sources",
