@@ -54,6 +54,17 @@ class QuestionPassages:
 
     def metadata_locked(self,c,*,revision_id=None):
         """Read passage-set identity/freshness without disclosing original text."""
+        # Direct migration fixtures legitimately exercise published schemas from
+        # before this optional child owner existed. HTTP startup independently
+        # requires the exact current migration head, so only an unversioned
+        # metadata read may represent that historical state as an empty context.
+        installed=self.registry._fetchone(
+            "SELECT to_regclass('investigation.question_passage_revisions')")[0]
+        if installed is None:
+            if revision_id is not None:
+                raise RuntimeError('Stored question passage revision unavailable')
+            return dict(revision_id=None,revision=0,attached_by=None,attached_at=None,
+                        references=[],state='current_unreviewed')
         rows=self.rows_locked(c)
         row=next((r for r in rows if r[0]==revision_id),None) if revision_id else (rows[-1] if rows else None)
         if revision_id and row is None:
