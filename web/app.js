@@ -217,6 +217,8 @@ async function initialize() {
         'counterevidence-reason', 'safety-detail',
         'bio-mechanism', 'bio-result-note',
         'flag-reason', 'dimension-note',
+        'scoped-decision-note', 'scoped-dissent-rationale',
+        'ft-title', 'ft-detail', 'ft-reason', 'ft-update-reason',
         'goal-statement', 'goal-review-trigger',
         'amend-goal-statement', 'amend-goal-review-trigger', 'goal-status-reason',
         'amend-note-text', 'so-question-text', 'so-responder', 'so-response-text',
