@@ -103,8 +103,10 @@ class LaboratoryFHIRHTTPTests(unittest.TestCase):
         with running_server(self.app) as base:
             patient = self.make_patient(base)
             before = self.source_counts()
-            status, body, _ = self.preview(base, patient)
+            status, body, headers = self.preview(base, patient)
             self.assertEqual(status, 200, body)
+            self.assertEqual(headers["Cache-Control"], "no-store")
+            self.assertEqual(headers["X-Content-Type-Options"], "nosniff")
             self.assertEqual(body["patient_id"], patient)
             self.assertEqual(body["case_id"], "CASE-LAB-A")
             self.assertEqual(body["mapped_subject_reference"], "Patient/FICTIONAL-PATIENT-A")
