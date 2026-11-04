@@ -28,7 +28,7 @@ export function SourceIntake({session,caseId,patientId,sending}:{session:Registr
    <label htmlFor="original-file">Original .txt file (up to 64 KiB)</label>
    <input ref={file} id="original-file" type="file" accept=".txt,text/plain" disabled={sending} onChange={()=>void select()} aria-describedby="file-status"/>
    <p id="file-status" role="status" aria-live="polite">{message}</p>
-   {prepared&&<div data-testid="file-preview"><p><strong>{name}</strong> · {prepared.byteLength} bytes · declared case <code>{prepared.declaredCase}</code></p><pre className="original-text" data-testid="local-original">{prepared.text}</pre></div>}
+   {prepared&&<div data-testid="file-preview"><p><strong>{name}</strong> · {prepared.byteLength} bytes · declared case <code>{prepared.declaredCase}</code></p><pre className="original-text" data-testid="local-original" tabIndex={0} role="region" aria-label="Selected file text, not imported" onFocus={event=>event.currentTarget.scrollIntoView({block:'center'})}>{prepared.text}</pre></div>}
    <label className="check"><input id="original-confirm" type="checkbox" checked={confirmed} onChange={e=>setConfirmed(e.target.checked)} disabled={!prepared||sending}/>This is independently authored fictional text; I have inspected the selected original and case.</label>
    <div className="actions"><button className="primary" data-testid="import-original" disabled={!prepared||!confirmed||sending}>{sending?'Import in progress…':'Import this original'}</button><button type="button" onClick={discard} disabled={sending}>Discard selection</button></div>
   </form>
