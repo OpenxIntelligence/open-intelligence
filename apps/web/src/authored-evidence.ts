@@ -3,6 +3,7 @@ import {decodeSourceQuestion} from './source-questions-view.js';
 import type {SourceQuestion} from './source-questions-view.js';
 import type {ComposerSource} from './composer-preflight-view.js';
 import type {RegistrySession} from './registry-client.js';
+import {authoredEvidenceTimestamp as utc,evidenceCalendarDate as date} from './evidence-timestamp.js';
 
 export type ContentItem='abstract'|'api_output'|'full_text';
 export type Permission='allowed'|'denied'|'unknown';
@@ -72,8 +73,6 @@ function id(v:unknown,prefix:string):v is string{return typeof v==='string'&&new
 function member(v:unknown,values:readonly string[]):v is string{return typeof v==='string'&&values.includes(v);}
 function hex(v:unknown):v is string{return typeof v==='string'&&HASH.test(v);}
 function integer(v:unknown,min=1,max=Number.MAX_SAFE_INTEGER):v is number{return typeof v==='number'&&Number.isSafeInteger(v)&&v>=min&&v<=max;}
-function utc(v:unknown):v is string{return typeof v==='string'&&v.length<=64&&/^\d{4}-\d{2}-\d{2}T.+(?:Z|[+-]\d{2}:\d{2})$/.test(v)&&Number.isFinite(Date.parse(v));}
-function date(v:unknown):v is string{return typeof v==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(v)&&Number.isFinite(Date.parse(v+'T00:00:00Z'))&&new Date(v+'T00:00:00Z').toISOString().slice(0,10)===v;}
 function text(v:unknown,min:number,max:number):v is string{
  if(typeof v!=='string'||Array.from(v).length<min||Array.from(v).length>max)return false;
  const bytes=new TextEncoder().encode(v);return new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(bytes)===v;
@@ -127,6 +126,7 @@ function unique(values:readonly string[]):void{if(new Set(values).size!==values.
 export async function decodeEvidencePacket(value:unknown,expected:SourceQuestion):Promise<EvidencePacket>{
  if(!exact(value,packetFields)||value.contract!=='oi.h1-question-evidence/1'||value.patient_id!==expected.patient_id||value.case_id!==expected.case_id||!hex(value.source_snapshot_sha256)||!id(value.access_receipt_id,'ACCESS')||!hex(value.packet_sha256)||!flags(value)||!Array.isArray(value.evidence)||value.evidence.length>100||!Array.isArray(value.assessments)||value.assessments.length>200||!Array.isArray(value.reports)||value.reports.length>100)throw Error('evidence packet');
  const q=decodeSourceQuestion(value.question,expected.patient_id,expected.case_id);
+ if(!utc(q.created_at))throw Error('evidence question chronology');
  if(!member(q.source_context_state,['current_unreviewed_question','source_reassessment_required'])||!sameQuestion(q,expected)||q.source_context_state==='current_unreviewed_question'&&q.source_snapshot_sha256!==value.source_snapshot_sha256)throw Error('evidence question');
  const rows=await Promise.all(value.evidence.map(evidence));unique(rows.map(e=>e.evidence_id));unique(rows.map(e=>e.evidence_key+':'+e.version));
  for(const row of rows){
@@ -161,6 +161,7 @@ export async function decodeEvidenceReport(value:unknown,expected:SourceQuestion
  }
  if(!text(value.body,1,131072)||new TextEncoder().encode(value.body).length>131072||await digest(value.body)!==value.body_sha256||!exact(value.snapshot,['question','selected_source','comparisons','prepared_at','actor_label']))throw Error('report bytes');
  const snap=value.snapshot,q=decodeSourceQuestion(snap.question,expected.patient_id,expected.case_id);
+ if(!utc(q.created_at))throw Error('report question chronology');
  if(!sameQuestion(q,expected)||q.source_context_state!=='current_unreviewed_question'||q.source_snapshot_contract!=='oi.pg-source-world-model/1'||snap.prepared_at!==value.prepared_at||typeof snap.actor_label!=='string'||!KEY.test(snap.actor_label)||!Array.isArray(snap.comparisons)||snap.comparisons.length<1||snap.comparisons.length>20||value.state==='current_unreviewed'&&expected.source_context_state==='source_reassessment_required')throw Error('report snapshot');
  const source=selectedSource(snap.selected_source,q);
  const comparisons=await Promise.all(snap.comparisons.map(async row=>{
@@ -197,7 +198,30 @@ function download(text:string,name:string):void{
 export async function downloadEvidenceReport(session:RegistrySession,questionId:string,reportId:string):Promise<void>{
  const value=await session.readEvidenceReport(questionId,reportId);
  if(!value||value.body===null||session.snapshot().evidenceReport!==value)return;
- download(value.body,'open-intelligence-evidence-'+reportId+'.txt');
+ // The stored body is immutable. Its current status belongs to this fresh read,
+ // so keep the two distinct in the exported file without rewriting provenance.
+ const historical=value.state==='historical_reassessment_required';
+ const cover=[
+  'OPEN INTELLIGENCE — EVIDENCE REPORT DOWNLOAD',
+  'Status returned for this access: '+(historical?'HISTORICAL — REASSESSMENT REQUIRED':'CURRENT — UNREVIEWED'),
+  historical?'The source or comparison basis has changed. Reassess before preparing a current report.':'Current source and comparison basis at this access; human review has not been performed.',
+  'No clinical approval or model execution. This status is not scientific validation.',
+  'Status and permissions can change. Reopen through the authorized application before further use.',
+  '',
+  'Patient: '+value.patient_id+' | Case: '+value.case_id,
+  'Question: '+value.question_id+' | Report: '+value.report_id,
+  'Original preparation time: '+value.prepared_at,
+  'Access receipt: '+value.access_receipt_id,
+  'The receipt identifies the authorized read; it is not a signature, delivery receipt or continuing access grant.',
+  'Original body SHA-256: '+value.body_sha256,
+  'Original snapshot SHA-256: '+value.snapshot_sha256,
+  'Original body UTF-8 bytes: '+new TextEncoder().encode(value.body).length,
+  'The body digest covers only the unchanged section below, excluding this download cover.',
+  '',
+  '--- BEGIN PRESERVED REPORT BODY ---',
+  '',
+ ].join('\n');
+ download(cover+value.body,'open-intelligence-evidence-'+reportId+'.txt');
 }
 export async function downloadEvidenceOriginal(session:RegistrySession,questionId:string,evidenceId:string):Promise<void>{
  const value=await session.loadEvidenceOriginal(questionId,evidenceId);

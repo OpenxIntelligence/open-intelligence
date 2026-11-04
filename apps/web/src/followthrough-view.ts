@@ -142,3 +142,59 @@ export function decodeFollowthroughReceipt(value:unknown,intent:FollowthroughInt
   (intent.kind==='transition'&&value.task_id!==intent.task_id))throw Error('task receipt');
  return Object.freeze({...value} as FollowthroughReceipt);
 }
+
+export const FOLLOWTHROUGH_FILTERS=Object.freeze([
+ {key:'all',label:'All work'},
+ {key:'recheck',label:'Source changed'},
+ {key:'overdue',label:'Revisit date passed'},
+ {key:'unassigned',label:'Unassigned'},
+ {key:'history',label:'Completed / deferred'},
+] as const);
+export type FollowthroughFilter=typeof FOLLOWTHROUGH_FILTERS[number]['key'];
+export type FollowthroughAttention=Readonly<{
+ list:FollowthroughList;counts:Readonly<Record<FollowthroughFilter,number>>;
+}>;
+export type FollowthroughFilterSelection=Readonly<{
+ access_receipt_id:string;patient_id:string;case_id:string;filter:FollowthroughFilter;
+}>;
+type AttentionState=Pick<import('./registry-client.js').ViewState,
+ 'connected'|'phase'|'patient'|'cases'|'worldModel'|'followthrough'|'followthroughCaseId'|'followthroughPhase'>;
+
+/** Operational categories may overlap. Never infer clinical urgency or recompute server dates. */
+export function matchesFollowthroughFilter(task:FollowthroughTask,filter:FollowthroughFilter):boolean{
+ const open=task.status==='created'||task.status==='assigned'||task.status==='acknowledged';
+ switch(filter){
+  case 'all':return true;
+  case 'recheck':return open&&task.needs_recheck;
+  case 'overdue':return open&&task.is_overdue;
+  case 'unassigned':return open&&task.owner_label.trim()==='';
+  case 'history':return task.status==='completed'||task.status==='deferred';
+  default:return false;
+ }
+}
+
+/** Read projection only: unknown/denied/mixed scope is unavailable, never a zero count. */
+export function projectFollowthroughAttention(state:AttentionState):FollowthroughAttention|null{
+ const list=state.followthrough,patient=state.patient,world=state.worldModel;
+ if(!state.connected||state.phase!=='ready'||patient?.status!=='active'||
+    state.followthroughPhase!=='ready'||!list||list.patient_id!==patient.patient_id||
+    state.followthroughCaseId!==list.case_id||
+    !state.cases?.some(row=>row.patient_id===patient.patient_id&&row.case_id===list.case_id&&row.status==='active')||
+    (world&&(world.patient_id!==patient.patient_id||world.case_id!==list.case_id))||
+    list.tasks.some(row=>row.patient_id!==patient.patient_id||row.case_id!==list.case_id)||
+    new Set(list.tasks.map(row=>row.task_id)).size!==list.tasks.length)return null;
+ const counts:Record<FollowthroughFilter,number>={all:0,recheck:0,overdue:0,unassigned:0,history:0};
+ for(const row of list.tasks){
+  for(const {key} of FOLLOWTHROUGH_FILTERS)if(matchesFollowthroughFilter(row,key))counts[key]++;
+ }
+ return Object.freeze({list,counts:Object.freeze(counts)});
+}
+
+/** Derive the reset during render; an effect would briefly show a new read under an old filter. */
+export function followthroughFilterForRead(selection:FollowthroughFilterSelection|null,
+ attention:FollowthroughAttention|null):FollowthroughFilter{
+ if(!selection||!attention||selection.access_receipt_id!==attention.list.access_receipt_id||
+    selection.patient_id!==attention.list.patient_id||selection.case_id!==attention.list.case_id||
+    !FOLLOWTHROUGH_FILTERS.some(item=>item.key===selection.filter))return 'all';
+ return selection.filter;
+}

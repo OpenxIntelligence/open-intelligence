@@ -1,4 +1,6 @@
 /** Fictional metadata projections. A citation link is not a claim assessment. */
+import {citationEvidenceTimestamp as instant} from './evidence-timestamp.js';
+
 export type EvidenceSourceState='current_unreviewed_question'|'source_reassessment_required';
 export type QuestionEvidenceRecord=Readonly<{
  citation:string;id:string;version:string;source_kind:'fictional';title:string;licence:string;link:string;
@@ -46,11 +48,6 @@ function citation(value:unknown):value is string{
  const parts=value.split('@');
  return parts.length===2&&parts[0].length<=128&&/^FICT-[A-Z0-9-]+$/.test(parts[0])&&
   parts[1].length<=64&&/^[A-Za-z0-9._-]+$/.test(parts[1]);
-}
-function instant(value:unknown):value is string{
- if(!text(value,1,64)||!/^\d{4}-\d{2}-\d{2}T.+(?:Z|[+-]\d{2}:\d{2})$/.test(value)||!Number.isFinite(Date.parse(value)))return false;
- const date=value.slice(0,10),time=Date.parse(date+'T00:00:00Z');
- return Number.isFinite(time)&&new Date(time).toISOString().slice(0,10)===date;
 }
 export function validEvidenceQuery(value:unknown):value is string{return text(value,1,200);}
 /** This synthetic catalog has no live biomedical or patient links. */
