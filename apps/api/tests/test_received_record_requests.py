@@ -116,6 +116,34 @@ class ReceivedRecordHTTPTests(SourceFixture):
                 "SELECT COUNT(*) FROM coordination.record_requests WHERE patient_id=:id"
             ), {"id": patient}).scalar_one(), 1)
 
+    def test_amended_original_before_first_receipt_cannot_satisfy_request(self):
+        # A correction arriving before the receive call must not be accepted
+        # as though its superseded original were still current.
+        with __import__("http_support").running_server(create_app(self.settings)) as base:
+            patient = self.setup_case(base)
+            request_id = self.create_request(base, patient)[1]["request_id"]
+            historical_id = self.ingest(base, patient)[1]["source_id"]
+            current = self.ingest(base, patient, AMENDED)
+            self.assertEqual(current[0], 201)
+            current_id = current[1]["source_id"]
+            stale = self.receive(base, patient, request_id, historical_id)
+            self.assertEqual(stale[0], 409)
+            pending = self.list_records(base, patient)[1]["requests"][0]
+            self.assertEqual((pending["status"], pending["receipt_status"]),
+                             ("requested", "not_received"))
+            self.assertIsNone(pending["source_reference"])
+            with self.engine.connect() as audit:
+                self.assertEqual(audit.execute(text(
+                    "SELECT COUNT(*) FROM identity.identity_domain_events "
+                    "WHERE event_type='record.request.received' AND patient_id=:patient"
+                ), {"patient": patient}).scalar_one(), 0)
+            accepted = self.receive(base, patient, request_id, current_id)
+            self.assertEqual((accepted[0], accepted[1]["version"]), (201, 2))
+            received = self.list_records(base, patient)[1]["requests"][0]
+            self.assertEqual(received["source_reference"]["source_id"], current_id)
+            self.assertEqual(received["source_reference"]["version"], 2)
+            self.assertEqual(received["receipt_status"], "source_current_unreviewed")
+
     def test_wrong_case_kind_patient_and_cancelled_request_are_denied(self):
         with __import__("http_support").running_server(create_app(self.settings)) as base:
             patient = self.setup_case(base)

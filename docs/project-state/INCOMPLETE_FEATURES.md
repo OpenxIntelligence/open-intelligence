@@ -1,5 +1,14 @@
 # Incomplete features and qualification gaps
 
+## Current-main reconciliation — 4 November 2026
+
+Main now includes H1 through #390 at `a5a5482f815ceb3c322cdfb32ab8b18c1c0e8709`.
+The combined document/image/manual-passage/preparation candidate is being
+reconciled with that accepted state in #445. New combined acceptance remains
+pending; see [the reconciliation record](../engineering/H1_MAIN_PREPARATION_RECONCILIATION_2026-11-04.md).
+Earlier sections below are historical owner checkpoints, including their
+then-current migration and merge status; they are not current release claims.
+
 ## Current combined candidate — draft #381
 
 The isolated [document/image candidate #381](https://github.com/OpenxIntelligence/open-intelligence/pull/381) composes the frozen #377 document/evidence/review candidate with #370 image/archive/report continuity, corrected #376 audit-tail tests, #373 fixture lifespan and verified #378/#379/#380/#382 frontend corrections. Its own hosted acceptance is pending. Historical owner receipts below do not qualify this composition.
@@ -119,3 +128,34 @@ The full destination is preserved. A prototype panel, bounded laboratory library
 | Production security/operations | Implemented but not adequately tested for a clinical release | Broader end-to-end authority coverage, deployment hardening, secrets/keys, monitoring, restores and independent evaluation. |
 
 Sources: [OI-22 decisions](https://docs.google.com/document/d/1YrORrdNxzT6MN-WuKVdk2vWVtVXVw9OSo0z5ARvMypg/edit), [OI-25 architecture](https://docs.google.com/document/d/1BC5JPDXGf0hnsZwMuofGHQox7IZCKn30-kLSmzgj_D4/edit), [OI-23 proposed requirements](https://docs.google.com/document/d/1_aw9TKHQ_GRfT8i9FDiAA6MA7F971fX20YCw021noBc/edit), [OI-24 proposed workflows](https://docs.google.com/document/d/1LFOZGne5wVW0Hi5lU_uRwU7YMJGWz7fs2HeaJGlww0g/edit), [OI-29 historical gap analysis](https://docs.google.com/document/d/1LoRst3aZvAc8kNvWXvwv2oNQQOMgPjwjNIS0vo1AJQg/edit), [H1 question return contract](../engineering/H1_SOURCE_QUESTION_REVIEW_RETURN.md), [H1 source brief contract](../engineering/H1_SOURCE_LINKED_BRIEF.md). OI-29's old main-baseline absence claims must not override later verified draft evidence.
+
+## Preserved main assessment checkpoint
+
+The following older assessment is retained from accepted main a5a5482f. Its
+status statements are historical and do not supersede the current receipt.
+
+## Current #307 increment and still-open patient outcomes
+
+The later [#307 acceptance receipt](../engineering/H1_EVIDENCE_CONTINUITY.md)
+supersedes the selected #276/#280 planning statements below. At exact runtime
+`477f24826a8a102c7437c993d69877c1f250b951`, canonical source/question/verification
+return/brief, follow-through, fictional metadata citations and independently
+authored evidence comparisons/reports work together in H1. Actual API/PostgreSQL,
+React/browser, populated migration and all five recovery gates passed. Their
+same-question restore proof includes a citation, preserved report and task.
+The complete patient outcome remains **partially implemented**, not closed.
+
+Remaining work includes real biomedical retrieval under established rights,
+ordinary medical document/PDF and annotation parity, model/tool evaluation,
+authenticated professional review, production identity/delegation/consent,
+provider interoperability and clinical release qualification. Existing
+#305/#308/#309/#310 reading/return owners remain separate; inspect and integrate
+them rather than rebuilding their UI. The fictional grant editor #306 does not
+satisfy production identity.
+
+No new technology, model, content source or commercial clearance was introduced.
+The inherited dependency inventory remains scoped to fictional development.
+The historical rows below retain their original assessment scope; their earlier
+missing-integration claims do not negate the verified #307 increment.
+
+## Historical evidence boundary — initial #276/#280 assessment

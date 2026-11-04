@@ -158,7 +158,8 @@ class QuestionReviewReturnHTTPTests(SourceVersionFixture):
             with self.engine.connect() as conn:
                 before=conn.execute(text(
                     "SELECT count(*) FROM identity.identity_domain_events"
-                )).scalar_one()
+                    " WHERE patient_id=:patient"
+                ),{"patient":patient}).scalar_one()
             response=self.returning(base,patient,qid,fingerprint)
             self.assertEqual(response[0],201,response)
             receipt=response[1]["receipt_id"]

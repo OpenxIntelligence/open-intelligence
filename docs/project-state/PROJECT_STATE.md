@@ -1,5 +1,14 @@
 # Open Intelligence — current project state
 
+## Current-main reconciliation — 4 November 2026
+
+Main now includes H1 through #390 at `a5a5482f815ceb3c322cdfb32ab8b18c1c0e8709`.
+The combined document/image/manual-passage/preparation candidate is being
+reconciled with that accepted state in #445. New combined acceptance remains
+pending; see [the reconciliation record](../engineering/H1_MAIN_PREPARATION_RECONCILIATION_2026-11-04.md).
+Earlier sections below are historical owner checkpoints, including their
+then-current migration and merge status; they are not current release claims.
+
 ## Current combined candidate — draft #381
 
 The isolated [document/image candidate #381](https://github.com/OpenxIntelligence/open-intelligence/pull/381) composes the frozen #377 document/evidence/review candidate with #370 image/archive/report continuity, corrected #376 audit-tail tests, #373 fixture lifespan and verified #378/#379/#380/#382 frontend corrections. Its own hosted acceptance is pending. Historical owner receipts below do not qualify this composition.
@@ -250,3 +259,36 @@ silently copied, replaced or claimed integrated here. Clinical/PDF/annotation
 parity, authenticated production identity, publisher clearance and professional
 review remain separate integration and validation work. No merge or deployment
 is authorized by these software checks.
+
+## Preserved main assessment checkpoint
+
+The following older assessment is retained from accepted main a5a5482f. Its
+status statements are historical and do not supersede the current receipt.
+
+## Latest verified continuation — draft #307
+
+[PR #307](https://github.com/OpenxIntelligence/open-intelligence/pull/307) joins the
+existing #298 metadata/follow-through and #300 authored-evidence/Overview owners,
+with #302 restored HTTP, #303 timestamp and #304 original-source corrections.
+Runtime `477f24826a8a102c7437c993d69877c1f250b951`, tree
+`cd8d909ad2844e7fbd37ae30a9a10b9123374666`, passed **414 API/PostgreSQL tests**,
+**287 reference tests**, **266 React client tests**, actual browser acceptance and
+**all five recovery probes**. Published migrations remain unchanged; one no-DDL
+merge revision preserves both populated evidence lineages. One canonical question
+retains its citation, immutable report and follow-through after actual restore,
+with independent rights and revoked-binding denial.
+
+[The bounded receipt](../engineering/H1_EVIDENCE_CONTINUITY.md) preserves exact
+inputs, tests-first failures, review fixes, source/archive checksums and the
+limitations. Main remains `24519839aa8ac1ea3aff88a956349ba72798a72a`; this increment
+is draft, unmerged and undeployed. No new dependency, model, real biomedical
+retrieval, professional signoff or commercial clearance is claimed.
+
+The next bounded implementation is to reconcile the existing #305/#308/#309/#310
+source-reading/return owners with this same question/evidence path, after live
+head review. The earlier plan to create an authored-evidence PostgreSQL adapter
+is superseded by #300 and this integration. Real source activation, production
+identity/consent, clinical/PDF parity and scientific validation remain separately
+open. Historical assessments below retain their dated scope.
+
+## Historical #293/#298 current-truth reconciliation — 3 November 2026

@@ -1,5 +1,14 @@
 # Integration inventory — current contracts and unfinished connections
 
+## Current-main reconciliation — 4 November 2026
+
+Main now includes H1 through #390 at `a5a5482f815ceb3c322cdfb32ab8b18c1c0e8709`.
+The combined document/image/manual-passage/preparation candidate is being
+reconciled with that accepted state in #445. New combined acceptance remains
+pending; see [the reconciliation record](../engineering/H1_MAIN_PREPARATION_RECONCILIATION_2026-11-04.md).
+Earlier sections below are historical owner checkpoints, including their
+then-current migration and merge status; they are not current release claims.
+
 ## Current combined candidate — draft #381
 
 The isolated [document/image candidate #381](https://github.com/OpenxIntelligence/open-intelligence/pull/381) composes the frozen #377 document/evidence/review candidate with #370 image/archive/report continuity, corrected #376 audit-tail tests, #373 fixture lifespan and verified #378/#379/#380/#382 frontend corrections. Its own hosted acceptance is pending. Historical owner receipts below do not qualify this composition.
@@ -237,3 +246,35 @@ The repository/Notion evidence does not establish a full live provider inventory
 
 Source references: [ingestion/interoperability](https://app.notion.com/p/40a3866f77ef8137a47cf95794e33ea7), [technology stack](https://app.notion.com/p/40a3866f77ef811c969fc38e95027ec2), [source-rights register](https://app.notion.com/p/52e843c6b0574713b66a5fb5d7f67ea3), [current H1 base #276](https://github.com/OpenxIntelligence/open-intelligence/pull/276).
 
+
+## Preserved main assessment checkpoint
+
+The following older assessment is retained from accepted main a5a5482f. Its
+status statements are historical and do not supersede the current receipt.
+
+**Baselines:** reference main `24519839aa8ac1ea3aff88a956349ba72798a72a`; initial H1 assessment [#276](https://github.com/OpenxIntelligence/open-intelligence/pull/276) at `c154bfbc5f99f76801d37903959943659c0b6a71`; current verified draft integration [#307](https://github.com/OpenxIntelligence/open-intelligence/pull/307) at `477f24826a8a102c7437c993d69877c1f250b951`, joining #298 and #300 with #302/#303/#304 corrections. Other drafts are named separately.
+
+**Status vocabulary:** the eight categories in [PRODUCT_REQUIREMENTS.md](PRODUCT_REQUIREMENTS.md) apply to bounded behavior, never to a whole clinical domain by implication.
+
+## Current #307 convergence checkpoint
+
+[The exact acceptance receipt](../engineering/H1_EVIDENCE_CONTINUITY.md) records
+runtime `477f24826a8a102c7437c993d69877c1f250b951`, tree
+`cd8d909ad2844e7fbd37ae30a9a10b9123374666`: 414 API/PostgreSQL tests, 287 reference
+tests, 266 React client tests, actual built-browser acceptance and all five
+recovery probes passed. Main is unchanged; the contribution remains draft,
+unmerged and undeployed. This supersedes only the older selected-next-work claims
+below, preserving their source and historical scope.
+
+| Connected capability | Preserved owner and actual result | Remaining boundary |
+| --- | --- | --- |
+| One question with citations, authored originals/comparisons/reports and tasks | #298/#293 plus #300/#288, verified together in #307 | Metadata does not become assessed content or confer its rights. All comparisons are human-authored, fictional and clinically unreviewed. |
+| Published evidence schema convergence | DDL-free `0011_evidence_convergence`; both populated old heads and the unconverged two-head rejection pass | Published migrations are unchanged; arbitrary schema heads remain refused. |
+| Original source disclosure | #304 final typed/JSON preparation and authorization reused in the source owner | Prepared disclosure is not delivery or atomic external identity-provider revocation. |
+| One restored canonical question with citation, report and task | #302's restored-HTTP probe extended to all 18 relevant tables and four sequence states; readable, rights-restricted, withdrawn/amended and revoked-binding checkpoints pass | Disposable PostgreSQL proof, not a production recovery qualification. |
+| One rendered application | Overview, sources, questions, reviews, metadata, authored reports and follow-through retained; shared-authority denial clears both evidence sessions | Production accounts/consent, full accessibility and clinical approval remain open. |
+
+The next bounded convergence is the separately owned source-reading/return UI in
+#305/#308/#309/#310, after rechecking live heads. Real biomedical access remains
+its own rights-qualified connector task. No new dependency, model, content source,
+asset or hosted service is adopted by #307.
