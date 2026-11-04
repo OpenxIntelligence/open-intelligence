@@ -506,41 +506,6 @@ class FollowthroughChecks:
               'withhold task history, counts and transition controls; fresh valid reads restore exact '
               'original tasks and timestamps without writes or grant changes.')
 
-    def assert_timestamp_rejection(self):
-        """A corrupted copy of a real read cannot retain actionable task history."""
-        original_tasks = self.projection()['tasks']
-        writes = self.cd.evaluate('window.__oiFollowthroughChecks.writes.length')
-        for field, value in (('created_at', '2026-02-30T10:00:00Z'),
-                             ('recorded_at', '2026-11-03T24:00:00Z'),
-                             ('recorded_at', '2026-11-03T10:00:00.1234567Z')):
-            self.cd.evaluate('window.__oiFollowthroughChecks.corruptNextTimestamp='
-                             + json.dumps({'field': field, 'value': value}))
-            click(self.cd, '[data-testid=followthrough-refresh]')
-            self.cd.wait("document.querySelector('[data-testid=followthrough-status]')?.dataset.phase==='error'",
-                         'invalid timestamp removes actionable task history')
-            assert self.cd.evaluate("!document.querySelector('[data-testid=followthrough-task]')")
-            assert self.cd.evaluate("!document.querySelector('[data-testid=followthrough-attention]')")
-            assert self.cd.evaluate("!document.querySelector('[data-testid=followthrough-history]')")
-            assert self.cd.evaluate("!document.querySelector('[data-testid=followthrough-transition-reason]')")
-            assert self.cd.evaluate('window.__oiFollowthroughChecks.writes.length') == writes
-            assert self.projection()['tasks'] == original_tasks
-            restored = self.refresh()
-            assert restored['tasks'] == original_tasks
-            for task in original_tasks:
-                self.wait_task(task['task_id'], task['status'], task['revision'])
-                selector = self.row(task['task_id'])
-                displayed = self.cd.evaluate("[...document.querySelector(" + json.dumps(selector)
-                    + ").querySelectorAll('[data-testid=followthrough-history] time')].map(e=>"
-                      "({dateTime:e.getAttribute('datetime'),text:e.textContent}))")
-                assert displayed == [{'dateTime': event['recorded_at'], 'text': event['recorded_at']}
-                                     for event in task['history']]
-                text = self.cd.evaluate('document.querySelector(' + json.dumps(selector) + ').textContent')
-                assert all(task[field] in text for field in ('source_id', 'source_sha256', 'question_id'))
-            assert self.cd.evaluate('window.__oiFollowthroughChecks.writes.length') == writes
-        print('PASS FOLLOWTHROUGH TIMESTAMPS: three explicitly corrupted copies of real authorized reads '
-              'withhold task history, counts and transition controls; fresh valid reads restore exact '
-              'original tasks and timestamps without writes or grant changes.')
-
     def assert_overview_counts(self, counts):
         self.cd.wait("document.querySelector('[data-testid=continuity-followthrough-status]')?.dataset.phase==='ready'",
                      'Overview has an authorized last-read task summary')
@@ -614,7 +579,6 @@ class FollowthroughChecks:
         self.assert_attention_filters()
         self.assert_timestamp_rejection()
         value = self.assert_overview_work(current_question_id, screenshots)
-        self.assert_timestamp_rejection()
         # A failed fresh read must remove old task text and transition controls.
         credentials[0]['actions'].remove('followthrough_read')
         write_grants()
