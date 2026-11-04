@@ -19,7 +19,7 @@ from oi_api.migrate import migrate
 from open_intelligence.postgres_registry import PostgresPatientRegistry
 
 
-REGISTRY_REVISION = "0009_question_followthrough"
+REGISTRY_REVISION = "0010_question_evidence"
 BASELINE_REVISION = "0001_h1_shell"
 TABLES = {"identity_patients", "identity_create_receipts", "identity_domain_events"}
 
@@ -63,6 +63,11 @@ class RegistryMigrationTests(unittest.TestCase):
             connection.execute(text("DROP TABLE IF EXISTS coordination.question_followthrough_tasks"))
             connection.execute(text("DROP FUNCTION IF EXISTS coordination.guard_question_followthrough_event_insert()"))
             connection.execute(text("DROP FUNCTION IF EXISTS coordination.guard_question_followthrough_task_insert()"))
+            connection.execute(text("DROP TABLE IF EXISTS investigation.question_evidence_links"))
+            connection.execute(text("DROP FUNCTION IF EXISTS investigation.guard_question_evidence_insert()"))
+            connection.execute(text("DROP TABLE IF EXISTS investigation.evidence_rights_decisions"))
+            connection.execute(text("DROP FUNCTION IF EXISTS investigation.guard_evidence_rights_insert()"))
+            connection.execute(text("DROP TABLE IF EXISTS investigation.evidence_catalog_records"))
             connection.execute(text("DROP TABLE IF EXISTS investigation.question_review_receipts"))
             connection.execute(text("DROP FUNCTION IF EXISTS investigation.guard_review_return_insert()"))
             connection.execute(text("DROP TABLE IF EXISTS investigation.source_questions"))

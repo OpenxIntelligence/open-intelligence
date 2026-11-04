@@ -146,3 +146,13 @@ contract. It does not add scientific evidence appraisal, professional approval,
 notifications or deployment. OI-008 and the full OI-010 acceptance remain open;
 the next integration reuses the existing evidence/report owners behind explicit
 canonical H1 persistence and rights contracts.
+
+## Subsequent question evidence integration — PR #298
+
+Verified runtime [f4750327537a5febf764d25f43873be50ac7265a](https://github.com/OpenxIntelligence/open-intelligence/commit/f4750327537a5febf764d25f43873be50ac7265a), tree `69f24319f8aa75b707ae33474f7fab8254a83773`, adds governed fictional metadata and durable citation links beside existing H1 questions. It preserves #293 runtime `635f357` and all five documentation-only predecessor `e44f225` receipts.
+
+- [API 41639678827](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41639678827): 354 API/PostgreSQL and 282 reference tests passed, zero skips; both reference browser journeys and four Compose probes passed. The extended recovery probe preserves evidence/rights/citations through real API/DB restarts and pg_dump/pg_restore, then verifies redacted metadata and revoked binding denial over restored HTTP.
+- [React 41639678872](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41639678872): 219 tests, production build and actual evidence browser journey passed. Lost committed delivery recovers the identical key and one link; source amendments preserve history; rights revocation and late responses cannot restore old metadata.
+- [Legacy UI 41639678834](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41639678834): success. Artifact 13232471263 was downloaded and verified against SHA-256 `eef7adf6136c505179310360f5a1a986064e50ddaf647a82ab0612bb0e9c0827` and the exact runtime commit.
+
+[The bounded evidence ledger](../engineering/H1_QUESTION_EVIDENCE.md) retains tests-first failures, review repairs, commands, limitations and continuation. Citation identity is not claim support; original fictional fixtures are not real biomedical research. Draft/unmerged/undeployed/not clinically validated. No new model, dependency, publisher access or commercial-clearance decision.

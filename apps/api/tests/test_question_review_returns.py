@@ -559,7 +559,7 @@ class QuestionReviewReturnHTTPTests(SourceVersionFixture):
         with self.engine.connect() as conn:
             self.assertEqual(conn.execute(text(
                 "SELECT version_num FROM public.alembic_version"
-            )).scalar_one(), "0009_question_followthrough")
+            )).scalar_one(), "0010_question_evidence")
 
 
 if __name__=="__main__":

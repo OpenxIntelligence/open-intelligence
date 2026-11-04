@@ -37,6 +37,7 @@ def main():
         write_grants()
         env=dict(os.environ,PYTHONPATH=str(ROOT/'apps/api/src')+os.pathsep+str(ROOT/'src'),OI_API_ACCESS_FILE=str(directory/'access.json'))
         subprocess.run([sys.executable,'-m','oi_api.migrate','upgrade','head'],env=env,cwd=ROOT,check=True)
+        subprocess.run([sys.executable,'-m','oi_api.evidence_catalog'],env=env,cwd=ROOT,check=True)
         api=subprocess.Popen([sys.executable,'-m','oi_api'],env=env,cwd=ROOT,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
         web=None;browser=None;cd=None
         try:
@@ -131,12 +132,15 @@ def main():
             from source_questions_journey import exercise as exercise_source_questions
             from question_review_journey import exercise as exercise_question_review
             from followthrough_journey import exercise as exercise_followthrough, exercise_case_switch
+            from question_evidence_journey import exercise as exercise_question_evidence
             from connected_question_review_journey import exercise as exercise_connected_question_review
             with exercise_source_questions(cd,original_id,credentials,write_grants) as questions, \
                  exercise_question_review(cd,pid,case,questions.original_question_id,original_id,
                      credentials,write_grants) as reviews, \
                  exercise_followthrough(cd,pid,case,questions.original_question_id,original_id,
-                     credentials,write_grants) as followthrough:
+                     credentials,write_grants) as followthrough, \
+                 exercise_question_evidence(cd,pid,case,questions.original_question_id,original_id,
+                     credentials,write_grants) as evidence:
                 cd.evaluate("Array.from(document.querySelectorAll('nav[aria-label=\"Patient workspace\"] button')).find(b=>b.textContent.includes('Records')).click()")
                 amended=(
                     'OI-SYNTHETIC-REPORT/1\nPatient: CASE-ALPHA\nDocument: DOC-ONE\n'
@@ -186,6 +190,9 @@ def main():
                     authored_question_id=authored_question_id)
                 followthrough.finish(new_receipt['source_id'],credentials,write_grants,
                     Path(os.environ.get('OI_WEB_ARTIFACT_DIR',ROOT/'apps/web/.evidence')))
+                evidence.finish(credentials,write_grants,
+                    Path(os.environ.get('OI_WEB_ARTIFACT_DIR',ROOT/'apps/web/.evidence')),
+                    current_question_id=authored_question_id)
                 # Add the fourth question only after both three-question checks.
                 connected_question = exercise_connected_question_review(cd,pid,case,new_receipt['source_id'],amended,
                     credentials,write_grants,questions)

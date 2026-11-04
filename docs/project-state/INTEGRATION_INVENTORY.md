@@ -1,10 +1,36 @@
 # Integration inventory — current contracts and unfinished connections
 
 **Assessment:** 3 November 2026 (America/New_York).  
-**Baseline:** reference main `24519839aa8ac1ea3aff88a956349ba72798a72a`; selected H1 draft [#276](https://github.com/OpenxIntelligence/open-intelligence/pull/276) at `c154bfbc5f99f76801d37903959943659c0b6a71`. All other drafts are named separately.  
+**Baselines:** reference main `24519839aa8ac1ea3aff88a956349ba72798a72a`; initial H1 assessment [#276](https://github.com/OpenxIntelligence/open-intelligence/pull/276) at `c154bfbc5f99f76801d37903959943659c0b6a71`; current verified draft integration [#298](https://github.com/OpenxIntelligence/open-intelligence/pull/298) at `f4750327537a5febf764d25f43873be50ac7265a`, based on #293. Other drafts are named separately.
+
 **Status vocabulary:** the eight categories in [PRODUCT_REQUIREMENTS.md](PRODUCT_REQUIREMENTS.md) apply to bounded behavior, never to a whole clinical domain by implication.
 
-## Connected H1 owners in the selected base
+## Current integration checkpoint — 3 November 2026
+
+The selected runtime base is [draft #293](https://github.com/OpenxIntelligence/open-intelligence/pull/293) at commit 635f357048eb27e52e6ec5c3d7b6714215070127, tree 74c4a2ab65bf54a0908246199bb67c300ae2662b, preserving [#287](https://github.com/OpenxIntelligence/open-intelligence/pull/287) and its source base 247705700080052705817fee9e8f7b54afa8ffaa. The published tree matches the reconstructed local checkout. Its [e44f225e evidence-only follow-up](https://github.com/OpenxIntelligence/open-intelligence/commit/e44f225e3ce4953d754ad0e6e1409e22b696a29f) changes exactly five documentation files; those newer receipts are preserved here without changing the selected runtime. Main remains [24519839aa8ac1ea3aff88a956349ba72798a72a](https://github.com/OpenxIntelligence/open-intelligence/tree/24519839aa8ac1ea3aff88a956349ba72798a72a). The #276 assessment and separate-owner tables below remain historical checkpoints; this section supersedes only their selected-baseline and next-work statements.
+
+The exact #293 head has successful [H1 API](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41633216511), [H1 React](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41633216590), and [synthetic UI](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41633216653) workflow conclusions. These establish the inherited bounded baseline only. The separate #298 results below establish its subsequent metadata/citation integration.
+
+| Connection | Current owner and state | Remaining boundary |
+| --- | --- | --- |
+| Canonical source → authored saved question → exact quotation | H1 patient/case/source/question owners composed in #287 and retained in #293; fully implemented and tested within that synthetic contract | No arbitrary document extraction, external-record identity verification or scientific evidence appraisal follows. |
+| Saved question → nonterminal return/history → source-only brief | Existing verification-return and brief owners retained in #293; fully implemented and tested for the bounded path | Source verification, source export and professional clinical judgment remain separate operations and authorities. |
+| Saved question → durable follow-through → amendment recheck | #293 ports the existing reference follow-through lifecycle to PostgreSQL, retaining canonical questions and immutable source anchors | Operational owner labels do not grant access; completion does not verify external delivery or clinical action. No notification service is implied. |
+| Saved question → biomedical evidence catalog/citation | **Implemented and tested together in draft #298** at `f4750327537a5febf764d25f43873be50ac7265a`, using KaijuCake's [#224 evidence catalog/citation contract](https://github.com/OpenxIntelligence/open-intelligence/pull/224). API/PostgreSQL, built-browser and recovery acceptance passed. | External maintainer review and merge remain open. Fictional metadata only; no live source activation, alternate patient chart or SQLite identifier coercion. |
+| Evidence → governed Composer → evidence report/review | Existing clinical/evidence/report owners, including [#249](https://github.com/OpenxIntelligence/open-intelligence/pull/249), [#250](https://github.com/OpenxIntelligence/open-intelligence/pull/250), and [#272](https://github.com/OpenxIntelligence/open-intelligence/pull/272), remain separate from this selected H1 path | Explicit persistence and authority integration remains open. A catalog citation is not model execution, claim support, evidence appraisal or clinical approval. |
+
+The catalog/citation slice preserves existing H1 ownership: versioned fictional metadata, separate rights history and question/citation links use the existing investigation schema. At runtime `f4750327`, [API CI 41639678827](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41639678827) passed 354 API/PostgreSQL and 282 reference tests, both reference browser journeys and all four Compose probes. [React CI 41639678872](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41639678872) passed 219 tests, the production build and actual evidence browser acceptance. These include original question/source histories, independent authority, exact retry recovery, amendments, rights revocation and actual database dump/restore. The full oncology product is not thereby complete.
+
+Historical negative evidence is preserved: [tests-first API 41636114987](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41636114987) at `9cdb8971` ran 336 tests with seven failures and eight missing-implementation errors; [tests-first React 41636115127](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41636115127) covered only the inherited 195 tests. Backend candidate `100512e7` subsequently passed 339 API/PostgreSQL and 282 reference tests before the final combined runtime was published. See [project state](PROJECT_STATE.md#evidence-metadata-slice--verified-draft-integration) and [the full acceptance record](../engineering/H1_QUESTION_EVIDENCE.md). Existing OI-004/007/008/009/010/013 retain backlog ownership.
+
+The [current project-state audit](PROJECT_STATE.md#canonical-record-conflicts-requiring-in-place-reconciliation) records stale [Sprint Board](https://app.notion.com/p/9a3fbdbf73ea4b779b2fe2b29172561d) and [OI Task Board](https://app.notion.com/p/40b3866f77ef807eb47bc45698b90d44) ownership/status fields, and the mismatch between the [Notion rights register](https://app.notion.com/p/52e843c6b0574713b66a5fb5d7f67ea3) and [Drive catalog](https://drive.google.com/drive/folders/1BSt9Whovg9jM9U6_eGBrvGi3NoZKmSIw). Reconcile those existing records in place; do not infer a named assignee or commercial clearance from a branch, a catalog label or a successful workflow.
+
+This is a draft synthetic development checkpoint. No merge, deployment, real-patient use, external notification, professional signoff or clinical validation has occurred. The four existing Notion architecture/engineering/rights records and two Drive current-truth/progress documents were updated and read back after acceptance; [the exact receipt](../engineering/H1_QUESTION_EVIDENCE.md#canonical-record-updates) records their scope. Task-board ownership and cross-catalog rights reconciliation remain separate unfinished work.
+
+## Historical #276 connection inventory
+
+The current #293/#298 checkpoint above supersedes the earlier pending-integration
+statements in this retained assessment.
 
 | Connection | Existing owner / contract | State | Remaining boundary |
 |---|---|---|---|
@@ -25,7 +51,7 @@ Authoritative local documentation: [API README](../../apps/api/README.md), [web 
 
 ## Other existing work that must be preserved and explicitly integrated
 
-| Work / source | What the evidence describes | Status relative to selected H1 base |
+| Work / source | What the evidence describes | State in the original #276 assessment |
 |---|---|---|
 | Merged reference app | Python/SQLite source ledger, versions, timeline, questions, synthetic evidence/review and DOI bibliography | Fully implemented and tested within its own bounded reference contracts; not a production clinical platform. |
 | Clinical/EHR/LIS continuity #95/#152 and related owners | Canonical clinical patient/source/LIS mapping, event/source provenance and review adapters | Partially implemented in separate drafts; do not duplicate or claim migrated into current H1. |
@@ -57,6 +83,48 @@ Authoritative local documentation: [API README](../../apps/api/README.md), [web 
 | Scheduling / messaging / external care-team actions | Coordinate appointments, questions and tasks | Designed but not implemented for live operations | Real recipient/participant identity, access, delivery receipts, operational ownership and authorized action. |
 
 These rows report project state rather than current general legal/license advice about upstream products. New adoption requires checking the exact upstream artifact and relevant transitive dependencies.
+
+## Rechecked historical leads — 3 November 2026
+
+The originally referenced PRs and issues were re-read from GitHub, including
+immutable head revisions and returned pull-request workflow records. All six
+PRs below remain open drafts and unmerged. Workflow success is scoped to that
+head and job; it is not evidence of complete H1 integration, release or clinical
+validation. In particular, the returned #89 workflow is UI-only and does not by
+itself prove its patient/EHR/event acceptance claims.
+
+| Lead | Repository state | Exact head | Observed selected workflow |
+|---|---|---|---|
+| [#56](https://github.com/OpenxIntelligence/open-intelligence/pull/56) | Open draft; unmerged | `08eafc5fc4d606c9c47913d0e8e45641338489aa` | [Reference ledger workflow 41482472060](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41482472060) success |
+| [#70](https://github.com/OpenxIntelligence/open-intelligence/pull/70) | Open draft; unmerged | `b1b99b3095b33b8cd7352793c94990b852ea88f9` | [Reference ledger workflow 41493529854](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41493529854) success |
+| [#74](https://github.com/OpenxIntelligence/open-intelligence/pull/74) | Open draft; unmerged | `a1ce73e4bfa0eabee15e378968c424229a96cb02` | [Reference ledger workflow 41489395344](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41489395344) success |
+| [#85](https://github.com/OpenxIntelligence/open-intelligence/pull/85) | Open draft; unmerged | `3326774b99e819d07ed555a6e505c24dfc699320` | [Reference ledger workflow 41494256338](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41494256338) success |
+| [#89](https://github.com/OpenxIntelligence/open-intelligence/pull/89) | Open draft; unmerged | `7125aca84ebf38820482e8640e7a1479bcc0f429` | [UI-only returned workflow 41499742399](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41499742399) success |
+| [#93](https://github.com/OpenxIntelligence/open-intelligence/pull/93) | Open draft; unmerged | `aa6d3f21b8d36d9949b66ed13ed34f76dabbd875` | [Reference ledger workflow 41501875440](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41501875440) success |
+| [#87](https://github.com/OpenxIntelligence/open-intelligence/issues/87) | Open engineering issue | — | Not a completion receipt |
+| [#92](https://github.com/OpenxIntelligence/open-intelligence/issues/92) | Open engineering issue | — | Not a completion receipt |
+
+Preserve #56's laboratory operations, #70's outbox/inbox, #74's encounter/note
+owner, #85's canonical registry, #89's separate integration lane and #93's
+knowledge-context/rights contract. #298 reuses the canonical registry through its
+existing PostgreSQL port; it does not merge all of these domains or close #87/#92.
+
+### Concurrent clinical work rechecked at 13:03 UTC
+
+All three rows remain open drafts, unmerged and outside #298. Preserve their
+owners and evaluate combined behavior before selecting an integration order.
+
+| PR and exact feature head | Actual work and verification | Integration implication |
+|---|---|---|
+| [#289](https://github.com/OpenxIntelligence/open-intelligence/pull/289), `6c6f28c9cfe9a886ac8f3f774a441e7e8cbdbb63` | One new reconciliation test file, six acceptance methods and no route implementation. [API 41628915787](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41628915787) checked out that feature head and ran 252 tests with six failures caused by absent routes returning 404. [React 41628915820](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41628915820) passed. | Tests-first development; reconciliation behavior is not delivered by this head. |
+| [#290](https://github.com/OpenxIntelligence/open-intelligence/pull/290), `950b2346559728b3f17e58102a1e3848e4c3c970` | Seven files for PostgreSQL encounters, storage hooks, migration, parity tests and supporting records; child of #148. [Matrix 41629516514](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41629516514) ran 42 tests with one error on each of PostgreSQL 17.11 and 18.6. Actual checkout was PR merge `b88dab3e263faa2d1443805e11b09af5c6afda9e`. [UI 41629516399](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41629516399) passed; two inherited single-cell push runs failed with zero jobs. | Current parity verification is blocked. The observed error is in the SQLite oracle fixture, not evidence of a PostgreSQL row-conversion defect. |
+| [#291](https://github.com/OpenxIntelligence/open-intelligence/pull/291), `b6ad6e7d2e78d56db38eac0763333d4be790b7cf` | Two-file child of #152 adds late authorization checks and stored-note SHA-256 verification. [Suite 41633964920](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41633964920) passed 386 tests and both Chromium journeys at PR merge `0b15a00477eb6e784a2a4fada4d6f6eb8f4efd8b`. [UI 41633965153](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41633965153) and [Crossref 41633964941](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41633964941) passed; [single-cell push 41633957595](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41633957595) failed with zero jobs. | Preserve the verified reference hardening. No PostgreSQL verification of this head was found, and it does not fix #290's separate fixture. |
+
+In #290, the parity test executes its SQLite oracle first. That fixture creates
+`sqlite3.connect(":memory:")` without `row_factory`; the workflow then indexes
+`row["revision"]` and raises `TypeError`. The PostgreSQL adapter explicitly
+converts query rows to dictionaries. #291 edits neither the parity fixture nor
+that PostgreSQL adapter; its passing reference suite cannot close this gate.
 
 ## Data ownership and loss boundaries
 

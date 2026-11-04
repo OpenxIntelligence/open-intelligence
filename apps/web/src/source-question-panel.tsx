@@ -1,12 +1,14 @@
 import type {RegistrySession,ViewState} from './registry-client';
 import {canPrepareSourceBrief,downloadSourceBrief} from './source-brief';
 import {FollowthroughCreate,FollowthroughPanel} from './followthrough-panel';
+import {QuestionEvidencePanel,QuestionEvidenceRecovery} from './question-evidence-panel';
 
 /** Reuses the source-question intake panel from PR238 over the canonical World Model. */
 export function SourceQuestionPanel({state,session,busy,onReview}:{state:ViewState;session:RegistrySession;busy:boolean;onReview?:()=>void}){
  const caseId=state.worldModel?.case_id??'';
  const brief=state.sourceBrief;
  const draft=state.questionDraft;
+ const evidenceQuestionId=state.evidenceLinkIntent?.question_id??state.evidenceQuestionId;
  const validDraft=!!draft&&draft.question.length>=8&&draft.question.length<=500&&
    draft.question.trim()===draft.question&&
    !Array.from(draft.question).some(ch=>ch.charCodeAt(0)<32||ch.charCodeAt(0)===127);
@@ -123,8 +125,12 @@ export function SourceQuestionPanel({state,session,busy,onReview}:{state:ViewSta
            onClick={()=>void session.loadQuestionSourcePacket(item.question_id)}>
            Inspect verified source quote and evidence gaps
           </button>
+          <QuestionEvidencePanel key={item.question_id+':evidence'} question={item}
+            state={state} session={session} busy={busy}/>
          </li>)}</ul>}
     </div>}
+    {evidenceQuestionId&&!(state.questionsCaseId===caseId&&state.questions?.some(item=>item.question_id===evidenceQuestionId))&&
+      <QuestionEvidenceRecovery state={state} session={session} busy={busy}/>}
     <p data-testid="brief-status" role="status" aria-live="polite"
       className={'status '+(state.briefPhase==='error'?'error':'')}>{state.briefMessage}</p>
     {brief&&<section className="source-brief-preview" data-testid="source-brief-preview"

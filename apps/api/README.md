@@ -4,8 +4,53 @@ This is the FastAPI/PostgreSQL 16 composition root for [issue #112](https://gith
 It mounts the existing canonical patient registry and a small synthetic record-request operational domain, with migrations and durable event receipts.
 The Python/SQLite prototype remains the evidence/investigation reference. This
 branch now connects canonical PostgreSQL sources, source questions and
-nonterminal verification-return receipts; the evidence/report persistence
-boundary remains a separate integration.
+nonterminal verification-return receipts, and bounded fictional evidence
+metadata links. Evidence appraisal and report persistence remain separate
+integration work.
+
+## Question-scoped fictional evidence metadata
+
+Apply the current migration head (`0010_question_evidence`) explicitly:
+
+```bash
+PYTHONPATH=apps/api/src:src python -m oi_api.migrate upgrade head
+PYTHONPATH=apps/api/src:src python -m oi_api.evidence_catalog
+```
+
+The second command is an operator-only, opt-in seed of two independently authored,
+nonclinical metadata records. It performs no external retrieval. Repeating it
+does not overwrite an existing version or restore revoked rights. The application
+does not seed records or grant access on startup.
+
+After the existing patient, case, source, World Model and question workflow,
+these routes operate on the same canonical question:
+
+| Method and question suffix | Behavior | Additional synthetic grants |
+|---|---|---|
+| `POST /evidence-search` | Bounded lexical search of authorized fictional metadata; exact versions, metadata hash and access receipt | `evidence_read` |
+| `GET /evidence-links` | Immutable citation history with freshly checked metadata rights | `evidence_read` |
+| `POST /evidence-links` | Save an exact citation and metadata hash against the question's current source snapshot | `evidence_read`, `evidence_link` |
+
+The full prefix is `/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}`.
+Patient, question and source access plus the `operations` purpose remain required.
+Use the versioned local OpenAPI contract for exact request/response fields. The
+existing React saved-question panel exposes these operations, recovery of an
+uncertain save, and source-reassessment status.
+
+Unknown, withdrawn or superseded metadata rights withhold the title, license and
+URL on a fresh read. The link's identity and hash remain historical references
+under patient access. An exact retry can recover an earlier receipt without
+creating a new effect or releasing revoked metadata. An amended patient source
+blocks new links from the stale question while preserving its prior history.
+
+An internal fixture declaration is not legal clearance of third-party content.
+A matching citation identifies a catalog version; it does not establish claim
+support, trial eligibility or clinical validity. No publisher connector, model
+call, scientific computation or clinical approval is enabled by this slice.
+See [the implementation and verification record](../../docs/engineering/H1_QUESTION_EVIDENCE.md).
+The existing `verify_followthrough_compose.py` recovery probe now also preserves
+the evidence catalog, rights decisions and citation through actual dump/restore,
+and verifies redacted metadata and restored patient-binding denial over HTTP.
 
 ## Canonical saved-question follow-through
 
