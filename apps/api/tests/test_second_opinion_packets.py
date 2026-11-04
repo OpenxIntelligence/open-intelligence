@@ -44,6 +44,7 @@ class SecondOpinionPacketHTTPTests(SourceFixture):
         body={
             "synthetic":True,"request_key":key,
             "title":"Focused fictional second-opinion discussion packet",
+            "source_snapshot_contract":"oi.pg-source-world-model/1",
             "expected_source_snapshot_sha256":preflight["source_snapshot_sha256"],
             "source_ids":[source],"question_ids":[question_id],
         }
@@ -79,6 +80,7 @@ class SecondOpinionPacketHTTPTests(SourceFixture):
             self.assertFalse(body["external_dispatch_supported"])
             packet=body["packets"][0]
             self.assertEqual(packet["preparation_state"],"current_preparation")
+            self.assertEqual(packet["source_snapshot_contract"],"oi.pg-source-world-model/1")
             self.assertEqual(packet["sources"][0]["source_id"],source)
             self.assertEqual(packet["questions"][0]["question_id"],qid)
             self.assertFalse(packet["record_completeness_verified"])
@@ -125,6 +127,7 @@ class SecondOpinionPacketHTTPTests(SourceFixture):
                 {"source_ids":[source,source]},
                 {"question_ids":[qid,qid]},
                 {"title":"short"},
+                {"source_snapshot_contract":"legacy.invalid/1"},
                 {"expected_source_snapshot_sha256":"0"*64},
                 {"source_ids":["SRC-"+"F"*32]},
                 {"question_ids":["QUESTION-"+"F"*32]},

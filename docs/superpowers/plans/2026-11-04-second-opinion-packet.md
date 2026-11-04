@@ -4,7 +4,7 @@
 Persist an exact preparation packet over the canonical H1 patient/case, original-source and saved-question owners without creating a second record system or implying a referral was transmitted.
 
 ## Boundaries
-- Packet membership stores only canonical source IDs/version/hash tuples and canonical question IDs.
+- Packet membership stores canonical source IDs/version/hash tuples and canonical question IDs, plus the exact source-snapshot contract and digest that defined their preparation context.
 - Create requires a current source snapshot, current selected sources, and current source-grounded questions.
 - Exact retries recover one receipt even after later source amendment; changed intent conflicts.
 - Read-time freshness derives from the current source owner and question projection. Historical packet bytes are never retargeted.

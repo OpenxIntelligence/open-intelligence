@@ -84,7 +84,7 @@ class PostgresSecondOpinionPackets:
             patient_id,case_id,organization=organization,source_index=index)}
         source_by_id={s["source_id"]:s for s in index["sources"]}
         rows=self.registry._fetchall(
-            "SELECT packet_id,patient_id,case_id,origin_org,title,source_snapshot_sha256,created_at "
+            "SELECT packet_id,patient_id,case_id,origin_org,title,source_snapshot_contract,source_snapshot_sha256,created_at "
             "FROM coordination.second_opinion_packets "
             "WHERE patient_id=%s AND case_id=%s AND origin_org=%s "
             "ORDER BY created_at,packet_id LIMIT 101",
@@ -105,7 +105,7 @@ class PostgresSecondOpinionPackets:
             if (not source_rows or not question_rows or len(source_rows)>MAX_PACKET_SOURCES
                     or len(question_rows)>MAX_PACKET_QUESTIONS):
                 raise PatientRegistryError("Second-opinion packet membership integrity mismatch")
-            stale=not hmac.compare_digest(row[5],current_snapshot)
+            stale=not hmac.compare_digest(row[6],current_snapshot)
             sources=[]
             selected_ids=set()
             for ordinal,source_id,version,digest in source_rows:
@@ -124,7 +124,8 @@ class PostgresSecondOpinionPackets:
                 if question is None or question["source_id"] not in selected_ids:
                     raise PatientRegistryError("Second-opinion question provenance integrity mismatch")
                 stale=stale or question["source_context_state"]!="current_unreviewed_question"
-                stale=stale or not hmac.compare_digest(question["source_snapshot_sha256"],row[5])
+                stale=stale or question["source_snapshot_contract"]!=row[5]
+                stale=stale or not hmac.compare_digest(question["source_snapshot_sha256"],row[6])
                 selected_questions.append({
                     "question_id":question_id,"question":question["question"],
                     "source_id":question["source_id"],"source_line":question["source_line"],
@@ -132,7 +133,8 @@ class PostgresSecondOpinionPackets:
                 })
             output.append({
                 "packet_id":packet_id,"patient_id":row[1],"case_id":row[2],"title":row[4],
-                "source_snapshot_sha256":row[5],"created_at":row[6].isoformat(),
+                "source_snapshot_contract":row[5],"source_snapshot_sha256":row[6],
+                "created_at":row[7].isoformat(),
                 "preparation_state":"source_reassessment_required" if stale else "current_preparation",
                 "sources":sources,"questions":selected_questions,
                 "record_completeness_verified":False,"recipient_verified":False,
@@ -159,14 +161,16 @@ class PostgresSecondOpinionPackets:
                 recheck_authority=final,prepare_response=prepare)
 
     def create(self,patient_id:str,case_id:str,*,organization:str,actor:str,purpose:str,
-               request_key:str,title:str,expected_source_snapshot_sha256:str,
-               source_ids:list[str],question_ids:list[str],
+               request_key:str,title:str,source_snapshot_contract:str,
+               expected_source_snapshot_sha256:str,source_ids:list[str],question_ids:list[str],
                recheck_authority:Callable[[],None],
                prepare_response:Callable[[dict],PreparedResponse]|None=None):
         patient_id,case_id,organization,actor=self._scope(
             patient_id,case_id,organization,actor,purpose)
         request_key=_key(request_key,"request_key")
         title=_title(title)
+        if source_snapshot_contract!="oi.pg-source-world-model/1":
+            raise PatientRegistryConflict("Unsupported source snapshot contract")
         if (type(expected_source_snapshot_sha256) is not str
                 or re.fullmatch(r"[0-9a-f]{64}",expected_source_snapshot_sha256) is None):
             raise PatientRegistryError("Invalid source snapshot fingerprint")
@@ -182,7 +186,8 @@ class PostgresSecondOpinionPackets:
         intent=_digest({
             "operation":"second_opinion.packet.create","patient_id":patient_id,"case_id":case_id,
             "organization":organization,"actor":actor,"purpose":purpose,"request_key":request_key,
-            "title":title,"source_snapshot_sha256":expected_source_snapshot_sha256,
+            "title":title,"source_snapshot_contract":source_snapshot_contract,
+            "source_snapshot_sha256":expected_source_snapshot_sha256,
             "source_ids":source_ids,"question_ids":question_ids,
         })
 
@@ -210,6 +215,7 @@ class PostgresSecondOpinionPackets:
                     raise PatientRegistryDenied("Second-opinion question unavailable")
                 if (question["source_id"] not in selected_id_set
                         or question["source_context_state"]!="current_unreviewed_question"
+                        or question["source_snapshot_contract"]!=source_snapshot_contract
                         or not hmac.compare_digest(question["source_snapshot_sha256"],
                                                    expected_source_snapshot_sha256)):
                     raise PatientRegistryConflict("Selected question requires source reassessment")
@@ -218,9 +224,10 @@ class PostgresSecondOpinionPackets:
             self.registry._execute(
                 "INSERT INTO coordination.second_opinion_packets "
                 "(packet_id,patient_id,case_id,origin_org,request_key,intent_sha256,actor,purpose,"
-                "title,source_snapshot_sha256) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                "title,source_snapshot_contract,source_snapshot_sha256) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                 (packet_id,patient_id,case_id,organization,request_key,intent,actor,purpose,
-                 title,expected_source_snapshot_sha256),
+                 title,source_snapshot_contract,expected_source_snapshot_sha256),
             )
             for ordinal,source in enumerate(selected,1):
                 self.registry._execute(

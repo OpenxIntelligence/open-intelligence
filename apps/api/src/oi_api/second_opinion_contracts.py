@@ -17,6 +17,7 @@ class CreateSecondOpinionPacket(Contract):
     synthetic: Literal[True]
     request_key: str
     title: str = Field(min_length=8,max_length=300)
+    source_snapshot_contract: Literal["oi.pg-source-world-model/1"]
     expected_source_snapshot_sha256: str = Field(pattern=DIGEST)
     source_ids: list[str] = Field(min_length=1,max_length=32)
     question_ids: list[str] = Field(min_length=1,max_length=16)
@@ -84,6 +85,7 @@ class SecondOpinionPacket(Contract):
     patient_id: str
     case_id: str
     title: str
+    source_snapshot_contract: Literal["oi.pg-source-world-model/1"]
     source_snapshot_sha256: str = Field(pattern=DIGEST)
     created_at: datetime
     preparation_state: Literal["current_preparation","source_reassessment_required"]
