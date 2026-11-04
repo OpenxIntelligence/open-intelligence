@@ -10,9 +10,14 @@ import signal
 import subprocess
 import sys
 import tempfile
-from urllib.request import urlopen
 
-from browser_journey import ChromeSession, free_port, wait_for, wait_for_browser
+from browser_journey import (
+    ChromeSession,
+    free_port,
+    urlopen,
+    wait_for,
+    wait_for_browser,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 

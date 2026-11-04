@@ -133,7 +133,8 @@ class DiscoveryApiTests(unittest.TestCase):
         cls.tmp.cleanup()
 
     def call(self, path, data=None):
-        headers = {}
+        # B-01: case routes require a fictional actor; seed() grants this one.
+        headers = {"X-Fictional-Actor": "FICTIONAL-NAVIGATOR-A"}
         if data is not None:
             headers["Content-Type"] = "application/json"
             headers["Origin"] = f"http://127.0.0.1:{self.port}"

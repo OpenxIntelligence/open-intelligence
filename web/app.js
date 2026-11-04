@@ -3,7 +3,12 @@
 let caseId = null;
 let active = null;
 let refreshSequence = 0;
+let boardSequence = 0;
 let renderedCaseId = null;
+// B-01 fictional actor: workflow governance only — not identity verification,
+// not a login, not credentialed review. Sent on every API call; the server
+// gates case routes on a live grant for this actor and ignores it elsewhere.
+let fictionalActor = 'FICTIONAL-NAVIGATOR-A';
 let caseCatalog = [];
 let incomingBoardSequence = 0;
 let draftQuestionFilter = null;
@@ -23,12 +28,17 @@ function notice(message, error = false) {
   item.hidden = false;
 }
 async function api(path, payload) {
-  const response = await fetch(path, payload === undefined ? undefined : {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+  const actorHeaders = { 'X-Fictional-Actor': fictionalActor };
+  const response = await fetch(path, payload === undefined ? { headers: actorHeaders } : {
+    method: 'POST', headers: { ...actorHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
   });
   const type = response.headers.get('content-type') || '';
   const data = type.includes('json') ? await response.json() : await response.text();
-  if (!response.ok) throw Error(data.error || 'Request failed');
+  if (!response.ok) {
+    const failure = Error(data.error || 'Request failed');
+    failure.status = response.status;
+    throw failure;
+  }
   return data;
 }
 function pill(value, style = '') { return node('span', value, 'pill ' + style); }
@@ -46,46 +56,194 @@ function focusOverviewFromCasePicker(event) {
   event.preventDefault();
   overviewLink.focus();
 }
-async function initialize() {
+function unfinishedDraftPresent() {
+  return ['draft-observations', 'draft-summary', 'draft-assumptions', 'evidence-rationale',
+    'evidence-withdraw-reason', 'option-description', 'synthesis-note-text',
+    'synthesis-note-author', 'owner-label-input', 'note-text',
+    'scoped-decision-note', 'scoped-dissent-rationale'].some(id => el(id).value.trim());
+}
+function renderActorIndicator() {
+  // The Patient Mission renderer (mission.js) reads this dataset value so
+  // both scripts send the same fictional actor without sharing state.
+  document.body.dataset.fictionalActor = fictionalActor;
+  el('actor-input').value = fictionalActor;
+  el('actor-status').textContent = 'Acting as ' + fictionalActor +
+    ' (fictional grant only — not identity verification).';
+}
+async function loadCaseList() {
+  const cases = await api('/api/cases');
+  const picker = el('case-picker');
+  picker.replaceChildren();
+  for (const entry of cases) {
+    const option = node('option', entry.label.replace(/^Fictional case /, '') + ', ' + entry.case_id);
+    option.value = entry.case_id;
+    picker.append(option);
+  }
+  return cases;
+}
+async function applyActor() {
+  const next = el('actor-input').value.trim();
+  if (!/^[A-Z][A-Z0-9-]{1,39}$/.test(next)) {
+    el('actor-input').value = fictionalActor;
+    notice('Fictional actor ids use uppercase A–Z, numbers and hyphens.', true);
+    return;
+  }
+  if (next === fictionalActor) return;
+  // An unfinished narrative must never silently become attached to another actor's view.
+  if (unfinishedDraftPresent()) {
+    el('actor-input').value = fictionalActor;
+    notice('Save or explicitly clear the unfinished investigation draft before switching actors.', true);
+    return;
+  }
+  fictionalActor = next;
+  renderActorIndicator();
+  cancelSourceRead();
+  caseId = null;
+  active = null; // Reject writes while the next case list is loading.
+  if (el('source-dialog').open) el('source-dialog').close();
+  if (el('compare-dialog').open) el('compare-dialog').close();
   try {
-    const cases = await api('/api/cases');
+    const cases = await loadCaseList();
     caseCatalog = cases;
-    const picker = el('case-picker');
-    picker.addEventListener('keydown', focusOverviewFromCasePicker);
-    for (const entry of cases) {
-      const option = node('option', entry.label.replace(/^Fictional case /, '') + ', ' + entry.case_id);
-      option.value = entry.case_id;
-      picker.append(option);
-    }
+    await renderIncomingBoard(cases);
     if (!cases.length) {
-      el('case-heading').textContent = 'No synthetic cases found';
-      notice('Run PYTHONPATH=src python -m open_intelligence seed before opening the demo.', true);
+      el('case-heading').textContent = 'No granted cases for this fictional actor';
+      renderedCaseId = null;
+      clear('metrics');
+      clearCaseViews('No case data shown: this fictional actor holds no active grant.');
+      el('changes-anchor').textContent = 'Changes unavailable: this fictional actor holds no active grant.';
+      el('changes-disclaimer').textContent = '';
+      notice('This fictional actor holds no active grant on any case in this demo. Apply a granted fictional actor.', true);
       return;
     }
+    caseId = cases[0].case_id;
+    await refresh();
+  } catch (err) { notice(err.message, true); }
+}
+function clearCaseViews(denied) {
+  for (const id of ['assertion-list', 'question-list', 'snapshot-list', 'source-list',
+      'source-change-list', 'asset-list', 'event-list', 'option-list',
+      'evidence-assessment-list', 'quarantine-list', 'model-investigation-list',
+      'source-choice', 'evidence-choice', 'patient-timeline', 'patient-findings',
+      'patient-questions', 'patient-uncertainty', 'changes-new-sources',
+      'changes-amendments', 'changes-stale', 'changes-questions',
+      // M-3: the mission projection renders case quotes (mission.js
+      // renderKnown); it must clear under denial like every other view.
+      'mission-summary', 'mission-known', 'mission-unresolved',
+      'mission-changes', 'mission-actions']) {
+    clear(id);
+    empty(el(id), denied);
+  }
+  // mission-status is a pill, not a list container: replace the prior-case
+  // workflow label with the denial text and reset the pill styling.
+  el('mission-status').textContent = denied;
+  el('mission-status').className = 'pill pill-neutral';
+  // mission-guardrails is a <ul>: clear items without injecting a <p>.
+  clear('mission-guardrails');
+  // Drop the mission section's prior-case binding alongside its content.
+  delete el('patient-mission').dataset.caseId;
+  el('patient-mission').dataset.workflowStatus = 'unavailable';
+  clear('timeline-events');
+  const item = node('li', null, 'timeline-entry');
+  item.append(node('p', denied, 'muted'));
+  el('timeline-events').append(item);
+  for (const id of ['question-choice', 'evidence-question-choice', 'evidence-source-choice',
+      'evidence-withdraw-id', 'model-investigation-question', 'option-snapshot-choice',
+      'dependency-option-choice', 'task-option-choice', 'threat-option-choice',
+      'review-option-choice', 'dependency-option-target-choice', 'dependency-source-choice',
+      'dependency-assessment-choice', 'dependency-task-choice', 'review-snapshot-choice'])
+    clear(id);
+  el('option-disclaimer').textContent = '';
+}
+function renderAccessDenied(requestedCase) {
+  // Never leave the previously rendered case visible under a denied case:
+  // clear every case-bound view and block writes until a granted case loads.
+  active = null;
+  renderedCaseId = null;
+  el('case-heading').textContent = 'Access denied for this fictional actor';
+  el('review-attention-heading').textContent = 'Investigation review status';
+  el('review-attention-summary').textContent = 'Review state unavailable: access denied for this fictional actor.';
+  el('review-attention').dataset.state = 'no-open-review';
+  clear('metrics');
+  clearCaseViews('No case data shown: this fictional actor holds no active grant.');
+  el('changes-anchor').textContent = 'Changes unavailable: access denied for this fictional actor.';
+  el('changes-disclaimer').textContent = '';
+  notice('Fictional actor ' + fictionalActor + ' holds no active grant for ' + requestedCase +
+    '. Switch to a granted case or apply a granted fictional actor.', true);
+}
+async function initialize() {
+  try {
+    renderActorIndicator();
+    el('actor-apply').addEventListener('click', applyActor);
+    const picker = el('case-picker');
+    picker.addEventListener('keydown', focusOverviewFromCasePicker);
     picker.addEventListener('change', () => {
+      if (documentIntake.hasDraft()) {
+        picker.value = caseId;
+        notice('Add the record or discard its intake before switching cases.', true);
+        return;
+      }
       // An unfinished narrative must never silently become attached to another case.
       if ((['draft-observations', 'draft-summary', 'draft-assumptions', 'evidence-rationale',
-            'evidence-withdraw-reason', 'option-description'].some(id => el(id).value.trim()))) {
+            'evidence-withdraw-reason', 'option-description',
+            'scoped-decision-note', 'scoped-dissent-rationale',
+            'bio-mechanism', 'bio-result-note',
+            'goal-statement', 'amend-goal-statement', 'goal-status-reason',
+            'amend-note-text', 'ft-title', 'ft-detail', 'ft-reason',
+            'ft-update-reason', 'so-question-text', 'so-responder',
+            'so-response-text', 'surv-plan-title', 'surv-description',
+            'consent-scope', 'consent-withdraw-reason', 'qualifier-text',
+            'workspace-question-text', 'workspace-status-reason', 'workspace-status-answer',
+            'visit-date', 'visit-type', 'visit-notes', 'visit-anchor',
+            'visit-amend-date', 'visit-amend-type', 'visit-amend-notes', 'visit-amend-anchor',
+            'counterevidence-reason', 'safety-detail',
+            'flag-reason', 'dimension-note',
+            'synthesis-note-text', 'synthesis-note-author',
+            'owner-label-input', 'note-text'].some(id => el(id).value.trim())) ||
+          [...el('review-awaiting').querySelectorAll('input, textarea')].some(x => x.value.trim())) {
         picker.value = caseId;
         notice('Save or explicitly clear the unfinished investigation draft before switching cases.', true);
         return;
       }
       cancelSourceRead();
       caseId = picker.value;
+      documentIntake.syncCase(caseId);
       active = null; // Reject writes while the next case is loading.
       draftQuestionFilter = null;
       draftFilterCaseId = null;
-      for (const id of ['question-text', 'report-text', 'evidence-rationale', 'draft-observations',
-        'draft-summary', 'draft-assumptions']) el(id).value = '';
+      for (const id of ['question-text', 'question-owner', 'owner-label-input', 'note-text',
+        'report-text', 'evidence-rationale', 'draft-observations',
+        'draft-summary', 'draft-assumptions', 'synthesis-note-text', 'synthesis-note-author',
+        'counterevidence-reason', 'safety-detail',
+        'bio-mechanism', 'bio-result-note',
+        'flag-reason', 'dimension-note',
+        'goal-statement', 'goal-review-trigger',
+        'amend-goal-statement', 'amend-goal-review-trigger', 'goal-status-reason',
+        'amend-note-text', 'so-question-text', 'so-responder', 'so-response-text',
+        'surv-plan-title', 'surv-description', 'surv-date',
+        'consent-scope', 'consent-date', 'consent-withdraw-reason',
+        'consent-withdraw-date', 'qualifier-text', 'qualifier-date',
+        'workspace-question-text', 'workspace-status-reason',
+        'workspace-status-answer', 'visit-date', 'visit-type', 'visit-notes',
+        'visit-anchor', 'visit-amend-date', 'visit-amend-type', 'visit-amend-notes',
+        'visit-amend-anchor']) el(id).value = '';
       if (el('source-dialog').open) el('source-dialog').close();
       if (el('compare-dialog').open) el('compare-dialog').close();
       refresh();
     });
+    const cases = await loadCaseList();
+    if (!cases.length) {
+      el('case-heading').textContent = 'No synthetic cases found';
+      notice('Run PYTHONPATH=src python -m open_intelligence seed before opening the demo.', true);
+      return;
+    }
+    await renderIncomingBoard(cases);
     caseId = cases[0].case_id;
     await refresh();
   } catch (err) { notice(err.message, true); }
 }
 async function renderIncomingBoard(cases) {
+  const boardSeq = ++boardSequence;
   const sequence = ++incomingBoardSequence;
   const list = el('incoming-list');
   clear('incoming-list');
@@ -112,6 +270,7 @@ async function renderIncomingBoard(cases) {
   clear('incoming-list');
   // Most recent source event first. No urgency is inferred: the demo data
   // has no triage field, so sorting is by recency of the record only.
+  if (boardSeq !== boardSequence) return;
   summaries.sort((a, b) => b.latestEvent.localeCompare(a.latestEvent));
   for (const summary of summaries) {
     const row = node('div', null, 'question');
@@ -148,7 +307,7 @@ function currentReviewQuestionIds(state) {
     .map(s => Number(s.question_id)));
 }
 function renderPatientView() {
-  clear('patient-timeline'); clear('patient-findings'); clear('patient-questions'); clear('patient-uncertainty');
+  clear('patient-timeline'); clear('patient-findings'); clear('patient-questions'); clear('patient-uncertainty'); clear('patient-attention');
   if (!active) return;
   const groups = groupedTimeline(active.sources).slice().reverse();
   if (!groups.length) empty(el('patient-timeline'), 'No records yet in this fictional case.');
@@ -171,9 +330,12 @@ function renderPatientView() {
   if (!active.assertions.length) empty(el('patient-findings'), 'No reported findings yet in this fictional case.');
   for (const assertion of active.assertions) {
     const card = node('div', null, 'finding');
+    const manual = assertion.classification_origin === 'user_selected';
     card.append(node('strong', 'Source says'), node('p', assertion.quote, 'quoted'),
-      node('span', 'How certain the source is: ' + (CERTAINTY_PLAIN[assertion.certainty] || assertion.certainty) +
+      node('span', (manual ? 'User-selected status: ' : 'How certain the source is: ') +
+        (CERTAINTY_PLAIN[assertion.certainty] || assertion.certainty) +
         ' · Exact source version #' + assertion.source_version_id + ', line ' + assertion.source_line, 'ref'));
+    if (manual) card.append(node('p', 'Passage manually selected. Clinical review not performed.', 'muted tiny'));
     el('patient-findings').append(card);
   }
   const open = active.questions.filter(q => q.state === 'open');
@@ -204,6 +366,43 @@ function renderPatientView() {
   }
 }
 
+function renderPatientAttention(data) {
+  clear('patient-attention');
+  const entries = (data && data.entries) || [];
+  if (!entries.length) {
+    empty(el('patient-attention'), 'Nothing is currently listed as needing attention in this fictional case. This does not mean the case is complete.');
+    return;
+  }
+  for (const entry of entries) {
+    const row = node('div', null, 'question');
+    row.append(pill('FICTIONAL', 'pill-warn'));
+    row.append(pill(String(entry.kind || 'item'), 'pill-neutral'));
+    row.append(node('p', String(entry.title || '')));
+    const dateText = entry.date_display || entry.recorded_date || 'no date recorded';
+    row.append(node('p', 'Recorded date: ' + dateText, 'muted'));
+    row.append(node('p', 'Citation: ' + String(entry.record_type || 'record') + ' #' + String(entry.record_id ?? '?'), 'muted'));
+    if (entry.review_state) row.append(node('p', 'Review state: ' + String(entry.review_state), 'muted'));
+    if (entry.detail) row.append(node('p', String(entry.detail), 'muted'));
+    if (entry.source_anchor) row.append(node('p', 'Source anchor: ' + String(entry.source_anchor), 'muted'));
+    el('patient-attention').append(row);
+  }
+}
+
+async function loadPatientAttention() {
+  const requested = caseId;
+  clear('patient-attention');
+  if (!requested) return;
+  try {
+    const data = await api('/api/cases/' + requested + '/patient-attention');
+    // Discard stale attention responses after case changes.
+    if (requested !== caseId || !active || active.case.case_id !== requested) return;
+    renderPatientAttention(data);
+  } catch (err) {
+    if (requested !== caseId) return;
+    empty(el('patient-attention'), 'Attention list unavailable: ' + err.message);
+  }
+}
+
 async function refresh() {
   const requestedCase = caseId;
   const sequence = ++refreshSequence;
@@ -215,11 +414,19 @@ async function refresh() {
     active = response;
     el('case-heading').textContent = active.case.label;
     render();
-    // Re-read all summaries: shared evidence changes may affect other cases.
-    // Each row is a fetched state, not a transactionally consistent cross-case snapshot.
-    await renderIncomingBoard(caseCatalog);
+    // The incoming board shows per-case counts for every case, so it goes
+    // stale after any write. Refresh it alongside the workspace panels.
+    api('/api/cases').then(cases => {
+      if (sequence !== refreshSequence || caseId !== requestedCase) return;
+      renderIncomingBoard(cases);
+    }).catch(err => {
+      if (sequence === refreshSequence && requestedCase === caseId) notice(err.message, true);
+    });
   } catch (err) {
-    if (sequence === refreshSequence && requestedCase === caseId) notice(err.message, true);
+    if (sequence === refreshSequence && requestedCase === caseId) {
+      if (err.status === 403) renderAccessDenied(requestedCase);
+      else notice(err.message, true);
+    }
   }
 }
 function readyCase() {
@@ -394,7 +601,174 @@ function renderBiologicalAssets() {
     el('asset-list').append(card);
   }
 }
+async function loadVisits() {
+  const requested = caseId;
+  clear('visit-list');
+  try {
+    const data = await api('/api/cases/' + requested + '/visits');
+    if (requested !== caseId || !active || active.case.case_id !== requested) return;
+    renderVisits(data);
+  } catch (err) {
+    if (requested !== caseId) return;
+    empty(el('visit-list'), 'Visit history unavailable: ' + err.message);
+  }
+}
+function renderVisits(data) {
+  // Plain recorded history only. Every value is rendered with textContent;
+  // nothing here is a directive, a due date, or treatment guidance.
+  clear('visit-list');
+  const recordedLabel = data.recorded_date_label || 'recorded date — not a clinical due date';
+  const visits = data.visits || [];
+  const select = el('visit-amend-choice');
+  const prior = select.value;
+  clear('visit-amend-choice');
+  for (const visit of visits) {
+    const current = visit.current;
+    const opt = node('option', 'FICTIONAL visit #' + visit.visit_id +
+      (current ? ' · ' + current.visit_type + ' · ' + current.recorded_date : ''));
+    opt.value = visit.visit_id;
+    select.append(opt);
+  }
+  if (prior && [...select.options].some(x => x.value === prior)) select.value = prior;
+  if (!visits.length) {
+    empty(el('visit-list'), 'No fictional visits recorded for this case.');
+    return;
+  }
+  for (const visit of visits) {
+    const current = visit.current;
+    const box = node('div', null, 'snapshot');
+    const top = node('div', null, 'topline');
+    top.append(node('strong', 'FICTIONAL visit #' + visit.visit_id),
+      pill(current ? current.visit_type : 'no current version', 'pill-neutral'),
+      pill('FICTIONAL', 'pill-warn'));
+    box.append(top);
+    if (current) {
+      box.append(node('p', recordedLabel + ': ' + current.recorded_date, 'snapshot-meta'));
+      box.append(node('p', current.notes));
+      box.append(node('p', 'Source: ' + (current.source_anchor ? current.source_anchor : 'no source recorded'), 'muted'));
+      box.append(node('span', 'Review state: ' + current.review_state +
+        ' · Version ' + current.version + ' (' + current.state + ')', 'ref'));
+    }
+    const history = visit.history || [];
+    if (history.length > 1) {
+      box.append(node('p', 'History (' + history.length + ' versions, oldest first):', 'snapshot-meta'));
+      const list = document.createElement('ol');
+      for (const version of history) {
+        const item = document.createElement('li');
+        item.textContent = 'v' + version.version + ' · ' + recordedLabel + ': ' +
+          version.recorded_date + ' · ' + version.visit_type + ' · ' + version.notes +
+          ' · Source: ' + (version.source_anchor ? version.source_anchor : 'no source recorded') +
+          ' · ' + version.state;
+        list.append(item);
+      }
+      box.append(list);
+    } else {
+      box.append(node('p', 'History: 1 version (current).', 'snapshot-meta'));
+    }
+    box.append(node('p', 'FICTIONAL recorded history. Never a directive, never a due date, never treatment guidance.', 'muted tiny'));
+    el('visit-list').append(box);
+  }
+}
+function renderBioExplanations() {
+  clear('bio-explanation-list');
+  const list = el('bio-explanation-list');
+  const explanations = active.bio_explanations || [];
+  const observations = active.bio_assay_observations || [];
+  const assets = new Map((active.biological_assets || []).map(a => [a.id, a]));
+  if (!explanations.length)
+    empty(list, 'No biological explanations proposed for this fictional case yet.');
+  for (const explanation of explanations) {
+    // One card per explanation: competing hypotheses are never merged.
+    const card = node('div', null, 'finding');
+    const heading = node('div', null, 'finding-head');
+    heading.append(node('strong', explanation.label + ' · Q' + explanation.question_id),
+      pill(explanation.state, explanation.state === 'stale' ? 'pill-alert' : ''));
+    card.append(heading, node('p', explanation.mechanism_text));
+    card.append(node('p', [
+      'Episode ' + explanation.episode_id,
+      explanation.specimen_state === 'recorded'
+        ? 'Specimen ' + explanation.specimen_id
+        : 'Specimen unknown (explicit — not absent)',
+      explanation.lesion_state === 'recorded'
+        ? 'Lesion ' + explanation.lesion_id
+        : 'Lesion unknown (explicit — not absent)',
+      explanation.clinical_context_state === 'known'
+        ? 'Clinical time point: ' + explanation.clinical_context_value
+        : 'Clinical time point unknown (explicit — not absent)',
+    ].join(' · '), 'snapshot-meta'));
+    card.append(node('span', 'Explanation anchor: source version #' + explanation.source_version_id +
+      (explanation.state === 'stale'
+        ? ' · STALE: source amended; propose a new explanation explicitly'
+        : ''), 'ref'));
+    const mine = observations.filter(o => o.explanation_id === explanation.id);
+    if (!mine.length) {
+      card.append(node('p', 'No assay observations recorded — assays unknown, not absent, and nothing pooled.', 'muted'));
+    } else {
+      // Grouped for reading by tissue block, but every observation keeps its
+      // own card: assays from different blocks are never merged.
+      const groups = new Map();
+      for (const item of mine) {
+        const key = item.tissue_block_state === 'recorded'
+          ? 'block:' + item.tissue_block_asset_id : 'block:unknown';
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(item);
+      }
+      for (const [key, items] of groups) {
+        const block = key === 'block:unknown' ? null : assets.get(items[0].tissue_block_asset_id);
+        card.append(node('p', key === 'block:unknown'
+          ? 'Tissue block unknown (explicit — not pooled with any block)'
+          : 'Tissue block ' + (block
+            ? block.asset_id + ' (' + block.kind + ', ' + block.episode_id + ')'
+            : '#' + items[0].tissue_block_asset_id), 'subhead'));
+        for (const item of items) {
+          const box = node('div', null, 'snapshot');
+          const top = node('div', null, 'topline');
+          top.append(node('strong', 'Assay observation #' + item.id + ' · ' + item.method_label),
+            pill(item.state, item.state === 'stale' ? 'pill-alert' : ''));
+          box.append(top, node('p', item.result_note));
+          const control = item.matched_control_state === 'recorded'
+            ? 'Matched control recorded: ' + item.matched_control_specimen
+            : item.matched_control_state === 'missing'
+              ? 'Matched control MISSING — no matched control specimen recorded'
+              : 'Matched control unknown (explicit — not absent)';
+          const reference = item.reference_kind === 'patient_normal'
+            ? "Reference: patient's own normal tissue"
+            : item.reference_kind === 'external_population'
+              ? 'Reference: external reference population (not this patient)'
+              : 'Reference unknown (explicit — not absent)';
+          box.append(node('p', control + ' · ' + reference, 'snapshot-meta'));
+          box.append(node('span', 'Assay anchor: source version #' + item.source_version_id +
+            (item.state === 'stale'
+              ? ' · STALE: source amended; record a new observation explicitly'
+              : ''), 'ref'));
+          card.append(box);
+        }
+      }
+    }
+    list.append(card);
+  }
+  const fill = (id, items, labelFn, allowEmpty = false) => {
+    const select = el(id);
+    const prior = select.value;
+    clear(id);
+    if (allowEmpty) { const blank = node('option', '—'); blank.value = ''; select.append(blank); }
+    for (const item of items) {
+      const opt = node('option', labelFn(item));
+      opt.value = item.id; select.append(opt);
+    }
+    if (prior && [...select.options].some(x => x.value === prior)) select.value = prior;
+  };
+  fill('bio-question-choice', active.questions, q => 'Q' + q.id + ', ' + q.question.slice(0, 62));
+  fill('bio-source-choice', active.sources, s => s.document_id + '@' + s.version + ' · ' + s.state);
+  fill('bio-assay-explanation-choice', explanations,
+    e => 'Explanation #' + e.id + ' · ' + e.label + ' (' + e.state + ')');
+  fill('bio-assay-source-choice', active.sources, s => s.document_id + '@' + s.version + ' · ' + s.state);
+  fill('bio-block-choice', (active.biological_assets || [])
+    .filter(a => a.kind === 'ffpe_block' || a.kind === 'fresh_frozen_aliquot'),
+    a => a.asset_id + ' · ' + a.kind + ' · ' + a.episode_id, true);
+}
 function render() {
+  documentIntake.syncCase(caseId);
   const sameCase = renderedCaseId === caseId;
   if (!sameCase) { draftQuestionFilter = null; draftFilterCaseId = null; }
   if (draftFilterCaseId !== null && draftFilterCaseId !== caseId) { draftQuestionFilter = null; draftFilterCaseId = null; }
@@ -408,9 +782,11 @@ function render() {
   clear('metrics');
   const latest = active.sources.filter(s => s.state === 'current');
   const reviewRequired = currentReviewQuestionIds(active).size;
+  const overdueTasks = (active.followthrough && active.followthrough.counts && active.followthrough.counts.overdue) || 0;
   el('metrics').append(
     metric(latest.length, 'Current source documents'), metric(active.assertions.length, 'Reported statements'),
-    metric(active.questions.filter(q => q.state === 'open').length, 'Open questions'), metric(reviewRequired, 'Review required'));
+    metric(active.questions.filter(q => q.state === 'open').length, 'Open questions'), metric(reviewRequired, 'Review required'),
+    metric(overdueTasks, 'Overdue tasks'));
   const reviewNotice = el('review-attention');
   reviewNotice.dataset.state = reviewRequired ? 'needs-review' : 'no-open-review';
   el('review-attention-heading').textContent = reviewRequired
@@ -438,7 +814,16 @@ function render() {
       'Received ' + source.received_at.substring(0, 10), 'SHA ' + source.sha256.slice(0, 12) + '…']) meta.append(node('span', text));
     const button = node('button', 'View original text', 'button secondary minor');
     button.type = 'button'; button.addEventListener('click', () => openSource(source));
-    card.append(top, meta, button); el('source-list').append(card);
+    card.append(top, meta, button);
+    if (source.document_intake) {
+      card.append(node('p', source.document_intake.filename +
+        ' · Manually confirmed passages · Clinical review not performed', 'muted tiny'));
+      const download = node('a', 'Download original file', 'button secondary minor');
+      download.href = '/api/cases/' + caseId + '/sources/' + source.id + '/download';
+      download.download = source.document_intake.filename;
+      card.append(download);
+    }
+    el('source-list').append(card);
   }
   clear('assertion-list');
   if (!active.assertions.length) empty(el('assertion-list'), 'No current reported statements.');
@@ -446,7 +831,8 @@ function render() {
     const card = node('div', null, 'finding');
     const heading = node('div', null, 'finding-head');
     const labels = node('div', null, 'finding-labels');
-    labels.append(pill('Source says', 'pill-neutral'), pill(assertion.certainty,
+    labels.append(pill('Source says', 'pill-neutral'), pill(
+      (assertion.classification_origin === 'user_selected' ? 'User-selected: ' : '') + assertion.certainty,
       ['pending', 'indeterminate', 'conflicting', 'not-reported', 'not-assessed'].includes(assertion.certainty) ? 'pill-warn' : ''));
     heading.append(node('strong', assertion.finding_key), labels);
     card.append(heading, node('p', assertion.quote, 'quoted'));
@@ -460,14 +846,28 @@ function render() {
     if (supportingSource)
       sourceButton.addEventListener('click', () => openSource(supportingSource, Number(assertion.source_line)));
     card.append(sourceButton);
+    if (assertion.classification_origin === 'user_selected')
+      card.append(node('p', 'Passage and status manually selected. Clinical review not performed.', 'muted tiny'));
     el('assertion-list').append(card);
   }
   renderBiologicalAssets();
+  renderBioExplanations();
   clear('question-list'); clear('question-choice');
+  clear('owner-question-choice'); clear('triage-question-choice');
+  clear('note-question-choice'); clear('rollup-question-choice');
+  clear('question-rollup');
   if (!active.questions.length) empty(el('question-list'), 'Add an unresolved question to begin.');
   for (const question of active.questions) {
     const row = node('div', null, 'question');
     row.append(node('p', question.question), pill(question.state, question.state === 'open' ? 'pill-warn' : ''));
+    row.append(node('p', 'Owner: ' + (question.owner_label || 'none recorded') +
+      ' · Follow-up marker: ' + (question.triage || 'unsorted'), 'muted'));
+    const notes = (active.question_evidence_notes || []).filter(n => Number(n.question_id) === Number(question.id));
+    if (notes.length) {
+      const latest = notes[notes.length - 1];
+      row.append(node('p', 'Needed-evidence notes: ' + notes.length +
+        ' · Latest (v' + latest.version + '): ' + latest.note, 'muted'));
+    }
     const draftsLink = document.createElement('a');
     draftsLink.href = '#investigation-history-heading';
     draftsLink.className = 'button secondary minor';
@@ -479,8 +879,11 @@ function render() {
     });
     row.append(draftsLink);
     el('question-list').append(row);
-    const opt = node('option', 'Q' + question.id + ', ' + question.question.slice(0, 62));
-    opt.value = question.id; el('question-choice').append(opt);
+    for (const id of ['question-choice', 'owner-question-choice', 'triage-question-choice',
+      'note-question-choice', 'rollup-question-choice']) {
+      const opt = node('option', 'Q' + question.id + ', ' + question.question.slice(0, 62));
+      opt.value = question.id; el(id).append(opt);
+    }
   }
   if (priorQuestion && [...el('question-choice').options].some(x => x.value === priorQuestion))
     el('question-choice').value = priorQuestion;
@@ -512,6 +915,11 @@ function render() {
       withdraw.value = item.id; el('evidence-withdraw-id').append(withdraw);
     }
   }
+  // Leave the withdraw target explicitly unchosen until the user picks one.
+  // Without this, the first current item is implicitly selected on first
+  // paint, aiming a destructive cross-case withdrawal at whatever sorts
+  // first. A prior selection is restored below when still current.
+  el('evidence-withdraw-id').selectedIndex = -1;
   if (priorWithdrawTarget) {
     if ([...el('evidence-withdraw-id').options].some(x => x.value === priorWithdrawTarget))
       el('evidence-withdraw-id').value = priorWithdrawTarget;
@@ -615,6 +1023,13 @@ function render() {
       actions.append(followLink);
     }
     box.append(top, description, meta, actions);
+    const scoped = snapshot.scoped_review || {};
+    const scopedOpen = scoped.open_items || [];
+    box.append(node('p', 'Scoped review: extraction ' + (scoped.extraction || 'unreviewed') +
+      ' · interpretation ' + (scoped.interpretation || 'unreviewed') +
+      (scopedOpen.length ? ' · Open: ' + scopedOpen.join(', ') : ' · No open scope items') +
+      ((scoped.dissents || []).length ? ' · ' + scoped.dissents.length + ' disagreement(s) recorded' : '') +
+      (scoped.assignee ? ' · With reviewer: ' + scoped.assignee : ''), 'snapshot-meta'));
     if (snapshot.state === 'stale') box.append(node('p', 'A source was amended. This version remains historical and cannot be acknowledged as current.', 'muted'));
     el('snapshot-list').append(box);
   }
@@ -625,6 +1040,13 @@ function render() {
   }
   loadModelInvestigations();
   loadChangesSinceReview();
+  loadPacketSummary();
+  loadVisits();
+  loadWorkspaceQuestions();
+  loadEvidenceQuality();
+  loadReviewQueue();
+  renderSynthesisChoices();
+  loadSynthesis();
   loadReReviewTasks();
   clear('quarantine-list');
   for (const entry of active.quarantines) {
@@ -636,7 +1058,13 @@ function render() {
     card.append(node('small', event.occurred_at)); el('event-list').append(card);
   }
   renderPatientView();
+  loadPatientAttention();
   renderOptions();
+  renderCareRecords();
+  renderFollowthrough();
+  renderPatientWords();
+  renderPortfolio();
+  renderScopedReview();
   renderJourney();
   renderedCaseId = caseId;
 }
@@ -825,18 +1253,185 @@ async function downloadSnapshot(id) {
     document.body.append(link); link.click(); link.remove(); URL.revokeObjectURL(url);
   } catch (err) { notice(err.message, true); }
 }
+async function downloadPacket(format) {
+  try {
+    const requestedCase = readyCase();
+    const suffix = format === 'text' ? '?format=text' : '';
+    const data = await api('/api/cases/' + requestedCase + '/packet' + suffix);
+    if (requestedCase !== caseId) return;
+    const text = format === 'text' ? data : JSON.stringify(data, null, 2);
+    const mime = format === 'text' ? 'text/plain' : 'application/json';
+    const ext = format === 'text' ? '.txt' : '.json';
+    const url = URL.createObjectURL(new Blob([text], { type: mime }));
+    const link = document.createElement('a'); link.href = url; link.download = 'synthetic-packet-' + requestedCase + ext;
+    document.body.append(link); link.click(); link.remove(); URL.revokeObjectURL(url);
+    notice('Fictional demo packet downloaded for ' + requestedCase + '.');
+  } catch (err) { notice(err.message, true); }
+}
+async function loadPacketSummary() {
+  const requested = caseId;
+  const statusEl = el('packet-status');
+  if (statusEl) statusEl.textContent = 'Loading fictional packet summary…';
+  clear('packet-summary');
+  try {
+    const data = await api('/api/cases/' + requested + '/packet');
+    if (requested !== caseId || !active || active.case.case_id !== requested) return;
+    renderPacketSummary(data);
+  } catch (err) {
+    if (requested !== caseId) return;
+    if (statusEl) statusEl.textContent = 'Packet summary unavailable: ' + err.message;
+    empty(el('packet-summary'), 'Fictional packet summary unavailable.');
+  }
+}
+function renderPacketSummary(data) {
+  const cover = data.cover || {};
+  const position = cover.report_position || {};
+  const statusEl = el('packet-status');
+  if (statusEl) statusEl.textContent = 'Fictional demo packet for ' + (cover.case_id || caseId) +
+    ' at event #' + (position.as_of_event_id ?? 'none') + '. Same sections as the workspace, same source references.';
+  clear('packet-summary');
+  const journey = data.journey_stage || {};
+  const where = journey.where_am_i || {};
+  const timeline = data.timeline || {};
+  const counts = timeline.counts || {};
+  const changes = data.changes_since_review || {};
+  const changeCounts = changes.counts || {};
+  const rows = [
+    ['Journey stage', String(journey.workflow_status || 'unknown') + ' · ' +
+      (where.current_source_documents ?? 0) + ' current sources, ' +
+      (where.open_questions ?? 0) + ' open questions'],
+    ['Reported findings', String((data.reported_findings || {}).count ?? 0) + ' source statements'],
+    ['Timeline', String(counts.entries ?? 0) + ' entries, ' + String(counts.gaps ?? 0) +
+      ' gaps, ' + String(counts.conflicts ?? 0) + ' conflicts'],
+    ['Questions', String((data.questions || {}).items ? data.questions.items.length : 0) + ' recorded'],
+    ['Investigations', String((data.investigations || {}).snapshots ? data.investigations.snapshots.length : 0) +
+      ' drafts, ' + String((data.investigations || {}).model_investigations ? data.investigations.model_investigations.length : 0) +
+      ' hypotheses pending review'],
+    ['Evidence', String((data.evidence || {}).assessments ? data.evidence.assessments.length : 0) + ' assessments'],
+    ['Sources', String((data.sources || {}).items ? data.sources.items.length : 0) + ' versions'],
+    ['Changes since review', String(changeCounts.new_sources ?? 0) + ' new, ' +
+      String(changeCounts.amendments ?? 0) + ' amendments, ' +
+      String(changeCounts.stale_investigations ?? 0) + ' stale'],
+    ['Options', String((data.options || {}).items ? data.options.items.length : 0) + ' proposed'],
+    ['Follow ups', String((data.follow_ups || {}).next_actions ? data.follow_ups.next_actions.length : 0) + ' bounded actions'],
+    ['Biological assets', String((data.biological_assets || {}).assets ? data.biological_assets.assets.length : 0) + ' recorded'],
+    ['Recent activity', String((data.activity || {}).items ? data.activity.items.length : 0) + ' ledger events'],
+    ['Limitations', String((data.limitations || {}).items ? data.limitations.items.length : 0) + ' limits noted'],
+  ];
+  for (const [label, detail] of rows) {
+    const card = node('article', null, 'source-card');
+    const top = node('div', null, 'source-top');
+    top.append(node('span', label, 'source-title'), pill('FICTIONAL DEMO DATA', 'pill-warn'));
+    card.append(top, node('p', detail, 'snapshot-meta'));
+    el('packet-summary').append(card);
+  }
+}
+el('packet-download-json').addEventListener('click', () => downloadPacket('json'));
+el('packet-download-text').addEventListener('click', () => downloadPacket('text'));
+el('packet-print').addEventListener('click', () => {
+  try { readyCase(); window.print(); } catch (err) { notice(err.message, true); }
+});
 el('dialog-close').addEventListener('click', () => { cancelSourceRead(); el('source-dialog').close(); });
 el('compare-close').addEventListener('click', () => { cancelSourceRead(); el('compare-dialog').close(); });
 // Native Escape dispatches cancel before closing. Avoid a close-event handler:
 // queued programmatic close events must not cancel a newer read intent.
+function renderQuestionRollup(data) {
+  // Read-only ledger facts only: unresolved items with anchors, bound
+  // snapshots, versioned notes, owner history, and case coverage context.
+  clear('question-rollup');
+  const box = el('question-rollup');
+  const question = data.question || {};
+  box.append(node('p', 'Q' + question.id + ': ' + (question.question || '')));
+  box.append(node('p', 'State: ' + (question.state || '') + ' · Follow-up marker: ' +
+    (question.triage || '') + ' · Owner: ' + (question.owner_label || 'none recorded'), 'muted'));
+  box.append(node('p', data.ordering_rule || '', 'muted'));
+  const items = data.unresolved_items || [];
+  box.append(node('p', 'Unresolved source items: ' + items.length, 'subhead'));
+  if (!items.length) empty(box, 'No unresolved source items in this fictional case.');
+  for (const item of items) {
+    const row = node('div', null, 'question');
+    row.append(node('p', item.finding_key + ' · ' + item.state),
+      node('p', 'Source #' + item.source_version_id + ' (' + item.document_id + '@' + item.version +
+        '), line ' + item.source_line + ' · Occurred ' + item.occurred +
+        ' · Documented ' + item.documented, 'muted'),
+      node('p', item.quote || '', 'quoted'));
+    box.append(row);
+  }
+  const snapshots = data.snapshots || [];
+  box.append(node('p', 'Bound snapshots: ' + snapshots.length, 'subhead'));
+  for (const snapshot of snapshots) {
+    box.append(node('p', 'Snapshot #' + snapshot.id + ' · ' + snapshot.state +
+      ' · Sources: ' + (snapshot.source_ids || []).join(', '), 'muted'));
+  }
+  const notes = data.needed_evidence_notes || [];
+  box.append(node('p', 'Needed-evidence notes: ' + notes.length, 'subhead'));
+  for (const note of notes) {
+    box.append(node('p', 'v' + note.version + ' · ' + note.created_at + ': ' + note.note, 'muted'));
+  }
+  const history = data.owner_history || [];
+  box.append(node('p', 'Owner history: ' + history.length + ' assignment(s)', 'subhead'));
+  for (const entry of history) {
+    box.append(node('p', entry.owner_label + ' · ' + entry.assigned_at, 'muted'));
+  }
+  const coverage = data.case_coverage_context || {};
+  box.append(node('p', 'Case coverage context: ' + (coverage.gaps || []).length +
+    ' gap(s), ' + (coverage.date_conflicts || []).length + ' date conflict(s). ' +
+    (coverage.note || ''), 'muted'));
+  box.append(node('p', data.disclaimer || '', 'muted tiny'));
+}
 for (const id of ['source-dialog', 'compare-dialog'])
   el(id).addEventListener('cancel', cancelSourceRead);
 el('question-form').addEventListener('submit', async event => {
   event.preventDefault(); try {
     const requestedCase = readyCase();
-    await api('/api/cases/' + requestedCase + '/questions', { question: el('question-text').value });
+    await api('/api/cases/' + requestedCase + '/questions', {
+      question: el('question-text').value, owner_label: el('question-owner').value || null,
+    });
     if (requestedCase !== caseId) return;
-    el('question-text').value = ''; notice('Question persisted.'); await refresh();
+    el('question-text').value = ''; el('question-owner').value = '';
+    notice('Question persisted.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('question-owner-form').addEventListener('submit', async event => {
+  event.preventDefault(); try {
+    const requestedCase = readyCase();
+    const qid = Number(el('owner-question-choice').value);
+    await api('/api/cases/' + requestedCase + '/questions/' + qid + '/owner', {
+      owner_label: el('owner-label-input').value,
+    });
+    if (requestedCase !== caseId) return;
+    el('owner-label-input').value = ''; notice('Owner label assigned.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('question-triage-form').addEventListener('submit', async event => {
+  event.preventDefault(); try {
+    const requestedCase = readyCase();
+    const qid = Number(el('triage-question-choice').value);
+    await api('/api/cases/' + requestedCase + '/questions/' + qid + '/triage', {
+      triage: el('triage-value').value,
+    });
+    if (requestedCase !== caseId) return;
+    notice('Follow-up marker updated.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('question-note-form').addEventListener('submit', async event => {
+  event.preventDefault(); try {
+    const requestedCase = readyCase();
+    const qid = Number(el('note-question-choice').value);
+    await api('/api/cases/' + requestedCase + '/questions/' + qid + '/evidence-notes', {
+      note: el('note-text').value,
+    });
+    if (requestedCase !== caseId) return;
+    el('note-text').value = ''; notice('Needed-evidence note appended.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('rollup-button').addEventListener('click', async () => {
+  try {
+    const requestedCase = readyCase();
+    const qid = Number(el('rollup-question-choice').value);
+    const data = await api('/api/cases/' + requestedCase + '/questions/' + qid + '/rollup');
+    if (requestedCase !== caseId || !active || active.case.case_id !== requestedCase) return;
+    renderQuestionRollup(data);
   } catch (err) { notice(err.message, true); }
 });
 el('draft-form').addEventListener('submit', async event => {
@@ -928,6 +1523,53 @@ el('evidence-withdraw-form').addEventListener('submit', async event => {
     el('evidence-withdraw-reason').value = ''; await refresh();
   } catch (err) { notice(err.message, true); }
 });
+el('bio-explanation-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const text = id => el(id).value.trim();
+    const created = await api('/api/cases/' + requestedCase + '/bio-explanations', {
+      question_id: Number(el('bio-question-choice').value),
+      label: text('bio-label'), mechanism_text: el('bio-mechanism').value,
+      episode_id: text('bio-episode'), source_version_id: Number(el('bio-source-choice').value),
+      specimen_state: el('bio-specimen-state').value,
+      specimen_id: text('bio-specimen-id') || null,
+      lesion_state: el('bio-lesion-state').value,
+      lesion_id: text('bio-lesion-id') || null,
+      clinical_context_state: el('bio-clinical-state').value,
+      clinical_context_value: text('bio-clinical-value') || null,
+    });
+    if (requestedCase !== caseId) return;
+    for (const id of ['bio-label', 'bio-mechanism', 'bio-episode', 'bio-specimen-id',
+      'bio-lesion-id', 'bio-clinical-value']) el(id).value = '';
+    notice('Biological explanation #' + created.bio_explanation_id +
+      ' proposed; competing hypotheses stay side by side.');
+    await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('bio-assay-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const text = id => el(id).value.trim();
+    const blockChoice = el('bio-block-choice').value;
+    const created = await api('/api/cases/' + requestedCase + '/bio-explanations/' +
+      Number(el('bio-assay-explanation-choice').value) + '/assay-observations', {
+      method_label: text('bio-method'), result_note: el('bio-result-note').value,
+      source_version_id: Number(el('bio-assay-source-choice').value),
+      reference_kind: el('bio-reference-kind').value,
+      tissue_block_state: el('bio-block-state').value,
+      tissue_block_asset_id: blockChoice === '' ? null : Number(blockChoice),
+      matched_control_state: el('bio-control-state').value,
+      matched_control_specimen: text('bio-control-specimen') || null,
+    });
+    if (requestedCase !== caseId) return;
+    for (const id of ['bio-method', 'bio-result-note', 'bio-control-specimen']) el(id).value = '';
+    notice('Assay observation #' + created.bio_assay_observation_id +
+      ' recorded against one tissue context.');
+    await refresh();
+  } catch (err) { notice(err.message, true); }
+});
 el('option-form').addEventListener('submit', async event => {
   event.preventDefault();
   try {
@@ -990,6 +1632,40 @@ el('option-threat-form').addEventListener('submit', async event => {
     notice('Threat #' + created.threat_id + ' added.'); await refresh();
   } catch (err) { notice(err.message, true); }
 });
+el('option-counterevidence-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const kind = el('counterevidence-trigger-kind').value;
+    const pick = id => { const v = el(id).value; return v === '' ? null : Number(v); };
+    const created = await api('/api/cases/' + requestedCase + '/options/' +
+      Number(el('counterevidence-option-choice').value) + '/counterevidence', {
+      effect: el('counterevidence-effect').value, reason: el('counterevidence-reason').value,
+      source_version_id: kind === 'source' ? pick('counterevidence-source-choice') : null,
+      evidence_assessment_id: kind === 'evidence_assessment' ? pick('counterevidence-assessment-choice') : null,
+    });
+    if (requestedCase !== caseId) return;
+    el('counterevidence-reason').value = '';
+    notice('Counterevidence #' + created.counterevidence_id + ' recorded.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('option-safety-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const kind = el('safety-trigger-kind').value;
+    const pick = id => { const v = el(id).value; return v === '' ? null : Number(v); };
+    const created = await api('/api/cases/' + requestedCase + '/options/' +
+      Number(el('safety-option-choice').value) + '/safety-flags', {
+      category: el('safety-category').value, detail: el('safety-detail').value,
+      source_version_id: kind === 'source' ? pick('safety-source-choice') : null,
+      evidence_assessment_id: kind === 'evidence_assessment' ? pick('safety-assessment-choice') : null,
+    });
+    if (requestedCase !== caseId) return;
+    el('safety-detail').value = '';
+    notice('Safety uncertainty #' + created.safety_flag_id + ' recorded.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
 el('option-review-form').addEventListener('submit', async event => {
   event.preventDefault();
   try {
@@ -1005,8 +1681,367 @@ el('option-review-form').addEventListener('submit', async event => {
     notice('Reviewer action recorded: ' + outcome.result + '.'); await refresh();
   } catch (err) { notice(err.message, true); }
 });
+el('visit-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const created = await api('/api/cases/' + requestedCase + '/visits', {
+      recorded_date: el('visit-date').value,
+      visit_type: el('visit-type').value,
+      notes: el('visit-notes').value,
+      source_anchor: el('visit-anchor').value.trim() ? el('visit-anchor').value : null,
+    });
+    if (requestedCase !== caseId) return;
+    for (const id of ['visit-date', 'visit-type', 'visit-notes', 'visit-anchor']) el(id).value = '';
+    notice('FICTIONAL visit #' + created.visit_id + ' recorded as history.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('visit-amend-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const outcome = await api('/api/cases/' + requestedCase + '/visits/' +
+      Number(el('visit-amend-choice').value) + '/amend', {
+      recorded_date: el('visit-amend-date').value,
+      visit_type: el('visit-amend-type').value,
+      notes: el('visit-amend-notes').value,
+      source_anchor: el('visit-amend-anchor').value.trim() ? el('visit-amend-anchor').value : null,
+    });
+    if (requestedCase !== caseId) return;
+    for (const id of ['visit-amend-date', 'visit-amend-type', 'visit-amend-notes', 'visit-amend-anchor']) el(id).value = '';
+    notice('FICTIONAL visit amended; version ' + outcome.version + ' is current, history preserved.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('followthrough-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const pick = id => { const v = el(id).value; return v === '' ? null : Number(v); };
+    const created = await api('/api/cases/' + requestedCase + '/followthrough-tasks', {
+      title: el('ft-title').value, detail: el('ft-detail').value || null,
+      due_date: el('ft-due').value || null, review_trigger: el('ft-trigger').value || null,
+      question_id: pick('ft-question'), source_version_id: pick('ft-source'),
+      actor_label: el('ft-actor').value, reason: el('ft-reason').value || null,
+    });
+    if (requestedCase !== caseId) return;
+    for (const id of ['ft-title', 'ft-detail', 'ft-due', 'ft-trigger', 'ft-actor', 'ft-reason']) el(id).value = '';
+    notice('Follow-through task #' + created.task_id + ' recorded. Nothing was acted on.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('followthrough-update-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const payload = {
+      status: el('ft-status').value, actor_label: el('ft-update-actor').value,
+      reason: el('ft-update-reason').value, owner_label: el('ft-owner').value || null,
+    };
+    if (el('ft-clear-due').checked) payload.due_date = null;
+    else if (el('ft-update-due').value) payload.due_date = el('ft-update-due').value;
+    const outcome = await api('/api/cases/' + requestedCase + '/followthrough-tasks/' +
+      Number(el('ft-task-choice').value) + '/status', payload);
+    if (requestedCase !== caseId) return;
+    el('ft-owner').value = ''; el('ft-update-due').value = '';
+    el('ft-clear-due').checked = false;
+    el('ft-update-actor').value = ''; el('ft-update-reason').value = '';
+    notice('Task #' + outcome.task_id + ' is now ' + outcome.result + '. History preserved.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
 
+el('goal-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const created = await api('/api/cases/' + requestedCase + '/patient-goals', {
+      statement: el('goal-statement').value, stated_date: el('goal-stated-date').value,
+      review_trigger: el('goal-review-trigger').value,
+      review_date: el('goal-review-date').value || null,
+    });
+    if (requestedCase !== caseId) return;
+    el('goal-statement').value = ''; el('goal-stated-date').value = '';
+    el('goal-review-trigger').value = ''; el('goal-review-date').value = '';
+    notice('Fictional goal #' + created.goal_id + ' recorded in the patient\'s own words.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('goal-amend-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const outcome = await api('/api/cases/' + requestedCase + '/patient-goals/' +
+      Number(el('amend-goal-choice').value) + '/amendments', {
+      statement: el('amend-goal-statement').value, stated_date: el('amend-goal-stated-date').value,
+      review_trigger: el('amend-goal-review-trigger').value,
+      review_date: el('amend-goal-review-date').value || null,
+    });
+    if (requestedCase !== caseId) return;
+    el('amend-goal-statement').value = ''; el('amend-goal-stated-date').value = '';
+    el('amend-goal-review-trigger').value = ''; el('amend-goal-review-date').value = '';
+    notice('Goal #' + outcome.goal_id + ' version ' + outcome.version + ' saved; earlier wording kept.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('goal-status-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const outcome = await api('/api/cases/' + requestedCase + '/patient-goals/' +
+      Number(el('status-goal-choice').value) + '/status', {
+      status: el('goal-status').value, reason: el('goal-status-reason').value,
+    });
+    if (requestedCase !== caseId) return;
+    el('goal-status-reason').value = '';
+    notice('Goal #' + outcome.goal_id + ' marked ' + outcome.status + ' with reason.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('note-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const created = await api('/api/cases/' + requestedCase + '/patient-notes', {
+      kind: el('note-kind').value, text: el('note-text').value,
+      noted_date: el('note-noted-date').value,
+    });
+    if (requestedCase !== caseId) return;
+    el('note-text').value = ''; el('note-noted-date').value = '';
+    notice('Fictional note #' + created.note_id + ' recorded in the patient\'s own words.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('note-amend-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const outcome = await api('/api/cases/' + requestedCase + '/patient-notes/' +
+      Number(el('amend-note-choice').value) + '/amendments', {
+      text: el('amend-note-text').value, noted_date: el('amend-note-noted-date').value,
+    });
+    if (requestedCase !== caseId) return;
+    el('amend-note-text').value = ''; el('amend-note-noted-date').value = '';
+    notice('Note #' + outcome.note_id + ' version ' + outcome.version + ' saved; earlier wording kept.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('portfolio-flag-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const pick = id => { const v = el(id).value; return v === '' ? null : Number(v); };
+    const created = await api('/api/cases/' + requestedCase + '/options/' +
+      Number(el('flag-option-choice').value) + '/flags', {
+      kind: el('flag-kind').value, label: el('flag-label').value,
+      reason: el('flag-reason').value, author_label: el('flag-author').value,
+      source_version_id: pick('flag-source-choice'),
+      evidence_assessment_id: pick('flag-assessment-choice'),
+    });
+    if (requestedCase !== caseId) return;
+    el('flag-label').value = ''; el('flag-reason').value = '';
+    notice('Flag #' + created.flag_id + ' recorded.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('portfolio-flag-resolve-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const outcome = await api('/api/cases/' + requestedCase + '/flags/' +
+      Number(el('flag-resolve-choice').value) + '/resolve', {
+      reviewer_label: el('flag-resolve-reviewer').value, action: el('flag-resolve-action').value,
+      scope: el('flag-resolve-scope').value,
+    });
+    if (requestedCase !== caseId) return;
+    el('flag-resolve-scope').value = '';
+    notice('Flag decision recorded: ' + outcome.result + '.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('portfolio-dimension-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const pick = id => { const v = el(id).value; return v === '' ? null : Number(v); };
+    const created = await api('/api/cases/' + requestedCase + '/options/' +
+      Number(el('dimension-option-choice').value) + '/dimension-notes', {
+      dimension: el('dimension-kind').value, note: el('dimension-note').value,
+      anchor: el('dimension-anchor').value, reviewer_label: el('dimension-recorder').value,
+      source_version_id: pick('dimension-source-choice'),
+      evidence_assessment_id: pick('dimension-assessment-choice'),
+    });
+    if (requestedCase !== caseId) return;
+    el('dimension-note').value = ''; el('dimension-anchor').value = '';
+    notice('Dimension note #' + created.dimension_note_id + ' recorded as pending.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('portfolio-dimension-ack-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    await api('/api/cases/' + requestedCase + '/dimension-notes/' +
+      Number(el('dimension-ack-choice').value) + '/acknowledge', {
+      reviewer_label: el('dimension-ack-reviewer').value, scope: el('dimension-ack-scope').value,
+    });
+    if (requestedCase !== caseId) return;
+    el('dimension-ack-scope').value = '';
+    notice('Dimension note acknowledged as seen; this is not authorization.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('scoped-decision-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const outcome = await api('/api/cases/' + requestedCase + '/snapshots/' +
+      Number(el('scoped-decision-snapshot').value) + '/scoped-decisions', {
+      reviewer_label: el('scoped-decision-reviewer').value, scope: el('scoped-decision-scope').value,
+      note: el('scoped-decision-note').value,
+    });
+    if (requestedCase !== caseId) return;
+    el('scoped-decision-note').value = '';
+    notice('Scope note recorded: ' + outcome.scope + '.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('scoped-dissent-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const outcome = await api('/api/cases/' + requestedCase + '/snapshots/' +
+      Number(el('scoped-dissent-snapshot').value) + '/scoped-dissents', {
+      reviewer_label: el('scoped-dissent-reviewer').value, claim_ref: el('scoped-dissent-claim').value,
+      rationale: el('scoped-dissent-rationale').value,
+    });
+    if (requestedCase !== caseId) return;
+    el('scoped-dissent-claim').value = ''; el('scoped-dissent-rationale').value = '';
+    notice('Disagreement recorded on finding ' + outcome.claim_ref + '.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('scoped-handoff-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const outcome = await api('/api/cases/' + requestedCase + '/snapshots/' +
+      Number(el('scoped-handoff-snapshot').value) + '/scoped-handoffs', {
+      from_reviewer: el('scoped-handoff-from').value, to_reviewer: el('scoped-handoff-to').value,
+    });
+    if (requestedCase !== caseId) return;
+    notice('Open items handed to ' + el('scoped-handoff-to').value + ' (handoff #' + outcome.handoff_id + ').'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
 
+el('so-request-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const created = await api('/api/cases/' + requestedCase + '/second-opinion-requests', {
+      question_id: Number(el('so-question-choice').value),
+      question_text: el('so-question-text').value,
+      source_version_ids: [...el('so-source-choice').querySelectorAll('input:checked')].map(x => Number(x.value)),
+      snapshot_id: el('so-snapshot-choice').value === '' ? null : Number(el('so-snapshot-choice').value),
+    });
+    if (requestedCase !== caseId) return;
+    el('so-question-text').value = '';
+    notice('Second-opinion request #' + created.request_id + ' recorded with pinned source versions.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('so-response-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const created = await api('/api/cases/' + requestedCase + '/second-opinion-requests/' +
+      Number(el('so-request-choice').value) + '/response', {
+      responder_label: el('so-responder').value,
+      response_text: el('so-response-text').value,
+      anchor_source_version_id: Number(el('so-anchor-choice').value),
+    });
+    if (requestedCase !== caseId) return;
+    el('so-responder').value = ''; el('so-response-text').value = '';
+    notice('Separate second-opinion response #' + created.response_id + ' recorded. The original conclusion is unchanged.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('surv-plan-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const created = await api('/api/cases/' + requestedCase + '/survivorship-plans', {
+      title: el('surv-plan-title').value,
+    });
+    if (requestedCase !== caseId) return;
+    el('surv-plan-title').value = '';
+    notice('Survivorship plan #' + created.plan_id + ' recorded.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('surv-item-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const created = await api('/api/cases/' + requestedCase + '/survivorship-plans/' +
+      Number(el('surv-plan-choice').value) + '/items', {
+      kind: el('surv-kind').value,
+      description: el('surv-description').value,
+      recorded_date: el('surv-date').value || null,
+      anchor_source_version_id: Number(el('surv-anchor-choice').value),
+    });
+    if (requestedCase !== caseId) return;
+    el('surv-description').value = ''; el('surv-date').value = '';
+    notice('Plan item #' + created.item_id + ' recorded as a plain description.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+
+function renderPatientWords() {
+  el('patient-words-disclaimer').textContent = active.patient_words_disclaimer || '';
+  const goals = active.patient_goals || [];
+  const notes = active.patient_notes || [];
+  const fill = (id, items, labelFn) => {
+    const select = el(id);
+    const prior = select.value;
+    clear(id);
+    for (const item of items) {
+      const opt = node('option', labelFn(item));
+      opt.value = item.value; select.append(opt);
+    }
+    if (prior && [...select.options].some(x => x.value === prior)) select.value = prior;
+  };
+  const goalLabel = g => 'Goal #' + g.goal_id + ' · ' + (g.current ? g.current.status : 'unknown');
+  fill('amend-goal-choice', goals.map(g => ({ value: g.goal_id, label: g })), x => goalLabel(x.label));
+  fill('status-goal-choice', goals.map(g => ({ value: g.goal_id, label: g })), x => goalLabel(x.label));
+  fill('amend-note-choice', notes.map(n => ({ value: n.note_id, label: n })),
+    x => 'Note #' + x.label.note_id + ' · ' + (x.label.kind === 'symptom' ? 'symptom note' : 'lived experience'));
+  clear('goal-list');
+  if (!goals.length) empty(el('goal-list'), 'No fictional patient goals recorded for this case yet.');
+  for (const goal of goals) {
+    const current = goal.current || {};
+    const box = node('div', null, 'snapshot');
+    const top = node('div', null, 'topline');
+    top.append(node('strong', 'Fictional goal #' + goal.goal_id + ' · patient\'s own words'),
+      pill(current.status || 'unknown', current.status === 'active' ? 'pill-warn' : ''),
+      pill('FICTIONAL', 'pill-neutral'));
+    box.append(top, node('p', current.statement || ''));
+    box.append(node('p', 'Stated ' + (current.stated_date || 'date unknown') +
+      ' · Look at it again: ' + (current.review_trigger || 'not recorded') +
+      (current.review_date ? ' · Review date ' + current.review_date : ' · No review date') +
+      ' · Version ' + (current.version || '?') + ' of ' + goal.versions.length, 'snapshot-meta'));
+    if (current.status_reason) box.append(node('p', 'Standing reason: ' + current.status_reason, 'muted'));
+    if (goal.versions.length > 1) {
+      box.append(node('p', 'Earlier wording kept: ' + goal.versions
+        .filter(v => v.record_state !== 'current')
+        .map(v => 'v' + v.version + ' (' + v.stated_date + '): ' + v.statement).join(' | '), 'muted tiny'));
+    }
+    box.append(node('p', 'Not a diagnosis, staging, response claim, or recommendation.', 'muted tiny'));
+    el('goal-list').append(box);
+  }
+  clear('note-list');
+  if (!notes.length) empty(el('note-list'), 'No fictional lived-experience or symptom notes recorded yet.');
+  for (const item of notes) {
+    const current = item.current || {};
+    const box = node('div', null, 'snapshot');
+    const top = node('div', null, 'topline');
+    const kindLabel = item.kind === 'symptom' ? 'Symptom note · what the patient noticed' : 'Lived experience · daily life';
+    top.append(node('strong', 'Fictional note #' + item.note_id + ' · ' + kindLabel),
+      pill('patient-reported', 'pill-neutral'), pill('FICTIONAL', 'pill-neutral'));
+    box.append(top, node('p', current.note_text || ''));
+    box.append(node('p', 'Noted ' + (current.noted_date || 'date unknown') +
+      ' · Version ' + (current.version || '?') + ' of ' + item.versions.length, 'snapshot-meta'));
+    if (item.versions.length > 1) {
+      box.append(node('p', 'Earlier wording kept: ' + item.versions
+        .filter(v => v.record_state !== 'current')
+        .map(v => 'v' + v.version + ' (' + v.noted_date + '): ' + v.note_text).join(' | '), 'muted tiny'));
+    }
+    box.append(node('p', 'Patient-reported only. Never a diagnosis, staging, or response claim.', 'muted tiny'));
+    el('note-list').append(box);
+  }
+}
 function journeyStep(prefix, pillText, statusText) {
   // textContent assignment atomically replaces the previous case's text,
   // so no stale list content survives a case switch. render() is already
@@ -1058,10 +2093,11 @@ function renderJourney() {
 function renderOptions() {
   el('option-disclaimer').textContent = [active.option_disclaimer, active.option_receipt_disclaimer]
     .filter(x => x).join(' ');
+  const sameCase = renderedCaseId === caseId;
   const options = active.options || [];
   const fill = (id, items, labelFn, allowEmpty = false) => {
     const select = el(id);
-    const prior = select.value;
+    const prior = sameCase ? select.value : '';
     clear(id);
     if (allowEmpty) { const blank = node('option', '—'); blank.value = ''; select.append(blank); }
     for (const item of items) {
@@ -1076,10 +2112,18 @@ function renderOptions() {
   fill('dependency-option-choice', options, optionLabel);
   fill('task-option-choice', options, optionLabel);
   fill('threat-option-choice', options, optionLabel);
+  fill('counterevidence-option-choice', options, optionLabel);
+  fill('safety-option-choice', options, optionLabel);
   fill('review-option-choice', options, optionLabel);
   fill('dependency-option-target-choice', options, optionLabel, true);
   fill('dependency-source-choice', active.sources, s => s.document_id + '@' + s.version + ' · ' + s.state, true);
   fill('dependency-assessment-choice', active.evidence_assessments || [],
+    a => a.evidence_key + '@' + a.version + ' · ' + a.relation, true);
+  fill('counterevidence-source-choice', active.sources, s => s.document_id + '@' + s.version + ' · ' + s.state, true);
+  fill('counterevidence-assessment-choice', active.evidence_assessments || [],
+    a => a.evidence_key + '@' + a.version + ' · ' + a.relation, true);
+  fill('safety-source-choice', active.sources, s => s.document_id + '@' + s.version + ' · ' + s.state, true);
+  fill('safety-assessment-choice', active.evidence_assessments || [],
     a => a.evidence_key + '@' + a.version + ' · ' + a.relation, true);
   const tasks = options.flatMap(o => o.preparation_tasks.map(t => ({ ...t, optionLabel: o.label })));
   fill('dependency-task-choice', tasks, t => 'Task #' + t.id + ' · ' + t.label + ' (' + t.status + ')', true);
@@ -1129,6 +2173,29 @@ function renderOptions() {
         t.kind + ': ' + t.description +
         (t.threat_date ? ' · ' + t.threat_date + ' (' + t.threat_basis + ')' : ' · date unknown')).join(' ; '), 'snapshot-meta'));
     }
+    if ((option.counterevidence || []).length) {
+      const list = node('ul');
+      for (const item of option.counterevidence) {
+        list.append(node('li', 'Fictional counterevidence #' + item.id + ' · ' + item.effect +
+          ' · triggered by ' + item.trigger + ' (' + item.trigger_state + ') · reason: ' + item.reason));
+      }
+      box.append(node('p', 'Counterevidence (holds and invalidations stay visible):', 'snapshot-meta'), list);
+    }
+    if ((option.safety_flags || []).length) {
+      const list = node('ul');
+      for (const flag of option.safety_flags) {
+        // The server label is rendered verbatim and never stripped: it is
+        // what keeps a single-modality note from reading as established
+        // benefit/toxicity and a preclinical note from reading as a
+        // patient response or permission.
+        list.append(node('li', 'Fictional safety note #' + flag.id + ' · ' + flag.display_label +
+          ' Detail: ' + flag.detail + ' · triggered by ' + flag.trigger + ' (' + flag.trigger_state + ')'));
+      }
+      box.append(node('p', 'Safety uncertainties (visible before any promotion):', 'snapshot-meta'), list);
+    }
+    if (option.safety_block) {
+      box.append(node('p', 'Promotion blocked: ' + option.safety_block + '.', 'snapshot-meta'));
+    }
     if (option.review_events.length) {
       box.append(node('p', 'Review history: ' + option.review_events.map(e =>
         e.action + ' by ' + e.reviewer_label + ' · scope: ' + e.scope).join(' ; '), 'snapshot-meta'));
@@ -1141,6 +2208,495 @@ function renderOptions() {
     el('option-list').append(box);
   }
 }
+function renderTaskList(id, tasks, emptyText) {
+  clear(id);
+  if (!tasks.length) { empty(el(id), emptyText); return; }
+  for (const task of tasks) {
+    const box = node('div', null, 'snapshot');
+    const top = node('div', null, 'topline');
+    top.append(node('strong', 'Task #' + task.id + ' · ' + task.title),
+      pill(task.status, task.is_overdue ? 'pill-alert' : task.status === 'completed' ? '' : 'pill-warn'));
+    if (task.is_overdue) top.append(pill('overdue', 'pill-alert'));
+    if (task.is_due_soon) top.append(pill('due soon', 'pill-warn'));
+    if (task.needs_recheck) top.append(pill('linked source amended — re-check', 'pill-warn'));
+    box.append(top);
+    if (task.detail) box.append(node('p', task.detail));
+    box.append(node('p', 'Owner: ' + (task.owner_label || 'not assigned yet') +
+      ' · Due: ' + (task.due_date || 'no due date') +
+      (task.review_trigger ? ' · Revisit: ' + task.review_trigger : '') +
+      (task.question_id ? ' · Question Q' + task.question_id + ' (' + (task.question_state || 'unknown') + ')' : '') +
+      (task.source_version_id ? ' · Source #' + task.source_version_id + ' (' + (task.source_state || 'unknown') + ')' : ''),
+      'snapshot-meta'));
+    if (task.status === 'completed') {
+      box.append(node('p', task.human_action_recorded
+        ? 'Recorded as done by a human after acknowledgment. Full history is kept below.'
+        : 'Completion is recorded without an acknowledgment path; treat this record as unreliable.', 'muted'));
+    } else {
+      box.append(node('p', 'No action taken by the platform. This record waits for a human to act.', 'muted tiny'));
+    }
+    if (task.history && task.history.length) {
+      box.append(node('p', 'History: ' + task.history.map(entry =>
+        (entry.previous_status ? entry.previous_status + ' → ' : '') + entry.new_status +
+        ' by ' + entry.actor_label + ' at ' + entry.noted_at +
+        (entry.reason ? ' — ' + entry.reason : '')).join(' ; '), 'snapshot-meta'));
+    }
+    el(id).append(box);
+  }
+}
+function renderFollowthrough() {
+  const data = active.followthrough || { tasks: [], counts: {}, disclaimer: '' };
+  el('followthrough-disclaimer').textContent = data.disclaimer || '';
+  const tasks = data.tasks || [];
+  const overdueIds = new Set(data.overdue_task_ids || []);
+  const dueSoonIds = new Set(data.due_soon_task_ids || []);
+  const counts = data.counts || {};
+  const attention = el('followthrough-attention');
+  attention.dataset.state = overdueIds.size ? 'needs-review' : 'no-open-review';
+  el('followthrough-attention-heading').textContent = overdueIds.size
+    ? overdueIds.size + ' overdue task(s) need a human to act'
+    : 'Follow-through reminders';
+  el('followthrough-attention-summary').textContent = overdueIds.size || dueSoonIds.size
+    ? overdueIds.size + ' overdue · ' + dueSoonIds.size + ' due within 7 days · ' +
+      (counts.open || 0) + ' open in total. These are records for humans; nothing here acts on its own.'
+    : tasks.length
+      ? 'No overdue or due-soon tasks. ' + (counts.open || 0) +
+        ' open task(s) remain. Completed tasks stay in history below.'
+      : 'No follow-through tasks recorded for this fictional case yet.';
+  const fill = (id, items, labelFn, allowEmpty = false) => {
+    const select = el(id);
+    const prior = select.value;
+    clear(id);
+    if (allowEmpty) { const blank = node('option', '—'); blank.value = ''; select.append(blank); }
+    for (const item of items) {
+      const opt = node('option', labelFn(item));
+      opt.value = item.id; select.append(opt);
+    }
+    if (prior && [...select.options].some(x => x.value === prior)) select.value = prior;
+  };
+  fill('ft-question', active.questions || [], q => 'Q' + q.id + ', ' + q.question.slice(0, 62), true);
+  fill('ft-source', (active.sources || []).filter(s => s.state === 'current'),
+    s => s.document_id + '@' + s.version + ', ' + s.event_date, true);
+  fill('ft-task-choice', tasks, t => 'Task #' + t.id + ' · ' + t.title + ' (' + t.status + ')');
+  renderTaskList('ft-overdue', tasks.filter(t => overdueIds.has(t.id)),
+    'No overdue tasks. An overdue task would appear here until a human records its progress.');
+  renderTaskList('ft-duesoon', tasks.filter(t => dueSoonIds.has(t.id)),
+    'No tasks due within the next 7 days.');
+  renderTaskList('ft-open', tasks.filter(t => ['created', 'assigned', 'acknowledged'].includes(t.status)),
+    'No open tasks in this fictional case.');
+  renderTaskList('ft-deferred', tasks.filter(t => t.status === 'deferred'),
+    'No deferred tasks. A deferral keeps its reason in history.');
+  renderTaskList('ft-completed', tasks.filter(t => t.status === 'completed'),
+    'No completed tasks yet. Completed tasks stay here as history.');
+}
+
+function reviewAgeText(days) {
+  if (!Number.isInteger(days) || days <= 0) return 'added today';
+  return days === 1 ? '1 day old' : days + ' days old';
+}
+async function loadReviewQueue() {
+  const requested = caseId;
+  for (const id of ['review-awaiting', 'review-resolved', 'review-receipts']) clear(id);
+  el('review-queue-disclaimer').textContent = '';
+  try {
+    const data = await api('/api/cases/' + requested + '/review-queue');
+    if (requested !== caseId || !active || active.case.case_id !== requested) return;
+    renderReviewQueue(data);
+  } catch (err) {
+    if (requested !== caseId) return;
+    el('review-queue-disclaimer').textContent = 'Review queue unavailable: ' + err.message;
+    empty(el('review-awaiting'), 'Review queue unavailable.');
+    empty(el('review-resolved'), 'Review queue unavailable.');
+    empty(el('review-receipts'), 'Review queue unavailable.');
+  }
+}
+function renderReviewQueue(data) {
+  el('review-queue-disclaimer').textContent = (data.synthetic ? 'Fictional synthetic data only. ' : '') + (data.disclaimer || '');
+  clear('review-awaiting');
+  const awaiting = data.awaiting || [];
+  if (!awaiting.length) empty(el('review-awaiting'), 'Nothing waiting for review in this fictional case.');
+  for (const item of awaiting) {
+    const box = node('div', null, 'snapshot');
+    const top = node('div', null, 'topline');
+    top.append(node('strong', item.title),
+      pill(item.kind, 'pill-neutral'),
+      pill(item.status === 'returned' ? 'returned' : 'waiting', item.status === 'returned' ? 'pill-warn' : 'pill-alert'),
+      pill(reviewAgeText(item.age_days)));
+    box.append(top, node('p', item.detail),
+      node('p', 'Listed since ' + item.created_at + '.', 'snapshot-meta'));
+    if (item.reopened_after_change)
+      box.append(node('p', 'Reopened after a change. Earlier decisions are kept below; they no longer cover the current version.', 'muted'));
+    if (item.status === 'returned')
+      box.append(node('p', 'Returned by ' + item.returned_by + ': ' + item.return_reason, 'muted'));
+    for (const prior of item.prior_receipts || [])
+      box.append(node('p', 'Earlier: ' + prior.action + ' by ' + prior.reviewer_label +
+        ' on ' + prior.created_at + ' (older version).', 'muted tiny'));
+    const form = document.createElement('form');
+    form.className = 'withdraw-form';
+    const reviewerLabel = document.createElement('label');
+    reviewerLabel.textContent = 'Reviewer label (unverified demo label)';
+    const reviewer = document.createElement('input');
+    reviewer.type = 'text'; reviewer.maxLength = 80; reviewer.required = true;
+    reviewer.placeholder = 'Synthetic reviewer (unverified)';
+    reviewerLabel.append(reviewer);
+    const actionLabel = document.createElement('label');
+    actionLabel.textContent = 'Decision';
+    const action = document.createElement('select');
+    for (const [value, text] of [['reviewed', 'Reviewed — I looked at this item'],
+        ['acknowledged', 'Acknowledged — I saw this item'],
+        ['returned', 'Returned — needs more work (reason required)']]) {
+      const opt = node('option', text); opt.value = value; action.append(opt);
+    }
+    actionLabel.append(action);
+    const reasonLabel = document.createElement('label');
+    reasonLabel.textContent = 'Reason (required when returned)';
+    const reason = document.createElement('textarea');
+    reason.rows = 2; reason.maxLength = 600;
+    reason.placeholder = 'What did you look at, or what is still needed? No treatment language.';
+    reasonLabel.append(reason);
+    const submit = node('button', 'Record sign-off', 'button minor');
+    submit.type = 'submit';
+    form.append(reviewerLabel, actionLabel, reasonLabel, submit);
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      try {
+        const requestedCase = readyCase();
+        await api('/api/cases/' + requestedCase + '/review-queue/receipts', {
+          queue_key: item.queue_key, action: action.value,
+          reviewer_label: reviewer.value, reason: reason.value.trim() || null,
+        });
+        if (requestedCase !== caseId) return;
+        notice(action.value === 'returned'
+          ? 'Returned with reason. The item stays visibly queued.'
+          : 'Sign-off recorded. This is an acknowledgment, not a treatment authorization.');
+        await refresh();
+      } catch (err) { notice(err.message, true); }
+    });
+    box.append(form);
+    el('review-awaiting').append(box);
+  }
+  clear('review-resolved');
+  const resolved = data.resolved || [];
+  if (!resolved.length) empty(el('review-resolved'), 'No recorded decisions yet in this fictional case.');
+  for (const item of resolved) {
+    const box = node('div', null, 'snapshot');
+    const top = node('div', null, 'topline');
+    top.append(node('strong', item.title), pill(item.kind, 'pill-neutral'), pill('decided'));
+    box.append(top, node('p', item.detail, 'muted'));
+    const by = item.resolved_by || {};
+    box.append(node('p', (by.action || 'decided') + ' by ' + (by.reviewer_label || 'unknown reviewer') +
+      ' on ' + (by.created_at || 'unknown time') +
+      (by.reason ? '. Note: ' + by.reason : ''), 'snapshot-meta'));
+    el('review-resolved').append(box);
+  }
+  clear('review-receipts');
+  const receipts = data.receipts || [];
+  if (!receipts.length) empty(el('review-receipts'), 'No sign-off records yet. Records are append-only and never edited or deleted.');
+  for (const receipt of receipts.slice().reverse()) {
+    const card = node('div', receipt.queue_key + ' — ' + receipt.action + ' by ' + receipt.reviewer_label, 'event');
+    card.append(node('small', receipt.created_at + (receipt.reason ? ' · ' + receipt.reason : '')));
+    el('review-receipts').append(card);
+  }
+}
+function renderPortfolio() {
+  const portfolio = active.portfolio || { options: [], disclaimer: '', counts: {} };
+  el('portfolio-disclaimer').textContent = portfolio.disclaimer || '';
+  const entries = portfolio.options || [];
+  const fill = (id, items, labelFn, allowEmpty = false) => {
+    const select = el(id);
+    const prior = select.value;
+    clear(id);
+    if (allowEmpty) { const blank = node('option', '—'); blank.value = ''; select.append(blank); }
+    for (const item of items) {
+      const opt = node('option', labelFn(item));
+      opt.value = item.id; select.append(opt);
+    }
+    if (prior && [...select.options].some(x => x.value === prior)) select.value = prior;
+  };
+  const entryLabel = o => 'Option #' + o.id + ' · ' + o.label + ' (' + o.portfolio_status + ')';
+  fill('flag-option-choice', entries, entryLabel);
+  fill('dimension-option-choice', entries, entryLabel);
+  fill('flag-source-choice', active.sources, s => s.document_id + '@' + s.version + ' · ' + s.state, true);
+  fill('dimension-source-choice', active.sources, s => s.document_id + '@' + s.version + ' · ' + s.state, true);
+  fill('flag-assessment-choice', active.evidence_assessments || [],
+    a => a.evidence_key + '@' + a.version + ' · ' + a.relation, true);
+  fill('dimension-assessment-choice', active.evidence_assessments || [],
+    a => a.evidence_key + '@' + a.version + ' · ' + a.relation, true);
+  const flags = entries.flatMap(o => [...o.objections.open, ...o.objections.resolved, ...o.holds, ...o.past_holds]
+    .map(f => ({ ...f, optionId: o.id })));
+  fill('flag-resolve-choice', flags,
+    f => 'Flag #' + f.id + ' · ' + f.kind + ' · ' + f.label + ' (' + f.state + ')');
+  const pendingNotes = entries.flatMap(o => Object.values(o.dimensions).flatMap(d => d.notes)
+    .map(n => ({ ...n, optionId: o.id }))).filter(n => n.state === 'pending');
+  fill('dimension-ack-choice', pendingNotes,
+    n => 'Note #' + n.id + ' · ' + n.dimension.replaceAll('_', ' ') + ' · Option #' + n.optionId);
+  clear('portfolio-list');
+  if (!entries.length) empty(el('portfolio-list'), 'No options proposed for this fictional case yet.');
+  const counts = portfolio.counts || {};
+  const summary = Object.keys(counts).sort().map(k => k + ': ' + counts[k]).join(' · ');
+  if (summary) el('portfolio-list').append(node('p', 'Preserved entries by status — ' + summary + '.', 'snapshot-meta'));
+  for (const entry of entries) {
+    const box = node('div', null, 'snapshot');
+    const top = node('div', null, 'topline');
+    top.append(node('strong', 'Option #' + entry.id + ' · ' + entry.label),
+      pill(entry.portfolio_status, ['held', 'rejected', 'deferred'].includes(entry.portfolio_status) ? 'pill-alert' : ''),
+      pill('review: ' + entry.review_state, entry.review_state === 'needs_review' ? 'pill-warn' : ''));
+    box.append(top, node('p', entry.description));
+    const dimLine = Object.values(entry.dimensions).map(d => d.label + ': ' + d.state.replaceAll('_', ' ')).join(' · ');
+    box.append(node('p', 'Reviewable dimensions — ' + dimLine +
+      '. Each note stays pending until a clinician acknowledges it.', 'snapshot-meta'));
+    if (entry.prerequisites.length) {
+      const deps = node('ul');
+      for (const dep of entry.prerequisites) {
+        deps.append(node('li', 'Needs: ' + dep.kind + ' — ' + dep.target +
+          (dep.deadline_date ? ' · date ' + dep.deadline_date + ' (' + dep.deadline_basis + ')' : ' · date unknown') +
+          (dep.lead_time_days !== null && dep.lead_time_days !== undefined ? ' · lead ' + dep.lead_time_days + 'd' : '')));
+      }
+      box.append(node('p', 'Prerequisites:', 'snapshot-meta'), deps);
+    } else {
+      box.append(node('p', 'Prerequisites: none recorded.', 'snapshot-meta'));
+    }
+    const openObjections = entry.objections.open;
+    box.append(node('p', openObjections.length
+      ? 'Objections: ' + openObjections.map(f => f.label + ' — ' + f.reason +
+        (f.premise ? ' (premise: ' + f.premise + ')' : '')).join(' ; ')
+      : 'Objections: none open.', 'snapshot-meta'));
+    const accessNotes = entry.dimensions.access.notes;
+    box.append(node('p', accessNotes.length
+      ? 'Access notes: ' + accessNotes.map(n => n.note + ' [' + n.state + '; anchor: ' + n.anchor +
+        (n.premise ? '; premise: ' + n.premise : '') + ']').join(' ; ')
+      : 'Access: nothing recorded; unknown.', 'snapshot-meta'));
+    const ready = node('ul');
+    for (const item of entry.readiness) ready.append(node('li', item));
+    box.append(node('p', 'Still missing or needed:', 'snapshot-meta'), ready);
+    box.append(node('p', entry.lead_time.label, 'snapshot-meta'));
+    if (entry.triggers.length) {
+      const trig = node('ul');
+      for (const text of entry.triggers) trig.append(node('li', text));
+      box.append(node('p', 'Expiration and review triggers:', 'snapshot-meta'), trig);
+    }
+    if (entry.review_events.length) {
+      box.append(node('p', 'Review history: ' + entry.review_events.map(e =>
+        e.action + ' by ' + e.reviewer_label + ' · scope: ' + e.scope).join(' ; '), 'snapshot-meta'));
+    }
+    el('portfolio-list').append(box);
+  }
+}
+function renderScopedReview() {
+  const fill = (id, items, labelFn) => {
+    const select = el(id);
+    const prior = select.value;
+    clear(id);
+    for (const item of items) {
+      const opt = node('option', labelFn(item));
+      opt.value = item.id; select.append(opt);
+    }
+    if (prior && [...select.options].some(x => x.value === prior)) select.value = prior;
+  };
+  const label = s => 'Investigation #' + s.id + ' · ' + s.state;
+  fill('scoped-decision-snapshot', active.snapshots, label);
+  fill('scoped-dissent-snapshot', active.snapshots, label);
+  fill('scoped-handoff-snapshot', active.snapshots, label);
+  clear('scoped-review-list');
+  if (!active.snapshots.length) empty(el('scoped-review-list'), 'No investigation drafts yet.');
+  for (const snapshot of active.snapshots) {
+    const scoped = snapshot.scoped_review || {
+      extraction: 'unreviewed', interpretation: 'unreviewed',
+      open_items: [], decisions: [], dissents: [], handoffs: [],
+    };
+    const box = node('div', null, 'snapshot');
+    const top = node('div', null, 'topline');
+    top.append(node('strong', 'Investigation #' + snapshot.id),
+      pill('extraction: ' + scoped.extraction, scoped.extraction === 'extraction_accepted' ? '' : 'pill-warn'),
+      pill('interpretation: ' + scoped.interpretation, scoped.interpretation === 'interpretation_endorsed' ? '' : 'pill-warn'));
+    box.append(top);
+    if ((scoped.open_items || []).length)
+      box.append(node('p', 'Open scope items: ' + scoped.open_items.join(', ') + ' — no settled note recorded.', 'snapshot-meta'));
+    else box.append(node('p', 'No open scope items: both dimensions have a settled note.', 'snapshot-meta'));
+    for (const item of (scoped.decisions || [])) {
+      box.append(node('p', 'Note #' + item.id + ' by ' + item.reviewer_label + ': ' + item.scope +
+        ' · sources ' + (item.source_version_ids.map(x => '#' + x).join(', ') || 'none') +
+        ' · ' + item.decided_at, 'snapshot-meta'), node('p', item.note, 'muted'));
+    }
+    for (const item of (scoped.dissents || [])) {
+      box.append(node('p', 'Disagreement #' + item.id + ' by ' + item.reviewer_label + ' on finding `' +
+        item.claim_ref + '` · ' + item.dissented_at + ' (noted views above are unchanged).', 'snapshot-meta'),
+        node('p', item.rationale, 'muted'));
+    }
+    for (const item of (scoped.handoffs || [])) {
+      box.append(node('p', 'Handoff #' + item.id + ': ' + item.from_reviewer + ' handed open items to ' +
+        item.to_reviewer + ' · snapshot #' + item.snapshot_id + ' · sources ' +
+        (item.source_version_ids.map(x => '#' + x).join(', ') || 'none') + ' · prior decisions ' +
+        (item.prior_decision_ids.map(x => '#' + x).join(', ') || 'none') + ' · ' + item.handed_at, 'snapshot-meta'));
+    }
+    el('scoped-review-list').append(box);
+  }
+}
+
+function renderCareRecords() {
+  el('second-opinion-disclaimer').textContent = active.second_opinion_disclaimer || '';
+  el('survivorship-disclaimer').textContent = active.survivorship_disclaimer || '';
+  const requests = active.second_opinions || [];
+  const plans = active.survivorship_plans || [];
+  const currentSources = active.sources.filter(s => s.state === 'current');
+  const fill = (id, items, labelFn, allowEmpty = false, emptyLabel = '—') => {
+    const select = el(id);
+    const prior = select.value;
+    clear(id);
+    if (allowEmpty) { const blank = node('option', emptyLabel); blank.value = ''; select.append(blank); }
+    for (const item of items) {
+      const opt = node('option', labelFn(item));
+      opt.value = item.id; select.append(opt);
+    }
+    if (prior && [...select.options].some(x => x.value === prior)) select.value = prior;
+  };
+  fill('so-question-choice', active.questions, q => 'Q' + q.id + ', ' + q.question.slice(0, 62));
+  fill('so-snapshot-choice', active.snapshots, s => 'Investigation #' + s.id + ' · ' + s.state, true, 'No linked conclusion');
+  fill('so-request-choice', requests, r => 'Request #' + r.id + ' · ' + r.status + ' · ' + r.question_text.slice(0, 52));
+  fill('so-anchor-choice', currentSources, s => s.document_id + '@' + s.version);
+  fill('surv-plan-choice', plans, p => 'Plan #' + p.id + ' · ' + p.title);
+  fill('surv-anchor-choice', currentSources, s => s.document_id + '@' + s.version);
+  // Materials: preserve checked current sources across same-case refreshes.
+  // A source that is no longer current is dropped with a notice, never
+  // rebound. A case switch never inherits the previous case's selection.
+  const sameCareCase = renderedCaseId === caseId;
+  const priorChecked = sameCareCase
+    ? new Set([...el('so-source-choice').querySelectorAll('input:checked')].map(x => Number(x.value)))
+    : new Set();
+  const hadChoices = sameCareCase && el('so-source-choice').querySelectorAll('input').length > 0;
+  clear('so-source-choice');
+  if (!currentSources.length) empty(el('so-source-choice'), 'No current sources to share.');
+  for (const source of currentSources) {
+    const label = node('label');
+    const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.value = source.id;
+    checkbox.checked = hadChoices ? priorChecked.has(source.id) : true;
+    label.append(checkbox, node('span', source.document_id + '@' + source.version + ', ' + source.event_date));
+    el('so-source-choice').append(label);
+  }
+  if (hadChoices && [...priorChecked].some(id => !currentSources.some(x => x.id === id)))
+    notice('A shared-material source changed while you were editing. Review the request and explicitly reconcile the shared materials before recording.', true);
+  clear('second-opinion-list');
+  if (!requests.length) empty(el('second-opinion-list'), 'No second-opinion requests recorded for this fictional case.');
+  for (const req of requests) {
+    const box = node('div', null, 'snapshot');
+    const top = node('div', null, 'topline');
+    top.append(node('strong', 'Second-opinion request #' + req.id),
+      pill('Fictional record', 'pill-neutral'),
+      pill(req.status, req.status === 'requested' ? 'pill-warn' : ''),
+      pill('review: ' + req.review_state, req.review_state === 'needs_review' ? 'pill-alert' : ''));
+    box.append(top,
+      node('p', 'Asked about Q' + req.question_id + ': ' + req.question),
+      node('p', 'Question asked: ' + req.question_text),
+      node('p', 'Materials shared by reference: ' + (req.materials.length
+        ? req.materials.map(m => m.document_id + '@' + m.version + ' (' + m.state + ')').join(', ')
+        : 'none recorded') + ' · ' + req.created_at, 'snapshot-meta'));
+    const grid = node('div', null, 'comparison-grid');
+    const originalPane = node('section', null, 'comparison-pane');
+    originalPane.append(node('h3', 'Original case conclusion (unchanged)'));
+    if (req.original_snapshot && !req.original_snapshot.missing) {
+      const card = node('div', null, 'source-card');
+      card.append(node('p', 'Investigation #' + req.original_snapshot.id + ' · ' + req.original_snapshot.state),
+        node('p', req.original_snapshot.summary));
+      originalPane.append(card);
+    } else {
+      originalPane.append(node('p', 'No original conclusion was linked to this request.', 'muted'));
+    }
+    const responsePane = node('section', null, 'comparison-pane');
+    responsePane.append(node('h3', 'Second-opinion response (separate record)'));
+    if (req.response) {
+      const card = node('div', null, 'source-card');
+      card.append(node('p', 'Responder: ' + req.response.responder_label + ' (fictional, unverified)'),
+        node('p', req.response.response_text),
+        node('p', 'Anchored to ' + req.response.anchor.document_id + '@' + req.response.anchor.version +
+          ' (' + req.response.anchor.state + ') · ' + req.response.created_at, 'snapshot-meta'));
+      responsePane.append(card);
+    } else {
+      responsePane.append(node('p', 'No response recorded yet.', 'muted'));
+    }
+    grid.append(originalPane, responsePane);
+    box.append(grid);
+    if (req.review_events.length) {
+      box.append(node('p', 'Review history: ' + req.review_events.map(e =>
+        e.action + ' by ' + e.reviewer_label + ' · scope: ' + e.scope).join(' ; '), 'snapshot-meta'));
+    }
+    if (req.review_state === 'pending') {
+      const actions = node('div', null, 'actions');
+      const button = node('button', 'Demo review acknowledgment', 'button minor'); button.type = 'button';
+      button.addEventListener('click', async () => {
+        try {
+          const requestedCase = readyCase();
+          await api('/api/cases/' + requestedCase + '/second-opinion-requests/' + req.id + '/review',
+            { reviewer_label: 'Synthetic reviewer (unverified)', scope: 'Demo-only acknowledgment of this fictional second-opinion record.' });
+          if (requestedCase !== caseId) return;
+          notice('Acknowledged in demonstration only. This is not credentialed clinical review.'); await refresh();
+        } catch (err) { notice(err.message, true); }
+      });
+      actions.append(button);
+      box.append(actions);
+    } else if (req.review_state === 'needs_review') {
+      box.append(node('p', 'Shared materials changed since this request. This record stays historical; record a new request against current versions.', 'muted'));
+    }
+    el('second-opinion-list').append(box);
+  }
+  clear('survivorship-list');
+  if (!plans.length) empty(el('survivorship-list'), 'No survivorship plans recorded for this fictional case.');
+  for (const plan of plans) {
+    const box = node('div', null, 'snapshot');
+    const top = node('div', null, 'topline');
+    top.append(node('strong', 'Survivorship plan #' + plan.id + ' · ' + plan.title),
+      pill('Fictional record', 'pill-neutral'));
+    box.append(top, node('p', 'Recorded plan only — these notes never direct care. · ' + plan.created_at, 'snapshot-meta'));
+    if (!plan.items.length) box.append(node('p', 'No items recorded in this plan yet.', 'muted'));
+    for (const item of plan.items) {
+      const card = node('div', null, 'source-card');
+      card.append(node('p', item.kind + ' item #' + item.id + ': ' + item.description));
+      card.append(node('p', item.recorded_date_label + ' · Anchored to ' +
+        item.anchor.document_id + '@' + item.anchor.version + ' (' + item.anchor.state + ') · ' +
+        item.created_at, 'snapshot-meta'));
+      const pills = node('div', null, 'actions');
+      pills.append(pill(item.state, item.state === 'triggered' ? '' : 'pill-neutral'),
+        pill('review: ' + item.review_state, item.review_state === 'needs_review' ? 'pill-alert' : ''));
+      card.append(pills);
+      if (item.review_events.length) {
+        card.append(node('p', 'Review history: ' + item.review_events.map(e =>
+          e.action + ' by ' + e.reviewer_label + ' · scope: ' + e.scope).join(' ; '), 'snapshot-meta'));
+      }
+      const actions = node('div', null, 'actions');
+      if (item.review_state === 'pending') {
+        const review = node('button', 'Demo review acknowledgment', 'button minor'); review.type = 'button';
+        review.addEventListener('click', async () => {
+          try {
+            const requestedCase = readyCase();
+            await api('/api/cases/' + requestedCase + '/survivorship-items/' + item.id + '/review',
+              { reviewer_label: 'Synthetic reviewer (unverified)', scope: 'Demo-only acknowledgment of this fictional survivorship record.' });
+            if (requestedCase !== caseId) return;
+            notice('Acknowledged in demonstration only. This is not credentialed clinical review.'); await refresh();
+          } catch (err) { notice(err.message, true); }
+        });
+        actions.append(review);
+      }
+      if (item.kind === 'trigger' && item.state === 'recorded' && item.review_state !== 'needs_review') {
+        const trigger = node('button', 'Mark trigger as observed', 'button secondary minor'); trigger.type = 'button';
+        trigger.addEventListener('click', async () => {
+          try {
+            const requestedCase = readyCase();
+            await api('/api/cases/' + requestedCase + '/survivorship-items/' + item.id + '/trigger',
+              { reason: 'The described condition was observed in the fictional record.' });
+            if (requestedCase !== caseId) return;
+            notice('Trigger marked as observed in this fictional record.'); await refresh();
+          } catch (err) { notice(err.message, true); }
+        });
+        actions.append(trigger);
+      }
+      if (actions.children.length) card.append(actions);
+      if (item.review_state === 'needs_review') {
+        card.append(node('p', 'The anchor source changed since this item was recorded. This record stays historical; record a new item against the current version.', 'muted'));
+      }
+      box.append(card);
+    }
+    el('survivorship-list').append(box);
+  }
+}
+
 function renderBibliography(record) {
   clear('bibliography-result');
   const card = node('article', null, 'source-card');
@@ -1250,6 +2806,128 @@ async function loadModelInvestigations() {
     if (requested === caseId) notice(err.message, true);
   }
 }
+async function loadWorkspaceQuestions() {
+  const requested = caseId;
+  const priorLinkQuestion = el('workspace-link-question').value;
+  const priorStatusQuestion = el('workspace-status-question').value;
+  const priorLinkSource = el('workspace-link-source').value;
+  clear('workspace-question-list');
+  try {
+    const data = await api('/api/cases/' + requested + '/workspace-questions');
+    if (requested !== caseId || !active || active.case.case_id !== requested) return;
+    renderWorkspaceQuestions(data.workspace_questions || [],
+      { priorLinkQuestion, priorStatusQuestion, priorLinkSource });
+  } catch (err) {
+    if (requested !== caseId) return;
+    empty(el('workspace-question-list'), 'Investigation questions unavailable: ' + err.message);
+  }
+}
+function workspaceStatusPill(status) {
+  return pill(status, status === 'answered' ? '' : status === 'needs_review' ? 'pill-alert' : 'pill-warn');
+}
+function renderWorkspaceQuestions(items, prior) {
+  // An answer is shown only for answered questions. History keeps earlier
+  // recorded answers so a reopened question can still be reviewed.
+  clear('workspace-link-question'); clear('workspace-status-question'); clear('workspace-link-source');
+  for (const item of items) {
+    const label = 'WQ' + item.id + ', ' + String(item.question).slice(0, 62);
+    const linkOpt = node('option', label); linkOpt.value = item.id;
+    el('workspace-link-question').append(linkOpt);
+    const statusOpt = node('option', label); statusOpt.value = item.id;
+    el('workspace-status-question').append(statusOpt);
+  }
+  for (const source of (active.sources || []).filter(s => s.state === 'current')) {
+    const opt = node('option', source.document_id + '@' + source.version + ', ' + source.event_date);
+    opt.value = source.id; el('workspace-link-source').append(opt);
+  }
+  const restore = (id, value) => {
+    if (value && [...el(id).options].some(x => x.value === value)) el(id).value = value;
+  };
+  restore('workspace-link-question', prior.priorLinkQuestion);
+  restore('workspace-status-question', prior.priorStatusQuestion);
+  restore('workspace-link-source', prior.priorLinkSource);
+  if (!items.length) { empty(el('workspace-question-list'), 'No investigation questions yet. Add one above.'); return; }
+  for (const item of items) {
+    const box = node('div', null, 'question');
+    const top = node('div', null, 'topline');
+    top.append(node('strong', 'Investigation question WQ' + item.id),
+      workspaceStatusPill(item.status), pill('FICTIONAL', 'pill-neutral'));
+    box.append(top, node('p', item.question));
+    box.append(node('p', 'Created ' + (item.created_date || '') + ' · Review state: ' + item.status, 'snapshot-meta'));
+    if (item.status === 'answered' && item.answer) {
+      box.append(node('p', 'Recorded answer (human-entered, fictional):', 'muted'));
+      box.append(node('p', item.answer, 'quoted'));
+    } else {
+      box.append(node('p', 'No recorded answer.', 'muted'));
+    }
+    const links = item.links || [];
+    box.append(node('p', links.length ? 'Linked source versions:' : 'No linked source versions yet.', 'muted'));
+    for (const link of links) {
+      box.append(node('p', (link.source_anchor || ('#' + link.source_version_id)) +
+        ' · source ' + (link.source_state || 'unknown') +
+        ' · link ' + link.state, 'snapshot-meta'));
+      if (link.state === 'active') {
+        const unlink = node('button', 'Unlink ' + (link.source_anchor || ('#' + link.source_version_id)), 'button secondary minor');
+        unlink.type = 'button';
+        unlink.addEventListener('click', async () => {
+          try {
+            const requestedCase = readyCase();
+            await api('/api/cases/' + requestedCase + '/workspace-questions/' + item.id + '/links/' + link.id + '/unlink', {});
+            if (requestedCase !== caseId) return;
+            notice('Link superseded; the record is kept as history.');
+            await refresh();
+          } catch (err) { notice(err.message, true); }
+        });
+        box.append(unlink);
+      }
+    }
+    const history = item.history || [];
+    box.append(node('p', 'History (' + history.length + ' entr' + (history.length === 1 ? 'y' : 'ies') + '):', 'muted'));
+    for (const entry of history) {
+      box.append(node('p', (entry.previous_status || 'recorded') + ' → ' + entry.new_status +
+        ': ' + entry.reason + ' · ' + (entry.recorded_at || ''), 'snapshot-meta'));
+      if (entry.answer) box.append(node('p', 'Earlier recorded answer (kept for review): ' + entry.answer, 'quoted'));
+    }
+    el('workspace-question-list').append(box);
+  }
+}
+el('workspace-question-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    await api('/api/cases/' + requestedCase + '/workspace-questions', { question: el('workspace-question-text').value });
+    if (requestedCase !== caseId) return;
+    el('workspace-question-text').value = '';
+    notice('Investigation question recorded.');
+    await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('workspace-link-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    await api('/api/cases/' + requestedCase + '/workspace-questions/' + el('workspace-link-question').value + '/links', {
+      source_version_id: Number(el('workspace-link-source').value),
+    });
+    if (requestedCase !== caseId) return;
+    notice('Source version linked.');
+    await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+el('workspace-status-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const answer = el('workspace-status-answer').value.trim();
+  try {
+    const requestedCase = readyCase();
+    const payload = { status: el('workspace-status-value').value, reason: el('workspace-status-reason').value };
+    if (answer) payload.answer = answer;
+    await api('/api/cases/' + requestedCase + '/workspace-questions/' + el('workspace-status-question').value + '/status', payload);
+    if (requestedCase !== caseId) return;
+    el('workspace-status-reason').value = ''; el('workspace-status-answer').value = '';
+    notice('Status change recorded.');
+    await refresh();
+  } catch (err) { notice(err.message, true); }
+});
 async function loadChangesSinceReview() {
   const requested = caseId;
   const anchorEl = el('changes-anchor');
@@ -1302,7 +2980,8 @@ function renderChangesSinceReview(data) {
       'snapshot-meta'));
     const findings = item.reported_findings || [];
     card.append(node('p', findings.length
-      ? 'Reported findings: ' + findings.map(entry => entry.finding_key + ' (' + entry.reported_state + ')').join('; ')
+      ? (item.classification_origin === 'user_selected' ? 'User-selected finding statuses: ' : 'Reported findings: ') +
+        findings.map(entry => entry.finding_key + ' (' + entry.reported_state + ')').join('; ')
       : 'No reported findings recorded for this source version.', 'muted'));
     el('changes-new-sources').append(card);
   }
@@ -1319,6 +2998,8 @@ function renderChangesSinceReview(data) {
       ' · Source version #' + item.source_id + ' supersedes #' + item.supersedes_source_id +
       ' · ' + item.kind + ', event ' + item.event_date + ', received ' + item.received_at, 'snapshot-meta'));
     const diff = item.finding_key_diff || {};
+    if (item.classification_origin === 'user_selected' || item.previous_classification_origin === 'user_selected')
+      card.append(node('p', 'This comparison includes user-selected statuses. Clinical review not performed.', 'muted tiny'));
     const added = diff.added_finding_keys || [];
     const removed = diff.removed_finding_keys || [];
     const stateChanges = diff.reported_state_changes || [];
@@ -1373,6 +3054,56 @@ function renderChangesSinceReview(data) {
       node('p', 'Event #' + item.event_id + ' · State: ' + item.state + ' · Created ' + item.created_at, 'muted'));
     el('changes-questions').append(row);
   }
+}
+async function loadEvidenceQuality() {
+  const requested = caseId;
+  for (const id of ['evidence-quality-current', 'evidence-quality-superseded']) clear(id);
+  try {
+    const data = await api('/api/cases/' + requested + '/evidence-quality');
+    if (requested !== caseId || !active || active.case.case_id !== requested) return;
+    renderEvidenceQuality(data);
+  } catch (err) {
+    if (requested !== caseId) return;
+    empty(el('evidence-quality-current'), 'Evidence quality notes unavailable: ' + err.message);
+    empty(el('evidence-quality-superseded'), 'Evidence quality notes unavailable.');
+  }
+}
+function renderEvidenceQuality(data) {
+  // Descriptive notes only. A source with no note renders "not assessed";
+  // no rating, score, or quality is ever guessed. All text via textContent.
+  const renderList = (containerId, entries, emptyText) => {
+    const container = el(containerId);
+    clear(containerId);
+    if (!entries.length) { empty(container, emptyText); return; }
+    for (const entry of entries) {
+      const card = node('article', null, 'source-card');
+      const top = node('div', null, 'source-top');
+      top.append(node('span', entry.document_id + ' @' + entry.version, 'source-title'),
+        pill('FICTIONAL', 'pill-warn'));
+      card.append(top);
+      card.append(node('p', 'Citation anchor: ' + entry.citation_anchor, 'snapshot-meta'));
+      if (entry.assessment_status !== 'assessed' || !(entry.assessments || []).length) {
+        card.append(node('p', 'Not assessed — no quality note was recorded for this fictional source version. No quality is guessed.', 'muted'));
+      } else {
+        for (const note of entry.assessments) {
+          const box = node('div', null, 'finding');
+          const head = node('div', null, 'finding-head');
+          head.append(node('strong', 'FICTIONAL note #' + note.id + ' · ' + note.assessor_label),
+            pill('FICTIONAL note', 'pill-neutral'));
+          box.append(head);
+          box.append(node('p', 'Date recorded: ' + note.date_recorded, 'snapshot-meta'));
+          box.append(node('p', 'What is covered: ' + note.completeness_note));
+          box.append(node('p', 'Limits: ' + note.limitations_text, 'muted'));
+          box.append(node('p', 'Disagreements or conflicts: ' + note.conflict_note, 'muted'));
+          box.append(node('span', 'Source version #' + note.source_version_id + ' · recorded ' + note.created_at, 'ref'));
+          card.append(box);
+        }
+      }
+      container.append(card);
+    }
+  };
+  renderList('evidence-quality-current', data.current || [], 'No current fictional sources in this case.');
+  renderList('evidence-quality-superseded', data.superseded || [], 'No superseded fictional source versions.');
 }
 async function loadReReviewTasks() {
   const requested = caseId;
@@ -1486,6 +3217,264 @@ el('model-investigation-form').addEventListener('submit', async event => {
     notice('Model investigation stored as a hypothesis pending review.');
     await refresh();
   } catch (err) { notice(err.message, true); }
+});
+const documentIntake = window.OpenIntelligenceIntake.mount({
+  api, getCase: readyCase,
+  onImported: () => refresh(),
+  onSource: async sourceId => {
+    const requestedCase = readyCase();
+    await refresh();
+    if (requestedCase !== caseId) return;
+    const source = active.sources.find(item => item.id === sourceId);
+    if (source) await openSource(source);
+  },
+  onQuestion: () => {
+    el('question-text').scrollIntoView({block: 'center'});
+    el('question-text').focus();
+  },
+});
+// Begin contradiction synthesis (B-08): read-only grouping plus human notes.
+const SYNTHESIS_GROUPS = [
+  ['supporting', 'Supporting items'],
+  ['contradicting', 'Contradicting items'],
+  ['context', 'Context items'],
+  ['unknown_limited', 'Unknown or limited items'],
+];
+const SYNTHESIS_EMPTY = {
+  supporting: 'None included; no supporting item is linked at this cutoff.',
+  contradicting: 'None included; no contradicting item is linked at this cutoff.',
+  context: 'None included; no context item is linked at this cutoff.',
+  unknown_limited: 'None included; no unknown or limited item is linked at this cutoff.',
+};
+function fillSelect(id, options, keepValue) {
+  const select = el(id);
+  const prior = keepValue ? select.value : null;
+  clear(id);
+  for (const [value, label] of options) {
+    const opt = node('option', label);
+    opt.value = value;
+    select.append(opt);
+  }
+  if (prior && [...select.options].some(opt => opt.value === prior)) select.value = prior;
+}
+function renderSynthesisChoices() {
+  if (!active) return;
+  const sameCase = renderedCaseId === caseId;
+  const questionOptions = active.questions.map(q => [String(q.id), 'Q' + q.id + ': ' + q.question]);
+  const snapshotOptions = active.snapshots.map(s =>
+    [String(s.id), 'Snapshot #' + s.id + ' · Q' + s.question_id + ' · ' + s.state]);
+  fillSelect('synthesis-question-choice', questionOptions.length ? questionOptions : [['', 'No questions yet']], sameCase);
+  fillSelect('synthesis-snapshot-choice', snapshotOptions.length ? snapshotOptions : [['', 'No snapshots yet']], sameCase);
+  fillSelect('synthesis-note-question', questionOptions.length ? questionOptions : [['', 'No questions yet']], sameCase);
+  renderSynthesisNoteTargets();
+}
+function renderSynthesisNoteTargets() {
+  if (!active) return;
+  const qid = Number(el('synthesis-note-question').value);
+  const kind = el('synthesis-note-target-kind').value;
+  let options = [];
+  if (kind === 'assessment') {
+    options = (active.evidence_assessments || []).filter(a => a.question_id === qid)
+      .map(a => [String(a.id), 'Assessment #' + a.id + ' · ' + a.evidence_key + '@' + a.version + ' · ' + a.relation]);
+  } else {
+    options = (active.broker_links || []).filter(a => a.question_id === qid)
+      .map(a => [String(a.id), 'Link #' + a.id + ' · ' + a.source_key + ' ' + (a.version_label || '') + ' · ' + a.relation]);
+  }
+  fillSelect('synthesis-note-target', options.length ? options : [['', 'No records for this question yet']], false);
+}
+function synthesisItemLabel(item) {
+  const anchor = item.anchor || {};
+  if (item.kind === 'evidence_assessment') {
+    return 'Assessment #' + item.id + ' · ' + anchor.evidence_key + '@' + anchor.version +
+      ' · line ' + anchor.statement_line;
+  }
+  return 'Link #' + item.id + ' · ' + anchor.source_key + ' ' + (anchor.version_label || '') +
+    ' · ' + (anchor.mode || 'citation identity');
+}
+function renderSynthesisGroups(data) {
+  clear('synthesis-groups');
+  const counts = data.counts || {};
+  const head = node('div', null, 'question');
+  head.append(node('p', 'Linked items: ' + (counts.total || 0) +
+    ' (supporting ' + (counts.supporting || 0) +
+    ' · contradicting ' + (counts.contradicting || 0) +
+    ' · context ' + (counts.context || 0) +
+    ' · unknown/limited ' + (counts.unknown_limited || 0) + ')'));
+  const cutoff = data.cutoff || {};
+  head.append(node('p', 'Cutoff event #' + cutoff.event_id + ' at ' + (cutoff.occurred_at || 'unknown time') +
+    '. No quality number is computed here.', 'muted'));
+  el('synthesis-groups').append(head);
+  for (const [key, title] of SYNTHESIS_GROUPS) {
+    const items = (data.groups || {})[key] || [];
+    const box = node('div', null, 'snapshot');
+    const top = node('div', null, 'topline');
+    top.append(node('strong', title + ' (' + items.length + ')'),
+      pill(key === 'contradicting' && items.length ? 'dissent visible' : 'listed', 'pill-neutral'));
+    box.append(top);
+    if (!items.length) box.append(node('p', SYNTHESIS_EMPTY[key], 'muted'));
+    for (const item of items) {
+      box.append(node('p', synthesisItemLabel(item) + ' · ' + item.relation + ', ' + item.applicability +
+        ' · review state: ' + item.review_state));
+      box.append(node('p', 'Reviewer rationale: ' + item.rationale, 'muted'));
+      for (const note of item.limitation_notes || []) {
+        box.append(node('p', 'Limitation note by ' + note.author_label + ': ' + note.note, 'muted'));
+      }
+    }
+    el('synthesis-groups').append(box);
+  }
+}
+async function loadSynthesis() {
+  const requested = caseId;
+  clear('synthesis-groups');
+  clear('synthesis-report-meta');
+  const qid = Number(el('synthesis-question-choice').value);
+  const sid = Number(el('synthesis-snapshot-choice').value);
+  if (!qid) {
+    empty(el('synthesis-groups'), 'No question selected in this fictional case.');
+    return;
+  }
+  try {
+    const data = await api('/api/cases/' + requested + '/questions/' + qid + '/synthesis');
+    if (requested !== caseId || !active || active.case.case_id !== requested) return;
+    renderSynthesisGroups(data);
+    if (sid) {
+      const snapshotData = await api('/api/cases/' + requested + '/snapshots/' + sid + '/synthesis');
+      if (requested !== caseId || !active || active.case.case_id !== requested) return;
+      const basis = snapshotData.basis || {};
+      const meta = node('div', null, 'question');
+      meta.append(node('p', 'Snapshot #' + sid + ' · state: ' + (basis.snapshot_state || 'unknown') +
+        ' · cutoff event #' + ((snapshotData.cutoff || {}).event_id || '?')));
+      meta.append(node('p', basis.stale_basis
+        ? 'REVIEW-PENDING: the record changed after this snapshot. The bounded report reads as history.'
+        : 'No basis change is recorded at this cutoff. The bounded report still needs human review.', 'muted'));
+      el('synthesis-report-meta').append(meta);
+    } else {
+      empty(el('synthesis-report-meta'), 'No snapshot selected in this fictional case.');
+    }
+  } catch (err) {
+    if (requested !== caseId) return;
+    empty(el('synthesis-groups'), 'Synthesis unavailable: ' + err.message);
+    empty(el('synthesis-report-meta'), 'Report cutoff unavailable.');
+  }
+}
+async function openSynthesisReport(patient) {
+  let read;
+  try {
+    read = beginSourceRead();
+    const sid = Number(el('synthesis-snapshot-choice').value);
+    if (!sid) throw Error('Select an investigation snapshot first.');
+    const suffix = patient ? '/synthesis-report-patient' : '/synthesis-report';
+    const text = await api('/api/cases/' + read.caseId + '/snapshots/' + sid + suffix);
+    if (!sourceReadIsCurrent(read)) return;
+    if (typeof text !== 'string' || !text) throw Error('Bounded report text is unavailable.');
+    el('dialog-title').textContent = patient
+      ? 'Snapshot #' + sid + ', plain-words bounded report'
+      : 'Snapshot #' + sid + ', workspace bounded report';
+    renderOriginalSource(text, null);
+    el('dialog-context').textContent = 'FICTIONAL DEMO DATA. Bounded to its cutoff; a REVIEW-PENDING banner means the record changed after it.';
+    showSourceView('source-dialog');
+  } catch (err) {
+    if (!read || sourceReadIsCurrent(read)) notice(err.message, true);
+  }
+}
+el('synthesis-question-choice').addEventListener('change', () => { loadSynthesis(); });
+el('synthesis-snapshot-choice').addEventListener('change', () => { loadSynthesis(); });
+el('synthesis-note-question').addEventListener('change', () => { renderSynthesisNoteTargets(); });
+el('synthesis-note-target-kind').addEventListener('change', () => { renderSynthesisNoteTargets(); });
+el('synthesis-report-button').addEventListener('click', () => { openSynthesisReport(false); });
+el('synthesis-patient-report-button').addEventListener('click', () => { openSynthesisReport(true); });
+el('synthesis-note-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const kind = el('synthesis-note-target-kind').value;
+    const targetId = Number(el('synthesis-note-target').value);
+    if (!targetId) throw Error('Select a target record for this note.');
+    const payload = {
+      question_id: Number(el('synthesis-note-question').value),
+      note: el('synthesis-note-text').value,
+      author_label: el('synthesis-note-author').value,
+    };
+    if (kind === 'assessment') payload.assessment_id = targetId;
+    else payload.broker_link_id = targetId;
+    await api('/api/cases/' + requestedCase + '/limitation-notes', payload);
+    if (requestedCase !== caseId) return;
+    el('synthesis-note-text').value = '';
+    notice('Limitation note recorded. Notes stay in history and are never rewritten.');
+    await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+// End contradiction synthesis (B-08).
+function renderMetricsAggregate(containerId, block) {
+  // Descriptive fixture counts only; every value arrives as a number or a
+  // fixed label string, rendered via textContent-only node().
+  clear(containerId);
+  const container = el(containerId);
+  const aggregate = (block && block.aggregate) || {};
+  const corrections = aggregate.corrections || {};
+  const lag = (aggregate.stale_lag && aggregate.stale_lag.summary) || {};
+  container.append(
+    metric(aggregate.case_count || 0, 'Cases in set'),
+    metric(corrections.total || 0, 'Corrections (amendments + evidence changes)'),
+    metric(aggregate.abstention_entries || 0, 'Abstention entries'),
+    metric(aggregate.guard_drop_entries || 0, 'Guard-drop entries'),
+    metric(aggregate.invalidated_total || 0, 'Invalidated items'),
+    metric(aggregate.untouched_total || 0, 'Untouched items'));
+  const lagText = 'Stale-item lag over ' + (lag.resolved || 0) + ' resolved correction(s)' +
+    ', ' + (lag.pending || 0) + ' pending' +
+    (lag.resolved ? ': min ' + lag.min_seconds + 's, median ' + lag.median_seconds +
+      's, max ' + lag.max_seconds + 's (ledger timestamps).' : ' (ledger timestamps).');
+  container.append(node('p', lagText, 'muted'));
+  const abstentions = aggregate.abstentions_by_reason || {};
+  const drops = aggregate.guard_drops_by_reason || {};
+  const reasons = Object.keys(abstentions).sort()
+    .map(reason => reason + ': ' + abstentions[reason]).join('; ') || 'none recorded';
+  const dropReasons = Object.keys(drops).sort()
+    .map(reason => reason + ': ' + drops[reason]).join('; ') || 'none recorded';
+  container.append(node('p', 'Abstentions by reason — ' + reasons, 'muted tiny'));
+  container.append(node('p', 'Guard drops by reason — ' + dropReasons, 'muted tiny'));
+}
+function renderSyntheticMetrics(data) {
+  const run = data.run || {};
+  const manifest = run.manifest || {};
+  el('metrics-status').textContent = 'Run ' + (run.run_id || 'unknown') +
+    ' as of ledger time ' + (run.as_of_ledger_time || 'unknown') +
+    '. Dev: ' + (manifest.dev_cases || []).join(', ') +
+    '. Held-out: ' + ((manifest.held_out_cases || []).join(', ') || 'none') +
+    '. Synthetic fixtures only — non-transferable.';
+  el('metrics-disclaimer').textContent = ((data.dev && data.dev.labels) || []).join('. ') +
+    '. ' + ((data.dev && data.dev.disclaimer) || '');
+  renderMetricsAggregate('metrics-dev', data.dev);
+  renderMetricsAggregate('metrics-heldout', data.held_out);
+  clear('metrics-run');
+  const runBox = el('metrics-run');
+  const card = node('article', null, 'source-card');
+  const positions = run.ledger_positions || {};
+  card.append(node('p', 'Run id ' + (run.run_id || 'unknown') +
+    ' reflects ledger positions ' + Object.keys(positions).sort()
+      .map(name => name + ' @ event #' + positions[name].latest_event_id).join('; ') +
+    '. Recompute any time: derived values come from the ledger, not from a stored metric history.'));
+  runBox.append(card);
+}
+async function loadSyntheticMetrics() {
+  const devRaw = el('metrics-dev-input').value;
+  const heldOutRaw = el('metrics-heldout-input').value;
+  el('metrics-status').textContent = 'Computing fixture metrics…';
+  try {
+    const data = await api('/api/metrics/synthetic?dev=' + encodeURIComponent(devRaw) +
+      '&held_out=' + encodeURIComponent(heldOutRaw));
+    // The manifest may change while a response is in flight; never render
+    // counts underneath a manifest they were not computed for.
+    if (el('metrics-dev-input').value !== devRaw || el('metrics-heldout-input').value !== heldOutRaw) return;
+    renderSyntheticMetrics(data);
+  } catch (err) {
+    if (el('metrics-dev-input').value !== devRaw || el('metrics-heldout-input').value !== heldOutRaw) return;
+    el('metrics-status').textContent = 'Fixture metrics unavailable: ' + err.message;
+  }
+}
+el('metrics-form').addEventListener('submit', event => {
+  event.preventDefault();
+  loadSyntheticMetrics();
 });
 initialize();
 initializeBibliography();

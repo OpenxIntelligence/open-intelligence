@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import re
@@ -13,7 +15,10 @@ from urllib.parse import parse_qs, urlsplit
 
 from tools.crossref_metadata import MetadataInputError, fetch_public_doi, project_work
 
+from .case_search import list_cases
 from .changes import changes_since_review
+from .packet import build_case_packet, render_packet_text
+from .followthrough import followthrough_view
 from .investigation import (
     TEMPLATES,
     InvestigationError,
@@ -23,14 +28,32 @@ from .investigation import (
     meta_api_key,
     validate_output,
 )
+from .clinician_overview import build_clinician_overview
 from .mission import build_patient_mission
+from .patient_attention import case_patient_attention
+from .provenance import case_provenance
+from .patient_report import build_patient_report, render_text
+from .owned_questions import question_gap_rollup
 from .store import CaseStore, InvalidInput, MAX_SOURCE_BYTES
+from .synthetic_metrics import fixture_run
 from .timeline import case_timeline
 
 ROOT = Path(__file__).resolve().parents[2]
 WEB = ROOT / "web"
 SYNTHETIC = ROOT / "examples" / "synthetic"
 ID_PART = r"([A-Z][A-Z0-9-]{1,39})"
+DOCUMENT_BODY_BYTES = 131072
+
+# B-01 fictional-actor grants: workflow governance for the synthetic case
+# workspace. The header carries a FICTIONAL actor id only — this is not
+# identity proofing, not credential verification, and not a
+# production-security control. Every case route requires purpose
+# "individual-access" (the only purpose patient_access.py accepts); grants
+# with any other stated purpose authorize no case route in this slice.
+FICTIONAL_ACTOR_HEADER = "X-Fictional-Actor"
+FICTIONAL_ACTOR_PURPOSE = "individual-access"
+DEMO_ACTOR = "FICTIONAL-NAVIGATOR-A"
+GRANT_DENIAL_MESSAGE = "Access denied: no active fictional-actor grant for this case"
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -45,7 +68,8 @@ class Handler(BaseHTTPRequestHandler):
         # Avoid logging source text, patient-like fields or query strings.
         print("[local demo]", fmt % args)
 
-    def _headers(self, status: int, kind: str, size: int) -> None:
+    def _headers(self, status: int, kind: str, size: int, *,
+                 filename: str | None = None) -> None:
         self.send_response(status)
         self.send_header("Content-Type", kind)
         self.send_header("Content-Length", str(size))
@@ -53,10 +77,15 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Security-Policy", "default-src 'self'; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
+        if filename is not None:
+            # The source owner returns a validated ASCII basename, never a
+            # client-supplied path or an untrusted Content-Disposition value.
+            self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
         self.end_headers()
 
-    def _send(self, status: int, body: bytes, kind: str) -> None:
-        self._headers(status, kind, len(body))
+    def _send(self, status: int, body: bytes, kind: str, *,
+              filename: str | None = None) -> None:
+        self._headers(status, kind, len(body), filename=filename)
         self.wfile.write(body)
 
     def _json(self, status: int, payload: dict | list) -> None:
@@ -65,22 +94,63 @@ class Handler(BaseHTTPRequestHandler):
     def _static(self, name: str, mime: str) -> None:
         self._send(200, (WEB / name).read_bytes(), mime)
 
-    def _body(self) -> dict:
+    def _body(self, max_bytes: int = MAX_SOURCE_BYTES + 8192, *,
+              strict: bool = False) -> dict:
         if self.headers.get("Content-Type", "").split(";", 1)[0].strip() != "application/json":
             raise InvalidInput("Only application/json is accepted")
         try:
             n = int(self.headers.get("Content-Length", "0"))
         except ValueError:
             raise InvalidInput("Invalid Content-Length") from None
-        if not 0 < n <= MAX_SOURCE_BYTES + 8192:
+        if n <= 0:
+            raise InvalidInput("Request body is required")
+        if n > max_bytes:
             raise InvalidInput("Request body exceeds local-demo limit")
+
+        def unique_fields(pairs):
+            result = {}
+            for key, value in pairs:
+                if key in result:
+                    raise InvalidInput("Duplicate JSON fields are not accepted")
+                result[key] = value
+            return result
+
+        def reject_constant(_value):
+            raise InvalidInput("Non-finite JSON values are not accepted")
+
         try:
-            data = json.loads(self.rfile.read(n))
-        except (UnicodeDecodeError, json.JSONDecodeError):
+            raw = self.rfile.read(n)
+            data = (json.loads(raw, object_pairs_hook=unique_fields,
+                               parse_constant=reject_constant)
+                    if strict else json.loads(raw))
+        except InvalidInput:
+            raise
+        except (UnicodeDecodeError, ValueError, RecursionError):
             raise InvalidInput("Invalid JSON body") from None
         if not isinstance(data, dict):
             raise InvalidInput("JSON object required")
         return data
+
+    @staticmethod
+    def _document_bytes(data: dict, *, preview: bool) -> bytes:
+        required = {"filename", "content_base64"}
+        if not preview:
+            required |= {"metadata", "findings", "expected_sha256", "confirmed_case_id"}
+        if set(data) != required:
+            raise InvalidInput("Document intake requires exactly the documented fields")
+        encoded = data["content_base64"]
+        if (not isinstance(encoded, str) or not encoded
+                or len(encoded) > 4 * ((MAX_SOURCE_BYTES + 2) // 3)):
+            raise InvalidInput("Document content must be base64 for at most 64 KiB")
+        try:
+            raw = base64.b64decode(encoded, validate=True)
+        except (ValueError, binascii.Error):
+            raise InvalidInput("Invalid document base64") from None
+        if not raw or len(raw) > MAX_SOURCE_BYTES:
+            raise InvalidInput("Document must be nonempty and at most 64 KiB")
+        if base64.b64encode(raw).decode("ascii") != encoded:
+            raise InvalidInput("Document base64 must use its canonical encoding")
+        return raw
 
     def _host_allowed(self) -> bool:
         # Host validation prevents a remote-controlled domain resolving to
@@ -95,6 +165,68 @@ class Handler(BaseHTTPRequestHandler):
         # metadata provides an additional barrier; this is NOT authentication.
         return self.headers.get("Sec-Fetch-Site", "none") in {"none", "same-origin"}
 
+    def _fictional_actor(self) -> str | None:
+        """Presented fictional actor id, or None when missing/unparseable.
+
+        Any non-None value matches the synthetic-id alphabet; the grant
+        lookup decides authorization. Malformed values are unknown actors,
+        not 422s: behavior item 1 denies them with 403."""
+        raw = self.headers.get(FICTIONAL_ACTOR_HEADER)
+        if raw is None:
+            return None
+        actor = raw.strip()
+        if not re.fullmatch(ID_PART, actor):
+            return None
+        return actor
+
+    def _actor_label(self) -> str:
+        """Access-log actor field: the presented value, or "missing"."""
+        raw = self.headers.get(FICTIONAL_ACTOR_HEADER)
+        if raw is None or not raw.strip():
+            return "missing"
+        return raw.strip()[:128]
+
+    @staticmethod
+    def _case_route_id(path: str) -> str | None:
+        """Well-formed /api/cases/{ID}/... case id, else None.
+
+        Only well-formed ids are gated here; malformed segments fall through
+        to the existing 404 contract, and /api/cases itself is the global
+        list route with its own item-7 filtering."""
+        parts = path.split("/")
+        if len(parts) >= 5 and parts[1] == "api" and parts[2] == "cases" \
+                and parts[4] != "" and re.fullmatch(ID_PART, parts[3]):
+            return parts[3]
+        return None
+
+    def _grant_denial(self) -> None:
+        # One fixed shape with zero case-content fields, identical for
+        # missing/unknown actors, cross-case reads, and expired, revoked,
+        # or wrong-purpose grants.
+        return self._json(403, {"error": GRANT_DENIAL_MESSAGE})
+
+    def _require_case_grant(self, store: CaseStore, case_id: str, path: str) -> bool:
+        """Gate one case-scoped route. Returns True when allowed (and the
+        decision is logged); otherwise sends the denial and returns False.
+
+        Unknown case ids raise InvalidInput (422 "Unknown case") BEFORE the
+        grant check, preserving the existing contract with no new existence
+        oracle beyond what /api/cases already lists on this demo."""
+        label = self._actor_label()
+        route = path[:256]
+        try:
+            store.require_case(case_id)
+        except InvalidInput:
+            store.record_access(label, case_id, route, "denied")
+            raise
+        actor = self._fictional_actor()
+        if actor is None or not store.has_active_grant(actor, case_id, FICTIONAL_ACTOR_PURPOSE):
+            store.record_access(label, case_id, route, "denied")
+            self._grant_denial()
+            return False
+        store.record_access(actor, case_id, route, "allowed")
+        return True
+
     def do_GET(self) -> None:  # noqa: N802
         if not self._host_allowed():
             return self._json(403, {"error": "Unexpected Host for loopback-only demo"})
@@ -106,6 +238,18 @@ class Handler(BaseHTTPRequestHandler):
                 return self._static("app.js", "text/javascript; charset=utf-8")
             if path == "/mission.js":
                 return self._static("mission.js", "text/javascript; charset=utf-8")
+            if path == "/intake.js":
+                return self._static("intake.js", "text/javascript; charset=utf-8")
+            if path == "/case_search.js":
+                return self._static("case_search.js", "text/javascript; charset=utf-8")
+            if path == "/provenance.js":
+                return self._static("provenance.js", "text/javascript; charset=utf-8")
+            if path == "/consent.js":
+                return self._static("consent.js", "text/javascript; charset=utf-8")
+            if path == "/clinician-overview.js":
+                return self._static("clinician-overview.js", "text/javascript; charset=utf-8")
+            if path == "/report.js":
+                return self._static("report.js", "text/javascript; charset=utf-8")
             if path == "/style.css":
                 return self._static("style.css", "text/css; charset=utf-8")
             if path == "/tokens.css":
@@ -131,7 +275,21 @@ class Handler(BaseHTTPRequestHandler):
         store = CaseStore(self.db_path)
         try:
             if path == "/api/cases":
-                return self._json(200, store.cases())
+                actor = self._fictional_actor()
+                if actor is None:
+                    return self._grant_denial()
+                query = parse_qs(urlsplit(self.path).query)
+                if "search" not in query and "sort" not in query:
+                    return self._json(200, store.granted_cases(actor, FICTIONAL_ACTOR_PURPOSE))
+                granted = store.granted_cases(actor, FICTIONAL_ACTOR_PURPOSE)
+                search = query.get("search", [""])[0]
+                sort = query.get("sort", ["id"])[0]
+                return self._json(200, list_cases(
+                    store, search=search, sort=sort,
+                    allowed_ids={c["case_id"] for c in granted}))
+            gated_case = self._case_route_id(path)
+            if gated_case is not None and not self._require_case_grant(store, gated_case, path):
+                return None
             if path == "/api/discovery":
                 return self._json(200, store.list_discovery())
             discovery_links = re.fullmatch(rf"/api/cases/{ID_PART}/discovery", path)
@@ -153,9 +311,25 @@ class Handler(BaseHTTPRequestHandler):
                     raise InvalidInput("snapshot_id must be a positive integer")
                 snapshot_id = int(snapshot_raw) if snapshot_raw is not None else None
                 return self._json(200, store.option_view(case_options[1], snapshot_id))
+            case_portfolio = re.fullmatch(rf"/api/cases/{ID_PART}/portfolio", path)
+            if case_portfolio:
+                return self._json(200, store.option_portfolio(case_portfolio[1]))
             case_mission = re.fullmatch(rf"/api/cases/{ID_PART}/mission", path)
             if case_mission:
                 return self._json(200, build_patient_mission(store.state(case_mission[1])))
+            case_provenance_route = re.fullmatch(rf"/api/cases/{ID_PART}/provenance", path)
+            if case_provenance_route:
+                return self._json(200, case_provenance(store, case_provenance_route[1]))
+            case_overview = re.fullmatch(rf"/api/cases/{ID_PART}/clinician-overview", path)
+            if case_overview:
+                return self._json(200, build_clinician_overview(store.state(case_overview[1])))
+            case_report = re.fullmatch(rf"/api/cases/{ID_PART}/patient-report", path)
+            if case_report:
+                payload = build_patient_report(store.state(case_report[1]))
+                if parse_qs(urlsplit(self.path).query).get("format", [None])[0] == "text":
+                    return self._send(200, render_text(payload).encode("utf-8"),
+                                      "text/plain; charset=utf-8")
+                return self._json(200, payload)
             changes = re.fullmatch(rf"/api/cases/{ID_PART}/changes-since-review", path)
             if changes:
                 raw_since = parse_qs(urlsplit(self.path).query).get("since_event_id", [None])[0]
@@ -168,16 +342,57 @@ class Handler(BaseHTTPRequestHandler):
             timeline = re.fullmatch(rf"/api/cases/{ID_PART}/timeline", path)
             if timeline:
                 return self._json(200, case_timeline(store, timeline[1]))
+            attention = re.fullmatch(rf"/api/cases/{ID_PART}/patient-attention", path)
+            if attention:
+                return self._json(200, case_patient_attention(store, attention[1]))
+            evidence_quality = re.fullmatch(rf"/api/cases/{ID_PART}/evidence-quality", path)
+            if evidence_quality:
+                return self._json(200, store.evidence_quality(evidence_quality[1]))
+            followthrough = re.fullmatch(rf"/api/cases/{ID_PART}/followthrough", path)
+            if followthrough:
+                return self._json(200, followthrough_view(store, followthrough[1]))
+            review_queue = re.fullmatch(rf"/api/cases/{ID_PART}/review-queue", path)
+            if review_queue:
+                return self._json(200, store.review_queue(review_queue[1]))
             inv_list = re.fullmatch(rf"/api/cases/{ID_PART}/investigations", path)
             if inv_list:
                 return self._json(200, {"investigations": store.list_investigations(inv_list[1])})
             inv_one = re.fullmatch(rf"/api/cases/{ID_PART}/investigations/([0-9]+)", path)
             if inv_one:
                 return self._json(200, store.get_investigation(inv_one[1], int(inv_one[2])))
+            visits_list = re.fullmatch(rf"/api/cases/{ID_PART}/visits", path)
+            if visits_list:
+                return self._json(200, store.list_visits(visits_list[1]))
+            workspace_list = re.fullmatch(rf"/api/cases/{ID_PART}/workspace-questions", path)
+            if workspace_list:
+                return self._json(200, {"workspace_questions": store.list_workspace_questions(workspace_list[1])})
+            question_rollup = re.fullmatch(rf"/api/cases/{ID_PART}/questions/([0-9]+)/rollup", path)
+            if question_rollup:
+                return self._json(200, question_gap_rollup(store, question_rollup[1], int(question_rollup[2])))
             if path == "/api/investigations/templates":
                 return self._json(200, {"templates": [
                     {"id": template_id, "description": text[:160]}
                     for template_id, text in TEMPLATES.items()]})
+            source_download = re.fullmatch(rf"/api/cases/{ID_PART}/sources/([0-9]+)/download", path)
+            if source_download:
+                # Bound URL input before Python's decimal conversion and the
+                # source owner's SQLite integer lookup. Other source routes
+                # keep their existing behavior.
+                source_id_text = source_download[2]
+                if len(source_id_text) > 19:
+                    raise InvalidInput("Invalid source identifier")
+                source_id = int(source_id_text)
+                if not 1 <= source_id <= 9223372036854775807:
+                    raise InvalidInput("Invalid source identifier")
+                document = store.source_document(source_download[1], source_id)
+                return self._send(200, document["raw"], "text/plain; charset=utf-8",
+                                  filename=document["filename"])
+            consent_list = re.fullmatch(rf"/api/cases/{ID_PART}/consents", path)
+            if consent_list:
+                return self._json(200, {"consents": store.list_consents(consent_list[1])})
+            qualifier_list = re.fullmatch(rf"/api/cases/{ID_PART}/identity-qualifiers", path)
+            if qualifier_list:
+                return self._json(200, {"identity_qualifiers": store.list_identity_qualifiers(qualifier_list[1])})
             source = re.fullmatch(rf"/api/cases/{ID_PART}/sources/([0-9]+)", path)
             if source:
                 return self._json(200, {"text": store.source_text(source[1], int(source[2]))})
@@ -185,6 +400,41 @@ class Handler(BaseHTTPRequestHandler):
             if exported:
                 contents = store.export_markdown(exported[1], int(exported[2])).encode("utf-8")
                 return self._send(200, contents, "text/markdown; charset=utf-8")
+            packet = re.fullmatch(rf"/api/cases/{ID_PART}/packet", path)
+            if packet:
+                query = parse_qs(urlsplit(self.path).query)
+                fmt = query.get("format", [None])[0]
+                data = build_case_packet(store, packet[1])
+                if fmt == "text":
+                    contents = render_packet_text(data).encode("utf-8")
+                    return self._send(200, contents, "text/plain; charset=utf-8")
+                return self._json(200, data)
+            question_synthesis = re.fullmatch(rf"/api/cases/{ID_PART}/questions/([0-9]+)/synthesis", path)
+            if question_synthesis:
+                return self._json(200, store.question_synthesis(question_synthesis[1], int(question_synthesis[2])))
+            snapshot_synthesis = re.fullmatch(rf"/api/cases/{ID_PART}/snapshots/([0-9]+)/synthesis", path)
+            if snapshot_synthesis:
+                return self._json(200, store.snapshot_synthesis(snapshot_synthesis[1], int(snapshot_synthesis[2])))
+            synthesis_report = re.fullmatch(rf"/api/cases/{ID_PART}/snapshots/([0-9]+)/synthesis-report", path)
+            if synthesis_report:
+                contents = store.synthesis_report(synthesis_report[1], int(synthesis_report[2])).encode("utf-8")
+                return self._send(200, contents, "text/markdown; charset=utf-8")
+            synthesis_patient = re.fullmatch(rf"/api/cases/{ID_PART}/snapshots/([0-9]+)/synthesis-report-patient", path)
+            if synthesis_patient:
+                contents = store.synthesis_patient_report(synthesis_patient[1], int(synthesis_patient[2])).encode("utf-8")
+                return self._send(200, contents, "text/markdown; charset=utf-8")
+            metrics = re.fullmatch(r"/api/metrics/synthetic", path)
+            if metrics:
+                query = parse_qs(urlsplit(self.path).query)
+
+                def _manifest(values: list[str] | None) -> list[str]:
+                    names: list[str] = []
+                    for value in values or []:
+                        names.extend(part.strip() for part in value.split(","))
+                    return [name for name in names if name]
+
+                return self._json(200, fixture_run(
+                    store, _manifest(query.get("dev")), _manifest(query.get("held_out"))))
             re_review_list = re.fullmatch(rf"/api/cases/{ID_PART}/re-review-tasks", path)
             if re_review_list:
                 return self._json(200, store.list_re_review_tasks(re_review_list[1]))
@@ -200,8 +450,19 @@ class Handler(BaseHTTPRequestHandler):
         if not self._origin_allowed():
             return self._json(403, {"error": "Cross-origin writes prohibited"})
         path = urlsplit(self.path).path
+        store = CaseStore(self.db_path)
         try:
-            data = self._body()
+            # The grant gate runs before body validation: a missing or
+            # unknown actor on a case route is denied (403) even when the
+            # body is malformed, and unknown cases stay 422 either way.
+            gated_case = self._case_route_id(path)
+            if gated_case is not None and not self._require_case_grant(store, gated_case, path):
+                return None
+            document_upload = re.fullmatch(rf"/api/cases/{ID_PART}/documents(/preview)?", path)
+            # Base64 plus bounded annotations needs a larger envelope. All
+            # other routes keep their existing request-body limit unchanged.
+            data = (self._body(DOCUMENT_BODY_BYTES, strict=True)
+                    if document_upload else self._body())
             if path == "/api/bibliography/lookup":
                 if not self.allow_crossref_live:
                     return self._json(403, {"error": "Live Crossref lookup disabled by default; use explicit local server option"})
@@ -219,8 +480,18 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(200, record)
                 finally:
                     self.metadata_request_lock.release()
-            store = CaseStore(self.db_path)
             try:
+                if document_upload:
+                    preview = document_upload[2] is not None
+                    raw = self._document_bytes(data, preview=preview)
+                    if preview:
+                        return self._json(200, store.preview_document(
+                            document_upload[1], raw, data["filename"]))
+                    return self._json(200, store.import_document(
+                        document_upload[1], raw, data["filename"],
+                        metadata=data["metadata"], findings=data["findings"],
+                        expected_sha256=data["expected_sha256"],
+                        confirmed_case_id=data["confirmed_case_id"]))
                 if path == "/api/cases":
                     store.add_case(data.get("case_id"), data.get("label"))
                     return self._json(201, {"result": "created"})
@@ -239,14 +510,83 @@ class Handler(BaseHTTPRequestHandler):
                     if not isinstance(raw, str):
                         raise InvalidInput("Report text required")
                     return self._json(200, store.import_report(imports[1], raw.encode("utf-8")))
+                correction = re.fullmatch(rf"/api/cases/{ID_PART}/quarantine/([0-9]+)/correct", path)
+                if correction:
+                    return self._json(200, store.correct_quarantined_delivery(
+                        correction[1], int(correction[2]),
+                        data.get("destination_case_id"), data.get("actor_label")))
                 questions = re.fullmatch(rf"/api/cases/{ID_PART}/questions", path)
                 if questions:
-                    return self._json(201, {"question_id": store.add_question(questions[1], data.get("question"))})
+                    owner = data.get("owner_label")
+                    if isinstance(owner, str) and not owner.strip():
+                        owner = None
+                    return self._json(201, {"question_id": store.add_question(
+                        questions[1], data.get("question"), owner)})
+                workspace_create = re.fullmatch(rf"/api/cases/{ID_PART}/workspace-questions", path)
+                if workspace_create:
+                    return self._json(201, {"workspace_question_id": store.create_workspace_question(
+                        workspace_create[1], data.get("question"))})
+                workspace_link = re.fullmatch(rf"/api/cases/{ID_PART}/workspace-questions/([0-9]+)/links", path)
+                if workspace_link:
+                    return self._json(201, {"link_id": store.link_workspace_source(
+                        workspace_link[1], int(workspace_link[2]),
+                        data.get("source_version_id"), data.get("reason"))})
+                workspace_unlink = re.fullmatch(rf"/api/cases/{ID_PART}/workspace-questions/([0-9]+)/links/([0-9]+)/unlink", path)
+                if workspace_unlink:
+                    return self._json(200, store.unlink_workspace_source(
+                        workspace_unlink[1], int(workspace_unlink[2]),
+                        int(workspace_unlink[3]), data.get("reason")))
+                workspace_status = re.fullmatch(rf"/api/cases/{ID_PART}/workspace-questions/([0-9]+)/status", path)
+                if workspace_status:
+                    return self._json(200, store.set_workspace_question_status(
+                        workspace_status[1], int(workspace_status[2]),
+                        data.get("status"), data.get("reason"), data.get("answer")))
+                followthrough_create = re.fullmatch(rf"/api/cases/{ID_PART}/followthrough-tasks", path)
+                if followthrough_create:
+                    task_id = store.create_followthrough_task(
+                        followthrough_create[1], data.get("title"),
+                        detail=data.get("detail"), due_date=data.get("due_date"),
+                        review_trigger=data.get("review_trigger"),
+                        question_id=data.get("question_id"),
+                        source_version_id=data.get("source_version_id"),
+                        actor_label=data.get("actor_label"), reason=data.get("reason"))
+                    return self._json(201, {"task_id": task_id})
+                followthrough_status = re.fullmatch(
+                    rf"/api/cases/{ID_PART}/followthrough-tasks/([0-9]+)/status", path)
+                if followthrough_status:
+                    kwargs: dict = {}
+                    if "due_date" in data:
+                        kwargs["due_date"] = data.get("due_date")
+                    return self._json(200, store.update_followthrough_task(
+                        followthrough_status[1], int(followthrough_status[2]),
+                        data.get("status"), actor_label=data.get("actor_label"),
+                        reason=data.get("reason"), owner_label=data.get("owner_label"),
+                        **kwargs))
+                question_owner = re.fullmatch(rf"/api/cases/{ID_PART}/questions/([0-9]+)/owner", path)
+                if question_owner:
+                    history_id = store.assign_question_owner(
+                        question_owner[1], int(question_owner[2]), data.get("owner_label"))
+                    return self._json(200, {"history_id": history_id})
+                question_triage = re.fullmatch(rf"/api/cases/{ID_PART}/questions/([0-9]+)/triage", path)
+                if question_triage:
+                    store.set_question_triage(question_triage[1], int(question_triage[2]), data.get("triage"))
+                    return self._json(200, {"result": "triage_updated"})
+                question_note = re.fullmatch(rf"/api/cases/{ID_PART}/questions/([0-9]+)/evidence-notes", path)
+                if question_note:
+                    note_id = store.add_question_evidence_note(
+                        question_note[1], int(question_note[2]), data.get("note"))
+                    return self._json(201, {"note_id": note_id})
                 evidence_assessment = re.fullmatch(rf"/api/cases/{ID_PART}/evidence-assessments", path)
                 if evidence_assessment:
                     return self._json(201, {"assessment_id": store.assess_synthetic_evidence(
                         evidence_assessment[1], data.get("question_id"), data.get("evidence_version_id"),
                         data.get("relation"), data.get("applicability"), data.get("rationale"))})
+                evidence_quality = re.fullmatch(rf"/api/cases/{ID_PART}/evidence-quality", path)
+                if evidence_quality:
+                    return self._json(201, {"assessment_id": store.record_evidence_quality(
+                        evidence_quality[1], data.get("source_version_id"), data.get("assessor_label"),
+                        data.get("date_recorded"), data.get("completeness_note"),
+                        data.get("limitations_text"), data.get("conflict_note"))})
                 if path == "/api/discovery/imports":
                     raw = data.get("text")
                     if not isinstance(raw, str):
@@ -285,6 +625,13 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(200, store.review_broker_link(
                         broker_review[1], int(broker_review[2]), data.get("relation"),
                         data.get("applicability"), data.get("rationale")))
+                limitation_note = re.fullmatch(rf"/api/cases/{ID_PART}/limitation-notes", path)
+                if limitation_note:
+                    return self._json(201, {"note_id": store.add_limitation_note(
+                        limitation_note[1], data.get("question_id"),
+                        assessment_id=data.get("assessment_id"),
+                        broker_link_id=data.get("broker_link_id"),
+                        note=data.get("note"), author_label=data.get("author_label"))})
                 bio_assets = re.fullmatch(rf"/api/cases/{ID_PART}/biological-assets", path)
                 if bio_assets:
                     return self._json(201, {"biological_asset_id": store.add_biological_asset(
@@ -302,6 +649,28 @@ class Handler(BaseHTTPRequestHandler):
                         custody_state=data.get("custody_state"), custody_value=data.get("custody_value"),
                         consent_state=data.get("consent_state"), consent_value=data.get("consent_value"),
                         rights_state=data.get("rights_state"), rights_value=data.get("rights_value"))})
+                bio_explanations = re.fullmatch(rf"/api/cases/{ID_PART}/bio-explanations", path)
+                if bio_explanations:
+                    return self._json(201, {"bio_explanation_id": store.add_bio_explanation(
+                        bio_explanations[1], data.get("question_id"), data.get("label"),
+                        data.get("mechanism_text"), data.get("episode_id"),
+                        data.get("source_version_id"),
+                        specimen_state=data.get("specimen_state", "unknown"),
+                        specimen_id=data.get("specimen_id"),
+                        lesion_state=data.get("lesion_state", "unknown"),
+                        lesion_id=data.get("lesion_id"),
+                        clinical_context_state=data.get("clinical_context_state", "unknown"),
+                        clinical_context_value=data.get("clinical_context_value"))})
+                bio_assays = re.fullmatch(rf"/api/cases/{ID_PART}/bio-explanations/([0-9]+)/assay-observations", path)
+                if bio_assays:
+                    return self._json(201, {"bio_assay_observation_id": store.record_bio_assay_observation(
+                        bio_assays[1], int(bio_assays[2]), data.get("method_label"),
+                        data.get("result_note"), data.get("source_version_id"),
+                        data.get("reference_kind"),
+                        tissue_block_state=data.get("tissue_block_state", "unknown"),
+                        tissue_block_asset_id=data.get("tissue_block_asset_id"),
+                        matched_control_state=data.get("matched_control_state", "unknown"),
+                        matched_control_specimen=data.get("matched_control_specimen"))})
                 drafts = re.fullmatch(rf"/api/cases/{ID_PART}/snapshots", path)
                 if drafts:
                     return self._json(201, {"snapshot_id": store.create_snapshot(
@@ -311,6 +680,26 @@ class Handler(BaseHTTPRequestHandler):
                 if review:
                     store.acknowledge_demo_review(review[1], int(review[2]), data.get("reviewer_label"))
                     return self._json(200, {"result": "acknowledged_in_demo"})
+                queue_receipt = re.fullmatch(rf"/api/cases/{ID_PART}/review-queue/receipts", path)
+                if queue_receipt:
+                    return self._json(201, store.add_review_receipt(
+                        queue_receipt[1], data.get("queue_key"), data.get("action"),
+                        data.get("reviewer_label"), data.get("reason")))
+                scoped_decision = re.fullmatch(rf"/api/cases/{ID_PART}/snapshots/([0-9]+)/scoped-decisions", path)
+                if scoped_decision:
+                    return self._json(201, store.record_scoped_decision(
+                        scoped_decision[1], int(scoped_decision[2]), data.get("reviewer_label"),
+                        data.get("scope"), data.get("note")))
+                scoped_dissent = re.fullmatch(rf"/api/cases/{ID_PART}/snapshots/([0-9]+)/scoped-dissents", path)
+                if scoped_dissent:
+                    return self._json(201, store.record_scoped_dissent(
+                        scoped_dissent[1], int(scoped_dissent[2]), data.get("reviewer_label"),
+                        data.get("claim_ref"), data.get("rationale")))
+                scoped_handoff = re.fullmatch(rf"/api/cases/{ID_PART}/snapshots/([0-9]+)/scoped-handoffs", path)
+                if scoped_handoff:
+                    return self._json(201, store.record_scoped_handoff(
+                        scoped_handoff[1], int(scoped_handoff[2]), data.get("from_reviewer"),
+                        data.get("to_reviewer")))
                 re_review_close = re.fullmatch(rf"/api/cases/{ID_PART}/re-review-tasks/([0-9]+)/close", path)
                 if re_review_close:
                     return self._json(200, store.close_re_review_task(
@@ -358,11 +747,79 @@ class Handler(BaseHTTPRequestHandler):
                         data.get("description"), data.get("threat_date"),
                         data.get("threat_basis", "unknown"), data.get("anchor", ""))
                     return self._json(201, {"threat_id": threat_id})
+                option_counter = re.fullmatch(rf"/api/cases/{ID_PART}/options/([0-9]+)/counterevidence", path)
+                if option_counter:
+                    counterevidence_id = store.add_option_counterevidence(
+                        option_counter[1], int(option_counter[2]), data.get("effect"),
+                        data.get("reason"),
+                        source_version_id=data.get("source_version_id"),
+                        evidence_assessment_id=data.get("evidence_assessment_id"))
+                    return self._json(201, {"counterevidence_id": counterevidence_id})
+                option_safety = re.fullmatch(rf"/api/cases/{ID_PART}/options/([0-9]+)/safety-flags", path)
+                if option_safety:
+                    safety_flag_id = store.add_option_safety_flag(
+                        option_safety[1], int(option_safety[2]), data.get("category"),
+                        data.get("detail"),
+                        source_version_id=data.get("source_version_id"),
+                        evidence_assessment_id=data.get("evidence_assessment_id"))
+                    return self._json(201, {"safety_flag_id": safety_flag_id})
                 option_review = re.fullmatch(rf"/api/cases/{ID_PART}/options/([0-9]+)/review", path)
                 if option_review:
                     return self._json(200, store.review_option(
                         option_review[1], int(option_review[2]), data.get("reviewer_label"),
                         data.get("action"), data.get("scope"), data.get("snapshot_id")))
+                goal_create = re.fullmatch(rf"/api/cases/{ID_PART}/patient-goals", path)
+                if goal_create:
+                    return self._json(201, store.add_patient_goal(
+                        goal_create[1], data.get("statement"), data.get("stated_date"),
+                        data.get("review_trigger"), data.get("review_date")))
+                goal_amend = re.fullmatch(rf"/api/cases/{ID_PART}/patient-goals/([0-9]+)/amendments", path)
+                if goal_amend:
+                    return self._json(201, store.amend_patient_goal(
+                        goal_amend[1], int(goal_amend[2]), data.get("statement"),
+                        data.get("stated_date"), data.get("review_trigger"),
+                        data.get("review_date")))
+                goal_status = re.fullmatch(rf"/api/cases/{ID_PART}/patient-goals/([0-9]+)/status", path)
+                if goal_status:
+                    return self._json(201, store.set_patient_goal_status(
+                        goal_status[1], int(goal_status[2]), data.get("status"),
+                        data.get("reason")))
+                note_create = re.fullmatch(rf"/api/cases/{ID_PART}/patient-notes", path)
+                if note_create:
+                    return self._json(201, store.add_patient_note(
+                        note_create[1], data.get("kind"), data.get("text"),
+                        data.get("noted_date")))
+                note_amend = re.fullmatch(rf"/api/cases/{ID_PART}/patient-notes/([0-9]+)/amendments", path)
+                if note_amend:
+                    return self._json(201, store.amend_patient_note(
+                        note_amend[1], int(note_amend[2]), data.get("text"),
+                        data.get("noted_date")))
+                option_flag = re.fullmatch(rf"/api/cases/{ID_PART}/options/([0-9]+)/flags", path)
+                if option_flag:
+                    flag_id = store.add_option_flag(
+                        option_flag[1], int(option_flag[2]), data.get("kind"),
+                        data.get("label"), data.get("reason"), data.get("author_label"),
+                        source_version_id=data.get("source_version_id"),
+                        evidence_assessment_id=data.get("evidence_assessment_id"))
+                    return self._json(201, {"flag_id": flag_id})
+                flag_resolve = re.fullmatch(rf"/api/cases/{ID_PART}/flags/([0-9]+)/resolve", path)
+                if flag_resolve:
+                    return self._json(200, store.resolve_option_flag(
+                        flag_resolve[1], int(flag_resolve[2]), data.get("reviewer_label"),
+                        data.get("action"), data.get("scope")))
+                option_dimension = re.fullmatch(rf"/api/cases/{ID_PART}/options/([0-9]+)/dimension-notes", path)
+                if option_dimension:
+                    note_id = store.add_option_dimension_note(
+                        option_dimension[1], int(option_dimension[2]), data.get("dimension"),
+                        data.get("note"), data.get("anchor"), data.get("reviewer_label"),
+                        source_version_id=data.get("source_version_id"),
+                        evidence_assessment_id=data.get("evidence_assessment_id"))
+                    return self._json(201, {"dimension_note_id": note_id})
+                dimension_ack = re.fullmatch(rf"/api/cases/{ID_PART}/dimension-notes/([0-9]+)/acknowledge", path)
+                if dimension_ack:
+                    return self._json(200, store.acknowledge_option_dimension_note(
+                        dimension_ack[1], int(dimension_ack[2]), data.get("reviewer_label"),
+                        data.get("scope")))
                 inv_create = re.fullmatch(rf"/api/cases/{ID_PART}/investigations", path)
                 if inv_create:
                     case_id = inv_create[1]
@@ -399,6 +856,72 @@ class Handler(BaseHTTPRequestHandler):
                     investigation_id = store.save_investigation(
                         case_id, question_id, template, validated, mode)
                     return self._json(201, store.get_investigation(case_id, investigation_id))
+                visits_record = re.fullmatch(rf"/api/cases/{ID_PART}/visits", path)
+                if visits_record:
+                    return self._json(201, store.record_visit(
+                        visits_record[1], data.get("recorded_date"),
+                        data.get("visit_type"), data.get("notes"),
+                        data.get("source_anchor")))
+                visit_amend = re.fullmatch(rf"/api/cases/{ID_PART}/visits/([0-9]+)/amend", path)
+                if visit_amend:
+                    return self._json(201, store.amend_visit(
+                        visit_amend[1], int(visit_amend[2]),
+                        data.get("recorded_date"), data.get("visit_type"),
+                        data.get("notes"), data.get("source_anchor")))
+                consent_create = re.fullmatch(rf"/api/cases/{ID_PART}/consents", path)
+                if consent_create:
+                    consent_id = store.record_consent(
+                        consent_create[1], data.get("scope_text"),
+                        data.get("date_recorded"),
+                        data.get("anchor_source_version_id"))
+                    return self._json(201, {"consent_id": consent_id})
+                consent_withdraw = re.fullmatch(
+                    rf"/api/cases/{ID_PART}/consents/([0-9]+)/withdraw", path)
+                if consent_withdraw:
+                    version = store.withdraw_consent(
+                        consent_withdraw[1], int(consent_withdraw[2]),
+                        data.get("reason"), data.get("date_recorded"))
+                    return self._json(200, {"consent_id": int(consent_withdraw[2]),
+                                            "version": version, "status": "withdrawn"})
+                qualifier_create = re.fullmatch(
+                    rf"/api/cases/{ID_PART}/identity-qualifiers", path)
+                if qualifier_create:
+                    qualifier_id = store.add_identity_qualifier(
+                        qualifier_create[1], data.get("qualifier_text"),
+                        data.get("anchor_source_version_id"),
+                        data.get("date_recorded"), data.get("anchor_line"))
+                    return self._json(201, {"qualifier_id": qualifier_id})
+                so_request = re.fullmatch(rf"/api/cases/{ID_PART}/second-opinion-requests", path)
+                if so_request:
+                    return self._json(201, {"request_id": store.create_second_opinion_request(
+                        so_request[1], data.get("question_id"), data.get("question_text"),
+                        data.get("source_version_ids"), data.get("snapshot_id"))})
+                so_response = re.fullmatch(rf"/api/cases/{ID_PART}/second-opinion-requests/([0-9]+)/response", path)
+                if so_response:
+                    return self._json(201, {"response_id": store.record_second_opinion_response(
+                        so_response[1], int(so_response[2]), data.get("responder_label"),
+                        data.get("response_text"), data.get("anchor_source_version_id"))})
+                so_review = re.fullmatch(rf"/api/cases/{ID_PART}/second-opinion-requests/([0-9]+)/review", path)
+                if so_review:
+                    return self._json(200, store.review_second_opinion(
+                        so_review[1], int(so_review[2]), data.get("reviewer_label"), data.get("scope")))
+                surv_plan = re.fullmatch(rf"/api/cases/{ID_PART}/survivorship-plans", path)
+                if surv_plan:
+                    return self._json(201, {"plan_id": store.create_survivorship_plan(
+                        surv_plan[1], data.get("title"))})
+                surv_item = re.fullmatch(rf"/api/cases/{ID_PART}/survivorship-plans/([0-9]+)/items", path)
+                if surv_item:
+                    return self._json(201, {"item_id": store.add_survivorship_item(
+                        surv_item[1], int(surv_item[2]), data.get("kind"), data.get("description"),
+                        data.get("anchor_source_version_id"), data.get("recorded_date"))})
+                surv_review = re.fullmatch(rf"/api/cases/{ID_PART}/survivorship-items/([0-9]+)/review", path)
+                if surv_review:
+                    return self._json(200, store.review_survivorship_item(
+                        surv_review[1], int(surv_review[2]), data.get("reviewer_label"), data.get("scope")))
+                surv_trigger = re.fullmatch(rf"/api/cases/{ID_PART}/survivorship-items/([0-9]+)/trigger", path)
+                if surv_trigger:
+                    return self._json(200, store.mark_survivorship_trigger(
+                        surv_trigger[1], int(surv_trigger[2]), data.get("reason")))
                 return self._json(404, {"error": "Route not found"})
             finally:
                 store.close()
@@ -411,6 +934,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(status, {"error": str(error)})
         except (OverflowError, UnicodeEncodeError):
             return self._json(422, {"error": "Invalid text or identifier"})
+        finally:
+            # The gate and bibliography branches return before the inner
+            # try/finally; sqlite close() is idempotent, so closing here as
+            # well keeps every path clean without touching route code.
+            store.close()
 
 
 def seed(db_path: str) -> None:
@@ -425,6 +953,13 @@ def seed(db_path: str) -> None:
             for file in files:
                 outcome = store.import_report(case_id, (SYNTHETIC / file).read_bytes())
                 print(case_id, file, outcome["result"])
+            # B-01: the demo actor holds a fictional grant on each seeded demo
+            # case, so the deny-by-default gate leaves the local demo usable.
+            # Re-seeding never duplicates a live grant; seed is an explicit
+            # operator action, so it grants anew when no live grant exists.
+            if not store.has_active_grant(DEMO_ACTOR, case_id, FICTIONAL_ACTOR_PURPOSE):
+                store.create_grant(DEMO_ACTOR, case_id, FICTIONAL_ACTOR_PURPOSE,
+                                   "2020-01-01", "2999-12-31")
     finally:
         store.close()
 

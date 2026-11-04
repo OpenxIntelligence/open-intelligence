@@ -1,3 +1,25 @@
+## 4 November 2026 — isolated main → H1 non-overlap composition checkpoint
+
+**STATUS: candidate staged, integration not yet verified. This is not a release, architecture replacement, main merge, or adoption of external clinical services.**
+
+The actual complete Git trees were compared at common ancestor `c4798ae85004713593f83458abd2102be6729095`, merged `main` `31509a6b83949f974e25b6913a6e30fc968be939`, and the verified H1 document/image owner `924008266d741b2494df41112e2da446b526f920`. None of the three trees was truncated. The comparison found **118** changed paths on main relative to the ancestor: **115** files unchanged in H1 and eligible for exact Git-blob adoption, **one** file already identical, and **two** divergent paths requiring explicit owner reconciliation. These counts describe paths, not feature readiness or application compatibility.
+
+This staged child applies the **115 exact main file blobs and original modes** to the H1-owned tree. It adds no dependencies, H1 API/schema grants/migrations, new patient/source authority, external healthcare data or clinical/model execution. The main-only changes include updated reference Python/browser functionality, automated regressions, synthetic fixtures and supporting research; their presence does not imply they have been ported into the H1/PostgreSQL ownership model. Historical acceptance on either parent does not qualify this combined tree.
+
+**Two files intentionally withheld from overwrite:**
+
+- `src/open_intelligence/document_intake.py`: both histories created different implementations after the common ancestor. H1's larger implementation contains text/PDF extraction, frozen page/line and annotation-revision semantics. Preserve the H1 implementation until the merged-main tests and exact API/custody contracts establish backward compatibility; do not regress to text-only intake or inject manually selected observations into source-authored assertions.
+- `docs/EXECUTION_BACKLOG.csv`: H1's existing detailed lineage extends the same rows with more integration receipts. Preserve it in this stage; later reconcile any distinct main updates row-by-row under existing OI/GH IDs, with historical timestamps retained. Do not replace it wholesale or duplicate the roadmap.
+
+The one already-identical main changed path needs no additional blob. These two holds mean this is **phase 1**, not a complete Git merge or a claim that all 34 main-only commits are included in H1 ancestry.
+
+**Acceptance:** inspect resulting exact changed paths and Git tree identity; run the existing H1 API/PostgreSQL no-skip migration/authority suite, all 351+ reference tests, both original browser journeys, all six real restart/dump/restore/revocation probes, React/Vite and rights/synthetic-boundary audit on this *new exact head*. Reproduce and resolve cross-application regressions without dropping tests. Then reconcile the two divergent files and conduct a separate exact-head full acceptance and owner review before any merge into #381. Distinguish a green reference workflow from a fully operational H1 clinical workflow.
+
+**Safety hold:** independently authored fictional inputs only. Existing [#403](https://github.com/OpenxIntelligence/open-intelligence/pull/403) synthetic-only named-patient research-path retirement remains a separate unmerged security decision, not automatically included by copying current main; do not use live named-person medical data. Real credentials/consent, external PACS/archive, restricted content, clinical deployment and licensing clearance remain unqualified.
+
+**References:** existing [#381](https://github.com/OpenxIntelligence/open-intelligence/pull/381), current-main reconciliation [#401](https://github.com/OpenxIntelligence/open-intelligence/pull/401), and OI-007/009/010/013 integration acceptance. This note supplements the original documented gate without rewriting its historical receipts.
+
+---
 # H1 converged evidence — merge-readiness gate
 
 ## Current pinned-main reconciliation of the document candidate — 3 November 2026
