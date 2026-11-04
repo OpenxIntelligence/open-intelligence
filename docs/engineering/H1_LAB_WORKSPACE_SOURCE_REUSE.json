@@ -1,0 +1,123 @@
+{
+  "base": "95bf73d23172c15bcf326183494030e6597ed449",
+  "donor": "9ea4560fc03be567e8383f9b145fc8eaef0cd140",
+  "copies": [
+    {
+      "path": "apps/web/src/laboratory-fhir-view.tsx",
+      "sha": "0c2418001ee734e499608cb3887e518b0f005da6",
+      "mode": "100644",
+      "type": "blob"
+    },
+    {
+      "path": "apps/web/src/laboratory-fhir.ts",
+      "sha": "fa59a263ebccf01708771c2b8bc7487140d0ddbc",
+      "mode": "100644",
+      "type": "blob"
+    },
+    {
+      "path": "apps/web/src/main.tsx",
+      "sha": "b88fcb3961ff669bce1aa2495f01160d7d68e7c2",
+      "mode": "100644",
+      "type": "blob"
+    },
+    {
+      "path": "apps/web/src/registry-client.ts",
+      "sha": "48cdee6094c84606b60aea4e45c5657bca692322",
+      "mode": "100644",
+      "type": "blob"
+    },
+    {
+      "path": "apps/web/src/source-intake-view.tsx",
+      "sha": "9c82c19f6e4ea49e115b079e75e4902b975c3c00",
+      "mode": "100644",
+      "type": "blob"
+    },
+    {
+      "path": "apps/web/src/source-intake.css",
+      "sha": "e1357e43a2351f2ac4bf6d21488cce2c119fd066",
+      "mode": "100644",
+      "type": "blob"
+    },
+    {
+      "path": "apps/web/src/source-intake.ts",
+      "sha": "fcba8d452a2fb5adbdd8b5d09900cdfead70f1b4",
+      "mode": "100644",
+      "type": "blob"
+    },
+    {
+      "path": "apps/web/src/styles.css",
+      "sha": "b4e289585160bbc02518080b690eb8bf27689080",
+      "mode": "100644",
+      "type": "blob"
+    },
+    {
+      "path": "apps/web/src/world-model-view.tsx",
+      "sha": "2bfbb3a0487720da0c6d96720a1234c8a7577628",
+      "mode": "100644",
+      "type": "blob"
+    },
+    {
+      "path": "apps/web/tests/laboratory-fhir-client.test.mjs",
+      "sha": "15bc97a47fa389c13ac89d67377263142e415eaf",
+      "mode": "100644",
+      "type": "blob"
+    },
+    {
+      "path": "apps/web/tests/laboratory-original.test.mjs",
+      "sha": "028c17cd3778e48f2719471c1b4bbe0455046564",
+      "mode": "100644",
+      "type": "blob"
+    },
+    {
+      "path": "apps/web/tests/laboratory-world-panel.test.mjs",
+      "sha": "3cb1ea66a346ec683fdb56a8062d184b7dffa31d",
+      "mode": "100644",
+      "type": "blob"
+    },
+    {
+      "path": "apps/web/tools/browser_journey.py",
+      "sha": "c055f8b5755537bc2416089d14ea8eca93c943f3",
+      "mode": "100644",
+      "type": "blob"
+    },
+    {
+      "path": "apps/web/tools/laboratory_fhir_journey.py",
+      "sha": "b34a7508e2ba9d358016e8527d93b90ef7cffedd",
+      "mode": "100644",
+      "type": "blob"
+    },
+    {
+      "path": "apps/web/tools/reading_convergence_journey.py",
+      "sha": "a0577a9e6f469ed106f5178cbfb8c8c1688c5294",
+      "mode": "100644",
+      "type": "blob"
+    },
+    {
+      "path": "apps/web/tools/record_intake_journey.py",
+      "sha": "bc68b415dceea2aeab3973e73c151b6905515202",
+      "mode": "100644",
+      "type": "blob"
+    },
+    {
+      "path": "apps/web/tools/source_entry_journey.py",
+      "sha": "ef0c2f77d88c1c22c32436171d661ec1c941a33e",
+      "mode": "100644",
+      "type": "blob"
+    },
+    {
+      "path": "docs/engineering/H1_LABORATORY_WORKSPACE.md",
+      "sha": "253857380fbcccd792f7557a542561327e14137f",
+      "mode": "100644",
+      "type": "blob"
+    },
+    {
+      "path": "docs/ux/2026-11-04-laboratory-reading-continuity.md",
+      "sha": "181b8976e8d37df5a4178c7da30d50393e084140",
+      "mode": "100644",
+      "type": "blob"
+    }
+  ],
+  "backlog_overlap": [],
+  "common_source": "8ff6e9e5a0389a1142ca479a6705c599cbda88e7",
+  "status": "source-composition record; not hosted acceptance or clinical qualification"
+}

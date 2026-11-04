@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'apps/api/**'
+      - 'apps/web/tests/laboratory-manual-convergence.test.mjs'
       - 'src/**'
       - 'tests/**'
       - 'tools/audit_ci_data_boundaries.py'
