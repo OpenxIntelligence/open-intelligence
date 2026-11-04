@@ -1149,12 +1149,13 @@ def patient_router(database: Database, authentication: Authentication) -> APIRou
         try:
             with registry(context) as patients:
                 records_authorized(patients, context, patient_id, "source_original_read")
-                result = PostgresSourceVersions(patients).original(
+                return PostgresSourceVersions(patients).original(
                     patient_id, case_id, source_id, organization=context.organization,
                     actor=context.actor, purpose=context.purpose,
+                    prepare_response=lambda result: JSONResponse(
+                        content=OriginalSource(**result).model_dump(mode="json")),
                     recheck_authority=lambda: refresh_source_authority(
                         request, context, patients, patient_id, "source_original_read"))
-                return OriginalSource(**result)
         except PatientRegistryDenied:
             raise HTTPException(404, "Source unavailable") from None
 
