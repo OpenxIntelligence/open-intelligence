@@ -106,13 +106,45 @@ class CapturedSession(OriginalSession):
     def wait(self, expression, label):
         global recorder
         result = super().wait(expression, label)
-        if label == "separate grant permits canonical patient read" and recorder is None:
+        if label == "seeded patient" and recorder is None:
+            OriginalSession.command(self, "Emulation.setDeviceMetricsOverride", {
+                "width": 1440, "height": 1000, "deviceScaleFactor": 1, "mobile": False
+            })
             recorder = Recorder(self.capture_url)
-            time.sleep(2)
+        stages = {
+            "seeded patient": (None, 8),
+            "seeded exact original": ("[data-testid=server-original]", 10),
+            "question editor": ("[data-testid=question-draft]", 5),
+            "persisted question": ("[data-testid=saved-source-question]", 10),
+            "evidence import": ("[data-testid=evidence-file]", 4),
+            "preserved report": ("[data-testid=evidence-report-body]", 12),
+            "recorded follow-up": ("[data-testid=followthrough-task]", 12),
+        }
+        if recorder and not recorder.ended.is_set() and label in stages:
+            selector, seconds = stages[label]
+            if selector:
+                OriginalSession.command(self, "Runtime.evaluate", {
+                    "expression": "document.querySelector(" + json.dumps(selector) + ").scrollIntoView({block:'center'})"
+                })
+            image = OriginalSession.command(self, "Page.captureScreenshot", {"format":"png"})
+            raw = base64.b64decode(image["data"])
+            filename = label.replace(" ", "-") + ".png"
+            (OUT / filename).write_bytes(raw)
+            event = {"label": label, "at": recorder.frames / FPS,
+                     "sha256": hashlib.sha256(raw).hexdigest(), "file": filename}
+            events.append(event)
+            time.sleep(seconds)
+            event["end"] = recorder.frames / FPS
+            if label == "recorded follow-up":
+                recorder.stop()
         return result
 
     def command(self, method, params=None):
         result = super().command(method, params)
+        if recorder and not recorder.ended.is_set() and method == "Runtime.evaluate":
+            expression = (params or {}).get("expression", "")
+            if ".click()" in expression or "dispatchEvent" in expression:
+                time.sleep(0.4)
         if recorder and not recorder.ended.is_set() and method == "Page.captureScreenshot":
             frame = inspect.currentframe().f_back
             event = {
@@ -130,7 +162,7 @@ class CapturedSession(OriginalSession):
         return result
 
 def main():
-    source = ROOT / "apps/web/tools/browser_journey.py"
+    source = ROOT / "apps/web/tools/demo_journey.py"
     sys.path.insert(0, str(source.parent))
     spec = importlib.util.spec_from_file_location("oi_h1_recorded_journey", source)
     journey = importlib.util.module_from_spec(spec)

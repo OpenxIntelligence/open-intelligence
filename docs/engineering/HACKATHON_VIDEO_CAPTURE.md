@@ -9,3 +9,5 @@ Capture uses the repository's existing standard-library CDP client, Python stand
 Outputs: raw 1920×1080 H.264 MP4 at 8 sampled frames per second, screenshot-checkpoint timeline/hashes, and inherited browser evidence. Capture sampling and pauses are editorial; footage does not establish response-time performance. Model execution and bioinformatics analysis are not claimed. Only independently authored fictional data is used.
 
 The final edited video can combine these actual clips with explicitly labeled research-roadmap cards and an openly synthetic voice. This branch is for capture/reproduction, not a production or clinical release.
+
+The capture now wraps the existing persistent demo, after running the inherited full browser acceptance unchanged. It retains the candidate's `prepare_dependencies.py` step and exact derived-wheel hash gate. No dependency hashes were changed. The first capture attempt used the older download-only setup and failed before app startup; that attempt produced no footage.
