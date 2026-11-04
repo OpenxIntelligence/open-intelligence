@@ -92,8 +92,11 @@ jobs:
           python - <<'PYTEST'
           import unittest
           suite = unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_lab_manual_convergence.py')
+          suite.addTests(unittest.defaultTestLoader.loadTestsFromName(
+              'test_document_image_convergence.DocumentImageConvergenceContractTests.'
+              'test_single_join_preserves_both_published_document_and_image_histories'))
           result = unittest.TextTestRunner(verbosity=2).run(suite)
-          raise SystemExit(0 if result.wasSuccessful() and result.testsRun == 4 and not result.skipped else 1)
+          raise SystemExit(0 if result.wasSuccessful() and result.testsRun == 5 and not result.skipped else 1)
           PYTEST
       - name: Run contracts and real PostgreSQL migration tests
         run: |

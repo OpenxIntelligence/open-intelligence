@@ -63,7 +63,7 @@ class DocumentImageConvergenceContractTests(unittest.TestCase):
                          JOINED_REVISION)
         self.assertEqual(script.get_revision("0015_manual_report_context").down_revision,
                          "0014_question_passages")
-        self.assertEqual(script.get_revision(SCHEMA_REVISION).down_revision,
+        self.assertEqual(script.get_revision("0016_manual_task_dependency").down_revision,
                          "0015_manual_report_context")
         self.assertEqual(set(script.get_revision(JOINED_REVISION).down_revision),
                          {DOCUMENT_REVISION, IMAGE_REVISION})
