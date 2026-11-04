@@ -126,13 +126,15 @@
 .question-draft code{overflow-wrap:anywhere;word-break:break-word}
 @media(max-width:600px){.question-draft{padding:12px}.question-draft .actions button{width:100%}}
 
-/* Fictional citation inspection stays inside its saved canonical question. */
+/* Source-qualified citation inspection stays inside its saved canonical question. */
 .question-evidence{margin-top:16px;padding-top:14px;border-top:1px solid #d2ded5;min-width:0}
 .evidence-workspace{margin-top:14px;padding:16px;background:#fff;border:1px solid #cad9ce;border-radius:8px;min-width:0}
 .evidence-workspace h4,.evidence-recovery h4{font-size:15px;margin:0 0 10px}
 .evidence-search{margin:16px 0}.evidence-search label{display:block;font-size:13px;font-weight:600;margin-bottom:7px}
 .evidence-search input{display:block;width:100%;box-sizing:border-box;font:inherit;font-size:14px;padding:11px 12px;border:1px solid #8fa99b;border-radius:6px}
 .evidence-search input:focus-visible{outline:3px solid #92af9b;outline-offset:2px}
+.evidence-search .evidence-check{display:flex;align-items:flex-start;gap:10px;line-height:1.5;margin:12px 0}
+.evidence-search .evidence-check input{flex:none;width:18px;height:18px;padding:0;margin:2px 0 0}
 .evidence-results{display:grid;gap:12px;margin:16px 0}.evidence-result{padding:14px;border:1px solid #d2ded5;border-radius:7px;background:#f8fbf8;min-width:0}
 .evidence-result summary{cursor:pointer}.evidence-result summary span{display:block;margin:6px 0 0 18px;font-size:12px}
 .evidence-metadata dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:15px 0}

@@ -1,11 +1,15 @@
 """Metadata discovery is distinct from evidence appraisal and clinical review."""
 import unicodedata
-from typing import Literal
+from typing import Literal, Annotated
 from urllib.parse import urlsplit
 
 from pydantic import Field, StrictBool, field_validator, model_validator
 
 from .contracts import Contract
+from .crossref_contract import bounded_doi, exact_citation, restore_projection, catalog_record, LICENCE
+from open_intelligence.evidence_catalog import record_fingerprint
+from open_intelligence.crossref_metadata import API_ROOT, POLICY_URL, ACCESS_URL, ADAPTER_VERSION
+from urllib.parse import quote
 
 CITATION_PATTERN = r"^FICT-[A-Z0-9-]{1,123}@[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
 
@@ -39,9 +43,31 @@ class EvidenceSearch(EvidenceCommand):
         return value
 
 
+class EvidenceDoiLookup(EvidenceCommand):
+    public_doi_acknowledged: Literal[True]
+    doi: str = Field(strict=True, min_length=1, max_length=200)
+
+    @field_validator("public_doi_acknowledged", mode="before")
+    @classmethod
+    def exact_ack(cls, value):
+        if value is not True:
+            raise ValueError("Public DOI acknowledgement required")
+        return value
+
+    @field_validator("doi")
+    @classmethod
+    def public_identifier(cls, value):
+        return bounded_doi(value)
+
+
 class EvidenceLinkCreate(EvidenceCommand):
     request_key: str = Field(strict=True, min_length=3, max_length=128)
-    citation: str = Field(strict=True, pattern=CITATION_PATTERN, max_length=193)
+    citation: str = Field(strict=True, max_length=265)
+
+    @field_validator("citation")
+    @classmethod
+    def permitted_citation(cls, value):
+        return exact_citation(value)
     expected_metadata_sha256: str = Field(strict=True, pattern=r"^[0-9a-f]{64}$")
     source_snapshot_contract: Literal["oi.pg-source-world-model/1"]
     expected_source_snapshot_sha256: str = Field(strict=True, pattern=r"^[0-9a-f]{64}$")
@@ -49,7 +75,12 @@ class EvidenceLinkCreate(EvidenceCommand):
 
 
 class EvidenceMetadata(Contract):
-    citation: str = Field(strict=True, pattern=CITATION_PATTERN, max_length=193)
+    citation: str = Field(strict=True, max_length=265)
+
+    @field_validator("citation")
+    @classmethod
+    def permitted_citation(cls, value):
+        return exact_citation(value)
     id: str = Field(strict=True, pattern=r"^FICT-[A-Z0-9-]+$", max_length=128)
     version: str = Field(strict=True, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$", max_length=64)
     source_kind: Literal["fictional"]
@@ -82,6 +113,51 @@ class EvidenceMetadata(Contract):
         return self
 
 
+
+class CrossrefBibliography(Contract):
+    doi: str = Field(strict=True, max_length=200)
+    journal: str | None = Field(strict=True, max_length=300)
+    year: int | None = Field(strict=True, ge=1500, le=2200)
+    publication_type: str | None = Field(strict=True, max_length=90)
+    authors: list[Annotated[str, Field(strict=True, min_length=1, max_length=150)]] = Field(max_length=100)
+    retrieved_at: str = Field(strict=True, max_length=64)
+    record_url: str = Field(strict=True, max_length=540)
+    rights_basis: Literal[POLICY_URL]
+    access_policy: Literal[ACCESS_URL]
+    adapter_version: Literal[ADAPTER_VERSION]
+    projection_sha256: str = Field(strict=True, pattern=r"^[0-9a-f]{64}$")
+    acquisition_mode: Literal["provider_lookup", "protocol_fixture"]
+
+
+class CrossrefEvidenceMetadata(Contract):
+    citation: str = Field(strict=True, max_length=265)
+    id: str = Field(strict=True, max_length=200)
+    version: str = Field(strict=True, pattern=r"^[0-9a-f]{64}$")
+    source_kind: Literal["crossref"]
+    title: str = Field(strict=True, min_length=1, max_length=500)
+    licence: Literal[LICENCE]
+    link: str = Field(strict=True, max_length=512)
+    metadata_sha256: str = Field(strict=True, pattern=r"^[0-9a-f]{64}$")
+    availability: Literal["metadata_only"]
+    rights_status: Literal["granted"]
+    bibliography: CrossrefBibliography
+
+    @model_validator(mode="after")
+    def exact_projection(self):
+        b = self.bibliography
+        if (bounded_doi(self.id) != self.id or self.citation != self.id+"@"+self.version
+                or b.doi != self.id or b.projection_sha256 != self.version
+                or self.link != "https://doi.org/"+quote(self.id, safe="")
+                or b.record_url != API_ROOT+quote(self.id, safe="")):
+            raise ValueError("Crossref identity and provenance differ")
+        selected = {"doi": self.id, "title": self.title, "journal": b.journal, "year": b.year,
+                    "publication_type": b.publication_type, "authors": b.authors, "canonical_url": self.link}
+        restore_projection(selected, b.retrieved_at)
+        if record_fingerprint(catalog_record(selected, self.version)) != self.metadata_sha256:
+            raise ValueError("Crossref metadata fingerprint differs")
+        return self
+
+
 class EvidenceScope(Contract):
     patient_id: str
     case_id: str
@@ -97,17 +173,22 @@ class EvidenceScope(Contract):
 class EvidenceSearchResult(EvidenceScope):
     contract: Literal["oi.pg-question-evidence-search/1"]
     query: str
-    records: list[EvidenceMetadata] = Field(max_length=25)
+    records: list[EvidenceMetadata | CrossrefEvidenceMetadata] = Field(max_length=25)
 
 
 class EvidenceLink(Contract):
     link_id: str = Field(pattern=r"^EVIDENCE-LINK-[0-9A-F]{32}$")
-    citation: str = Field(strict=True, pattern=CITATION_PATTERN, max_length=193)
+    citation: str = Field(strict=True, max_length=265)
+
+    @field_validator("citation")
+    @classmethod
+    def permitted_citation(cls, value):
+        return exact_citation(value)
     metadata_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     created_at: str
     actor_label: str = Field(max_length=128)
     status: Literal["available", "rights_restricted", "superseded", "unavailable"]
-    record: EvidenceMetadata | None
+    record: EvidenceMetadata | CrossrefEvidenceMetadata | None
 
     @model_validator(mode="after")
     def governed_metadata(self):
@@ -127,6 +208,11 @@ class EvidenceLinks(EvidenceScope):
 
 class EvidenceLinkReceipt(Contract):
     link_id: str = Field(pattern=r"^EVIDENCE-LINK-[0-9A-F]{32}$")
-    citation: str = Field(strict=True, pattern=CITATION_PATTERN, max_length=193)
+    citation: str = Field(strict=True, max_length=265)
+
+    @field_validator("citation")
+    @classmethod
+    def permitted_citation(cls, value):
+        return exact_citation(value)
     metadata_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     duplicate: StrictBool

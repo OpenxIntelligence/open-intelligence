@@ -100,7 +100,14 @@ def _scope_text(value):
 def _validate_metadata(rec):
     if not isinstance(rec, EvidenceRecord):
         raise CatalogError("EvidenceRecord required")
-    if type(rec.id) is not str or ID_PATTERN.fullmatch(rec.id) is None:
+    if rec.source_kind == "crossref":
+        from .crossref_metadata import normalize_doi
+        try:
+            if normalize_doi(rec.id) != rec.id:
+                raise ValueError()
+        except (TypeError, ValueError):
+            raise CatalogError("Invalid Crossref DOI") from None
+    elif type(rec.id) is not str or ID_PATTERN.fullmatch(rec.id) is None:
         raise CatalogError("Invalid record id")
     if type(rec.source_kind) is not str or rec.source_kind not in SOURCE_KINDS:
         raise CatalogError("Unknown source kind")

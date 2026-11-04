@@ -2,7 +2,28 @@
 
 Assessment checkpoint: **3 November 2026, America/New_York**. This assessment maps the existing [execution backlog](../EXECUTION_BACKLOG.csv); it does not create another backlog or replace source-owner specifications.
 
-## Current #307 increment and still-open patient outcomes
+## Current #321 increment and still-open patient outcomes
+
+The [verified #321 receipt](../CROSSREF_METADATA_BOUNDARY.md#verified-implementation--draft-321)
+adds deliberate DOI-only metadata lookup and explicit citation attachment to
+the same H1 question/catalog/rights/report workspace. At runtime
+`a49530893f210609c1d203bd74a55fc683335149`, 434 API/PostgreSQL, 298 reference and
+276 client tests passed, along with actual browser and all five recovery probes.
+The native DOI citation and withdrawal restrictions survived actual restore.
+This bounded synthetic integration is **fully implemented and tested**; the
+overall patient investigation remains **partially implemented**.
+
+The provider transport was an independently authored protocol fixture. Live
+Crossref availability, source activation and production egress are unverified;
+the feature is default off and source release clearance remains HOLD. The
+metadata citation neither creates an authored comparison/report nor establishes
+article rights or scientific support. Explicit provenance association with a
+permitted original, total execution deadlines/cancellation, shared quotas and
+correction/retraction reassessment remain open. Existing source-reading and
+imaging owners require their own deliberate integration. No production identity,
+professional signoff, clinical validation or deployment was added.
+
+## Predecessor #307 increment and still-open patient outcomes
 
 The later [#307 acceptance receipt](../engineering/H1_EVIDENCE_CONTINUITY.md)
 supersedes the selected #276/#280 planning statements below. At exact runtime
