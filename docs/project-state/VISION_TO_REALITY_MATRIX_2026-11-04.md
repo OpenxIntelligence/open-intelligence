@@ -70,9 +70,9 @@ A status describes the **highest directly observed or boundedly documented scope
 1. The current H1 source-derived World Model is a **read-only projection** and explicitly excludes a full migrated model/clinical-decision/action ledger: [source_world_model.py](https://github.com/OpenxIntelligence/open-intelligence/blob/main/apps/api/src/oi_api/source_world_model.py).
 2. H1 follow-through is an **internal recorded work history**, not external action or qualified clinical approval: [question_followthrough.py](https://github.com/OpenxIntelligence/open-intelligence/blob/main/apps/api/src/oi_api/question_followthrough.py).
 3. The merged #390 brings an H1 evidence/continuity/follow-through lineage to main with successful *synthetic* exact-head CI; see [#390](https://github.com/OpenxIntelligence/open-intelligence/pull/390). It does not absorb every later document/image/manual-passage/FHIR branch.
-4. [#405](https://github.com/OpenxIntelligence/open-intelligence/pull/405) is the broader full-stack candidate. Its published update records successful React/browser and reference runs but leaves its **own H1 API/PG/recovery run pending**. Do not merge solely on donor-green evidence.
-5. [#413](https://github.com/OpenxIntelligence/open-intelligence/pull/413) composes manual passage reporting and freshness. Its published API/recovery result is still pending, although React/browser passes; adoption is not established.
-6. [#422](https://github.com/OpenxIntelligence/open-intelligence/pull/422) contains a strict **read-only FHIR R4 laboratory preview**; there is no native FHIR source persistence or Patient World Model/timeline publication in that slice.
+4. [#405](https://github.com/OpenxIntelligence/open-intelligence/pull/405) is the broader full-stack candidate. Live inspection of [API/PG run 41790730476](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41790730476) found **CANCELLED** during PostgreSQL contract tests; downstream prototype/browser and six recovery probes were **SKIPPED**. Browser and reference successes do not close this combined API gate.
+5. [#413](https://github.com/OpenxIntelligence/open-intelligence/pull/413) composes manual passage reporting and freshness. Live inspection of [API/PG run 41799154582](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41799154582) found **SUCCESS** at every major stage, including contracts, reference browser, source/image/review/follow-through, backup/restore and revocation probes. React/browser was already successful per the PR's recorded receipt. This is a **verified synthetic branch-level combined workflow**, still unmerged and not automatically reconciled with the now-moving main or #405.
+6. [#422](https://github.com/OpenxIntelligence/open-intelligence/pull/422) contains a strict **read-only FHIR R4 laboratory preview**; live inspection of [API/PG run 41794564799](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41794564799) found **FAILURE** during PostgreSQL contracts, with downstream recovery probes skipped. Parser and React passes do not close this API acceptance gate. There is no native FHIR source persistence or Patient World Model/timeline publication.
 7. Many foundational project-state Markdown documents still contain older 'main=SQLite-only' statements and dated inventories. Preserve those as historical evidence, but their claims are not a live main inventory; use the live commit and merge/CI records instead.
 
 ## P0 acceptance mission: prove one complete intelligence spine
@@ -83,7 +83,7 @@ On one integrated, reviewable synthetic source tree, run an independently author
 
 ## Evidence-management tasks
 
-- Verify current #405 and #413 API/recovery workflow conclusions at exact heads; reconcile moving main before integration.
+- #405: investigate cancelled combined API/PG workflow and rerun all gates at a current head. #413: confirm successful run belongs to the current exact head, then review/reconcile moving main and #405 before any merge. #422: diagnose failed API/PG contracts; do not promote preview to accepted endpoint.
 - Resolve source-owner overlap among reviewed documents, image custody, manually selected passages, FHIR lab preview, and follow-through without creating a second ledger.
 - Extend matrix to *all* 30 architecture domains, user journeys, 50 opportunity needs and proposed 50 agents/capabilities, but keep uninspected items 'unverified' rather than inventing completion percentages.
 - Mirror the matrix and decision rules into existing Notion implementation/roadmap and the Google Drive engineering progress document. Preserve historical status receipts.
@@ -99,3 +99,16 @@ On one integrated, reviewable synthetic source tree, run an independently author
 - [Manual passage/freshness integration #413](https://github.com/OpenxIntelligence/open-intelligence/pull/413)
 - [Laboratory FHIR preview #422](https://github.com/OpenxIntelligence/open-intelligence/pull/422)
 - [Product opportunity dossier #421](https://github.com/OpenxIntelligence/open-intelligence/pull/421)
+
+
+## Live CI state correction — 4 November 2026
+
+This section is based on direct readout of the latest-attempt GitHub workflow **jobs and stage conclusions**, not a PR's earlier prose checkpoint:
+
+| Candidate | Workflow | Directly observed job | Consequence |
+|---|---|---|---|
+| #405 | [41790730476](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41790730476) | **cancelled** at PostgreSQL contract test stage; all post-contract recovery probes skipped | Combined H1 API acceptance **not established** |
+| #413 | [41799154582](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41799154582) | **success**, including PostgreSQL contracts, inherited regression/browser checks, six recovery-related stages and artifact upload | Positive exact-workflow evidence for this draft branch; still requires current-head/main reconciliation and owner review |
+| #422 | [41794564799](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41794564799) | **failure** in PostgreSQL contract test stage; downstream recovery probes skipped | API preview acceptance failed; root cause requires logs and bounded repair |
+
+The presence of a SUCCESS job is not clinical validity, production deployment or merge authorization. No model/clinical-use claims change.
