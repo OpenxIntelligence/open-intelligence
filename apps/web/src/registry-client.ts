@@ -154,6 +154,17 @@ export class RegistrySession {
   // Scope checks withhold recovery controls from another patient/case/question;
   // explicit disconnect clears this in-memory session just like other drafts.
   #manualPassageIntents=new Map<string,string>();
+  #manualPassageDrafts=new Map<string,import('./question-passages').ManualSelectionDraft>();
+  #manualDraftEpoch=0;
+  #clearManualDrafts(){this.#manualDraftEpoch++;this.#manualPassageDrafts.clear();}
+  manualPassageDraftStore=(scope:import('./question-passages').PassageScope):import('./question-passages').ManualDraftStore=>{
+    const key=JSON.stringify([scope.patient_id,scope.case_id,scope.question_id]),epoch=this.#manualDraftEpoch,session=this.#scope;
+    const current=()=>epoch===this.#manualDraftEpoch&&session===this.#scope&&this.#state.connected&&
+      this.#state.patient?.patient_id===scope.patient_id&&this.#state.questionsCaseId===scope.case_id&&this.#state.questionListPhase==='ready'&&
+      Boolean(this.#state.questions?.some(q=>q.question_id===scope.question_id&&q.case_id===scope.case_id&&q.patient_id===scope.patient_id));
+    return {read:()=>current()?this.#manualPassageDrafts.get(key)??null:null,
+      write:draft=>{if(!current())return;if(draft===null)this.#manualPassageDrafts.delete(key);else this.#manualPassageDrafts.set(key,draft);}};
+  };
   manualPassageIntentStore=(scope:import('./question-passages').PassageScope):import('./question-passages').ManualIntentStore=>{
     const key=JSON.stringify([scope.patient_id,scope.case_id,scope.question_id]);
     const current=()=>this.#state.patient?.patient_id===scope.patient_id&&this.#state.questionsCaseId===scope.case_id&&
@@ -290,6 +301,7 @@ export class RegistrySession {
     return emptyReview();
   }
   #resetInvestigation(preserveReviewCase?:string,preserveFollowthroughCase=preserveReviewCase,preserveEvidenceCase=preserveReviewCase,preserveAuthoredEvidenceCase=preserveReviewCase){
+    this.#clearManualDrafts();
     this.#inspectionQuestionId=null;
     this.#worldRead++;this.#composerRead++;this.#questionRead++;this.#questionWrite++;this.#briefRead++;this.#quoteRead++;
     this.#questionKey='';this.#questionFingerprint='';this.#savingQuestion=false;
@@ -944,6 +956,7 @@ export class RegistrySession {
   }
 
   async loadSavedQuestions(caseId:string):Promise<void>{
+    if(this.#state.questionsCaseId!==caseId)this.#clearManualDrafts();
     if(this.#state.followthroughCaseId&&this.#state.followthroughCaseId!==caseId)this.#publish(this.#resetFollowthrough(caseId));
     this.#publish(this.#resetEvidence(caseId));
     this.dismissQuestionEvidence();
@@ -971,6 +984,7 @@ export class RegistrySession {
       if(!current())return;
       if(res.status===401){this.#httpError(res.status);return;}
       if(res.status!==200){
+        if([403,404].includes(res.status))this.#clearManualDrafts();
         this.#publish({...([403,404].includes(res.status)?{...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence(),...this.#evidenceSession.reset(),reviewPhase:'error' as const,
           reviewMessage:'Question or source access is unavailable. Previous review content is cleared.'}:{}),
           questions:null,questionListPhase:'error',

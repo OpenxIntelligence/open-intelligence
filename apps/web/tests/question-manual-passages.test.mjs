@@ -190,3 +190,83 @@ for(const status of [401,403,404])test(`manual passage denial ${status} clears r
  assert.equal(session.snapshot().evidenceComparisonDraft,null);
  assert.deepEqual(session.snapshot().evidenceRejectedFields,[]);
 });
+
+function draftStore(){let value=null;return {read:()=>value,write:next=>{value=next;}};}
+function selectionReply(p=context().passages[0]){return {status:200,body:{...p,contract:'oi.reviewed-document-selection/1',synthetic:true,clinical_approval:false,model_execution:false,access_receipt_id:context().access_receipt_id}};}
+
+test('unsaved additions resume only after fresh context and exact selection checks, without writes',async()=>{
+ const store=draftStore(),held=deferred();let writes=0,reads=0;
+ const request=async body=>{if(body)writes++;return {status:200,body:context(true)};};
+ const first=new QuestionPassageClient(scope,request,undefined,store,async()=>selectionReply());
+ await first.load();assert.equal(first.choose?.(context().passages[0]),true);
+ assert.equal(JSON.stringify(store.read()).includes('fictional'),false,'draft store must contain references, not quotations');
+ first.dispose();
+ const resumed=new QuestionPassageClient(scope,request,undefined,store,async()=>{reads++;return held.promise;});
+ const checking=resumed.load();await new Promise(resolve=>setTimeout(resolve,0));
+ assert.equal(resumed.snapshot().chosen.length,0,'no cached quotation while fresh authority is pending');
+ held.resolve(selectionReply());await checking;
+ assert.equal(reads,1);assert.equal(resumed.snapshot().chosen[0].anchor_sha256,ref().anchor_sha256);
+ assert.equal(resumed.snapshot().draftStatus,'ready');assert.equal(writes,0);
+ await resumed.load();assert.equal(resumed.snapshot().chosen.length,1);assert.equal(writes,0);
+});
+
+test('unsaved removal survives refresh; changed saved context blocks reuse until explicit discard',async()=>{
+ const store=draftStore();let changed=false;
+ const client=new QuestionPassageClient(scope,async()=>({status:200,body:context(changed)}),undefined,store,async()=>selectionReply());
+ await client.load();assert.equal(client.remove?.(ref().anchor_sha256),true);await client.load();
+ assert.deepEqual(client.snapshot().chosen,[]);assert.equal(client.snapshot().draftStatus,'ready');
+ changed=true;await client.load();assert.equal(client.snapshot().draftStatus,'conflict');
+ assert.deepEqual(client.snapshot().chosen,[]);await client.discardDraft();
+ assert.equal(store.read(),null);assert.equal(client.snapshot().draftStatus,'none');
+});
+
+for(const status of [401,403,404,503])test(`resumed selection ${status} withholds text and handles draft retention`,async()=>{
+ const store=draftStore();let denied=false;
+ const client=new QuestionPassageClient(scope,async()=>({status:200,body:context(true)}),undefined,store,async()=>denied?{status,body:null}:selectionReply());
+ await client.load();assert.equal(client.choose?.(context().passages[0]),true);denied=true;await client.load();
+ assert.deepEqual(client.snapshot().chosen,[]);assert.equal(client.snapshot().packet,null);
+ assert.equal(store.read()!==null,status===503);
+});
+
+test('a corrected exact selection blocks draft reuse even when the saved passage set did not change',async()=>{
+ const store=draftStore();let changed=false;
+ const client=new QuestionPassageClient(scope,async()=>({status:200,body:context(true)}),undefined,store,async()=>{
+  const p=structuredClone(context().passages[0]);if(changed){p.latest_annotation_revision_id='ANN-'+'F'.repeat(32);p.selection_state='selection_reassessment_required';}
+  return selectionReply(p);
+ });
+ await client.load();assert.equal(client.choose?.(context().passages[0]),true);changed=true;await client.load();
+ assert.equal(client.snapshot().draftStatus,'conflict');assert.deepEqual(client.snapshot().chosen,[]);
+ assert.ok(store.read());
+});
+
+test('session draft survives evidence refresh but denial clears it and invalidates old store callbacks',async()=>{
+ const session=await sessionFor(()=>response({},403));
+ const store=session.manualPassageDraftStore(scope),draft=Object.freeze({expected_context_sha256:context(true).context_sha256,references:Object.freeze([ref()])});
+ store.write(draft);await session.loadQuestionEvidence(questionId);assert.equal(store.read(),draft);
+ await session.questionPassageRequest(caseId,questionId);
+ await ready(session);await session.loadQuestionEvidence(questionId);
+ const fresh=session.manualPassageDraftStore(scope);assert.equal(fresh.read(),null);
+ fresh.write(draft);store.write(null);assert.equal(fresh.read(),draft,'late clearing cannot erase a new draft');
+ session.disconnect();store.write(draft);fresh.write(draft);
+ await ready(session);await session.loadQuestionEvidence(questionId);
+ assert.equal(session.manualPassageDraftStore(scope).read(),null);
+});
+
+test('disposing during retained selection checks cannot revive quotations or lose the retained reference draft',async()=>{
+ const store=draftStore(),held=deferred();store.write(Object.freeze({expected_context_sha256:context(true).context_sha256,references:Object.freeze([ref()])}));
+ const client=new QuestionPassageClient(scope,async()=>({status:200,body:context(true)}),undefined,store,()=>held.promise);
+ const checking=client.load();await new Promise(resolve=>setTimeout(resolve,0));client.dispose();held.resolve(selectionReply());await checking;
+ assert.equal(client.snapshot().packet,null);assert.deepEqual(client.snapshot().chosen,[]);assert.ok(store.read());
+});
+
+test('saving unsent choices transfers recovery to the exact command, and conflict blocks submission',async()=>{
+ const store=draftStore(),intent=draftStore();let writes=0,changed=false;
+ const request=async body=>{if(body){writes++;throw Error('Response lost');}return {status:200,body:context(!changed)};};
+ const client=new QuestionPassageClient(scope,request,intent,store,async()=>selectionReply());
+ await client.load();client.choose(context().passages[0]);changed=true;await client.load();
+ assert.equal(client.snapshot().draftStatus,'conflict');await client.replace([ref()]);assert.equal(writes,0);
+ await client.discardDraft();client.remove(ref().anchor_sha256);await client.replace([]);
+ assert.equal(store.read(),null);assert.ok(intent.read());assert.equal(client.snapshot().phase,'uncertain');
+ assert.deepEqual(client.snapshot().chosen,[]);assert.equal(writes,1);
+ assert.equal(manualModule.manualReportBinding(context(true),[],'idle','conflict').blocked,true);
+});

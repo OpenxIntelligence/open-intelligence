@@ -66,21 +66,26 @@ export async function decodeManualContext(value:unknown,scope:PassageScope,packe
 }
 
 type Request=(body?:string)=>Promise<DocumentReply>;
-type State=Readonly<{phase:'idle'|'loading'|'saving'|'uncertain'|'error';packet:ManualPacket|null;pending:string|null;message:string}>;
+type State=Readonly<{phase:'idle'|'loading'|'saving'|'uncertain'|'error';packet:ManualPacket|null;pending:string|null;message:string;
+ chosen:readonly ResolvedPassage[];draftStatus:'none'|'unverified'|'ready'|'conflict'}>;
 export type ManualIntentStore=Readonly<{read:()=>string|null;write:(body:string|null)=>void}>;
-export function manualReportBinding(packet:ManualPacket|null,chosen:readonly ResolvedPassage[],phase:State['phase']):Readonly<{context:ManualContext|null;blocked:boolean;dirty:boolean}>{
+export type ManualSelectionDraft=Readonly<{expected_context_sha256:string;references:readonly PassageReference[]}>;
+export type ManualDraftStore=Readonly<{read:()=>ManualSelectionDraft|null;write:(draft:ManualSelectionDraft|null)=>void}>;
+export function manualReportBinding(packet:ManualPacket|null,chosen:readonly ResolvedPassage[],phase:State['phase'],draftStatus:State['draftStatus']='none'):Readonly<{context:ManualContext|null;blocked:boolean;dirty:boolean}>{
  const identities=(rows:readonly ResolvedPassage[])=>rows.map(p=>canonicalEvidenceJson(passageReference(p))).sort();
  const dirty=packet!==null&&canonicalEvidenceJson(identities(packet.passages))!==canonicalEvidenceJson(identities(chosen));
- const blocked=dirty||phase==='saving'||phase==='uncertain';
+ const blocked=dirty||phase==='saving'||phase==='uncertain'||draftStatus==='unverified'||draftStatus==='conflict';
  return {context:phase==='idle'&&!blocked?packet:null,blocked,dirty};
 }
 export type ManualPanelStatus=Readonly<{scope:PassageScope;context:ManualContext|null;blocked:boolean}>;
 export class QuestionPassageClient{
  #generation=0;#listeners=new Set<()=>void>();
- #state:State={phase:'idle',packet:null,pending:null,message:'Inspect the saved manual context for this question.'};
- constructor(private scope:PassageScope,private request:Request,private intentStore?:ManualIntentStore){
+ #state:State={phase:'idle',packet:null,pending:null,message:'Inspect the saved manual context for this question.',chosen:[],draftStatus:'none'};
+ constructor(private scope:PassageScope,private request:Request,private intentStore?:ManualIntentStore,
+  private draftStore?:ManualDraftStore,private resolveSelection?:(reference:PassageReference)=>Promise<DocumentReply>){
   const pending=intentStore?.read();
-  if(pending)this.#state={phase:'uncertain',packet:null,pending,message:'An earlier passage save has an unknown outcome. Retry its exact intent after rechecking this question.'};
+  if(pending)this.#state={...this.#state,phase:'uncertain',pending,message:'An earlier passage save has an unknown outcome. Retry its exact intent after rechecking this question.'};
+  else if(draftStore?.read())this.#state={...this.#state,draftStatus:'unverified',message:'Unsent passage changes retained. Rechecking their exact sources before resuming.'};
  }
  snapshot=()=>this.#state;
  subscribe=(fn:()=>void)=>{this.#listeners.add(fn);return()=>{this.#listeners.delete(fn);};};
@@ -88,24 +93,64 @@ export class QuestionPassageClient{
   if(Object.hasOwn(patch,'pending'))this.intentStore?.write(patch.pending??null);
   this.#state=Object.freeze({...this.#state,...patch});this.#listeners.forEach(fn=>fn());
  }
- dispose(){this.#generation++;this.#listeners.clear();this.#state={phase:'idle',packet:null,pending:null,message:''};}
+ dispose(){this.#generation++;this.#listeners.clear();this.#state={phase:'idle',packet:null,pending:null,message:'',chosen:[],draftStatus:'none'};}
+ #edit(chosen:readonly ResolvedPassage[]):boolean{
+  const {packet,phase,draftStatus}=this.#state;if(!packet||phase!=='idle'||draftStatus==='conflict'||chosen.length>20)return false;
+  const dirty=manualReportBinding(packet,chosen,phase).dirty;
+  this.draftStore?.write(dirty?Object.freeze({expected_context_sha256:packet.context_sha256,references:Object.freeze(chosen.map(passageReference))}):null);
+  this.#publish({chosen:Object.freeze([...chosen]),draftStatus:dirty?'ready':'none'});return true;
+ }
+ choose(passage:ResolvedPassage):boolean{
+  if(passage.anchor.patient_id!==this.scope.patient_id||passage.anchor.case_id!==this.scope.case_id||passage.selection_state!=='current_unreviewed_selection')return false;
+  return this.#edit(this.#state.chosen.some(p=>p.anchor_sha256===passage.anchor_sha256)?this.#state.chosen:[...this.#state.chosen,passage]);
+ }
+ remove(anchorSha:string):boolean{return this.#edit(this.#state.chosen.filter(p=>p.anchor_sha256!==anchorSha));}
+ async discardDraft(){
+  if(['loading','saving','uncertain'].includes(this.#state.phase))return;
+  this.draftStore?.write(null);this.#publish({chosen:[],draftStatus:'none'});await this.load();
+ }
  async load(){
   if(['saving','uncertain'].includes(this.#state.phase))return;
-  const generation=++this.#generation;this.#publish({phase:'loading',packet:null,message:'Checking question, original-read permission and exact saved passages…'});
-  try{const reply=await this.request();if(generation!==this.#generation)return;if(reply.status!==200)throw Error('Manual context unavailable. Recheck case permissions.');
+  const generation=++this.#generation,draft=this.draftStore?.read();
+  this.#publish({phase:'loading',packet:null,chosen:[],draftStatus:draft?'unverified':'none',message:'Checking question, original-read permission and exact saved passages…'});
+  try{const reply=await this.request();if(generation!==this.#generation)return;
+   if(reply.status!==200){if([401,403,404].includes(reply.status))this.draftStore?.write(null);throw Error('Manual context unavailable. Recheck case permissions.');}
    const packet=await decodeManualContext(reply.body,this.scope,true) as ManualPacket;if(generation!==this.#generation)return;
-   this.#publish({phase:'idle',packet,message:packet.state==='current_unreviewed'?'Manual context inspected. Selections remain unreviewed.':'Manual context changed. Replace or remove stale passages before preparing a new report.'});
-  }catch(e){if(generation===this.#generation)this.#publish({phase:'error',packet:null,message:e instanceof Error?e.message:'Manual context unavailable.'});}
+   let chosen=packet.passages;
+   if(draft){
+    if(this.draftStore?.read()!==draft)throw Error('Draft scope changed. Recheck this question.');
+    if(draft.expected_context_sha256!==packet.context_sha256){
+     this.#publish({phase:'idle',packet,chosen:[],draftStatus:'conflict',message:'The saved passage set changed while you were away. Unsent selections are withheld. Discard them and select from the current context.'});return;
+    }
+    const resolved:ResolvedPassage[]=[];
+    for(const reference of draft.references){
+     if(!this.resolveSelection)throw Error('Reopen the question to verify retained selections.');
+     const selected=await this.resolveSelection(reference);if(generation!==this.#generation)return;
+     if([401,403,404].includes(selected.status))this.draftStore?.write(null);
+     if(selected.status!==200)throw Error('Retained passage unavailable. Recheck source permissions.');
+     const passage=await decodeSelection(selected.body,this.scope,reference);if(generation!==this.#generation)return;
+     if(this.draftStore?.read()!==draft)throw Error('Draft scope changed. Recheck this question.');
+     if(passage.anchor_sha256!==reference.anchor_sha256||passage.selection_state!=='current_unreviewed_selection'){
+      this.#publish({phase:'idle',packet,chosen:[],draftStatus:'conflict',message:'A retained selection changed. Unsent quotations are withheld. Discard these changes and choose current passages.'});return;
+     }
+     resolved.push(passage);
+    }
+    if(this.draftStore?.read()!==draft)throw Error('Draft scope changed. Recheck this question.');
+    chosen=Object.freeze(resolved);
+   }
+   this.#publish({phase:'idle',packet,chosen,draftStatus:draft?'ready':'none',message:draft?'Unsent passage changes restored after fresh source checks. Save explicitly or discard them.':packet.state==='current_unreviewed'?'Manual context inspected. Selections remain unreviewed.':'Manual context changed. Replace or remove stale passages before preparing a new report.'});
+  }catch(e){if(generation===this.#generation)this.#publish({phase:'error',packet:null,chosen:[],draftStatus:this.draftStore?.read()?'unverified':'none',message:e instanceof Error?e.message:'Manual context unavailable.'});}
  }
  async replace(references:readonly PassageReference[]){
-  if(!this.#state.packet||this.#state.phase!=='idle'||references.length>20)return;
+  if(!this.#state.packet||this.#state.phase!=='idle'||this.#state.draftStatus==='conflict'||references.length>20)return;
   const body=canonicalEvidenceJson({synthetic:true,request_key:'PASSAGES-'+crypto.randomUUID(),expected_context_sha256:this.#state.packet.context_sha256,references});
   await this.#send(body);
  }
  async retry(){if(this.#state.phase==='uncertain'&&this.#state.pending)await this.#send(this.#state.pending);}
  async #send(body:string){
   const recovering=this.#state.phase==='uncertain';
-  const generation=++this.#generation;this.#publish({phase:'saving',pending:body,message:'Saving the exact selected reference set…'});
+  const generation=++this.#generation;this.#publish({phase:'saving',pending:body,chosen:[],draftStatus:'none',message:'Saving the exact selected reference set…'});
+  this.draftStore?.write(null);
   try{const reply=await this.request(body);if(generation!==this.#generation)return;
    if([400,401,403,404,409,422].includes(reply.status)){
     this.#publish(recovering?{phase:'uncertain',packet:null,pending:body,message:'Recovery was denied. The earlier outcome remains unknown; restore permission and retry this exact intent.'}:

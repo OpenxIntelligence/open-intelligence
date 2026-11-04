@@ -97,6 +97,18 @@ def exercise(cd,patient_id,token,credentials,write_grants,artifacts):
             click('[data-testid=manual-context-add]')
             cd.wait("document.querySelector('[data-testid=manual-context-status]')?.textContent.includes('selected locally')",'exact passage resolved under authority')
         assert cd.evaluate("document.querySelectorAll('[data-testid=manual-context-selected] blockquote').length")==2
+        # Unsent passage choices survive navigation and fresh authority checks;
+        # neither navigation nor refresh is a passage write.
+        assert cd.evaluate('window.__manualJourney.posts.length')==0
+        navigate('Overview');navigate('Investigations')
+        cd.wait('Boolean(document.querySelector('+json.dumps(row)+'))','same question after unsent passage navigation')
+        click(row+' [data-testid=authored-evidence-open]')
+        cd.wait("document.querySelectorAll('[data-testid=manual-context-selected] blockquote').length===2 && "
+                "document.querySelector('[data-testid=manual-context-status]')?.textContent.includes('restored')",'unsent text and PDF choices reauthorized')
+        click('[data-testid=evidence-refresh]')
+        cd.wait("document.querySelectorAll('[data-testid=manual-context-selected] blockquote').length===2 && "
+                "Boolean(document.querySelector('[data-testid=manual-context-unsaved]'))",'evidence refresh retains unsent passage choices')
+        assert cd.evaluate('window.__manualJourney.posts.length')==0
         click('[data-testid=manual-context-save]')
         cd.wait("Boolean(document.querySelector('[data-testid=manual-context-retry]'))",'lost committed response retains exact intent')
         navigate('Overview')
@@ -138,6 +150,9 @@ def exercise(cd,patient_id,token,credentials,write_grants,artifacts):
         click('[data-testid=manual-context-selected] li button')
         cd.wait("Boolean(document.querySelector('[data-testid=manual-context-unsaved]')) && document.querySelector('[data-testid=evidence-report-prepare]').disabled",'unsaved removal cannot silently enter report preparation')
         assert len(operator(qpath+'/manual-passages')['passages'])==2
+        cd.evaluate("[...document.querySelectorAll('[data-testid=question-manual-passages] button')].find(b=>b.textContent==='Refresh attached passages').click()")
+        cd.wait("document.querySelectorAll('[data-testid=manual-context-selected] blockquote').length===1 && "
+                "Boolean(document.querySelector('[data-testid=manual-context-unsaved]'))",'unsent removal retained through fresh context checks')
         click('[data-testid=manual-context-discard]')
         cd.wait("!document.querySelector('[data-testid=evidence-report-prepare]').disabled && document.querySelectorAll('[data-testid=manual-context-selected] blockquote').length===2",'explicit discard restores saved report binding')
         click('[data-testid=evidence-report-prepare]')
@@ -175,6 +190,8 @@ def exercise(cd,patient_id,token,credentials,write_grants,artifacts):
             exact_retry=True,download_bytes_equal=True,revoked_original_read_withholds=True,
             recovery_survives_refresh_and_denial=True,unsaved_removal_blocks_report=True,
             preparation_navigation_preserves_retry=True,unsent_task_excluded_from_agenda=True,
+            unsent_passage_navigation_reauthorized=True,unsent_passage_refresh_preserved=True,
+            unsent_removal_refresh_preserved=True,unsent_navigation_passage_writes=0,
             navigation_task_writes=cd.evaluate('window.__manualJourney.taskWrites'),
             structured_assertion_count=1,clinical_approval=False),indent=2))
         print('PASS QUESTION MANUAL CONTEXT: actual text/PDF selection, one canonical question, lost-response exact retry, immutable report/download, correction invalidation and original-read denial')
