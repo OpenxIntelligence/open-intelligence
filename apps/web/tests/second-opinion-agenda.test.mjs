@@ -30,9 +30,9 @@ test('a saved discussion agenda preserves literal question content, provenance a
  assert.equal(view.state,'needs_reassessment');
  assert.deepEqual(view.agenda,{total:2,preview:[
   {questionId:rows[0].question_id,text:rows[0].question,sourceVersion:1,sourceLine:1,
-   sourceContextState:'source_reassessment_required'},
+   sourceContextState:'source_reassessment_required',work:null},
   {questionId:rows[1].question_id,text:rows[1].question,sourceVersion:2,sourceLine:2,
-   sourceContextState:'current_unreviewed_question'}]});
+   sourceContextState:'current_unreviewed_question',work:null}]});
 });
 test('a bounded preview carries its full count, rather than silently losing remaining questions',()=>{
  const rows=Array.from({length:7},(_,i)=>question(i+1));
@@ -56,4 +56,58 @@ test('verified empty is different from unverified or denied question history',()
  const state=ready();
  assert.deepEqual(secondOpinionPreparation(state).agenda,{total:0,preview:[]});
  assert.equal(secondOpinionPreparation({...state,questionListPhase:'idle'}).agenda,null);
+});
+
+const task=(n,questionId,{status='assigned',owner='Fictional coordinator',dueDate='2026-11-05',needsRecheck=false}={})=>({
+ task_id:'TASK-'+String(n).padStart(32,'0'),patient_id:patientId,case_id:caseId,question_id:questionId,
+ title:'Fictional follow-up '+n,owner_label:owner,status,due_date:dueDate,
+ review_trigger:'Review when new fictional source arrives',needs_recheck:needsRecheck,is_overdue:n===1,
+});
+const readTasks=tasks=>({followthroughPhase:'ready',followthroughCaseId:caseId,followthrough:{
+ contract:'oi.pg-question-followthrough/1',patient_id:patientId,case_id:caseId,
+ access_receipt_id:'ACCESS-'+'D'.repeat(32),evaluated_on:'2026-11-03',
+ synthetic:true,clinical_approval:false,external_notification_sent:false,tasks}});
+
+test('each question shows only its independently authorized canonical tasks, with exact recorded owner and date',()=>{
+ const a=question(1,'source_reassessment_required'),b=question(2),other='QUESTION-'+'E'.repeat(32);
+ const state={...ready(),questions:[a,b],...readTasks([
+  task(1,a.question_id,{needsRecheck:true}),task(2,a.question_id,{status:'completed',owner:'Fictional finished owner'}),
+  task(3,b.question_id,{owner:'Fictional second owner',dueDate:null}),task(4,other),
+ ])};
+ const view=secondOpinionPreparation(state),[qa,qb]=view.agenda.preview;
+ assert.equal(view.state,'needs_reassessment');
+ assert.deepEqual([qa.work.recordedCount,qa.work.openCount,qa.work.historicalCount],[2,1,1]);
+ assert.deepEqual([qb.work.recordedCount,qb.work.openCount,qb.work.historicalCount],[1,1,0]);
+ assert.equal(qa.work.evaluatedOn,'2026-11-03');
+ assert.deepEqual(qa.work.preview,[{
+  taskId:'TASK-'+String(1).padStart(32,'0'),title:'Fictional follow-up 1',status:'assigned',
+  ownerLabel:'Fictional coordinator',dueDate:'2026-11-05',
+  reviewTrigger:'Review when new fictional source arrives',needsRecheck:true,revisitDatePassed:true,
+ }]);
+ assert.equal(qb.work.preview[0].ownerLabel,'Fictional second owner');
+ assert.equal(qb.work.preview[0].dueDate,null);
+ assert.ok(!qa.work.preview.some(t=>t.taskId===qb.work.preview[0].taskId));
+ assert.equal(view.coordination.open,3); // Includes the separate, independently authorized third question.
+});
+
+test('bounded per-question task previews never claim the full list is displayed',()=>{
+ const q=question(1),state={...ready(),questions:[q],...readTasks(Array.from({length:6},(_,i)=>task(i+1,q.question_id)))};
+ const view=secondOpinionPreparation(state);
+ assert.equal(view.agenda.preview[0].work.openCount,6);
+ assert.equal(view.agenda.preview[0].work.preview.length,2);
+ assert.equal(view.agenda.preview[0].work.recordedCount,6);
+});
+
+test('task denial, refresh or other-case data never become an authorized zero count',()=>{
+ const q=question(1),state={...ready(),questions:[q],...readTasks([task(1,q.question_id)])};
+ assert.equal(secondOpinionPreparation(state).agenda.preview[0].work.recordedCount,1);
+ assert.deepEqual(secondOpinionPreparation({...state,...readTasks([])}).agenda.preview[0].work,{evaluatedOn:'2026-11-03',recordedCount:0,openCount:0,historicalCount:0,preview:[]});
+ for(const patch of [{followthroughPhase:'loading'},{followthroughPhase:'error'},
+  {followthroughCaseId:'CASE-OTHER'},{followthrough:{...state.followthrough,patient_id:'PAT-OTHER'}},
+  {followthrough:{...state.followthrough,case_id:'CASE-OTHER'}},
+  {followthrough:{...state.followthrough,tasks:[{...task(1,q.question_id),case_id:'CASE-OTHER'}]}}]){
+  const actual=secondOpinionPreparation({...state,...patch});
+  assert.equal(actual.agenda.preview[0].work,null,JSON.stringify(patch));
+  assert.equal(actual.agenda.preview[0].text,q.question); // Separate question grant remains readable.
+ }
 });

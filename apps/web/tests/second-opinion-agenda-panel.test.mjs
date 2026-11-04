@@ -60,3 +60,45 @@ test('verified empty history is explicit and never asserts care completeness',()
  assert.match(html,/does not establish that there are no care questions/);
  assert.doesNotMatch(html,/data-testid="second-opinion-agenda-item"/);
 });
+
+const withTasks=(tasks=[])=>({followthroughPhase:'ready',followthroughCaseId:caseId,followthrough:{
+ patient_id:patientId,case_id:caseId,access_receipt_id:'ACCESS-'+'D'.repeat(32),evaluated_on:'2026-11-03',
+ tasks,synthetic:true,clinical_approval:false,external_notification_sent:false}});
+const task=(status='assigned')=>({task_id:'TASK-'+'C'.repeat(32),question_id:question().question_id,
+ patient_id:patientId,case_id:caseId,title:'Fictional <test> & follow-up',owner_label:'Fictional <owner> & care team',
+ status,due_date:'2026-10-30',review_trigger:'After fictional source correction',needs_recheck:true,is_overdue:true});
+
+test('per-question work renders literal owner and task text safely with recorded source/date flags',()=>{
+ const html=render({...base(),questions:[question('source_reassessment_required')],...withTasks([task()])});
+ assert.match(html,/data-testid="second-opinion-question-work"[^>]*data-work-state="ready"/);
+ assert.match(html,/data-testid="second-opinion-question-task"[^>]*data-task-id="TASK-/);
+ assert.match(html,/Fictional &lt;test&gt; &amp; follow-up/);
+ assert.match(html,/Fictional &lt;owner&gt; &amp; care team/);
+ assert.doesNotMatch(html,/<owner>|<test>/);
+ assert.match(html,/Recorded status: assigned/);
+ assert.match(html,/Revisit date: 2026-10-30/);
+ assert.match(html,/Source changed: recorded work requires reassessment/);
+ assert.match(html,/Revisit date passed as of 2026-11-03 \(operational flag, not clinical urgency\)/);
+});
+
+test('separate task grant denial withholds all task identifiers while preserving question text',()=>{
+ const state={...base(),questions:[question()],...withTasks([task()])};
+ for(const patch of [{followthroughPhase:'error'},{followthroughPhase:'loading'},
+  {followthroughCaseId:'CASE-OTHER'}]){
+  const html=render({...state,...patch});
+  assert.match(html,/Could we discuss fictional marker/);
+  assert.match(html,/data-testid="second-opinion-question-work-unavailable"/);
+  assert.doesNotMatch(html,/data-testid="second-opinion-question-task"/);
+  assert.doesNotMatch(html,/Fictional &lt;test&gt; &amp; follow-up/);
+ }
+ const empty=render({...state,...withTasks([])});
+ assert.match(empty,/data-testid="second-opinion-question-work-empty"/);
+ assert.doesNotMatch(empty,/data-testid="second-opinion-question-work-unavailable"/);
+});
+
+test('historical-only task status is counted, never presented as an open action',()=>{
+ const html=render({...base(),questions:[question()],...withTasks([task('completed')])});
+ assert.match(html,/data-open-count="0"[^>]*data-history-count="1"/);
+ assert.doesNotMatch(html,/data-testid="second-opinion-question-task"/);
+ assert.match(html,/Historical work remains available in Investigations/);
+});
