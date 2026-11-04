@@ -134,3 +134,45 @@ PYTHONPATH=src python -m open_intelligence serve
 Remaining proof step: a live-server run against the real API with
 the operator key set, before the demo. The API completion itself
 was verified separately on 2026-10-31.
+
+
+## Start from an empty research workspace (case and file intake)
+
+The intake addition extends the existing case/source/investigation loop; it does not
+create a second patient registry. Start without running the optional seed command:
+
+```sh
+PYTHONPATH=src python -m open_intelligence serve --db /tmp/oi-research.sqlite --port 8765
+```
+
+Open `http://127.0.0.1:8765/`, create a clearly fictional case (for the bundled
+Alpha reports use `CASE-ALPHA`), then select original `.txt` files in the documented
+`OI-SYNTHETIC-REPORT/1` format. Each file produces a distinct import, duplicate,
+quarantine, rejection, or unknown-outcome receipt. The original patient header and
+UTF-8 bytes are not rewritten. An interrupted request may already have saved;
+subsequent writes stop, and the user must inspect the existing sources before
+retrying. Duplicate bytes are deduplicated by the canonical importer. Per-batch
+receipts are transient UI, while accepted sources, quarantine and audit records
+remain in the original database.
+
+Next create a question, run the explicitly labelled recorded replay, prepare its
+review draft, inspect the linked original source versions, and acknowledge only
+as a demonstration. Import an amendment file to reopen the question and mark the
+old report stale; a fresh run/report preserves the old text and history. Restarting
+the server with the same database retains cases, originals and reports.
+
+**Inputs:** 1–20 files; at most 64 KiB each and 1 MiB total; exact UTF-8 text; no
+PDF, OCR, image or general clinical-document extraction in this increment. These
+are file-interface and workflow improvements, not permission to import real
+patient records. The checkbox is an operator declaration, not verified identity,
+consent, publisher permission or a safety classifier. No account, production
+access control or clinical approval is established. Final product UI and H1
+migration remain separate reviewed work.
+
+**Verification:** `node --test tests/test_intake.js` exercises file and receipt
+boundaries; `PYTHONPATH=src python tests/intake_browser_journey.py` exercises actual
+browser file selection from an empty database through review, correction and
+restart. The inherited source-inventory snapshot describes its original baseline;
+the candidate CI emits an updated incomplete source/declaration inventory with
+this branch's bytes. Neither is a resolved production/deployment SBOM or licensing
+clearance.

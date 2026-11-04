@@ -167,6 +167,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._static("world-model.js", "text/javascript; charset=utf-8")
             if path == "/composer.js":
                 return self._static("composer.js", "text/javascript; charset=utf-8")
+            if path == "/intake.js":
+                return self._static("intake.js", "text/javascript; charset=utf-8")
             if path == "/literature.js":
                 return self._static("literature.js", "text/javascript; charset=utf-8")
             if path == "/style.css":
