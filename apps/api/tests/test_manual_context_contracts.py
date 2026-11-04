@@ -31,7 +31,9 @@ def manual_snapshot():
 
 class ManualContextContracts(unittest.TestCase):
     def test_only_known_legacy_schemas_may_lack_manual_metadata(self):
-        for revision in ('0010_authored_evidence_origin','0011_evidence_convergence','0012_reviewed_documents','0013_document_image_convergence'):
+        for revision in ('0010_authored_evidence_origin','0011_evidence_convergence',
+                         '0012_reviewed_documents','0012_image_report_convergence',
+                         '0013_document_image_convergence'):
             registry=Mock()
             registry._transaction_active=True
             registry._fetchone.return_value=(None,)
