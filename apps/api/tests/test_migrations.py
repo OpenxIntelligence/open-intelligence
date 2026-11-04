@@ -94,6 +94,8 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
             conn.execute(text("DROP TABLE IF EXISTS investigation.evidence_catalog_records"))
             conn.execute(text("DROP TABLE IF EXISTS investigation.evidence_command_origins"))
             conn.execute(text("DROP FUNCTION IF EXISTS investigation.guard_evidence_command_origin_insert()"))
+            conn.execute(text("DROP TABLE IF EXISTS investigation.question_passage_revisions"))
+            conn.execute(text("DROP FUNCTION IF EXISTS investigation.guard_question_passage_revision()"))
             conn.execute(text("DROP TABLE IF EXISTS investigation.evidence_commands"))
             conn.execute(text("DROP TABLE IF EXISTS investigation.question_evidence_reports"))
             conn.execute(text("DROP TABLE IF EXISTS investigation.question_evidence_assessments"))

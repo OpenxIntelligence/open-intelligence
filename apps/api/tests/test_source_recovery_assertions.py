@@ -25,7 +25,7 @@ class SourceRecoveryAssertions(unittest.TestCase):
             "tables": {
                 "clinical_source.source_versions": [{"source_id": "SRC-FICTIONAL", "raw": "\\x4142"}],
                 "clinical_source.annotation_revisions": [{"revision_id": "ANN-FICTIONAL", "revision": 2}],
-                "public.alembic_version": [{"version_num": "0012_reviewed_documents"}],
+                "public.alembic_version": [{"version_num": "0014_manual_report_context"}],
                 EVENTS: [{"id": 7, "patient_id": "PAT-FICTIONAL", "event_type": "source.original.imported",
                           "metadata_json": {"source_id": "SRC-FICTIONAL"}, "occurred_at": "2026-01-01"}],
             },

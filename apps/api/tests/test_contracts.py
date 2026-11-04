@@ -149,6 +149,7 @@ class HTTPContractTests(unittest.TestCase):
             "/v1/patients/{patient_id}/cases/{case_id}/followthrough",
             "/v1/patients/{patient_id}/cases/{case_id}/followthrough/{task_id}/transitions",
             "/v1/patients/{patient_id}/cases/{case_id}/questions",
+            "/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/manual-passages",
             "/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/brief",
             "/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/evidence",
             "/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/evidence-assessments",

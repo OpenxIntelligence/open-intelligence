@@ -83,7 +83,7 @@ export function ReviewedDocumentWorkspace({session,patientId,caseId}:{session:Re
     <button data-testid="save-reviewed" className="primary" disabled={!confirmed||locked}>{state.document?'Save new selection revision':'Save reviewed original'}</button>
    </form>}
   </div>}
-  <p className="small muted">Manual selections are preserved for review. They are not yet included in source-authored World Model observations or investigation reports.</p>
+  <p className="small muted">Manual selections are preserved for review. Attach saved passages as additional context in a question’s evidence workspace to include them in preserved reports. Their classifications remain user-selected; they never become source-authored World Model observations.</p>
  </section>;
 }
 
