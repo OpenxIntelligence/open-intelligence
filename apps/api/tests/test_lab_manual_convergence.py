@@ -126,13 +126,13 @@ class LabManualPopulatedMigrationTests(SourceVersionFixture):
                 status, retry, _ = request(base, endpoint, token=TOKEN_A,
                                           body={"synthetic": True, **intent})
                 self.assertEqual((status, retry), (200, saved | {"duplicate": True}))
-                status, listing, _ = request(base, endpoint, token=TOKEN_A)
+                status, listing, _ = request(base, prefix + "/followthrough", token=TOKEN_A)
                 self.assertEqual(status, 200, listing)
                 task = next(t for t in listing["tasks"] if t["task_id"] == saved["task_id"])
                 self.assertEqual(task["manual_dependency_revision_id"], intent["manual_dependency"]["revision_id"])
                 self.assertEqual(task["manual_context_state"], "current_unreviewed")
                 self.assertNotIn("Marker pending.", str(task))
-                self.assertEqual(request(base, endpoint, token=TOKEN_B)[0], 404)
+                self.assertEqual(request(base, prefix + "/followthrough", token=TOKEN_B)[0], 404)
 
     def test_populated_laboratory_head_preserves_originals_and_source_only_tasks(self):
         patient, question, prepared = self.start_at(LAB)
@@ -140,6 +140,10 @@ class LabManualPopulatedMigrationTests(SourceVersionFixture):
         laboratory = self.seed_lab(patient)
         before = self.snapshot()
         self.assertNotIn("coordination.question_followthrough_manual_dependencies", before[0])
+        with self.assertRaisesRegex(CommandError, "FHIR laboratory history"):
+            migrate(self.admin, "downgrade", "0015_manual_report_context")
+        self.assertEqual(self.snapshot(), before)
+        self.assertEqual(self.heads(), {LAB})
         self.upgrade_preserving(before)
         self.assertEqual(self.snapshot()[0]["coordination.question_followthrough_manual_dependencies"], [])
         self.replay(patient, question, laboratory=laboratory)
@@ -149,6 +153,10 @@ class LabManualPopulatedMigrationTests(SourceVersionFixture):
         manual = self.seed_manual(patient, question, prepared)
         before = self.snapshot()
         self.assertNotIn("clinical_source.fhir_laboratory_sources", before[0])
+        with self.assertRaisesRegex(CommandError, "Stored manual task dependencies"):
+            migrate(self.admin, "downgrade", "0015_manual_report_context")
+        self.assertEqual(self.snapshot(), before)
+        self.assertEqual(self.heads(), {MANUAL})
         self.upgrade_preserving(before)
         self.assertEqual(self.snapshot()[0]["clinical_source.fhir_laboratory_sources"], [])
         self.replay(patient, question, manual=manual)
@@ -164,7 +172,7 @@ class LabManualPopulatedMigrationTests(SourceVersionFixture):
         self.upgrade_preserving(before)
         self.assertEqual(self.schema_definition(), schema)
         # Removing only the join is reversible and cannot erase either owner.
-        migrate(self.admin, "downgrade", "-1")
+        migrate(self.admin, "downgrade", LAB)
         self.assertEqual(self.heads(), {MANUAL, LAB})
         self.assertEqual(self.snapshot(), before)
         self.assertEqual(self.schema_definition(), schema)
