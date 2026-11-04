@@ -159,7 +159,12 @@ export class RegistrySession {
   #manualPassageDrafts=new Map<string,import('./question-passages').ManualSelectionDraft>();
   #manualDraftEpoch=0;
   #manualDraftCase:string|null=null;
-  #clearManualDrafts(){this.#manualDraftEpoch++;this.#manualPassageDrafts.clear();this.#manualDraftCase=null;}
+  #clearManualDrafts(preserveCase?:string){
+    // Invalidate old panel callbacks on every reset. Same-case refresh may keep
+    // references, but never quotations or permission to display them.
+    this.#manualDraftEpoch++;
+    if(!preserveCase||this.#manualDraftCase!==preserveCase){this.#manualPassageDrafts.clear();this.#manualDraftCase=null;}
+  }
   manualPassageDraftStore=(scope:import('./question-passages').PassageScope):import('./question-passages').ManualDraftStore=>{
     const key=JSON.stringify([scope.patient_id,scope.case_id,scope.question_id]),epoch=this.#manualDraftEpoch,session=this.#scope;
     const current=()=>epoch===this.#manualDraftEpoch&&session===this.#scope&&this.#state.connected&&
@@ -303,8 +308,8 @@ export class RegistrySession {
     this.#reviewKey='';this.#reviewIntent='';
     return emptyReview();
   }
-  #resetInvestigation(preserveReviewCase?:string,preserveFollowthroughCase=preserveReviewCase,preserveEvidenceCase=preserveReviewCase,preserveAuthoredEvidenceCase=preserveReviewCase){
-    this.#clearManualDrafts();
+  #resetInvestigation(preserveReviewCase?:string,preserveFollowthroughCase=preserveReviewCase,preserveEvidenceCase=preserveReviewCase,preserveAuthoredEvidenceCase=preserveReviewCase,preserveManualCase=preserveReviewCase){
+    this.#clearManualDrafts(preserveManualCase);
     this.#inspectionQuestionId=null;
     this.#worldRead++;this.#composerRead++;this.#questionRead++;this.#questionWrite++;this.#briefRead++;this.#quoteRead++;
     this.#questionKey='';this.#questionFingerprint='';this.#savingQuestion=false;
@@ -414,18 +419,20 @@ export class RegistrySession {
       retainedFollowthroughCase=this.#state.followthroughIntent?.case_id??Object.values(this.#state.followthroughDrafts)[0]?.case_id??
         Object.values(this.#state.followthroughTransitionDrafts)[0]?.case_id,
       retainedEvidenceCase=this.#state.evidenceLinkIntent?.case_id,
-      retainedAuthoredEvidenceCase=this.#state.evidenceWriteIntent?.case_id;
+      retainedAuthoredEvidenceCase=this.#state.evidenceWriteIntent?.case_id,
+      retainedManualCase=this.#manualDraftCase??undefined;
     const scope=this.#scope,read=this.#read,request=++this.#records;
     const current=()=>scope===this.#scope && read===this.#read &&
       request===this.#records && this.#state.patient?.patient_id===patientId;
     const control=new AbortController();this.#controllers.add(control);
     const timeout=setTimeout(()=>control.abort(),10000);
-    this.#publish({...emptyIntake(),...emptyWorld(),...this.#resetInvestigation(retainedCase,retainedFollowthroughCase,retainedEvidenceCase,retainedAuthoredEvidenceCase),cases:null,sourceIndex:null,recordsPhase:'loading-cases',recordMessage:'Checking current case mapping permissions…'});
+    this.#publish({...emptyIntake(),...emptyWorld(),...this.#resetInvestigation(retainedCase,retainedFollowthroughCase,retainedEvidenceCase,retainedAuthoredEvidenceCase,retainedManualCase),cases:null,sourceIndex:null,recordsPhase:'loading-cases',recordMessage:'Checking current case mapping permissions…'});
     try{
       const res=await this.transport('/v1/patients/'+encodeURIComponent(patientId)+'/case-bindings',this.#init(control));
       if(!current())return;
       if(res.status===401){this.#httpError(401);return;}
       if(res.status!==200){
+        if([403,404].includes(res.status))this.#clearManualDrafts();
         this.#publish({cases:null,sourceIndex:null,recordsPhase:'error',
           ...([403,404].includes(res.status)?{...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence(),...this.#evidenceSession.reset()}:{}),
           recordMessage:'Case mappings unavailable or permission changed. No records are shown.'});
@@ -433,6 +440,7 @@ export class RegistrySession {
       }
       const mappings=parseCaseBindingList(await json(res),patientId);
       if(!current())return;
+      if(retainedManualCase&&!mappings.some(item=>item.case_id===retainedManualCase&&item.status==='active'))this.#clearManualDrafts();
       const pendingCase=this.#state.followthroughIntent?.case_id??Object.values(this.#state.followthroughDrafts)[0]?.case_id??
         Object.values(this.#state.followthroughTransitionDrafts)[0]?.case_id;
       this.#publish({...((pendingCase&&!mappings.some(item=>item.case_id===pendingCase&&item.status==='active'))?this.#resetFollowthrough():{}),
@@ -468,6 +476,7 @@ export class RegistrySession {
       if(!current())return;
       if(res.status===401){this.#httpError(401);return;}
       if(res.status!==200){
+        if([403,404].includes(res.status))this.#clearManualDrafts();
         this.#publish({cases:null,sourceIndex:null,recordsPhase:'error',
           ...([403,404].includes(res.status)?{...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence(),...this.#evidenceSession.reset()}:{}),
           recordMessage:'Sources unavailable, denied or mapping revoked. Reload case permissions.'});
@@ -667,6 +676,7 @@ export class RegistrySession {
     if(!this.#token||!patientId||this.#state.phase!=='ready'||this.#uploading||
        !/^CASE-[A-Z0-9-]{1,35}$/.test(caseId)||
        !this.#state.cases?.some(x=>x.case_id===caseId&&x.status==='active')){
+      this.#clearManualDrafts();
       this.#records++;
       this.#publish({...emptyWorld(),...inquiry,...this.#resetReview(),worldPhase:'error',
         worldMessage:'Open an authorized fictional patient and active case first.'});
@@ -686,6 +696,7 @@ export class RegistrySession {
       if(!current())return;
       if(response.status===401){this.#httpError(401);return;}
       if(response.status!==200){
+        if([403,404].includes(response.status))this.#clearManualDrafts();
         this.#publish({...emptyWorld(),...([403,404].includes(response.status)?{...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence(),...this.#evidenceSession.reset()}:{}),worldPhase:'error',
           worldMessage:'World Model source scope unavailable or revoked. Previous snapshot cleared.'});
         return;
@@ -1551,6 +1562,7 @@ export class RegistrySession {
       if(!current())return;
       if(res.status===401){this.#httpError(401);return;}
       if([403,404,409,413,422].includes(res.status)){
+        if([403,404].includes(res.status))this.#clearManualDrafts();
         this.#publish({cases:null,sourceIndex:null,original:null,recordsPhase:'error',importOutcome:'rejected',
           ...([403,404].includes(res.status)?{...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence(),...this.#evidenceSession.reset()}:{}),
           importMessage:'The server rejected this import. Reload current case permissions; no success is claimed.'});return;

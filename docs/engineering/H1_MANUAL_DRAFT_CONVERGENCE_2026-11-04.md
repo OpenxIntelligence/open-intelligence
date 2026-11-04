@@ -41,12 +41,29 @@ Other sibling work is not implicitly incorporated or qualified.
 - Tests first: all 505 current tests passed; 15 new cases failed for the missing
   draft interface/behavior. Conflict-marker syntax failures during composition
   are not counted as behavioral proof.
-- After composition: 520 client tests pass, zero failures/skips; TypeScript/Vite
+- After composition: 520 client tests passed; after the review repair below,
+  533 client tests pass, zero failures/skips; TypeScript/Vite
   production build passes. The existing bundle-size advisory remains.
 - Synthetic-data boundary audit and changed browser-helper syntax pass.
-- Dependency-rights inspection, independent source review, hosted actual
-  PostgreSQL/FastAPI/Chromium journey and retained artifact inspection are pending
-  on the composed head. Parent results do not qualify this composition.
+- Dependency-rights inspection passes: 13 controls, 18 installed packages,
+  two absent optional packages explicitly uninspected.
+- Initial composed head `5b2dfecae8c33eb8da822110fd7e3bb8bc65a9dc` passed
+  hosted run 41829904361, including the actual PostgreSQL/FastAPI/Chromium journey.
+  This result predates the additional refresh repair and is not final acceptance.
+
+Independent review found one Important defect: the donor's unconditional manual
+draft reset erased unsent references during same-case case-map, source and World
+Model refresh. Thirteen new behavioral cases cover success, temporary failure,
+403/404 denial, inactive mapping and old callback isolation; six retention cases
+failed before repair. A same-case reset now invalidates old store callbacks while
+retaining references for fresh checks. Authoritative denial or inactive mapping
+clears them. Patient/session/case changes retain their clearing behavior. The
+browser additionally reloads cases, sources, World Model and question history
+before verifying both unsent passages and zero writes.
+
+Review of the repair, hosted acceptance on the corrected head and retained
+artifact inspection remain pending. Parent or superseded results do not qualify
+this composition.
 
 The final PR receipt must record the exact commit/tree, run and artifact identity,
 review findings and remaining limitations. This checkpoint does not close the

@@ -4,7 +4,8 @@ import {QuestionPassageClient,decodeManualContext,decodeSelection} from '../.tes
 import * as manualModule from '../.test-dist/question-passages.js';
 import {decodeEvidenceReport} from '../.test-dist/authored-evidence.js';
 import {RegistrySession} from '../.test-dist/registry-client.js';
-import {question,report,reportId,patientId,caseId,questionId,hash,ready,transportFor,response,packet,world,deferred} from './authored-evidence-fixtures.mjs';
+import {question,report,reportId,patientId,caseId,questionId,hash,ready,transportFor,response,packet,world,deferred,cases} from './authored-evidence-fixtures.mjs';
+import {sourceIndex} from './source-images-fixtures.mjs';
 
 const scope={patient_id:patientId,case_id:caseId,question_id:questionId};
 function sign(value){const {context_sha256,access_receipt_id,...content}=value;return {...value,context_sha256:hash(content)};}
@@ -250,4 +251,41 @@ for(const status of [400,409,422])test(`definitive save rejection ${status} reta
  assert.equal(store.read(),draft,'known rejection must not discard unsent work');
  await client.load();assert.equal(client.snapshot().draftStatus,'conflict');assert.deepEqual(client.snapshot().chosen,[]);
  await client.discardDraft();assert.equal(store.read(),null);assert.equal(client.snapshot().draftStatus,'none');
+});
+
+for(const [suffix,refresh] of [
+ ['/case-bindings',s=>s.loadCases()],['/sources',s=>s.loadSources(caseId)],['/world-model',s=>s.loadWorldModel(caseId)],
+])for(const status of [200,503,403,404])test(`same-case ${suffix} refresh ${status} retains only reauthorizable drafts`,async()=>{
+ let override=false,writes=0;const fallback=transportFor(()=>response(packet()));
+ const session=new RegistrySession((url,init)=>{
+  if(init.method==='POST')writes++;
+  if(override&&url.endsWith(suffix)&&status!==200)return response({},status);
+  return url.endsWith('/sources')?response(sourceIndex()):fallback(url,init);
+ });
+ await ready(session);const oldStore=session.manualPassageDraftStore(scope);
+ const draft=Object.freeze({expected_context_sha256:context(true).context_sha256,references:Object.freeze([ref()])});
+ oldStore.write(draft);override=true;await refresh(session);
+ assert.equal(oldStore.read(),null,'refresh invalidates prior callbacks and withholds draft access');
+ override=false;await session.loadCases();await session.loadWorldModel(caseId);await session.loadSavedQuestions(caseId);
+ const fresh=session.manualPassageDraftStore(scope),retained=[200,503].includes(status);
+ assert.equal(fresh.read(),retained?draft:null,'temporary rechecks retain references; authority denial clears them');
+ if(retained){
+  let checks=0;const client=new QuestionPassageClient(scope,async()=>({status:200,body:context(true)}),undefined,fresh,async()=>{checks++;return selectionReply();});
+  assert.deepEqual(client.snapshot().chosen,[]);await client.load();
+  assert.equal(checks,1);assert.equal(client.snapshot().chosen.length,1);
+ }
+ const replacement=Object.freeze({...draft,references:Object.freeze([])});fresh.write(replacement);
+ oldStore.write(null);oldStore.write(draft);assert.equal(fresh.read(),replacement,'late old callbacks cannot erase or replace a new draft');
+ assert.equal(writes,0);
+});
+
+test('same-patient mapping refresh clears a draft when its case is no longer active',async()=>{
+ let omit=false;const fallback=transportFor(()=>response(packet()));
+ const session=new RegistrySession((url,init)=>{
+  if(omit&&url.endsWith('/case-bindings')){const value=cases();value.mappings=value.mappings.filter(c=>c.case_id!==caseId);return response(value);}
+  return fallback(url,init);
+ });
+ await ready(session);session.manualPassageDraftStore(scope).write(Object.freeze({expected_context_sha256:context(true).context_sha256,references:Object.freeze([ref()])}));
+ omit=true;await session.loadCases();omit=false;await session.loadCases();await session.loadWorldModel(caseId);await session.loadSavedQuestions(caseId);
+ assert.equal(session.manualPassageDraftStore(scope).read(),null);
 });

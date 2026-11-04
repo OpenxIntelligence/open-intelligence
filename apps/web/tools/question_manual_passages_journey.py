@@ -80,7 +80,7 @@ def exercise(cd,patient_id,token,credentials,write_grants,artifacts):
         row='.question-items li[data-question-id="'+question_id+'"]'
         cd.wait('Boolean(document.querySelector('+json.dumps(row)+'))','manual question visible')
         click(row+' [data-testid=authored-evidence-open]')
-        cd.wait("document.querySelector('[data-testid=manual-context-status]')?.textContent.includes('inspected') || Boolean(document.querySelector('[data-testid=manual-context-retry]'))",'fresh manual context or scoped recovery')
+        cd.wait("document.querySelector('[data-testid=manual-context-status]')?.textContent.includes('inspected') || document.querySelector('[data-testid=manual-context-status]')?.textContent.includes('restored') || Boolean(document.querySelector('[data-testid=manual-context-retry]'))",'fresh manual context or scoped recovery')
     try:
         open_workspace()
         from followthrough_journey import fill
@@ -108,6 +108,9 @@ def exercise(cd,patient_id,token,credentials,write_grants,artifacts):
         click('[data-testid=evidence-refresh]')
         cd.wait("document.querySelectorAll('[data-testid=manual-context-selected] blockquote').length===2 && "
                 "Boolean(document.querySelector('[data-testid=manual-context-unsaved]'))",'evidence refresh retains unsent passage choices')
+        open_workspace()
+        cd.wait("document.querySelectorAll('[data-testid=manual-context-selected] blockquote').length===2 && "
+                "Boolean(document.querySelector('[data-testid=manual-context-unsaved]'))",'case, source and world refresh retains reauthorized unsent passages')
         assert cd.evaluate('window.__manualJourney.posts.length')==0
         click('[data-testid=manual-context-save]')
         cd.wait("Boolean(document.querySelector('[data-testid=manual-context-retry]'))",'lost committed response retains exact intent')
@@ -191,6 +194,7 @@ def exercise(cd,patient_id,token,credentials,write_grants,artifacts):
             recovery_survives_refresh_and_denial=True,unsaved_removal_blocks_report=True,
             preparation_navigation_preserves_retry=True,unsent_task_excluded_from_agenda=True,
             unsent_passage_navigation_reauthorized=True,unsent_passage_refresh_preserved=True,
+            unsent_passage_case_source_world_refresh_preserved=True,
             unsent_removal_refresh_preserved=True,unsent_navigation_passage_writes=0,
             navigation_task_writes=cd.evaluate('window.__manualJourney.taskWrites'),
             structured_assertion_count=1,clinical_approval=False),indent=2))
