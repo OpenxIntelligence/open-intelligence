@@ -220,7 +220,8 @@ def main():
                     replacement_question_id=replacement_question_id,
                     authored_question_id=authored_question_id)
                 followthrough.finish(new_receipt['source_id'],credentials,write_grants,
-                    Path(os.environ.get('OI_WEB_ARTIFACT_DIR',ROOT/'apps/web/.evidence')))
+                    Path(os.environ.get('OI_WEB_ARTIFACT_DIR',ROOT/'apps/web/.evidence')),
+                    current_question_id=authored_question_id)
                 evidence.finish(credentials,write_grants,
                     Path(os.environ.get('OI_WEB_ARTIFACT_DIR',ROOT/'apps/web/.evidence')),
                     current_question_id=authored_question_id)
@@ -238,7 +239,7 @@ def main():
                 from authored_evidence_journey import exercise as exercise_evidence
                 from evidence_continuity_journey import exercise as exercise_evidence_continuity
                 exercise_evidence(cd,pid,case,connected_question['question_id'],new_receipt['source_id'],
-                    credentials,write_grants,directory,questions.artifacts,restart_api,
+                    credentials,write_grants,directory,questions.artifacts,restart_api,add_synthetic,
                     on_report=lambda report,path,body:exercise_evidence_continuity(cd,pid,case,
                         connected_question['question_id'],new_receipt['source_id'],credentials,
                         write_grants,questions.artifacts,report,path,body))
