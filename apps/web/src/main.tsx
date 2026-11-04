@@ -88,6 +88,14 @@ function App(){
          <p><strong>{finding.finding_key}</strong> · reported state: {finding.reported_state} · line {finding.source_line}</p>
          <blockquote data-testid="source-statement">{finding.source_statement}</blockquote>
          <small>Review state: not established · <code>{finding.source_id}</code></small>
+         {state.sourceIndex?.sources.some(source=>source.source_id===finding.source_id&&source.state==='current')&&
+           <div className="actions"><button type="button" data-testid="ask-source-question"
+             disabled={busy||state.recordsPhase.startsWith('loading')||state.worldPhase==='loading'}
+             onClick={()=>{const caseId=state.sourceIndex!.case_id;
+               navigate('Investigations');
+               void session.beginQuestionFromSourceReading(caseId,finding.source_id,finding.source_line);}}>
+             Ask about this statement
+           </button></div>}
         </li>)}</ul>}
        <p className="muted">Amendments are preserved as separate versions. Research/review invalidation is not yet integrated with this PostgreSQL screen.</p>
       </section>}
