@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -43,7 +44,8 @@ def make_packet(challenge: dict[str, Any], original: dict[str, Any]) -> dict[str
     return {**packet, "packet_sha256": digest(packet)}
 
 
-def validate_packet(value: Any) -> dict[str, Any]:
+def validate_packet(value: Any, challenge: dict[str, Any] | None = None,
+                    original: dict[str, Any] | None = None) -> dict[str, Any]:
     """Strictly validate packet identity and that no gold labels leaked."""
     if type(value) is not dict or set(value) != {
         "contract", "purpose", "schema_manifest_sha256", "schema", "tasks", "rules",
@@ -63,6 +65,18 @@ def validate_packet(value: Any) -> dict[str, Any]:
         raise ValueError("Question packet contains unexpected labels")
     if len({t["id"] for t in value["tasks"]}) != 72:
         raise ValueError("Duplicate question identifiers")
+    for task in value["tasks"]:
+        if (type(task["id"]) is not str or re.fullmatch(r"B-[0-9]{3}", task["id"]) is None
+                or type(task["question"]) is not str or not 8 <= len(task["question"]) <= 180
+                or any(ord(ch) < 32 or ord(ch) == 127 for ch in task["question"])):
+            raise ValueError("Malformed fictional question")
+    if (challenge is None) != (original is None):
+        raise ValueError("Both reference corpora are required for scoped validation")
+    if challenge is not None:
+        expected = [{"id": r["id"], "question": r["question"]}
+                    for r in validate_challenge(challenge, original)]
+        if value["tasks"] != expected:
+            raise ValueError("Question packet deviates from the authorized synthetic corpus")
     if value["rules"] != RULES:
         raise ValueError("Question safety rules changed")
     for flag in ("sql_execution_allowed", "patient_record_access_allowed",
@@ -91,10 +105,13 @@ def validate_packet(value: Any) -> dict[str, Any]:
 def write_packet(challenge_file: Path, original_file: Path, output_file: Path) -> dict[str, Any]:
     if output_file.exists() or output_file.is_symlink():
         raise FileExistsError("Refuse to overwrite a question packet")
-    packet = make_packet(_strict_read(challenge_file), _strict_read(original_file))
-    result = validate_packet(packet)
-    output_file.write_text(json.dumps(packet, sort_keys=True, indent=2) + "\n", encoding="utf-8")
-    if validate_packet(json.loads(output_file.read_text(encoding="utf-8"))) != result:
+    challenge = _strict_read(challenge_file)
+    original = _strict_read(original_file)
+    packet = make_packet(challenge, original)
+    result = validate_packet(packet, challenge, original)
+    with output_file.open("x", encoding="utf-8") as destination:
+        destination.write(json.dumps(packet, sort_keys=True, indent=2) + "\n")
+    if validate_packet(json.loads(output_file.read_text(encoding="utf-8")), challenge, original) != result:
         raise ValueError("Packet readback verification failed")
     return result
 
