@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {RegistrySession} from '../.test-dist/registry-client.js';
 import {downloadEvidenceReport} from '../.test-dist/authored-evidence.js';
-import {ready,transportFor,response,packet,questionId,patientId,caseId,reportId,report,digest,deferred} from './authored-evidence-fixtures.mjs';
+import {ready,transportFor,response,packet,questionId,patientId,caseId,reportId,report,digest,deferred,signPacket} from './authored-evidence-fixtures.mjs';
 
 const bodySeparator='--- BEGIN PRESERVED REPORT BODY ---\n';
 
@@ -56,4 +56,23 @@ test('patient change during fresh report read discards the download and its stat
   await s.read('PAT-EXAMPLE-002');waiting.resolve(response(report()));await downloading;
  });
  assert.equal(blobs.length,0);assert.equal(links.length,0);assert.equal(s.snapshot().evidenceReport,null);
+});
+
+test('impossible chronology on refresh clears a previously readable report and blocks its download',async()=>{
+ let damaged=false;
+ const s=new RegistrySession(transportFor(url=>{
+  if(url.includes('/evidence-reports/'))return response(report());
+  const p=packet();if(damaged)p.assessments[0].created_at='2026-02-30T12:00:00Z';
+  return response(signPacket(p));
+ }));
+ await ready(s);await s.loadQuestionEvidence(questionId);await s.readEvidenceReport(questionId,reportId);
+ assert.equal(s.snapshot().evidenceReport.body,report().body);
+ damaged=true;await s.loadQuestionEvidence(questionId);
+ assert.equal(s.snapshot().evidencePhase,'error');assert.equal(s.snapshot().evidencePacket,null);
+ assert.equal(s.snapshot().evidenceReport,null);
+ const {blobs,links}=await captureDownload(()=>downloadEvidenceReport(s,questionId,reportId));
+ assert.equal(blobs.length,0);assert.equal(links.length,0);
+ damaged=false;await s.loadQuestionEvidence(questionId);
+ await s.readEvidenceReport(questionId,reportId);
+ assert.equal(s.snapshot().evidenceReport.body,report().body,'valid explicit refresh recovers the unchanged report');
 });
