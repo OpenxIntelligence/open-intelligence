@@ -12,6 +12,7 @@ import importlib
 import importlib.util
 from pathlib import Path
 import unittest
+from unittest.mock import Mock, patch
 
 from alembic.config import Config
 from alembic.script import ScriptDirectory
@@ -211,6 +212,58 @@ class FollowthroughLogicTests(unittest.TestCase):
                     owner.PostgresQuestionFollowthrough(registry).list(
                         PATIENT, CASE, organization="ORG-ALPHA", actor="ACTOR-ALPHA",
                         purpose="operations", recheck_authority=lambda: None)
+
+
+class ManualDependencyHistoricalSchemaBoundaryTests(unittest.TestCase):
+    def test_known_pre_0016_tasks_have_no_manual_origin_but_current_schema_fails_closed(self):
+        # Historical migration tests seed real tasks before 0016; a missing
+        # child table at the *current* revision is never silently tolerated.
+        module = owner_module(self)
+        for revisions, expected_allowed in (
+            ([("0009_question_followthrough",)], True),
+            ([("0015_manual_report_context",)], True),
+            ([("0011_evidence_convergence",), ("0011_image_evidence_merge",)], True),
+            ([("0016_manual_task_dependency",)], False),
+            ([("unrecognized_version",)], False),
+            ([], False),
+            ([("0011_evidence_convergence",)] * 3, False),
+        ):
+            with self.subTest(revisions=revisions):
+                registry = PostgresPatientRegistry(Mock(autocommit=False))
+                registry._fetchone = Mock(return_value=(None,))
+                def rows(sql, params=()):
+                    if "FROM public.alembic_version" in sql:
+                        return revisions
+                    if ("FROM coordination.question_followthrough_tasks" in sql
+                            or "FROM coordination.question_followthrough_events" in sql):
+                        return []
+                    raise AssertionError("An absent manual child must not be queried")
+                registry._fetchall = Mock(side_effect=rows)
+                owner = module.PostgresQuestionFollowthrough(registry)
+                with patch.object(module.PostgresSourceQuestions, "project_locked", return_value=[]):
+                    if expected_allowed:
+                        output, questions, events = owner._read_locked(
+                            "PAT-FAKE", "CASE-ALPHA", "ORG-ALPHA", {}, "2026-11-04")
+                        self.assertEqual((output, questions, events), ([], {}, 0))
+                    else:
+                        with self.assertRaises(PatientRegistryError):
+                            owner._read_locked("PAT-FAKE", "CASE-ALPHA", "ORG-ALPHA", {}, "2026-11-04")
+                registry._fetchone.assert_called_once()
+
+    def test_declared_child_table_reads_normally_without_legacy_exemption(self):
+        module = owner_module(self)
+        registry = PostgresPatientRegistry(Mock(autocommit=False))
+        registry._fetchone = Mock(return_value=("coordination.question_followthrough_manual_dependencies",))
+        def rows(sql, params=()):
+            if "FROM public.alembic_version" in sql:
+                raise AssertionError("Current-schema reads must not use historical exemptions")
+            return []
+        registry._fetchall = Mock(side_effect=rows)
+        with patch.object(module.PostgresSourceQuestions, "project_locked", return_value=[]):
+            self.assertEqual(
+                module.PostgresQuestionFollowthrough(registry)._read_locked(
+                    "PAT-FAKE", "CASE-ALPHA", "ORG-ALPHA", {}, "2026-11-04"),
+                ([], {}, 0))
 
 
 class FollowthroughMigrationGraphTests(unittest.TestCase):
