@@ -2,7 +2,6 @@
 import contextlib
 import http.server
 import json
-import inspect
 from pathlib import Path
 import subprocess
 import sys
@@ -29,13 +28,6 @@ class BrowserStartupTests(unittest.TestCase):
 
     def wait(self, process, path, port, timeout=0.2):
         return browser_journey.wait_for_browser(process, path, port, timeout=timeout)
-
-    def test_default_chrome_startup_budget_is_bounded_and_does_not_change_app_waits(self):
-        startup = inspect.signature(browser_journey.wait_for_browser).parameters['timeout'].default
-        application = inspect.signature(browser_journey.wait_for).parameters['timeout'].default
-        self.assertGreaterEqual(startup, 20, 'cold Chrome startup must not expire at 12 seconds')
-        self.assertLessEqual(startup, 30, 'readiness must still fail within a bounded time')
-        self.assertEqual(application, 12, 'do not weaken in-page application waits')
 
     def test_early_exit_retains_code_and_bounded_escaped_stderr_tail(self):
         script = "import sys; sys.stderr.write('discard-me' + 'x'*10000 + '\\n::error::fixture\\x1b[31m\\xff'); sys.exit(23)"

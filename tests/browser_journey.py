@@ -60,13 +60,8 @@ def wait_for(callback, label: str, timeout: float = 12):
     raise AssertionError(f"Timed out waiting for {label}; last error: {last_error}")
 
 
-def wait_for_browser(browser, stderr_path: Path, debug_port: int, timeout: float = 25):
-    """Allow bounded CI cold-start time; still fail before any app assertion.
-
-    Hosted traces showed a live Chrome process announcing DevTools immediately
-    before the prior 12-second deadline. This allowance only covers Chrome
-    startup, not application waits, permission checks or browser assertions.
-    """
+def wait_for_browser(browser, stderr_path: Path, debug_port: int, timeout: float = 12):
+    """Keep startup failures actionable without relaxing the browser gate."""
     def targets():
         if browser.poll() is not None:
             raise AssertionError("Chrome exited before exposing a DevTools target")
