@@ -85,6 +85,83 @@ class ComposerInputFreshnessTest(unittest.TestCase):
         self.assertFalse(self.stale("CASE-ALPHA", run_id))
         self.assertEqual(self.question_state("CASE-ALPHA", self.qa), "open")
 
+    def test_amended_source_without_snapshot_stales_case_model_and_preserves_history(self):
+        # A model consumes current case assertions even if its saved output
+        # contains no claims and no review snapshot has been created.
+        other_question = self.store.add_question(
+            "CASE-ALPHA", "Which other fictional source observations are unresolved?")
+        first = self.save_model("CASE-ALPHA", self.qa)
+        same_case = self.save_model("CASE-ALPHA", other_question)
+        other_case = self.save_model("CASE-BETA", self.qb)
+        self.assertEqual(self.store.state("CASE-ALPHA")["snapshots"], [])
+        before = self.store.get_investigation("CASE-ALPHA", first)
+        original = self.store.db.execute(
+            "SELECT id,raw,sha256,state FROM source_versions "
+            "WHERE case_id=? AND document_id=? AND version=1",
+            ("CASE-ALPHA", "PATH-ALPHA")).fetchone()
+        self.assertIsNotNone(original)
+        original_bytes, original_hash = original["raw"], original["sha256"]
+
+        amended = (SYNTHETIC / "alpha-pathology-amended.txt").read_bytes()
+        changed = self.store.import_report("CASE-ALPHA", amended)
+        self.assertEqual(changed["result"], "imported")
+        self.assertEqual(changed["invalidated_snapshots"], [])
+        self.assertEqual(set(changed["invalidated_model_investigation_ids"]),
+                         {first, same_case})
+        self.assertTrue(self.stale("CASE-ALPHA", first))
+        self.assertTrue(self.stale("CASE-ALPHA", same_case))
+        self.assertFalse(self.stale("CASE-BETA", other_case))
+        self.assertEqual(self.question_state("CASE-ALPHA", self.qa), "open")
+        after = self.store.get_investigation("CASE-ALPHA", first)
+        for field in ("id", "abstentions", "claims", "dropped",
+                      "context_fingerprint", "created_at"):
+            self.assertEqual(after[field], before[field])
+        historical = self.store.db.execute(
+            "SELECT raw,sha256,state FROM source_versions WHERE id=?",
+            (original["id"],)).fetchone()
+        self.assertEqual(historical["state"], "superseded")
+        self.assertEqual(historical["raw"], original_bytes)
+        self.assertEqual(historical["sha256"], original_hash)
+
+        def source_event_count():
+            return self.store.db.execute(
+                "SELECT count(*) FROM events WHERE case_id=? AND kind='source_imported'",
+                ("CASE-ALPHA",)).fetchone()[0]
+
+        prior_events = source_event_count()
+        self.assertEqual(self.store.import_report("CASE-ALPHA", amended)["result"],
+                         "duplicate")
+        self.assertEqual(source_event_count(), prior_events)
+        self.store.close()
+        self.store = CaseStore(self.path)
+        self.assertTrue(self.stale("CASE-ALPHA", first))
+        self.assertTrue(self.stale("CASE-ALPHA", same_case))
+        self.assertFalse(self.stale("CASE-BETA", other_case))
+        self.assertEqual(source_event_count(), prior_events)
+
+    def test_amendment_reopens_model_question_but_not_unrelated_review_snapshot(self):
+        # An unrelated human-authored imaging review does not depend on
+        # PATH-ALPHA; the model still does because it saw the whole case.
+        imaging = self.store.import_report(
+            "CASE-ALPHA", (SYNTHETIC / "alpha-imaging.txt").read_bytes())
+        run = self.save_model("CASE-ALPHA", self.qa)
+        snapshot_id = self.store.create_snapshot(
+            "CASE-ALPHA", self.qa, "Independent fictional imaging-only review.",
+            [imaging["source_id"]])
+        self.store.acknowledge_demo_review(
+            "CASE-ALPHA", snapshot_id, "Synthetic reviewer")
+        self.assertEqual(self.question_state("CASE-ALPHA", self.qa), "addressed")
+
+        changed = self.store.import_report(
+            "CASE-ALPHA", (SYNTHETIC / "alpha-pathology-amended.txt").read_bytes())
+        self.assertEqual(changed["invalidated_snapshots"], [])
+        self.assertIn(run, changed["invalidated_model_investigation_ids"])
+        state = self.store.state("CASE-ALPHA")
+        self.assertEqual(next(s["state"] for s in state["snapshots"]
+                              if s["id"] == snapshot_id), "reviewed_in_demo")
+        self.assertTrue(self.stale("CASE-ALPHA", run))
+        self.assertEqual(self.question_state("CASE-ALPHA", self.qa), "open")
+
     def test_new_assessment_reopens_only_its_question(self):
         other_question = self.store.add_question(
             "CASE-ALPHA", "What different source issue is still uncertain?")
