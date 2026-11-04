@@ -1,6 +1,15 @@
 # Technology strategy — retained H1 and evaluated alternatives
 
+> **Current reconciliation checkpoint:** #354 remains the document candidate at `7b16a9a900737f07adb03e35362922c886424e9b`. The [existing convergence gate](../engineering/H1_EVIDENCE_CONVERGENCE_MERGE_GATE.md) records this dependent composition with accepted main `c4798ae` and #374 ancestry. Earlier checkpoints below retain their original scope and do not establish this combination's hosted acceptance.
+
 **Assessment:** 3 November 2026. This is a supplementary decision rationale, not an adoption record, dependency change, replacement roadmap, or production qualification. Work remains tracked in [EXECUTION_BACKLOG.csv](../EXECUTION_BACKLOG.csv), principally OI-004, OI-005, OI-010, OI-013 and GH-112.
+
+The current continuation composes frozen #368/#369/#362/#367 work into existing
+#354 at `d9b81f08a97998e8f95d2a1cc7c43b4165e99862`. **Local composition verified; exact combined hosted acceptance pending.** The
+[candidate record](../engineering/H1_CONNECTED_RIGHTS_CONVERGENCE.md#current-candidate--reviewed-document-convergence-in-354)
+pins those inputs. No dependency or architecture adoption occurs in this
+composition. The prior #355/#367 workflow/documentation contribution remains a
+historical checkpoint, not the current candidate designation.
 
 ## Governing outcome
 
@@ -10,7 +19,12 @@ The 3 November founder clarification makes patient autonomy, continuity, underst
 
 ## Evidence and exact current artifacts
 
-Live `main` at initial discovery was `24519839aa8ac1ea3aff88a956349ba72798a72a`. H1 evidence below comes from the selected draft [#276](https://github.com/OpenxIntelligence/open-intelligence/pull/276) lineage and the inspected integration working tree; it must not be reported as merged main or deployed functionality. See [PROJECT_STATE.md](PROJECT_STATE.md) for the integrated revision and verification results.
+Main was separately observed at `c4798ae85004713593f83458abd2102be6729095` and
+remains the Python/SQLite reference. The earlier discovery at `24519839...` and
+#276/#298 receipts below are historical. The current pins below are read from
+the existing #354 document candidate; this convergence preserves that exact set.
+H1 work is unmerged and undeployed. See [PROJECT_STATE.md](PROJECT_STATE.md) for
+the current local composition and pending combined verification.
 
 | Component | Inspected pins / evidence | Scope of the conclusion |
 |---|---|---|
@@ -18,15 +32,15 @@ Live `main` at initial discovery was `24519839aa8ac1ea3aff88a956349ba72798a72a`.
 | Web build artifacts | Overrides use `esbuild-wasm` **0.28.2** and `@rollup/wasm-node` **4.67.4**; Node engine minimum **22.12.0**. | Preserve exact artifact/notice checks; changing an alias or platform changes the reviewed set. |
 | API | FastAPI **0.162.0**, Pydantic **2.14.1**, SQLAlchemy **2.0.55**, Alembic **1.20.1**, Uvicorn **0.54.0**, pg8000 **1.31.6**. [Lock](../../apps/api/requirements.lock). | Existing H1 implementation; no framework replacement warranted by discovery. |
 | Runtime/database | Accepted Python **3.12** and PostgreSQL **16**; API CI pins Python **3.12.16** and `postgres:16.15-bookworm`. [Workflow](../../.github/workflows/h1-api.yml). | A CI tag is not whole-image, host, deployment or recovery qualification. |
-| Python dependency rights | **24** pinned wheels, **99** supplier all-target Rust crates, **13** embedded-runtime source-evidence entries. [Inventory](../../apps/api/dependency-license-inventory.json), [notices](../../apps/api/THIRD_PARTY_NOTICES.md). | Approved scope is local synthetic H1 development/evaluation on the recorded CPython 3.12 Linux x86_64 artifacts, without extras. |
+| Python dependency rights | **25** pinned wheels, including retained **pypdf 6.21.4**; **99** supplier all-target Rust crates and **13** embedded-runtime source-evidence entries. [Inventory](../../apps/api/dependency-license-inventory.json), [notices](../../apps/api/THIRD_PARTY_NOTICES.md). | Scoped synthetic H1 development/evaluation on the recorded artifacts, without extras. Supplier/source inventories are not proof that every listed native component is linked into the release. |
 | Web dependency rights | Lock integrity plus installed license/notice inspection; noninstalled optional packages remain uninspected. [Gate](../../apps/web/tools/license-gate.mjs). | Gate records local fictional development, not commercial release clearance or independently verified native linkage. |
 | Existing verification | TypeScript plus Node's test runner; actual built React → FastAPI → PostgreSQL journey driven by Chromium/CDP. [Scripts](../../apps/web/package.json), [browser journey](../../apps/web/tools/browser_journey.py). | Playwright, Vitest and Cypress are not the current H1 harness merely because catalogs name them. |
 
 The web package is private and marked `UNLICENSED`; no first-party distribution license is selected. The Python inventory retains cumulative native/historical terms, including the Mako inherited-notice issue and pydantic-core's broader native notice set. OS images, Python distribution, PostgreSQL server, developer tools, clinical content and model weights are outside that dependency clearance.
 
-## Immediate metadata slice and source-screening checkpoint — 3 November 2026
+## Historical metadata-slice and source-screening checkpoint — 3 November 2026
 
-The selected #293 baseline and current [#298 metadata/citation integration](https://github.com/OpenxIntelligence/open-intelligence/pull/298) use the same H1 dependency pins. Manifest and lockfile inspection found no dependency change for this increment. The source screen below is supporting research for existing OI-004/008/013 and the canonical technology/rights registers; it is not a new master catalog or an adoption decision. [Implementation state](PROJECT_STATE.md#evidence-metadata-slice--implementation-present-acceptance-pending) and [operation-specific data rights](../safety-packet/DATA_RIGHTS.md#h1-metadata-and-citation-boundary--3-november-2026) remain separate evidence.
+The then-selected #293 baseline and [#298 metadata/citation integration](https://github.com/OpenxIntelligence/open-intelligence/pull/298) used the same H1 dependency pins; no dependency changed in that increment. The source screen below preserves that historical research, including its then-unselected pypdf 6.21.2 example. The current document owner instead retains the separately qualified pypdf 6.21.4 artifact above. This is supporting research for existing OI-004/008/013 and the canonical registers, not a new catalog or adoption decision. [Historical implementation state](PROJECT_STATE.md#evidence-metadata-slice--verified-draft-integration) and [operation-specific data rights](../safety-packet/DATA_RIGHTS.md#h1-metadata-and-citation-boundary--3-november-2026) remain separate evidence.
 
 | Existing component | Exact retained version and rights evidence | Immediate metadata-slice use and limit |
 | --- | --- | --- |
@@ -162,4 +176,64 @@ Before adding a candidate, record in the existing architecture/rights owners:
 4. Representative correctness, authority/isolation, accessibility, reliability and performance evidence, including failure/abstention behavior where relevant.
 5. Full operational cost, deployment complexity, export/exit path and boundaries that preserve independent patient/clinical ownership.
 
-**Verified continuation:** the bounded patient-authored question/exact-source packet integration into the existing review/brief/intake owners passed its hosted gates without a new library or infrastructure; see [implementation evidence](IMPLEMENTATION_EVIDENCE.md). The next integration should connect the existing evidence/report owners through explicit canonical H1 persistence and clinical-store adapters. Broader stack selection follows demonstrated need through the existing backlog, while real-data, identity/consent, clinical safety and deployment qualification remain explicit stages.
+**Current continuation:** #328 already connects fictional evidence originals, literal comparisons and immutable reports through the canonical H1 PostgreSQL owners. The local #330/#335/#339 composition preserves those owners and requires its own hosted acceptance; see [current state](PROJECT_STATE.md) and [continuity evidence](../engineering/H1_EVIDENCE_CONTINUITY.md). Reviewed PDF passages, DOI metadata and clinical-store adapters retain separate candidates. Broader stack selection follows demonstrated need through the existing backlog, while real-data, identity/consent, clinical safety and deployment qualification remain explicit stages.
+
+## Discovery expansion — capability-specific comparisons, 3 November 2026
+
+This source-level screen extends the existing atlas, OI-17 process and
+OI-004/005/006/008/009/010/013 work. It does not add dependencies or change the
+accepted H1 stack. Proposed experiments have not run. Existing source hashes,
+line anchors, retries, revocation, stale-response suppression and recovery tests
+are the comparison baseline, not newly discovered missing controls.
+
+| Candidate and official source | Current disposition | Bounded comparison and exit condition |
+| --- | --- | --- |
+| [UCUM-LHC](https://github.com/LHNCBC/ucum-lhc) | Research; artifact Hold | Compare a governed unit mapping on fictional values. Preserve original value/unit and version; reject incompatible dimensions and ambiguous substance-specific conversions. Adopt only for demonstrated coverage need. |
+| [HL7 FHIR Validator](https://github.com/hapifhir/org.hl7.fhir.core) | Research | Validate a read-only fictional adapter projection for a selected FHIR version/profile, including invalid cardinality, references and terminology. No second patient store or FHIR server is implied. |
+| [Docling](https://github.com/docling-project/docling) | Research; models Hold | Compare the existing manual/deterministic document path against fictional document classes, preserving original hashes, page/box/span locators and unresolved extraction. Separate code, model, native-parser and download rights. |
+| [Pandera](https://pandera.readthedocs.io/en/stable/lazy_validation.html) | Hold | Evaluate only for a concrete batch/table workload. Compare against current Pydantic/SQL/application rules, preserving rejected rows, missingness and source-row identity. |
+| [OpenLineage](https://openlineage.io/docs/spec/object-model/) | Hold for integration | Try a local JSON mapping of source, attempt, review and amendment events only when a consumer needs it. Canonical evidence history remains authoritative; no lineage server is selected. |
+| [OpenTelemetry Python](https://github.com/open-telemetry/opentelemetry-python) | Retain existing API; Hold expansion | The API artifact is already locked. Before adding instrumentation/export, prove an allowlisted diagnostic payload excludes fictional canaries in source text, headers, queries and exceptions. Audit history remains separate. |
+| [Temporal](https://docs.temporal.io/develop/python) | Hold | First run crash, duplicate, retry and revoked-authority scenarios against existing PostgreSQL commands. Compare an engine only for a demonstrated orchestration gap, retaining one canonical effect and current authority at commit. |
+| [Hypothesis](https://hypothesis.readthedocs.io/en/latest/stateful.html) | Research; artifact Hold | Start with an independent deterministic two-patient/delegate action oracle. Consider generated sequences only if they expose reproducible additional defects; do not reuse the production permission function as the oracle. |
+| [Schemathesis](https://schemathesis.readthedocs.io/en/latest/reference/checks/) | Research; artifact Hold | Compare malformed/authentication/stateful API cases using synthetic credentials, while retaining explicit patient, purpose and delegation assertions. Prove linked operations ran and failures reproduce. |
+| [PDF.js](https://mozilla.github.io/pdf.js/api/draft/api.js.html) | Research | Compare exact-version viewing using fictional originals and amendments. Require authorized initial/range fetches, stable page locators, worker teardown, keyboard/error behavior and no stale patient content after context change. |
+
+### Corrections that affect candidate qualification
+
+- `opentelemetry-api==1.45.2` already appears in the API lock and exact-wheel
+  inventory, SHA-256 `2cbd737377e710ee740d261c94e93fa0f08e6d037c18f17513cc0a2d94479a34`.
+  Targeted H1 source inspection found no application-level activation. API
+  presence does not establish an SDK/exporter/collector or telemetry pipeline.
+- [Hypothesis's root license](https://github.com/HypothesisWorks/hypothesis/blob/master/LICENSE.txt)
+  is MPL-2.0 with identified exceptions. Schemathesis has MIT root terms but its
+  [stateful path](https://schemathesis.readthedocs.io/en/stable/guides/stateful-testing/)
+  uses Hypothesis. Record the actual dependency closure and intended test scope.
+- [UCUM-LHC's notice](https://github.com/lhncbc/ucum-lhc/blob/master/LICENSE.md)
+  has BSD-based terms plus applicable UCUM and LOINC content conditions. A plain
+  BSD-3-Clause label is insufficient artifact evidence.
+- Docling distinguishes MIT code from individual model licenses. Its
+  [remote-service opt-in](https://docling-project.github.io/docling/usage/advanced_options/)
+  does not control model-weight downloads; a future offline evaluation needs
+  separate selected-model and acquisition evidence.
+- Temporal's documented
+  [regular-activity cancellation](https://docs.temporal.io/develop/python/workflows/cancellation)
+  depends on heartbeats. Cancellation is operational signaling; consequential
+  commits must still recheck current authority.
+
+### Maintain the existing discovery owners
+
+For each investigated capability, extend the existing atlas/register entry with
+the canonical domain and requirement IDs, implementation owner and source head,
+comparison baseline, exact candidate/artifact and rights status, observed test
+or benchmark result, acceptance/exit condition, accountable decision and next
+review trigger. A branch owner is not automatically the accountable reviewer.
+Deduplicate candidate URLs before adding rows. Most projects above are already
+catalogued; UCUM-LHC, Pandera, Hypothesis and Schemathesis were absent from the
+targeted OI-12/strategy search but still require registry-wide deduplication.
+
+The ongoing discovery mandate does not establish an operating scheduled job or
+approve automatic acquisition/adoption. Keep proposed experiments explicitly
+unexecuted until the relevant capability and artifact gates are met. No new
+service, model, package, outreach, real-person data acquisition or schedule was
+created by this research.
