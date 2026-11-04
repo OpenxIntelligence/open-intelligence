@@ -161,6 +161,37 @@ class LiteratureHttpTests(unittest.TestCase):
             self.assertEqual(self.request()[0], 200)
         self.assertEqual(self.provider.call_count, 2)
 
+    def test_literature_response_is_written_after_releasing_request_lock(self):
+        """A completed provider call must not expose a response while still busy.
+
+        Inspect the real server-side response boundary, not the inherently
+        racy lock state in the HTTP client after it receives a response.
+        """
+        original_json = self.handler._json
+        observed = []
+
+        def checked_json(handler, status, payload):
+            if handler.path.startswith("/api/literature/search"):
+                self.assertFalse(
+                    handler.literature_request_lock.locked(),
+                    "the public response was written before cleanup finished",
+                )
+                observed.append(status)
+            return original_json(handler, status, payload)
+
+        with patch.object(self.handler, "_json", checked_json):
+            with patch("open_intelligence.__main__.monotonic",
+                       side_effect=[100.0, 100.25]):
+                self.assertEqual(self.request()[0], 200)
+                status, denial = self.request()
+                self.assertEqual((status, denial["code"]), (429, "rate_limited"))
+            self.handler.literature_last_request = None
+            self.provider.side_effect = LiteratureError("transport_failed")
+            status, failure = self.request()
+            self.assertEqual((status, failure["code"]), (502, "provider_unavailable"))
+        self.assertEqual(observed, [200, 429, 502])
+        self.assertFalse(self.handler.literature_request_lock.locked())
+
     def test_only_one_inflight_request_can_reach_adapter(self):
         entered, release = threading.Event(), threading.Event()
         def blocked_provider(*args, **kwargs):
