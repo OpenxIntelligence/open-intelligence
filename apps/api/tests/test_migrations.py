@@ -94,6 +94,8 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
             conn.execute(text("DROP TABLE IF EXISTS investigation.evidence_catalog_records"))
             conn.execute(text("DROP TABLE IF EXISTS investigation.evidence_command_origins"))
             conn.execute(text("DROP FUNCTION IF EXISTS investigation.guard_evidence_command_origin_insert()"))
+            conn.execute(text("DROP TABLE IF EXISTS investigation.question_passage_revisions"))
+            conn.execute(text("DROP FUNCTION IF EXISTS investigation.guard_question_passage_revision()"))
             conn.execute(text("DROP TABLE IF EXISTS investigation.evidence_commands"))
             conn.execute(text("DROP TABLE IF EXISTS investigation.question_evidence_reports"))
             conn.execute(text("DROP TABLE IF EXISTS investigation.question_evidence_assessments"))
@@ -110,6 +112,11 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
             conn.execute(text("DROP TABLE IF EXISTS investigation.source_questions"))
             conn.execute(text("DROP FUNCTION IF EXISTS investigation.guard_question_insert()"))
             conn.execute(text("DROP SCHEMA IF EXISTS investigation"))
+            conn.execute(text("DROP TABLE IF EXISTS clinical_source.annotation_revisions"))
+            conn.execute(text("DROP TABLE IF EXISTS clinical_source.document_intakes"))
+            conn.execute(text("DROP TABLE IF EXISTS clinical_source.source_image_links"))
+            conn.execute(text("DROP TABLE IF EXISTS clinical_source.dicom_objects"))
+            conn.execute(text("DROP FUNCTION IF EXISTS clinical_source.guard_image_source_link()"))
             conn.execute(text("DROP TABLE IF EXISTS clinical_source.assertions"))
             conn.execute(text("DROP TABLE IF EXISTS clinical_source.quarantine"))
             conn.execute(text("DROP TABLE IF EXISTS clinical_source.source_versions"))
@@ -159,10 +166,16 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
         probe = Database(self.settings)
         self.addCleanup(probe.close)
         self.assertEqual(probe.check().status, "schema_mismatch")
+        with self.assertRaisesRegex(RuntimeError, "Unsupported migration state"):
+            with probe.registry_connection():
+                self.fail("Unknown revisions must not admit domain operations")
 
         with self.engine.begin() as conn:
             conn.execute(text("INSERT INTO public.alembic_version VALUES (:revision)"), {"revision": SCHEMA_REVISION})
         self.assertEqual(probe.check().status, "schema_mismatch")
+        with self.assertRaisesRegex(RuntimeError, "Unsupported migration state"):
+            with probe.registry_connection():
+                self.fail("Multiple revisions must not admit domain operations")
 
     def test_failed_migration_rolls_back_ddl_and_keeps_readiness_false(self):
         def fail_after_ddl(config, revision):
