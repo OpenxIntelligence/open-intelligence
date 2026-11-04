@@ -46,7 +46,9 @@ export function SecondOpinionPreparation({state,onNavigate,onResumeQuestion}:{st
      <ol className="second-opinion-agenda-list" aria-label="Saved discussion questions">
       {view.agenda.preview.map(item=><li key={item.questionId} data-testid="second-opinion-agenda-item" data-question-id={item.questionId} data-source-context={item.sourceContextState}>
        <p className="second-opinion-agenda-question">{item.text}</p>
-       {state.manualPassageDraftQuestionIds.includes(item.questionId)&&<button type="button" data-testid="second-opinion-resume-passages" onClick={()=>onResumeQuestion(item.questionId)}>Resume unsaved record passages</button>}
+       {state.manualPassageDraftQuestionIds.includes(item.questionId)?
+        <button type="button" data-testid="second-opinion-resume-passages" onClick={()=>onResumeQuestion(item.questionId)}>Resume unsaved record passages</button>:
+        <button type="button" data-testid="second-opinion-open-question" aria-label={'Inspect records and reports for: '+item.text} onClick={()=>onResumeQuestion(item.questionId)}>Inspect records and reports</button>}
        <p className="small">Primary source version {item.sourceVersion}, line {item.sourceLine}. <strong>{item.sourceContextState==='source_reassessment_required'?'Source changed: reassessment required before relying on earlier preparation.':'Primary source context is current; not clinically reviewed.'}</strong></p>
        <section className="second-opinion-question-work" data-testid="second-opinion-question-work" data-work-state={item.work===null?'unavailable':'ready'} aria-label="Recorded follow-up for this question">
         <h4>Recorded follow-up</h4>
