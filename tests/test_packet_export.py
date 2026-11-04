@@ -18,7 +18,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from open_intelligence import CaseStore
-from open_intelligence.__main__ import Handler, seed
+from open_intelligence.__main__ import FICTIONAL_ACTOR_HEADER, Handler, seed
 from open_intelligence.changes import changes_since_review
 from open_intelligence.investigation import validate_output
 from open_intelligence.mission import build_patient_mission
@@ -352,7 +352,8 @@ class PacketHttpTests(unittest.TestCase):
         cls.tmp.cleanup()
 
     def get_json(self, path: str):
-        request = Request(f"http://127.0.0.1:{self.port}{path}")
+        request = Request(f"http://127.0.0.1:{self.port}{path}",
+                          headers={FICTIONAL_ACTOR_HEADER: "FICTIONAL-NAVIGATOR-A"})
         try:
             with urlopen(request, timeout=5) as response:
                 return response.status, response.headers.get_content_type(), json.loads(response.read())
@@ -360,7 +361,8 @@ class PacketHttpTests(unittest.TestCase):
             return error.code, error.headers.get_content_type(), json.loads(error.read())
 
     def get_text(self, path: str):
-        request = Request(f"http://127.0.0.1:{self.port}{path}")
+        request = Request(f"http://127.0.0.1:{self.port}{path}",
+                          headers={FICTIONAL_ACTOR_HEADER: "FICTIONAL-NAVIGATOR-A"})
         try:
             with urlopen(request, timeout=5) as response:
                 return response.status, response.headers.get_content_type(), response.read().decode("utf-8")
