@@ -48,7 +48,7 @@ class PostgresEHRParityTests(unittest.TestCase):
         async def install():
             db = await asyncpg.connect(dsn=DSN)
             try:
-                for name in ("001_contract.sql", "002_registry_port.sql", "003_encounter_port.sql"):
+                for name in ("001_contract.sql", "002_registry_port.sql", "003_encounter_port.sql", "004_note_provenance.sql"):
                     await db.execute((ROOT / "tools/research/postgres_bakeoff" / name).read_text())
             finally:
                 await db.close()
@@ -280,6 +280,57 @@ class PostgresEHRParityTests(unittest.TestCase):
                 self.ehr.note_history(self.pid, eid, "NOTE-ONE", **ACTOR)
         self.assertEqual(len(self.ehr.note_history(self.pid, eid, "NOTE-ONE", **ACTOR)), 2)
 
+
+
+    def test_specialty_note_provenance_parity_across_sqlite_and_postgres(self):
+        """Both first-party stores retain department/facility and note kind per version."""
+        normalized = []
+        for ehr, pid in ((self.oracle, self.sid), (self.ehr, self.pid)):
+            eid = self.start(ehr, pid)
+            a = ehr.write_note(
+                pid, eid, "NOTE-ONCOLOGY", "Independent fictional oncology consultation",
+                expected_version=0, facility_id="ORG-CANCER-CENTER",
+                department_id="DEPT-ONCOLOGY", note_kind="consultation",
+                request_key="NOTE-ONCOLOGY-ONE", **ACTOR)
+            b = ehr.write_note(
+                pid, eid, "NOTE-NEPHROLOGY", "Independent fictional kidney clinic history",
+                expected_version=0, facility_id="ORG-COMMUNITY-HOSPITAL",
+                department_id="DEPT-NEPHROLOGY", note_kind="history_and_physical",
+                request_key="NOTE-NEPHROLOGY-ONE", **ACTOR)
+            self.assertEqual(a["version"], 1)
+            self.assertEqual(b["version"], 1)
+            ehr.attest_note(pid, eid, "NOTE-ONCOLOGY", expected_version=1,
+                            request_key="NOTE-ONCOLOGY-ATTEST", **ACTOR)
+            ehr.write_note(pid, eid, "NOTE-ONCOLOGY", "Revised fictional consultation",
+                           expected_version=2, correction_reason="Correct synthetic wording",
+                           request_key="NOTE-ONCOLOGY-AMEND", **ACTOR)
+            oncology = ehr.note_history(pid, eid, "NOTE-ONCOLOGY", **ACTOR)
+            renal = ehr.note_history(pid, eid, "NOTE-NEPHROLOGY", **ACTOR)
+            self.assertEqual([r["facility_id"] for r in oncology], ["ORG-CANCER-CENTER"] * 3)
+            self.assertEqual([r["department_id"] for r in oncology], ["DEPT-ONCOLOGY"] * 3)
+            self.assertEqual([r["note_kind"] for r in oncology], ["consultation"] * 3)
+            self.assertEqual((renal[0]["facility_id"], renal[0]["department_id"], renal[0]["note_kind"]),
+                             ("ORG-COMMUNITY-HOSPITAL", "DEPT-NEPHROLOGY", "history_and_physical"))
+            normalized.append([{k: r[k] for k in ("version", "status", "body",
+                               "facility_id", "department_id", "note_kind")} for r in oncology])
+        self.assertEqual(normalized[0], normalized[1])
+
+    def test_provenance_relabel_replay_conflicts_and_unknown_remains_null(self):
+        eid = self.start()
+        args = dict(patient_id=self.pid, encounter_id=eid, note_key="NOTE-ONE",
+                    body="Independent fictional note", expected_version=0,
+                    department_id="DEPT-RADIOLOGY", facility_id="ORG-CANCER-CENTER",
+                    note_kind="progress", request_key="NOTE-PROVENANCE-ONE", **ACTOR)
+        first = self.ehr.write_note(**args)
+        self.assertEqual(self.ehr.write_note(**args), first)
+        with self.assertRaises(ClinicalConflict):
+            self.ehr.write_note(**dict(args, department_id="DEPT-PATHOLOGY"))
+        self.ehr.write_note(self.pid, eid, "NOTE-UNKNOWN", "Unknown provenance",
+                            expected_version=0, request_key="NOTE-UNKNOWN-ONE", **ACTOR)
+        unknown = self.ehr.note_history(self.pid, eid, "NOTE-UNKNOWN", **ACTOR)[0]
+        self.assertIsNone(unknown["facility_id"])
+        self.assertIsNone(unknown["department_id"])
+        self.assertIsNone(unknown["note_kind"])
 
 
 if __name__ == "__main__":
