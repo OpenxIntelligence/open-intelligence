@@ -30,6 +30,9 @@ LITERAL_MARKUP = '<img src=x onerror="window.oiIntakeMarkupExecuted=true">'
 ORIGINAL = ("\ufeffIndependently fictional text record: café\r\n" + ORIGINAL_QUOTE +
             "\r\n" + LITERAL_MARKUP + "\r\n").encode("utf-8")
 AMENDED = ORIGINAL.replace(b"amber placeholder", b"blue placeholder")
+# #140-stack-only: Composer (#composer-context) is absent from main 2451983.
+# Both Composer gates below skip by design when it is absent. No Composer shim.
+COMPOSER_ABSENT_SKIP = "skipped: #composer-context absent on main (#140-stack-only)"
 
 
 def ledger(db: str) -> str:
@@ -182,7 +185,9 @@ def main() -> None:
     receipt = {"status": "running", "fictional_inputs_only": True,
                "model_invoked": False, "clinical_validation": False,
                "original_sha256": hashlib.sha256(ORIGINAL).hexdigest(),
-               "amended_sha256": hashlib.sha256(AMENDED).hexdigest()}
+               "amended_sha256": hashlib.sha256(AMENDED).hexdigest(),
+               "composer_source_gate": "pending (#140-stack-only)",
+               "composer_refresh_gate": "pending (#140-stack-only)"}
     with tempfile.TemporaryDirectory(prefix="oi-document-browser-") as directory:
         work = Path(directory)
         db = str(work / "fictional-intake.sqlite")
@@ -280,12 +285,19 @@ def main() -> None:
             session.evaluate("document.querySelector('#question-form').requestSubmit()")
             session.wait("document.querySelectorAll('#question-list .question').length === 1",
                          "question created through the existing form")
-            session.wait("document.querySelector('#composer-context button[data-source-id=\"" + str(original_id) + "\"]') !== null && "
-                         "document.querySelector('#composer-context').textContent.includes('User-selected: pending')",
-                         "existing Composer includes the uploaded source and manual origin")
-            assert session.evaluate("document.querySelector('#composer-context').textContent.includes('Clinical review not performed')")
-            prior_context = session.evaluate("document.querySelector('#composer-context-fingerprint').value")
-            assert len(prior_context) == 64
+            # #140-stack-only Composer source-inclusion gate: skipped by design
+            # on main, where #composer-context is absent. No Composer shim.
+            if session.evaluate("document.querySelector('#composer-context') === null"):
+                receipt["composer_source_gate"] = COMPOSER_ABSENT_SKIP
+                prior_context = None
+            else:
+                session.wait("document.querySelector('#composer-context button[data-source-id=\"" + str(original_id) + "\"]') !== null && "
+                             "document.querySelector('#composer-context').textContent.includes('User-selected: pending')",
+                             "existing Composer includes the uploaded source and manual origin (#140-stack-only)")
+                assert session.evaluate("document.querySelector('#composer-context').textContent.includes('Clinical review not performed')")
+                prior_context = session.evaluate("document.querySelector('#composer-context-fingerprint').value")
+                assert len(prior_context) == 64
+                receipt["composer_source_gate"] = "checked (#140-stack-only)"
             session.evaluate("[...document.querySelectorAll('#source-choice input')].forEach(input => {input.checked = input.value === " + json.dumps(str(original_id)) + ";})")
             set_fields(session, {
                 "draft-observations": "The manually selected fictional passage states: " + ORIGINAL_QUOTE,
@@ -323,9 +335,15 @@ def main() -> None:
                     assert response.read() == raw, "Amendment replaced a preserved original"
             timeline = "[...document.querySelectorAll('#timeline-events .timeline-entry')].find(entry => entry.querySelector('.timeline-doc')?.textContent === " + json.dumps(DOCUMENT_ID) + ")"
             session.wait(timeline + "?.textContent.includes('2 report versions')", "both original versions on the existing timeline")
-            session.wait("document.querySelector('#composer-context-fingerprint').value !== " + json.dumps(prior_context) +
-                         " && document.querySelector('#composer-context button[data-source-id=\"" + str(current["id"]) + "\"]') !== null",
-                         "Composer refreshed to amended original source")
+            # #140-stack-only Composer amendment-refresh gate: skipped by design
+            # on main, where #composer-context is absent. No Composer shim.
+            if prior_context is None or session.evaluate("document.querySelector('#composer-context') === null"):
+                receipt["composer_refresh_gate"] = COMPOSER_ABSENT_SKIP
+            else:
+                session.wait("document.querySelector('#composer-context-fingerprint').value !== " + json.dumps(prior_context) +
+                             " && document.querySelector('#composer-context button[data-source-id=\"" + str(current["id"]) + "\"]') !== null",
+                             "Composer refreshed to amended original source (#140-stack-only)")
+                receipt["composer_refresh_gate"] = "checked (#140-stack-only)"
             screenshot(session, "document-intake-amendment.png", "#source-list")
 
             # Hold the real next-case state read to expose the transition gap.
@@ -358,7 +376,8 @@ def main() -> None:
                            historical_snapshot_state="stale", original_download_exact=True,
                            mobile_width=390, case_transition_checked=True)
             print("PASS: real text-file upload, read-only preview, exact manual source selection, "
-                  "safe original rendering/download, existing question/Composer/draft/export, "
+                  "safe original rendering/download, existing question/draft/export "
+                  "(Composer gates #140-stack-only, skipped when #composer-context absent), "
                   "amendment staleness, original preservation, 390px intake layout, "
                   "accessible labels and delayed case-switch isolation")
         except BaseException as error:

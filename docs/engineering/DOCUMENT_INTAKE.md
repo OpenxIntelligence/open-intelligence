@@ -1,9 +1,9 @@
 # Reviewed plain-text document intake
 
-Status: hosted engineering acceptance verified on 3 November 2026; draft and
-unmerged in [PR #173](https://github.com/OpenxIntelligence/open-intelligence/pull/173). Extends OI-006, OI-007,
-OI-009 and OI-010; this is a bounded source-ingestion feature, not a new platform
-architecture or clinical release.
+Status: UNVERIFIED — inspection-only partial rebase onto main 2451983; draft and
+unmerged. Hosted engineering acceptance on this tree is NOT verified and is a
+reviewer item. Extends OI-006, OI-007, OI-009 and OI-010; this is a bounded
+source-ingestion feature, not a new platform architecture or clinical release.
 
 ## User outcome
 
@@ -87,51 +87,56 @@ trusted identity/permissions through the canonical patient/adapter owners.
 
 ## Verification receipt
 
-The implementation at `fe8a6368245bb52944e6ebc7f3e6f5b43daf69d0`
-passed [exact-head run 41550282180](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41550282180):
-349 Python/domain/HTTP tests, 47 JavaScript cases, 80 offline checks with 18
-optional dependency skips, and all five Chromium journeys. The new intake
-journey proves actual file selection, read-only preview, exact original byte
-download, visible manual classification, question/Composer/draft/export,
-amendment staleness, source history, field labels, 390 px layout and delayed
-case-switch isolation. No live model or patient-data service was invoked.
+UNVERIFIED on this tree. This partial rebase onto main 2451983 was checked by
+inspection only; nothing was executed here, and no hosted acceptance on this
+exact head is claimed. The reviewer runs the items below before any pass or
+acceptance statement. These are synthetic engineering checks, not clinical
+validation.
 
-[UI run 41550282107](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41550282107)
-also passed its 349 tests and existing integrated, source-dialog and keyboard/
-layout browser checks. It tested GitHub's generated merge `9477738cf5a9472747b6bf4e209fcf427c31fb2d`
-of the implementation into #140; the dedicated run above tested the authored
-head directly. Chromium 156.0.8078.47 / Python 3.13.17.
+What inspection covers on this branch (only): the excluded-Composer manifest
+(no `composer.py`/`composer.js` code, no `test_document_intake.py`, no Composer
+workflow), the preserved amendment-gated investigation staleness, main-anchor
+compatibility, and test-file presence/counts (14 intake HTTP tests for a
+236 + 14 = 250 Python denominator; 6 intake JS UI cases). Presence and
+arithmetic are not pass outcomes.
 
-The verified artifact `13191720636` has SHA-256
-`19ac5e28c1106657db91ec69cfc1221b80d678cd35724531970c41d1fcf9d636`.
-Its download digest matched; desktop/mobile screenshots were inspected and the
-intake receipt records `status=passed`, exact original download and two preserved
-source versions. These are synthetic engineering results, not clinical validation.
+### Prior-stack history (NOT verification of this rebase)
 
-### Local and earlier verification
+The following was earned on the #140 stack by the #173 implementation at
+`fe8a6368245bb52944e6ebc7f3e6f5b43daf69d0`, where Composer was present and the
+three #140 anchors were unadapted. It is retained as provenance for what
+motivated this rebase and must NOT be read as acceptance of this main-based
+tree: [exact-head run 41550282180](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41550282180)
+reported 349 Python/domain/HTTP tests, 47 JavaScript cases, 80 offline checks
+with 18 optional dependency skips, and five Chromium journeys, including the
+intake journey (file selection, read-only preview, exact original byte
+download, manual classification, question/Composer/draft/export, amendment
+staleness, source history, field labels, 390 px layout, delayed case-switch
+isolation); [UI run 41550282107](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41550282107)
+covered the generated merge `9477738cf5a9472747b6bf4e209fcf427c31fb2d` into
+#140 (Chromium 156.0.8078.47 / Python 3.13.17); artifact `13191720636`
+(SHA-256 `19ac5e28c1106657db91ec69cfc1221b80d678cd35724531970c41d1fcf9d636`)
+and its inspected screenshots belong to that same stack. Earlier local and
+first-attempt notes from that stack (349-count suite with 19 intake domain
+plus 14 HTTP tests, 6 JS intake cases, 43 targeted domain/Mission/timeline/
+change tests after the classification follow-up, and the 390 px overflow found
+in [run 41549856886](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41549856886)
+at `98d7ea1c6068a806d428840a035d827777b24d97`) likewise do not verify this
+rebase. No live model or patient-data service was invoked there; none is
+claimed here.
 
-Local application suite: 349 Python/domain/HTTP tests passed, including 19 new
-intake domain tests and 14 real HTTP tests. Six direct JavaScript intake cases
-pass. Existing source reader, line comparison, text-change and model-refresh
-JavaScript checks also pass. The no-patient-data CI guard passes. A focused
-follow-up carries manual classification into Patient Mission, timeline and the
-change-review projection; all 43 targeted domain/Mission/timeline/change tests
-passed after that follow-up. The mismatch test inspects every projected path.
+### Reviewer runs on this exact head (all UNVERIFIED until run)
 
-Independent review found and prompted corrections for out-of-range source IDs,
-lost manual classification provenance, and delayed case-switch UI actions.
-Original-byte retention, transaction rollback, concurrent amendments, stale
-model/snapshot handling and legacy v2 fingerprint compatibility are covered.
-
-Local Chromium is unavailable. `tests/document_intake_browser_journey.py` is the
-hosted acceptance gate; the executed result is recorded above.
-
-First hosted attempt at `98d7ea1c6068a806d428840a035d827777b24d97`
-([run 41549856886](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41549856886))
-passed the Python, offline and JavaScript checks, then exposed 14 px of intake
-panel overflow at a 390 px viewport. The layout correction constrains fieldset
-and native control widths; the strict browser assertion remains and passed in
-the subsequent exact-head run. The failed first attempt remains inspectable.
+1. `py_compile` + `node --check`; full Python suite (expected denominator
+   236 + 14 = 250); JS intake UI suite (expected 6 cases).
+2. `tests/document_intake_browser_journey.py` on Chromium; the two Composer
+   gates skip by design on main (`#composer-context` absent, #140-stack-only)
+   and the remaining intake flow must pass.
+3. Confirm the three #140-anchor adaptations against #173's original hunks;
+   confirm no behavior change to structured-fixture import.
+4. Lead sequencing: #140 beneath for the excluded manifest; order against
+   #337/#341 web-file changes. Record hosted results in the draft PR before
+   any acceptance claim.
 
 ### API
 
