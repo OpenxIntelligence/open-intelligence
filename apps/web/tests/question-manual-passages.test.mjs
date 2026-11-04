@@ -270,3 +270,26 @@ test('saving unsent choices transfers recovery to the exact command, and conflic
  assert.deepEqual(client.snapshot().chosen,[]);assert.equal(writes,1);
  assert.equal(manualModule.manualReportBinding(context(true),[],'idle','conflict').blocked,true);
 });
+
+for(const status of [503,403])test(`question list retry after ${status} distinguishes temporary failure from revoked authority`,async()=>{
+ let fail=false;const fallback=transportFor(()=>response(packet()));
+ const session=new RegistrySession((url,init)=>fail&&url.endsWith('/questions')?response({},status):fallback(url,init));
+ await ready(session);const store=session.manualPassageDraftStore(scope);
+ const draft=Object.freeze({expected_context_sha256:context(true).context_sha256,references:Object.freeze([ref()])});
+ store.write(draft);fail=true;await session.loadSavedQuestions(caseId);assert.equal(store.read(),null,'failed question read withholds draft access');
+ fail=false;await session.loadSavedQuestions(caseId);
+ assert.equal(session.manualPassageDraftStore(scope).read(),status===503?draft:null);
+ await session.loadSavedQuestions('CASE-OTHER');await session.loadSavedQuestions(caseId);
+ assert.equal(session.manualPassageDraftStore(scope).read(),null,'an actual case switch clears unsent choices');
+});
+
+for(const status of [400,409,422])test(`definitive save rejection ${status} retains the unsent reference set for explicit resolution`,async()=>{
+ const store=draftStore(),intent=draftStore();let changed=false;
+ const client=new QuestionPassageClient(scope,async body=>body?{status,body:null}:{status:200,body:context(!changed)},intent,store,async()=>selectionReply());
+ await client.load();client.choose(context().passages[0]);const draft=store.read();
+ changed=true;await client.replace([ref()]);
+ assert.equal(intent.read(),null,'a known rejection is not an uncertain commit');
+ assert.equal(store.read(),draft,'known rejection must not discard unsent work');
+ await client.load();assert.equal(client.snapshot().draftStatus,'conflict');assert.deepEqual(client.snapshot().chosen,[]);
+ await client.discardDraft();assert.equal(store.read(),null);assert.equal(client.snapshot().draftStatus,'none');
+});

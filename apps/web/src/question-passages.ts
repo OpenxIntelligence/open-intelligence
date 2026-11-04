@@ -148,13 +148,16 @@ export class QuestionPassageClient{
  }
  async retry(){if(this.#state.phase==='uncertain'&&this.#state.pending)await this.#send(this.#state.pending);}
  async #send(body:string){
-  const recovering=this.#state.phase==='uncertain';
+  const recovering=this.#state.phase==='uncertain',unsent=this.draftStore?.read();
   const generation=++this.#generation;this.#publish({phase:'saving',pending:body,chosen:[],draftStatus:'none',message:'Saving the exact selected reference set…'});
   this.draftStore?.write(null);
   try{const reply=await this.request(body);if(generation!==this.#generation)return;
    if([400,401,403,404,409,422].includes(reply.status)){
+    // A definitive validation/conflict rejection did not commit. Restore its
+    // unsent references, but never recover text after an authority denial.
+    if(!recovering&&unsent&&[400,409,422].includes(reply.status))this.draftStore?.write(unsent);
     this.#publish(recovering?{phase:'uncertain',packet:null,pending:body,message:'Recovery was denied. The earlier outcome remains unknown; restore permission and retry this exact intent.'}:
-     {phase:'error',packet:null,pending:null,message:reply.status===409?'The inspected context changed. Refresh before selecting again.':'Manual context save denied. Recheck current permissions.'});return;
+     {phase:'error',packet:null,pending:null,draftStatus:this.draftStore?.read()?'unverified':'none',message:reply.status===409?'The inspected context changed. Unsent references retained; refresh before resolving them.':'Manual context save denied. Recheck current permissions.'});return;
    }
    if(![200,201].includes(reply.status)||!exact(reply.body,['revision_id','question_id','duplicate'])||!id(reply.body.revision_id,'PASSAGES')||reply.body.question_id!==this.scope.question_id||typeof reply.body.duplicate!=='boolean'||reply.body.duplicate!==(reply.status===200))throw Error('Uncertain receipt');
    this.#publish({phase:'idle',packet:null,pending:null,message:'Saved exact manual context.'});await this.load();

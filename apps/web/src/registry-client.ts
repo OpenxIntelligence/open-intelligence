@@ -156,14 +156,15 @@ export class RegistrySession {
   #manualPassageIntents=new Map<string,string>();
   #manualPassageDrafts=new Map<string,import('./question-passages').ManualSelectionDraft>();
   #manualDraftEpoch=0;
-  #clearManualDrafts(){this.#manualDraftEpoch++;this.#manualPassageDrafts.clear();}
+  #manualDraftCase:string|null=null;
+  #clearManualDrafts(){this.#manualDraftEpoch++;this.#manualPassageDrafts.clear();this.#manualDraftCase=null;}
   manualPassageDraftStore=(scope:import('./question-passages').PassageScope):import('./question-passages').ManualDraftStore=>{
     const key=JSON.stringify([scope.patient_id,scope.case_id,scope.question_id]),epoch=this.#manualDraftEpoch,session=this.#scope;
     const current=()=>epoch===this.#manualDraftEpoch&&session===this.#scope&&this.#state.connected&&
       this.#state.patient?.patient_id===scope.patient_id&&this.#state.questionsCaseId===scope.case_id&&this.#state.questionListPhase==='ready'&&
       Boolean(this.#state.questions?.some(q=>q.question_id===scope.question_id&&q.case_id===scope.case_id&&q.patient_id===scope.patient_id));
     return {read:()=>current()?this.#manualPassageDrafts.get(key)??null:null,
-      write:draft=>{if(!current())return;if(draft===null)this.#manualPassageDrafts.delete(key);else this.#manualPassageDrafts.set(key,draft);}};
+      write:draft=>{if(!current())return;if(draft===null)this.#manualPassageDrafts.delete(key);else{this.#manualDraftCase=scope.case_id;this.#manualPassageDrafts.set(key,draft);}}};
   };
   manualPassageIntentStore=(scope:import('./question-passages').PassageScope):import('./question-passages').ManualIntentStore=>{
     const key=JSON.stringify([scope.patient_id,scope.case_id,scope.question_id]);
@@ -956,7 +957,7 @@ export class RegistrySession {
   }
 
   async loadSavedQuestions(caseId:string):Promise<void>{
-    if(this.#state.questionsCaseId!==caseId)this.#clearManualDrafts();
+    if(this.#manualDraftCase!==null&&this.#manualDraftCase!==caseId)this.#clearManualDrafts();
     if(this.#state.followthroughCaseId&&this.#state.followthroughCaseId!==caseId)this.#publish(this.#resetFollowthrough(caseId));
     this.#publish(this.#resetEvidence(caseId));
     this.dismissQuestionEvidence();
