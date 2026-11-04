@@ -9,7 +9,7 @@ from oi_api.question_passage_contracts import ManualContext, ReplaceQuestionPass
 from oi_api.reviewed_documents import selection_reference, fingerprint
 from oi_api.authored_evidence_contracts import checked_report_snapshot
 from oi_api.evidence_report import render_evidence_report
-from open_intelligence.patient_registry import PatientRegistryError
+from open_intelligence.patient_registry import PatientRegistryDenied, PatientRegistryError
 from open_intelligence.postgres_registry import PostgresPatientRegistry
 from oi_api.question_passages import QuestionPassages
 from oi_api.sources import PostgresSourceVersions
@@ -161,7 +161,10 @@ class ManualContextContracts(unittest.TestCase):
                        dict(revision_id=None),dict(references_sha256=True),
                        dict(extra='forged')):
             with self.subTest(change=change),patch.object(owner,'metadata_locked',return_value=historical) as read:
-                with self.assertRaises(PatientRegistryError):
+                expected = (PatientRegistryDenied if any(
+                    key in change for key in ('patient_id','case_id','question_id'))
+                    else PatientRegistryError)
+                with self.assertRaises(expected):
                     owner.manual_dependency_state_locked(scope,dependency|change)
                 if 'references_sha256' not in change or change['references_sha256']!='0'*64:
                     read.assert_not_called()
