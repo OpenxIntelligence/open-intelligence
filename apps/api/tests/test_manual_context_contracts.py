@@ -31,12 +31,18 @@ def manual_snapshot():
 
 class ManualContextContracts(unittest.TestCase):
     def test_only_known_legacy_schemas_may_lack_manual_metadata(self):
-        for revision in ('0010_authored_evidence_origin','0011_evidence_convergence','0012_reviewed_documents','0013_document_image_convergence'):
+        for revision in ('0010_authored_evidence_origin','0011_evidence_convergence',
+                         '0012_reviewed_documents','0012_image_report_convergence',
+                         '0013_document_image_convergence'):
             registry=Mock()
             registry._transaction_active=True
             registry._fetchone.return_value=(None,)
             registry._fetchall.return_value=[(revision,)]
-            self.assertIsNone(QuestionPassages(registry).metadata_locked({})['revision_id'])
+            legacy_context = QuestionPassages(registry).metadata_locked({})
+            self.assertEqual(
+                {key: legacy_context[key] for key in ('revision_id','revision','references','state')},
+                dict(revision_id=None,revision=0,references=[],state='current_unreviewed'),
+                'A known pre-passage owner must expose only empty unreviewed metadata')
             with self.assertRaisesRegex(RuntimeError,'owner unavailable'):
                 QuestionPassages(registry).metadata_locked({},revision_id='PASSAGES-'+'A'*32)
         for revisions in ([], [('0014_question_passages',)], [('0015_manual_report_context',)],
@@ -106,3 +112,67 @@ class ManualContextContracts(unittest.TestCase):
         with self.assertRaises(ValidationError): ReplaceQuestionPassages(**command)
         command['references']=[ref];command['synthetic']=1
         with self.assertRaises(ValidationError): ReplaceQuestionPassages(**command)
+
+    def test_manual_dependency_projection_is_bound_to_exact_saved_revision(self):
+        c=manual_snapshot()['manual_passages']
+        anchor=c['passages'][0]['anchor']
+        references=[{k:anchor[k] for k in ('source_id','annotation_revision_id','selection_key')}
+                    |{'anchor_sha256':c['passages'][0]['anchor_sha256']}]
+        scope={k:c[k] for k in ('patient_id','case_id','question_id')}
+        dependency=scope|dict(revision_id=c['revision_id'],references_sha256=fingerprint(references))
+        historical=dict(revision_id=c['revision_id'],references=references,state='current_unreviewed')
+        registry=Mock(_transaction_active=True)
+        owner=QuestionPassages(registry)
+        with patch.object(owner,'metadata_locked',side_effect=[historical,historical]) as read:
+            state=owner.manual_dependency_state_locked(scope,dependency)
+        self.assertEqual(state,dict(dependency_revision_id=c['revision_id'],
+                                    current_revision_id=c['revision_id'],
+                                    state='current_unreviewed',needs_recheck=False))
+        self.assertEqual(read.call_count,2)
+        self.assertNotIn(anchor['quote'],json.dumps(state))
+
+        newer=dict(revision_id='PASSAGES-'+'F'*32,references=[],state='current_unreviewed')
+        with patch.object(owner,'metadata_locked',side_effect=[historical,newer]):
+            state=owner.manual_dependency_state_locked(scope,dependency)
+        self.assertEqual(state['current_revision_id'],newer['revision_id'])
+        self.assertEqual(state['state'],'reassessment_required')
+        self.assertTrue(state['needs_recheck'])
+
+        stale=historical|{'state':'reassessment_required'}
+        with patch.object(owner,'metadata_locked',side_effect=[stale,historical]):
+            state=owner.manual_dependency_state_locked(scope,dependency)
+        self.assertTrue(state['needs_recheck'])
+        self.assertNotIn(anchor['quote'],json.dumps(state))
+
+    def test_manual_dependency_forgery_scope_and_missing_history_fail_closed(self):
+        c=manual_snapshot()['manual_passages']
+        a=c['passages'][0]['anchor']
+        refs=[{k:a[k] for k in ('source_id','annotation_revision_id','selection_key')}
+              |{'anchor_sha256':c['passages'][0]['anchor_sha256']}]
+        scope={k:c[k] for k in ('patient_id','case_id','question_id')}
+        dependency=scope|dict(revision_id=c['revision_id'],references_sha256=fingerprint(refs))
+        registry=Mock(_transaction_active=True)
+        owner=QuestionPassages(registry)
+        historical=dict(revision_id=c['revision_id'],references=refs,state='current_unreviewed')
+        for change in (dict(patient_id='PAT-OTHER'),dict(case_id='CASE-BETA'),
+                       dict(question_id='QUESTION-'+'0'*32),
+                       dict(references_sha256='0'*64),
+                       dict(revision_id='PASSAGES-INVALID'),
+                       dict(revision_id=None),dict(references_sha256=True),
+                       dict(extra='forged')):
+            with self.subTest(change=change),patch.object(owner,'metadata_locked',return_value=historical) as read:
+                with self.assertRaises(PatientRegistryError):
+                    owner.manual_dependency_state_locked(scope,dependency|change)
+                if 'references_sha256' not in change or change['references_sha256']!='0'*64:
+                    read.assert_not_called()
+        for bad in (dict(revision_id='PASSAGES-'+'F'*32,references=refs,state='current_unreviewed'),
+                    dict(revision_id=c['revision_id'],references=[],state='current_unreviewed')):
+            # A mismatched historical identity or empty selection may never
+            # silently become a current task/Review dependency.
+            with patch.object(owner,'metadata_locked',return_value=bad):
+                with self.assertRaises(PatientRegistryError):
+                    owner.manual_dependency_state_locked(scope,dependency)
+        registry._transaction_active=False
+        with patch.object(owner,'metadata_locked') as read,self.assertRaises(PatientRegistryError):
+            owner.manual_dependency_state_locked(scope,dependency)
+        read.assert_not_called()
