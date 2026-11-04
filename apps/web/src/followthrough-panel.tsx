@@ -2,8 +2,9 @@ import {useEffect,useState} from 'react';
 import type {RegistrySession,ViewState} from './registry-client';
 import type {SourceQuestion} from './source-questions-view';
 import {canCreateFollowthrough,FOLLOWTHROUGH_TRANSITIONS,validFollowthroughDraft,
-  validFollowthroughText} from './followthrough-view';
-import type {FollowthroughDraft,FollowthroughTask,FollowthroughStatus} from './followthrough-view';
+  validFollowthroughText,projectFollowthroughAttention,FOLLOWTHROUGH_FILTERS,
+  followthroughFilterForRead,matchesFollowthroughFilter} from './followthrough-view';
+import type {FollowthroughDraft,FollowthroughTask,FollowthroughStatus,FollowthroughFilterSelection} from './followthrough-view';
 
 type Props={state:ViewState;session:RegistrySession;busy:boolean};
 const blankDraft=():FollowthroughDraft=>({title:'',detail:'',owner_label:'',due_date:null,review_trigger:'',reason:''});
@@ -64,14 +65,14 @@ export function FollowthroughCreate({state,session,busy,question}:Props&{questio
  </div>;
 }
 
-function TaskCard({task,session,disabled}:{task:FollowthroughTask;session:RegistrySession;disabled:boolean}){
+function TaskCard({task,session,disabled,hidden}:{task:FollowthroughTask;session:RegistrySession;disabled:boolean;hidden:boolean}){
  const [owner,setOwner]=useState(task.owner_label),[reason,setReason]=useState('');
  const choices=FOLLOWTHROUGH_TRANSITIONS[task.status];
  const actionLabels:Partial<Record<FollowthroughStatus,string>>={assigned:task.status==='deferred'?'Reassign task':'Assign task',
   acknowledged:'Record acknowledgment',completed:'Record completion',deferred:'Defer task'};
  const testIds:Partial<Record<FollowthroughStatus,string>>={assigned:'assign',acknowledged:'acknowledge',completed:'complete',deferred:'defer'};
  return <li className="followthrough-task" data-testid="followthrough-task" data-task-id={task.task_id}
-   data-status={task.status} data-revision={task.revision}>
+   data-status={task.status} data-revision={task.revision} hidden={hidden}>
   <div className="question-status-title"><h4>{task.title}</h4><span className="question-status">{labels[task.status]}</span></div>
   {task.detail&&<p>{task.detail}</p>}
   <p><strong>Recorded owner:</strong> {task.owner_label||'Unassigned'} · <strong>Revisit date:</strong> {task.due_date??'Not set'}</p>
@@ -88,7 +89,7 @@ function TaskCard({task,session,disabled}:{task:FollowthroughTask;session:Regist
    <p>Question preflight <code>{task.preflight_sha256}</code></p>
   </details>
   {choices.length>0&&<div className="followthrough-transition followthrough-form">
-   <fieldset disabled={disabled}>
+   <fieldset disabled={disabled||hidden}>
     <legend>Record a status change</legend>
     {choices.includes('assigned')&&<label>Owner for assignment
      <input data-testid="followthrough-transition-owner" value={owner} maxLength={80} autoComplete="off"
@@ -117,7 +118,10 @@ function TaskCard({task,session,disabled}:{task:FollowthroughTask;session:Regist
 export function FollowthroughPanel({state,session,busy}:Props){
  const intent=state.followthroughIntent;
  const caseId=state.worldModel?.case_id??intent?.case_id??state.followthroughCaseId??'';
- const list=state.followthrough?.case_id===caseId?state.followthrough:null;
+ const attention=projectFollowthroughAttention(state);
+ const list=attention?.list??null;
+ const [selection,setSelection]=useState<FollowthroughFilterSelection|null>(null);
+ const filter=followthroughFilterForRead(selection,attention);
  const saving=state.followthroughWritePhase==='saving',unknown=state.followthroughWritePhase==='unknown';
  const active=state.connected&&state.phase==='ready'&&state.cases?.some(row=>row.case_id===caseId&&row.status==='active');
  const receipt=state.followthroughReceipt;
@@ -151,13 +155,32 @@ export function FollowthroughPanel({state,session,busy}:Props){
    </div>}
    {unknown&&<p className="muted">Abandoning recovery does not undo a committed write. Inspect current task history before recording new work.</p>}
   </section>}
-  {list&&<>
+  {list&&attention&&<>
+   <div data-testid="followthrough-attention">
+    <h4>Find recorded work that needs attention</h4>
+    <div className="actions" role="group" aria-label="Filter recorded follow-up work">
+     {FOLLOWTHROUGH_FILTERS.map(({key,label})=><button key={key} type="button"
+      data-testid={'followthrough-filter-'+key} data-count={attention.counts[key]}
+      aria-pressed={filter===key} aria-controls="followthrough-items" className={filter===key?'primary':''}
+      onClick={()=>setSelection({access_receipt_id:list.access_receipt_id,
+       patient_id:list.patient_id,case_id:list.case_id,filter:key})}>
+       {label} ({attention.counts[key]})</button>)}
+    </div>
+    <p role="status" aria-live="polite" data-testid="followthrough-filter-status">
+     Showing {attention.counts[filter]} of {attention.counts.all} recorded tasks.
+    </p>
+    <p className="muted">Filters can overlap. Counts describe the last successful read, not clinical urgency or an assessment of all care needs. Refreshing resets to All work.</p>
+   </div>
    <p><strong>Case:</strong> <code>{list.case_id}</code> · Date flags evaluated {list.evaluated_on} (UTC).</p>
    <details><summary>Access receipt for this read</summary><code>{list.access_receipt_id}</code>
     <p>Access is checked separately for each read and write. Owner labels are not authorization.</p></details>
-   {list.tasks.length===0?<p>No recorded work is visible. Start from a current saved question above.</p>:
-    <ul className="followthrough-items">{list.tasks.map(task=><TaskCard key={task.task_id+':'+task.revision}
-     task={task} session={session} disabled={busy||saving||unknown||state.followthroughPhase!=='ready'}/>)}</ul>}
+   {list.tasks.length===0?<p id="followthrough-items">No recorded work is visible. Start from a current saved question above.</p>:
+    <>
+     {attention.counts[filter]===0&&<p data-testid="followthrough-filter-empty">No recorded tasks match this filter in the last successful read.</p>}
+     <ul id="followthrough-items" className="followthrough-items">{list.tasks.map(task=><TaskCard key={task.task_id+':'+task.revision}
+      task={task} session={session} hidden={!matchesFollowthroughFilter(task,filter)}
+      disabled={busy||saving||unknown||state.followthroughPhase!=='ready'}/>)}</ul>
+    </>}
   </>}
   <p className="muted">Fictional coordination records only. No external notification, clinical order or clinical approval is produced.</p>
  </section>;
