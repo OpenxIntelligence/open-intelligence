@@ -19,7 +19,7 @@ from oi_api.migrate import migrate
 from open_intelligence.postgres_registry import PostgresPatientRegistry
 
 
-REGISTRY_REVISION = "0011_evidence_convergence"
+REGISTRY_REVISION = "0012_reviewed_documents"
 BASELINE_REVISION = "0001_h1_shell"
 TABLES = {"identity_patients", "identity_create_receipts", "identity_domain_events"}
 
@@ -86,6 +86,8 @@ class RegistryMigrationTests(unittest.TestCase):
             connection.execute(text("DROP TABLE IF EXISTS investigation.source_questions"))
             connection.execute(text("DROP FUNCTION IF EXISTS investigation.guard_question_insert()"))
             connection.execute(text("DROP SCHEMA IF EXISTS investigation"))
+            connection.execute(text("DROP TABLE IF EXISTS clinical_source.annotation_revisions"))
+            connection.execute(text("DROP TABLE IF EXISTS clinical_source.document_intakes"))
             connection.execute(text("DROP TABLE IF EXISTS clinical_source.assertions"))
             connection.execute(text("DROP TABLE IF EXISTS clinical_source.quarantine"))
             connection.execute(text("DROP TABLE IF EXISTS clinical_source.source_versions"))

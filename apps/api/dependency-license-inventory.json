@@ -869,6 +869,58 @@
       ],
       "native_files": [],
       "approved_scope": "local-synthetic-h1-development"
+    },
+    {
+      "name": "pypdf",
+      "version": "6.21.4",
+      "filename": "pypdf-6.21.4-py3-none-any.whl",
+      "sha256": "33e4fb41ca352810eb4e9838aa0d82d6888a5f8bf682f43e99cce5faa666255c",
+      "license_expression": "BSD-3-Clause",
+      "selected_license_expression": "BSD-3-Clause",
+      "rights_state": "approved_for_specified_use",
+      "scope": "python-runtime-wheel-cpython312-linux-x86_64",
+      "license_evidence": [
+        {
+          "path_in_wheel": "pypdf-6.21.4.dist-info/licenses/LICENSE",
+          "sha256": "a97ac230e5f33ef10a5367a850eb01f91f1a0b064e34742c7794d2294557f524",
+          "kind": "bundled_license_text"
+        }
+      ],
+      "notes": [
+        "Reuse exact #249 dependency for local synthetic H1 document extraction; retain notices; no extras."
+      ],
+      "requires_dist": [
+        "typing_extensions >= 4.0; python_version < '3.11'",
+        "brotli>=1.2.0 ; extra == \"brotli\"",
+        "cryptography>3.0 ; extra == \"crypto\"",
+        "PyCryptodome ; extra == \"cryptodome\"",
+        "flit ; extra == \"dev\"",
+        "pip-tools ; extra == \"dev\"",
+        "pre-commit ; extra == \"dev\"",
+        "pytest-cov ; extra == \"dev\"",
+        "pytest-socket ; extra == \"dev\"",
+        "pytest-timeout ; extra == \"dev\"",
+        "pytest-xdist ; extra == \"dev\"",
+        "wheel ; extra == \"dev\"",
+        "myst_parser ; extra == \"docs\"",
+        "sphinx ; extra == \"docs\"",
+        "sphinx_rtd_theme ; extra == \"docs\"",
+        "fonttools ; extra == \"fonts\"",
+        "arabic-reshaper ; extra == \"full\"",
+        "brotli>=1.2.0 ; extra == \"full\"",
+        "cryptography>3.0 ; extra == \"full\"",
+        "fonttools ; extra == \"full\"",
+        "Pillow>=8.0.0 ; extra == \"full\"",
+        "python-bidi ; extra == \"full\"",
+        "Pillow>=8.0.0 ; extra == \"image\"",
+        "arabic-reshaper ; extra == \"rtl-text\"",
+        "python-bidi ; extra == \"rtl-text\""
+      ],
+      "upstream_urls": [
+        "Source, https://github.com/py-pdf/pypdf"
+      ],
+      "native_files": [],
+      "approved_scope": "local-synthetic-h1-development"
     }
   ],
   "native_components": [
@@ -17515,6 +17567,6 @@
   },
   "notices": {
     "path": "THIRD_PARTY_NOTICES.md",
-    "sha256": "412e01b8484d503c31b24d2b02dbbb9be43b967c52080fa1c5d6cbdbcf482540"
+    "sha256": "955e7c9e36e65a58ab6d4f4c05e90b46951a24b2e117388472efd25a20382584"
   }
 }
