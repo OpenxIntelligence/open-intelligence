@@ -227,6 +227,26 @@ def main():
                 evidence.finish(credentials,write_grants,
                     Path(os.environ.get('OI_WEB_ARTIFACT_DIR',ROOT/'apps/web/.evidence')),
                     current_question_id=authored_question_id)
+                # Add one reviewed manual record before the connected question is
+                # created so its source membership is already part of that question's
+                # canonical World Model snapshot. Manual selections remain separate
+                # from source-authored observations.
+                manual_record=b'\xef\xbb\xbfIndependently fictional record\r\nManual context marker pending.\r\n'
+                manual_sha=hashlib.sha256(manual_record).hexdigest()
+                status,manual_document_receipt=add_synthetic(root+'/cases/'+case+'/documents',{
+                    'synthetic':True,'filename':'fictional-manual-context.txt',
+                    'original_base64':base64.b64encode(manual_record).decode('ascii'),
+                    'confirmed_case_id':case,'expected_sha256':manual_sha,
+                    'metadata':{'document_id':'DOC-MANUAL-BROWSER','kind':'pathology',
+                        'event_date':'2026-01-12','issued_at':'2026-01-12',
+                        'manual_transcription_confirmed':True},
+                    'findings':[{'key':'manual-marker','state':'pending',
+                        'quote':'Manual context marker pending.','line':2}]})
+                assert status==201 and manual_document_receipt['duplicate'] is False
+                manual_document={'document_id':'DOC-MANUAL-BROWSER','selection_key':'manual-marker',
+                                 'quote':'Manual context marker pending.',
+                                 'source_id':manual_document_receipt['source_id'],
+                                 'annotation_revision_id':manual_document_receipt['annotation_revision_id']}
                 # Add the fourth question only after both three-question checks.
                 connected_question = exercise_connected_question_review(cd,pid,case,new_receipt['source_id'],amended,
                     credentials,write_grants,questions)
@@ -244,7 +264,8 @@ def main():
                     credentials,write_grants,directory,questions.artifacts,restart_api,add_synthetic,
                     on_report=lambda report,path,body:exercise_evidence_continuity(cd,pid,case,
                         connected_question['question_id'],new_receipt['source_id'],credentials,
-                        write_grants,questions.artifacts,report,path,body))
+                        write_grants,questions.artifacts,report,path,body),
+                    manual_document=manual_document)
             # Current source metadata access is independent from the historical original bytes.
             # World Model recheck must clear the old view after source-read grant withdrawal.
             credentials[0]['actions'].remove('source_read');write_grants()
@@ -282,6 +303,8 @@ def main():
                 credentials,write_grants,connect,out)
             from reviewed_documents_journey import exercise as exercise_reviewed_documents
             exercise_reviewed_documents(cd,pid,directory,tokens[0],credentials,write_grants,out,restart_api)
+            from question_manual_passages_journey import exercise as exercise_question_manual_passages
+            exercise_question_manual_passages(cd,pid,tokens[0],credentials,write_grants,out)
             cd.evaluate("[...document.querySelectorAll('nav button')].find(e=>e.textContent.startsWith('Overview')).click()")
             cd.wait("Boolean(document.querySelector('#patient-id'))",'Overview restored after reviewed document journey')
             from image_evidence_journey import exercise as exercise_image_evidence
