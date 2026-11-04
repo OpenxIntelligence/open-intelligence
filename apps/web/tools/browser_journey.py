@@ -159,6 +159,8 @@ def main():
                 assert cd.evaluate("document.querySelector('[data-testid=source-index]').textContent.includes('superseded')")
                 assert cd.evaluate("document.querySelector('[data-testid=source-index]').textContent.includes('Amended fictional marker is reported negative.')")
                 assert cd.evaluate("document.querySelectorAll('[data-testid=source-statement]').length===1")
+                from reading_convergence_journey import exercise as exercise_reading
+                exercise_reading(cd)
                 # The new Records action must recheck the canonical source before
                 # offering a question draft; no implicit question save or Composer call.
                 cd.evaluate("""(() => {
@@ -170,7 +172,12 @@ def main():
                     return window.__oiSourceHandoffFetch(input,init);
                   };
                 })()""")
-                cd.evaluate("document.querySelector('[data-testid=ask-source-question]').click()")
+                assert cd.evaluate("document.querySelectorAll('.source-row.current [data-testid=ask-source-question]').length===1")
+                assert cd.evaluate("!document.querySelector('.source-row.superseded [data-testid=ask-source-question]')")
+                cd.evaluate("document.querySelector('[data-testid=ask-source-question]').focus()")
+                cd.command('Input.dispatchKeyEvent', {'type':'rawKeyDown','key':'Enter','code':'Enter','windowsVirtualKeyCode':13})
+                cd.command('Input.dispatchKeyEvent', {'type':'char','text':'\r','key':'Enter','windowsVirtualKeyCode':13})
+                cd.command('Input.dispatchKeyEvent', {'type':'keyUp','key':'Enter','code':'Enter','windowsVirtualKeyCode':13})
                 cd.wait("document.querySelector('[data-testid=question-draft-editor]')?.textContent.includes("
                         +json.dumps(new_receipt['source_id'])+")", 'source-to-question handoff after fresh authorization')
                 assert cd.evaluate("document.querySelector('[data-testid=world-projection]')?.textContent.includes("
@@ -273,6 +280,8 @@ def main():
             cd.wait("document.querySelector('[data-testid=status]').textContent.includes('Patient unavailable')",'cross-organization read denied')
             cd.command('Page.reload');cd.wait("Boolean(document.querySelector('#credential'))",'reload forgets credential')
             assert cd.evaluate("document.querySelector('#credential').value==='' && document.querySelector('#patient-id').value==='' && localStorage.length===0 && sessionStorage.length===0")
+            from reading_convergence_journey import exercise_session_reset
+            exercise_session_reset(cd,pid,case,tokens[0],credentials,write_grants)
             print('PASS: React/Vite -> actual FastAPI/PostgreSQL 16; identity/create/retry; exact case/source read, immutable amendment history, unreviewed quoted text and rights revocation; cross-organization isolation, credential expiry/reload, keyboard landmarks and mobile layout. Independently fictional records only; no clinical workflow or production identity claim.')
         finally:
             if cd:cd.close()
