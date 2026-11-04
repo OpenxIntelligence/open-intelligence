@@ -256,3 +256,64 @@ changes. Source owners and main remain unchanged; only a draft child is prepared
 Next: converge owner-reviewed candidates and exercise the same connected workflow
 with reviewed document intake and the separately governed DOI connector. These
 are separate pending branches, not capabilities delivered by this increment.
+
+## Record intake within the connected follow-up workspace — 3 November 2026
+
+[Draft #335](https://github.com/OpenxIntelligence/open-intelligence/pull/335)
+composes the existing record-import disclosure with the source-reading,
+evidence-report and follow-up attention workspace. Existing records were still
+preceded by the full import form in #328. The selected source history now leads;
+the same deliberate import workflow remains available from a native disclosure.
+This advances the existing OI-007/009/010/013 work, using the same canonical owners.
+
+### Ownership and bounded behavior
+
+- Base #328: `5a188d4e18e4d80bc2ba1d662c966abc3096301f`, tree
+  `269ce69e54fa1338dbfa87ae6e043b36f11d6ba6`.
+- Donor #319: `2475d924fddef6792076bdf9039fad5be7312b7a`, tree
+  `b87461e4ff32bc2088678055e9c6fbf03f2fdf29`.
+- All three production blobs and the complete intake browser helper are reused
+  byte-for-byte from that donor. Only its two disclosure assertions are added to
+  the newer reading helper; the parent's stronger terminal-denial wait remains.
+- Empty source indexes start with import expanded. Populated indexes start
+  collapsed. Native keyboard toggles preserve the selected File, exact preview
+  and confirmation because the existing intake stays mounted.
+- The patient/case key wraps the entire disclosure subtree. Existing source
+  refresh, denied-access, case-switch and session-reset clearing is preserved.
+- Only explicit form submission imports a source. No backend, migration,
+  dependency, authority, session, evidence, report or follow-through owner changes.
+
+### Evidence and limits
+
+The tests-first [hosted run 41668978841](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41668978841)
+at `9c7c27a1df2861eb7d5433327d8e64ff96d9c5f2` passed the client/build/dependency
+steps and reached actual PostgreSQL/API/Chromium execution. It failed specifically
+with `AssertionError: Loaded records start with the import form collapsed`,
+demonstrating the missing behavior before implementation.
+
+After composition, all **300 local client tests passed**, zero failures or skips;
+the production build and existing dependency gate passed (18 installed, two
+optional uninspected, no errors). A separate read-only code review found no
+Critical, Important or Minor defect and independently verified the donor bytes,
+scope-key behavior and preserved denial synchronization. This is automated
+engineering review, not human or clinical acceptance.
+
+The exact published-head workflow, final result, artifact identity and visual
+inspection evidence are maintained in **#335's verification receipt**. They are
+not inferred from donor success or from local client tests. The local executor
+cannot start PostgreSQL under a nonroot Unix user; the existing hosted PG16
+workflow is used unchanged. The parent's full backend/backup-restore verification
+remains separately recorded on #322; this frontend-only change does not claim a
+new full backend-suite run.
+
+Required combined acceptance includes native disclosure and file retention,
+existing task-attention controls, original-byte inspection, amendments and
+quarantine, source-to-question entry, evidence/report downloads, independent
+denial, exact retry recovery, API restart and case/session clearing. Browser
+coverage is Chromium; it does not establish cross-browser or clinical validation.
+
+The next integration boundary remains owner review of one combined candidate,
+with separately verified review-draft, reviewed-document, imaging/archive and
+live-evidence work reconciled through the existing contracts. These sibling
+capabilities are not claimed by this increment. All inputs remain independently
+fictional. The candidate is draft, unmerged and undeployed.
