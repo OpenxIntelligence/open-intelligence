@@ -2,9 +2,11 @@ import {StrictMode, useEffect, useLayoutEffect, useRef, useState, useSyncExterna
 import {createRoot} from 'react-dom/client';
 import {RegistrySession} from './registry-client';
 import {SourceIntake} from './source-intake-view';
+import {RecordImportDisclosure} from './record-import-disclosure';
+import {ReviewedDocumentDisclosure} from './reviewed-documents-view';
 import {WorldModelView} from './world-model-view';
 import {PatientContinuity} from './patient-continuity-view';
-import {ReviewPanel} from './review-panel';
+import {ReviewPanel,useReviewReasonDrafts} from './review-panel';
 import {SourceReading, emptySourceFilters} from './source-reading';
 import type {ReadingView} from './source-reading';
 import './styles.css';
@@ -30,6 +32,7 @@ function WorkspaceContext({section,patientId,readiness,view,onViewChange}:{secti
 }
 function App(){
  const state=useSyncExternalStore(session.subscribe,session.snapshot);
+ const reviewReasonDrafts=useReviewReasonDrafts(state);
  const [token,setToken]=useState(''),[patientId,setPatientId]=useState(''),[confirmed,setConfirmed]=useState(false);
  const [requestKey,setRequestKey]=useState(()=>crypto.randomUUID());
  const [readiness,setReadiness]=useState<'checking'|'ready'|'unavailable'>('checking');
@@ -39,6 +42,22 @@ function App(){
  const filters=sourceFilters.scope===state.sourceIndex?sourceFilters:emptySourceFilters;
  useEffect(()=>{setSourceFilters({scope:state.sourceIndex,...emptySourceFilters})},[state.sourceIndex]);
  const heading=useRef<HTMLHeadingElement>(null),moveFocus=useRef(false);
+ const originalHeading=useRef<HTMLHeadingElement>(null),sourcesHeading=useRef<HTMLHeadingElement>(null);
+ const originalReturn=useRef<{sourceId:string;trigger:HTMLButtonElement;pending:boolean}|null>(null);
+ useEffect(()=>{originalReturn.current=null},[state.sourceIndex,state.patient?.patient_id]);
+ useEffect(()=>{
+  const requested=originalReturn.current;
+  if(state.recordsPhase==='error'){originalReturn.current=null;return;}
+  if(section==='Records'&&requested?.pending&&state.original?.source_id===requested.sourceId){
+   requested.pending=false;originalHeading.current?.focus();
+  }
+ },[state.original,state.recordsPhase,section]);
+ function closeOriginal(){
+  const trigger=originalReturn.current?.trigger;originalReturn.current=null;
+  session.dismissOriginal();
+  if(trigger?.isConnected&&!trigger.disabled)trigger.focus();
+  else (sourcesHeading.current??heading.current)?.focus();
+ }
  useEffect(()=>{if(moveFocus.current){heading.current?.focus();moveFocus.current=false}},[section]);
  const keyForReceipt=useRef(requestKey);
  useEffect(()=>{let active=true;const c=new AbortController();const timer=setTimeout(()=>c.abort(),5000);
@@ -51,7 +70,7 @@ function App(){
  useEffect(()=>{if(!state.connected){setPatientId('');setConfirmed(false)}},[state.connected]);
  useEffect(()=>{const clear=()=>session.disconnect();window.addEventListener('pagehide',clear);return()=>window.removeEventListener('pagehide',clear)},[]);
   const busy=state.phase==='creating'||state.phase==='reading'||state.importOutcome==='sending'||state.questionSavePhase==='saving'||state.reviewReturnPhase==='saving'||state.evidenceWritePhase==='saving';
- function navigate(nextSection:string){session.dismissSourceQuotePacket();session.dismissSourceBrief();session.dismissEvidenceMetadata();session.dismissQuestionEvidence();if(nextSection===section){heading.current?.focus();return}moveFocus.current=true;setSection(nextSection);}
+ function navigate(nextSection:string){originalReturn.current=null;session.dismissSourceQuotePacket();session.dismissSourceBrief();session.dismissEvidenceMetadata();session.dismissQuestionEvidence();session.dismissSourceImages();if(nextSection===section){heading.current?.focus();return}moveFocus.current=true;setSection(nextSection);}
  function disconnect(){session.disconnect();setToken('');setPatientId('');setConfirmed(false);setSection('Overview');}
  return <div className="app">
   <a className="skip" href="#main">Skip to workspace</a>
@@ -65,7 +84,7 @@ function App(){
    <main id="main" tabIndex={-1}>
     <div className="heading"><div><p className="eyebrow">OPEN INTELLIGENCE · H1</p><h1 ref={heading} tabIndex={-1}>{section==='Overview'?'Start with the right patient.':section}</h1><p className="lede">{section==='Overview'?'A connected foundation for the patient’s story, evidence and care.':section==='Records'?'Inspect authorized fictional case mappings, original source history and unreviewed source statements.':section==='Journey'?'View source-linked chronology, uncertainty and disagreements without implying clinical assessment.':section==='Investigations'?'Prepare exact source context, save a question and inspect its current or reassessment status. No AI execution or clinical approval.':'Inspect saved questions, record a source verification return and preserve its history as sources change. Clinical approval remains unavailable.'}</p></div></div>
     <div className="boundary" role="note"><strong>Development workspace, not a clinical service.</strong> Use operator-issued synthetic credentials and fictional identities only. These are not patient accounts, verified consent or professional sign-off.</div>
-    {section==='Journey'||section==='Investigations'?<WorldModelView session={session} state={state} busy={busy} showQuestions={section==='Investigations'} onOverview={()=>navigate('Overview')} onInvestigations={()=>navigate('Investigations')} onReview={()=>navigate('Review')}/>:section==='Review'?<ReviewPanel key={state.patient?.patient_id??'no-patient'} session={session} state={state} busy={busy} onOverview={()=>navigate('Overview')} onInvestigations={()=>navigate('Investigations')}/>:section==='Records'?<section className="panel records-workspace" data-testid="records-workspace" aria-labelledby="records-heading">
+    {section==='Journey'||section==='Investigations'?<WorldModelView session={session} state={state} busy={busy} showQuestions={section==='Investigations'} onOverview={()=>navigate('Overview')} onInvestigations={()=>navigate('Investigations')} onReview={()=>navigate('Review')}/>:section==='Review'?<ReviewPanel key={state.patient?.patient_id??'no-patient'} session={session} state={state} busy={busy} drafts={reviewReasonDrafts} onOverview={()=>navigate('Overview')} onInvestigations={()=>navigate('Investigations')}/>:section==='Records'?<section className="panel records-workspace" data-testid="records-workspace" aria-labelledby="records-heading">
      <span className="step">CANONICAL SOURCE OWNER / ORIGINALS</span>
      <h2 id="records-heading">{view==='patient'?'Records available to you':'Original source records'}</h2>
      <p>Shows source-reported information from the existing scoped PostgreSQL API. Original-text inspection and deliberate import require separate server permissions. AI interpretation, clinical decisions, verified identity and consent are not supplied by this screen. Information is current only at its last successful check.</p>
@@ -76,11 +95,11 @@ function App(){
       <p role="status" aria-live="polite" data-testid="records-status" className={'status '+(state.recordsPhase==='error'?'error':'')}>{state.recordMessage}</p>
       {state.importOutcome!=='idle'&&<p role="status" aria-live="polite" className="status" data-testid="import-receipt" data-outcome={state.importOutcome} data-result={state.importReceipt?.result??''}>{state.importMessage}</p>}
       {state.original&&<section className="original-panel" aria-labelledby="opened-original" data-testid="opened-original">
-       <h3 id="opened-original">Exact original: {state.original.document_id} · v{state.original.version}</h3>
+       <h3 id="opened-original" ref={originalHeading} tabIndex={-1}>Exact original: {state.original.document_id} · v{state.original.version}</h3>
        <p>{state.original.state} · SHA-256 <code>{state.original.sha256}</code></p>
        <p>Verified against the selected version metadata. Clinical review: not established. Access was checked for this read.</p>
-       <button onClick={()=>session.dismissOriginal()}>Close original</button>
-       <pre className="original-text" data-testid="server-original">{state.original.original_text}</pre>
+       <button data-testid="close-original" onClick={closeOriginal}>Close original</button>
+       <pre className="original-text" data-testid="server-original" tabIndex={0} role="region" aria-label="Original document text" onFocus={event=>event.currentTarget.scrollIntoView({block:'center'})}>{state.original.original_text}</pre>
       </section>}
       {state.cases!==null&&<section aria-labelledby="case-list-heading" data-testid="records-cases">
        <h3 id="case-list-heading">Case mappings</h3>
@@ -93,14 +112,24 @@ function App(){
         </li>)}</ul>}
       </section>}
       {state.sourceIndex&&<section className="records-detail" data-testid="source-index" aria-labelledby="sources-heading">
-       <h3 id="sources-heading">Source history for <code>{state.sourceIndex.case_id}</code></h3>
+       <h3 id="sources-heading" ref={sourcesHeading} tabIndex={-1}>Source history for <code>{state.sourceIndex.case_id}</code></h3>
        <p>Immutable original source identifiers, hashes and historical versions. These records are independently fictional.</p>
-       <SourceIntake key={state.patient.patient_id+':'+state.sourceIndex.case_id} session={session} patientId={state.patient.patient_id} caseId={state.sourceIndex.case_id} sending={state.importOutcome==='sending'}/>
+       <ReviewedDocumentDisclosure key={"documents:"+state.patient.patient_id+":"+state.sourceIndex.case_id} session={session} patientId={state.patient.patient_id} caseId={state.sourceIndex.case_id}/>
+       <RecordImportDisclosure key={state.patient.patient_id+':'+state.sourceIndex.case_id} initiallyOpen={state.sourceIndex.sources.length===0}>
+        <SourceIntake session={session} patientId={state.patient.patient_id} caseId={state.sourceIndex.case_id} sending={state.importOutcome==='sending'}/>
+       </RecordImportDisclosure>
        <SourceReading index={state.sourceIndex} view={view} filters={filters}
         onFiltersChange={next=>setSourceFilters({scope:state.sourceIndex,...next})}
         busy={busy||state.recordsPhase.startsWith('loading')}
         questionBusy={state.worldPhase==='loading'}
-        onOpenOriginal={sourceId=>void session.loadOriginal(sourceId)}
+        sourceImages={state.sourceImages} sourceImagesSourceId={state.sourceImagesSourceId}
+        sourceImagesPhase={state.sourceImagesPhase} sourceImagesMessage={state.sourceImagesMessage}
+        sourceImageDownload={state.sourceImageDownload} sourceImageDownloadPhase={state.sourceImageDownloadPhase}
+        sourceImageDownloadMessage={state.sourceImageDownloadMessage}
+        onInspectImages={sourceId=>void session.loadSourceImages(sourceId)}
+        onDownloadImage={(sourceId,imageId)=>void session.downloadSourceImage(sourceId,imageId)}
+        onDismissImages={session.dismissSourceImages}
+        onOpenOriginal={(sourceId,trigger)=>{originalReturn.current={sourceId,trigger,pending:true};void session.loadOriginal(sourceId)}}
         onAskQuestion={(sourceId,line)=>{const caseId=state.sourceIndex!.case_id;
           navigate('Investigations');
           void session.beginQuestionFromSourceReading(caseId,sourceId,line);}}/>
@@ -108,7 +137,7 @@ function App(){
       </section>}
      </div>}
     </section>:section!=='Overview'?<section className="panel"><h2>{section} is not connected</h2><p>The existing reference application retains this workflow. No placeholder patient data, generated conclusions or clinical actions are shown here.</p><p>The source, evidence and review owners must be integrated with the same scoped patient API before this becomes available.</p><button onClick={()=>navigate('Overview')}>Return to overview</button></section>:<>
-    <PatientContinuity state={state} onNavigate={navigate}/>
+    <PatientContinuity state={state} onNavigate={navigate} busy={busy} onRefreshFollowthrough={caseId=>void session.loadFollowthrough(caseId)}/>
     <div className="grid">
      <section className="panel" aria-labelledby="access-heading"><span className="step">01 / ACCESS</span><h2 id="access-heading">Connect your session</h2><p>Permission is checked by the API on every request. Your credential stays in this tab’s memory and is cleared on disconnect or reload.</p>
       {!state.connected?<form onSubmit={e=>{e.preventDefault();session.connect(token);setToken('')}}><label htmlFor="credential">Synthetic access credential</label><input id="credential" name="credential" type="password" autoComplete="off" autoCapitalize="none" spellCheck={false} value={token} onChange={e=>setToken(e.target.value)} required minLength={32} maxLength={256}/><button type="submit" className="primary">Connect credential</button></form>:<div><p className="session-status">Credential present · grants checked by server</p><button onClick={disconnect}>Disconnect and clear</button></div>}
