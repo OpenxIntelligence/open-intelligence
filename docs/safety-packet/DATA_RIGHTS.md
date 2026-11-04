@@ -3,6 +3,30 @@
 For the current tree on branch `oi/safety-packet` (current `main`
 merged in; refreshed 2026-11-02).
 
+## H1 metadata and citation boundary — 3 November 2026
+
+This dated addition scopes the current [#298 H1 metadata/citation increment](https://github.com/OpenxIntelligence/open-intelligence/pull/298). The historical reference-demo and research-probe descriptions below retain their original branch/time scope; they are not a repository-wide purge certificate or a statement that every later H1 branch uses only the standard library.
+
+The immediate H1 adapter accepts independently authored fictional research-source metadata only. It reuses [#224](https://github.com/OpenxIntelligence/open-intelligence/pull/224)'s project-owned record/citation semantics through the current PostgreSQL patient/case/question owners. Metadata storage and display require separate explicit fixture permissions; a declaration is an auditable engineering input, not independent evidence of legal permission. Unknown/revoked/superseded rights must fail closed. Citation identity and an immutable link receipt do not establish scientific support, applicability, clinical review or permission to reproduce an article.
+
+No live publisher connector, patient-data acquisition, abstract/full-text ingestion, embedding, model inference or training is activated by this increment. The existing reference Crossref adapter remains separately scoped below. Current product code is under review and final combined acceptance is pending; the [implementation contract](../engineering/H1_QUESTION_EVIDENCE.md) records the intended enforcement and verification boundary.
+
+### Operation-specific source research — checked 3 November 2026
+
+These are candidate boundaries for subsequent adapters, not newly granted source permissions or operational integrations. Preserve source version, content/item identity, retrieval method/date, applicable terms, attribution and downstream operation in the existing rights record.
+
+| Source | Candidate operation and observed source basis | Held or unverified scope |
+| --- | --- | --- |
+| Crossref | Bibliographic identifiers/facts/links and permitted update/retraction metadata. [Crossref's official licensing section](https://www.crossref.org/documentation/retrieve-metadata/) distinguishes factual metadata and Crossref-generated CC0 material from publisher/author abstracts. | Exclude abstracts and paper text absent item-level permission. Public retrieval is not permission to send patient context or make clinical claims. H1 live activation remains unimplemented. |
+| PubMed / NCBI | Metadata/identifier discovery through supported NCBI services after endpoint and field review. [NCBI policies](https://www.ncbi.nlm.nih.gov/home/about/policies/) distinguish government-created information from contributed/licensed material and explicitly retain publisher/author abstract rights. | No blanket abstract/full-text storage, model input or redistribution grant. API availability and attribution do not establish those rights; exact acquisition and permitted-field contract remain separate work. |
+| PMC Open Access Subset | Research candidate for individually permitted full text. [PMC's policy](https://pmc.ncbi.nlm.nih.gov/tools/openftlist/) requires article-specific license checks and limits automated retrieval to its listed Cloud, OAI-PMH, E-Utilities and BioC services. | Not every PMC article is reusable. A future CC0/CC BY allowlist must inspect third-party components and retain license evidence; NC/ND/SA/unknown terms need separate disposition. No full-text or training activation here. Europe PMC requires its own current service/item review; PMC access rules are not transferred by analogy. |
+| CIViC | Versioned curated assertions/evidence links are a research candidate. [The official FAQ](https://docs.civicdb.org/en/latest/about/faq.html) identifies CC0 content and MIT application code as distinct grants. | CIViC's content terms do not clear linked publications or prove a patient-specific interpretation. Preserve evidence status/version and review exact API/output behavior before activation. |
+| NCI / PDQ | Selected NCI text with source attribution is a candidate under the [reuse policy](https://www.cancer.gov/policies/copyright-reuse). [PDQ's summary terms](https://www.cancer.gov/publications/pdq/levels-evidence/screening-prevention) distinguish reusable text from presenting an entire maintained PDQ summary and from image rights. | Graphics, logos and trademarks have separate conditions. Do not present an adapted excerpt as an unchanged PDQ product. Bulk/syndication acquisition and refresh behavior remain unverified for this adapter; no ingestion activated. |
+| ClinicalTrials.gov | The [official NLM announcement](https://www.nlm.nih.gov/pubs/techbull/ma24/ma24_clinicaltrials_api.html) establishes the v2 API's technical availability. Factual trial discovery is a potential future use. | The [terms page](https://clinicaltrials.gov/about-site/terms-conditions) returned only a short application shell in this read, so exact current terms were not established: HOLD activation. A listing never confirms recruitment, site availability or patient eligibility. |
+| NCCN / ASCO / ESMO and other licensed clinical knowledge | Preserve the existing [OI-17 source-rights decisions](https://app.notion.com/p/40a3866f77ef815a97d5e016ededf5b9) and permitted metadata/link scope. | No new rights research or contract grant for these sources in this increment. Ingestion/indexing/model use/excerpts/redistribution remain disabled unless the exact operation is authorized under the existing process. |
+
+Metadata display, content storage, retrieval/indexing, model input, training and downstream quotation/export are distinct operations. This project's immediate synthetic-only scope is stricter than what some public-content licenses may allow; it is not a legal claim that those licenses intrinsically forbid every excluded operation. Code, data, terminology, images, model weights and service terms remain separate rights subjects. No missing reviewer or component/source approval is inferred from a successful software test.
+
 ## All demo data is independently authored fictional content
 
 - Case reports use the structured format `OI-SYNTHETIC-REPORT/1` and are
@@ -133,15 +157,27 @@ merged in; refreshed 2026-11-02).
   patient records, clinical reference answers, or real-case values
   are embedded or asserted.
 
-## Research probes: read-only live public endpoints (CI-only, not the demo)
+## Historical live research probes — archived, not CI inputs after data-boundary change
 
-- The `tools/research/` probes run in CI only. They hit live public
-  endpoints read-only; raw rows stay in memory and only aggregate
-  counts, schema, hashes, and receipts leave the probe. No subject
-  identifiers, rows, controlled files, reidentification, linkage,
-  model training, clinical inference, eligibility advice, referral,
-  or enrollment action is published or performed. Probe outputs are
-  engineering observations, not clinical findings.
+- **New policy, 2 November 2026:** Named-person clinical, RNA, H5AD or
+  public-case catalog data must not be required or fetched by product
+  engineering, CI, demo, model training or evaluation. The existing
+  catalog, RNA and single-cell modules now retain only generic offline
+  helpers and refusal entrypoints in this draft; person-specific retrieval,
+  sample constants and cached case analysis have been retired. Their former
+  implementations remain in version history, without permission to execute.
+  The research workflows run only fictional/offline regression tests.
+  Main `24519839` already disabled named-person CI steps and blocked catalog
+  and single-cell acquisition. Draft PR #137 reconciles the remaining
+  runtime and workflow cleanup from #123/#133 onto that main; it is unmerged.
+- Historical runs may have retrieved personal-case or public-cohort
+  material, even if they published aggregate receipts instead of raw
+  rows. We have not proved previous artifacts/caches absent, erased or
+  appropriately reviewed; no past live-data use is implied to be
+  authorized by this document. Avoid extrapolating clinical efficacy
+  from historical exploratory calculations.
+- The following references document *old probe code*, not a current
+  right or requirement to ingest these sources:
 - Per-source basis, exactly as asserted in the probe headers (terms
   themselves UNVERIFIED in this packet — see below):
   - TCIA attachments (fixed CSV/ZIP URLs): Bakr et al.,
@@ -180,14 +216,17 @@ merged in; refreshed 2026-11-02).
 - `tools/research/requirements.lock` records exact third-party pins
   observed in research run 41294219202 (langchain/langgraph stack
   and others). It is installed into an isolated `/tmp/oi-research-env`
-  venv in the `public-research` CI job only. The file itself states
-  it is research only: not an application dependency decision or
-  security clearance. No package license in that lock has been
-  reviewed in this packet.
-- The `single-cell-analysis` CI job installs `numpy==2.3.5` and
-  `h5py==3.15.1` into the CI environment only, likewise research
-  only and not application dependencies. Their licenses are
-  UNVERIFIED in this packet.
+  venv in historical `public-research` CI runs. The replacement CI in
+  draft PR #123 no longer installs this research lock or executes the
+  network-dependent research runtime. The file itself is research-only:
+  not an application dependency decision or security clearance.
+  No package license in that lock has been reviewed in this packet.
+- The historical `single-cell-analysis` CI job installed
+  `numpy==2.3.5` and `h5py==3.15.1` for exploratory research.
+  Draft PR #123 replaces live analysis with fictional unit tests and
+  does not install this research environment. These are not
+  selected application dependencies. Their licenses remain UNVERIFIED
+  in this packet.
 - The demo itself remains Python standard library only, as recorded
   in `SBOM.md`; no new dependency is shipped with the demo.
 
@@ -196,10 +235,9 @@ merged in; refreshed 2026-11-02).
 - The project distribution license is undecided (see `NOTICE.md`). Until
   it is chosen, redistribution terms for the demo itself are UNVERIFIED
   and must not be stated as granted.
-- The license terms of the CI-only GitHub Actions (now three, including
-  the SHA-pinned `actions/upload-artifact`) are UNVERIFIED (see
-  `SBOM.md`). They are not shipped, so this does not affect the demo
-  itself.
+- The license terms of historical and current CI-only GitHub Actions
+  (including SHA-pinned `actions/upload-artifact`) are UNVERIFIED
+  (see `SBOM.md`). They are not shipped with the local demo.
 - The terms of the operator-invoked Meta Model API service (live
   investigation mode only) are UNVERIFIED in this packet.
 - The public-source terms asserted in the research-probe headers
@@ -207,7 +245,25 @@ merged in; refreshed 2026-11-02).
   TrialGPT characterization) are recorded as in-repo assertions
   only and are UNVERIFIED in this packet, as are the licenses of
   every package in `tools/research/requirements.lock` and of the
-  research-only `numpy`/`h5py` CI install. None of these is shipped
-  with the demo.
+  historical research-only `numpy`/`h5py` install. None of these is
+  shipped with the demo; the updated workflows do not execute those
+  live-data probes.
 - No independent legal review of this note has been performed. It is an
   engineering inventory, not legal clearance.
+
+
+## Historical 2026-11-02 proposed CI policy enforcement receipt
+
+- Draft PR [#123](https://github.com/OpenxIntelligence/open-intelligence/pull/123)
+  removes named-person and other public patient-data fetches from the
+  three research workflows, replacing them with independently authored
+  fictional tests and an explicit no-download source guard.
+- Current feature-branch head before this documentation correction:
+  `5839a5b98b15e61c14c42dbe810d711434773e09`. Six hosted workflows
+  passed on that exact head (research, RNA, single-cell, synthetic ledger,
+  UI glance, Crossref). This historical record predates the newer main
+  prohibition and the consolidated runtime-removal draft #137; it must not
+  be read as permission to run the retired scripts.
+- The scanner matches known direct CI entrypoints; it cannot provide a
+  network sandbox, identify all PHI, or prove exact permissions. A release
+  still requires security, source rights and professional review.

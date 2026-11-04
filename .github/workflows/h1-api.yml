@@ -1,0 +1,137 @@
+name: H1 API composition root (synthetic only)
+
+on:
+  pull_request:
+    paths:
+      - 'apps/api/**'
+      - 'src/**'
+      - 'tests/**'
+      - 'tools/audit_ci_data_boundaries.py'
+      - '.github/workflows/h1-api.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: h1-api-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  synthetic-postgres-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+      PIP_DISABLE_PIP_VERSION_CHECK: '1'
+      PYTHONPATH: apps/api/src:src
+      OI_API_ENVIRONMENT: synthetic
+      # Public credentials for this disposable CI database only.
+      OI_API_DATABASE_URL: postgresql+pg8000://oi_api:oi_h1_synthetic_only@127.0.0.1:5432/oi_api_test_shell
+      OI_API_TEST_DATABASE_URL: postgresql+pg8000://oi_api:oi_h1_synthetic_only@127.0.0.1:5432/oi_api_test_shell
+      OI_API_CONNECT_TIMEOUT_SECONDS: '2'
+      OI_API_RUN_DATABASE_TESTS: '1'
+      COMPOSE_PROJECT_NAME: oi-h1-ci-${{ github.run_id }}-${{ github.run_attempt }}
+    services:
+      postgres:
+        image: postgres:16.15-bookworm
+        env:
+          POSTGRES_USER: oi_api
+          POSTGRES_PASSWORD: oi_h1_synthetic_only
+          POSTGRES_DB: oi_api_test_shell
+        ports:
+          - '127.0.0.1:5432:5432'
+        options: >-
+          --health-cmd "pg_isready -U oi_api -d oi_api_test_shell"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+
+    steps:
+      # Official tag refs inspected 2026-11-02: checkout v4.4.0 and
+      # setup-python v5.6.0. No pull_request_target or repository secrets.
+      - name: Check out the exact proposed head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify checkout identity
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python - <<'PY'
+          import os
+          import subprocess
+          actual = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+          assert actual == os.environ['EXPECTED_HEAD'], (actual, os.environ['EXPECTED_HEAD'])
+          print('Verified proposed source head:', actual)
+          PY
+      - name: Set up Python 3.12
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12.16'
+      - name: Check the inherited synthetic-data boundary
+        run: python tools/audit_ci_data_boundaries.py
+      - name: Download only hash-locked wheels
+        run: >-
+          python -m pip download --require-hashes --only-binary=:all:
+          --dest /tmp/oi-h1-wheels -r apps/api/requirements.lock
+      - name: Verify wheel rights and write the resolved package inventory
+        run: python apps/api/tools/check_dependencies.py --wheel-dir /tmp/oi-h1-wheels --sbom /tmp/oi-h1-sbom.json
+      - name: Install verified wheels without network resolution
+        run: |
+          python -m pip install --require-hashes --no-index --find-links /tmp/oi-h1-wheels -r apps/api/requirements.lock
+          python -m pip check
+          python --version
+      - name: Apply the explicit migration to the disposable database
+        run: python -m oi_api.migrate upgrade head
+      - name: Run contracts and real PostgreSQL migration tests
+        run: |
+          python - <<'PY'
+          import sys
+          import unittest
+          suite = unittest.defaultTestLoader.discover('apps/api/tests')
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          if result.skipped:
+              print('PostgreSQL CI must not skip database acceptance:', result.skipped, file=sys.stderr)
+          raise SystemExit(0 if result.wasSuccessful() and result.testsRun and not result.skipped else 1)
+          PY
+      - name: Preserve the original synthetic prototype regression
+        env:
+          PYTHONPATH: src
+        run: python -m unittest discover -s tests -v
+      - name: Preserve the original loopback browser journeys
+        env:
+          PYTHONPATH: src
+        run: |
+          python tests/browser_journey.py
+          python tests/patient_mission_browser_journey.py
+      - name: Verify actual patient HTTP, restart, backup restore and access revocation
+        run: python apps/api/tools/verify_registry_compose.py
+      - name: Verify source HTTP, fresh authority, source receipts and restored originals
+        run: python apps/api/tools/verify_sources_compose.py
+      - name: Verify canonical review returns, history, retry recovery and backup restore
+        run: python apps/api/tools/verify_reviews_compose.py
+      - name: Verify canonical question follow-through, exact retries and restored history
+        run: python apps/api/tools/verify_followthrough_compose.py
+      - name: Verify case evidence, report history, rights changes and complete recovery
+        env:
+          OI_EVIDENCE_ACCEPTANCE_FILE: verification-api/evidence-recovery.json
+        run: python apps/api/tools/verify_evidence_compose.py
+      - name: Record resolved container identities and application packages
+        run: |
+          docker image inspect postgres:16.15-bookworm oi-h1-api:synthetic --format '{{.Id}} {{json .RepoDigests}}'
+          python -m pip list --format=json
+          python - <<'PY'
+          from pathlib import Path
+          print(Path('/tmp/oi-h1-sbom.json').read_text())
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: h1-evidence-recovery-${{ github.run_id }}-${{ github.run_attempt }}
+          path: verification-api/
+          if-no-files-found: warn
+          retention-days: 7

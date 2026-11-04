@@ -162,6 +162,13 @@ def main() -> None:
                 "document.querySelector('#mission-status')?.textContent === 'Ready to define question'",
                 "return to Alpha mission",
             )
+            # The mission panel refreshes independently from the main workspace.
+            # Require the existing write-readiness contract before submitting;
+            # mission readiness alone must not be mistaken for workspace readiness.
+            session.wait(
+                "(() => { try { return readyCase() === 'CASE-ALPHA'; } catch (_) { return false; } })()",
+                "return to Alpha workspace readiness",
+            )
             session.evaluate("""(() => {
               document.querySelector('#question-text').value =
                 'Which pathology result requires review after a source amendment?';

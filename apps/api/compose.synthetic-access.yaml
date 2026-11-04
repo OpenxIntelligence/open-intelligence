@@ -1,0 +1,12 @@
+# Explicit opt-in for locally authored synthetic fixture credentials only.
+# Mount a directory (not one file) so atomic file replacements revoke access
+# on the next request. Only SHA-256 credential hashes belong in access.json.
+services:
+  api:
+    environment:
+      OI_API_ACCESS_FILE: /run/oi-synthetic-access/access.json
+    volumes:
+      - type: bind
+        source: ${OI_API_ACCESS_DIRECTORY:?Set OI_API_ACCESS_DIRECTORY to the synthetic access directory}
+        target: /run/oi-synthetic-access
+        read_only: true
