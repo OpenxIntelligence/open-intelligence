@@ -130,7 +130,19 @@ class PostgresSourceVersions:
         fields = ("source_id", "document_id", "version", "sha256", "kind", "event_date",
                   "issued_at", "received_at", "specimen_id", "state", "supersedes_id", "raw")
         originals = [dict(zip(fields, row), case_id=case_id) for row in rows]
-        validate_snapshot(originals, assertions, requested_case_id=case_id)
+        from .laboratory_fhir_store import PostgresLaboratoryFHIR
+        laboratory = PostgresLaboratoryFHIR(self.registry)
+        lab_ids = laboratory.source_ids_locked(case_id)
+        if any(row[0] in lab_ids for row in assertions):
+            raise SourceIntegrityError("Stored source snapshot integrity check failed")
+        validate_snapshot([row for row in originals if row["source_id"] not in lab_ids],
+                          assertions, requested_case_id=case_id)
+        for row in originals:
+            if row["source_id"] in lab_ids:
+                try:
+                    laboratory.validate_original_row_locked(row)
+                except Exception:
+                    raise SourceIntegrityError("Stored source snapshot integrity check failed") from None
 
     def list(self, patient_id: str, case_id: str, *, organization: str,
              actor: str, purpose: str, recheck_authority: Callable[[], None],
@@ -263,6 +275,13 @@ class PostgresSourceVersions:
             if previous is not None:
                 predecessor = dict(zip(("source_id", "case_id", "document_id", "version", "kind",
                                         "event_date", "specimen_id", "state"), previous))
+        from .laboratory_fhir_store import PostgresLaboratoryFHIR
+        laboratory = PostgresLaboratoryFHIR(self.registry)
+        if laboratory.is_source_locked(source_id):
+            try:
+                return stored, laboratory.validate_original_row_locked(stored)
+            except Exception:
+                raise SourceIntegrityError("Stored source integrity check failed") from None
         return stored, validate_original(stored, requested_case_id=case_id, predecessor=predecessor)
 
     def import_original(self, patient_id: str, case_id: str, original: bytes, *,
@@ -328,6 +347,10 @@ class PostgresSourceVersions:
             )
             if old and self._is_reviewed(old[0]):
                 raise PatientRegistryConflict("Document format cannot change across intake owners")
+            if old:
+                from .laboratory_fhir_store import PostgresLaboratoryFHIR
+                if PostgresLaboratoryFHIR(self.registry).is_source_locked(old[0]):
+                    raise PatientRegistryConflict("Document format cannot change across intake owners")
             previously_seen = self.registry._fetchone(
                 "SELECT source_id,version FROM clinical_source.source_versions "
                 "WHERE case_id=%s AND document_id=%s AND sha256=%s",

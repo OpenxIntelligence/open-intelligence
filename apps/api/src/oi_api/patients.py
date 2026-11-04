@@ -301,6 +301,36 @@ class WorldObservation(Contract):
     clinical_meaning: None
 
 
+class WorldLaboratoryObservation(Contract):
+    source_id: str
+    document_id: str
+    document_version: int = Field(ge=1)
+    source_sha256: str
+    observation_reference: str
+    loinc_code: str
+    effective_at: str
+    issued_at: str
+    status: Literal["reported_value", "reported_absent"]
+    value_text: str | None
+    unit_code: str | None
+    absent_reason: str | None
+    specimen_reference: str
+    source_reported: Literal[True]
+    clinical_review: Literal["not_performed"]
+    review_state: Literal["not_established"]
+    clinical_meaning: None
+
+
+class WorldLaboratoryTimeline(Contract):
+    source_id: str
+    observation_reference: str
+    occurred_at: str
+    issued_at: str
+    loinc_code: str
+    status: Literal["reported_value", "reported_absent"]
+    clinical_interpretation: Literal["not_performed"]
+
+
 class WorldConflict(Contract):
     specimen_id: str
     event_date: str
@@ -315,6 +345,7 @@ class WorldSummary(Contract):
     current_sources: int = Field(ge=0)
     historical_sources: int = Field(ge=0)
     current_observations: int = Field(ge=0)
+    current_laboratory_observations: int = Field(ge=0)
     unresolved_observations: int = Field(ge=0)
     source_disagreements: int = Field(ge=0)
 
@@ -335,6 +366,8 @@ class SourceWorldModel(Contract):
     current_sources: list[SourceVersion]
     history: list[SourceVersion]
     observations: list[WorldObservation]
+    laboratory_observations: list[WorldLaboratoryObservation]
+    laboratory_timeline: list[WorldLaboratoryTimeline]
     unresolved_refs: list[WorldSourceRef]
     conflicts: list[WorldConflict]
     limitations: list[str]
@@ -1144,7 +1177,11 @@ def patient_router(database: Database, authentication: Authentication, *, image_
                 return PostgresSourceVersions(patients).list(
                     patient_id, case_id, organization=context.organization,
                     actor=context.actor, purpose=context.purpose,
-                    prepare_response=lambda index: SourceWorldModel(**project_source_world_model(index)),
+                    prepare_response=lambda index: SourceWorldModel(**project_source_world_model(
+                        index,
+                        __import__("oi_api.laboratory_fhir_store", fromlist=["PostgresLaboratoryFHIR"])
+                        .PostgresLaboratoryFHIR(patients).current_projection_locked(case_id),
+                    )),
                     recheck_authority=lambda: refresh_source_authority(
                         request, context, patients, patient_id, "source_read"))
         except PatientRegistryDenied:

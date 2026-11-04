@@ -19,7 +19,7 @@ UNRESOLVED = frozenset((
 ))
 
 
-def project_source_world_model(index: dict) -> dict:
+def project_source_world_model(index: dict, laboratory_observations=()) -> dict:
     """Project a single transactionally read source index without a second ledger.
 
     The caller obtains the index from PostgresSourceVersions.list() after
@@ -109,6 +109,34 @@ def project_source_world_model(index: dict) -> dict:
         key=lambda o: (o["event_date"], o["document_id"],
                        o["document_version"], o["source_line"], o["source_id"]),
     )
+    if type(laboratory_observations) not in (list, tuple) or len(laboratory_observations) > 4096:
+        raise PatientRegistryError("Laboratory projection exceeds bounds")
+    labs = []
+    seen_lab = set()
+    for item in laboratory_observations:
+        if type(item) is not dict:
+            raise PatientRegistryError("Malformed laboratory observation")
+        source = by_id.get(item.get("source_id"))
+        identity = (item.get("source_id"), item.get("observation_reference"))
+        if (source is None or source["state"] != "current" or source["kind"] != "laboratory"
+                or identity in seen_lab or item.get("document_id") != source["document_id"]
+                or item.get("document_version") != source["version"]
+                or item.get("source_sha256") != source["sha256"]
+                or item.get("source_reported") is not True
+                or item.get("clinical_review") != "not_performed"
+                or item.get("status") not in ("reported_value","reported_absent")):
+            raise PatientRegistryError("Invalid source-reported laboratory observation")
+        seen_lab.add(identity)
+        labs.append(dict(item, review_state="not_established", clinical_meaning=None))
+    labs.sort(key=lambda o:(o["effective_at"],o["document_id"],o["document_version"],
+                            o["observation_reference"],o["source_id"]))
+    laboratory_timeline = [
+        {"source_id": item["source_id"], "observation_reference": item["observation_reference"],
+         "occurred_at": item["effective_at"], "issued_at": item["issued_at"],
+         "loinc_code": item["loinc_code"], "status": item["status"],
+         "clinical_interpretation": "not_performed"}
+        for item in labs
+    ]
     grouped: dict[tuple[str, str, str], list[dict]] = defaultdict(list)
     for item in observations:
         if item["specimen_id"] is not None:
@@ -142,6 +170,7 @@ def project_source_world_model(index: dict) -> dict:
         "case_id": case_id,
         "current_sources": current,
         "observations": observations,
+        "laboratory_observations": labs,
     }
     digest = hashlib.sha256(json.dumps(
         fingerprint_input, ensure_ascii=False, sort_keys=True,
@@ -163,13 +192,17 @@ def project_source_world_model(index: dict) -> dict:
         "summary": {
             "current_sources": len(current),
             "historical_sources": len(history),
-            "current_observations": len(observations),
-            "unresolved_observations": len(unresolved_refs),
+            "current_observations": len(observations) + len(labs),
+            "current_laboratory_observations": len(labs),
+            "unresolved_observations": len(unresolved_refs) + sum(
+                1 for item in labs if item["status"] == "reported_absent"),
             "source_disagreements": len(conflicts),
         },
         "current_sources": current,
         "history": history,
         "observations": observations,
+        "laboratory_observations": labs,
+        "laboratory_timeline": laboratory_timeline,
         "unresolved_refs": unresolved_refs,
         "conflicts": conflicts,
         "limitations": [
@@ -177,6 +210,7 @@ def project_source_world_model(index: dict) -> dict:
             "Original bytes and source custody remain in the existing PostgreSQL owner.",
             "No clinical identity proof, consent, professional review or real PHI support.",
             "Absent specimens cannot be assumed to be identical; different dates are not conflicts.",
+            "FHIR laboratory values remain source-reported; no reference-range interpretation or unit conversion.",
             "No inferred diagnosis, staging, treatment response, trial eligibility or recommendations.",
             "No biomedical evidence, Composer execution, human-review queue or outcomes integrated.",
             "Fingerprint is not signed, a permission grant or a safe execution authorization.",
