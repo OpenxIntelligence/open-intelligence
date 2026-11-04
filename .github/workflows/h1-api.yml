@@ -114,6 +114,8 @@ jobs:
         env:
           OI_SOURCE_ACCEPTANCE_FILE: verification-api/source-document-recovery.json
         run: python apps/api/tools/verify_sources_compose.py
+      - name: Verify native FHIR laboratory custody, amendments and recovery
+        run: python apps/api/tools/verify_fhir_laboratory_compose.py
       - name: Verify exact image originals, source amendments, image grants and restored custody
         run: python apps/api/tools/verify_images_compose.py
       - name: Verify canonical review returns, history, retry recovery and backup restore

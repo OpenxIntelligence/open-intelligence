@@ -179,8 +179,10 @@ def project_source_world_model(index: dict, laboratory_observations: list[dict] 
         "patient_id": patient_id,
         "case_id": case_id,
         "current_sources": current,
+        # The canonical source rows already commit to FHIR raw bytes via SHA-256.
+        # Keep this fingerprint source-based so every investigation/review caller
+        # obtains the same snapshot identity without needing a second derived read.
         "observations": observations,
-        "laboratory_observations": laboratory,
     }
     digest = hashlib.sha256(json.dumps(
         fingerprint_input, ensure_ascii=False, sort_keys=True,

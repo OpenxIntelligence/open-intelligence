@@ -123,6 +123,40 @@ class SourceWorldModelHTTPTests(SourceFixture):
                                 and x["clinical_meaning"] is None
                                 for x in body["observations"]))
 
+    def test_typed_laboratory_projection_does_not_change_source_snapshot_fingerprint(self):
+        index = {
+            "contract":"oi.synthetic-original-sources/1",
+            "patient_id":"PAT-SYNTH", "case_id":"CASE-ALPHA",
+            "access_receipt_id":"ACCESS-"+"A"*32, "synthetic":True,
+            "clinical_interpretation":False, "research_review_invalidation_integrated":False,
+            "sources":[{
+                "source_id":"SRC-"+"B"*32, "document_id":"FICTIONAL-REPORT-A", "version":1,
+                "sha256":"b"*64,"kind":"laboratory","event_date":"2026-04-03",
+                "issued_at":"2026-04-04","received_at":"2026-04-05T00:00:00+00:00",
+                "specimen_id":"FICTIONAL-SPECIMEN-A","state":"current","supersedes_id":None,
+            }],
+            "source_reported_assertions":[],
+        }
+        lab = {
+            "source_id":"SRC-"+"B"*32,"document_id":"FICTIONAL-REPORT-A",
+            "document_version":1,"source_sha256":"b"*64,
+            "observation_reference":"Observation/FICTIONAL-OBS-A","loinc_code":"777-3",
+            "effective_at":"2026-04-03T09:05:00-04:00","issued_at":"2026-04-04T12:00:00Z",
+            "specimen_reference":"Specimen/FICTIONAL-SPECIMEN-A",
+            "specimen_type_text":"Fictional plasma sample",
+            "specimen_collected_at":"2026-04-03T09:05:00-04:00",
+            "report_reference":"DiagnosticReport/FICTIONAL-REPORT-A",
+            "status":"reported_value","value_text":"4.20","unit_code":"10*9/L",
+            "absent_reason":None,"source_reported":True,"review_state":"not_established",
+            "clinical_review":"not_performed","clinical_meaning":None,
+        }
+        source_only = project_source_world_model(index)
+        typed = project_source_world_model(index, [lab])
+        self.assertEqual(source_only["snapshot_fingerprint"], typed["snapshot_fingerprint"])
+        self.assertEqual(source_only["summary"]["current_laboratory_observations"], 0)
+        self.assertEqual(typed["summary"]["current_laboratory_observations"], 1)
+        self.assertEqual(typed["laboratory_observations"][0]["value_text"], "4.20")
+
     def test_case_and_source_permission_revocation_fails_closed_without_original_bytes(self):
         with running_server(create_app(self.settings)) as base:
             patient = self.setup_case(base)

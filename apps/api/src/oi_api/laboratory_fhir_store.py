@@ -160,6 +160,11 @@ class PostgresLaboratoryFHIR:
                 (case_id, document_id, prepared.source_sha256),
             )
             if seen is not None:
+                # A prior request key may always replay its own immutable historical
+                # receipt (handled above). A *new* request key must never resurrect
+                # superseded bytes as though they were the current laboratory source.
+                if seen[2] != "current":
+                    raise PatientRegistryConflict("Historical FHIR source cannot be re-imported as current")
                 if expected_previous_source_id is not None and old is not None and expected_previous_source_id != old[0]:
                     raise PatientRegistryConflict("FHIR amendment predecessor is not current")
                 self.registry._execute(

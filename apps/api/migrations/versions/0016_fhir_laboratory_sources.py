@@ -91,10 +91,19 @@ def upgrade():
         CREATE FUNCTION clinical_source.guard_fhir_laboratory_source_insert() RETURNS trigger
         LANGUAGE plpgsql AS $oi_fhir_source_guard$
         DECLARE parent_kind text;
+        DECLARE bound_org text;
+        DECLARE bound_system text;
+        DECLARE bound_subject text;
         BEGIN
-          SELECT kind INTO parent_kind FROM clinical_source.source_versions
-            WHERE source_id=NEW.source_id;
-          IF parent_kind IS DISTINCT FROM 'laboratory' THEN
+          SELECT s.kind,b.source_organization,b.source_system,b.source_subject_ref
+            INTO parent_kind,bound_org,bound_system,bound_subject
+            FROM clinical_source.source_versions s
+            JOIN coordination.patient_case_bindings b ON b.case_id=s.case_id
+            WHERE s.source_id=NEW.source_id AND b.status='active';
+          IF parent_kind IS DISTINCT FROM 'laboratory'
+             OR bound_org IS DISTINCT FROM NEW.source_organization
+             OR bound_system IS DISTINCT FROM NEW.source_system
+             OR ('Patient/' || bound_subject) IS DISTINCT FROM NEW.subject_reference THEN
             RAISE EXCEPTION 'OI-FHIR-LAB-SOURCE-OWNER';
           END IF;
           RETURN NEW;
