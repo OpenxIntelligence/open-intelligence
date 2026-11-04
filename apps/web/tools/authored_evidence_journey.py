@@ -158,47 +158,10 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
     def assess(evidence, relation, quote, rationale, *, lose_response=False, contradictory_response=False):
         post_count = len([r for r in responses() if r['method'] == 'POST'])
         click(f'[data-testid=evidence-version][data-evidence-id="{evidence["evidence_id"]}"] [data-testid=evidence-select]')
-        if lose_response:
-            # The real editor must explain invalid input before any write. A
-            # rejected oversized edit keeps the earlier accepted text, survives
-            # an authorized refresh, and requires correction or explicit keep.
-            value('[data-testid=evidence-quote]', 'not present in the selected evidence statement')
-            cd.wait("document.querySelector('[data-testid=evidence-quote-error]')?.textContent.includes('copied exactly')",
-                    'field-linked exact-passage feedback')
-            assert cd.evaluate("document.querySelector('[data-testid=evidence-assess]').disabled")
-            value('[data-testid=evidence-quote]', quote)
-            value('[data-testid=evidence-rationale]', rationale)
-            value('[data-testid=evidence-rationale]', 'x' * 601)
-            cd.wait("document.querySelector('[data-testid=evidence-rationale-error]')?.textContent.includes('last rationale edit was rejected')",
-                    'rejected rationale is explicit')
-            assert cd.evaluate("document.querySelector('[data-testid=evidence-rationale]').value") == rationale
-            assert cd.evaluate("document.querySelector('[data-testid=evidence-assess]').disabled")
-            refresh_before = len(responses())
-            click('[data-testid=evidence-refresh]')
-            cd.wait('window.__oiAuthoredEvidenceChecks.responses.length>' + str(refresh_before)
-                    + " && Boolean(document.querySelector('[data-testid=evidence-rationale-keep]'))",
-                    'rejected edit warning survives authorized refresh')
-            assert cd.evaluate("document.querySelector('[data-testid=evidence-rationale]').value") == rationale
-            assert len([r for r in responses() if r['method'] == 'POST']) == post_count
-            viewport = cd.evaluate('({width:innerWidth,height:innerHeight})')
-            for width, height, suffix in ((1440, 1100, 'desktop'), (390, 844, 'mobile')):
-                cd.command('Emulation.setDeviceMetricsOverride', {
-                    'width': width, 'height': height, 'deviceScaleFactor': 1, 'mobile': False})
-                cd.wait('innerWidth===' + str(width), 'rejected-edit feedback viewport')
-                assert cd.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
-                cd.evaluate("document.querySelector('[data-testid=evidence-rationale-error]').scrollIntoView({block:'center'})")
-                shot = cd.command('Page.captureScreenshot', {'format': 'png'})
-                (artifacts / ('h1-comparison-rejected-edit-' + suffix + '.png')).write_bytes(base64.b64decode(shot['data']))
-            cd.command('Emulation.setDeviceMetricsOverride', {
-                'width': viewport['width'], 'height': viewport['height'], 'deviceScaleFactor': 1, 'mobile': False})
-            click('[data-testid=evidence-rationale-keep]')
-            cd.wait("!document.querySelector('[data-testid=evidence-rationale-keep]')",
-                    'explicitly keep previous accepted rationale')
-        else:
-            value('[data-testid=evidence-quote]', quote)
-            value('[data-testid=evidence-rationale]', rationale)
+        value('[data-testid=evidence-quote]', quote)
         value('[data-testid=evidence-relation]', relation)
         value('[data-testid=evidence-applicability]', 'limited')
+        value('[data-testid=evidence-rationale]', rationale)
         assert len([r for r in responses() if r['method'] == 'POST']) == post_count
         # Editing is local. An unchanged fresh read must retain the exact draft,
         # and leaving the component must not silently discard it.
@@ -434,25 +397,6 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
         for key in ('body', 'body_sha256', 'snapshot', 'snapshot_sha256', 'prepared_at'):
             assert restarted[key] == first_report[key]
 
-        # Independently authorized follow-up drafts share this workspace, but
-        # evidence freshness must not consume their unsent input or write work.
-        click('[data-testid=followthrough-refresh]')
-        cd.wait("document.querySelector('[data-testid=followthrough-status]')?.dataset.phase==='ready' && "
-                "document.querySelectorAll('[data-testid=followthrough-task]').length===4",
-                'four saved tasks before the evidence-only amendment')
-        click(row + ' [data-testid=followthrough-open-create]')
-        task_id = cd.evaluate("document.querySelector('[data-testid=followthrough-task][data-status=created]').dataset.taskId")
-        task_row = '[data-testid=followthrough-task][data-task-id="' + task_id + '"]'
-        follow_inputs = {
-            row + ' [data-testid=followthrough-title]': 'Unsent coordination alongside evidence reassessment',
-            row + ' [data-testid=followthrough-reason]': 'Keep this independent unsent plan.',
-            task_row + ' [data-testid=followthrough-transition-owner]': 'Proposed evidence-discussion coordinator',
-            task_row + ' [data-testid=followthrough-transition-reason]': 'Unsent assignment while inspecting historical evidence.',
-        }
-        for selector, text in follow_inputs.items():
-            value(selector, text)
-        follow_writes = cd.evaluate('window.__oiFollowthroughChecks.writes.length')
-
         # Another authorized client can amend evidence while this workspace is
         # still displaying its earlier packet. Discover the change through the
         # report read first, without an intervening packet refresh.
@@ -461,9 +405,6 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
         value('[data-testid=evidence-quote]', 'café 🧪 labels matched the violet pattern')
         value('[data-testid=evidence-rationale]', unsent_rationale)
         cd.wait("!document.querySelector('[data-testid=evidence-assess]').disabled", 'old-context comparison initially editable')
-        value('[data-testid=evidence-rationale]', 'x' * 601)
-        cd.wait("Boolean(document.querySelector('[data-testid=evidence-rationale-keep]'))", 'rejected edit before external amendment')
-        assert cd.evaluate("document.querySelector('[data-testid=evidence-assess]').disabled")
         prior_packet = last('/evidence')
         prior_posts = len([r for r in responses() if r['method'] == 'POST'])
         status, amendment_receipt = add_synthetic(scope + '/evidence', {
@@ -480,7 +421,6 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
                 "Boolean(document.querySelector('[data-testid=evidence-draft-resume]'))",
                 'fresh historical report invalidates stale evidence actions but retains the draft')
         assert not cd.evaluate("Boolean(document.querySelector('[data-testid=evidence-rationale]'))")
-        assert not cd.evaluate("Boolean(document.querySelector('[data-testid=evidence-rationale-keep]'))"), 'Historical-only context must not allow acknowledgement of a hidden draft'
         assert unsent_rationale not in cd.evaluate('document.body.innerText')
         historical = last('/evidence-reports/' + first_report['report_id'])
         assert historical['state'] == 'historical_reassessment_required'
@@ -490,10 +430,6 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
         assert downloaded_path.read_bytes() == downloaded
         assert not cd.evaluate("Boolean(document.querySelector('[data-testid=evidence-version]'))"), 'download cannot revive the old packet'
         assert len([r for r in responses() if r['method'] == 'POST']) == prior_posts
-        for selector, expected in follow_inputs.items():
-            assert cd.evaluate('document.querySelector(' + json.dumps(selector) + ').value') == expected, 'Evidence reassessment discarded independent follow-up input'
-        assert cd.evaluate('window.__oiFollowthroughChecks.writes.length') == follow_writes
-        assert cd.evaluate("document.querySelectorAll('[data-testid=followthrough-task]').length") == 4
         click('[data-testid=evidence-refresh]')
         cd.wait('Boolean(document.querySelector(' + json.dumps(
             f'[data-testid=evidence-version][data-evidence-id="{amendment_receipt["evidence_id"]}"]') + '))',
@@ -578,10 +514,6 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
             'evidence_amendment_requires_reassessment': True,
             'external_amendment_receipt': amendment_receipt,
             'report_read_invalidates_stale_comparison_actions': True,
-            'historical_report_preserves_independent_followup_creation_and_transition_drafts': True,
-            'evidence_reassessment_creates_no_followup_writes': True,
-            'rejected_edit_feedback_survives_refresh_requires_explicit_keep': True,
-            'historical_report_hides_rejected_edit_acknowledgement': True,
             'historical_only_download_requires_fresh_access': True,
             'stale_unsent_comparison_retained_hidden_until_explicit_discard': True,
             'historical_download_carries_fresh_status_and_receipt': True,

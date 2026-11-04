@@ -19,6 +19,12 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+      - name: Install the inherited hash-locked PDF parser
+        run: |
+          # The composed repository discovers reviewed-text/PDF unit tests in
+          # tests/. Match the already qualified ui-glance wheel lock exactly;
+          # never suppress or skip the new PDF assertions.
+          python -m pip install --require-hashes --only-binary=:all: --no-deps -r requirements-pdf.lock
       - name: Compile
         run: PYTHONPATH=src python -m compileall -q src
       - name: JavaScript syntax

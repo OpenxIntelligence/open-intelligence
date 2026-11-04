@@ -13,7 +13,12 @@ from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from open_intelligence.__main__ import Handler, seed
+from open_intelligence.__main__ import (
+    FICTIONAL_ACTOR_HEADER,
+    FICTIONAL_ACTOR_PURPOSE,
+    Handler,
+    seed,
+)
 from open_intelligence.changes import changes_since_review
 from open_intelligence.store import CaseStore, InvalidInput
 
@@ -491,6 +496,13 @@ class ReReviewTaskHttpTests(unittest.TestCase):
         cls.tmp = tempfile.TemporaryDirectory()
         cls.path = str(Path(cls.tmp.name) / "server.sqlite")
         seed(cls.path)
+        store = CaseStore(cls.path)
+        try:
+            for case_id in ("CASE-ALPHA", "CASE-BETA"):
+                store.create_grant("FICTIONAL-NAVIGATOR-A", case_id,
+                                   FICTIONAL_ACTOR_PURPOSE, "2020-01-01", "2999-12-31")
+        finally:
+            store.close()
         bound_handler = type("BoundHandlerForReReviewTest", (Handler,), {"db_path": cls.path})
         cls.server = ThreadingHTTPServer(("127.0.0.1", 0), bound_handler)
         cls.port = cls.server.server_address[1]
@@ -506,6 +518,7 @@ class ReReviewTaskHttpTests(unittest.TestCase):
 
     def request(self, path, data=None):
         values = {"Content-Type": "application/json"} if data is not None else {}
+        values[FICTIONAL_ACTOR_HEADER] = "FICTIONAL-NAVIGATOR-A"
         request = Request(f"http://127.0.0.1:{self.port}{path}",
                           data=None if data is None else json.dumps(data).encode(), headers=values)
         try:

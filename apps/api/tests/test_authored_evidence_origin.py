@@ -13,11 +13,12 @@ from sqlalchemy.exc import DBAPIError
 
 from http_support import running_server
 from oi_api.app import create_app
+from oi_api.contracts import SCHEMA_REVISION
 from oi_api.evidence_report import render_evidence_report
 from oi_api.migrate import migrate
 from test_authored_evidence_postgres import EvidenceFixture
 
-HEAD = "0014_manual_report_context"
+HEAD = SCHEMA_REVISION
 
 
 class EvidenceOriginPostgresTests(EvidenceFixture):
@@ -106,7 +107,7 @@ class EvidenceOriginPostgresTests(EvidenceFixture):
         legacy_body = render_evidence_report(state["prepared"]["snapshot"], renderer="oi.h1-evidence-text/1")
         legacy_sha = hashlib.sha256(legacy_body.encode("utf-8")).hexdigest()
         # Author a fixture with the exact published old renderer, then remove
-        # only the new metadata owner so the actual 0009->0010 upgrade is tested.
+        # the empty sibling owners so the actual 0009->0010 upgrade is tested.
         with self.engine.begin() as db:
             db.exec_driver_sql("ALTER TABLE investigation.question_evidence_reports DISABLE TRIGGER USER")
             db.execute(text("UPDATE investigation.question_evidence_reports SET body=:body,body_sha256=:sha "
@@ -120,6 +121,9 @@ class EvidenceOriginPostgresTests(EvidenceFixture):
         # that empty fixture branch explicitly to reproduce the actual legacy
         # single-head origin checkpoint; never stamp or rewrite its history.
         migrate(self.admin, "downgrade", "0010_question_evidence@0008_review_convergence")
+        # The empty image sibling also remains after unmerging. Remove only
+        # that branch, retaining the populated authored/question ancestors.
+        migrate(self.admin, "downgrade", "0006_image_custody@0005_source_versions")
         state["prepared"] = {**state["prepared"], "body": legacy_body, "body_sha256": legacy_sha}
         return state
 

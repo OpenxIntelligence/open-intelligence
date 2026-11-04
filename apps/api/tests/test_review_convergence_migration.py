@@ -154,7 +154,10 @@ class ReviewConvergenceMigrationTests(SourceVersionFixture):
             status, world, _ = request(base, prefix + "/world-model", token=TOKEN_A)
             self.assertEqual(status, 200, world)
             fingerprint = world["snapshot_fingerprint"]
-        migrate(self.admin, "downgrade", "0006_source_questions")
+        # No question, return or image history exists yet. Recreate the exact
+        # original review branch from the shared source owner, excluding the
+        # independent image sibling retained by a question-only downgrade.
+        migrate(self.admin, "downgrade", "0005_source_versions")
         migrate(self.admin, "upgrade", starting_revision)
         with self.engine.connect() as connection:
             self.assertEqual(connection.execute(text(
@@ -181,8 +184,8 @@ class ReviewConvergenceMigrationTests(SourceVersionFixture):
         self.assertEqual(self.events(patient), events_before)
         self.assertEqual(len(self.rows("question_review_receipts", patient)), len(receipts_before))
 
-        # Preserve the historical merge proof, then satisfy the current API
-        # readiness contract without changing any question or review history.
+        # Preserve the historical merge proof, then satisfy the combined image,
+        # task and evidence readiness contract without rewriting old history.
         migrate(self.admin, "upgrade", "head")
         self.creds[0]["actions"].extend(("composer_context_read", "question_create",
                                          "question_read", "review_queue_read", "review_return"))

@@ -1,25 +1,5 @@
 # H1 converged evidence — merge-readiness gate
 
-## Review chronology continuation of the document candidate — 3 November 2026
-
-The dependent continuation pins #377 at
-`b13dd4810342d6a7ef08bbad53745502e0950801` and selectively reuses #375 at
-`1bdc44ac8507ec3a05398c3965bed5fcae0d59eb`. Only its Review decoder, client
-regressions and real-response browser helper are added. Follow-through chronology
-and shared-path CI were already present; their current files are preserved.
-Question and return-history timestamps now use the existing strict validator.
-Malformed current Review disclosure cannot authorize a new return or resurrect
-an unsent reason; an uncertain captured return remains recoverable exactly.
-
-The complete document/main reconciliation below remains the base, including its
-reviewed-document denial and completed-but-delayed inbox probe. No backend,
-migration, grant, dependency, RegistrySession or workflow changes are introduced.
-The [bounded plan](../superpowers/plans/2026-11-03-document-review-chronology.md)
-records source pins and reproduced failures; the dependent PR records its own
-final published head, review and hosted browser/artifact results. Earlier
-whole-stack successes remain evidence for their own heads. This does not
-complete manual-document question/report provenance or authorize merge/release.
-
 ## Current pinned-main reconciliation of the document candidate — 3 November 2026
 
 **Prepublication source checkpoint: prepared synthetic integration; combined hosted acceptance and human owner review are required.** This section supersedes the selected-candidate and pending-check statements in the historical checkpoints below. The candidate's own PR receipt records the final published head and subsequent hosted outcomes without rewriting tested source. This checkpoint does not authorize a main-branch merge or release.
@@ -126,30 +106,3 @@ Do not substitute a green donor, a parent mergeability badge, or a passing artif
 - Red and recovered test history is evidence, not a reason to downgrade assertions. A non-successful hosted result remains a blocker until the same exact source head passes with the intended checks.
 
 **Merge readiness:** HOLD pending #315 exact-head verification, external source/security review, and explicit parent-chain decision. Never auto-merge or deploy based on this document.
-
-## Source-owned selection reference continuation on #380
-
-The next bounded contribution adds an exact read of an immutable manual passage,
-not a second source or question ledger. Parent #380 is pinned at
-`8dde8efac386c9d32ce3ca60d4173a1ef1ffc95b`. See the
-[bounded plan](../superpowers/plans/2026-11-03-source-selection-reference.md) and
-[API contract](../../apps/api/README.md#exact-manual-passage-references-dependent-candidate).
-Keep source/original permissions independent, retain old revision/quote/hash on
-correction and source amendment, use frozen PDF page anchors, and withhold both
-the prepared passage and its access receipt after encoding/audit-time revocation.
-
-Local tests-first evidence: six pure tests produced 11 expected failing assertions
-before the resolver existed, then all six passed. The full local API suite found
-one expected route-inventory mismatch; adding the new GET path to the explicit
-inventory restored a passing run (449 discovered: 115 passed, 334 database tests
-skipped). All 351 reference tests passed with the exact locked environment.
-Independent read-only review found no runtime defect and requested explicit integrity-fault coverage; actual-query-copy original, frozen rendition and revision-receipt faults were added to the HTTP tests. The initial HTTP test import used the wrong registry module and was corrected
-before execution; no PostgreSQL test is claimed locally. Hosted full API/PG and
-web/Chromium acceptance at the published head remain required.
-
-The actual reviewed-document browser journey now resolves its UI-authored page-two
-selections through this source-owned HTTP endpoint, checks correction/history,
-restart and original-read denial, and retains a separate
-`document-selection-workflow.json`. This does not yet bind a selection to a saved
-canonical question or report, nor prove dump/restore acceptance for the new GET.
-Use only independently authored fictional inputs. Draft, unmerged and undeployed.

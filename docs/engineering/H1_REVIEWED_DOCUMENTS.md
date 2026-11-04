@@ -30,7 +30,6 @@ Prefix: `/v1/patients/{patient_id}/cases/{case_id}/documents`.
 | GET collection | `source_read` |
 | GET `/{source_id}` rendition/history | `source_read`, `source_original_read` |
 | GET `/{source_id}/original` | `source_original_read` |
-| GET `/{source_id}/selections/{revision_id}/{selection_key}` | `source_read`, `source_original_read` |
 | POST `/{source_id}/annotations` | `source_import`, `source_original_read` |
 
 All operations also require existing patient, organization, case and purpose
@@ -76,19 +75,6 @@ remains historical evidence. The current [document convergence candidate](H1_EVI
 includes that existing recovery implementation and still requires its own
 commit-specific run and retained `source-document-recovery.json`. The five
 recovery gates and seven-day artifact retention remain in place.
-
-The exact selection-reference resolver in [#385](https://github.com/OpenxIntelligence/open-intelligence/pull/385)
-has a dependent recovery extension in the same source probe. It reads historical
-and current selections from the restored text/PDF originals, including a reused
-selection key with a corrected quotation. Exact human attribution, frozen page,
-line, extraction and review hashes must match the original history. Independent
-grants, wrong scope, missing or cross-document revision references, service
-restarts and a restored revoked binding are checked without business effects.
-Selection access receipts are matched to their exact revision/key/anchor hash in
-the serving restored database. The existing `source-document-recovery.json`
-advances to `oi.source-document-recovery/2` and records all four exact anchors.
-Local negative controls pass; actual combined PostgreSQL/HTTP execution remains
-pending until the dependent PR records its pinned run and inspected artifact.
 
 Manual document selections are deliberately excluded from the existing structured
 source World Model and question snapshots. Propagating their explicitly manual

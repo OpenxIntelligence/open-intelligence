@@ -195,7 +195,7 @@ class ReviewedDocuments(PostgresSourceVersions):
                 predecessor = self.registry._fetchone(
                     "SELECT case_id,document_id,version,kind,event_date,specimen_id,state FROM clinical_source.source_versions WHERE source_id=%s",
                     (doc["supersedes_id"],))
-                if predecessor != (case_id,doc["document_id"],doc["version"]-1,doc["kind"],doc["event_date"],doc["specimen_id"],"superseded"):
+                if predecessor is None or tuple(predecessor) != (case_id,doc["document_id"],doc["version"]-1,doc["kind"],doc["event_date"],doc["specimen_id"],"superseded"):
                     raise ValueError()
             doc["revisions"] = []
             for expected, rev in enumerate(revisions, 1):

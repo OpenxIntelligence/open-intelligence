@@ -12,6 +12,7 @@ from alembic.util.exc import CommandError
 
 from http_support import running_server
 from oi_api.app import create_app
+from oi_api.contracts import SCHEMA_REVISION
 from oi_api.database import Database
 from oi_api.migrate import migrate
 from open_intelligence.postgres_registry import PostgresPatientRegistry
@@ -269,7 +270,7 @@ class QuestionEvidencePostgresTests(SourceVersionFixture):
             migrate(self.admin, "downgrade", "0009_question_followthrough")
         with self.engine.connect() as connection:
             self.assertEqual(connection.execute(text("SELECT version_num FROM public.alembic_version")).scalar_one(),
-                             "0014_manual_report_context")
+                             SCHEMA_REVISION)
             self.assertEqual(connection.execute(text("SELECT count(*) FROM investigation.evidence_rights_decisions")).scalar_one(), before)
 
     def test_audit_failure_withholds_disclosure_and_rolls_back_citation(self):

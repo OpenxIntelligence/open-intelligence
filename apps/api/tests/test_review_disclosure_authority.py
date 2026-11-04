@@ -19,6 +19,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
 from oi_api.app import create_app
+from oi_api.contracts import SCHEMA_REVISION
 from http_support import running_server
 from test_canonical_review_flow import RETURN_REASON, create_question
 from test_patients import TOKEN_A
@@ -111,7 +112,7 @@ class ReviewDisclosureAuthorityTests(SourceVersionFixture):
         with self.engine.connect() as connection:
             self.assertEqual(connection.execute(text(
                 "SELECT version_num FROM public.alembic_version"
-            )).scalars().all(), ["0014_manual_report_context"])
+            )).scalars().all(), [SCHEMA_REVISION])
 
     def persisted_state(self):
         """Include every return and event, including source access receipts."""

@@ -1,9 +1,8 @@
 import {useEffect,useRef,useState} from 'react';
 import type {RegistrySession,ViewState} from './registry-client';
 import {declaredPermissions,downloadEvidenceOriginal,downloadEvidenceReport,visibleLine} from './authored-evidence';
-import type {ContentItem,Permission} from './authored-evidence';
+import type {ContentItem,Permission,Relation,Applicability} from './authored-evidence';
 import {activeComparisonDraft,evidenceSelectionMode} from './authored-evidence-session';
-import {EvidenceComparisonEditor} from './evidence-comparison-editor';
 import './authored-evidence.css';
 import {QuestionPassagesPanel} from './question-passages-panel';
 import type {ManualPanelStatus} from './question-passages';
@@ -60,6 +59,9 @@ export function AuthoredEvidencePanel({session,state,busy}:{session:RegistrySess
   if(mode==='comparison'&&(!q||!session.selectEvidenceComparison(q.question_id,id)))return;
   setSelected(id);setReason('');
  }
+ const canAssess=Boolean(comparison&&current&&evidence?.state==='current'&&evidence.statement&&quote&&Array.from(quote).length<=400&&
+  evidence.statement.includes(quote)&&evidence.statement.indexOf(quote)===evidence.statement.lastIndexOf(quote)&&visibleLine(rationale)&&
+  !(relation==='supports'&&applicability==='not_applicable'));
  return <section className="authored-evidence-workspace" aria-label="Fictional evidence investigation">
   <p data-testid="evidence-status" role="status" aria-live="polite" className={'status '+(state.evidencePhase==='error'?'error':'')}>{state.evidenceMessage}</p>
   {(intent||state.evidenceWritePhase!=='idle')&&<section className="evidence-write-status" aria-label="Evidence save status">
@@ -126,10 +128,15 @@ export function AuthoredEvidencePanel({session,state,busy}:{session:RegistrySess
     {evidence&&<section className="evidence-assessment-editor" aria-labelledby="evidence-assessment-heading">
      <h4 id="evidence-assessment-heading">Propose a comparison</h4><p>Selected <strong>{evidence.title??evidence.evidence_key}</strong>, version {evidence.version}. The relation below is your proposal, not a conclusion authored by the evidence source.</p>
      {evidence.statement!==null&&comparison?<>
-      <EvidenceComparisonEditor evidence={evidence} comparison={comparison} rejectedFields={state.evidenceRejectedFields} current={current} locked={locked}
-       onEdit={patch=>session.editEvidenceComparison(patch)}
-       onAcknowledge={field=>session.acknowledgeRejectedEvidenceComparisonField(field)}
-       onSave={()=>void session.saveEvidenceComparison()}/>
+      <label htmlFor="evidence-quote">Exact unique passage<textarea id="evidence-quote" data-testid="evidence-quote" rows={3} value={quote} disabled={locked||!current} onChange={e=>session.editEvidenceComparison({quote:e.target.value})}/></label>
+      <p className="muted">Choose 1–400 characters appearing once in the stored statement. The original statement line and Unicode character offset are retained.</p>
+      <div className="evidence-form-grid">
+       <label htmlFor="evidence-relation">Proposed relation<select id="evidence-relation" data-testid="evidence-relation" value={relation} disabled={locked||!current} onChange={e=>session.editEvidenceComparison({relation:e.target.value as Relation})}><option value="unknown">Unknown</option><option value="supports">Supports</option><option value="contradicts">Contradicts</option><option value="context">Context only</option></select></label>
+       <label htmlFor="evidence-applicability">Proposed applicability<select id="evidence-applicability" data-testid="evidence-applicability" value={applicability} disabled={locked||!current} onChange={e=>session.editEvidenceComparison({applicability:e.target.value as Applicability})}><option value="unknown">Unknown</option><option value="limited">Limited</option><option value="applicable">Applicable</option><option value="not_applicable">Not applicable</option></select></label>
+      </div>
+      <label htmlFor="evidence-rationale">Your rationale and uncertainty<textarea id="evidence-rationale" data-testid="evidence-rationale" rows={3} value={rationale} disabled={locked||!current} onChange={e=>session.editEvidenceComparison({rationale:e.target.value})}/></label>
+      <p className="muted">One visible line, 10–600 characters. Saving a proposal does not establish clinical relevance or approve a decision.</p>
+      <button type="button" className="primary" data-testid="evidence-assess" disabled={locked||!canAssess} onClick={()=>void session.saveEvidenceComparison()}>Save human-authored comparison</button>
      </>:<p>{evidence.statement===null?'Comparison text is unavailable under current content permissions.':
       'A new comparison needs current source context and an explicitly selected draft. Withdrawal remains a separate action.'}</p>}
      <details className="evidence-withdrawal"><summary>Withdraw this evidence family</summary>

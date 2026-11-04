@@ -21,6 +21,7 @@ from sqlalchemy.exc import DBAPIError
 
 from http_support import running_server
 from oi_api.app import create_app
+from oi_api.contracts import SCHEMA_REVISION
 from oi_api.migrate import migrate
 from test_patients import TOKEN_A, request
 from test_authored_evidence_postgres import (
@@ -437,5 +438,5 @@ class QuestionEvidenceAuthorityTests(EvidenceFixture):
             self.assertEqual(self.persisted_state(), before)
             with self.engine.connect() as db:
                 revision = db.execute(text("SELECT version_num FROM public.alembic_version")).scalar_one()
-            self.assertEqual(revision, "0014_manual_report_context")
+            self.assertEqual(revision, SCHEMA_REVISION)
             self.assertEqual(len(self.packet(base, p, q)["evidence"]), 1)

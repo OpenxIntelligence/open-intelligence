@@ -31,7 +31,7 @@ def manual_snapshot():
 
 class ManualContextContracts(unittest.TestCase):
     def test_only_known_legacy_schemas_may_lack_manual_metadata(self):
-        for revision in ('0010_authored_evidence_origin','0011_evidence_convergence','0012_reviewed_documents'):
+        for revision in ('0010_authored_evidence_origin','0011_evidence_convergence','0012_reviewed_documents','0013_document_image_convergence'):
             registry=Mock()
             registry._transaction_active=True
             registry._fetchone.return_value=(None,)
@@ -39,7 +39,7 @@ class ManualContextContracts(unittest.TestCase):
             self.assertIsNone(QuestionPassages(registry).metadata_locked({})['revision_id'])
             with self.assertRaisesRegex(RuntimeError,'owner unavailable'):
                 QuestionPassages(registry).metadata_locked({},revision_id='PASSAGES-'+'A'*32)
-        for revisions in ([], [('0013_question_passages',)], [('0014_manual_report_context',)],
+        for revisions in ([], [('0014_question_passages',)], [('0015_manual_report_context',)],
                           [('unknown_revision',)], [('0010_authored_evidence_origin',),('0010_question_evidence',)]):
             registry=Mock()
             registry._transaction_active=True

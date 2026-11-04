@@ -21,9 +21,23 @@ import sys
 import tempfile
 import time
 from urllib.parse import urlsplit
-from urllib.request import urlopen
+from urllib.request import Request, urlopen as _plain_urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
+
+# B-01: case routes require a fictional actor, and seed() grants this demo
+# actor on the demo cases. This module-local wrapper presents the actor on
+# case-API calls and passes everything else (root wait, DevTools endpoint)
+# through untouched, so the journey below reads unchanged.
+DEMO_ACTOR_HEADERS = {"X-Fictional-Actor": "FICTIONAL-NAVIGATOR-A"}
+
+
+def urlopen(url, *args, **kwargs):
+    target = url.full_url if isinstance(url, Request) else url
+    if isinstance(target, str) and "/api/cases/" in target:
+        return _plain_urlopen(
+            Request(target, headers=DEMO_ACTOR_HEADERS), *args, **kwargs)
+    return _plain_urlopen(url, *args, **kwargs)
 
 
 def free_port() -> int:
@@ -323,6 +337,35 @@ def main() -> None:
                 assert any(role == "group" and name == group_name for role, name in names), (
                     f"Checkbox group lacks an accessible name: {group_name}"
                 )
+
+            # Browser-level case-scoped draft regression: no unfinished Alpha
+            # narrative may be silently rebound to Beta. Check the selected
+            # case and the input value after each rejected case switch.
+            for draft_field in (
+                "scoped-decision-note", "scoped-dissent-rationale",
+                "ft-title", "ft-detail", "ft-reason", "ft-update-reason",
+                "option-label", "dependency-anchor", "task-label", "task-owner",
+                "threat-description", "threat-anchor", "reviewer-label", "review-scope",
+            ):
+                cd.evaluate("""(fieldId => {
+                  const field = document.getElementById(fieldId);
+                  if (!field) throw new Error('Missing draft field: ' + fieldId);
+                  field.value = 'Unsent CASE-ALPHA text for ' + fieldId;
+                  const picker = document.querySelector('#case-picker');
+                  picker.value = 'CASE-BETA';
+                  picker.dispatchEvent(new Event('change'));
+                })(""" + json.dumps(draft_field) + ")")
+                assert cd.evaluate("document.querySelector('#case-picker').value") == "CASE-ALPHA", (
+                    f"unfinished {draft_field} switched into another synthetic case"
+                )
+                assert cd.evaluate(
+                    "document.getElementById(" + json.dumps(draft_field) + ").value"
+                ) == "Unsent CASE-ALPHA text for " + draft_field, (
+                    f"blocked case switch erased draft field {draft_field}"
+                )
+                cd.evaluate("""(fieldId => {
+                  document.getElementById(fieldId).value = '';
+                })(""" + json.dumps(draft_field) + ")")
 
             cd.evaluate("""(() => {
               const picker = document.querySelector('#case-picker');
@@ -669,15 +712,26 @@ def main() -> None:
               const picker = document.querySelector('#case-picker');
               picker.value = 'CASE-ALPHA'; picker.dispatchEvent(new Event('change'));
             })()""")
-            cd.wait("document.querySelector('#case-heading')?.textContent === 'Fictional case Alpha'",
-                    "return to Alpha for rejection checks")
+            # Re-selecting the SAME case preserves its old visible heading while
+            # the change handler intentionally clears active until refresh
+            # completes. A heading-only wait can pass before readyCase() would
+            # authorize the next import, misdiagnosing a safe loading denial as
+            # a duplicate-import failure. Wait for the real case-bound guard.
+            cd.wait("""(() => {
+              if (document.querySelector('#case-heading')?.textContent !== 'Fictional case Alpha')
+                return false;
+              if (document.querySelector('#case-picker')?.value !== 'CASE-ALPHA')
+                return false;
+              try { return readyCase() === 'CASE-ALPHA'; } catch { return false; }
+            })()""", "return to fully ready Alpha for duplicate and wrong-patient checks")
             cards_before = cd.evaluate("document.querySelectorAll('#source-list .source-card').length")
             state_before = json.load(urlopen(
                 f"http://127.0.0.1:{app_port}/api/cases/CASE-ALPHA/state"))
             original_id = next(x["id"] for x in state_before["sources"]
                                if x["document_id"] == "PATH-ALPHA" and x["version"] == 1)
             cd.evaluate("""(async (sourceId) => {
-              const text = (await (await fetch('/api/cases/CASE-ALPHA/sources/' + sourceId)).json()).text;
+              const text = (await (await fetch('/api/cases/CASE-ALPHA/sources/' + sourceId,
+                {headers: {'X-Fictional-Actor': 'FICTIONAL-NAVIGATOR-A'}})).json()).text;
               document.querySelector('#report-text').value = text;
               document.querySelector('#import-form').requestSubmit();
             })(""" + str(original_id) + ")")

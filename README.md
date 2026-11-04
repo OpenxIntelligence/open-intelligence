@@ -1,5 +1,19 @@
 # Open Intelligence
 
+## Current combined candidate — draft #381
+
+The isolated [document/image candidate #381](https://github.com/OpenxIntelligence/open-intelligence/pull/381) composes the frozen #377 document/evidence/review candidate with #370 image/archive/report continuity, corrected #376 audit-tail tests, #373 fixture lifespan and verified #378/#379/#380/#382 frontend corrections. Its own hosted acceptance is pending. Historical owner receipts below do not qualify this composition.
+
+Current runtime readiness requires the single `0013_document_image_convergence` head. Both published 0012 histories and their immutable originals, annotations, citations, reports and tasks remain intact. The new join has no DDL. The combined dependency inventory retains the existing 26 exact runtime artifacts, full notices and code-only pydicom boundary; no new component or permission is selected.
+
+Tests-first source `ecda925d887c55e496dc3e6748337a8ddebd34ac`, tree `61f0bd922adafe0f6ef2d4711c7f0627d5710989`, ran 441 API/PostgreSQL test executions in [41711711965](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41711711965) and failed seven assertions solely in the five new route/graph/convergence methods. No test errors or skips were reported. The unchanged document browser baseline passed 415 client tests, 13 rights controls, build and actual browser execution in [41711711889](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41711711889). These are baseline results, not a final combined pass.
+
+The pinned accepted-main input remains `c4798ae85004713593f83458abd2102be6729095` through #377. This does not claim reconciliation with a subsequently moving main. Main and owner branches are untouched. The source-only review identified a separate shared source/document audit-tail authority gap; a regression and repair must be verified before completion.
+
+Draft, unmerged, undeployed and independently fictional only. Manual passage provenance in canonical investigations, amended-record reconciliation adoption, production identity/consent, qualified external archive access, clinical evaluation and distribution decisions remain explicit separate contracts. PACS adoption remains HOLD. See the [execution plan](https://github.com/OpenxIntelligence/open-intelligence/blob/integration/h1-document-image-continuity-20261103/docs/superpowers/plans/2026-11-03-document-image-convergence.md) for frozen inputs, rulings and acceptance.
+
+## Preserved owner checkpoints
+
 > **Pinned-main reconciliation:** #354 remains the document owner at `7b16a9a900737f07adb03e35362922c886424e9b`. This dependent source checkpoint preserves that concurrent update, includes accepted main `c4798ae` and records #374 ancestry. See the [convergence gate](docs/engineering/H1_EVIDENCE_CONVERGENCE_MERGE_GATE.md) for the exact composition and its separate verification requirements. The earlier checkpoint below retains its original scope.
 
 **A patient-centered, clinically governed healthcare intelligence and operations platform, initially focused on oncology.**
@@ -50,8 +64,9 @@ fictional originals, human-authored comparisons and immutable reports on the sam
 canonical question. Both rights boundaries and migration histories remain intact.
 Its [bounded convergence and verification record](docs/engineering/H1_EVIDENCE_CONTINUITY.md)
 distinguishes implementation, exact combined test evidence and remaining work.
-Live biomedical retrieval, model execution, professional review, clinical/PDF/
-annotation parity and production identity remain separate capabilities. This is
+Live biomedical retrieval, model execution, professional review, image viewing/
+interpretation, general PDF/annotation support and production identity remain
+separate capabilities. This is
 an unmerged engineering candidate, with no clinical approval or deployment claim.
 
 **Reviewed document continuation:** [draft #323](https://github.com/OpenxIntelligence/open-intelligence/pull/323) adds ordinary text/PDF preview, exact original custody, immutable passage corrections and Records downloads on #315. [Scope and verification](docs/engineering/H1_REVIEWED_DOCUMENTS.md) distinguish this implemented intake from the remaining manual-provenance integration into questions and reports.

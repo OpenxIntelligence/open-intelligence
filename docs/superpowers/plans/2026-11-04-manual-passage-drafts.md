@@ -25,3 +25,12 @@ Acceptance:
 
 No backend, dependency, migration, grant, clinical status or model changes.
 Synthetic software verification only; no main merge or deployment claim.
+
+## Combined-workspace continuation
+
+Compose this verified donor into #449 at
+`4f17b4aef58ca5614a4d48b9b904b6bc5c759442`. Preserve both parent histories and
+retarget existing #445 onto #449. Perform one independent read-only review and
+the same actual hosted journey on the combined head. The bounded scope,
+composition choices, tests-first evidence and pending gates are recorded in
+`docs/engineering/H1_MANUAL_DRAFT_CONVERGENCE_2026-11-04.md`.

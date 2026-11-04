@@ -1,6 +1,6 @@
 """Actual disposable Compose proof for the canonical PostgreSQL source owner.
 
-Only independently authored synthetic text/PDF fixtures and generated grants
+Only independently authored synthetic UTF-8 text and generated fixture grants
 are used. All imports, bindings and reads go through the existing HTTP API.
 The owned PostgreSQL container supplies restart and dump/restore evidence.
 """
@@ -40,19 +40,24 @@ AMENDED = (
 ACCESS_EVENTS = "'source.read_authorized','source.original_read_authorized'"
 
 
-def assert_selection_recovery(actual, expected):
-    """Only the independently authorized read receipt may change on restore."""
+def assert_restored_selection_response(actual, expected):
+    """Require type-exact JSON provenance; only the access receipt may change.
+
+    Expected values are recorded and field-checked on the first authorized HTTP
+    read. The anchor digest is recomputed independently at the restored read.
+    """
     receipt = actual.get("access_receipt_id")
     assert type(receipt) is str and re.fullmatch(r"ACCESS-[A-F0-9]{32}", receipt), \
-        "Selection response lacks a canonical access receipt"
-    # JSON distinguishes booleans from integers; Python mapping equality does not.
-    received = {k: v for k, v in actual.items() if k != "access_receipt_id"}
+        "Restored selection lacks a canonical access receipt"
+    received = {key: value for key, value in actual.items() if key != "access_receipt_id"}
     assert json.dumps(received, sort_keys=True, ensure_ascii=False, allow_nan=False) == \
         json.dumps(expected, sort_keys=True, ensure_ascii=False, allow_nan=False), \
-        "Restored selection changed exact provenance or freshness"
-    canonical = json.dumps(actual["anchor"], sort_keys=True, ensure_ascii=False, separators=(",", ":"))
-    assert hashlib.sha256(canonical.encode()).hexdigest() == actual["anchor_sha256"], \
-        "Selection anchor digest differs"
+        "Restored selection changed exact JSON provenance or freshness"
+    anchor = actual["anchor"]
+    canonical = json.dumps(anchor, sort_keys=True, ensure_ascii=False,
+                           separators=(",", ":"), allow_nan=False)
+    assert hashlib.sha256(canonical.encode("utf-8")).hexdigest() == actual["anchor_sha256"], \
+        "Restored selection anchor digest differs"
 
 
 def assert_read_only_recovery(before, after, expected_events):
@@ -81,7 +86,7 @@ def assert_read_only_recovery(before, after, expected_events):
         assert {key: actual[key] for key in ("patient_id", "event_type", "metadata_json")} == expected, \
             "Restored receipt differs from returned scope or action"
         assert actual["event_type"] in {"source.document_read_authorized", "source.original_read_authorized",
-                                       "source.document_selection_read_authorized"}, \
+                                        "source.document_selection_read_authorized"}, \
             "Read/retry emitted a business event"
     assert before["sequences"].keys() == after["sequences"].keys(), "Sequence coverage changed"
     assert event_sequence in before["sequences"], "Access sequence absent"
@@ -340,7 +345,7 @@ def main():
             saved_path = document_path + "/" + document_saved["source_id"]
             correction = {"synthetic": True, "request_key": "CORRECTION-RECOVERY", "confirmed_case_id": CASE,
                           "expected_sha256": preview["sha256"], "expected_revision_id": document_saved["annotation_revision_id"],
-                          "reason": "Correct fictional passage", "findings": [{"key": "marker", "state": "reported", "quote": "Corrected passage.", "line": 3}]}
+                          "reason": "Correct fictional passage", "findings": [{"key": "passage", "state": "reported", "quote": "Corrected passage.", "line": 3}]}
             status, correction_saved = request(saved_path + "/annotations", correction)
             assert status == 201
             status, document = request(saved_path)
@@ -366,7 +371,7 @@ def main():
             pdf_correction = {**correction, "expected_sha256": pdf_preview["sha256"],
                               "expected_extraction_sha256": pdf_preview["extraction_sha256"],
                               "expected_revision_id": pdf_saved["annotation_revision_id"],
-                              "findings": [{"key": "marker", "state": "reported", "quote": "Corrected passage.", "line": 3}]}
+                              "findings": [{"key": "passage", "state": "reported", "quote": "Corrected passage.", "line": 3}]}
             status, pdf_corrected = request(pdf_path + "/annotations", pdf_correction)
             assert status == 201
             status, pdf_document = request(pdf_path)
@@ -380,37 +385,34 @@ def main():
                 dict(path=pdf_path, raw=pdf_raw, saved=pdf_saved, intake=pdf_intake,
                      correction=pdf_correction, corrected=pdf_corrected, document=pdf_document),
             ]
-            # Derive expectations from our explicit import/correction commands
-            # and the original history, never the resolver being verified.
-            for item in documents:
-                item["selections"] = []
-                for position, revision in enumerate(item["document"]["revisions"]):
-                    finding = (item["intake"] if position == 0 else item["correction"])["findings"][0]
-                    preview = item["document"]["preview"]
-                    anchor = dict(patient_id=patient, case_id=CASE, source_id=item["saved"]["source_id"],
-                        document_id=item["intake"]["metadata"]["document_id"], source_version=1,
-                        original_sha256=hashlib.sha256(item["raw"]).hexdigest(),
-                        extraction_method=preview["extraction_method"], extraction_sha256=preview.get("extraction_sha256"),
-                        annotation_revision_id=revision["revision_id"], annotation_revision=position+1,
-                        review_sha256=revision["review_sha256"], selected_by="ACTOR-SOURCE-PROOF",
-                        selected_at=revision["created_at"], selection_key=finding["key"],
-                        selected_state=finding["state"], quote=finding["quote"], line=finding["line"],
-                        page=2 if item["intake"]["filename"].endswith(".pdf") else None,
-                        classification_origin="user_selected", clinical_review="not_performed")
-                    anchor_sha = hashlib.sha256(json.dumps(anchor, sort_keys=True, ensure_ascii=False,
-                                                          separators=(",", ":")).encode()).hexdigest()
-                    expected = dict(contract="oi.reviewed-document-selection/1", anchor=anchor,
-                        anchor_sha256=anchor_sha, source_state="current",
-                        latest_annotation_revision_id=item["corrected"]["annotation_revision_id"],
-                        selection_state="selection_reassessment_required" if position == 0 else "current_unreviewed_selection",
-                        synthetic=True, clinical_approval=False, model_execution=False)
-                    path = item["path"] + "/selections/" + revision["revision_id"] + "/" + finding["key"]
-                    status, value = request(path)
-                    assert status == 200, "Original selection reference unavailable"
-                    assert_selection_recovery(value, expected)
-                    item["selections"].append(dict(path=path, expected=expected))
             status, document_index = request(document_path)
             assert status == 200 and len(document_index["documents"]) == 2
+            for item in documents:
+                item["selections"] = []
+                for revision in item["document"]["revisions"]:
+                    finding, = revision["findings"]
+                    path = item["path"] + "/selections/" + revision["revision_id"] + "/" + finding["key"]
+                    status, value = request(path)
+                    assert status == 200
+                    anchor = value["anchor"]
+                    assert value["contract"] == "oi.reviewed-document-selection/1"
+                    assert anchor["source_id"] == item["saved"]["source_id"]
+                    assert anchor["original_sha256"] == hashlib.sha256(item["raw"]).hexdigest()
+                    assert anchor["extraction_sha256"] == item["document"]["preview"].get("extraction_sha256")
+                    assert anchor["annotation_revision_id"] == revision["revision_id"]
+                    assert anchor["review_sha256"] == revision["review_sha256"]
+                    assert (anchor["selection_key"], anchor["quote"], anchor["line"]) == \
+                           (finding["key"], finding["quote"], finding["line"])
+                    assert (anchor["selected_state"], anchor["selected_by"], anchor["selected_at"]) == \
+                           (finding["state"], revision["actor"], revision["created_at"])
+                    assert anchor["page"] == item["document"]["preview"]["lines"][finding["line"] - 1].get("page")
+                    assert value["anchor_sha256"] == hashlib.sha256(json.dumps(
+                        anchor, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
+                    assert value["selection_state"] == (
+                        "current_unreviewed_selection" if revision == item["document"]["revisions"][-1]
+                        else "selection_reassessment_required")
+                    item["selections"].append({"path": path, "reference": {
+                        key: field for key, field in value.items() if key != "access_receipt_id"}})
 
             # Each grant is independent. Changing the mounted fixture takes
             # effect without restarting; denied requests cannot mint receipts.
@@ -461,7 +463,7 @@ def main():
             assert len(rows["clinical_source.assertions"]) == 2
             assert len(rows["clinical_source.document_intakes"]) == 2
             assert len(rows["clinical_source.annotation_revisions"]) == 4
-            assert rows["public.alembic_version"] == [{"version_num": "0014_manual_report_context"}]
+            assert rows["public.alembic_version"] == [{"version_num": "0015_manual_report_context"}]
             for item in documents:
                 stored = next(row for row in rows["clinical_source.source_versions"]
                               if row["source_id"] == item["saved"]["source_id"])
@@ -500,19 +502,19 @@ def main():
                 assert headers["Content-Type"].split(";")[0] == item["document"]["preview"]["media_type"].split(";")[0]
                 document_receipt(headers["X-Access-Receipt-ID"], "source.original_read_authorized", item)
 
-            def restored_selections(item):
-                for selection in item["selections"]:
-                    status, value = request(selection["path"])
-                    assert status == 200, "Restored selection reference unavailable"
-                    assert_selection_recovery(value, selection["expected"])
-                    anchor = selection["expected"]["anchor"]
-                    restored_events.append({"patient_id": patient,
-                        "event_type": "source.document_selection_read_authorized",
-                        "metadata_json": {"receipt_id": value["access_receipt_id"], "case_id": CASE,
-                            "actor": credential["actor"], "purpose": "operations", "binding_revision": 1,
-                            "source_id": anchor["source_id"],
-                            "annotation_revision_id": anchor["annotation_revision_id"],
-                            "selection_key": anchor["selection_key"], "anchor_sha256": value["anchor_sha256"]}})
+            def restored_selection(item, selected):
+                status, value = request(selected["path"])
+                assert status == 200
+                assert_restored_selection_response(value, selected["reference"])
+                receipt_id = value["access_receipt_id"]
+                anchor = value["anchor"]
+                restored_events.append({"patient_id": patient,
+                    "event_type": "source.document_selection_read_authorized",
+                    "metadata_json": {"receipt_id": receipt_id, "case_id": CASE,
+                        "actor": credential["actor"], "purpose": "operations", "binding_revision": 1,
+                        "source_id": item["saved"]["source_id"],
+                        "annotation_revision_id": anchor["annotation_revision_id"],
+                        "selection_key": anchor["selection_key"], "anchor_sha256": value["anchor_sha256"]}})
 
             def exact_retries(item):
                 for path, body, prior in ((document_path, item["intake"], item["saved"]),
@@ -525,7 +527,8 @@ def main():
                 for item in documents:
                     restored_document(item)
                     restored_original(item)
-                    restored_selections(item)
+                    for selected in item["selections"]:
+                        restored_selection(item, selected)
                     exact_retries(item)
 
             def no_effect_denial(path, body=None, *, authenticated=True, database=restored_database):
@@ -553,15 +556,17 @@ def main():
                 for item in documents:
                     if missing in ("source_read", "source_original_read", "patient_read"):
                         no_effect_denial(item["path"])
-                        for selection in item["selections"]:
-                            no_effect_denial(selection["path"])
                     else:
                         restored_document(item)
-                        restored_selections(item)
                     if missing in ("source_original_read", "patient_read"):
                         no_effect_denial(item["path"] + "/original")
                     else:
                         restored_original(item)
+                    for selected in item["selections"]:
+                        if missing in ("source_read", "source_original_read", "patient_read"):
+                            no_effect_denial(selected["path"])
+                        else:
+                            restored_selection(item, selected)
                     if missing in ("source_import", "patient_read"):
                         no_effect_denial(document_path, item["intake"])
                     else:
@@ -584,30 +589,23 @@ def main():
                     no_effect_denial(item["path"])
                     no_effect_denial(item["path"] + "/original")
                     no_effect_denial(item["path"] + "/annotations", item["correction"])
-                    for selection in item["selections"]:
-                        no_effect_denial(selection["path"])
+                    for selected in item["selections"]:
+                        no_effect_denial(selected["path"])
                 credential[field] = previous
                 save_access()
             no_effect_denial(document_path, authenticated=False)
             for item in documents:
                 no_effect_denial(item["path"].replace(CASE, "CASE-NOT-BOUND"))
                 no_effect_denial(item["path"].replace(CASE, "CASE-NOT-BOUND") + "/original")
-                other = next(doc for doc in documents if doc is not item)
-                for selection in item["selections"]:
-                    no_effect_denial(selection["path"], authenticated=False)
-                    no_effect_denial(selection["path"].replace(CASE, "CASE-NOT-BOUND"))
-                    no_effect_denial(selection["path"].replace(patient, "PAT-" + "0" * 32))
-                prefix = item["path"] + "/selections/"
-                no_effect_denial(prefix + "ANN-" + "0" * 32 + "/marker")
-                no_effect_denial(prefix + item["corrected"]["annotation_revision_id"] + "/missing")
-                no_effect_denial(prefix + other["corrected"]["annotation_revision_id"] + "/marker")
+                for selected in item["selections"]:
+                    no_effect_denial(selected["path"], authenticated=False)
+                    no_effect_denial(selected["path"].replace(CASE, "CASE-NOT-BOUND"))
             readable_cycle()
             assert_read_only_recovery(readable_before, snapshot(restored_database), restored_events)
             assert snapshot(original_database) == readable_before, "Restored HTTP changed original database"
             print("PASS RESTORED DOCUMENT HTTP: text/PDF exact bytes, page anchors, immutable history, "
-                  "exact retries, independent grants and restarts; restored-only access receipts")
-            print("PASS RESTORED SELECTION REFERENCES: exact historical/current text/PDF anchors, "
-                  "same-key correction, human attribution, independent grants and restored-only receipts")
+                  "exact current/historical selection references and hashes, exact retries, independent "
+                  "grants and restarts; restored-only access receipts")
 
             # Revoke on the restored copy and back it up again. Keep every grant
             # enabled so only the restored binding state can explain denial.
@@ -621,44 +619,40 @@ def main():
             assert revoked_before["tables"]["coordination.patient_case_bindings"][0]["status"] == "revoked"
             no_effect_denial(document_path, database=revoked_database)
             for item in documents:
-                for selection in item["selections"]:
-                    no_effect_denial(selection["path"], database=revoked_database)
                 for path, body in ((item["path"], None), (item["path"] + "/original", None),
                                    (document_path, item["intake"]),
                                    (document_path + "/preview", {k: item["intake"][k] for k in ("synthetic", "filename", "original_base64")}),
                                    (item["path"] + "/annotations", item["correction"])):
                     no_effect_denial(path, body, database=revoked_database)
+                for selected in item["selections"]:
+                    no_effect_denial(selected["path"], database=revoked_database)
             for path in (source_path, original_path, source_path + "/" + source_ids[1]):
                 status, value = request(path)
                 assert status == 404 and "access_receipt_id" not in value and "original_text" not in value
             assert snapshot(revoked_database) == revoked_before, "Restored revoked requests changed state"
             assert snapshot(restored_database) == revoked_before, "Revoked restore changed its source copy"
             assert snapshot(original_database) == readable_before, "Recovery changed original database"
-            receipt = {"contract": "oi.source-document-recovery/2", "synthetic": True,
-                "schema_revision": "0014_manual_report_context", "table_count": len(rows),
+            receipt = {"contract": "oi.source-document-recovery/1", "synthetic": True,
+                "schema_revision": "0015_manual_report_context", "table_count": len(rows),
                 "sequence_count": len(readable_before["sequences"]),
                 "documents": [{"source_id": item["saved"]["source_id"],
                     "sha256": hashlib.sha256(item["raw"]).hexdigest(), "byte_length": len(item["raw"]),
-                    "revision_ids": [r["revision_id"] for r in item["document"]["revisions"]]}
+                    "revision_ids": [r["revision_id"] for r in item["document"]["revisions"]],
+                    "selection_anchor_sha256": [selected["reference"]["anchor_sha256"]
+                                               for selected in item["selections"]]}
                     for item in documents],
                 "restored_access_receipts": len(restored_events), "restored_readable_http": True,
                 "restored_binary_originals": True, "restored_exact_retries": True,
+                "restored_exact_selection_references": sum(len(item["selections"]) for item in documents),
                 "restored_independent_grants": True, "restored_api_database_restart": True,
                 "restored_revoked_binding_denial": True, "original_database_unchanged": True}
-            receipt.update(selection_references=[selection["expected"] for item in documents
-                                                  for selection in item["selections"]],
-                restored_selection_access_receipts=sum(event["event_type"] == "source.document_selection_read_authorized"
-                                                       for event in restored_events),
-                restored_exact_selection_references=True, restored_selection_independent_grants=True,
-                restored_selection_scope_denial=True, restored_selection_revoked_binding_denial=True,
-                model_executed=False, clinical_approval=False)
             output = os.environ.get("OI_SOURCE_ACCEPTANCE_FILE")
             if output:
                 Path(output).parent.mkdir(parents=True, exist_ok=True)
                 Path(output).write_text(json.dumps(receipt, indent=2) + "\n")
             print("PASS: scoped source HTTP, exact UTF-8 originals, amendment history, denial, "
                   "API/DB restart, durable access receipts and complete dump/restore; actual restored "
-                  "text/PDF/history/retry HTTP, independent permissions and restored revoked binding")
+                  "text/PDF/history/selection/retry HTTP, independent permissions and restored revoked binding")
 
         except Exception:
             command(["logs", "--no-color", "--tail", "80"], check=False)

@@ -58,7 +58,8 @@
     const head = element("div", "finding-head");
     head.append(
       element("strong", "", item.finding_key),
-      element("span", "pill pill-neutral", tokenLabel(item.state)),
+      element("span", "pill pill-neutral",
+        (item.classification_origin === "user_selected" ? "User-selected: " : "") + tokenLabel(item.state)),
     );
     card.append(
       head,
@@ -69,6 +70,8 @@
         `Source version #${item.source_version_id} · line ${item.source_line}`,
       ),
     );
+    if (item.classification_origin === "user_selected")
+      card.append(element("p", "tiny muted", "Passage and status manually selected. Clinical review not performed."));
     return card;
   }
 
@@ -177,15 +180,43 @@
     renderGuardrails(mission);
   }
 
+  // M-3: same denial sentence as app.js clearCaseViews callers. An empty
+  // picker means no granted case is shown (grantless actor); every
+  // mission-owned element must clear rather than keep prior-case quotes.
+  const DENIED_NO_GRANTED_CASE =
+    "No case data shown: this fictional actor holds no active grant.";
+
+  function clearMissionForEmptyPicker() {
+    requestSequence++; // Drop any in-flight mission response for a prior case.
+    delete section.dataset.caseId;
+    section.dataset.workflowStatus = "unavailable";
+    status.textContent = DENIED_NO_GRANTED_CASE;
+    status.className = "pill pill-neutral";
+    empty(summary, DENIED_NO_GRANTED_CASE);
+    empty(known, DENIED_NO_GRANTED_CASE);
+    empty(unresolved, DENIED_NO_GRANTED_CASE);
+    empty(changes, DENIED_NO_GRANTED_CASE);
+    empty(actions, DENIED_NO_GRANTED_CASE);
+    guardrails.replaceChildren();
+  }
+
   async function refreshMission() {
     const caseId = picker.value;
-    if (!caseId) return;
+    if (!caseId) {
+      clearMissionForEmptyPicker();
+      return;
+    }
     const sequence = ++requestSequence;
     status.textContent = "Loading…";
     status.className = "pill pill-neutral";
     try {
+      // Same fictional actor as the workspace (app.js publishes it on the
+      // body dataset); the mission route is case-scoped and grant-gated.
+      const actor = (document.body.dataset.fictionalActor || "").trim() ||
+        "FICTIONAL-NAVIGATOR-A";
       const response = await fetch(`/api/cases/${encodeURIComponent(caseId)}/mission`, {
         cache: "no-store",
+        headers: { "X-Fictional-Actor": actor },
       });
       const payload = await response.json();
       if (sequence !== requestSequence || picker.value !== caseId) return;
