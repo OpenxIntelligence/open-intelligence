@@ -745,7 +745,12 @@ def exercise_case_switch(cd, patient_id, case_id, second_case_id, credentials, w
             'delayed_real_read_discarded': True, 'second_case_tasks': empty['tasks'],
         }, indent=2) + '\n', encoding='utf-8')
         navigate(cd, 'Overview')
-        checks.assert_overview_counts({'all': 0, 'recheck': 0, 'overdue': 0, 'unassigned': 0, 'history': 0})
+        # The combined test switches back to the first case before this point,
+        # so the Overview shows that case's four tasks, not the empty second
+        # case: the all-zero expectation belonged to the chronology line's
+        # ending, where the test finished on the second case. These are the
+        # exact counts assert_overview_work already proved for this case.
+        checks.assert_overview_counts({'all': 4, 'recheck': 1, 'overdue': 2, 'unassigned': 1, 'history': 2})
         print('PASS FOLLOWTHROUGH CASE SWITCH: actual second-case selection clears prior task content, '
               'receipts and drafts; a delayed authorized first-case response cannot restore them; '
               'second-case API list remains empty; no extra case or source fixture introduced.')
