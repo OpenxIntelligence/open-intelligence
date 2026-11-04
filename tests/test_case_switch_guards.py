@@ -14,6 +14,12 @@ GUARDED_SYNTHESIS = ("synthesis-note-text", "synthesis-note-author")
 GUARDED_OWNED = ("owner-label-input", "note-text")
 GUARDED_SLICE = ("counterevidence-reason", "safety-detail")
 GUARDED_PORTFOLIO = ("flag-reason", "dimension-note")
+GUARDED_RECENT_MAIN = (
+    "scoped-decision-note", "scoped-dissent-rationale",
+    "ft-title", "ft-detail", "ft-reason", "ft-update-reason",
+    "option-label", "dependency-anchor", "task-label", "task-owner",
+    "threat-description", "threat-anchor", "reviewer-label", "review-scope",
+)
 
 
 class CaseSwitchGuardTests(unittest.TestCase):
@@ -68,6 +74,31 @@ class CaseSwitchGuardTests(unittest.TestCase):
                           "%s missing from the case-switch guard array" % field)
             self.assertIn("'%s'" % field, clear_block,
                           "%s missing from the case-switch clear loop" % field)
+
+
+    def test_recent_main_draft_fields_guarded_and_cleared(self):
+        """Preserve accepted #429/#430 case-switch isolation in H1."""
+        text = APP_JS.read_text()
+        at = text.index("picker.addEventListener('change'")
+        guard_end = text.index(".some(id => el(id).value.trim())", at)
+        guard = text[at:guard_end]
+        clear_start = text.index("for (const id of [", guard_end)
+        clear_end = text.index("]) el(id).value = '';", clear_start)
+        clear = text[clear_start:clear_end]
+        for field in GUARDED_RECENT_MAIN:
+            with self.subTest(field=field):
+                self.assertIn("'%s'" % field, guard, "missing draft guard")
+                self.assertIn("'%s'" % field, clear, "missing draft clear")
+
+    def test_post_submit_clears_sensitive_draft_fields(self):
+        text = APP_JS.read_text()
+        dep_start = text.index("el('option-dependency-form').addEventListener")
+        dep_end = text.index("el('option-task-form').addEventListener", dep_start)
+        self.assertIn("el('dependency-anchor').value = '';", text[dep_start:dep_end])
+        rev_start = text.index("el('option-review-form').addEventListener")
+        rev_end = text.index("el('visit-form').addEventListener", rev_start)
+        self.assertIn("el('reviewer-label').value = '';", text[rev_start:rev_end])
+        self.assertIn("el('review-scope').value = '';", text[rev_start:rev_end])
 
 
 if __name__ == "__main__":
