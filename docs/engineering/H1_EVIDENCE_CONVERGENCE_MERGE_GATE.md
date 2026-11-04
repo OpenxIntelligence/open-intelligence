@@ -1,5 +1,35 @@
 # H1 converged evidence — merge-readiness gate
 
+## Manual passage/question/report extension over document-image candidate — 4 November 2026
+
+**Status: code-composed draft; combined hosted acceptance, independent review and explicit owner merge approval remain pending.** This is the most recent proposed extension of this gate, not a revision of earlier verified-source receipts.
+
+- **Existing base:** [#381](https://github.com/OpenxIntelligence/open-intelligence/pull/381) at `924008266d741b2494df41112e2da446b526f920`, preserving document originals, image/archive/report continuity, restored selection strict types and fail-closed source/image authority. #381's earlier completed hosted API and web results belong to their named source heads.
+- **Existing tested donor:** [#398](https://github.com/OpenxIntelligence/open-intelligence/pull/398) at `a85d30f5563d763507c64d91ec3c70100b446fc3`, based on #392 at `3eeeaac29ba60f490a6f0e1af1cb28a2baee29c7`. Its PostgreSQL/React/manual-passage acceptance is donor evidence only.
+- **Integration branch:** `integration/h1-manual-passages-image-20261104`. The first code-composed checkpoint before this documentation update is `25636bfda9e687ac900d537dcacb93540226a238`. No source-qualified acceptance is claimed yet. Current moving `main` and pending [#401](https://github.com/OpenxIntelligence/open-intelligence/pull/401) are separate from this branch.
+
+### Selected source and migration resolution
+
+Preserve the verified #381 canonical patient, original-source, annotation, image, evidence/report and session owners; reuse #398's question-owned manual reference revisions, source-owned selection resolution, report renderer, UI state, tests and actual HTTP/browser/recovery probes. The borrowed manual-reference context is **human-selected and not clinical interpretation**; it must never enter the source-authored World Model as an assertion.
+
+The previously published `0012_reviewed_documents` and `0012_image_report_convergence` revisions remain untouched. The DDL-free `0013_document_image_convergence` join remains unchanged. Rebase the donor's `0013_question_passages` feature migration to `0014_question_passages`, depending on the join, and donor's `0014_manual_report_context` to `0015_manual_report_context`, depending on 0014. This produces one proposed H1 migration head at `0015_manual_report_context`. Maintain all historical migration tests and add assertions that the join is still reachable. The runtime contract and full recovery probes expect the new head. This is not a deletion or rewrite of published migrations.
+
+The manual route and evidence/report integration keep their original independent source, question, original-read, evidence, and export permissions; retry/revocation, audit-time final authority and immutable earlier reports remain explicit. The composed browser runs the manual passage question/report journey while also preserving the existing image, restored document, Review, and evidence continuity scenarios.
+
+### Mandatory new-head verification
+
+1. Confirm the Git commit/tree, dependency manifests and every selected owner file with no unreviewed overwrite.
+2. Run Alembic `upgrade head` on fresh and populated fictional PostgreSQL 16 databases and assert a single correct head; preserve both 0012 histories and the 0013 join.
+3. Run the complete API/PostgreSQL, original reference and negative authorization/rights suites with no hidden skips.
+4. Run the restored text/PDF/manual-selection probe, original image/archive recovery, Review, follow-through and evidence/report recovery across actual API/database restarts and `pg_dump/pg_restore`.
+5. Run the complete React client suite, 13 dependency-rights controls, production TypeScript/Vite build and real PostgreSQL/FastAPI/Chromium patient journey.
+6. Verify selected passages remain attributed by exact original/source version, annotation revision, anchor hash, actor/time, quote and physical PDF page. Correction and amendment must mark affected work for reassessment, not retarget old report bodies.
+7. Record actual failures, source SHA, commands, logs and artifact hashes on the integration PR; do not infer success from #381 or #398 individual green runs.
+
+**Holds:** synthetic independently fictional records only; no PHI, real identity/consent, external PACS qualification, clinical approval, release, or main merge. Main reconciliation belongs to #401, not this manual-passage increment.
+
+---
+
 ## Current pinned-main reconciliation of the document candidate — 3 November 2026
 
 **Prepublication source checkpoint: prepared synthetic integration; combined hosted acceptance and human owner review are required.** This section supersedes the selected-candidate and pending-check statements in the historical checkpoints below. The candidate's own PR receipt records the final published head and subsequent hosted outcomes without rewriting tested source. This checkpoint does not authorize a main-branch merge or release.
