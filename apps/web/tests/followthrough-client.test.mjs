@@ -42,6 +42,7 @@ const task=(statuses=['created'],overrides={})=>({task_id:tid,question_id:qid,pa
  created_at:'2026-11-03T10:00:00Z',status:statuses.at(-1),revision:statuses.length,
  source_id:sid,source_line:8,source_sha256:sha,source_version:1,source_snapshot_contract:contract,
  source_snapshot_sha256:snapshot,preflight_sha256:preflight,source_context_state:'current_unreviewed_question',
+ manual_dependency_revision_id:null,manual_context_state:null,
  needs_recheck:false,is_overdue:false,is_due_soon:false,clinical_approval:false,history:history(statuses),...overrides});
 // Reason belongs to the creation event, not to the immutable task envelope.
 function taskRow(statuses=['created'],overrides={}){const row=task(statuses,overrides);delete row.reason;return row;}
