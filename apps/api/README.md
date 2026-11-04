@@ -1,6 +1,18 @@
 # Open Intelligence H1 patient registry API
 
-## Current combined candidate — draft #381
+## Current connected application
+
+Use the [persistent fictional demo](../../docs/H1_DEMO.md) to run this API together
+with the React application. [Consolidation #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481)
+is the current integration and exact-revision acceptance record. Its runtime
+requires `0017_lab_manual_convergence`, preserving both published 0016 histories.
+The [convergence record](../../docs/engineering/H1_ACCEPTED_DEMO_CONVERGENCE.md)
+maps the retained source, document, image, laboratory, question, report and task owners.
+
+## Historical document/image checkpoint — #381
+
+The named checkpoint statuses below are preserved historical receipts, not current
+acceptance, schema requirements or a clinical release claim.
 
 The isolated [document/image candidate #381](https://github.com/OpenxIntelligence/open-intelligence/pull/381) composes the frozen #377 document/evidence/review candidate with #370 image/archive/report continuity, corrected #376 audit-tail tests, #373 fixture lifespan and verified #378/#379/#380/#382 frontend corrections. Its own hosted acceptance is pending. Historical owner receipts below do not qualify this composition.
 

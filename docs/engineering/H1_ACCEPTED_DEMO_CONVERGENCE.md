@@ -1,6 +1,9 @@
 # One runnable H1 candidate — 4 November 2026
 
-Status: implementation and verification in progress. No merge, deployment or clinical acceptance is claimed.
+Implementation scope and source resolutions are recorded here. The exact tested
+revision, verification receipts and landing status are maintained in
+[consolidation #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481).
+Software acceptance does not establish deployment or clinical acceptance.
 
 The candidate targets accepted main `a5a5482f815ceb3c322cdfb32ab8b18c1c0e8709`.
 The existing patient, source, question, evidence, report, review and task owners remain authoritative.
@@ -30,6 +33,7 @@ The existing patient, source, question, evidence, report, review and task owners
 - Navigation clears both pending source-entry focus and pending passage-resume focus. Existing focus guards remain.
 - Manual browser helper retains the union of grants required by its explicit scenarios and both receipt sets; no negative assertion is deliberately removed.
 - The retained historical project-state documents use the current-main reconciliation's versions; their old checkpoints are not rewritten into new acceptance claims. Imported increment-specific documents and Git histories remain available. This document is the current consolidation record.
+- Root/API/web entry points and contributor guidance now point to one connected demo and acceptance record. Older checkpoint prose remains explicitly historical, including its original pending/failure evidence and schema references.
 - #444's refresh-blocking alternative is not mixed with #445's retained-and-reverified draft implementation. Unrelated research, option-engine and second-opinion packet extensions are outside this landing candidate.
 - #445's failed reference browser job was inspected: Chrome startup exceeded its 12-second readiness deadline. No passing result is inferred from that failure; the final reference workflow must execute again.
 

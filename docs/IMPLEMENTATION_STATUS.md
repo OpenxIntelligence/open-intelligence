@@ -1,5 +1,12 @@
 # Implementation slice 01 — source and investigation ledger
 
+**Current connected application:** use the [persistent fictional demo](H1_DEMO.md)
+and [consolidation #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481)
+for the current revision, verification receipts and landing status. The
+[convergence record](engineering/H1_ACCEPTED_DEMO_CONVERGENCE.md) maps retained
+contributions. The dated slices below are historical checkpoints; their old
+draft labels, schema heads and test counts are not current acceptance claims.
+
 **Stage:** local experimental synthetic-only code. **Not released for clinical use.**
 
 ## Connected patient preparation — 3 November 2026
@@ -26,7 +33,7 @@ review and artifact inspection belong in #288's verification receipt. See
 and the existing [shared project assessment](project-state/PROJECT_STATE.md).
 This remains fictional-only, draft, unmerged and undeployed.
 
-## Current audit — 2 November 2026
+## Historical audit — 2 November 2026
 
 ### H1 source intake and record receipt final authority — draft #265
 
