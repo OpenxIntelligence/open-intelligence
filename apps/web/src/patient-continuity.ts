@@ -1,4 +1,5 @@
 import type {ViewState} from './registry-client.js';
+import {projectFollowthroughAttention} from './followthrough-view.js';
 
 /** A last-read navigation projection, never a task ledger or access decision. */
 export function patientContinuity(state:ViewState){
@@ -19,5 +20,7 @@ export function patientContinuity(state:ViewState){
   state.questionDraft.snapshot_fingerprint===model?.snapshot_fingerprint;
  const draft=draftMatches?(state.questionSavePhase==='saved'&&state.savedQuestion?'saved':
   state.questionSavePhase==='saving'?'saving':state.questionSavePhase==='error'?'needs_attention':'unsaved'):null;
- return {patientId:patient.patient_id,caseId,questions,draft} as const;
+ const attention=caseId?projectFollowthroughAttention(state):null;
+ const followthrough=attention?.list.case_id===caseId?attention:null;
+ return {patientId:patient.patient_id,caseId,questions,draft,followthrough} as const;
 }

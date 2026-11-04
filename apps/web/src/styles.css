@@ -117,6 +117,18 @@
 .continuity-item h3{font-size:17px;margin:0 0 12px}
 .continuity code,.continuity button{overflow-wrap:anywhere;white-space:normal}
 .continuity button{max-width:100%}
+.continuity-followthrough{margin:20px 0;background:#fff}
+.continuity-followthrough-counts{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:18px 0}
+.continuity-followthrough-counts>div{min-width:0;border:1px solid #d5e1d9;border-radius:6px;padding:12px;background:#f9fcf7}
+.continuity-followthrough-counts dt{font-size:12px;line-height:1.4;color:#42594c}.continuity-followthrough-counts dd{font-size:24px;font-weight:650;margin:6px 0 0}
+.continuity-followthrough-tasks{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:12px;list-style:none;margin:16px 0;padding:0}
+.continuity-followthrough-tasks>li{min-width:0;border:1px solid #d5e1d9;border-radius:6px;padding:14px;background:#f9fcf7;overflow-wrap:anywhere}
+.continuity-followthrough-tasks h4{font-size:15px;line-height:1.45;margin:0 0 8px}.continuity-followthrough-tasks p{margin:8px 0;font-size:13px}
+.continuity-followthrough-tasks dl{margin:12px 0}.continuity-followthrough-tasks dl>div{margin:10px 0}.continuity-followthrough-tasks dt{font-size:12px;color:#42594c}.continuity-followthrough-tasks dd{font-size:13px;margin:3px 0 0}
+.continuity-followthrough-date-note{display:block;margin-top:4px;color:#725724}
+.continuity-followthrough-flag,.continuity-followthrough-recovery{padding:12px;border-left:3px solid #b28b52;background:#f8f3e9;color:#6b4b25}
+.continuity-followthrough-recovery{margin:14px 0}.continuity-followthrough-recovery p{margin:0 0 12px}
+@media(max-width:600px){.continuity-followthrough-counts{grid-template-columns:repeat(2,minmax(0,1fr))}.continuity-followthrough .actions{align-items:stretch}.continuity-followthrough .actions button{width:100%}}
 .question-draft{margin:15px 0 20px;padding:18px;border:1px solid #c6d8c9;border-radius:9px;background:#f9fcf7;min-width:0}
 .question-draft h3{margin:7px 0 12px}
 .question-draft label{display:block;font-size:13px;font-weight:600;margin:14px 0 7px}
@@ -192,3 +204,14 @@ h1:focus{outline:2px solid #174b48;outline-offset:5px}
 .record-import-disclosure>summary{min-height:48px;align-content:center;padding:12px 0;font-weight:600;color:#174b48;cursor:pointer;overflow-wrap:anywhere}
 .record-import-disclosure>summary:focus-visible{outline:3px solid #ba8639;outline-offset:3px}
 .record-import-disclosure>.intake-panel{margin:12px 0 16px}
+
+
+/* Second-opinion preparation composes existing authorized reads; it never sends a referral. */
+.second-opinion-preparation{margin-bottom:24px}
+.second-opinion-checklist{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:18px 0}
+.second-opinion-checklist>div{min-width:0;border:1px solid #d5e1d9;border-radius:7px;padding:14px;background:#f9fcf7}
+.second-opinion-checklist dt{font-size:12px;color:#42594c;font-weight:650}
+.second-opinion-checklist dd{font-size:13px;line-height:1.5;margin:6px 0 0;overflow-wrap:anywhere}
+.second-opinion-note{padding:13px;border-left:3px solid #b28b52;background:#f8f3e9;color:#5e4728}
+.second-opinion-preparation[data-state=inputs_prepared] .second-opinion-note{border-left-color:#638673;background:#edf5ee;color:#294d3d}
+@media(max-width:700px){.second-opinion-checklist{grid-template-columns:1fr}.second-opinion-preparation .actions{align-items:stretch}.second-opinion-preparation .actions button{width:100%}}

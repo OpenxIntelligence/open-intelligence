@@ -220,7 +220,8 @@ def main():
                     replacement_question_id=replacement_question_id,
                     authored_question_id=authored_question_id)
                 followthrough.finish(new_receipt['source_id'],credentials,write_grants,
-                    Path(os.environ.get('OI_WEB_ARTIFACT_DIR',ROOT/'apps/web/.evidence')))
+                    Path(os.environ.get('OI_WEB_ARTIFACT_DIR',ROOT/'apps/web/.evidence')),
+                    current_question_id=authored_question_id)
                 evidence.finish(credentials,write_grants,
                     Path(os.environ.get('OI_WEB_ARTIFACT_DIR',ROOT/'apps/web/.evidence')),
                     current_question_id=authored_question_id)
