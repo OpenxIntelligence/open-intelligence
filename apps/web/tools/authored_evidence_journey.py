@@ -1,8 +1,10 @@
 """Actual React/HTTP/PostgreSQL human evidence workflow; fictional authored inputs.
 
-The observer only records actual responses. One deliberate lost response occurs
-after the real server commits, to verify exact recovery through the visible UI.
-No patient/evidence/report response is fabricated or substituted.
+The observer records actual server responses. Deliberate post-commit delivery
+faults test exact recovery: one response is lost, and one real 201 assessment
+response is delivered with its duplicate bit contradicted. The latter is an
+explicit client fault injection, not genuine server behavior. Originals, writes,
+permission checks, persisted comparisons and all other responses remain real.
 """
 import base64
 import hashlib
@@ -36,18 +38,26 @@ AMENDED_SUPPORT = (
 
 _OBSERVE = r"""() => {
   const fetch=window.fetch, create=URL.createObjectURL;
-  const state={responses:[],blobs:0,loseAssessment:false};
+  const state={responses:[],blobs:0,loseAssessment:false,contradictAssessment:false,faults:[]};
   state.restore=()=>{window.fetch=fetch;URL.createObjectURL=create;delete window.__oiAuthoredEvidenceChecks;};
   URL.createObjectURL=function(blob){state.blobs++;return create.call(this,blob);};
   window.fetch=async(input,init)=>{
     const path=new URL(input instanceof Request?input.url:input,location.href).pathname;
     const method=init?.method??'GET';
     const result=await fetch.call(window,input,init);
-    if(/\/questions\/QUESTION-[0-9A-F]{32}\/evidence(?:[/-]|$)/.test(path)){
+    if(/\/questions\/QUESTION-[0-9A-F]{32}\/(?:evidence(?:[/-]|$)|manual-passages$)/.test(path)){
       const payload=await result.clone().json();
-      state.responses.push({path,method,status:result.status,payload});
+      state.responses.push({path,method,status:result.status,payload,body:method==='POST'?String(init?.body??''):null});
       if(state.loseAssessment&&method==='POST'&&path.endsWith('/evidence-assessments')&&result.ok){
         state.loseAssessment=false;throw new TypeError('Simulated loss after actual evidence commit');
+      }
+      if(state.contradictAssessment&&method==='POST'&&path.endsWith('/evidence-assessments')&&result.status===201){
+        state.contradictAssessment=false;
+        state.faults.push({kind:'contradictory_duplicate_after_real_commit',path,
+          actual_status:result.status,actual_duplicate:payload.duplicate,
+          delivered_status:201,delivered_duplicate:true,assessment_id:payload.assessment_id});
+        return new Response(JSON.stringify({...payload,duplicate:true}),{
+          status:201,headers:{'Content-Type':'application/json'}});
       }
     }
     return result;
@@ -58,7 +68,7 @@ _OBSERVE = r"""() => {
 
 
 def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
-             write_grants, directory, artifacts, restart_api, on_report=None):
+             write_grants, directory, artifacts, restart_api, add_synthetic, on_report=None, manual_document=None):
     artifacts = Path(artifacts)
     artifacts.mkdir(parents=True, exist_ok=True)
     directory = Path(directory)
@@ -66,7 +76,7 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
     credentials[0]['actions'] = sorted(set(previous_actions) | {
         'patient_read', 'source_read', 'question_read', 'authored_evidence_read',
         'authored_evidence_import', 'authored_evidence_assess', 'authored_evidence_withdraw',
-        'authored_evidence_original_read', 'evidence_report_export'})
+        'authored_evidence_original_read', 'evidence_report_export', 'source_original_read'})
     write_grants()
     cd.evaluate('(' + _OBSERVE + ')()')
     scope = f'/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}'
@@ -145,25 +155,81 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
         assert evidence['statement_line'] == statement_line and evidence['statement'] == statement
         return evidence
 
-    def assess(evidence, relation, quote, rationale, *, lose_response=False):
+    def assess(evidence, relation, quote, rationale, *, lose_response=False, contradictory_response=False):
+        post_count = len([r for r in responses() if r['method'] == 'POST'])
         click(f'[data-testid=evidence-version][data-evidence-id="{evidence["evidence_id"]}"] [data-testid=evidence-select]')
         value('[data-testid=evidence-quote]', quote)
         value('[data-testid=evidence-relation]', relation)
         value('[data-testid=evidence-applicability]', 'limited')
         value('[data-testid=evidence-rationale]', rationale)
+        assert len([r for r in responses() if r['method'] == 'POST']) == post_count
+        # Editing is local. An unchanged fresh read must retain the exact draft,
+        # and leaving the component must not silently discard it.
+        prior = len(responses())
+        click('[data-testid=evidence-refresh]')
+        cd.wait('window.__oiAuthoredEvidenceChecks.responses.length>' + str(prior)
+                + " && document.querySelector('[data-testid=evidence-rationale]')?.value==="
+                + json.dumps(rationale), 'unchanged access recheck preserves comparison draft')
+        assert cd.evaluate("document.querySelector('[data-testid=evidence-quote]').value") == quote
+        if lose_response:
+            cd.evaluate("document.querySelector('[data-testid=evidence-draft-status]').scrollIntoView()")
+            shot = cd.command('Page.captureScreenshot', {'format': 'png'})
+            (artifacts / 'h1-comparison-draft-desktop.png').write_bytes(base64.b64decode(shot['data']))
+        navigate('Overview')
+        assert cd.evaluate("!document.querySelector('[data-testid=evidence-rationale]')")
+        navigate('Investigations')
+        cd.wait("Boolean(document.querySelector('[data-testid=evidence-draft-resume]'))",
+                'unfinished draft offers explicit reauthorization after navigation')
+        if lose_response:
+            viewport = cd.evaluate('({width:window.innerWidth,height:window.innerHeight})')
+            cd.command('Emulation.setDeviceMetricsOverride', {'width': 390, 'height': 844,
+                       'deviceScaleFactor': 1, 'mobile': False})
+            cd.wait('window.innerWidth===390', 'comparison draft narrow viewport')
+            assert cd.evaluate('document.documentElement.scrollWidth<=window.innerWidth+1'), 'Draft resume overflows 390px'
+            assert not cd.evaluate("Boolean(document.querySelector('[data-testid=evidence-rationale]'))")
+            cd.evaluate("document.querySelector('[data-testid=evidence-draft-status]').scrollIntoView()")
+            shot = cd.command('Page.captureScreenshot', {'format': 'png'})
+            (artifacts / 'h1-comparison-resume-mobile.png').write_bytes(base64.b64decode(shot['data']))
+            cd.command('Emulation.setDeviceMetricsOverride', {**viewport, 'deviceScaleFactor': 1, 'mobile': False})
+        click('[data-testid=evidence-draft-resume]')
+        cd.wait("document.querySelector('[data-testid=evidence-rationale]')?.value==="
+                + json.dumps(rationale), 'matching question restores comparison inputs')
+        assert cd.evaluate("document.querySelector('[data-testid=evidence-quote]').value") == quote
+        assert cd.evaluate("document.querySelector('[data-testid=evidence-relation]').value") == relation
+        assert cd.evaluate("document.querySelector('[data-testid=evidence-applicability]').value") == 'limited'
+        assert len([r for r in responses() if r['method'] == 'POST']) == post_count
         before = len(responses())
+        assert not (lose_response and contradictory_response)
         if lose_response:
             cd.evaluate('window.__oiAuthoredEvidenceChecks.loseAssessment=true')
+        if contradictory_response:
+            cd.evaluate('window.__oiAuthoredEvidenceChecks.contradictAssessment=true')
         click('[data-testid=evidence-assess]')
-        if lose_response:
+        if lose_response or contradictory_response:
             cd.wait("Boolean(document.querySelector('[data-testid=evidence-write-retry]'))",
                     'uncertain committed assessment exposes exact recovery')
             first = last('/evidence-assessments', 'POST', 201)
+            assert first['duplicate'] is False, 'real server must have created the assessment'
+            if contradictory_response:
+                fault = cd.evaluate('window.__oiAuthoredEvidenceChecks.faults.at(-1)')
+                assert fault['assessment_id'] == first['assessment_id']
+                assert fault['actual_duplicate'] is False and fault['delivered_duplicate'] is True
+                assert cd.evaluate("document.querySelector('[data-testid=evidence-draft-discard]')?.disabled===true")
+                assert not cd.evaluate("Boolean(document.querySelector('[data-testid=evidence-rationale]'))")
+                assert 'unknown' in cd.evaluate("document.querySelector('[data-testid=evidence-write-status]').textContent").lower()
+                cd.evaluate("document.querySelector('[data-testid=evidence-write-retry]').scrollIntoView()")
+                shot = cd.command('Page.captureScreenshot', {'format': 'png'})
+                (artifacts / 'h1-evidence-contradictory-receipt.png').write_bytes(base64.b64decode(shot['data']))
             click('[data-testid=evidence-write-retry]')
-            cd.wait("window.__oiAuthoredEvidenceChecks.responses.some(r=>r.path.endsWith('/evidence-assessments')&&r.status===200)",
+            cd.wait('window.__oiAuthoredEvidenceChecks.responses.slice(' + str(before)
+                    + ").some(r=>r.path.endsWith('/evidence-assessments')&&r.status===200)",
                     'same intention recovered without another assessment')
             recovered = last('/evidence-assessments', 'POST', 200)
             assert recovered == {**first, 'duplicate': True}
+            writes = [r for r in responses()[before:] if r['method'] == 'POST'
+                      and r['path'] == scope + '/evidence-assessments']
+            assert len(writes) == 2 and writes[0]['body'] == writes[1]['body']
+            assert writes[0]['path'] == writes[1]['path']
             assessment_id = first['assessment_id']
         else:
             cd.wait('window.__oiAuthoredEvidenceChecks.responses.slice(' + str(before)
@@ -174,11 +240,52 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
             f'[data-testid=evidence-assessment][data-assessment-id="{assessment_id}"]') + '))',
             'persisted authored comparison in current packet')
         packet = last('/evidence')
-        assessment = next(a for a in packet['assessments'] if a['assessment_id'] == assessment_id)
+        matching = [a for a in packet['assessments'] if a['assessment_id'] == assessment_id]
+        assert len(matching) == 1, 'recovery must not duplicate the persisted comparison'
+        assessment = matching[0]
         assert assessment['quote'] == quote and assessment['relation'] == relation
         assert assessment['rationale'] == rationale and assessment['state'] == 'current_unreviewed'
         assert evidence['statement'][assessment['quote_start']:assessment['quote_start'] + len(quote)] == quote
         return assessment
+
+    def attach_manual():
+        assert manual_document is not None
+        try:
+            cd.wait("Boolean(document.querySelector('[data-testid=manual-context-documents]'))",
+                    'fresh manual context before selecting reviewed records')
+        except Exception:
+            diagnostic = cd.evaluate("({text:document.querySelector('main')?.innerText,manual:document.querySelector('[data-testid=question-manual-passages]')?.innerText,responses:window.__oiAuthoredEvidenceChecks.responses.filter(r=>r.path.endsWith('/manual-passages'))})")
+            (artifacts / 'manual-context-failure.json').write_text(json.dumps(diagnostic, ensure_ascii=False, indent=2))
+            print('MANUAL CONTEXT DIAGNOSTIC', json.dumps(diagnostic, ensure_ascii=False))
+            raise
+        before=len(responses())
+        click('[data-testid=manual-context-documents]')
+        cd.wait("Array.from(document.querySelectorAll('[data-testid=manual-context-document]')).some("
+                "e=>e.textContent.includes("+json.dumps(manual_document['document_id'])+"))",
+                'reviewed record available to question context')
+        cd.evaluate("Array.from(document.querySelectorAll('[data-testid=manual-context-document]')).find("
+                    "e=>e.textContent.includes("+json.dumps(manual_document['document_id'])+")).click()")
+        cd.wait("Array.from(document.querySelectorAll('[data-testid=manual-context-add]')).some("
+                "e=>e.textContent.includes("+json.dumps(manual_document['selection_key'])+"))",
+                'exact saved passage available')
+        cd.evaluate("Array.from(document.querySelectorAll('[data-testid=manual-context-add]')).find("
+                    "e=>e.textContent.includes("+json.dumps(manual_document['selection_key'])+")).click()")
+        cd.wait("document.querySelector('[data-testid=manual-context-selected]')?.textContent.includes("
+                +json.dumps(manual_document['quote'])+")", 'manual passage selected locally')
+        click('[data-testid=manual-context-save]')
+        cd.wait('window.__oiAuthoredEvidenceChecks.responses.slice('+str(before)
+                +").some(r=>r.path.endsWith('/manual-passages')&&r.method==='POST'&&r.status===201)",
+                'exact question passage set committed')
+        cd.wait("document.querySelector('[data-testid=manual-context-status]')?.textContent.includes('Manual context inspected')",
+                'saved manual context re-read')
+        context=last('/manual-passages','GET',200)
+        assert len(context['passages'])==1
+        passage=context['passages'][0]
+        assert passage['anchor']['document_id']==manual_document['document_id']
+        assert passage['anchor']['quote']==manual_document['quote']
+        assert passage['anchor']['selection_key']==manual_document['selection_key']
+        assert passage['selection_state']=='current_unreviewed_selection'
+        return context
 
     def report(assessment_ids):
         # Selection is explicit, never automatically selected by relation.
@@ -257,7 +364,7 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
             'This authored fictional phrase is proposed as support, with no clinical appraisal.', lose_response=True)
         counter = upload(COUNTER, 'api_output', 'authored-violet-counter.txt')
         counter_assessment = assess(counter, 'contradicts', 'the entry was absent in this authored example',
-            'This independently invented counterexample is retained as a contradictory human proposal.')
+            'This independently invented counterexample is retained as a contradictory human proposal.', contradictory_response=True)
         first_report = report([support_assessment['assessment_id'], counter_assessment['assessment_id']])
         downloaded_path, downloaded, download_access = download(first_report)
         assert support['evidence_id'] in first_report['body'] and counter['evidence_id'] in first_report['body']
@@ -290,22 +397,65 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
         for key in ('body', 'body_sha256', 'snapshot', 'snapshot_sha256', 'prepared_at'):
             assert restarted[key] == first_report[key]
 
-        corrected = upload(AMENDED_SUPPORT, 'abstract', 'authored-violet-support-amendment.txt')
-        assert corrected['version'] == 2
-        packet = last('/evidence')
-        old = next(a for a in packet['assessments'] if a['assessment_id'] == support_assessment['assessment_id'])
-        assert old['state'] == 'reassessment_required'
+        # Another authorized client can amend evidence while this workspace is
+        # still displaying its earlier packet. Discover the change through the
+        # report read first, without an intervening packet refresh.
+        click(f'[data-testid=evidence-version][data-evidence-id="{support["evidence_id"]}"] [data-testid=evidence-select]')
+        unsent_rationale = 'Unsent fictional comparison retained across an externally authored amendment.'
+        value('[data-testid=evidence-quote]', 'café 🧪 labels matched the violet pattern')
+        value('[data-testid=evidence-rationale]', unsent_rationale)
+        cd.wait("!document.querySelector('[data-testid=evidence-assess]').disabled", 'old-context comparison initially editable')
+        prior_packet = last('/evidence')
+        prior_posts = len([r for r in responses() if r['method'] == 'POST'])
+        status, amendment_receipt = add_synthetic(scope + '/evidence', {
+            'synthetic': True, 'request_key': 'EVIDENCE-REQUEST-EXTERNAL-AMENDMENT',
+            'original_text': AMENDED_SUPPORT, 'content_item': 'abstract',
+            'permissions': support['permissions'],
+        })
+        assert status == 201 and amendment_receipt['duplicate'] is False
+        assert amendment_receipt['version'] == 2
+        assert last('/evidence') == prior_packet, 'the browser has not refreshed its earlier packet'
         open_report(first_report['report_id'])
+        cd.wait("!document.querySelector('[data-testid=evidence-version]') && "
+                "!document.querySelector('[data-testid=evidence-assess]') && "
+                "Boolean(document.querySelector('[data-testid=evidence-draft-resume]'))",
+                'fresh historical report invalidates stale evidence actions but retains the draft')
+        assert not cd.evaluate("Boolean(document.querySelector('[data-testid=evidence-rationale]'))")
+        assert unsent_rationale not in cd.evaluate('document.body.innerText')
         historical = last('/evidence-reports/' + first_report['report_id'])
         assert historical['state'] == 'historical_reassessment_required'
         assert historical['body'] == first_report['body'] and downloaded_path.read_bytes() == downloaded
         historical_path, historical_bytes, historical_access = download(historical)
         assert historical_path != downloaded_path and historical_bytes != downloaded
         assert downloaded_path.read_bytes() == downloaded
+        assert not cd.evaluate("Boolean(document.querySelector('[data-testid=evidence-version]'))"), 'download cannot revive the old packet'
+        assert len([r for r in responses() if r['method'] == 'POST']) == prior_posts
+        click('[data-testid=evidence-refresh]')
+        cd.wait('Boolean(document.querySelector(' + json.dumps(
+            f'[data-testid=evidence-version][data-evidence-id="{amendment_receipt["evidence_id"]}"]') + '))',
+            'explicit refresh reveals the actual amendment')
+        packet = last('/evidence')
+        corrected = next(e for e in packet['evidence'] if e['evidence_id'] == amendment_receipt['evidence_id'])
+        assert corrected['version'] == 2
+        assert corrected['sha256'] == hashlib.sha256(AMENDED_SUPPORT.encode('utf-8')).hexdigest()
+        old = next(a for a in packet['assessments'] if a['assessment_id'] == support_assessment['assessment_id'])
+        assert old['state'] == 'reassessment_required'
+        assert cd.evaluate("Boolean(document.querySelector('[data-testid=evidence-draft-status]'))")
+        assert not cd.evaluate("Boolean(document.querySelector('[data-testid=evidence-assess]'))")
+        click('[data-testid=evidence-draft-discard]')
+        cd.wait("!document.querySelector('[data-testid=evidence-draft-status]')", 'discard stale draft explicitly before a new comparison')
         corrected_assessment = assess(corrected, 'unknown', 'café 🧪 labels as uncertain',
             'The correction requires a new explicit human proposal; no conclusion is carried forward.')
         second_report = report([corrected_assessment['assessment_id'], counter_assessment['assessment_id']])
         second_path, second_bytes, second_access = download(second_report)
+        manual_report = manual_path = manual_bytes = manual_access = manual_context = None
+        if manual_document is not None:
+            manual_context=attach_manual()
+            manual_report=report([corrected_assessment['assessment_id'], counter_assessment['assessment_id']])
+            assert manual_report['snapshot']['manual_passages']['context_sha256']==manual_context['context_sha256']
+            assert manual_document['quote'] in manual_report['body']
+            assert 'ADDITIONAL MANUAL RECORD CONTEXT' in manual_report['body']
+            manual_path,manual_bytes,manual_access=download(manual_report)
 
         cd.command('Emulation.setDeviceMetricsOverride', {'width': 390, 'height': 844,
                    'deviceScaleFactor': 1, 'mobile': False})
@@ -326,7 +476,7 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
             + ")?.textContent.includes('withdrawn')",
             'withdrawal receipt and fresh packet settle before navigation')
         inspect()
-        for report_value in (first_report, second_report):
+        for report_value in tuple(r for r in (first_report, second_report, manual_report) if r is not None):
             inspect()
             open_report(report_value['report_id'])
             withheld = last('/evidence-reports/' + report_value['report_id'])
@@ -349,11 +499,23 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
                          'download_access_receipt_id': access}
                         for r, p, b, access in ((first_report, downloaded_path, downloaded, download_access),
                                                 (historical, historical_path, historical_bytes, historical_access),
-                                                (second_report, second_path, second_bytes, second_access))],
+                                                (second_report, second_path, second_bytes, second_access),
+                                                *(((manual_report, manual_path, manual_bytes, manual_access),) if manual_report is not None else ()))],
+            'manual_passage_report_verified': manual_report is not None,
+            'manual_context_sha256': manual_context['context_sha256'] if manual_context is not None else None,
             'actual_api_restart_preserved_report': True,
             'lost_response_exact_retry_recovered_once': True,
+            'contradictory_receipt_exact_retry_recovered_once': True,
+            'contradictory_receipt_retained_locked_draft': True,
+            'explicit_client_delivery_faults': cd.evaluate('window.__oiAuthoredEvidenceChecks.faults'),
+            'comparison_draft_refresh_navigation_preserved': True,
+            'comparison_draft_editing_no_implicit_posts': True,
             'fresh_export_revocation_no_blob': True,
             'evidence_amendment_requires_reassessment': True,
+            'external_amendment_receipt': amendment_receipt,
+            'report_read_invalidates_stale_comparison_actions': True,
+            'historical_only_download_requires_fresh_access': True,
+            'stale_unsent_comparison_retained_hidden_until_explicit_discard': True,
             'historical_download_carries_fresh_status_and_receipt': True,
             'download_cover_preserves_exact_body_bytes_and_hash': True,
             'withdrawal_withholds_historical_reports': True,
@@ -361,9 +523,9 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
         }
         (artifacts / 'question-evidence-workflow.json').write_text(json.dumps(receipt, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
         print('PASS QUESTION EVIDENCE: actual authored abstract/API-output imports, supporting and contradictory '
-              'human proposals, lost-response exact recovery, immutable report and fresh downloaded bytes, '
+              'human proposals, lost-response and contradictory-receipt exact recovery, immutable report and fresh downloaded bytes, '
               'separate export revocation, API restart, amendment/reassessment, historical content withdrawal '
-              'and 390px layout. Independently fictional only; no clinical approval or model execution.')
+              'manual reviewed-record context when supplied, and 390px layout. Independently fictional only; no clinical approval or model execution.')
     finally:
         cd.evaluate('window.__oiAuthoredEvidenceChecks.restore()')
         credentials[0]['actions'] = previous_actions
