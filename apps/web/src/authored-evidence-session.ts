@@ -318,6 +318,9 @@ export class QuestionEvidenceSession{
    const evidenceId=intent.kind==='withdrawal'?decodeURIComponent(intent.path.split('/').at(-2)!):undefined;
    const receipt=decodeEvidenceReceipt(await this.host.json(response),intent.kind,intent.question_id,evidenceId);
    if(!current())return;if(control.signal.aborted)throw Error('write timeout');
+   // A success-shaped body is not confirmation when its replay flag contradicts
+   // the wire status. Keep the exact intent (and draft) for explicit recovery.
+   if((response.status===200)!==receipt.duplicate)throw Error('evidence receipt status');
    this.host.publish({...this.#completedComparison(intent),evidenceWriteIntent:null,evidenceReceipt:receipt,evidenceWritePhase:'saved',evidenceWriteMessage:receipt.duplicate?'Original evidence receipt recovered. No duplicate intent was created.':'Evidence intent saved with immutable provenance. No clinical approval occurred.'});
    // Recovering an old question is receipt recovery, not a new selection.
    // The host owns question focus across source briefs, packets and evidence.
