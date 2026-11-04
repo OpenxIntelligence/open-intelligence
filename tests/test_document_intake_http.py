@@ -15,7 +15,7 @@ import tempfile
 import threading
 import unittest
 
-from open_intelligence.__main__ import Handler, SYNTHETIC
+from open_intelligence.__main__ import FICTIONAL_ACTOR_HEADER, Handler, SYNTHETIC
 from open_intelligence.store import CaseStore
 
 
@@ -27,6 +27,12 @@ class DocumentIntakeHttpTests(unittest.TestCase):
         try:
             store.add_case("CASE-ALPHA", "Independent fictional Alpha")
             store.add_case("CASE-BETA", "Independent fictional Beta")
+            # B-01 actor-grant gate (merged after this slice was authored):
+            # fresh cases carry no grant until one is recorded.
+            store.create_grant("FICTIONAL-NAVIGATOR-A", "CASE-ALPHA",
+                               "individual-access", "2020-01-01", "2999-12-31")
+            store.create_grant("FICTIONAL-NAVIGATOR-A", "CASE-BETA",
+                               "individual-access", "2020-01-01", "2999-12-31")
             self.legacy_raw = (SYNTHETIC / "alpha-imaging.txt").read_bytes()
             self.legacy_id = store.import_report("CASE-ALPHA", self.legacy_raw)["source_id"]
         finally:
@@ -50,6 +56,7 @@ class DocumentIntakeHttpTests(unittest.TestCase):
 
     def request(self, path, payload=None, *, raw_body=None, headers=None):
         values = dict(headers or {})
+        values.setdefault(FICTIONAL_ACTOR_HEADER, "FICTIONAL-NAVIGATOR-A")
         body = raw_body
         if payload is not None:
             body = json.dumps(payload).encode("utf-8")
@@ -91,9 +98,16 @@ class DocumentIntakeHttpTests(unittest.TestCase):
         }
 
     def ledger(self):
+        # B-01 gate audit rows are not document writes: every gated case
+        # route appends one access_log row even when the request is
+        # rejected, so the no-write assertions below compare the dump
+        # without access_log INSERTs. Source, annotation, receipt, and
+        # quarantine rows are still compared exactly.
         store = CaseStore(self.db_path)
         try:
-            return "\n".join(store.db.iterdump())
+            return "\n".join(
+                line for line in store.db.iterdump()
+                if not line.startswith('INSERT INTO "access_log"'))
         finally:
             store.close()
 

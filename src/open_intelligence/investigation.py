@@ -189,9 +189,9 @@ def validate_output(payload: object, valid_sources: set[int],
             if not isinstance(cite, dict):
                 resolved = False
                 break
-            if cite.get("type") == "source" and isinstance(cite.get("id"), int) and cite["id"] in valid_sources:
+            if cite.get("type") == "source" and type(cite.get("id")) is int and cite["id"] in valid_sources:
                 continue
-            if cite.get("type") == "assessment" and isinstance(cite.get("id"), int) and cite["id"] in valid_assessments:
+            if cite.get("type") == "assessment" and type(cite.get("id")) is int and cite["id"] in valid_assessments:
                 continue
             resolved = False
             break
@@ -202,7 +202,7 @@ def validate_output(payload: object, valid_sources: set[int],
             "text": raw["text"].strip(),
             "kind": "hypothesis",
             "support": raw["support"],
-            "citations": citations,
+            "citations": [{"type": cite["type"], "id": cite["id"]} for cite in citations],
             "uncertainty": raw["uncertainty"],
             "limits": raw.get("limits", "") if isinstance(raw.get("limits"), str) else "",
         })
@@ -210,6 +210,8 @@ def validate_output(payload: object, valid_sources: set[int],
     for raw in payload.get("abstentions", []) if isinstance(payload.get("abstentions", []), list) else []:
         if isinstance(raw, dict) and isinstance(raw.get("topic"), str) and raw.get("reason") in ABSTAIN_REASONS:
             abstentions.append({"topic": raw["topic"], "reason": raw["reason"]})
+        else:
+            dropped.append({"abstention": raw, "reason": "invalid_abstention"})
     status = "completed" if claims else "abstained"
     if not claims and not abstentions:
         abstentions.append({"topic": "question", "reason": "insufficient_evidence"})
