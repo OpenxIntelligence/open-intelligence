@@ -683,8 +683,18 @@ def main() -> None:
               const picker = document.querySelector('#case-picker');
               picker.value = 'CASE-ALPHA'; picker.dispatchEvent(new Event('change'));
             })()""")
-            cd.wait("document.querySelector('#case-heading')?.textContent === 'Fictional case Alpha'",
-                    "return to Alpha for rejection checks")
+            # Re-selecting the SAME case preserves its old visible heading while
+            # the change handler intentionally clears active until refresh
+            # completes. A heading-only wait can pass before readyCase() would
+            # authorize the next import, misdiagnosing a safe loading denial as
+            # a duplicate-import failure. Wait for the real case-bound guard.
+            cd.wait("""(() => {
+              if (document.querySelector('#case-heading')?.textContent !== 'Fictional case Alpha')
+                return false;
+              if (document.querySelector('#case-picker')?.value !== 'CASE-ALPHA')
+                return false;
+              try { return readyCase() === 'CASE-ALPHA'; } catch { return false; }
+            })()""", "return to fully ready Alpha for duplicate and wrong-patient checks")
             cards_before = cd.evaluate("document.querySelectorAll('#source-list .source-card').length")
             state_before = json.load(urlopen(
                 f"http://127.0.0.1:{app_port}/api/cases/CASE-ALPHA/state"))
