@@ -28,6 +28,8 @@ def exercise(cd):
     cd.command('Emulation.setDeviceMetricsOverride', {'width':1280,'height':1000,'deviceScaleFactor':1,'mobile':False})
     cd.evaluate("document.querySelector('#sources-heading').scrollIntoView()")
     (out/'reading-before-or-after.png').write_bytes(base64.b64decode(cd.command('Page.captureScreenshot', {'format':'png'})['data']))
+    assert cd.evaluate("!document.querySelector('[data-testid=record-import-disclosure]').open"), 'Loaded records start with the import form collapsed'
+    assert cd.evaluate("!document.querySelector('#original-file').checkVisibility()"), 'Closed import does not compete with source reading'
     assert cd.evaluate("Boolean(document.querySelector('#source-filter'))"), 'Loaded source versions need a response-scoped filter'
     assert cd.evaluate("Boolean(document.querySelector('#reading-view'))"), 'Patient and clinical reading layouts must share the existing session'
     assert cd.evaluate("document.querySelector('[data-testid=readiness]').getAttribute('role')==='status'"), 'Readiness needs noninterrupting status semantics'
@@ -140,6 +142,9 @@ def exercise_session_reset(cd, patient_id, case_id, token, credentials, write_gr
     cd.wait("document.querySelector('[data-testid=records-status]')?.textContent==='Sources unavailable, denied or mapping revoked. Reload case permissions.' && !document.querySelector('[data-testid=load-cases]').disabled", 'completed denied source read')
     cd.wait("!document.querySelector('[data-testid=source-index]')", 'denied source read removes filtered quotations and provenance')
     assert cd.evaluate("!document.querySelector('#source-filter') && !document.querySelector('[data-testid=source-statement]')")
+    # Loading also removes the source index. Await the actual denial before
+    # restoring the fixture grant and asking the UI to reload permissions.
+    cd.wait("document.querySelector('[data-testid=records-status]').textContent.includes('Sources unavailable')", 'source denial completed before reauthorization')
     credentials[0]['actions'].append('source_read');write_grants()
     open_sources()
     assert cd.evaluate("document.querySelector('#source-filter').value==='' && document.querySelector('#source-state').value==='all'"), 'Reauthorization must begin with the new response filters'
