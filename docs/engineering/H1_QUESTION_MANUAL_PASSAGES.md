@@ -1,5 +1,16 @@
 # Manual record context on canonical questions
 
+## Refresh draft guard — dependent continuation of #440
+
+Attachment and evidence refresh require an explicit save or discard of unsaved
+passage additions/removals. Both controls use the existing exact-question dirty
+state; uncertain committed-save recovery remains independently available. The
+actual browser regression retains before/after passages and request counters
+for both controls, then checks a fresh authorized read after explicit discard.
+See the [bounded plan](../superpowers/plans/2026-11-04-manual-passage-refresh-guard.md)
+and draft #444 for tests-first failure and final verification. This is a UI
+refresh safeguard, not general navigation draft persistence or clinical review.
+
 Scope: OI-006–010 and OI-013, extending draft #392 at
 `3eeeaac29ba60f490a6f0e1af1cb28a2baee29c7`. This is a bounded implementation
 proposal and synthetic engineering candidate, not a merged architecture or

@@ -88,7 +88,7 @@ export function AuthoredEvidencePanel({session,state,busy}:{session:RegistrySess
   {(packet||report)&&q&&<section data-testid="evidence-panel" aria-labelledby="question-evidence-heading">
    <div className="evidence-heading">
     <div><span className="step">FICTIONAL EVIDENCE · HUMAN PROPOSALS</span><h3 id="question-evidence-heading">Evidence for this question</h3></div>
-    <button type="button" data-testid="evidence-refresh" disabled={busy||state.evidencePhase==='loading'} onClick={()=>void session.loadQuestionEvidence(q.question_id)}>Refresh evidence and rights</button>
+    <button type="button" data-testid="evidence-refresh" disabled={busy||state.evidencePhase==='loading'||currentManual?.dirty} onClick={()=>void session.loadQuestionEvidence(q.question_id)}>Refresh evidence and rights</button>
    </div>
    <p className="evidence-question"><strong>{q.question}</strong></p>
    <p>Case-owned authored records and human-proposed comparisons. Scientific appraisal, publisher clearance and clinical review have not been performed. No model was run.</p>

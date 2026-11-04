@@ -15,7 +15,7 @@ export function QuestionPassagesPanel({session,scope,busy,onContext,onSaved}:{se
  const locked=busy||selecting||['loading','saving','uncertain'].includes(state.phase)||['loading','saving','uncertain'].includes(docs.phase);
  useEffect(()=>{generation.current++;void client.load();return()=>{generation.current++;client.dispose();documents.dispose();};},[client,documents]);
  const binding=manualReportBinding(state.packet,chosen,state.phase);
- useEffect(()=>{const binding=manualReportBinding(state.packet,chosen,state.phase);onContext({scope,context:binding.context,blocked:binding.blocked});},[state.packet,state.phase,chosen,onContext,scope.patient_id,scope.case_id,scope.question_id]);
+ useEffect(()=>{const binding=manualReportBinding(state.packet,chosen,state.phase);onContext({scope,context:binding.context,blocked:binding.blocked,dirty:binding.dirty});},[state.packet,state.phase,chosen,onContext,scope.patient_id,scope.case_id,scope.question_id]);
  useEffect(()=>{setChosen(state.packet?.passages??[]);setMessage('');},[state.packet]);
  const latest=docs.document?.revisions.at(-1);
  async function select(key:string){
@@ -40,8 +40,8 @@ export function QuestionPassagesPanel({session,scope,busy,onContext,onSaved}:{se
   <h4 id="manual-context-heading">Additional passages from the patient’s records</h4>
   <p>Attach exact saved text or PDF selections to this question. Their classifications are user-selected and unreviewed; comparisons still concern the primary structured observation.</p>
   <p role="status" data-testid="manual-context-status">{state.message} {message}</p>
-  {binding.dirty&&<p role="status" data-testid="manual-context-unsaved">Passage additions or removals are unsaved. Save this set or discard these changes before preparing a report.</p>}
-  <button type="button" disabled={locked} onClick={()=>void client.load()}>Refresh attached passages</button>
+  {binding.dirty&&<p role="status" data-testid="manual-context-unsaved">Passage additions or removals are unsaved. Save this set or discard these changes before refreshing evidence or preparing a report.</p>}
+  <button type="button" disabled={locked||binding.dirty} onClick={()=>void client.load()}>Refresh attached passages</button>
   {state.phase==='uncertain'&&<button type="button" disabled={busy} data-testid="manual-context-retry" onClick={()=>void save(true)}>Retry exact passage set</button>}
   {state.packet&&<>
    <p>Saved context revision {state.packet.revision} · {state.packet.state==='current_unreviewed'?'unreviewed':'reassessment required'}</p>
