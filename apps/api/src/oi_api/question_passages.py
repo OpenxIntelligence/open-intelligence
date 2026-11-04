@@ -69,7 +69,7 @@ class QuestionPassages:
             # Current HTTP still requires the exact application schema revision.
             revisions=self.registry._fetchall(
                 'SELECT version_num FROM public.alembic_version ORDER BY version_num')
-            legacy={'0010_authored_evidence_origin','0011_evidence_convergence','0012_reviewed_documents','0013_document_image_convergence'}
+            legacy={'0010_authored_evidence_origin','0011_evidence_convergence','0012_reviewed_documents','0012_image_report_convergence','0013_document_image_convergence'}
             if revision_id is not None or len(revisions)!=1 or revisions[0][0] not in legacy:
                 raise RuntimeError('Question passage owner unavailable at this schema revision')
             return dict(revision_id=None,revision=0,attached_by=None,attached_at=None,
