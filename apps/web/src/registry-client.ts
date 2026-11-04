@@ -1565,7 +1565,7 @@ export class RegistrySession {
       await this.#sendLaboratory(intent);
     }catch(_){if(scope===this.#scope&&read===this.#read&&records===this.#records)
       this.#publish({laboratoryPhase:'error',laboratoryReceipt:null,laboratoryMessage:'Unsupported original JSON. Nothing was sent.'});}
-    finally{if(preparing===this.#laboratoryWrite&&scope===this.#scope&&!this.#uploading)this.#laboratoryWriting=false;}
+    finally{if(preparing===this.#laboratoryWrite&&scope===this.#scope)this.#laboratoryWriting=false;}
   }
   async retryLaboratoryImport():Promise<void>{
     if(this.#state.laboratoryPhase!=='unknown'||!this.#state.laboratoryIntent)return;
