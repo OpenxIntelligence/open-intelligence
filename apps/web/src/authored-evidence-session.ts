@@ -84,12 +84,14 @@ type Host={
 export class QuestionEvidenceSession{
  #read=0;#reportRead=0;#originalRead=0;#write=0;
  constructor(private host:Host){}
- #clearDisclosure(patch:Partial<EvidenceState>):void{
-  // A failed current read also invalidates parallel dependent readers. Keep
-  // uncertain writes: a disclosure failure says nothing about their commit.
+ #clearDisclosure(patch:Partial<EvidenceState>,preserveDraft=false):void{
+  // Invalidate parallel dependent readers too. Only a verified freshness change
+  // may retain a hidden draft; failed access still clears it. Neither resolves
+  // uncertain writes, whose commit outcome is independent of a read.
   this.#read++;this.#reportRead++;this.#originalRead++;
   this.host.publish({...emptyEvidenceDisclosure(),
-   ...emptyComparisonDraft('Comparison draft cleared because current evidence access could not be verified.'),...patch});
+   ...(preserveDraft?{evidenceDraftMessage:'The source or comparison basis changed. Unfinished comparison retained; recheck evidence before resuming.'}:
+    emptyComparisonDraft('Comparison draft cleared because current evidence access could not be verified.')),...patch});
  }
  reset(preserveCase?:string):EvidenceState{
   this.#read++;this.#reportRead++;this.#originalRead++;this.#write++;
@@ -145,10 +147,16 @@ export class QuestionEvidenceSession{
  }
  async readReport(questionId:string,reportId:string):Promise<EvidenceReport|null>{
   const q=this.#question(questionId),state=this.host.snapshot(),packet=state.evidencePacket;
-  const summary=packet?.question.question_id===questionId?packet.reports.find(r=>r.report_id===reportId):undefined;
+  // A newly historical report invalidates its older evidence packet. Its verified
+  // immutable references still identify this exact report for another authorized
+  // read, including download; they never authorize comparison actions.
+  const retained=state.evidenceReportPhase==='ready'&&state.evidenceReport?.question_id===questionId&&
+   state.evidenceReport.report_id===reportId?state.evidenceReport:undefined;
+  const summary=packet?.question.question_id===questionId?packet.reports.find(r=>r.report_id===reportId):
+   !packet?retained:undefined;
   const stamp=this.host.scope(),read=++this.#reportRead,evidenceRead=this.#read;
   this.host.publish({evidenceReport:null,evidenceReportPhase:'loading',evidenceReportMessage:'Rechecking report export authority and current family rights…'});
-  if(!q||!summary||!packet||state.evidencePhase!=='ready'){
+  if(!q||!summary||(packet&&state.evidencePhase!=='ready')){
    this.host.publish({evidenceReportPhase:'error',evidenceReportMessage:'Inspect this question’s report history before opening the exact report.'});return null;
   }
   const current=()=>read===this.#reportRead&&evidenceRead===this.#read&&stamp===this.host.scope()&&this.host.snapshot().evidencePacket===packet;
@@ -160,7 +168,10 @@ export class QuestionEvidenceSession{
    const value=await decodeEvidenceReport(await this.host.json(response,524288),q,reportId,summary);
    if(!current())return null;if(control.signal.aborted)throw Error('report timeout');
    const patch={evidenceReport:value,evidenceReportPhase:'ready' as const,evidenceReportMessage:value.state==='content_withheld'?'Current content permissions withhold this report. Its immutable preparation references remain. Refresh evidence to inspect current permissions.':value.state==='historical_reassessment_required'?'Historical preparation. Source or evidence changed; this report is not a current comparison.':'Immutable human-authored comparison report verified. Each download rechecks authority and content rights.'};
-   if(value.state==='content_withheld')this.#clearDisclosure(patch);else this.host.publish(patch);
+   if(value.state==='content_withheld')this.#clearDisclosure(patch);
+   else if(value.state==='historical_reassessment_required'&&summary.state==='current_unreviewed'){
+    this.#clearDisclosure({...patch,evidenceMessage:'The report check found changed source or comparison context. Refresh evidence and rights before continuing comparisons.'},true);
+   }else this.host.publish(patch);
    return value;
   }catch(_){if(current())this.#clearDisclosure({evidenceReportPhase:'error',evidenceReportMessage:'Report bytes or provenance failed verification. No cached body can be downloaded.'});return null;}
   finally{done();}

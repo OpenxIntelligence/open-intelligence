@@ -68,7 +68,7 @@ _OBSERVE = r"""() => {
 
 
 def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
-             write_grants, directory, artifacts, restart_api, on_report=None):
+             write_grants, directory, artifacts, restart_api, add_synthetic, on_report=None):
     artifacts = Path(artifacts)
     artifacts.mkdir(parents=True, exist_ok=True)
     directory = Path(directory)
@@ -358,18 +358,76 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
         for key in ('body', 'body_sha256', 'snapshot', 'snapshot_sha256', 'prepared_at'):
             assert restarted[key] == first_report[key]
 
-        corrected = upload(AMENDED_SUPPORT, 'abstract', 'authored-violet-support-amendment.txt')
-        assert corrected['version'] == 2
-        packet = last('/evidence')
-        old = next(a for a in packet['assessments'] if a['assessment_id'] == support_assessment['assessment_id'])
-        assert old['state'] == 'reassessment_required'
+        # Independently authorized follow-up drafts share this workspace, but
+        # evidence freshness must not consume their unsent input or write work.
+        click('[data-testid=followthrough-refresh]')
+        cd.wait("document.querySelector('[data-testid=followthrough-status]')?.dataset.phase==='ready' && "
+                "document.querySelectorAll('[data-testid=followthrough-task]').length===4",
+                'four saved tasks before the evidence-only amendment')
+        click(row + ' [data-testid=followthrough-open-create]')
+        task_id = cd.evaluate("document.querySelector('[data-testid=followthrough-task][data-status=created]').dataset.taskId")
+        task_row = '[data-testid=followthrough-task][data-task-id="' + task_id + '"]'
+        follow_inputs = {
+            row + ' [data-testid=followthrough-title]': 'Unsent coordination alongside evidence reassessment',
+            row + ' [data-testid=followthrough-reason]': 'Keep this independent unsent plan.',
+            task_row + ' [data-testid=followthrough-transition-owner]': 'Proposed evidence-discussion coordinator',
+            task_row + ' [data-testid=followthrough-transition-reason]': 'Unsent assignment while inspecting historical evidence.',
+        }
+        for selector, text in follow_inputs.items():
+            value(selector, text)
+        follow_writes = cd.evaluate('window.__oiFollowthroughChecks.writes.length')
+
+        # Another authorized client can amend evidence while this workspace is
+        # still displaying its earlier packet. Discover the change through the
+        # report read first, without an intervening packet refresh.
+        click(f'[data-testid=evidence-version][data-evidence-id="{support["evidence_id"]}"] [data-testid=evidence-select]')
+        unsent_rationale = 'Unsent fictional comparison retained across an externally authored amendment.'
+        value('[data-testid=evidence-quote]', 'café 🧪 labels matched the violet pattern')
+        value('[data-testid=evidence-rationale]', unsent_rationale)
+        cd.wait("!document.querySelector('[data-testid=evidence-assess]').disabled", 'old-context comparison initially editable')
+        prior_packet = last('/evidence')
+        prior_posts = len([r for r in responses() if r['method'] == 'POST'])
+        status, amendment_receipt = add_synthetic(scope + '/evidence', {
+            'synthetic': True, 'request_key': 'EVIDENCE-REQUEST-EXTERNAL-AMENDMENT',
+            'original_text': AMENDED_SUPPORT, 'content_item': 'abstract',
+            'permissions': support['permissions'],
+        })
+        assert status == 201 and amendment_receipt['duplicate'] is False
+        assert amendment_receipt['version'] == 2
+        assert last('/evidence') == prior_packet, 'the browser has not refreshed its earlier packet'
         open_report(first_report['report_id'])
+        cd.wait("!document.querySelector('[data-testid=evidence-version]') && "
+                "!document.querySelector('[data-testid=evidence-assess]') && "
+                "Boolean(document.querySelector('[data-testid=evidence-draft-resume]'))",
+                'fresh historical report invalidates stale evidence actions but retains the draft')
+        assert not cd.evaluate("Boolean(document.querySelector('[data-testid=evidence-rationale]'))")
+        assert unsent_rationale not in cd.evaluate('document.body.innerText')
         historical = last('/evidence-reports/' + first_report['report_id'])
         assert historical['state'] == 'historical_reassessment_required'
         assert historical['body'] == first_report['body'] and downloaded_path.read_bytes() == downloaded
         historical_path, historical_bytes, historical_access = download(historical)
         assert historical_path != downloaded_path and historical_bytes != downloaded
         assert downloaded_path.read_bytes() == downloaded
+        assert not cd.evaluate("Boolean(document.querySelector('[data-testid=evidence-version]'))"), 'download cannot revive the old packet'
+        assert len([r for r in responses() if r['method'] == 'POST']) == prior_posts
+        for selector, expected in follow_inputs.items():
+            assert cd.evaluate('document.querySelector(' + json.dumps(selector) + ').value') == expected, 'Evidence reassessment discarded independent follow-up input'
+        assert cd.evaluate('window.__oiFollowthroughChecks.writes.length') == follow_writes
+        assert cd.evaluate("document.querySelectorAll('[data-testid=followthrough-task]').length") == 4
+        click('[data-testid=evidence-refresh]')
+        cd.wait('Boolean(document.querySelector(' + json.dumps(
+            f'[data-testid=evidence-version][data-evidence-id="{amendment_receipt["evidence_id"]}"]') + '))',
+            'explicit refresh reveals the actual amendment')
+        packet = last('/evidence')
+        corrected = next(e for e in packet['evidence'] if e['evidence_id'] == amendment_receipt['evidence_id'])
+        assert corrected['version'] == 2
+        assert corrected['sha256'] == hashlib.sha256(AMENDED_SUPPORT.encode('utf-8')).hexdigest()
+        old = next(a for a in packet['assessments'] if a['assessment_id'] == support_assessment['assessment_id'])
+        assert old['state'] == 'reassessment_required'
+        assert cd.evaluate("Boolean(document.querySelector('[data-testid=evidence-draft-status]'))")
+        assert not cd.evaluate("Boolean(document.querySelector('[data-testid=evidence-assess]'))")
+        click('[data-testid=evidence-draft-discard]')
+        cd.wait("!document.querySelector('[data-testid=evidence-draft-status]')", 'discard stale draft explicitly before a new comparison')
         corrected_assessment = assess(corrected, 'unknown', 'café 🧪 labels as uncertain',
             'The correction requires a new explicit human proposal; no conclusion is carried forward.')
         second_report = report([corrected_assessment['assessment_id'], counter_assessment['assessment_id']])
@@ -427,6 +485,12 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
             'comparison_draft_editing_no_implicit_posts': True,
             'fresh_export_revocation_no_blob': True,
             'evidence_amendment_requires_reassessment': True,
+            'external_amendment_receipt': amendment_receipt,
+            'report_read_invalidates_stale_comparison_actions': True,
+            'historical_report_preserves_independent_followup_creation_and_transition_drafts': True,
+            'evidence_reassessment_creates_no_followup_writes': True,
+            'historical_only_download_requires_fresh_access': True,
+            'stale_unsent_comparison_retained_hidden_until_explicit_discard': True,
             'historical_download_carries_fresh_status_and_receipt': True,
             'download_cover_preserves_exact_body_bytes_and_hash': True,
             'withdrawal_withholds_historical_reports': True,
