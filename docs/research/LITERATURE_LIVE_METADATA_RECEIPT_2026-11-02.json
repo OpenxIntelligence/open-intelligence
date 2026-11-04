@@ -1,0 +1,23 @@
+{
+  "provider": "europe_pmc",
+  "endpoint": "https://www.ebi.ac.uk/europepmc/webservices/rest/search",
+  "adapter_version": "1",
+  "provider_api_version": "6.9",
+  "retrieved_at": "2026-11-02T20:27:39Z",
+  "response_sha256": "d160645b7bea1a25b47d7426e7351a1d63a4c4ce396d596b9bfa7b4b7d78180b",
+  "provider_hit_count": 194850,
+  "returned_record_count": 3,
+  "excluded_counts": {},
+  "metadata_only": true,
+  "clinical_evidence_appraised": false,
+  "rights_status": "not_assessed",
+  "accepted_identifiers": [
+    "europepmc:MED:42902905",
+    "europepmc:MED:42159325",
+    "europepmc:MED:42061292"
+  ],
+  "public_query": "oncology systematic review",
+  "patient_context_used": false,
+  "abstracts_or_full_text_retained": false,
+  "scope": "One successful operator-invoked public metadata transport/schema observation; not evidence appraisal, completeness, legal clearance, model execution or clinical validation. The response bytes were hashed transiently and not retained."
+}

@@ -336,7 +336,14 @@ CREATE TABLE IF NOT EXISTS investigations (
   claims_json TEXT NOT NULL,
   abstentions_json TEXT NOT NULL,
   dropped_json TEXT NOT NULL,
+  context_fingerprint TEXT,
   stale INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS investigation_review_drafts (
+  investigation_id INTEGER PRIMARY KEY REFERENCES investigations(id),
+  snapshot_id INTEGER NOT NULL UNIQUE REFERENCES snapshots(id),
+  provenance_json TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
 -- Discovery-to-rights linkage: an item may be bound to one rights row at
@@ -474,6 +481,19 @@ class CaseStore:
         self.db.execute("PRAGMA foreign_keys=ON")
         self.db.executescript(SCHEMA)
         self._migrate_discovery_rights()
+        self._migrate_investigation_context()
+
+    def _migrate_investigation_context(self) -> None:
+        """Preserve old runs; their uncaptured inputs must never be backfilled."""
+        columns = {row["name"] for row in self.db.execute("PRAGMA table_info(investigations)")}
+        if "context_fingerprint" not in columns:
+            try:
+                self.db.execute("ALTER TABLE investigations ADD COLUMN context_fingerprint TEXT")
+            except sqlite3.OperationalError:
+                columns = {row["name"] for row in self.db.execute("PRAGMA table_info(investigations)")}
+                if "context_fingerprint" not in columns:
+                    raise
+        self.db.commit()
 
     def _migrate_discovery_rights(self) -> None:
         """Add rights-linkage columns to pre-existing discovery tables.
@@ -648,10 +668,6 @@ class CaseStore:
                     self.db.execute(f"UPDATE snapshots SET state='stale' WHERE id IN ({marks})", invalidated)
                     self.db.execute(f"""UPDATE questions SET state='open' WHERE case_id=? AND id IN
                         (SELECT question_id FROM snapshots WHERE id IN ({marks}))""", [case_id, *invalidated])
-                    # An amendment changes freshness for investigations too:
-                    # they cite the superseded source's facts, so mark them stale
-                    # rather than silently leaving them current.
-                    self.db.execute("UPDATE investigations SET stale=1 WHERE case_id=? AND stale=0", (case_id,))
                 # OI-021, same transaction: only options in THIS case that
                 # cite the superseded version or a stale snapshot reopen.
                 invalidated_options = self._invalidate_options(
@@ -661,6 +677,10 @@ class CaseStore:
                     self._event(case_id, "option_review_reopened",
                                 source_version_id=previous["id"],
                                 invalidated_options=invalidated_options)
+            # The model prompt consumes all current case assertions, so both
+            # genuinely new and amended sources invalidate earlier model work.
+            # Duplicate and quarantine paths already returned above.
+            newly_stale_model_ids = self._stale_model_investigations(case_id)
             invalidated_inventory = []
             if previous:
                 # Anchor-exact, like snapshots: only assertions citing the
@@ -681,9 +701,11 @@ class CaseStore:
             self._event(case_id, "source_imported", document_id=report.document_id,
                         version=version, source_id=source_id, amends_id=previous["id"] if previous else None,
                         invalidated_snapshots=invalidated, invalidated_options=invalidated_options,
+                        invalidated_model_investigation_ids=newly_stale_model_ids,
                         invalidated_inventory_assertions=invalidated_inventory)
             return {"result": "imported", "source_id": source_id, "version": version,
                     "invalidated_snapshots": invalidated, "invalidated_options": invalidated_options,
+                    "invalidated_model_investigation_ids": newly_stale_model_ids,
                     "invalidated_inventory_assertions": invalidated_inventory}
 
 
@@ -1301,6 +1323,44 @@ class CaseStore:
             "options": options,
         }
 
+    def _stale_model_investigations(self, case_id: str,
+                                    question_id: int | None = None) -> list[int]:
+        """Reopen the existing model task when its case/question inputs change.
+
+        Caller holds BEGIN IMMEDIATE; preserve historical model artifacts,
+        and leave unrelated questions, cases and ordinary drafts alone.
+        """
+        query = "SELECT id,question_id FROM investigations WHERE case_id=? AND stale=0"
+        args: list = [case_id]
+        if question_id is not None:
+            query += " AND question_id=?"
+            args.append(question_id)
+        rows = self.db.execute(query + " ORDER BY id", args).fetchall()
+        if not rows:
+            return []
+        ids = [int(item["id"]) for item in rows]
+        marks = ",".join("?" for _ in ids)
+        self.db.execute(f"UPDATE investigations SET stale=1 WHERE id IN ({marks})", ids)
+        affected_questions = sorted({int(item["question_id"]) for item in rows})
+        qmarks = ",".join("?" for _ in affected_questions)
+        self.db.execute(
+            f"UPDATE questions SET state='open' WHERE case_id=? AND id IN ({qmarks})",
+            [case_id, *affected_questions])
+        # These reports consume the complete captured context. A new source
+        # or assessment also invalidates them, even without an amended citation.
+        snapshot_ids = [int(row[0]) for row in self.db.execute(
+            f"""SELECT s.id FROM snapshots s JOIN investigation_review_drafts d ON d.snapshot_id=s.id
+                WHERE d.investigation_id IN ({marks}) AND s.state!='stale'""", ids).fetchall()]
+        if snapshot_ids:
+            smarks = ",".join("?" for _ in snapshot_ids)
+            self.db.execute(f"UPDATE snapshots SET state='stale' WHERE id IN ({smarks})", snapshot_ids)
+            invalidated_options = self._invalidate_options(
+                snapshot_ids=set(snapshot_ids), source_version_ids=set(), evidence_version_ids=set())
+            self._event(case_id, "investigation_review_drafts_invalidated",
+                        investigation_ids=ids, invalidated_snapshots=snapshot_ids,
+                        invalidated_options=invalidated_options)
+        return ids
+
     def _invalidate_evidence_version(self, evidence_version_id: int, *, reason: str) -> tuple[list[int], list[int]]:
         """Invalidate dependent snapshots across ALL synthetic cases, retaining history.
 
@@ -1318,12 +1378,29 @@ class CaseStore:
             self.db.execute(f"UPDATE snapshots SET state='stale' WHERE id IN ({ids})", invalidated)
             self.db.execute(f"""UPDATE questions SET state='open' WHERE id IN
                 (SELECT DISTINCT question_id FROM snapshots WHERE id IN ({ids}))""", invalidated)
-            affected = {str(row["case_id"]) for row in rows}
-            for case_id in sorted(affected):
-                changed = [int(row["id"]) for row in rows if row["case_id"] == case_id]
-                self._event(case_id, "evidence_invalidated",
-                            evidence_version_id=evidence_version_id,
-                            reason=reason, invalidated_snapshots=changed)
+
+        # Model-only work does not have a snapshot_evidence association,
+        # but the question-scoped investigation prompt read these assessments.
+        # Preserve its original output and reopen only affected case/questions.
+        model_cases: dict[str, list[int]] = {}
+        assessed = self.db.execute(
+            """SELECT DISTINCT case_id,question_id FROM evidence_assessments
+               WHERE evidence_version_id=?""", (evidence_version_id,)).fetchall()
+        for item in assessed:
+            affected_case = str(item["case_id"])
+            ids = self._stale_model_investigations(
+                affected_case, int(item["question_id"]))
+            if ids:
+                model_cases.setdefault(affected_case, []).extend(ids)
+        affected_cases = ({str(row["case_id"]) for row in rows} | set(model_cases))
+        for affected_case in sorted(affected_cases):
+            changed = [int(row["id"]) for row in rows
+                       if row["case_id"] == affected_case]
+            self._event(affected_case, "evidence_invalidated",
+                        evidence_version_id=evidence_version_id, reason=reason,
+                        invalidated_snapshots=changed,
+                        invalidated_model_investigation_ids=sorted(
+                            model_cases.get(affected_case, [])))
         # OI-021: same transaction, dependent options only. Evidence versions
         # are shared, so this fan-out is global exactly like the snapshot
         # fan-out above; case/source amendments stay case-scoped.
@@ -1430,8 +1507,10 @@ class CaseStore:
                 (case_id,question_id,evidence_version_id,relation,applicability,rationale,created_at)
                 VALUES (?,?,?,?,?,?,?)""", (case_id, question_id, evidence_version_id,
                    relation, applicability, rationale.strip(), now_utc()))
+            invalidated_models = self._stale_model_investigations(case_id, question_id)
             self._event(case_id, "synthetic_evidence_assessed",
-                        assessment_id=cur.lastrowid, evidence_version_id=evidence_version_id)
+                        assessment_id=cur.lastrowid, evidence_version_id=evidence_version_id,
+                        invalidated_model_investigation_ids=invalidated_models)
             return int(cur.lastrowid)
 
     def import_discovery(self, raw: bytes, rights_source_id: int | None = None) -> dict:
@@ -2076,16 +2155,43 @@ class CaseStore:
                         evidence_assessment_ids: list[int] | None = None,
                         broker_link_ids: list[int] | None = None) -> int:
         self._case(case_id)
-        if not isinstance(summary, str) or not 10 <= len(summary.strip()) <= MAX_SUMMARY:
-            raise InvalidInput("Draft must have 10–3000 characters")
-        if not isinstance(source_ids, list) or not source_ids or any(type(x) is not int for x in source_ids):
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            return self._create_snapshot_locked(case_id, question_id, summary, source_ids,
+                                                evidence_assessment_ids, broker_link_ids)
+
+    def _create_snapshot_locked(self, case_id: str, question_id: int, summary: str,
+                                source_ids: list[int],
+                                evidence_assessment_ids: list[int] | None = None,
+                                broker_link_ids: list[int] | None = None, *,
+                                max_summary: int = MAX_SUMMARY,
+                                captured_model_run: dict | None = None) -> int:
+        """Insert in the caller's write transaction; never commit a partial handoff.
+
+        Only the model handoff supplies ``captured_model_run``, after validating
+        its saved output and reading every canonical dependency under this same
+        lock. Public/manual creation never accepts this internal policy switch.
+        """
+        if not self.db.in_transaction:
+            raise RuntimeError("Snapshot insertion requires a caller-owned transaction")
+        self._positive_identifier(question_id, "Question")
+        if not isinstance(summary, str) or not 10 <= len(summary.strip()) <= max_summary:
+            raise InvalidInput(f"Draft must have 10–{max_summary} characters")
+        canonical_model_inputs = captured_model_run is not None
+        source_free_abstention = (
+            canonical_model_inputs and captured_model_run["status"] == "abstained"
+            and captured_model_run["claims"] == [] and bool(captured_model_run["abstentions"]))
+        if (not isinstance(source_ids, list) or (not source_ids and not source_free_abstention) or
+            any(type(x) is not int or x < 1 for x in source_ids)):
             raise InvalidInput("Select one or more current source versions")
-        if len(source_ids) != len(set(source_ids)) or len(source_ids) > 50:
+        if len(source_ids) != len(set(source_ids)):
+            raise InvalidInput("Source IDs must be unique")
+        if not canonical_model_inputs and len(source_ids) > 50:
             raise InvalidInput("Source IDs must be unique; maximum 50")
         evidence_assessment_ids = [] if evidence_assessment_ids is None else evidence_assessment_ids
         if (not isinstance(evidence_assessment_ids, list) or
             len(evidence_assessment_ids) != len(set(str(x) for x in evidence_assessment_ids)) or
-            len(evidence_assessment_ids) > 50 or
+            (not canonical_model_inputs and len(evidence_assessment_ids) > 50) or
             any(type(x) is not int or x < 1 for x in evidence_assessment_ids)):
             raise InvalidInput("Evidence assessment IDs must be unique positive integers; maximum 50")
         broker_link_ids = [] if broker_link_ids is None else broker_link_ids
@@ -2094,45 +2200,43 @@ class CaseStore:
             len(broker_link_ids) > 50 or
             any(type(x) is not int or x < 1 for x in broker_link_ids)):
             raise InvalidInput("Broker link IDs must be unique positive integers; maximum 50")
-        with self.db:
-            self.db.execute("BEGIN IMMEDIATE")  # Serialize against incoming amendments and evidence changes.
-            question = self.db.execute("SELECT id FROM questions WHERE id=? AND case_id=?", (question_id, case_id)).fetchone()
-            if not question:
-                raise InvalidInput("Question not in this case")
-            for sid in source_ids:
-                if not self.db.execute("SELECT 1 FROM source_versions WHERE id=? AND case_id=? AND state='current'",
-                                       (sid, case_id)).fetchone():
-                    raise InvalidInput("Source is missing, superseded, or belongs to another case")
-            for aid in evidence_assessment_ids:
-                linked = self.db.execute("""SELECT 1 FROM evidence_assessments a
-                    JOIN evidence_versions v ON v.id=a.evidence_version_id
-                    WHERE a.id=? AND a.case_id=? AND a.question_id=?
-                    AND v.state='current' AND v.rights='original-synthetic'""",
-                    (aid, case_id, question_id)).fetchone()
-                if not linked:
-                    raise InvalidInput("Evidence assessment is missing, stale, or outside this question")
-            cur = self.db.execute("""INSERT INTO snapshots (case_id,question_id,summary,state,created_at)
-                VALUES (?,?,?,'draft',?)""", (case_id, question_id, summary.strip(), now_utc()))
-            snapshot_id = int(cur.lastrowid)
-            for sid in source_ids:
-                self.db.execute("INSERT INTO snapshot_sources VALUES (?,?)", (snapshot_id, sid))
-            for aid in evidence_assessment_ids:
-                self.db.execute("INSERT INTO snapshot_evidence VALUES (?,?)", (snapshot_id, aid))
-            for lid in broker_link_ids:
-                linked = self.db.execute("""SELECT 1 FROM broker_links bl
-                    JOIN rights_sources rs ON rs.id=bl.rights_source_id
-                    WHERE bl.id=? AND bl.case_id=? AND bl.question_id=?
-                    AND rs.state='active'
-                    AND NOT (bl.relation='supports' AND bl.applicability='not_applicable')""",
-                    (lid, case_id, question_id)).fetchone()
-                if not linked:
-                    raise InvalidInput("Broker link is missing, revoked, or outside this question")
-            for lid in broker_link_ids:
-                self.db.execute("INSERT INTO snapshot_broker_links VALUES (?,?)", (snapshot_id, lid))
-            self._event(case_id, "draft_created", snapshot_id=snapshot_id, question_id=question_id,
-                        evidence_assessment_ids=evidence_assessment_ids,
-                        broker_link_ids=broker_link_ids)
-            return snapshot_id
+        question = self.db.execute("SELECT id FROM questions WHERE id=? AND case_id=?", (question_id, case_id)).fetchone()
+        if not question:
+            raise InvalidInput("Question not in this case")
+        for sid in source_ids:
+            if not self.db.execute("SELECT 1 FROM source_versions WHERE id=? AND case_id=? AND state='current'",
+                                   (sid, case_id)).fetchone():
+                raise InvalidInput("Source is missing, superseded, or belongs to another case")
+        for aid in evidence_assessment_ids:
+            linked = self.db.execute("""SELECT 1 FROM evidence_assessments a
+                JOIN evidence_versions v ON v.id=a.evidence_version_id
+                WHERE a.id=? AND a.case_id=? AND a.question_id=?
+                AND v.state='current' AND v.rights='original-synthetic'""",
+                (aid, case_id, question_id)).fetchone()
+            if not linked:
+                raise InvalidInput("Evidence assessment is missing, stale, or outside this question")
+        cur = self.db.execute("""INSERT INTO snapshots (case_id,question_id,summary,state,created_at)
+            VALUES (?,?,?,'draft',?)""", (case_id, question_id, summary.strip(), now_utc()))
+        snapshot_id = int(cur.lastrowid)
+        for sid in source_ids:
+            self.db.execute("INSERT INTO snapshot_sources VALUES (?,?)", (snapshot_id, sid))
+        for aid in evidence_assessment_ids:
+            self.db.execute("INSERT INTO snapshot_evidence VALUES (?,?)", (snapshot_id, aid))
+        for lid in broker_link_ids:
+            linked = self.db.execute("""SELECT 1 FROM broker_links bl
+                JOIN rights_sources rs ON rs.id=bl.rights_source_id
+                WHERE bl.id=? AND bl.case_id=? AND bl.question_id=?
+                AND rs.state='active'
+                AND NOT (bl.relation='supports' AND bl.applicability='not_applicable')""",
+                (lid, case_id, question_id)).fetchone()
+            if not linked:
+                raise InvalidInput("Broker link is missing, revoked, or outside this question")
+        for lid in broker_link_ids:
+            self.db.execute("INSERT INTO snapshot_broker_links VALUES (?,?)", (snapshot_id, lid))
+        self._event(case_id, "draft_created", snapshot_id=snapshot_id, question_id=question_id,
+                    evidence_assessment_ids=evidence_assessment_ids,
+                    broker_link_ids=broker_link_ids)
+        return snapshot_id
 
     def acknowledge_demo_review(self, case_id: str, snapshot_id: int, reviewer_label: str) -> None:
         self._case(case_id)
@@ -2156,8 +2260,7 @@ class CaseStore:
     def investigation_facts(self, case_id: str, question_id: int) -> dict:
         """Facts the investigation prompt may use: question, current assertions, assessments."""
         self._case(case_id)
-        if type(question_id) is not int:
-            raise InvalidInput("Question id must be an integer")
+        self._positive_identifier(question_id, "Question")
         question = self.db.execute("SELECT * FROM questions WHERE id=? AND case_id=?",
                                    (question_id, case_id)).fetchone()
         if not question:
@@ -2181,25 +2284,143 @@ class CaseStore:
         }
 
     def save_investigation(self, case_id: str, question_id: int, template: str,
-                           validated, mode: str) -> int:
+                           validated, mode: str,
+                           context_fingerprint: str | None = None) -> int:
         self._case(case_id)
+        self._positive_identifier(question_id, "Question")
+        if context_fingerprint is not None and (
+            not isinstance(context_fingerprint, str) or not re.fullmatch(r"[0-9a-f]{64}", context_fingerprint)):
+            raise InvalidInput("Invalid captured context fingerprint")
         with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            if not self.db.execute("SELECT 1 FROM questions WHERE id=? AND case_id=?",
+                                   (question_id, case_id)).fetchone():
+                raise InvalidInput("Question not in this case")
+            if context_fingerprint is not None:
+                # Re-check AFTER model execution and INSIDE the same SQLite
+                # write transaction as the save. A concurrent source or
+                # assessment update must not promote work over stale inputs.
+                from .composer import composer_context_fingerprint
+                actual = composer_context_fingerprint(self, case_id, question_id)
+                if actual != context_fingerprint:
+                    raise InvalidInput("stale Composer context: sources or assessments changed; refresh")
             cur = self.db.execute(
                 """INSERT INTO investigations
-                (case_id,question_id,template,status,mode,model,claims_json,abstentions_json,dropped_json,created_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                (case_id,question_id,template,status,mode,model,claims_json,abstentions_json,dropped_json,context_fingerprint,created_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
                 (case_id, question_id, template, validated.status, mode, validated.model,
                  json.dumps(validated.claims), json.dumps(validated.abstentions),
-                 json.dumps(validated.dropped), now_utc()))
+                 json.dumps(validated.dropped), context_fingerprint, now_utc()))
             investigation_id = int(cur.lastrowid)
-            self.db.execute("UPDATE questions SET state='addressed' WHERE id=? AND case_id=?",
-                            (question_id, case_id))
+            # Generation is not review. Only explicit snapshot acknowledgment
+            # changes an open question to addressed.
             self._event(case_id, "investigation_created", investigation_id=investigation_id,
                         template=template, status=validated.status, mode=mode)
             return investigation_id
 
+    @staticmethod
+    def _positive_identifier(value: int, label: str) -> None:
+        if type(value) is not int or not 1 <= value <= 9223372036854775807:
+            raise InvalidInput(f"{label} id must be a positive integer")
+
+    def _investigation_review_link(self, case_id: str, investigation_id: int) -> dict | None:
+        row = self.db.execute("""SELECT d.*,s.state FROM investigation_review_drafts d
+            JOIN snapshots s ON s.id=d.snapshot_id JOIN investigations i ON i.id=d.investigation_id
+            WHERE i.id=? AND i.case_id=? AND s.case_id=i.case_id AND s.question_id=i.question_id""",
+            (investigation_id, case_id)).fetchone()
+        if not row:
+            return None
+        data = dict(row)
+        data["provenance"] = json.loads(data.pop("provenance_json"))
+        return data
+
+    def prepare_investigation_review_draft(self, case_id: str, investigation_id: int,
+                                           question_id: int) -> dict:
+        """Atomically bind one current model run to one ordinary, unreviewed draft.
+
+        All dependencies are checked under the same write lock as insertion.
+        The immutable run and its original validation output remain unchanged.
+        """
+        from .composer import composer_context_fingerprint
+        from .review_draft import MAX_REVIEW_DRAFT, render_review_draft
+
+        self._case(case_id)
+        self._positive_identifier(investigation_id, "Investigation")
+        self._positive_identifier(question_id, "Question")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            run = self.get_investigation(case_id, investigation_id)
+            if run["question_id"] != question_id:
+                raise InvalidInput("Investigation does not belong to this question")
+            if run["stale"]:
+                raise InvalidInput("Investigation is stale; a new run is required")
+            if run["status"] not in ("completed", "abstained"):
+                raise InvalidInput("Only completed or abstained investigations can prepare a review draft")
+            if not run["context_fingerprint"]:
+                raise InvalidInput("Investigation has no captured context; a new run is required")
+            existing = run["review_draft"]
+            if existing:
+                if existing["state"] == "stale":
+                    raise InvalidInput("Review draft is stale; a new run is required")
+                # Explicit review changes question.state, which is included in
+                # the Composer token. A retry only reads the existing report.
+                return {**existing, "duplicate": True}
+            if composer_context_fingerprint(self, case_id, question_id) != run["context_fingerprint"]:
+                raise InvalidInput("Investigation context is stale; a new run is required")
+            facts = self.investigation_facts(case_id, question_id)
+            sources = self._dicts(self.db.execute(
+                "SELECT id,document_id,version,sha256 FROM source_versions WHERE case_id=? AND state='current' ORDER BY id",
+                (case_id,)).fetchall())
+            assessments = self._dicts(self.db.execute("""SELECT a.id,a.evidence_version_id,
+                v.evidence_key,v.version,v.sha256,v.statement_line FROM evidence_assessments a
+                JOIN evidence_versions v ON v.id=a.evidence_version_id
+                WHERE a.case_id=? AND a.question_id=? AND v.state='current' AND v.rights='original-synthetic'
+                ORDER BY a.id""", (case_id, question_id)).fetchall())
+            available = {}
+            for source in sources:
+                if source["id"] in facts["valid_sources"]:
+                    available[("source", source["id"])] = {
+                        "type": "source", **source,
+                        "label": f"source #{source['id']}: {source['document_id']}@{source['version']}"}
+            for assessment in assessments:
+                available[("assessment", assessment["id"])] = {
+                    "type": "assessment", **assessment,
+                    "label": (f"assessment #{assessment['id']}: {assessment['evidence_key']}@{assessment['version']}"
+                              f", statement line {assessment['statement_line']}")}
+            try:
+                summary, citations = render_review_draft(run, available)
+            except ValueError as error:
+                raise InvalidInput(str(error)) from None
+            source_ids = [int(source["id"]) for source in sources]
+            assessment_ids = [int(assessment["id"]) for assessment in assessments]
+            # Track the whole captured context, not only citations kept by the
+            # model. Absence of a finding may itself have informed the output.
+            snapshot_id = self._create_snapshot_locked(
+                case_id, question_id, summary, source_ids, assessment_ids,
+                max_summary=MAX_REVIEW_DRAFT, captured_model_run=run)
+            output = {key: run[key] for key in (
+                "status", "template", "mode", "model", "claims", "abstentions", "dropped")}
+            provenance = {
+                "version": "investigation-review-draft-v1", "investigation_id": investigation_id,
+                "question_id": question_id, "context_fingerprint": run["context_fingerprint"],
+                "model": run["model"], "mode": run["mode"], "template": run["template"],
+                "status": run["status"], "investigation_created_at": run["created_at"],
+                "output_sha256": hashlib.sha256(json.dumps(output, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
+                "report_sha256": hashlib.sha256(summary.encode("utf-8")).hexdigest(),
+                "source_ids": source_ids, "evidence_assessment_ids": assessment_ids,
+                "citations": citations,
+            }
+            self.db.execute("""INSERT INTO investigation_review_drafts
+                (investigation_id,snapshot_id,provenance_json,created_at) VALUES (?,?,?,?)""",
+                (investigation_id, snapshot_id, json.dumps(provenance, sort_keys=True), now_utc()))
+            self._event(case_id, "investigation_review_draft_prepared", investigation_id=investigation_id,
+                        snapshot_id=snapshot_id, question_id=question_id,
+                        context_fingerprint=run["context_fingerprint"])
+            return {**self._investigation_review_link(case_id, investigation_id), "duplicate": False}
+
     def get_investigation(self, case_id: str, investigation_id: int) -> dict:
         self._case(case_id)
+        self._positive_identifier(investigation_id, "Investigation")
         row = self.db.execute("SELECT * FROM investigations WHERE id=? AND case_id=?",
                               (investigation_id, case_id)).fetchone()
         if not row:
@@ -2210,6 +2431,7 @@ class CaseStore:
         data["dropped"] = json.loads(data.pop("dropped_json"))
         data["kind"] = "hypothesis"
         data["review_state"] = "pending"
+        data["review_draft"] = self._investigation_review_link(case_id, investigation_id)
         data["disclaimer"] = ("Research demonstration only. Hypotheses are unreviewed, "
                               "fictional-data based, and not medical advice.")
         return data
@@ -2217,11 +2439,12 @@ class CaseStore:
     def list_investigations(self, case_id: str) -> list[dict]:
         self._case(case_id)
         rows = self._dicts(self.db.execute(
-            "SELECT id,question_id,template,status,mode,model,stale,created_at "
+            "SELECT id,question_id,template,status,mode,model,stale,context_fingerprint,created_at "
             "FROM investigations WHERE case_id=? ORDER BY id DESC", (case_id,)).fetchall())
         for row in rows:
             row["kind"] = "hypothesis"
             row["review_state"] = "pending"
+            row["review_draft"] = self._investigation_review_link(case_id, row["id"])
         return rows
 
     def state(self, case_id: str) -> dict:
@@ -2254,6 +2477,9 @@ class CaseStore:
                 snapshot["broker_link_ids"] = [r[0] for r in self.db.execute(
                     "SELECT broker_link_id FROM snapshot_broker_links WHERE snapshot_id=? ORDER BY broker_link_id",
                     (snapshot["id"],)).fetchall()]
+                origin = self.db.execute("SELECT provenance_json FROM investigation_review_drafts WHERE snapshot_id=?",
+                                         (snapshot["id"],)).fetchone()
+                snapshot["investigation_origin"] = json.loads(origin[0]) if origin else None
             broker_rows = self._dicts(self.db.execute("""SELECT bl.*, rs.source_key, rs.version_label,
                 rs.owner, rs.state AS rights_state FROM broker_links bl
                 JOIN rights_sources rs ON rs.id=bl.rights_source_id
@@ -2328,18 +2554,40 @@ class CaseStore:
                 raise InvalidInput("Investigation not in this case")
             sources = self.db.execute("""SELECT v.* FROM source_versions v JOIN snapshot_sources ss ON ss.source_version_id=v.id
                 WHERE ss.snapshot_id=? ORDER BY v.document_id,v.version""", (snapshot_id,)).fetchall()
+            link = self.db.execute("SELECT provenance_json FROM investigation_review_drafts WHERE snapshot_id=?",
+                                   (snapshot_id,)).fetchone()
+            origin = json.loads(link[0]) if link else None
             lines = ["# Open Intelligence — synthetic investigation", "",
                      "> Research demonstration only. No clinical review or patient-specific treatment recommendation.", "",
                      f"Case: `{case_id}` | Investigation: {snapshot_id} | State: **{snapshot['state']}**",
                      f"Created: {snapshot['created_at']} | Demo acknowledgment: {snapshot['reviewed_at'] or 'None'}", "",
-                     "## Question", "", snapshot["question"], "", "## Draft (human-authored)", "",
-                     snapshot["summary"], "", "## Source versions and original text", ""]
+                     "## Question", "", snapshot["question"], ""]
+            if origin:
+                # Model output is literal text, never active Markdown/HTML.
+                longest = max((len(run) for run in re.findall(r"`+", snapshot["summary"])), default=0)
+                fence = "`" * max(3, longest + 1)
+                lines.extend(["## Draft (model-assisted)", "", fence + "text", snapshot["summary"], fence, "",
+                              "## Model provenance", "",
+                              f"Originating model investigation: #{origin['investigation_id']}",
+                              f"Captured context: `{origin['context_fingerprint']}`",
+                              f"Original output SHA-256: `{origin['output_sha256']}`",
+                              f"Prepared report SHA-256: `{origin['report_sha256']}`", "",
+                              "### Resolved finding citations", ""])
+                for citation in origin["citations"]:
+                    lines.append(f"- [{citation['label']}](#{citation['type']}-{citation['id']})")
+                if not origin["citations"]:
+                    lines.append("No finding citations: this report records missing information and abstentions.")
+                lines.extend(["", "All captured input versions are preserved below, including inputs not cited in a finding.", ""])
+            else:
+                lines.extend(["## Draft (human-authored)", "", snapshot["summary"], ""])
+            lines.extend(["## Source versions and original text", ""])
             for source in sources:
                 raw_text = bytes(source["raw"]).decode("utf-8")
                 # Prevent raw input from escaping Markdown source fences.
                 longest = max((len(run) for run in re.findall(r"`+", raw_text)), default=0)
                 fence = "`" * max(3, longest + 1)
-                lines.extend([f"### {source['document_id']}@{source['version']} — {source['state']}", "",
+                lines.extend([f'<a id="source-{source["id"]}"></a>', "",
+                              f"### {source['document_id']}@{source['version']} — {source['state']}", "",
                               f"SHA-256: `{source['sha256']}` | Event: {source['event_date']} | Issued: {source['issued_at']}", "",
                               fence + "text", raw_text, fence, ""])
             evidence = self.db.execute("""SELECT a.*,v.evidence_key,v.version,v.state AS evidence_state,
@@ -2354,7 +2602,8 @@ class CaseStore:
                 evidence_text = bytes(assessment["raw"]).decode("utf-8")
                 longest = max((len(run) for run in re.findall(r"`+", evidence_text)), default=0)
                 fence = "`" * max(3, longest + 1)
-                lines.extend([f"### {assessment['evidence_key']}@{assessment['version']}: {assessment['title']}",
+                lines.extend([f'<a id="assessment-{assessment["id"]}"></a>', "",
+                              f"### {assessment['evidence_key']}@{assessment['version']}: {assessment['title']}",
                               "", f"Evidence state: {assessment['evidence_state']} | Rights: {assessment['rights']}",
                               f"SHA-256: `{assessment['sha256']}` | Source line: {assessment['statement_line']}",
                               f"Human-assigned relationship: {assessment['relation']} | Applicability: {assessment['applicability']}",

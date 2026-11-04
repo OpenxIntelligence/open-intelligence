@@ -4,7 +4,7 @@
 
 Read `README.md`, `docs/FIRST_PRINCIPLES_PLAN.md`, and the relevant rows in `docs/EXECUTION_BACKLOG.csv`. Inspect the current repository before claiming that a capability, dependency, test, or decision already exists.
 
-The initial repository is a planning foundation. Implement bounded work against explicit acceptance criteria. Ordinary development and reversible fixes within the authorized task should proceed without repeated approval requests.
+The repository contains a synthetic reference implementation and separately reviewed clinical/integration drafts. Implement bounded work against explicit acceptance criteria. Ordinary development and reversible fixes within the authorized task should proceed without repeated approval requests.
 
 ## Project identity and complementary research
 
@@ -27,6 +27,7 @@ The initial repository is a planning foundation. Implement bounded work against 
 ## Repository boundaries
 
 - Do not commit real patient data, credentials, private correspondence, or restricted clinical content. Use independently authored synthetic cases with explicit provenance.
+- The definitive founder mandate excludes Sid Sijbrandij's medical, genomic, laboratory, pathology and imaging data from acquisition, development, testing, evaluation, training and synthetic-fixture derivation. Public patient narratives may inform workflow discovery only. A public dataset or an archived script is not authorization to fetch or reuse patient data.
 - Before integrating a third-party component, document its exact version, intended use, license/terms, dependency and asset obligations, and unresolved issues. Hold integrations with unresolved permissions.
 - Public repository visibility does not select a distribution license or establish clinical approval. Do not silently choose a project license, relax documented rights requirements, or describe an unvalidated function as clinically validated.
 - Do not copy earlier bundles or vendor demonstrations wholesale. Import specific artifacts only after inspecting their contents, rights, and relevance.
@@ -42,7 +43,9 @@ The initial repository is a planning foundation. Implement bounded work against 
 
 Prefer deterministic software for authorization, source identity, validation, versioning, job state, and publication state. Model outputs are inspectable proposals governed by typed task contracts and allowed tools.
 
-The backend, model provider, and detailed application stack remain undecided. Select them using the workflow requirements and a bounded comparison, rather than treating an earlier candidate as an approved dependency.
+The bounded H1 implementation stack is accepted in canonical Notion Decisions 03: Python 3.12, FastAPI, Pydantic 2, SQLAlchemy 2, Alembic, PostgreSQL 16, React, Vite and TypeScript. Next.js is excluded from new applications and modules. Preserve the existing stdlib/SQLite implementation as a runnable behavior oracle and the labelled fallback; do not create a competing patient, source or evidence authority during migration. New candidate work does not change the preserved main fallback until reviewed and approved for merge.
+
+H1 has no vector-search requirement. Production deployment, tenancy, authority, source licensing and clinical qualification remain separate decisions. The current prototype's provider contract is documented in `docs/META_MODEL_API.md`; this does not authorize real-patient egress or establish a new live-provider verification. Research candidates do not become adopted dependencies merely by appearing in an atlas. See `docs/engineering/EXECUTION_AUDIT_2026-11-02.md` for the current evidence and remaining gates.
 
 ## Completion reports
 

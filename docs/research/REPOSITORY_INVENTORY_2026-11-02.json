@@ -1,0 +1,1528 @@
+{
+  "inspected_at": "2026-11-02T19:52:20.731Z",
+  "main_sha": "24519839aa8ac1ea3aff88a956349ba72798a72a",
+  "pull_requests": [
+    {
+      "number": 95,
+      "title": "integration(platform): one patient EHR/LIS source continuity and identity reconciliation",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "updated_at": "2026-11-02T19:41:28Z",
+      "head_sha": "d863bc2dc24dcf0a0b70972594768ebe19cd1d67",
+      "head_ref": "integration/patient-ehr-lis-event-spine-20261102",
+      "base_ref": "feat/clinical-lis-operations-20261102",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/95"
+    },
+    {
+      "number": 129,
+      "title": "feat(ui): question-linked source inspection and protected review handoff",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "updated_at": "2026-11-02T19:40:10Z",
+      "head_sha": "4a786e6e218f07178c0f4adb81c8378ed7dda2d7",
+      "head_ref": "feat/question-review-handoff-20261102",
+      "base_ref": "fix/patient-review-state-20261101",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/129"
+    },
+    {
+      "number": 69,
+      "title": "test: whole-patient continuity and explicit synthetic authorization-limit probes",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "updated_at": "2026-11-02T19:39:54Z",
+      "head_sha": "ac143b17efa30cb9009579a950c69126834f0d55",
+      "head_ref": "research/whole-patient-continuity",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/69"
+    },
+    {
+      "number": 127,
+      "title": "audit(oss): source-linked full-product candidates and actual dependency declaration inventory",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "updated_at": "2026-11-02T19:38:42Z",
+      "head_sha": "9c98e48cb026f8d8137445ebb445369039676b24",
+      "head_ref": "audit/oss-component-release-inventory-20261102",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/127"
+    },
+    {
+      "number": 126,
+      "title": "test(integration): keep Composer hypotheses and durable computations consistent across source changes",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "updated_at": "2026-11-02T19:34:31Z",
+      "head_sha": "3e20873cf129f0e7827aaa6619f74e847d62292a",
+      "head_ref": "integration/composer-evidence-run-freshness-20261102",
+      "base_ref": "feat/composer-durable-runs-20261102",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/126"
+    },
+    {
+      "number": 125,
+      "title": "research(oss): cancer-journey capability map and source-pinned license reconnaissance (stacked)",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "updated_at": "2026-11-02T19:33:59Z",
+      "head_sha": "d93c07d4c2c4b44619aed44617139154b59a5f58",
+      "head_ref": "policy/synthetic-only-ci-oss-foundation-20261102",
+      "base_ref": "safety/no-personal-case-data-in-ci-20261102",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/125"
+    },
+    {
+      "number": 90,
+      "title": "feat(composer): persist synthetic calculation runs with source-version receipts (stacked)",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "updated_at": "2026-11-02T19:29:50Z",
+      "head_sha": "26220a7a47a2a4e37ffe434e87b7dfa2f20523ac",
+      "head_ref": "feat/composer-durable-runs-20261102",
+      "base_ref": "feat/composer-synthetic-lab-tool-20261102",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/90"
+    },
+    {
+      "number": 123,
+      "title": "safety(ci): disable identifiable cancer-case data downloads and keep synthetic-only research tests",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "updated_at": "2026-11-02T19:29:48Z",
+      "head_sha": "3a651e6b1c329ff7507863d4cfc3f4e6b646cf98",
+      "head_ref": "safety/no-personal-case-data-in-ci-20261102",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/123"
+    },
+    {
+      "number": 124,
+      "title": "feat(integration): source-bound EHR note provenance with amendment-aware review",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "updated_at": "2026-11-02T19:26:34Z",
+      "head_sha": "98ae0bca302efd8cedece03e670bcc0b5c854d2d",
+      "head_ref": "integration/clinical-source-provenance-20261102",
+      "base_ref": "integration/canonical-patient-encounters-20261102",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/124"
+    },
+    {
+      "number": 93,
+      "title": "feat(evidence): patient-source knowledge context with AI-content rights guard",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "updated_at": "2026-11-02T18:37:19Z",
+      "head_sha": "aa6d3f21b8d36d9949b66ed13ed34f76dabbd875",
+      "head_ref": "feat/knowledge-context-20261102",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/93"
+    },
+    {
+      "number": 94,
+      "title": "test(integration): canonical patient → LIS accession/QC/release → evidence review",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "updated_at": "2026-11-02T18:36:40Z",
+      "head_sha": "bb8fb28885a2716e5525ad9b7f8a5d1288dd338f",
+      "head_ref": "integration/patient-lis-evidence-20261102",
+      "base_ref": "integration/patient-ehr-events-20261102",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/94"
+    },
+    {
+      "number": 91,
+      "title": "fix(composer): invalidate saved hypotheses when inputs change (stacked)",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "updated_at": "2026-11-02T18:28:03Z",
+      "head_sha": "f33a71241c6cb67ddd383594961db19d003bb72e",
+      "head_ref": "feat/composer-source-evidence-invalidation-20261102",
+      "base_ref": "feat/native-composer-context-20261102",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/91"
+    },
+    {
+      "number": 83,
+      "title": "feat(composer): execute one source-bound synthetic lab tool in native workbench (stacked)",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "updated_at": "2026-11-02T18:24:18Z",
+      "head_sha": "aaea1ec34cfa5a8517a7a81c8bfd50edc6047bcb",
+      "head_ref": "feat/composer-synthetic-lab-tool-20261102",
+      "base_ref": "feat/native-composer-context-20261102",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/83"
+    },
+    {
+      "number": 89,
+      "title": "test(integration): canonical patient → EHR → transactional event stream",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "updated_at": "2026-11-02T18:23:00Z",
+      "head_sha": "7125aca84ebf38820482e8640e7a1479bcc0f429",
+      "head_ref": "integration/patient-ehr-events-20261102",
+      "base_ref": "feat/canonical-patient-registry-20261102",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/89"
+    },
+    {
+      "number": 88,
+      "title": "test(integration): canonical patient registry hosts first-party EHR encounters and notes",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "updated_at": "2026-11-02T18:19:41Z",
+      "head_sha": "3e32d54b04e591e244f88e31e6f51c18a6919fcc",
+      "head_ref": "integration/canonical-patient-encounters-20261102",
+      "base_ref": "feat/canonical-patient-registry-20261102",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/88"
+    },
+    {
+      "number": 72,
+      "title": "feat(computation): source-bound synthetic laboratory trend tool (independent C4 slice)",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "updated_at": "2026-11-02T17:48:42Z",
+      "head_sha": "535135bca88c76ac33ec6c9d3dd95bcf994b31b7",
+      "head_ref": "feat/synthetic-lab-trend-tool-20261102",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/72"
+    },
+    {
+      "number": 68,
+      "title": "feat(composer): version-bound patient and evidence context in existing investigation workflow",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "updated_at": "2026-11-02T18:24:21Z",
+      "head_sha": "7ea06ed679902a7b6c506b10ee0a6beaa83b5efc",
+      "head_ref": "feat/native-composer-context-20261102",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/68"
+    },
+    {
+      "number": 85,
+      "title": "feat(identity): canonical first-party patient creation and domain host",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "updated_at": "2026-11-02T17:48:35Z",
+      "head_sha": "3326774b99e819d07ed555a6e505c24dfc699320",
+      "head_ref": "feat/canonical-patient-registry-20261102",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/85"
+    },
+    {
+      "number": 70,
+      "title": "feat(platform): first-party transactional domain outbox for full healthcare system",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "updated_at": "2026-11-02T17:48:32Z",
+      "head_sha": "b1b99b3095b33b8cd7352793c94990b852ea88f9",
+      "head_ref": "feat/platform-domain-outbox-20261102",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/70"
+    },
+    {
+      "number": 86,
+      "title": "Dev: second-opinion and survivorship slice (Notion 01)",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "updated_at": "2026-11-02T17:47:02Z",
+      "head_sha": "ea31933a161f8c7c74ad234421823d44b71b48ca",
+      "head_ref": "loop/dev-second-survivorship",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/86"
+    },
+    {
+      "number": 84,
+      "title": "Dev: authorized follow-through slice (Notion 01)",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "updated_at": "2026-11-02T17:43:02Z",
+      "head_sha": "72178f565548ba94d6a86dfeceb6800a75f4f4b4",
+      "head_ref": "loop/dev-followthrough",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/84"
+    },
+    {
+      "number": 82,
+      "title": "Dev: clinician review queue and sign-off receipts slice (Notion 01/02)",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "updated_at": "2026-11-02T17:41:41Z",
+      "head_sha": "e140bfa789a50c9e00b4605d1e1ada00f9507038",
+      "head_ref": "loop/dev-review-queue",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/82"
+    },
+    {
+      "number": 79,
+      "title": "docs(product): integrate whole-patient data, clinical authority, and Composer acceptance contracts",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "updated_at": "2026-11-02T17:41:12Z",
+      "head_sha": "ecc2aa4b4593e6c190925586aff743e8417f3d4c",
+      "head_ref": "design/whole-patient-integration-contract-20261102",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/79"
+    },
+    {
+      "number": 80,
+      "title": "Dev: patient goals and lived experience slice (Notion 01)",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "updated_at": "2026-11-02T17:39:26Z",
+      "head_sha": "1abe4ada0b7fe12d7cc5f606220b52f248623782",
+      "head_ref": "loop/dev-goals-lived",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/80"
+    },
+    {
+      "number": 78,
+      "title": "Dev: plain-language patient/caregiver report slice (Notion 01)",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "updated_at": "2026-11-02T17:36:47Z",
+      "head_sha": "5c43b718ee7d4cc3ce0e8216a3118549dfbab340",
+      "head_ref": "loop/dev-patient-reports",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/78"
+    },
+    {
+      "number": 77,
+      "title": "Dev: journey stages and care transitions slice (Notion 01)",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "updated_at": "2026-11-02T17:33:39Z",
+      "head_sha": "5fb85137cb2ac8147ae35d3efbffb8feef9e0b13",
+      "head_ref": "loop/dev-journey-stages",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/77"
+    },
+    {
+      "number": 76,
+      "title": "test: actual-application replay of preserved option fixtures",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "updated_at": "2026-11-02T17:27:41Z",
+      "head_sha": "1ed85b9695fcdef440ec44a5bb3953c922321a33",
+      "head_ref": "test/option-preservation-actual-replay-20261102",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/76"
+    },
+    {
+      "number": 74,
+      "title": "feat(ehr): first-party encounter lifecycle and immutable clinical notes",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "updated_at": "2026-11-02T17:16:12Z",
+      "head_sha": "a1ce73e4bfa0eabee15e378968c424229a96cb02",
+      "head_ref": "feat/first-party-clinical-encounters-20261102",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/74"
+    },
+    {
+      "number": 75,
+      "title": "Dev: option portfolio slice (Notion 01)",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "updated_at": "2026-11-02T17:13:15Z",
+      "head_sha": "e545f31e05eb357f032522f292f379cca6f7c03e",
+      "head_ref": "loop/dev-option-portfolio",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/75"
+    },
+    {
+      "number": 63,
+      "title": "Research: HL7 crosswalk and mock adapter for issue #15",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "updated_at": "2026-11-02T17:11:08Z",
+      "head_sha": "9d23cba13d5917db1ee9fdef0395b37a23d9eb74",
+      "head_ref": "loop/issue-15-hl7",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/63"
+    },
+    {
+      "number": 48,
+      "title": "fix(ui): preserve patient uncertainty and distinguish current review from history",
+      "state": "open",
+      "draft": false,
+      "merged_at": null,
+      "updated_at": "2026-11-02T17:08:55Z",
+      "head_sha": "82cebdce53031b0de4f681dd0d0a2189bc35de79",
+      "head_ref": "fix/patient-review-state-20261101",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/48"
+    },
+    {
+      "number": 73,
+      "title": "Dev: longitudinal biological explanation slice (Notion 01)",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "updated_at": "2026-11-02T17:08:14Z",
+      "head_sha": "5d460190d180560c5d79e2d4da210bb65fa0af00",
+      "head_ref": "loop/dev-bio-explanation",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/73"
+    },
+    {
+      "number": 71,
+      "title": "Dev: counterevidence and safety-uncertainty slice (Notion 01)",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "updated_at": "2026-11-02T17:06:49Z",
+      "head_sha": "657a6c41346bc6c5e04bf2f096ba6094248c79de",
+      "head_ref": "loop/dev-counterevidence",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/71"
+    },
+    {
+      "number": 61,
+      "title": "Research: experimental-loop falsification draft for issue #20",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "updated_at": "2026-11-02T17:03:22Z",
+      "head_sha": "43b7cc88a4433e5ffc822b8c8294b38cd0c860da",
+      "head_ref": "loop/issue-20-falsify",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/61"
+    },
+    {
+      "number": 62,
+      "title": "Research: OI-022 falsification packet draft for issue #14",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "updated_at": "2026-11-02T17:01:34Z",
+      "head_sha": "053dedea9840e0b7e79b4e4a087a0337aae03e59",
+      "head_ref": "loop/issue-14-evaluation",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/62"
+    },
+    {
+      "number": 60,
+      "title": "Research: patient-access adapter evaluation for issue #17",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "updated_at": "2026-11-02T17:00:33Z",
+      "head_sha": "48095e1765676ef26af83dbfc79a9f577d8f87c7",
+      "head_ref": "loop/issue-17-access",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/60"
+    },
+    {
+      "number": 57,
+      "title": "Research: Founder OS crosswalk for issue #16 (audit, matrix, protocols, wedge comparison)",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "updated_at": "2026-11-02T16:51:03Z",
+      "head_sha": "010670d60dd96d0247b6972728caa8c5681d3b0a",
+      "head_ref": "loop/issue-16-founderos",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/57"
+    },
+    {
+      "number": 67,
+      "title": "fix(meta): accept documented MODEL_API_KEY with safe legacy alias",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "updated_at": "2026-11-02T16:47:56Z",
+      "head_sha": "6422e717ac1d997634dd811f631ee2cf37740a60",
+      "head_ref": "fix/meta-model-api-key-compatibility-20261102",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/67"
+    },
+    {
+      "number": 66,
+      "title": "chore(oss): fail-closed OI-17 adopted dependency evidence gate",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "updated_at": "2026-11-02T16:43:13Z",
+      "head_sha": "f2a02fb26b3ae053a2b4c8395e51121c901eea8b",
+      "head_ref": "chore/oss-rights-gate-20261102",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/66"
+    },
+    {
+      "number": 65,
+      "title": "docs(product): whole-patient Composer/Copilot and governed workbench contract",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "updated_at": "2026-11-02T16:40:23Z",
+      "head_sha": "fec568802078f77327016dfc5c431de2f3defb23",
+      "head_ref": "docs/patient-intelligence-composer-20261102",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/65"
+    },
+    {
+      "number": 64,
+      "title": "feat(ui): organize synthetic patient workspace into five task groups",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "updated_at": "2026-11-02T16:38:05Z",
+      "head_sha": "9859a93cd694594aabcd6bf81a96ad1a41bbe5cf",
+      "head_ref": "feat/patient-nav-workspaces-20261102",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/64"
+    },
+    {
+      "number": 52,
+      "title": "docs: OI-20 verification and 30-requirement discovery crosswalk (Nov 2)",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "updated_at": "2026-11-02T16:35:03Z",
+      "head_sha": "b02a36f4a687d4852d4cdd727e79201922a249e1",
+      "head_ref": "docs/oi20-verified-baseline-discovery-20261102",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/52"
+    },
+    {
+      "number": 56,
+      "title": "feat(clinical-lis): first-party synthetic order and accession workflow (stacked)",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "updated_at": "2026-11-02T16:32:57Z",
+      "head_sha": "08eafc5fc4d606c9c47913d0e8e45641338489aa",
+      "head_ref": "feat/clinical-lis-operations-20261102",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/56"
+    },
+    {
+      "number": 53,
+      "title": "feat(identity): persist synthetic adapter bindings and revocations atomically (stacked)",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "updated_at": "2026-11-02T16:32:54Z",
+      "head_sha": "c2efe398728aab2482f3eab4a26db3139bc2e7c4",
+      "head_ref": "feat/durable-adapter-bindings-20261102",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/53"
+    },
+    {
+      "number": 55,
+      "title": "docs(governance): owner-controlled multi-agent engineering gates",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "updated_at": "2026-11-02T16:22:26Z",
+      "head_sha": "0b03b3a4328f6fe63d5dbab7d622cf39f655eaf4",
+      "head_ref": "docs/owner-controlled-agent-governance-20261102",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/55"
+    },
+    {
+      "number": 54,
+      "title": "fix(journey): stop mission Chrome process group before profile cleanup",
+      "state": "closed",
+      "draft": false,
+      "merged_at": "2026-11-02T16:16:15Z",
+      "updated_at": "2026-11-02T16:16:15Z",
+      "head_sha": "40a8faba2aee2e67e49d9b0283b44f31bfd165a8",
+      "head_ref": "fix/mission-journey-teardown",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/54"
+    },
+    {
+      "number": 41,
+      "title": "docs: submission safety packet (OI-09)",
+      "state": "closed",
+      "draft": false,
+      "merged_at": "2026-11-02T15:50:39Z",
+      "updated_at": "2026-11-02T15:50:45Z",
+      "head_sha": "8e9215318c5f51bb32ecf9caa7b4ea353bacd6e8",
+      "head_ref": "oi/safety-packet",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/41"
+    },
+    {
+      "number": 39,
+      "title": "research: execute public cancer-data and durable-workflow probes",
+      "state": "closed",
+      "draft": false,
+      "merged_at": "2026-11-02T15:43:38Z",
+      "updated_at": "2026-11-02T15:49:46Z",
+      "head_sha": "9a3023d3144ce4865173dd73ca3e3f23b9656dcb",
+      "head_ref": "research/public-evidence-probes",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/39"
+    },
+    {
+      "number": 18,
+      "title": "docs: independent evaluation and collaborator-readiness protocol (complementary)",
+      "state": "closed",
+      "draft": false,
+      "merged_at": "2026-11-02T15:41:24Z",
+      "updated_at": "2026-11-02T15:42:07Z",
+      "head_sha": "a9d64cb996aef6c5ad350617d7a5466bbe86cbfd",
+      "head_ref": "docs/independent-evaluation-partner-readiness-20261031",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/18"
+    },
+    {
+      "number": 19,
+      "title": "Docs: Evaluate HL7 lifecycle and optional Nano/specialist-model extensions",
+      "state": "closed",
+      "draft": false,
+      "merged_at": "2026-11-02T15:40:55Z",
+      "updated_at": "2026-11-02T15:41:33Z",
+      "head_sha": "da1e29f26321a32d8e01059993fa90d2f380c8a1",
+      "head_ref": "docs/additive-hl7-nano-model-evaluation-20261031",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/19"
+    },
+    {
+      "number": 21,
+      "title": "docs(research): experimental-loop automation as complementary Open Intelligence capability",
+      "state": "closed",
+      "draft": false,
+      "merged_at": "2026-11-02T15:40:26Z",
+      "updated_at": "2026-11-02T15:41:23Z",
+      "head_sha": "3443a26e1f2c5d7cacd854bda3d0a91397eacaf1",
+      "head_ref": "research/experimental-loop-extension-20261031",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/21"
+    },
+    {
+      "number": 24,
+      "title": "eval: runnable synthetic challenge packet for IV-01–03 (additive, no architecture change)",
+      "state": "closed",
+      "draft": false,
+      "merged_at": "2026-11-02T15:39:33Z",
+      "updated_at": "2026-11-02T15:40:44Z",
+      "head_sha": "9d766b2aa527ea27087bb3ef25ca5d601c7ffdf5",
+      "head_ref": "eval/iv01-cutoff-packet-20261031",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/24"
+    },
+    {
+      "number": 36,
+      "title": "docs: IV-04 independent-review handoff and unapproved activation records",
+      "state": "closed",
+      "draft": false,
+      "merged_at": "2026-11-02T15:39:03Z",
+      "updated_at": "2026-11-02T15:39:54Z",
+      "head_sha": "ec7ca044d50080dee74224dc2a4d96f5454d3ecd",
+      "head_ref": "docs/iv04-independent-review-handoff",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/36"
+    },
+    {
+      "number": 51,
+      "title": "fix(identity): qualify source subjects and preserve cross-domain source integrity",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "updated_at": "2026-11-02T15:22:47Z",
+      "head_sha": "5e427515f88f2fcb714474d10ec51bac2ea7964a",
+      "head_ref": "fix/qualified-patient-identities-20261102",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/51"
+    },
+    {
+      "number": 49,
+      "title": "docs(architecture): full first-party healthcare scope and no Next.js",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "updated_at": "2026-11-02T15:29:19Z",
+      "head_sha": "3dc66f3746baae2d5e27885e8dc49bc7f070697e",
+      "head_ref": "docs/full-first-party-no-nextjs-20261102",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/49"
+    },
+    {
+      "number": 35,
+      "title": "OI-021: reviewed option/dependency view on existing investigation ledger",
+      "state": "closed",
+      "draft": false,
+      "merged_at": "2026-11-02T15:05:41Z",
+      "updated_at": "2026-11-02T15:05:41Z",
+      "head_sha": "b16677ab361b867a99f431d3804b66e159a9b586",
+      "head_ref": "oi/oi021-option-dependency-view",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/35"
+    },
+    {
+      "number": 50,
+      "title": "OI-08: What Changed Since Last Review panel on existing #44 projection",
+      "state": "closed",
+      "draft": false,
+      "merged_at": "2026-11-02T11:58:00Z",
+      "updated_at": "2026-11-02T11:58:43Z",
+      "head_sha": "6a480ea358eb86c447608eefac2fd4943da5430b",
+      "head_ref": "oi/what-changed-panel",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/50"
+    },
+    {
+      "number": 30,
+      "title": "ui: incoming board and patient view on existing case state",
+      "state": "closed",
+      "draft": false,
+      "merged_at": "2026-11-01T23:15:55Z",
+      "updated_at": "2026-11-01T23:15:56Z",
+      "head_sha": "9ecfe415a6a4c63ef2eb22b898e21126e3bc5ce6",
+      "head_ref": "oi/incoming-board-patient-view",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/30"
+    },
+    {
+      "number": 38,
+      "title": "Add synthetic Patient Mission projection over canonical case state",
+      "state": "closed",
+      "draft": false,
+      "merged_at": "2026-11-01T23:12:48Z",
+      "updated_at": "2026-11-01T23:14:42Z",
+      "head_sha": "d08ca2c2d1edf9d1ddf58be8dbb03bcc6f10d506",
+      "head_ref": "feat/patient-mission-projection",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/38"
+    },
+    {
+      "number": 40,
+      "title": "ui: model-assisted investigation panel on bounded templates",
+      "state": "closed",
+      "draft": false,
+      "merged_at": "2026-11-01T23:14:31Z",
+      "updated_at": "2026-11-01T23:14:31Z",
+      "head_sha": "d6c2a2224ee41fd1c59bd1bc9a5273cb48b1679a",
+      "head_ref": "oi/meta-investigation-panel",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/40"
+    },
+    {
+      "number": 47,
+      "title": "Discovery-rights linkage: revocation/correction invalidates dependent discovery links",
+      "state": "closed",
+      "draft": false,
+      "merged_at": "2026-11-01T23:10:12Z",
+      "updated_at": "2026-11-01T23:10:12Z",
+      "head_sha": "e38cdfa5069f4bae6e041be5e5b50be00521f32d",
+      "head_ref": "oi/discovery-rights-linkage",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/47"
+    },
+    {
+      "number": 37,
+      "title": "ui: source-first clinician glance on integrated workspace",
+      "state": "closed",
+      "draft": false,
+      "merged_at": "2026-11-01T23:07:15Z",
+      "updated_at": "2026-11-01T23:07:15Z",
+      "head_sha": "d799b757c49c1b3398d9c3b9ffb55b892db7f7d6",
+      "head_ref": "ui/clinician-glance-20261031",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/37"
+    },
+    {
+      "number": 46,
+      "title": "Deterministic temporal-reasoning projection (timeline ordering, gaps, conflicts)",
+      "state": "closed",
+      "draft": false,
+      "merged_at": "2026-11-01T22:52:48Z",
+      "updated_at": "2026-11-01T22:52:49Z",
+      "head_sha": "258f85682d456fc749742749b60835d19dbb3635",
+      "head_ref": "oi/temporal-reasoning",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/46"
+    },
+    {
+      "number": 29,
+      "title": "ui: consolidated case workspace, anchored evidence and change review",
+      "state": "closed",
+      "draft": false,
+      "merged_at": "2026-11-01T19:59:14Z",
+      "updated_at": "2026-11-01T19:59:23Z",
+      "head_sha": "48bcee71c58c5c224e0eeb1e3a7f3bf670385fce",
+      "head_ref": "ui/integrated-change-explorer-20261031",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/29"
+    },
+    {
+      "number": 44,
+      "title": "Read-only what-changed-since-last-review projection",
+      "state": "closed",
+      "draft": false,
+      "merged_at": "2026-11-01T19:57:04Z",
+      "updated_at": "2026-11-01T19:58:49Z",
+      "head_sha": "9b6a4aaaa7d7461588558adf41b567a4d66e935f",
+      "head_ref": "oi/change-comparison",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/44"
+    },
+    {
+      "number": 43,
+      "title": "Literature/trials discovery slice (fictional only)",
+      "state": "closed",
+      "draft": false,
+      "merged_at": "2026-11-01T19:56:17Z",
+      "updated_at": "2026-11-01T19:57:18Z",
+      "head_sha": "e9ab3616a069eb57ad63f0b6dca82a2916d11412",
+      "head_ref": "oi/trials-discovery",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/43"
+    },
+    {
+      "number": 42,
+      "title": "Rights-qualified external evidence broker (issue #2)",
+      "state": "closed",
+      "draft": false,
+      "merged_at": "2026-11-01T19:52:02Z",
+      "updated_at": "2026-11-01T19:53:04Z",
+      "head_sha": "d5f096f3bd46b9481e2f2297d2d99e7dd9b224d9",
+      "head_ref": "oi/issue2-rights-broker",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/42"
+    },
+    {
+      "number": 9,
+      "title": "Add bounded Meta Model API investigation layer (OI-008)",
+      "state": "closed",
+      "draft": false,
+      "merged_at": "2026-11-01T19:50:22Z",
+      "updated_at": "2026-11-01T19:52:51Z",
+      "head_sha": "46d8c99bfdd3716ac70d5718f12cef9c8aaceeb6",
+      "head_ref": "oi/meta-investigation",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/9"
+    },
+    {
+      "number": 45,
+      "title": "Verify issue #3 browser rejection paths (duplicate + wrong-patient)",
+      "state": "closed",
+      "draft": false,
+      "merged_at": "2026-11-01T19:52:17Z",
+      "updated_at": "2026-11-01T19:52:17Z",
+      "head_sha": "e5d3e84f5a5f84f1aa4588ec7a40b02dfd2b04cb",
+      "head_ref": "oi/issue3-verify",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/45"
+    },
+    {
+      "number": 34,
+      "title": "OI-020: biological-asset provenance within existing case model (#12)",
+      "state": "closed",
+      "draft": false,
+      "merged_at": "2026-11-01T19:48:57Z",
+      "updated_at": "2026-11-01T19:48:57Z",
+      "head_sha": "6f2007e52399b07b736394723b28c43c2575d8d3",
+      "head_ref": "oi/oi020-biological-asset-provenance",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/34"
+    },
+    {
+      "number": 33,
+      "title": "OI-017: patient-directed access and lossless evidence boundaries (complementary research)",
+      "state": "closed",
+      "draft": false,
+      "merged_at": "2026-11-01T19:48:53Z",
+      "updated_at": "2026-11-01T19:48:53Z",
+      "head_sha": "16bf8a5999e79d8e1fa4d71629cb0561404caee0",
+      "head_ref": "oi/oi017-patient-access-boundaries",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/33"
+    },
+    {
+      "number": 32,
+      "title": "eval: IV-02 adjudication contract and IV-03 baseline procedure for issue #22",
+      "state": "closed",
+      "draft": false,
+      "merged_at": "2026-11-01T19:48:45Z",
+      "updated_at": "2026-11-01T19:48:45Z",
+      "head_sha": "93a5707dae12ecdae77bcf20b0e589937bb96046",
+      "head_ref": "oi/iv0103-challenge-packet",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/32"
+    },
+    {
+      "number": 31,
+      "title": "OI-019: synthetic cases for option-preservation evaluation",
+      "state": "closed",
+      "draft": false,
+      "merged_at": "2026-11-01T19:48:28Z",
+      "updated_at": "2026-11-01T19:48:28Z",
+      "head_sha": "5262301dca8f9e30f0ed4fa302e115c4ab8d0a39",
+      "head_ref": "oi/oi019-synthetic-option-cases",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/31"
+    },
+    {
+      "number": 10,
+      "title": "Supplement existing Open Intelligence architecture with world-model and option-preservation capabilities",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "updated_at": "2026-11-01T03:44:48Z",
+      "head_sha": "ff65864d312d91bec5a0502b19a0e56003e6ad50",
+      "head_ref": "docs/option-preservation-thesis-20261031",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/10"
+    },
+    {
+      "number": 27,
+      "title": "ui: source-anchored findings and visible review-attention flow",
+      "state": "closed",
+      "draft": true,
+      "merged_at": null,
+      "updated_at": "2026-10-31T20:45:03Z",
+      "head_sha": "51518017944481af47128275e611a720a7b09fe9",
+      "head_ref": "ui/source-review-focus-20261031",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/27"
+    },
+    {
+      "number": 26,
+      "title": "ui: reframe case review as a patient-centered investigation workspace",
+      "state": "closed",
+      "draft": false,
+      "merged_at": null,
+      "updated_at": "2026-10-31T20:44:57Z",
+      "head_sha": "66ccfe03925627f667e42374f562c450f877cd27",
+      "head_ref": "codex/patient-centered-investigation-workbench-20261031",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/26"
+    },
+    {
+      "number": 28,
+      "title": "Correct README implementation status and research-only boundaries",
+      "state": "closed",
+      "draft": false,
+      "merged_at": "2026-10-31T20:05:19Z",
+      "updated_at": "2026-10-31T20:05:46Z",
+      "head_sha": "cbd7208581ac65ddef91eac618df43da33c1a4ce",
+      "head_ref": "docs/current-synthetic-implementation-status",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/28"
+    },
+    {
+      "number": 25,
+      "title": "test: add staged synthetic review packets and CaseStore challenge coverage",
+      "state": "closed",
+      "draft": false,
+      "merged_at": null,
+      "updated_at": "2026-10-31T19:38:14Z",
+      "head_sha": "023530b28495152bb38289dcfcba4f90ce912313",
+      "head_ref": "test/iv22-synthetic-review-packet",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/25"
+    },
+    {
+      "number": 8,
+      "title": "Build source-derived longitudinal oncology chronology for synthetic cases",
+      "state": "closed",
+      "draft": false,
+      "merged_at": "2026-10-31T18:21:32Z",
+      "updated_at": "2026-10-31T18:22:16Z",
+      "head_sha": "f6eb5335bf9f62860ddeada9f797b29f1272c0ff",
+      "head_ref": "feat/source-derived-chronology",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/8"
+    },
+    {
+      "number": 7,
+      "title": "Add opt-in DOI-only bibliography view to synthetic investigation workspace",
+      "state": "closed",
+      "draft": false,
+      "merged_at": "2026-10-31T18:18:16Z",
+      "updated_at": "2026-10-31T18:18:50Z",
+      "head_sha": "cd21d19c088bfb9cb86a5f7efd1cca5a4a231504",
+      "head_ref": "feat/bibliography-workspace",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/7"
+    },
+    {
+      "number": 4,
+      "title": "Add versioned fictional research evidence and applicability assessments",
+      "state": "closed",
+      "draft": false,
+      "merged_at": "2026-10-31T18:12:55Z",
+      "updated_at": "2026-10-31T18:14:06Z",
+      "head_sha": "5bcbe3ec670434b365e3dce22540218d4e401973",
+      "head_ref": "feat/versioned-evidence-assessment",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/4"
+    },
+    {
+      "number": 1,
+      "title": "Build first synthetic case investigation vertical slice",
+      "state": "closed",
+      "draft": false,
+      "merged_at": "2026-10-31T18:10:33Z",
+      "updated_at": "2026-10-31T18:10:34Z",
+      "head_sha": "c0eaa0861231485f9637811528138b715f4060e1",
+      "head_ref": "feat/synthetic-case-ledger",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/1"
+    },
+    {
+      "number": 6,
+      "title": "Introduce rights-scoped Crossref metadata-only discovery boundary",
+      "state": "closed",
+      "draft": false,
+      "merged_at": "2026-10-31T18:08:44Z",
+      "updated_at": "2026-10-31T18:08:44Z",
+      "head_sha": "ba4c6c8a42cc33b2b05ab4d80bc07e2b554d222b",
+      "head_ref": "feat/crossref-metadata-boundary",
+      "base_ref": "main",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/6"
+    },
+    {
+      "number": 5,
+      "title": "Prevent unfinished synthetic drafts from changing case or source binding",
+      "state": "closed",
+      "draft": false,
+      "merged_at": null,
+      "updated_at": "2026-10-31T18:05:03Z",
+      "head_sha": "7d11d5d3926b0df0b6ce8f87d6148f0464592a99",
+      "head_ref": "fix/draft-case-provenance",
+      "base_ref": "feat/synthetic-case-ledger",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/pull/5"
+    }
+  ],
+  "branches": [
+    {
+      "name": "audit/oss-component-release-inventory-20261102",
+      "sha": "9c98e48cb026f8d8137445ebb445369039676b24",
+      "protected": false
+    },
+    {
+      "name": "chore/oss-rights-gate-20261102",
+      "sha": "f2a02fb26b3ae053a2b4c8395e51121c901eea8b",
+      "protected": false
+    },
+    {
+      "name": "codex/patient-centered-investigation-workbench-20261031",
+      "sha": "66ccfe03925627f667e42374f562c450f877cd27",
+      "protected": false
+    },
+    {
+      "name": "design/whole-patient-integration-contract-20261102",
+      "sha": "ecc2aa4b4593e6c190925586aff743e8417f3d4c",
+      "protected": false
+    },
+    {
+      "name": "docs/additive-hl7-nano-model-evaluation-20261031",
+      "sha": "da1e29f26321a32d8e01059993fa90d2f380c8a1",
+      "protected": false
+    },
+    {
+      "name": "docs/current-synthetic-implementation-status",
+      "sha": "cbd7208581ac65ddef91eac618df43da33c1a4ce",
+      "protected": false
+    },
+    {
+      "name": "docs/full-first-party-no-nextjs-20261102",
+      "sha": "3dc66f3746baae2d5e27885e8dc49bc7f070697e",
+      "protected": false
+    },
+    {
+      "name": "docs/independent-evaluation-partner-readiness-20261031",
+      "sha": "a9d64cb996aef6c5ad350617d7a5466bbe86cbfd",
+      "protected": false
+    },
+    {
+      "name": "docs/iv04-independent-review-handoff",
+      "sha": "ec7ca044d50080dee74224dc2a4d96f5454d3ecd",
+      "protected": false
+    },
+    {
+      "name": "docs/oi20-verified-baseline-discovery-20261102",
+      "sha": "b02a36f4a687d4852d4cdd727e79201922a249e1",
+      "protected": false
+    },
+    {
+      "name": "docs/option-preservation-thesis-20261031",
+      "sha": "ff65864d312d91bec5a0502b19a0e56003e6ad50",
+      "protected": false
+    },
+    {
+      "name": "docs/owner-controlled-agent-governance-20261102",
+      "sha": "0b03b3a4328f6fe63d5dbab7d622cf39f655eaf4",
+      "protected": false
+    },
+    {
+      "name": "docs/patient-intelligence-composer-20261102",
+      "sha": "fec568802078f77327016dfc5c431de2f3defb23",
+      "protected": false
+    },
+    {
+      "name": "eval/iv01-cutoff-packet-20261031",
+      "sha": "9d766b2aa527ea27087bb3ef25ca5d601c7ffdf5",
+      "protected": false
+    },
+    {
+      "name": "feat/bibliography-workspace",
+      "sha": "cd21d19c088bfb9cb86a5f7efd1cca5a4a231504",
+      "protected": false
+    },
+    {
+      "name": "feat/canonical-patient-registry-20261102",
+      "sha": "3326774b99e819d07ed555a6e505c24dfc699320",
+      "protected": false
+    },
+    {
+      "name": "feat/clinical-lis-operations-20261102",
+      "sha": "08eafc5fc4d606c9c47913d0e8e45641338489aa",
+      "protected": false
+    },
+    {
+      "name": "feat/composer-durable-runs-20261102",
+      "sha": "26220a7a47a2a4e37ffe434e87b7dfa2f20523ac",
+      "protected": false
+    },
+    {
+      "name": "feat/composer-evidence-slice",
+      "sha": "24519839aa8ac1ea3aff88a956349ba72798a72a",
+      "protected": false
+    },
+    {
+      "name": "feat/composer-source-evidence-invalidation-20261102",
+      "sha": "f33a71241c6cb67ddd383594961db19d003bb72e",
+      "protected": false
+    },
+    {
+      "name": "feat/composer-synthetic-lab-tool-20261102",
+      "sha": "aaea1ec34cfa5a8517a7a81c8bfd50edc6047bcb",
+      "protected": false
+    },
+    {
+      "name": "feat/crossref-metadata-boundary",
+      "sha": "ba4c6c8a42cc33b2b05ab4d80bc07e2b554d222b",
+      "protected": false
+    },
+    {
+      "name": "feat/durable-adapter-bindings-20261102",
+      "sha": "c2efe398728aab2482f3eab4a26db3139bc2e7c4",
+      "protected": false
+    },
+    {
+      "name": "feat/first-party-clinical-encounters-20261102",
+      "sha": "a1ce73e4bfa0eabee15e378968c424229a96cb02",
+      "protected": false
+    },
+    {
+      "name": "feat/knowledge-context-20261102",
+      "sha": "aa6d3f21b8d36d9949b66ed13ed34f76dabbd875",
+      "protected": false
+    },
+    {
+      "name": "feat/native-composer-context-20261102",
+      "sha": "7ea06ed679902a7b6c506b10ee0a6beaa83b5efc",
+      "protected": false
+    },
+    {
+      "name": "feat/patient-mission-projection",
+      "sha": "d08ca2c2d1edf9d1ddf58be8dbb03bcc6f10d506",
+      "protected": false
+    },
+    {
+      "name": "feat/patient-nav-workspaces-20261102",
+      "sha": "9859a93cd694594aabcd6bf81a96ad1a41bbe5cf",
+      "protected": false
+    },
+    {
+      "name": "feat/platform-domain-outbox-20261102",
+      "sha": "b1b99b3095b33b8cd7352793c94990b852ea88f9",
+      "protected": false
+    },
+    {
+      "name": "feat/question-review-handoff-20261102",
+      "sha": "4a786e6e218f07178c0f4adb81c8378ed7dda2d7",
+      "protected": false
+    },
+    {
+      "name": "feat/source-derived-chronology",
+      "sha": "f6eb5335bf9f62860ddeada9f797b29f1272c0ff",
+      "protected": false
+    },
+    {
+      "name": "feat/synthetic-case-ledger",
+      "sha": "c0eaa0861231485f9637811528138b715f4060e1",
+      "protected": false
+    },
+    {
+      "name": "feat/synthetic-lab-trend-tool-20261102",
+      "sha": "535135bca88c76ac33ec6c9d3dd95bcf994b31b7",
+      "protected": false
+    },
+    {
+      "name": "feat/versioned-evidence-assessment",
+      "sha": "5bcbe3ec670434b365e3dce22540218d4e401973",
+      "protected": false
+    },
+    {
+      "name": "fix/draft-case-provenance",
+      "sha": "7d11d5d3926b0df0b6ce8f87d6148f0464592a99",
+      "protected": false
+    },
+    {
+      "name": "fix/meta-model-api-key-compatibility-20261102",
+      "sha": "6422e717ac1d997634dd811f631ee2cf37740a60",
+      "protected": false
+    },
+    {
+      "name": "fix/mission-journey-teardown",
+      "sha": "40a8faba2aee2e67e49d9b0283b44f31bfd165a8",
+      "protected": false
+    },
+    {
+      "name": "fix/patient-review-state-20261101",
+      "sha": "82cebdce53031b0de4f681dd0d0a2189bc35de79",
+      "protected": false
+    },
+    {
+      "name": "fix/qualified-patient-identities-20261102",
+      "sha": "5e427515f88f2fcb714474d10ec51bac2ea7964a",
+      "protected": false
+    },
+    {
+      "name": "integration/canonical-patient-encounters-20261102",
+      "sha": "3e32d54b04e591e244f88e31e6f51c18a6919fcc",
+      "protected": false
+    },
+    {
+      "name": "integration/clinical-source-provenance-20261102",
+      "sha": "98ae0bca302efd8cedece03e670bcc0b5c854d2d",
+      "protected": false
+    },
+    {
+      "name": "integration/composer-evidence-run-freshness-20261102",
+      "sha": "3e20873cf129f0e7827aaa6619f74e847d62292a",
+      "protected": false
+    },
+    {
+      "name": "integration/patient-ehr-events-20261102",
+      "sha": "7125aca84ebf38820482e8640e7a1479bcc0f429",
+      "protected": false
+    },
+    {
+      "name": "integration/patient-ehr-lis-event-spine-20261102",
+      "sha": "d863bc2dc24dcf0a0b70972594768ebe19cd1d67",
+      "protected": false
+    },
+    {
+      "name": "integration/patient-lis-evidence-20261102",
+      "sha": "bb8fb28885a2716e5525ad9b7f8a5d1288dd338f",
+      "protected": false
+    },
+    {
+      "name": "loop/dev-bio-explanation",
+      "sha": "5d460190d180560c5d79e2d4da210bb65fa0af00",
+      "protected": false
+    },
+    {
+      "name": "loop/dev-counterevidence",
+      "sha": "657a6c41346bc6c5e04bf2f096ba6094248c79de",
+      "protected": false
+    },
+    {
+      "name": "loop/dev-followthrough",
+      "sha": "72178f565548ba94d6a86dfeceb6800a75f4f4b4",
+      "protected": false
+    },
+    {
+      "name": "loop/dev-goals-lived",
+      "sha": "1abe4ada0b7fe12d7cc5f606220b52f248623782",
+      "protected": false
+    },
+    {
+      "name": "loop/dev-journey-stages",
+      "sha": "5fb85137cb2ac8147ae35d3efbffb8feef9e0b13",
+      "protected": false
+    },
+    {
+      "name": "loop/dev-option-portfolio",
+      "sha": "e545f31e05eb357f032522f292f379cca6f7c03e",
+      "protected": false
+    },
+    {
+      "name": "loop/dev-patient-reports",
+      "sha": "5c43b718ee7d4cc3ce0e8216a3118549dfbab340",
+      "protected": false
+    },
+    {
+      "name": "loop/dev-review-queue",
+      "sha": "e140bfa789a50c9e00b4605d1e1ada00f9507038",
+      "protected": false
+    },
+    {
+      "name": "loop/dev-second-survivorship",
+      "sha": "ea31933a161f8c7c74ad234421823d44b71b48ca",
+      "protected": false
+    },
+    {
+      "name": "loop/issue-14-evaluation",
+      "sha": "053dedea9840e0b7e79b4e4a087a0337aae03e59",
+      "protected": false
+    },
+    {
+      "name": "loop/issue-15-hl7",
+      "sha": "9d23cba13d5917db1ee9fdef0395b37a23d9eb74",
+      "protected": false
+    },
+    {
+      "name": "loop/issue-16-founderos",
+      "sha": "010670d60dd96d0247b6972728caa8c5681d3b0a",
+      "protected": false
+    },
+    {
+      "name": "loop/issue-17-access",
+      "sha": "48095e1765676ef26af83dbfc79a9f577d8f87c7",
+      "protected": false
+    },
+    {
+      "name": "loop/issue-20-falsify",
+      "sha": "43b7cc88a4433e5ffc822b8c8294b38cd0c860da",
+      "protected": false
+    },
+    {
+      "name": "main",
+      "sha": "24519839aa8ac1ea3aff88a956349ba72798a72a",
+      "protected": false
+    },
+    {
+      "name": "oi/change-comparison",
+      "sha": "9b6a4aaaa7d7461588558adf41b567a4d66e935f",
+      "protected": false
+    },
+    {
+      "name": "oi/discovery-rights-linkage",
+      "sha": "e38cdfa5069f4bae6e041be5e5b50be00521f32d",
+      "protected": false
+    },
+    {
+      "name": "oi/incoming-board-patient-view",
+      "sha": "9ecfe415a6a4c63ef2eb22b898e21126e3bc5ce6",
+      "protected": false
+    },
+    {
+      "name": "oi/issue2-rights-broker",
+      "sha": "d5f096f3bd46b9481e2f2297d2d99e7dd9b224d9",
+      "protected": false
+    },
+    {
+      "name": "oi/issue3-verify",
+      "sha": "e5d3e84f5a5f84f1aa4588ec7a40b02dfd2b04cb",
+      "protected": false
+    },
+    {
+      "name": "oi/iv0103-challenge-packet",
+      "sha": "93a5707dae12ecdae77bcf20b0e589937bb96046",
+      "protected": false
+    },
+    {
+      "name": "oi/meta-investigation",
+      "sha": "46d8c99bfdd3716ac70d5718f12cef9c8aaceeb6",
+      "protected": false
+    },
+    {
+      "name": "oi/meta-investigation-panel",
+      "sha": "d6c2a2224ee41fd1c59bd1bc9a5273cb48b1679a",
+      "protected": false
+    },
+    {
+      "name": "oi/oi017-patient-access-boundaries",
+      "sha": "16bf8a5999e79d8e1fa4d71629cb0561404caee0",
+      "protected": false
+    },
+    {
+      "name": "oi/oi019-synthetic-option-cases",
+      "sha": "5262301dca8f9e30f0ed4fa302e115c4ab8d0a39",
+      "protected": false
+    },
+    {
+      "name": "oi/oi020-biological-asset-provenance",
+      "sha": "6f2007e52399b07b736394723b28c43c2575d8d3",
+      "protected": false
+    },
+    {
+      "name": "oi/oi021-option-dependency-view",
+      "sha": "b16677ab361b867a99f431d3804b66e159a9b586",
+      "protected": false
+    },
+    {
+      "name": "oi/safety-packet",
+      "sha": "8e9215318c5f51bb32ecf9caa7b4ea353bacd6e8",
+      "protected": false
+    },
+    {
+      "name": "oi/temporal-reasoning",
+      "sha": "258f85682d456fc749742749b60835d19dbb3635",
+      "protected": false
+    },
+    {
+      "name": "oi/trials-discovery",
+      "sha": "e9ab3616a069eb57ad63f0b6dca82a2916d11412",
+      "protected": false
+    },
+    {
+      "name": "oi/what-changed-panel",
+      "sha": "6a480ea358eb86c447608eefac2fd4943da5430b",
+      "protected": false
+    },
+    {
+      "name": "policy/synthetic-only-ci-oss-foundation-20261102",
+      "sha": "d93c07d4c2c4b44619aed44617139154b59a5f58",
+      "protected": false
+    },
+    {
+      "name": "research/experimental-loop-extension-20261031",
+      "sha": "3443a26e1f2c5d7cacd854bda3d0a91397eacaf1",
+      "protected": false
+    },
+    {
+      "name": "research/public-evidence-probes",
+      "sha": "9a3023d3144ce4865173dd73ca3e3f23b9656dcb",
+      "protected": false
+    },
+    {
+      "name": "research/whole-patient-continuity",
+      "sha": "ac143b17efa30cb9009579a950c69126834f0d55",
+      "protected": false
+    },
+    {
+      "name": "safety/no-personal-case-data-in-ci-20261102",
+      "sha": "3a651e6b1c329ff7507863d4cfc3f4e6b646cf98",
+      "protected": false
+    },
+    {
+      "name": "test/iv22-synthetic-review-packet",
+      "sha": "023530b28495152bb38289dcfcba4f90ce912313",
+      "protected": false
+    },
+    {
+      "name": "test/option-preservation-actual-replay-20261102",
+      "sha": "1ed85b9695fcdef440ec44a5bb3953c922321a33",
+      "protected": false
+    },
+    {
+      "name": "ui/clinician-glance-20261031",
+      "sha": "d799b757c49c1b3398d9c3b9ffb55b892db7f7d6",
+      "protected": false
+    },
+    {
+      "name": "ui/integrated-change-explorer-20261031",
+      "sha": "48bcee71c58c5c224e0eeb1e3a7f3bf670385fce",
+      "protected": false
+    },
+    {
+      "name": "ui/source-review-focus-20261031",
+      "sha": "51518017944481af47128275e611a720a7b09fe9",
+      "protected": false
+    }
+  ],
+  "ci": [
+    {
+      "id": 41511604578,
+      "name": ".github/workflows/single-cell-analysis.yml",
+      "sha": "24519839aa8ac1ea3aff88a956349ba72798a72a",
+      "status": "completed",
+      "conclusion": "failure",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41511604578"
+    },
+    {
+      "id": 41510591184,
+      "name": "Synthetic case ledger tests",
+      "sha": "24519839aa8ac1ea3aff88a956349ba72798a72a",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41510591184"
+    },
+    {
+      "id": 41510591705,
+      "name": "Crossref metadata contract",
+      "sha": "24519839aa8ac1ea3aff88a956349ba72798a72a",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41510591705"
+    },
+    {
+      "id": 41510589099,
+      "name": ".github/workflows/single-cell-analysis.yml",
+      "sha": "24519839aa8ac1ea3aff88a956349ba72798a72a",
+      "status": "completed",
+      "conclusion": "failure",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41510589099"
+    },
+    {
+      "id": 41510585553,
+      "name": "Crossref metadata contract",
+      "sha": "68c007c69d091b2d6aece5b21c24ec079b213401",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41510585553"
+    },
+    {
+      "id": 41510585615,
+      "name": "Synthetic case ledger tests",
+      "sha": "68c007c69d091b2d6aece5b21c24ec079b213401",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41510585615"
+    },
+    {
+      "id": 41510583455,
+      "name": ".github/workflows/single-cell-analysis.yml",
+      "sha": "68c007c69d091b2d6aece5b21c24ec079b213401",
+      "status": "completed",
+      "conclusion": "failure",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41510583455"
+    },
+    {
+      "id": 41510465406,
+      "name": "Synthetic case ledger tests",
+      "sha": "edb29dd3d90937287c21723afd6a855d0a7f81ed",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41510465406"
+    },
+    {
+      "id": 41510465193,
+      "name": "Crossref metadata contract",
+      "sha": "edb29dd3d90937287c21723afd6a855d0a7f81ed",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41510465193"
+    },
+    {
+      "id": 41510463189,
+      "name": ".github/workflows/single-cell-analysis.yml",
+      "sha": "edb29dd3d90937287c21723afd6a855d0a7f81ed",
+      "status": "completed",
+      "conclusion": "failure",
+      "url": "https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41510463189"
+    }
+  ]
+}

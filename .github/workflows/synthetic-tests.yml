@@ -3,7 +3,7 @@ on:
   push:
     branches: [main, feat/synthetic-case-ledger, feat/versioned-evidence-assessment]
   pull_request:
-    branches: [main, feat/synthetic-case-ledger]
+    branches: [main, feat/synthetic-case-ledger, safety/no-personal-case-data-in-ci-20261102]
 permissions:
   contents: read
 jobs:
@@ -25,6 +25,10 @@ jobs:
         run: |
           node --check web/app.js
           node --check web/mission.js
+          node --check web/composer.js
+          node --check web/literature.js
+      - name: JavaScript behavior tests
+        run: node --test tests/test_*.js
       - name: Unit and HTTP tests
         shell: bash
         run: |
@@ -38,6 +42,11 @@ jobs:
           PYTHONPATH=src python tests/browser_journey.py 2>&1 | tee verification-artifacts/browser-tests.txt
       - name: Patient Mission browser journey (headless Chromium)
         run: PYTHONPATH=src python tests/patient_mission_browser_journey.py
+      - name: Composer native browser journey (headless Chromium)
+        shell: bash
+        run: |
+          set -o pipefail
+          PYTHONPATH=src python tests/composer_browser_journey.py 2>&1 | tee verification-artifacts/composer-browser-tests.txt
       - name: Record exact synthetic source under test
         if: always()
         run: |

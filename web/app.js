@@ -110,7 +110,7 @@ async function renderIncomingBoard(cases) {
     else text.append(node('p', 'Most recent source event: ' + (summary.latestEvent || 'none recorded') +
       ' · Current source documents: ' + summary.currentSources +
       ' · Open questions: ' + summary.openQuestions +
-      ' · Drafts needing another look: ' + summary.stale, 'muted'));
+      ' · Historical drafts tied to changed sources: ' + summary.stale, 'muted'));
     const open = node('button', 'Open this case', 'button secondary minor');
     open.type = 'button';
     open.addEventListener('click', () => {
@@ -158,7 +158,7 @@ function renderPatientView() {
   const stale = active.snapshots.filter(s => s.state === 'stale').length;
   const superseded = active.sources.filter(s => s.state !== 'current').length;
   const notes = [];
-  if (stale) notes.push(stale + ' earlier draft(s) need another look because a report changed since they were written.');
+  if (stale) notes.push(stale + ' earlier draft(s) retain their original text after a source changed. Current questions and review status show what still needs attention.');
   if (superseded) notes.push(superseded + ' older report version(s) have been replaced by a newer version; the older versions are still kept and can be inspected.');
   if (!notes.length) notes.push('Nothing in this fictional case is currently flagged as changed or needing another look.');
   for (const text of notes) {
@@ -524,9 +524,15 @@ function render() {
   if (!active.snapshots.length) empty(el('snapshot-list'), 'No investigation drafts yet.');
   for (const snapshot of active.snapshots) {
     const box = node('div', null, 'snapshot'); const top = node('div', null, 'topline');
+    box.id = 'snapshot-' + snapshot.id;
     top.append(node('strong', 'Investigation #' + snapshot.id), pill(snapshot.state,
       snapshot.state === 'stale' ? 'pill-alert' : snapshot.state === 'draft' ? 'pill-warn' : ''));
-    const description = node('p', snapshot.summary);
+    const origin = snapshot.investigation_origin;
+    const description = node(origin ? 'div' : 'p', origin ? null : snapshot.summary);
+    if (origin) {
+      // Preserve report structure as literal text; model output never becomes HTML.
+      for (const line of snapshot.summary.split('\n')) description.append(node('div', line || '\u00a0'));
+    }
     const meta = node('p', 'Sources: ' + snapshot.source_ids.map(x => '#' + x).join(', ') + ', ' + snapshot.created_at, 'snapshot-meta');
     const actions = node('div', null, 'actions');
     const exportButton = node('button', 'Export with sources', 'button secondary minor'); exportButton.type = 'button';
@@ -543,7 +549,14 @@ function render() {
       }); actions.append(button);
     }
     box.append(top, description, meta, actions);
-    if (snapshot.state === 'stale') box.append(node('p', 'A source was amended. This version remains historical and cannot be acknowledged as current.', 'muted'));
+    if (origin) {
+      box.append(node('p', 'Prepared from model investigation #' + origin.investigation_id +
+        ' · ' + origin.mode + ' · ' + origin.model + ' · ' + origin.template, 'snapshot-meta'));
+      appendReviewCitations(box, origin.citations || [], caseId, refreshSequence);
+    }
+    if (snapshot.state === 'stale') box.append(node('p', origin
+      ? 'Source or evidence inputs changed. This historical report and its review record are preserved; a new run and report are required.'
+      : 'Source or evidence inputs changed. This historical draft and its review record are preserved; prepare a new draft for review.', 'muted'));
     el('snapshot-list').append(box);
   }
   clear('model-investigation-question');
@@ -1069,17 +1082,70 @@ async function loadModelTemplates() {
     }
   } catch (err) { notice(err.message, true); }
 }
+function modelViewIsCurrent(requestedCase, sequence) {
+  return requestedCase === caseId && sequence === refreshSequence &&
+    renderedCaseId === requestedCase && active?.case?.case_id === requestedCase;
+}
+async function prepareModelReviewDraft(detail, requestedCase, sequence, button) {
+  if (button.disabled || !modelViewIsCurrent(requestedCase, sequence)) return;
+  try {
+    if (readyCase() !== requestedCase || detail.case_id !== requestedCase || detail.stale ||
+        !Number.isSafeInteger(detail.id) || detail.id < 1 ||
+        !Number.isSafeInteger(detail.question_id) || detail.question_id < 1 ||
+        !detail.context_fingerprint || !['completed', 'abstained'].includes(detail.status) || detail.review_draft)
+      throw Error('A current investigation with captured inputs is required. Run a new investigation if needed.');
+    button.disabled = true;
+    button.textContent = 'Preparing…';
+    const result = await api('/api/cases/' + requestedCase + '/investigations/' + detail.id + '/review-draft',
+      {question_id: detail.question_id});
+    if (!modelViewIsCurrent(requestedCase, sequence)) return;
+    notice('Review draft #' + result.snapshot_id + ' is available in Investigations. Human review remains a separate action.');
+    await refresh();
+  } catch (err) {
+    if (modelViewIsCurrent(requestedCase, sequence)) notice(err.message, true);
+  } finally {
+    if (modelViewIsCurrent(requestedCase, sequence)) {
+      button.disabled = false;
+      button.textContent = 'Prepare review draft';
+    }
+  }
+}
+function appendReviewCitations(container, citations, requestedCase, sequence) {
+  if (!citations.length) return;
+  const actions = node('div', null, 'actions');
+  for (const citation of citations) {
+    const button = node('button', 'Read ' + citation.label, 'button secondary minor');
+    button.type = 'button';
+    button.addEventListener('click', async () => {
+      if (!modelViewIsCurrent(requestedCase, sequence)) return;
+      if (citation.type === 'source') {
+        const source = active.sources.find(item => item.id === citation.id);
+        if (source) await openSource(source); // The model contract has no exact line anchor.
+      } else if (citation.type === 'assessment') {
+        const evidence = (active.evidence || []).find(item => item.id === citation.evidence_version_id);
+        if (evidence) await openEvidence(evidence);
+      }
+    });
+    actions.append(button);
+  }
+  container.append(actions);
+}
+let modelInvestigationSequence = 0;
 async function loadModelInvestigations() {
   const requested = caseId;
+  const sequence = refreshSequence;
+  const loadSequence = ++modelInvestigationSequence;
+  const current = () => loadSequence === modelInvestigationSequence && modelViewIsCurrent(requested, sequence);
   try {
-    const data = await api('/api/cases/' + caseId + '/investigations');
-    if (requested !== caseId) return;
+    const data = await api('/api/cases/' + requested + '/investigations');
+    if (!current()) return;
     clear('model-investigation-list');
     const items = data.investigations || [];
     if (!items.length) { empty(el('model-investigation-list'), 'No model investigations yet.'); return; }
     for (const item of items) {
-      const detail = await api('/api/cases/' + caseId + '/investigations/' + item.id);
-      if (requested !== caseId) return;
+      const detail = await api('/api/cases/' + requested + '/investigations/' + item.id);
+      if (!current()) return;
+      if (detail.case_id !== requested) continue;
       const box = node('div', null, 'snapshot');
       const top = node('div', null, 'topline');
       top.append(node('strong', 'Model investigation #' + detail.id),
@@ -1100,12 +1166,24 @@ async function loadModelInvestigations() {
       if ((detail.dropped || []).length) {
         box.append(node('p', detail.dropped.length + ' claim(s) dropped by validation, never repaired', 'muted'));
       }
-      if (detail.stale) box.append(node('p', 'A source was amended. This investigation is stale until reconciled.', 'muted'));
+      if (detail.review_draft) {
+        const link = node('a', 'Review draft #' + detail.review_draft.snapshot_id + ' · ' + detail.review_draft.state);
+        link.href = '#snapshot-' + detail.review_draft.snapshot_id;
+        box.append(link);
+      } else if (!detail.stale && detail.context_fingerprint && ['completed', 'abstained'].includes(detail.status)) {
+        const button = node('button', 'Prepare review draft', 'button minor');
+        button.type = 'button';
+        button.addEventListener('click', () => prepareModelReviewDraft(detail, requested, sequence, button));
+        box.append(button);
+      } else if (!detail.context_fingerprint) {
+        box.append(node('p', 'This older run has no captured input context. Run a new investigation to prepare a draft.', 'muted'));
+      }
+      if (detail.stale) box.append(node('p', 'Sources or evidence changed. Run a new investigation before preparing a review draft.', 'muted'));
       box.append(node('p', detail.disclaimer || 'Research demonstration only.', 'muted'));
       el('model-investigation-list').append(box);
     }
   } catch (err) {
-    if (requested === caseId) notice(err.message, true);
+    if (current()) notice(err.message, true);
   }
 }
 async function loadChangesSinceReview() {
@@ -1211,6 +1289,9 @@ function renderChangesSinceReview(data) {
           ? 'Stale because fictional evidence changed (event #' + cause.event_id + ' at ' + cause.occurred_at +
             (cause.evidence_version_id ? ', evidence version #' + cause.evidence_version_id : '') +
             (cause.reason ? ', reason: ' + cause.reason : '') + ').'
+          : cause.cause === 'investigation_context_change'
+            ? 'Stale because sources or assessments in the model input context changed (event #' + cause.event_id +
+              ' at ' + cause.occurred_at + '). A new run and report are required.'
           : 'Stale (' + (cause.cause || 'unknown cause') + ', event #' + cause.event_id +
             ' at ' + cause.occurred_at + ').';
       box.append(node('p', causeText, 'muted'));
@@ -1227,19 +1308,44 @@ function renderChangesSinceReview(data) {
     el('changes-questions').append(row);
   }
 }
+document.addEventListener('oi:composer-open-source', event => {
+  const detail = event.detail || {};
+  if (!active || detail.caseId !== caseId ||
+      !Number.isSafeInteger(detail.sourceId) || !Number.isSafeInteger(detail.line)) return;
+  const source = active.sources.find(x => x.id === detail.sourceId);
+  if (!source) return;
+  // The existing inspector expects an active-case source record, NOT a
+  // numeric identifier; it rechecks membership before fetching raw bytes.
+  void openSource(source, detail.line);
+});
+
 el('model-investigation-form').addEventListener('submit', async event => {
   event.preventDefault();
   try {
     const requestedCase = readyCase();
+    const contextFingerprint = el('composer-context-fingerprint').value;
+    if (!/^[a-f0-9]{64}$/.test(contextFingerprint)) {
+      throw Error('Preview and verify the current Composer source context before running.');
+    }
     await api('/api/cases/' + requestedCase + '/investigations', {
       question_id: Number(el('model-investigation-question').value),
       template: el('model-investigation-template').value,
       mode: el('model-investigation-mode').value,
+      context_fingerprint: contextFingerprint,
     });
     if (requestedCase !== caseId) return;
     notice('Model investigation stored as a hypothesis pending review.');
     await refresh();
-  } catch (err) { notice(err.message, true); }
+  } catch (err) {
+    // A legitimate source amendment can race an in-progress task. Never leave
+    // the user with a visually reusable old fingerprint after the server
+    // rejects the task; update both chart and Composer from canonical state.
+    if (String(err.message).includes('stale Composer context')) {
+      try { await refresh(); } catch (_) { /* notice below owns error feedback */ }
+      document.dispatchEvent(new Event('oi:composer-refresh'));
+    }
+    notice(err.message, true);
+  }
 });
 initialize();
 initializeBibliography();

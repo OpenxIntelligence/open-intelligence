@@ -1,4 +1,155 @@
-# Software Bill of Materials (SBOM) — Open Intelligence demo, branch `oi/safety-packet`
+# Software Bill of Materials (SBOM) — Open Intelligence
+
+## Candidate source/declaration delta — 2 November 2026
+
+The current candidate inventory is
+[`SBOM_SOURCE_2026-11-02.cdx.json`](SBOM_SOURCE_2026-11-02.cdx.json), generated from
+the working tree on `integration/patient-evidence-review-20261102`, based on commit
+`1bb4ff06a5ab222d3561145e757226f671dbf3ea`. It records the candidate's uncommitted
+source bytes by SHA-256; that commit alone does **not** identify the added or
+modified files. This section supersedes the historical packet below where the
+candidate differs.
+
+This is an **incomplete first-party source and declaration inventory**, using
+[CycloneDX 1.6](https://cyclonedx.org/docs/1.6/json/) with lifecycle `pre-build`
+and composition `incomplete`. It is not a resolved build, installed-package,
+container, deployed-system, vulnerability or license-scan result. It does not
+establish release clearance. The combined candidate includes the reviewed
+**20-file safety reconciliation** from baseline `24519839` and selected PR #123
+changes, together with synthetic-fixture corrections and the offline guard
+harness. Its workflow declarations are reflected in this inventory; scoped
+research source and fixtures remain outside the application runtime/dependency
+graph and file-hash scope. This reconciliation does not clear retention or use
+of historical artifacts.
+
+### Candidate additions and counted scope
+
+The candidate adds native Composer context, captured-input freshness checks,
+rights-qualified offline knowledge-context preparation, the atomic model-run
+handoff into the existing review ledger, and bounded Europe PMC metadata
+discovery, the reused read-only World Model inspector and the Mission active-versus-historical review correction. The associated browser code remains first-party JavaScript, HTML
+and CSS. Generation does not imply human review, and metadata discovery does
+not establish clinical evidence or content/model-use permissions.
+
+| Inventory class | Count and evidence | Runtime interpretation |
+|---|---|---|
+| Production source files | **26**: 15 Python files under `src/`, 9 files under `web/`, and `tools/crossref_metadata.py` plus `tools/__init__.py`; each has a path, unique BOM reference and SHA-256 | First-party source inventory, not a compiled dependency graph |
+| All hashed input files | **34**: those 26 production files, 6 workflow files, the research lockfile, and the generator itself | Declaration/tool inputs are marked `scope: excluded` |
+| Observed local runtime | **2**: Python **3.12.14**, SQLite **3.53.1**, read from the generator's interpreter and `sqlite3` binding | Local observations, not CI or deployment pins; native/binary/transitive contents unresolved |
+| Research lock declarations | **41** exact `name==version` entries from `tools/research/requirements.lock` | All excluded from application runtime; historical environment declarations, not installed or fetched by this inventory |
+| Additional research workflow pins | **2**: `numpy==2.3.5`, `h5py==3.15.1`, from `.github/workflows/single-cell-analysis.yml` | Excluded research declarations; no package installation performed |
+| GitHub Actions references | **5** distinct references, **15** occurrences across **6** workflows; each occurrence retains its file/line declaration | Excluded CI declarations; action source and bundled/transitive dependencies unresolved |
+| CI/test runtime declarations | **5**: Python selectors `3.12` and `3.13`, `ubuntu-latest`, Node.js, and Chrome/Chromium | Excluded; exact runner and test-binary versions are not established by their labels |
+| External service declarations | **3**: Europe PMC, Crossref, Meta Model API | Source-declared optional service use; no provider live-verification performed by the inventory |
+
+The JSON contains **89 top-level components**, plus the first-party application
+and inventory-tool metadata records, and three services. All 94 BOM references
+are distinct. Its 17 production Python files have **zero third-party absolute
+import roots** in an AST `Import`/`ImportFrom` check. That check does not resolve
+dynamic imports, native libraries, operating-system components or a deployed
+environment. No model weights or external dataset files are vendored in the
+enumerated production roots: the 26 files are Python, JavaScript, HTML or CSS.
+Original synthetic fixture contents are outside this file-hash inventory.
+
+Accepted H1 architecture choices remain design decisions. They have not been
+promoted into implemented runtime dependencies by this inventory. In particular,
+research-only LangGraph, LangChain, Pydantic and `sqlite-vec` lock entries remain
+excluded research declarations; their presence in the lockfile is not evidence
+that the application uses those packages or a vector store.
+
+### Exact action references and service declarations
+
+| GitHub Action | Reference present in the candidate | Qualification |
+|---|---|---|
+| `actions/checkout` | `v4` | Mutable version label; resolved source unverified |
+| `actions/checkout` | `11d5960a326750d5838078e36cf38b85af677262` | Exact declared commit; source, licenses and bundled dependencies not inspected here |
+| `actions/setup-python` | `v5` | Mutable version label; resolved source unverified |
+| `actions/setup-python` | `a26af69be951a213d495a4c3e4e4022e16d87065` | Exact declared commit; source, licenses and bundled dependencies not inspected here |
+| `actions/upload-artifact` | `ea165f8d65b6e75b540449e92b4886f43607fa02` | Exact declared commit; source, licenses and bundled dependencies not inspected here |
+
+| Service | Source declaration | Boundary recorded in the inventory |
+|---|---|---|
+| Europe PMC | `src/open_intelligence/literature.py:ENDPOINT` → `https://www.ebi.ac.uk/europepmc/webservices/rest/search` | Optional public human-authored search with explicit attestations; metadata only; no automatic patient-context query |
+| Crossref | `tools/crossref_metadata.py:API_ROOT` → `https://api.crossref.org/works/` | Optional explicitly entered public DOI; metadata only |
+| Meta Model API | `src/open_intelligence/investigation.py:META_API_URL` → `https://api.meta.ai/v1/messages`; declared model `muse-spark-1.3` | Optional operator-key live mode over bounded synthetic inputs; provider/model identifier is a source declaration, not a verified service/version or supplied model artifact |
+
+The generator reads these endpoint/model constants through Python AST literals;
+it does not import those modules or contact their endpoints. Any separately
+recorded live receipt has its own scope and is not a supply-chain or licensing
+verification.
+
+### License status and unresolved inventory
+
+The first-party project's distribution license remains **UNSELECTED**. Every
+external runtime, research package and CI component has license status
+**UNVERIFIED** in this inventory. These values are explicit
+`open-intelligence:license-status` properties; no guessed SPDX expression or
+placeholder license grant is inserted into a `licenses` field. Service rights
+also remain unverified. Public source visibility, a package pin, a successful
+metadata request or a provider URL supplies no rights clearance.
+
+Unresolved items include installed/binary hashes, package artifact provenance,
+action bundles, transitive dependencies, native libraries, the runtime/OS image,
+provider internals, complete license texts/obligations and any future deployed
+image. Research probe source, test and fixture contents, downloaded data and
+model artifacts are deliberately outside this bounded inventory. No patient
+data or weight/dataset content was fetched, inspected or installed to generate
+it.
+
+### Regeneration and verification
+
+The reusable generator is
+[`tools/generate_source_sbom.py`](../../tools/generate_source_sbom.py). It uses
+the standard library only, performs no network operations, and measures its
+actual Python/SQLite versions instead of hard-coding a runtime. The explicit
+inventory date, sorted records and omission of a volatile timestamp make
+identical inputs and runtime observations reproducible.
+
+```sh
+python tools/generate_source_sbom.py --as-of 2026-11-02
+python tools/generate_source_sbom.py --as-of 2026-11-02 --check
+```
+
+Verification for this candidate checks JSON parsing, exact local file coverage
+and hashes, unique/resolved component/service/dependency/source references, the
+41 lock entries and two workflow pins, excluded research/CI scope, and identical
+regeneration. The 2026-11-02 verification passed all of those checks: **34 file
+hashes, 94 distinct references, 41 exact lock entries and two exact workflow
+pins**. `--check` and `git diff --check` passed. Regeneration was byte-identical, with SHA-256
+`fa7578354bf79bcb2f1c831b4101768f2ef30f70eca49e17ff987d438d181019`.
+
+Formal JSON Schema validation **passed with zero errors** on 2 November 2026
+at `2026-11-02T21:34:04.235232+00:00`, for the inventory SHA-256 above; see the [machine-readable validation receipt](../engineering/SBOM_SCHEMA_VALIDATION_2026-11-02.json). The validator was
+`jsonschema[format-nongpl]==4.26.0` using `Draft7Validator`; its installed
+`License-Expression: MIT` and exact version agree with the
+[official PyPI release](https://pypi.org/project/jsonschema/4.26.0/).
+Its downloaded wheel SHA-256 was
+`d489f15263b8d200f8387e64b4c3a75f06629559fb73deb8fdfb525f2dab50ce`.
+The validator and its dependencies were installed only under
+`/tmp/oi-sbom-validator`; application dependencies and repository lockfiles
+were unchanged.
+
+All three official schemas passed their schema self-checks. Validation resolved
+their references from local copies and enabled the declared `date-time`,
+`idn-email`, `iri-reference` and `uri` format checks. A process/network audit
+guard recorded **zero effect attempts** during validation.
+
+| Official schema retrieved | SHA-256 of exact downloaded bytes |
+|---|---|
+| [CycloneDX 1.6](https://cyclonedx.org/schema/bom-1.6.schema.json) | `1ebcb88a2c845ecb6ff7bee7aeabdff9422cb0347f3d6875b241bd444b7e098f` |
+| [SPDX schema reference](https://cyclonedx.org/schema/spdx.schema.json) | `33863a360fc4d348e183d89c1ca7aa0877f481e7eb55be2d4102a30386188a10` |
+| [JSON Signature Format 0.82 reference](https://cyclonedx.org/schema/jsf-0.82.schema.json) | `2faf5eb3651f2ae5f46091a131770d8d847bbd121139d19c85fc7051bfa58c46` |
+
+Schema conformance does not change this inventory's incomplete scope or its
+unverified component rights. Refresh the inventory and validation after any
+included file, workflow declaration, base revision or observed runtime changes.
+
+## Historical packet inventory — retained for provenance
+
+The following text describes the earlier `oi/safety-packet` inventory and its
+then-current verification limits. Its file counts, runtime assumptions,
+research-acquisition descriptions and verification claims are historical;
+use the candidate delta and machine-readable inventory above for this branch.
 
 Scope: this inventory covers the current tree on this branch (current
 `main` merged in; refreshed 2026-11-02). It supersedes the earlier

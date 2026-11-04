@@ -1,5 +1,7 @@
 # Implementation slice 01 — source and investigation ledger
 
+**Current checkpoint:** the [2 November execution audit](engineering/EXECUTION_AUDIT_2026-11-02.md) distinguishes pinned main, unmerged source-owner drafts, the candidate investigation-to-review integration and its verification. Entries below are historical checkpoints and retain their original scope and test evidence; they do not establish current branch, deployment or clinical readiness.
+
 **Stage:** local experimental synthetic-only code. **Not released for clinical use.**
 
 **Backlog coverage:** Part of OI-003, OI-006, OI-007, OI-009 and OI-010. Does not complete the broader investigation/evidence stage (OI-008), identity/governance (OI-012–013), or clinical evaluation (OI-014 onward).

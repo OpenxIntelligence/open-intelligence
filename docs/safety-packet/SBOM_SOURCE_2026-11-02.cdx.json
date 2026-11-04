@@ -1,0 +1,2936 @@
+{
+  "$schema": "https://cyclonedx.org/schema/bom-1.6.schema.json",
+  "bomFormat": "CycloneDX",
+  "components": [
+    {
+      "bom-ref": "ci-action:actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+      "name": "actions/checkout",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "ci-action-declaration"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\".github/workflows/public-research.yml:22\", \".github/workflows/rna-analysis.yml:22\", \".github/workflows/single-cell-analysis.yml:22\"]"
+        },
+        {
+          "name": "open-intelligence:declared-reference",
+          "value": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:pin-kind",
+          "value": "commit SHA"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "action source, bundled dependencies and transitive graph unresolved"
+        }
+      ],
+      "scope": "excluded",
+      "type": "application",
+      "version": "11d5960a326750d5838078e36cf38b85af677262"
+    },
+    {
+      "bom-ref": "ci-action:actions/checkout@v4",
+      "name": "actions/checkout",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "ci-action-declaration"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\".github/workflows/crossref-metadata.yml:15\", \".github/workflows/synthetic-tests.yml:15\", \".github/workflows/ui-glance.yml:21\"]"
+        },
+        {
+          "name": "open-intelligence:declared-reference",
+          "value": "actions/checkout@v4"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:pin-kind",
+          "value": "mutable label or unresolved reference"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "action source, bundled dependencies and transitive graph unresolved"
+        }
+      ],
+      "scope": "excluded",
+      "type": "application",
+      "version": "v4"
+    },
+    {
+      "bom-ref": "ci-action:actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
+      "name": "actions/setup-python",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "ci-action-declaration"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\".github/workflows/public-research.yml:25\", \".github/workflows/rna-analysis.yml:25\", \".github/workflows/single-cell-analysis.yml:25\"]"
+        },
+        {
+          "name": "open-intelligence:declared-reference",
+          "value": "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:pin-kind",
+          "value": "commit SHA"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "action source, bundled dependencies and transitive graph unresolved"
+        }
+      ],
+      "scope": "excluded",
+      "type": "application",
+      "version": "a26af69be951a213d495a4c3e4e4022e16d87065"
+    },
+    {
+      "bom-ref": "ci-action:actions/setup-python@v5",
+      "name": "actions/setup-python",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "ci-action-declaration"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\".github/workflows/crossref-metadata.yml:16\", \".github/workflows/synthetic-tests.yml:19\", \".github/workflows/ui-glance.yml:24\"]"
+        },
+        {
+          "name": "open-intelligence:declared-reference",
+          "value": "actions/setup-python@v5"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:pin-kind",
+          "value": "mutable label or unresolved reference"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "action source, bundled dependencies and transitive graph unresolved"
+        }
+      ],
+      "scope": "excluded",
+      "type": "application",
+      "version": "v5"
+    },
+    {
+      "bom-ref": "ci-action:actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+      "name": "actions/upload-artifact",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "ci-action-declaration"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\".github/workflows/public-research.yml:58\", \".github/workflows/synthetic-tests.yml:58\", \".github/workflows/ui-glance.yml:52\"]"
+        },
+        {
+          "name": "open-intelligence:declared-reference",
+          "value": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:pin-kind",
+          "value": "commit SHA"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "action source, bundled dependencies and transitive graph unresolved"
+        }
+      ],
+      "scope": "excluded",
+      "type": "application",
+      "version": "ea165f8d65b6e75b540449e92b4886f43607fa02"
+    },
+    {
+      "bom-ref": "ci-runtime:python-version:3.12",
+      "name": "Python (CI selector)",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "ci-test-runtime-declaration"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\".github/workflows/public-research.yml:27\", \".github/workflows/rna-analysis.yml:27\", \".github/workflows/single-cell-analysis.yml:27\"]"
+        },
+        {
+          "name": "open-intelligence:declared-selector",
+          "value": "3.12"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "exact runner/binary version and bundled dependencies unverified"
+        }
+      ],
+      "scope": "excluded",
+      "type": "platform",
+      "version": "3.12"
+    },
+    {
+      "bom-ref": "ci-runtime:python-version:3.13",
+      "name": "Python (CI selector)",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "ci-test-runtime-declaration"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\".github/workflows/crossref-metadata.yml:18\", \".github/workflows/synthetic-tests.yml:21\", \".github/workflows/ui-glance.yml:26\"]"
+        },
+        {
+          "name": "open-intelligence:declared-selector",
+          "value": "3.13"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "exact runner/binary version and bundled dependencies unverified"
+        }
+      ],
+      "scope": "excluded",
+      "type": "platform",
+      "version": "3.13"
+    },
+    {
+      "bom-ref": "ci-runtime:runs-on:ubuntu-latest",
+      "name": "GitHub-hosted runner",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "ci-test-runtime-declaration"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\".github/workflows/crossref-metadata.yml:12\", \".github/workflows/public-research.yml:19\", \".github/workflows/rna-analysis.yml:19\", \".github/workflows/single-cell-analysis.yml:19\", \".github/workflows/synthetic-tests.yml:11\", \".github/workflows/ui-glance.yml:15\"]"
+        },
+        {
+          "name": "open-intelligence:declared-selector",
+          "value": "ubuntu-latest"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "exact runner/binary version and bundled dependencies unverified"
+        }
+      ],
+      "scope": "excluded",
+      "type": "operating-system",
+      "version": "ubuntu-latest"
+    },
+    {
+      "bom-ref": "ci-runtime:test-runtime:Chrome/Chromium",
+      "name": "Chrome/Chromium",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "ci-test-runtime-declaration"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\".github/workflows/synthetic-tests.yml:38\", \".github/workflows/synthetic-tests.yml:43\", \".github/workflows/synthetic-tests.yml:45\"]"
+        },
+        {
+          "name": "open-intelligence:declared-selector",
+          "value": "Chrome/Chromium"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "exact runner/binary version and bundled dependencies unverified"
+        }
+      ],
+      "scope": "excluded",
+      "type": "platform"
+    },
+    {
+      "bom-ref": "ci-runtime:test-runtime:Node.js",
+      "name": "Node.js",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "ci-test-runtime-declaration"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\".github/workflows/synthetic-tests.yml:26\", \".github/workflows/synthetic-tests.yml:27\", \".github/workflows/synthetic-tests.yml:28\", \".github/workflows/synthetic-tests.yml:29\", \".github/workflows/synthetic-tests.yml:31\", \".github/workflows/ui-glance.yml:30\", \".github/workflows/ui-glance.yml:34\", \".github/workflows/ui-glance.yml:36\"]"
+        },
+        {
+          "name": "open-intelligence:declared-selector",
+          "value": "Node.js"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "exact runner/binary version and bundled dependencies unverified"
+        }
+      ],
+      "scope": "excluded",
+      "type": "platform"
+    },
+    {
+      "bom-ref": "file:.github/workflows/crossref-metadata.yml",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "a87ae24ca0b1632ae727c1ef6ec4641ef5ecbeeb9b9c70de21b2d4bb16258fbf"
+        }
+      ],
+      "name": ".github/workflows/crossref-metadata.yml",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "declaration-input"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNSELECTED"
+        },
+        {
+          "name": "open-intelligence:origin",
+          "value": "first-party repository file"
+        },
+        {
+          "name": "open-intelligence:source-path",
+          "value": ".github/workflows/crossref-metadata.yml"
+        }
+      ],
+      "scope": "excluded",
+      "type": "file"
+    },
+    {
+      "bom-ref": "file:.github/workflows/public-research.yml",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "8795e583250ae520ba3d4e78dd572b8b9345131a09c326803c3dfcd091fbb572"
+        }
+      ],
+      "name": ".github/workflows/public-research.yml",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "declaration-input"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNSELECTED"
+        },
+        {
+          "name": "open-intelligence:origin",
+          "value": "first-party repository file"
+        },
+        {
+          "name": "open-intelligence:source-path",
+          "value": ".github/workflows/public-research.yml"
+        }
+      ],
+      "scope": "excluded",
+      "type": "file"
+    },
+    {
+      "bom-ref": "file:.github/workflows/rna-analysis.yml",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "c126ca15fd2443a88ee88b3fa7380dfc8d2ed1b99535d336c4ec111d7f8098cd"
+        }
+      ],
+      "name": ".github/workflows/rna-analysis.yml",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "declaration-input"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNSELECTED"
+        },
+        {
+          "name": "open-intelligence:origin",
+          "value": "first-party repository file"
+        },
+        {
+          "name": "open-intelligence:source-path",
+          "value": ".github/workflows/rna-analysis.yml"
+        }
+      ],
+      "scope": "excluded",
+      "type": "file"
+    },
+    {
+      "bom-ref": "file:.github/workflows/single-cell-analysis.yml",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "a3dc7349555804fec58346eea98fac06240c1519c1f6b07434ccdee397263e53"
+        }
+      ],
+      "name": ".github/workflows/single-cell-analysis.yml",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "declaration-input"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNSELECTED"
+        },
+        {
+          "name": "open-intelligence:origin",
+          "value": "first-party repository file"
+        },
+        {
+          "name": "open-intelligence:source-path",
+          "value": ".github/workflows/single-cell-analysis.yml"
+        }
+      ],
+      "scope": "excluded",
+      "type": "file"
+    },
+    {
+      "bom-ref": "file:.github/workflows/synthetic-tests.yml",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "80e66f87effc647c7b7ea5ce6af9a73289ced72c91e8bb9960f1ced210597e44"
+        }
+      ],
+      "name": ".github/workflows/synthetic-tests.yml",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "declaration-input"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNSELECTED"
+        },
+        {
+          "name": "open-intelligence:origin",
+          "value": "first-party repository file"
+        },
+        {
+          "name": "open-intelligence:source-path",
+          "value": ".github/workflows/synthetic-tests.yml"
+        }
+      ],
+      "scope": "excluded",
+      "type": "file"
+    },
+    {
+      "bom-ref": "file:.github/workflows/ui-glance.yml",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "5d782683ceaa6730638f279635370958cfd0fa88d7c1ce44822b416636520847"
+        }
+      ],
+      "name": ".github/workflows/ui-glance.yml",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "declaration-input"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNSELECTED"
+        },
+        {
+          "name": "open-intelligence:origin",
+          "value": "first-party repository file"
+        },
+        {
+          "name": "open-intelligence:source-path",
+          "value": ".github/workflows/ui-glance.yml"
+        }
+      ],
+      "scope": "excluded",
+      "type": "file"
+    },
+    {
+      "bom-ref": "file:src/open_intelligence/__init__.py",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "73a039e46fac80c564b59ea548722993bcd92f49a58c509e3375c69360c69fa6"
+        }
+      ],
+      "name": "src/open_intelligence/__init__.py",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "production-source"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNSELECTED"
+        },
+        {
+          "name": "open-intelligence:origin",
+          "value": "first-party repository file"
+        },
+        {
+          "name": "open-intelligence:source-path",
+          "value": "src/open_intelligence/__init__.py"
+        }
+      ],
+      "scope": "required",
+      "type": "file"
+    },
+    {
+      "bom-ref": "file:src/open_intelligence/__main__.py",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "161719f6a20e172b3a1aab6e5568cd281dccd17f66208d68e4643b5971ddff46"
+        }
+      ],
+      "name": "src/open_intelligence/__main__.py",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "production-source"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNSELECTED"
+        },
+        {
+          "name": "open-intelligence:origin",
+          "value": "first-party repository file"
+        },
+        {
+          "name": "open-intelligence:source-path",
+          "value": "src/open_intelligence/__main__.py"
+        }
+      ],
+      "scope": "required",
+      "type": "file"
+    },
+    {
+      "bom-ref": "file:src/open_intelligence/changes.py",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "5e0e085b0b7bf4809c8280dfa9ee92fb20f7051120d99731485e6b611bcf72ff"
+        }
+      ],
+      "name": "src/open_intelligence/changes.py",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "production-source"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNSELECTED"
+        },
+        {
+          "name": "open-intelligence:origin",
+          "value": "first-party repository file"
+        },
+        {
+          "name": "open-intelligence:source-path",
+          "value": "src/open_intelligence/changes.py"
+        }
+      ],
+      "scope": "required",
+      "type": "file"
+    },
+    {
+      "bom-ref": "file:src/open_intelligence/composer.py",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "c18ef07f54c05f9b8830a362fa24e4d1b91e706df9b953b12a5110187e97f97a"
+        }
+      ],
+      "name": "src/open_intelligence/composer.py",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "production-source"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNSELECTED"
+        },
+        {
+          "name": "open-intelligence:origin",
+          "value": "first-party repository file"
+        },
+        {
+          "name": "open-intelligence:source-path",
+          "value": "src/open_intelligence/composer.py"
+        }
+      ],
+      "scope": "required",
+      "type": "file"
+    },
+    {
+      "bom-ref": "file:src/open_intelligence/discovery.py",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "14589dcaac4fa1775afd81faad1a36650e07da14e8e65425801d5a9cf9833da5"
+        }
+      ],
+      "name": "src/open_intelligence/discovery.py",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "production-source"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNSELECTED"
+        },
+        {
+          "name": "open-intelligence:origin",
+          "value": "first-party repository file"
+        },
+        {
+          "name": "open-intelligence:source-path",
+          "value": "src/open_intelligence/discovery.py"
+        }
+      ],
+      "scope": "required",
+      "type": "file"
+    },
+    {
+      "bom-ref": "file:src/open_intelligence/investigation.py",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "a37983a4d682e78b6d907f84a9254364c984ec1428ca57270e45d51c29915b79"
+        }
+      ],
+      "name": "src/open_intelligence/investigation.py",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "production-source"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNSELECTED"
+        },
+        {
+          "name": "open-intelligence:origin",
+          "value": "first-party repository file"
+        },
+        {
+          "name": "open-intelligence:source-path",
+          "value": "src/open_intelligence/investigation.py"
+        }
+      ],
+      "scope": "required",
+      "type": "file"
+    },
+    {
+      "bom-ref": "file:src/open_intelligence/knowledge_context.py",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "e47c9be375c4c9d7173712c5d8fe51b020158b25d6b7f586694d8e3fd21ce89a"
+        }
+      ],
+      "name": "src/open_intelligence/knowledge_context.py",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "production-source"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNSELECTED"
+        },
+        {
+          "name": "open-intelligence:origin",
+          "value": "first-party repository file"
+        },
+        {
+          "name": "open-intelligence:source-path",
+          "value": "src/open_intelligence/knowledge_context.py"
+        }
+      ],
+      "scope": "required",
+      "type": "file"
+    },
+    {
+      "bom-ref": "file:src/open_intelligence/literature.py",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "40aa89e0c0c35550f1a065553c60fd5412a4ac4f76c81d6f5806a93278da5c83"
+        }
+      ],
+      "name": "src/open_intelligence/literature.py",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "production-source"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNSELECTED"
+        },
+        {
+          "name": "open-intelligence:origin",
+          "value": "first-party repository file"
+        },
+        {
+          "name": "open-intelligence:source-path",
+          "value": "src/open_intelligence/literature.py"
+        }
+      ],
+      "scope": "required",
+      "type": "file"
+    },
+    {
+      "bom-ref": "file:src/open_intelligence/mission.py",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "cb765b8b5d90389f065843eed846e30d1b8f31da7a92d0800a4a0682420fe535"
+        }
+      ],
+      "name": "src/open_intelligence/mission.py",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "production-source"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNSELECTED"
+        },
+        {
+          "name": "open-intelligence:origin",
+          "value": "first-party repository file"
+        },
+        {
+          "name": "open-intelligence:source-path",
+          "value": "src/open_intelligence/mission.py"
+        }
+      ],
+      "scope": "required",
+      "type": "file"
+    },
+    {
+      "bom-ref": "file:src/open_intelligence/patient_access.py",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "66a0203aee3bc09d6689f8ccc9aff4dd1d76a3268bdae33daabc637860283f2b"
+        }
+      ],
+      "name": "src/open_intelligence/patient_access.py",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "production-source"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNSELECTED"
+        },
+        {
+          "name": "open-intelligence:origin",
+          "value": "first-party repository file"
+        },
+        {
+          "name": "open-intelligence:source-path",
+          "value": "src/open_intelligence/patient_access.py"
+        }
+      ],
+      "scope": "required",
+      "type": "file"
+    },
+    {
+      "bom-ref": "file:src/open_intelligence/review_draft.py",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "d89f6bd1d68337dd381874f667fecb10b59d1a6d75f24fe5c2a3e531f19de912"
+        }
+      ],
+      "name": "src/open_intelligence/review_draft.py",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "production-source"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNSELECTED"
+        },
+        {
+          "name": "open-intelligence:origin",
+          "value": "first-party repository file"
+        },
+        {
+          "name": "open-intelligence:source-path",
+          "value": "src/open_intelligence/review_draft.py"
+        }
+      ],
+      "scope": "required",
+      "type": "file"
+    },
+    {
+      "bom-ref": "file:src/open_intelligence/rights.py",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "dce63f0d72e32a88837d587285bdba620127e1208592263f3bef2ee72a47405c"
+        }
+      ],
+      "name": "src/open_intelligence/rights.py",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "production-source"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNSELECTED"
+        },
+        {
+          "name": "open-intelligence:origin",
+          "value": "first-party repository file"
+        },
+        {
+          "name": "open-intelligence:source-path",
+          "value": "src/open_intelligence/rights.py"
+        }
+      ],
+      "scope": "required",
+      "type": "file"
+    },
+    {
+      "bom-ref": "file:src/open_intelligence/store.py",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "86ee95ea2f0c1afe28e47650d6b063ce735491b920e884bc0e24ceb917ba7cd1"
+        }
+      ],
+      "name": "src/open_intelligence/store.py",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "production-source"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNSELECTED"
+        },
+        {
+          "name": "open-intelligence:origin",
+          "value": "first-party repository file"
+        },
+        {
+          "name": "open-intelligence:source-path",
+          "value": "src/open_intelligence/store.py"
+        }
+      ],
+      "scope": "required",
+      "type": "file"
+    },
+    {
+      "bom-ref": "file:src/open_intelligence/timeline.py",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "b629bf7dcc188903e55196c88160d9286c2d1b6f45e72702ec5e9b202060c89c"
+        }
+      ],
+      "name": "src/open_intelligence/timeline.py",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "production-source"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNSELECTED"
+        },
+        {
+          "name": "open-intelligence:origin",
+          "value": "first-party repository file"
+        },
+        {
+          "name": "open-intelligence:source-path",
+          "value": "src/open_intelligence/timeline.py"
+        }
+      ],
+      "scope": "required",
+      "type": "file"
+    },
+    {
+      "bom-ref": "file:src/open_intelligence/world_model.py",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "3a3bd3af90182b3bde4c3a45a04793404a75e29e6ef1454658bbde9dd61aee77"
+        }
+      ],
+      "name": "src/open_intelligence/world_model.py",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "production-source"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNSELECTED"
+        },
+        {
+          "name": "open-intelligence:origin",
+          "value": "first-party repository file"
+        },
+        {
+          "name": "open-intelligence:source-path",
+          "value": "src/open_intelligence/world_model.py"
+        }
+      ],
+      "scope": "required",
+      "type": "file"
+    },
+    {
+      "bom-ref": "file:tools/__init__.py",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "0c82fd9382f0abadde1819ccb6292e4c015b3409082f1b2fecd4cd2267f54796"
+        }
+      ],
+      "name": "tools/__init__.py",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "production-source"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNSELECTED"
+        },
+        {
+          "name": "open-intelligence:origin",
+          "value": "first-party repository file"
+        },
+        {
+          "name": "open-intelligence:source-path",
+          "value": "tools/__init__.py"
+        }
+      ],
+      "scope": "required",
+      "type": "file"
+    },
+    {
+      "bom-ref": "file:tools/crossref_metadata.py",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "dedfe8fd1218a4422f74e6bc6622bece379827986fdacb22bff8c35e3c259fcf"
+        }
+      ],
+      "name": "tools/crossref_metadata.py",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "production-source"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNSELECTED"
+        },
+        {
+          "name": "open-intelligence:origin",
+          "value": "first-party repository file"
+        },
+        {
+          "name": "open-intelligence:source-path",
+          "value": "tools/crossref_metadata.py"
+        }
+      ],
+      "scope": "required",
+      "type": "file"
+    },
+    {
+      "bom-ref": "file:tools/generate_source_sbom.py",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "c96137b769e1f93f0a14e8aedc145facb0942f05f85035329702ee748efa4f12"
+        }
+      ],
+      "name": "tools/generate_source_sbom.py",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "inventory-tool"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNSELECTED"
+        },
+        {
+          "name": "open-intelligence:origin",
+          "value": "first-party repository file"
+        },
+        {
+          "name": "open-intelligence:source-path",
+          "value": "tools/generate_source_sbom.py"
+        }
+      ],
+      "scope": "excluded",
+      "type": "file"
+    },
+    {
+      "bom-ref": "file:tools/research/requirements.lock",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "2846ed09cbf96c94449e76dcb2d4f4103dcfade4014d54b60d372ae372d15f3b"
+        }
+      ],
+      "name": "tools/research/requirements.lock",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "declaration-input"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNSELECTED"
+        },
+        {
+          "name": "open-intelligence:origin",
+          "value": "first-party repository file"
+        },
+        {
+          "name": "open-intelligence:source-path",
+          "value": "tools/research/requirements.lock"
+        }
+      ],
+      "scope": "excluded",
+      "type": "file"
+    },
+    {
+      "bom-ref": "file:web/app.js",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "5e77b98c24bc38a92a0384c3c1b0b522bbcbfb4fdb4c8eecaa7134fa2b79f57d"
+        }
+      ],
+      "name": "web/app.js",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "production-source"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNSELECTED"
+        },
+        {
+          "name": "open-intelligence:origin",
+          "value": "first-party repository file"
+        },
+        {
+          "name": "open-intelligence:source-path",
+          "value": "web/app.js"
+        }
+      ],
+      "scope": "required",
+      "type": "file"
+    },
+    {
+      "bom-ref": "file:web/base.css",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "ef556b97708eb307559e05d525ac58a5a72603595ad0b6113dc37f6ecf7df5c7"
+        }
+      ],
+      "name": "web/base.css",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "production-source"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNSELECTED"
+        },
+        {
+          "name": "open-intelligence:origin",
+          "value": "first-party repository file"
+        },
+        {
+          "name": "open-intelligence:source-path",
+          "value": "web/base.css"
+        }
+      ],
+      "scope": "required",
+      "type": "file"
+    },
+    {
+      "bom-ref": "file:web/composer.js",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "9423e5308e518ae41a298380cb66bbe773f158b592621aa3990a399833bc465c"
+        }
+      ],
+      "name": "web/composer.js",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "production-source"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNSELECTED"
+        },
+        {
+          "name": "open-intelligence:origin",
+          "value": "first-party repository file"
+        },
+        {
+          "name": "open-intelligence:source-path",
+          "value": "web/composer.js"
+        }
+      ],
+      "scope": "required",
+      "type": "file"
+    },
+    {
+      "bom-ref": "file:web/index.html",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "abf442b0fdd2db050583413b13d317512a7a8d23fe0383c4b7a1e8d495b77e19"
+        }
+      ],
+      "name": "web/index.html",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "production-source"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNSELECTED"
+        },
+        {
+          "name": "open-intelligence:origin",
+          "value": "first-party repository file"
+        },
+        {
+          "name": "open-intelligence:source-path",
+          "value": "web/index.html"
+        }
+      ],
+      "scope": "required",
+      "type": "file"
+    },
+    {
+      "bom-ref": "file:web/literature.js",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "700861aede647f94426b70c202244f87ac1c30ff5414e2f3ac93b43c523c39e2"
+        }
+      ],
+      "name": "web/literature.js",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "production-source"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNSELECTED"
+        },
+        {
+          "name": "open-intelligence:origin",
+          "value": "first-party repository file"
+        },
+        {
+          "name": "open-intelligence:source-path",
+          "value": "web/literature.js"
+        }
+      ],
+      "scope": "required",
+      "type": "file"
+    },
+    {
+      "bom-ref": "file:web/mission.js",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "15218adc05f55ec7ec48b77c093350539b432456cce9212588cfd337977ab4ab"
+        }
+      ],
+      "name": "web/mission.js",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "production-source"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNSELECTED"
+        },
+        {
+          "name": "open-intelligence:origin",
+          "value": "first-party repository file"
+        },
+        {
+          "name": "open-intelligence:source-path",
+          "value": "web/mission.js"
+        }
+      ],
+      "scope": "required",
+      "type": "file"
+    },
+    {
+      "bom-ref": "file:web/style.css",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "03bdbcd6f017f7ee86215b8db11987b6f51747c2ab3daaa2c2d92b48f55b49fd"
+        }
+      ],
+      "name": "web/style.css",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "production-source"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNSELECTED"
+        },
+        {
+          "name": "open-intelligence:origin",
+          "value": "first-party repository file"
+        },
+        {
+          "name": "open-intelligence:source-path",
+          "value": "web/style.css"
+        }
+      ],
+      "scope": "required",
+      "type": "file"
+    },
+    {
+      "bom-ref": "file:web/tokens.css",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "976f16f5cffbef66bc4d1a31d3943a2ba7d0ec44668c7609c9b6d7d8dcc869fc"
+        }
+      ],
+      "name": "web/tokens.css",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "production-source"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNSELECTED"
+        },
+        {
+          "name": "open-intelligence:origin",
+          "value": "first-party repository file"
+        },
+        {
+          "name": "open-intelligence:source-path",
+          "value": "web/tokens.css"
+        }
+      ],
+      "scope": "required",
+      "type": "file"
+    },
+    {
+      "bom-ref": "file:web/world-model.js",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "e0f48420d70dd4a87a8ee6033d12c5336ffe0a02e90d3f2ee7d688a545590247"
+        }
+      ],
+      "name": "web/world-model.js",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "production-source"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNSELECTED"
+        },
+        {
+          "name": "open-intelligence:origin",
+          "value": "first-party repository file"
+        },
+        {
+          "name": "open-intelligence:source-path",
+          "value": "web/world-model.js"
+        }
+      ],
+      "scope": "required",
+      "type": "file"
+    },
+    {
+      "bom-ref": "observed-runtime:python",
+      "name": "Python",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "observed-local-runtime"
+        },
+        {
+          "name": "open-intelligence:implementation",
+          "value": "CPython"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:observation",
+          "value": "platform.python_version(); generator interpreter only"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "not a deployment runtime or binary SBOM"
+        }
+      ],
+      "scope": "required",
+      "type": "platform",
+      "version": "3.12.14"
+    },
+    {
+      "bom-ref": "observed-runtime:sqlite",
+      "name": "SQLite",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "observed-local-runtime"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:observation",
+          "value": "sqlite3.sqlite_version"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "local Python binding; native build/transitives unresolved"
+        }
+      ],
+      "scope": "required",
+      "type": "library",
+      "version": "3.53.1"
+    },
+    {
+      "bom-ref": "research-package:aiosqlite@0.22.1",
+      "name": "aiosqlite",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "research-lock-pin"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\"tools/research/requirements.lock:3\"]"
+        },
+        {
+          "name": "open-intelligence:installation",
+          "value": "not inspected or performed"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "declaration only; artifacts, hashes and transitive graph unresolved"
+        }
+      ],
+      "purl": "pkg:pypi/aiosqlite@0.22.1",
+      "scope": "excluded",
+      "type": "library",
+      "version": "0.22.1"
+    },
+    {
+      "bom-ref": "research-package:annotated-types@0.8.0",
+      "name": "annotated-types",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "research-lock-pin"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\"tools/research/requirements.lock:4\"]"
+        },
+        {
+          "name": "open-intelligence:installation",
+          "value": "not inspected or performed"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "declaration only; artifacts, hashes and transitive graph unresolved"
+        }
+      ],
+      "purl": "pkg:pypi/annotated-types@0.8.0",
+      "scope": "excluded",
+      "type": "library",
+      "version": "0.8.0"
+    },
+    {
+      "bom-ref": "research-package:anyio@4.15.1",
+      "name": "anyio",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "research-lock-pin"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\"tools/research/requirements.lock:5\"]"
+        },
+        {
+          "name": "open-intelligence:installation",
+          "value": "not inspected or performed"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "declaration only; artifacts, hashes and transitive graph unresolved"
+        }
+      ],
+      "purl": "pkg:pypi/anyio@4.15.1",
+      "scope": "excluded",
+      "type": "library",
+      "version": "4.15.1"
+    },
+    {
+      "bom-ref": "research-package:certifi@2026.10.23",
+      "name": "certifi",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "research-lock-pin"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\"tools/research/requirements.lock:6\"]"
+        },
+        {
+          "name": "open-intelligence:installation",
+          "value": "not inspected or performed"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "declaration only; artifacts, hashes and transitive graph unresolved"
+        }
+      ],
+      "purl": "pkg:pypi/certifi@2026.10.23",
+      "scope": "excluded",
+      "type": "library",
+      "version": "2026.10.23"
+    },
+    {
+      "bom-ref": "research-package:charset-normalizer@3.5.2",
+      "name": "charset-normalizer",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "research-lock-pin"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\"tools/research/requirements.lock:7\"]"
+        },
+        {
+          "name": "open-intelligence:installation",
+          "value": "not inspected or performed"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "declaration only; artifacts, hashes and transitive graph unresolved"
+        }
+      ],
+      "purl": "pkg:pypi/charset-normalizer@3.5.2",
+      "scope": "excluded",
+      "type": "library",
+      "version": "3.5.2"
+    },
+    {
+      "bom-ref": "research-package:distro@1.9.0",
+      "name": "distro",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "research-lock-pin"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\"tools/research/requirements.lock:8\"]"
+        },
+        {
+          "name": "open-intelligence:installation",
+          "value": "not inspected or performed"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "declaration only; artifacts, hashes and transitive graph unresolved"
+        }
+      ],
+      "purl": "pkg:pypi/distro@1.9.0",
+      "scope": "excluded",
+      "type": "library",
+      "version": "1.9.0"
+    },
+    {
+      "bom-ref": "research-package:h11@0.16.0",
+      "name": "h11",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "research-lock-pin"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\"tools/research/requirements.lock:9\"]"
+        },
+        {
+          "name": "open-intelligence:installation",
+          "value": "not inspected or performed"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "declaration only; artifacts, hashes and transitive graph unresolved"
+        }
+      ],
+      "purl": "pkg:pypi/h11@0.16.0",
+      "scope": "excluded",
+      "type": "library",
+      "version": "0.16.0"
+    },
+    {
+      "bom-ref": "research-package:h5py@3.15.1",
+      "name": "h5py",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "research-workflow-pin"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\".github/workflows/single-cell-analysis.yml:32\"]"
+        },
+        {
+          "name": "open-intelligence:installation",
+          "value": "not inspected or performed"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "declaration only; artifacts, hashes and transitive graph unresolved"
+        }
+      ],
+      "purl": "pkg:pypi/h5py@3.15.1",
+      "scope": "excluded",
+      "type": "library",
+      "version": "3.15.1"
+    },
+    {
+      "bom-ref": "research-package:httpcore2@2.16.0",
+      "name": "httpcore2",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "research-lock-pin"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\"tools/research/requirements.lock:11\"]"
+        },
+        {
+          "name": "open-intelligence:installation",
+          "value": "not inspected or performed"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "declaration only; artifacts, hashes and transitive graph unresolved"
+        }
+      ],
+      "purl": "pkg:pypi/httpcore2@2.16.0",
+      "scope": "excluded",
+      "type": "library",
+      "version": "2.16.0"
+    },
+    {
+      "bom-ref": "research-package:httpcore@1.0.9",
+      "name": "httpcore",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "research-lock-pin"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\"tools/research/requirements.lock:10\"]"
+        },
+        {
+          "name": "open-intelligence:installation",
+          "value": "not inspected or performed"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "declaration only; artifacts, hashes and transitive graph unresolved"
+        }
+      ],
+      "purl": "pkg:pypi/httpcore@1.0.9",
+      "scope": "excluded",
+      "type": "library",
+      "version": "1.0.9"
+    },
+    {
+      "bom-ref": "research-package:httpx2@2.16.0",
+      "name": "httpx2",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "research-lock-pin"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\"tools/research/requirements.lock:13\"]"
+        },
+        {
+          "name": "open-intelligence:installation",
+          "value": "not inspected or performed"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "declaration only; artifacts, hashes and transitive graph unresolved"
+        }
+      ],
+      "purl": "pkg:pypi/httpx2@2.16.0",
+      "scope": "excluded",
+      "type": "library",
+      "version": "2.16.0"
+    },
+    {
+      "bom-ref": "research-package:httpx@0.28.1",
+      "name": "httpx",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "research-lock-pin"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\"tools/research/requirements.lock:12\"]"
+        },
+        {
+          "name": "open-intelligence:installation",
+          "value": "not inspected or performed"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "declaration only; artifacts, hashes and transitive graph unresolved"
+        }
+      ],
+      "purl": "pkg:pypi/httpx@0.28.1",
+      "scope": "excluded",
+      "type": "library",
+      "version": "0.28.1"
+    },
+    {
+      "bom-ref": "research-package:idna@3.20",
+      "name": "idna",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "research-lock-pin"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\"tools/research/requirements.lock:14\"]"
+        },
+        {
+          "name": "open-intelligence:installation",
+          "value": "not inspected or performed"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "declaration only; artifacts, hashes and transitive graph unresolved"
+        }
+      ],
+      "purl": "pkg:pypi/idna@3.20",
+      "scope": "excluded",
+      "type": "library",
+      "version": "3.20"
+    },
+    {
+      "bom-ref": "research-package:jsonpatch@1.38",
+      "name": "jsonpatch",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "research-lock-pin"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\"tools/research/requirements.lock:15\"]"
+        },
+        {
+          "name": "open-intelligence:installation",
+          "value": "not inspected or performed"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "declaration only; artifacts, hashes and transitive graph unresolved"
+        }
+      ],
+      "purl": "pkg:pypi/jsonpatch@1.38",
+      "scope": "excluded",
+      "type": "library",
+      "version": "1.38"
+    },
+    {
+      "bom-ref": "research-package:jsonpointer@3.6",
+      "name": "jsonpointer",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "research-lock-pin"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\"tools/research/requirements.lock:16\"]"
+        },
+        {
+          "name": "open-intelligence:installation",
+          "value": "not inspected or performed"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "declaration only; artifacts, hashes and transitive graph unresolved"
+        }
+      ],
+      "purl": "pkg:pypi/jsonpointer@3.6",
+      "scope": "excluded",
+      "type": "library",
+      "version": "3.6"
+    },
+    {
+      "bom-ref": "research-package:langchain-core@1.7.3",
+      "name": "langchain-core",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "research-lock-pin"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\"tools/research/requirements.lock:17\"]"
+        },
+        {
+          "name": "open-intelligence:installation",
+          "value": "not inspected or performed"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "declaration only; artifacts, hashes and transitive graph unresolved"
+        }
+      ],
+      "purl": "pkg:pypi/langchain-core@1.7.3",
+      "scope": "excluded",
+      "type": "library",
+      "version": "1.7.3"
+    },
+    {
+      "bom-ref": "research-package:langchain-protocol@0.0.20",
+      "name": "langchain-protocol",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "research-lock-pin"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\"tools/research/requirements.lock:18\"]"
+        },
+        {
+          "name": "open-intelligence:installation",
+          "value": "not inspected or performed"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "declaration only; artifacts, hashes and transitive graph unresolved"
+        }
+      ],
+      "purl": "pkg:pypi/langchain-protocol@0.0.20",
+      "scope": "excluded",
+      "type": "library",
+      "version": "0.0.20"
+    },
+    {
+      "bom-ref": "research-package:langgraph-checkpoint-sqlite@3.0.0",
+      "name": "langgraph-checkpoint-sqlite",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "research-lock-pin"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\"tools/research/requirements.lock:21\"]"
+        },
+        {
+          "name": "open-intelligence:installation",
+          "value": "not inspected or performed"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "declaration only; artifacts, hashes and transitive graph unresolved"
+        }
+      ],
+      "purl": "pkg:pypi/langgraph-checkpoint-sqlite@3.0.0",
+      "scope": "excluded",
+      "type": "library",
+      "version": "3.0.0"
+    },
+    {
+      "bom-ref": "research-package:langgraph-checkpoint@3.0.1",
+      "name": "langgraph-checkpoint",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "research-lock-pin"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\"tools/research/requirements.lock:20\"]"
+        },
+        {
+          "name": "open-intelligence:installation",
+          "value": "not inspected or performed"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "declaration only; artifacts, hashes and transitive graph unresolved"
+        }
+      ],
+      "purl": "pkg:pypi/langgraph-checkpoint@3.0.1",
+      "scope": "excluded",
+      "type": "library",
+      "version": "3.0.1"
+    },
+    {
+      "bom-ref": "research-package:langgraph-prebuilt@1.0.13",
+      "name": "langgraph-prebuilt",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "research-lock-pin"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\"tools/research/requirements.lock:22\"]"
+        },
+        {
+          "name": "open-intelligence:installation",
+          "value": "not inspected or performed"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "declaration only; artifacts, hashes and transitive graph unresolved"
+        }
+      ],
+      "purl": "pkg:pypi/langgraph-prebuilt@1.0.13",
+      "scope": "excluded",
+      "type": "library",
+      "version": "1.0.13"
+    },
+    {
+      "bom-ref": "research-package:langgraph-sdk@0.2.15",
+      "name": "langgraph-sdk",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "research-lock-pin"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\"tools/research/requirements.lock:23\"]"
+        },
+        {
+          "name": "open-intelligence:installation",
+          "value": "not inspected or performed"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "declaration only; artifacts, hashes and transitive graph unresolved"
+        }
+      ],
+      "purl": "pkg:pypi/langgraph-sdk@0.2.15",
+      "scope": "excluded",
+      "type": "library",
+      "version": "0.2.15"
+    },
+    {
+      "bom-ref": "research-package:langgraph@1.0.3",
+      "name": "langgraph",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "research-lock-pin"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\"tools/research/requirements.lock:19\"]"
+        },
+        {
+          "name": "open-intelligence:installation",
+          "value": "not inspected or performed"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "declaration only; artifacts, hashes and transitive graph unresolved"
+        }
+      ],
+      "purl": "pkg:pypi/langgraph@1.0.3",
+      "scope": "excluded",
+      "type": "library",
+      "version": "1.0.3"
+    },
+    {
+      "bom-ref": "research-package:langsmith@0.14.16",
+      "name": "langsmith",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "research-lock-pin"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\"tools/research/requirements.lock:24\"]"
+        },
+        {
+          "name": "open-intelligence:installation",
+          "value": "not inspected or performed"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "declaration only; artifacts, hashes and transitive graph unresolved"
+        }
+      ],
+      "purl": "pkg:pypi/langsmith@0.14.16",
+      "scope": "excluded",
+      "type": "library",
+      "version": "0.14.16"
+    },
+    {
+      "bom-ref": "research-package:numpy@2.3.5",
+      "name": "numpy",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "research-workflow-pin"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\".github/workflows/single-cell-analysis.yml:32\"]"
+        },
+        {
+          "name": "open-intelligence:installation",
+          "value": "not inspected or performed"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "declaration only; artifacts, hashes and transitive graph unresolved"
+        }
+      ],
+      "purl": "pkg:pypi/numpy@2.3.5",
+      "scope": "excluded",
+      "type": "library",
+      "version": "2.3.5"
+    },
+    {
+      "bom-ref": "research-package:orjson@3.13.0",
+      "name": "orjson",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "research-lock-pin"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\"tools/research/requirements.lock:25\"]"
+        },
+        {
+          "name": "open-intelligence:installation",
+          "value": "not inspected or performed"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "declaration only; artifacts, hashes and transitive graph unresolved"
+        }
+      ],
+      "purl": "pkg:pypi/orjson@3.13.0",
+      "scope": "excluded",
+      "type": "library",
+      "version": "3.13.0"
+    },
+    {
+      "bom-ref": "research-package:ormsgpack@1.13.0",
+      "name": "ormsgpack",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "research-lock-pin"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\"tools/research/requirements.lock:26\"]"
+        },
+        {
+          "name": "open-intelligence:installation",
+          "value": "not inspected or performed"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "declaration only; artifacts, hashes and transitive graph unresolved"
+        }
+      ],
+      "purl": "pkg:pypi/ormsgpack@1.13.0",
+      "scope": "excluded",
+      "type": "library",
+      "version": "1.13.0"
+    },
+    {
+      "bom-ref": "research-package:packaging@26.3",
+      "name": "packaging",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "research-lock-pin"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\"tools/research/requirements.lock:27\"]"
+        },
+        {
+          "name": "open-intelligence:installation",
+          "value": "not inspected or performed"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "declaration only; artifacts, hashes and transitive graph unresolved"
+        }
+      ],
+      "purl": "pkg:pypi/packaging@26.3",
+      "scope": "excluded",
+      "type": "library",
+      "version": "26.3"
+    },
+    {
+      "bom-ref": "research-package:pydantic-core@2.50.2",
+      "name": "pydantic_core",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "research-lock-pin"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\"tools/research/requirements.lock:29\"]"
+        },
+        {
+          "name": "open-intelligence:installation",
+          "value": "not inspected or performed"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "declaration only; artifacts, hashes and transitive graph unresolved"
+        }
+      ],
+      "purl": "pkg:pypi/pydantic-core@2.50.2",
+      "scope": "excluded",
+      "type": "library",
+      "version": "2.50.2"
+    },
+    {
+      "bom-ref": "research-package:pydantic@2.14.2",
+      "name": "pydantic",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "research-lock-pin"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\"tools/research/requirements.lock:28\"]"
+        },
+        {
+          "name": "open-intelligence:installation",
+          "value": "not inspected or performed"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "declaration only; artifacts, hashes and transitive graph unresolved"
+        }
+      ],
+      "purl": "pkg:pypi/pydantic@2.14.2",
+      "scope": "excluded",
+      "type": "library",
+      "version": "2.14.2"
+    },
+    {
+      "bom-ref": "research-package:pyyaml@6.0.3",
+      "name": "PyYAML",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "research-lock-pin"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\"tools/research/requirements.lock:30\"]"
+        },
+        {
+          "name": "open-intelligence:installation",
+          "value": "not inspected or performed"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "declaration only; artifacts, hashes and transitive graph unresolved"
+        }
+      ],
+      "purl": "pkg:pypi/pyyaml@6.0.3",
+      "scope": "excluded",
+      "type": "library",
+      "version": "6.0.3"
+    },
+    {
+      "bom-ref": "research-package:requests-toolbelt@1.0.0",
+      "name": "requests-toolbelt",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "research-lock-pin"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\"tools/research/requirements.lock:32\"]"
+        },
+        {
+          "name": "open-intelligence:installation",
+          "value": "not inspected or performed"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "declaration only; artifacts, hashes and transitive graph unresolved"
+        }
+      ],
+      "purl": "pkg:pypi/requests-toolbelt@1.0.0",
+      "scope": "excluded",
+      "type": "library",
+      "version": "1.0.0"
+    },
+    {
+      "bom-ref": "research-package:requests@2.34.2",
+      "name": "requests",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "research-lock-pin"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\"tools/research/requirements.lock:31\"]"
+        },
+        {
+          "name": "open-intelligence:installation",
+          "value": "not inspected or performed"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "declaration only; artifacts, hashes and transitive graph unresolved"
+        }
+      ],
+      "purl": "pkg:pypi/requests@2.34.2",
+      "scope": "excluded",
+      "type": "library",
+      "version": "2.34.2"
+    },
+    {
+      "bom-ref": "research-package:sniffio@1.3.1",
+      "name": "sniffio",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "research-lock-pin"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\"tools/research/requirements.lock:33\"]"
+        },
+        {
+          "name": "open-intelligence:installation",
+          "value": "not inspected or performed"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "declaration only; artifacts, hashes and transitive graph unresolved"
+        }
+      ],
+      "purl": "pkg:pypi/sniffio@1.3.1",
+      "scope": "excluded",
+      "type": "library",
+      "version": "1.3.1"
+    },
+    {
+      "bom-ref": "research-package:sqlite-vec@0.1.9",
+      "name": "sqlite-vec",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "research-lock-pin"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\"tools/research/requirements.lock:34\"]"
+        },
+        {
+          "name": "open-intelligence:installation",
+          "value": "not inspected or performed"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "declaration only; artifacts, hashes and transitive graph unresolved"
+        }
+      ],
+      "purl": "pkg:pypi/sqlite-vec@0.1.9",
+      "scope": "excluded",
+      "type": "library",
+      "version": "0.1.9"
+    },
+    {
+      "bom-ref": "research-package:tenacity@9.2.1",
+      "name": "tenacity",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "research-lock-pin"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\"tools/research/requirements.lock:35\"]"
+        },
+        {
+          "name": "open-intelligence:installation",
+          "value": "not inspected or performed"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "declaration only; artifacts, hashes and transitive graph unresolved"
+        }
+      ],
+      "purl": "pkg:pypi/tenacity@9.2.1",
+      "scope": "excluded",
+      "type": "library",
+      "version": "9.2.1"
+    },
+    {
+      "bom-ref": "research-package:truststore@0.10.5",
+      "name": "truststore",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "research-lock-pin"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\"tools/research/requirements.lock:36\"]"
+        },
+        {
+          "name": "open-intelligence:installation",
+          "value": "not inspected or performed"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "declaration only; artifacts, hashes and transitive graph unresolved"
+        }
+      ],
+      "purl": "pkg:pypi/truststore@0.10.5",
+      "scope": "excluded",
+      "type": "library",
+      "version": "0.10.5"
+    },
+    {
+      "bom-ref": "research-package:typing-extensions@4.16.0",
+      "name": "typing_extensions",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "research-lock-pin"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\"tools/research/requirements.lock:38\"]"
+        },
+        {
+          "name": "open-intelligence:installation",
+          "value": "not inspected or performed"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "declaration only; artifacts, hashes and transitive graph unresolved"
+        }
+      ],
+      "purl": "pkg:pypi/typing-extensions@4.16.0",
+      "scope": "excluded",
+      "type": "library",
+      "version": "4.16.0"
+    },
+    {
+      "bom-ref": "research-package:typing-inspection@0.4.4",
+      "name": "typing-inspection",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "research-lock-pin"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\"tools/research/requirements.lock:37\"]"
+        },
+        {
+          "name": "open-intelligence:installation",
+          "value": "not inspected or performed"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "declaration only; artifacts, hashes and transitive graph unresolved"
+        }
+      ],
+      "purl": "pkg:pypi/typing-inspection@0.4.4",
+      "scope": "excluded",
+      "type": "library",
+      "version": "0.4.4"
+    },
+    {
+      "bom-ref": "research-package:urllib3@2.8.0",
+      "name": "urllib3",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "research-lock-pin"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\"tools/research/requirements.lock:39\"]"
+        },
+        {
+          "name": "open-intelligence:installation",
+          "value": "not inspected or performed"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "declaration only; artifacts, hashes and transitive graph unresolved"
+        }
+      ],
+      "purl": "pkg:pypi/urllib3@2.8.0",
+      "scope": "excluded",
+      "type": "library",
+      "version": "2.8.0"
+    },
+    {
+      "bom-ref": "research-package:uuid-utils@0.19.0",
+      "name": "uuid_utils",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "research-lock-pin"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\"tools/research/requirements.lock:40\"]"
+        },
+        {
+          "name": "open-intelligence:installation",
+          "value": "not inspected or performed"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "declaration only; artifacts, hashes and transitive graph unresolved"
+        }
+      ],
+      "purl": "pkg:pypi/uuid-utils@0.19.0",
+      "scope": "excluded",
+      "type": "library",
+      "version": "0.19.0"
+    },
+    {
+      "bom-ref": "research-package:websockets@17.4",
+      "name": "websockets",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "research-lock-pin"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\"tools/research/requirements.lock:41\"]"
+        },
+        {
+          "name": "open-intelligence:installation",
+          "value": "not inspected or performed"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "declaration only; artifacts, hashes and transitive graph unresolved"
+        }
+      ],
+      "purl": "pkg:pypi/websockets@17.4",
+      "scope": "excluded",
+      "type": "library",
+      "version": "17.4"
+    },
+    {
+      "bom-ref": "research-package:xxhash@4.0.2",
+      "name": "xxhash",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "research-lock-pin"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\"tools/research/requirements.lock:42\"]"
+        },
+        {
+          "name": "open-intelligence:installation",
+          "value": "not inspected or performed"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "declaration only; artifacts, hashes and transitive graph unresolved"
+        }
+      ],
+      "purl": "pkg:pypi/xxhash@4.0.2",
+      "scope": "excluded",
+      "type": "library",
+      "version": "4.0.2"
+    },
+    {
+      "bom-ref": "research-package:zstandard@0.25.0",
+      "name": "zstandard",
+      "properties": [
+        {
+          "name": "open-intelligence:category",
+          "value": "research-lock-pin"
+        },
+        {
+          "name": "open-intelligence:declarations",
+          "value": "[\"tools/research/requirements.lock:43\"]"
+        },
+        {
+          "name": "open-intelligence:installation",
+          "value": "not inspected or performed"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:resolution",
+          "value": "declaration only; artifacts, hashes and transitive graph unresolved"
+        }
+      ],
+      "purl": "pkg:pypi/zstandard@0.25.0",
+      "scope": "excluded",
+      "type": "library",
+      "version": "0.25.0"
+    }
+  ],
+  "compositions": [
+    {
+      "aggregate": "incomplete",
+      "assemblies": [
+        "application:open-intelligence-source-candidate"
+      ],
+      "dependencies": [
+        "application:open-intelligence-source-candidate",
+        "tool:generate-source-sbom"
+      ]
+    }
+  ],
+  "dependencies": [
+    {
+      "dependsOn": [
+        "observed-runtime:python",
+        "observed-runtime:sqlite"
+      ],
+      "ref": "application:open-intelligence-source-candidate"
+    },
+    {
+      "dependsOn": [
+        "observed-runtime:python"
+      ],
+      "ref": "tool:generate-source-sbom"
+    }
+  ],
+  "metadata": {
+    "component": {
+      "bom-ref": "application:open-intelligence-source-candidate",
+      "description": "Incomplete first-party source and declaration inventory; not a built, resolved or deployed SBOM.",
+      "name": "Open Intelligence synthetic demo source candidate",
+      "properties": [
+        {
+          "name": "open-intelligence:branch",
+          "value": "integration/patient-evidence-review-20261102"
+        },
+        {
+          "name": "open-intelligence:category",
+          "value": "first-party-source-candidate"
+        },
+        {
+          "name": "open-intelligence:license-status",
+          "value": "UNSELECTED"
+        },
+        {
+          "name": "open-intelligence:revision",
+          "value": "1bb4ff06a5ab222d3561145e757226f671dbf3ea"
+        },
+        {
+          "name": "open-intelligence:working-tree-inputs-modified",
+          "value": "true"
+        }
+      ],
+      "type": "application"
+    },
+    "lifecycles": [
+      {
+        "phase": "pre-build"
+      }
+    ],
+    "properties": [
+      {
+        "name": "open-intelligence:completeness",
+        "value": "INCOMPLETE: source/declarations only; no binary, installed-package, container, OS, vulnerability or license scan"
+      },
+      {
+        "name": "open-intelligence:data-and-weights",
+        "value": "{\"limits\": \"No weight/dataset contents fetched or inspected; synthetic fixtures excluded; no installation performed\", \"other_production_files\": [], \"status\": \"Enumerated production roots contain only Python/JavaScript/HTML/CSS source files\"}"
+      },
+      {
+        "name": "open-intelligence:dependency-graph",
+        "value": "Only local Python/SQLite runtime relationships recorded; action/package/native/service transitives unresolved"
+      },
+      {
+        "name": "open-intelligence:exclusions",
+        "value": "Research probe source, test/fixture contents, downloaded data, host/site packages, models, images and deployed artifacts are not inventoried"
+      },
+      {
+        "name": "open-intelligence:input-manifest-sha256",
+        "value": "5affc79d300bbac9bc29be1b69a22e292a21bcccf8a8fee8bed63a7df6c6f1a4"
+      },
+      {
+        "name": "open-intelligence:inventory-counts",
+        "value": "{\"action_occurrence_count\": 15, \"action_reference_count\": 5, \"ci_test_runtime_declaration_count\": 5, \"file_component_count\": 34, \"inline_research_package_count\": 2, \"observed_runtime_count\": 2, \"production_file_count\": 26, \"research_lock_package_count\": 41, \"third_party_production_import_root_count\": 0, \"unresolved_install_declarations\": [], \"workflow_count\": 6}"
+      },
+      {
+        "name": "open-intelligence:inventory-date",
+        "value": "2026-11-02"
+      },
+      {
+        "name": "open-intelligence:licenses",
+        "value": "UNSELECTED first-party project; UNVERIFIED external components; no SPDX license or clearance inferred"
+      },
+      {
+        "name": "open-intelligence:production-ast-imports",
+        "value": "{\"first_party_absolute_roots\": [\"tools\"], \"method\": \"AST Import/ImportFrom roots only; relative imports are first-party; no module execution\", \"python_file_count\": 17, \"stdlib_roots\": [\"__future__\", \"argparse\", \"collections\", \"dataclasses\", \"datetime\", \"hashlib\", \"http\", \"json\", \"os\", \"pathlib\", \"re\", \"sqlite3\", \"threading\", \"time\", \"typing\", \"unicodedata\", \"urllib\"], \"unresolved_third_party_roots\": []}"
+      },
+      {
+        "name": "open-intelligence:runtime-separation",
+        "value": "Research lock and workflow packages are excluded; accepted H1 design candidates are not implemented runtime dependencies"
+      },
+      {
+        "name": "open-intelligence:safety-reconciliation",
+        "value": "Combined candidate includes the reviewed 20-file safety reconciliation from baseline 24519839 and selected PR #123 changes, with synthetic-fixture corrections and the offline guard harness; scoped research code remains excluded from the application runtime/dependency graph; historical artifact retention is not cleared"
+      },
+      {
+        "name": "open-intelligence:schema-validation",
+        "value": "Generation checks JSON and references; independent formal schema validation is recorded in SBOM.md"
+      }
+    ],
+    "tools": {
+      "components": [
+        {
+          "bom-ref": "tool:generate-source-sbom",
+          "name": "Open Intelligence source inventory generator",
+          "properties": [
+            {
+              "name": "open-intelligence:license-status",
+              "value": "UNSELECTED"
+            },
+            {
+              "name": "open-intelligence:source-ref",
+              "value": "file:tools/generate_source_sbom.py"
+            }
+          ],
+          "scope": "excluded",
+          "type": "application",
+          "version": "1"
+        }
+      ]
+    }
+  },
+  "services": [
+    {
+      "authenticated": false,
+      "bom-ref": "service:europe-pmc",
+      "description": "Source declaration only; not a deployment, live-provider verification or rights grant.",
+      "endpoints": [
+        "https://www.ebi.ac.uk/europepmc/webservices/rest/search"
+      ],
+      "name": "Europe PMC bibliographic metadata",
+      "properties": [
+        {
+          "name": "open-intelligence:activation",
+          "value": "Optional public human-authored terms with explicit attestations; metadata only; no automatic case query"
+        },
+        {
+          "name": "open-intelligence:category",
+          "value": "external-service-declaration"
+        },
+        {
+          "name": "open-intelligence:constant",
+          "value": "ENDPOINT"
+        },
+        {
+          "name": "open-intelligence:live-verification-by-inventory",
+          "value": "not performed"
+        },
+        {
+          "name": "open-intelligence:provider-dependency-graph",
+          "value": "unresolved"
+        },
+        {
+          "name": "open-intelligence:rights-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:source-ref",
+          "value": "file:src/open_intelligence/literature.py"
+        }
+      ]
+    },
+    {
+      "authenticated": false,
+      "bom-ref": "service:crossref",
+      "description": "Source declaration only; not a deployment, live-provider verification or rights grant.",
+      "endpoints": [
+        "https://api.crossref.org/works/"
+      ],
+      "name": "Crossref DOI metadata",
+      "properties": [
+        {
+          "name": "open-intelligence:activation",
+          "value": "Optional explicitly entered public DOI; metadata only"
+        },
+        {
+          "name": "open-intelligence:category",
+          "value": "external-service-declaration"
+        },
+        {
+          "name": "open-intelligence:constant",
+          "value": "API_ROOT"
+        },
+        {
+          "name": "open-intelligence:live-verification-by-inventory",
+          "value": "not performed"
+        },
+        {
+          "name": "open-intelligence:provider-dependency-graph",
+          "value": "unresolved"
+        },
+        {
+          "name": "open-intelligence:rights-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:source-ref",
+          "value": "file:tools/crossref_metadata.py"
+        }
+      ]
+    },
+    {
+      "authenticated": true,
+      "bom-ref": "service:meta-model-api",
+      "description": "Source declaration only; not a deployment, live-provider verification or rights grant.",
+      "endpoints": [
+        "https://api.meta.ai/v1/messages"
+      ],
+      "name": "Meta Model API",
+      "properties": [
+        {
+          "name": "open-intelligence:activation",
+          "value": "Optional operator-key live mode for bounded synthetic investigation; no model weights supplied"
+        },
+        {
+          "name": "open-intelligence:category",
+          "value": "external-service-declaration"
+        },
+        {
+          "name": "open-intelligence:constant",
+          "value": "META_API_URL"
+        },
+        {
+          "name": "open-intelligence:declared-model-identifier",
+          "value": "muse-spark-1.3"
+        },
+        {
+          "name": "open-intelligence:live-verification-by-inventory",
+          "value": "not performed"
+        },
+        {
+          "name": "open-intelligence:provider-dependency-graph",
+          "value": "unresolved"
+        },
+        {
+          "name": "open-intelligence:rights-status",
+          "value": "UNVERIFIED"
+        },
+        {
+          "name": "open-intelligence:source-ref",
+          "value": "file:src/open_intelligence/investigation.py"
+        }
+      ]
+    }
+  ],
+  "specVersion": "1.6",
+  "version": 1
+}
