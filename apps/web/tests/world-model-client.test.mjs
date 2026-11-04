@@ -28,7 +28,7 @@ const world=()=>({
   research_review_invalidation_integrated:false,composer_execution_authorized:false,
   snapshot_fingerprint:'c'.repeat(64),as_of_received_at:'2026-11-02T10:00:00Z',
   summary:{current_sources:1,historical_sources:0,current_observations:1,
-    unresolved_observations:1,source_disagreements:0},
+    current_laboratory_observations:0,unresolved_observations:1,source_disagreements:0},
   current_sources:[source()],history:[],
   observations:[{
     source_id:sourceId,document_id:'DOC-ONE',document_version:1,source_sha256:'b'.repeat(64),
@@ -37,6 +37,7 @@ const world=()=>({
     specimen_id:'SPECIMEN-ONE',event_date:'2026-01-10',issued_at:'2026-01-11',
     review_state:'not_established',clinical_meaning:null,
   }],
+  laboratory_observations:[],laboratory_timeline:[],
   unresolved_refs:[{source_id:sourceId,source_line:8}],conflicts:[],
   limitations:['Independently fictional data only; no professional review or clinical interpretation.'],
 });
@@ -123,7 +124,7 @@ test('known same-specimen same-date contradiction is never promoted to assessmen
     source_refs:[{source_id:sourceId,source_line:8},{source_id:other,source_line:8}],
     clinical_interpretation:'not_performed'}];
   w.summary={current_sources:2,historical_sources:0,current_observations:2,
-    unresolved_observations:1,source_disagreements:1};
+    current_laboratory_observations:0,unresolved_observations:1,source_disagreements:1};
   // There is no "reported" observation: fake source disagreement cannot pass.
   assert.throws(()=>parseSourceWorldModel(w,patientId,caseId));
   assert.equal(Object.isFrozen(w.observations[0]),false,

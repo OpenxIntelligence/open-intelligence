@@ -11,6 +11,18 @@ export type WorldObservation=Readonly<{
   source_line:number;specimen_id:string|null;event_date:string;issued_at:string;
   review_state:'not_established';clinical_meaning:null;
 }>;
+export type WorldLaboratoryObservation=Readonly<{
+  source_id:string;document_id:string;document_version:number;source_sha256:string;
+  observation_reference:string;loinc_code:string;effective_at:string;issued_at:string;
+  status:'reported_value'|'reported_absent';value_text:string|null;unit_code:string|null;
+  absent_reason:string|null;specimen_reference:string;source_reported:true;
+  clinical_review:'not_performed';review_state:'not_established';clinical_meaning:null;
+}>;
+export type WorldLaboratoryTimeline=Readonly<{
+  source_id:string;observation_reference:string;occurred_at:string;issued_at:string;
+  loinc_code:string;status:'reported_value'|'reported_absent';
+  clinical_interpretation:'not_performed';
+}>;
 export type WorldConflict=Readonly<{
   specimen_id:string;event_date:string;finding_key:string;
   status:'unresolved_source_disagreement';reported_states:readonly string[];
@@ -18,7 +30,8 @@ export type WorldConflict=Readonly<{
 }>;
 export type WorldSummary=Readonly<{
   current_sources:number;historical_sources:number;current_observations:number;
-  unresolved_observations:number;source_disagreements:number;
+  current_laboratory_observations:number;unresolved_observations:number;
+  source_disagreements:number;
 }>;
 export type SourceWorldModel=Readonly<{
   contract:'oi.pg-source-world-model/1';patient_id:string;case_id:string;access_receipt_id:string;synthetic:true;
@@ -26,7 +39,10 @@ export type SourceWorldModel=Readonly<{
   research_review_invalidation_integrated:false;composer_execution_authorized:false;
   snapshot_fingerprint:string;as_of_received_at:string|null;summary:WorldSummary;
   current_sources:readonly SourceVersion[];history:readonly SourceVersion[];
-  observations:readonly WorldObservation[];unresolved_refs:readonly WorldRef[];
+  observations:readonly WorldObservation[];
+  laboratory_observations:readonly WorldLaboratoryObservation[];
+  laboratory_timeline:readonly WorldLaboratoryTimeline[];
+  unresolved_refs:readonly WorldRef[];
   conflicts:readonly WorldConflict[];limitations:readonly string[];
 }>;
 const PID=/^[A-Za-z0-9][A-Za-z0-9_.:-]{2,127}$/;
@@ -82,6 +98,42 @@ function ref(v:unknown,currentIds:Set<string>):WorldRef{
   if(!SOURCE.test(id)||!currentIds.has(id))return error();
   return Object.freeze({source_id:id,source_line:line});
 }
+function labObs(v:unknown,current:Map<string,SourceVersion>):WorldLaboratoryObservation{
+  const x=shape(v,['source_id','document_id','document_version','source_sha256',
+    'observation_reference','loinc_code','effective_at','issued_at','status',
+    'value_text','unit_code','absent_reason','specimen_reference','source_reported',
+    'clinical_review','review_state','clinical_meaning']);
+  const id=str(x.source_id,36),src=current.get(id),status=x.status;
+  if(!src||src.kind!=='laboratory'||x.document_id!==src.document_id||
+     x.document_version!==src.version||x.source_sha256!==src.sha256||
+     !['reported_value','reported_absent'].includes(String(status))||
+     x.source_reported!==true||x.clinical_review!=='not_performed'||
+     x.review_state!=='not_established'||x.clinical_meaning!==null)return error();
+  const observation_reference=str(x.observation_reference,128);
+  const loinc_code=str(x.loinc_code,64),effective_at=stamp(x.effective_at),issued_at=stamp(x.issued_at);
+  const specimen_reference=str(x.specimen_reference,128);
+  if(status==='reported_value'){
+    if(typeof x.value_text!=='string'||!x.value_text||x.value_text.length>128||
+       typeof x.unit_code!=='string'||!x.unit_code||x.unit_code.length>64||
+       x.absent_reason!==null)return error();
+  }else if(x.value_text!==null||x.unit_code!==null||
+           typeof x.absent_reason!=='string'||!['unknown','not-performed','error','masked'].includes(x.absent_reason))return error();
+  return Object.freeze({...x,source_id:id,observation_reference,loinc_code,effective_at,
+    issued_at,specimen_reference} as WorldLaboratoryObservation);
+}
+function labTimeline(v:unknown,current:Map<string,WorldLaboratoryObservation>):WorldLaboratoryTimeline{
+  const x=shape(v,['source_id','observation_reference','occurred_at','issued_at',
+    'loinc_code','status','clinical_interpretation']);
+  const source_id=str(x.source_id,36),observation_reference=str(x.observation_reference,128);
+  const item=current.get(source_id+':'+observation_reference);
+  if(!item||x.occurred_at!==item.effective_at||x.issued_at!==item.issued_at||
+     x.loinc_code!==item.loinc_code||x.status!==item.status||
+     x.clinical_interpretation!=='not_performed')return error();
+  stamp(x.occurred_at);stamp(x.issued_at);
+  return Object.freeze({source_id,observation_reference,occurred_at:x.occurred_at as string,
+    issued_at:x.issued_at as string,loinc_code:x.loinc_code as string,status:x.status as 'reported_value'|'reported_absent',
+    clinical_interpretation:'not_performed'});
+}
 function obs(v:unknown,current:Map<string,SourceVersion>):WorldObservation{
   const x=shape(v,['source_id','document_id','document_version','source_sha256',
     'source_kind','finding_key','reported_state','source_statement','source_line',
@@ -102,7 +154,8 @@ export function parseSourceWorldModel(raw:unknown,expectedPatient:string,expecte
   const v=shape(raw,['contract','patient_id','case_id','access_receipt_id','synthetic','authority',
     'clinical_interpretation','research_review_invalidation_integrated',
     'composer_execution_authorized','snapshot_fingerprint','as_of_received_at',
-    'summary','current_sources','history','observations','unresolved_refs','conflicts','limitations']);
+    'summary','current_sources','history','observations','laboratory_observations',
+    'laboratory_timeline','unresolved_refs','conflicts','limitations']);
   if(v.contract!=='oi.pg-source-world-model/1'||v.patient_id!==expectedPatient||
      v.case_id!==expectedCase||v.synthetic!==true||
      typeof v.access_receipt_id!=='string'||!RECEIPT.test(v.access_receipt_id)||
@@ -113,10 +166,12 @@ export function parseSourceWorldModel(raw:unknown,expectedPatient:string,expecte
      !SHA.test(str(v.snapshot_fingerprint,64)))return error();
   if(v.as_of_received_at!==null)stamp(v.as_of_received_at);
   if(!Array.isArray(v.current_sources)||!Array.isArray(v.history)||
-     !Array.isArray(v.observations)||!Array.isArray(v.unresolved_refs)||
+     !Array.isArray(v.observations)||!Array.isArray(v.laboratory_observations)||
+     !Array.isArray(v.laboratory_timeline)||!Array.isArray(v.unresolved_refs)||
      !Array.isArray(v.conflicts)||!Array.isArray(v.limitations)||
      v.current_sources.length>512||v.history.length>512||
-     v.observations.length>4096||v.unresolved_refs.length>4096||
+     v.observations.length>4096||v.laboratory_observations.length>4096||
+     v.laboratory_timeline.length>4096||v.unresolved_refs.length>4096||
      v.conflicts.length>1024||v.limitations.length>32)return error();
   const current=v.current_sources.map(source),history=v.history.map(source);
   if(current.some(s=>s.state!=='current')||history.some(s=>s.state!=='superseded'))return error();
@@ -124,6 +179,16 @@ export function parseSourceWorldModel(raw:unknown,expectedPatient:string,expecte
   for(const s of [...current,...history]){if(ids.has(s.source_id))return error();ids.add(s.source_id);}
   const currentById=new Map(current.map(s=>[s.source_id,s]));
   const observations=v.observations.map(x=>obs(x,currentById));
+  const laboratory=v.laboratory_observations.map(x=>labObs(x,currentById));
+  const laboratoryById=new Map<string,WorldLaboratoryObservation>();
+  for(const x of laboratory){
+    const key=x.source_id+':'+x.observation_reference;
+    if(laboratoryById.has(key))return error();
+    laboratoryById.set(key,x);
+  }
+  const timeline=v.laboratory_timeline.map(x=>labTimeline(x,laboratoryById));
+  if(timeline.length!==laboratory.length||
+     new Set(timeline.map(x=>x.source_id+':'+x.observation_reference)).size!==laboratory.length)return error();
   const refOf=(x:WorldRef)=>x.source_id+':'+x.source_line;
   const indexedRefs=new Map<string,WorldObservation>();
   for(const x of observations){
@@ -156,9 +221,11 @@ export function parseSourceWorldModel(raw:unknown,expectedPatient:string,expecte
       source_refs:Object.freeze(refs),clinical_interpretation:'not_performed' as const});
   });
   const summary=shape(v.summary,['current_sources','historical_sources','current_observations',
-    'unresolved_observations','source_disagreements']);
+    'current_laboratory_observations','unresolved_observations','source_disagreements']);
   const counts={current_sources:current.length,historical_sources:history.length,
-    current_observations:observations.length,unresolved_observations:unresolved.length,
+    current_observations:observations.length+laboratory.length,
+    current_laboratory_observations:laboratory.length,
+    unresolved_observations:unresolved.length+laboratory.filter(x=>x.status==='reported_absent').length,
     source_disagreements:conflicts.length};
   for(const [key,value] of Object.entries(counts)){
     if(count(summary[key])!==value)return error();
@@ -173,7 +240,10 @@ export function parseSourceWorldModel(raw:unknown,expectedPatient:string,expecte
     as_of_received_at:v.as_of_received_at as string|null,
     summary:Object.freeze(counts),
     current_sources:Object.freeze(current),history:Object.freeze(history),
-    observations:Object.freeze(observations),unresolved_refs:Object.freeze(unresolved),
+    observations:Object.freeze(observations),
+    laboratory_observations:Object.freeze(laboratory),
+    laboratory_timeline:Object.freeze(timeline),
+    unresolved_refs:Object.freeze(unresolved),
     conflicts:Object.freeze(conflicts),limitations:Object.freeze(v.limitations.slice() as string[]),
   });
 }
