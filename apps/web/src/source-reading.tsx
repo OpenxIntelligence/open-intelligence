@@ -55,7 +55,7 @@ export function SourceReading({index, view, filters, onFiltersChange, busy, ques
             <ul className="finding-list">{findings.map((finding, i) => <li key={finding.source_id + ':' + finding.source_line + ':' + i} data-testid="source-finding">
               <p><strong>{finding.finding_key}</strong> · reported state: {finding.reported_state} · line {finding.source_line}</p>
               <blockquote data-testid="source-statement">{finding.source_statement}</blockquote>
-              <small>Clinical review: not established · <code>{finding.source_id}</code></small>
+              <small>Clinical review: not established</small>
               {item.state === 'current' && <div className="actions"><button type="button"
                 aria-label={`Ask about this statement: ${item.document_id}, version ${item.version}, line ${finding.source_line}, ${finding.finding_key}`}
                 data-testid="ask-source-question" disabled={busy || questionBusy}
