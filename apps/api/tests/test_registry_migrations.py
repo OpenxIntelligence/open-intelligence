@@ -60,10 +60,12 @@ class RegistryMigrationTests(unittest.TestCase):
         # unexpected dependent object must stop cleanup rather than be erased.
         with self.engine.begin() as connection:
             connection.execute(text("DROP TABLE IF EXISTS public.oi_registry_external_reference"))
+            connection.execute(text("DROP TABLE IF EXISTS coordination.question_followthrough_manual_dependencies"))
             connection.execute(text("DROP TABLE IF EXISTS coordination.question_followthrough_events"))
             connection.execute(text("DROP TABLE IF EXISTS coordination.question_followthrough_tasks"))
             connection.execute(text("DROP FUNCTION IF EXISTS coordination.guard_question_followthrough_event_insert()"))
             connection.execute(text("DROP FUNCTION IF EXISTS coordination.guard_question_followthrough_task_insert()"))
+            connection.execute(text("DROP FUNCTION IF EXISTS coordination.guard_question_followthrough_manual_dependency()"))
             connection.execute(text("DROP TABLE IF EXISTS investigation.question_evidence_links"))
             connection.execute(text("DROP FUNCTION IF EXISTS investigation.guard_question_evidence_insert()"))
             connection.execute(text("DROP TABLE IF EXISTS investigation.evidence_rights_decisions"))

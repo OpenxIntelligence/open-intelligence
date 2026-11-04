@@ -27,6 +27,7 @@ export type FollowthroughTask=Readonly<{
  created_at:string;status:FollowthroughStatus;revision:number;source_id:string;source_line:number;
  source_sha256:string;source_version:number;source_snapshot_contract:string;source_snapshot_sha256:string;
  preflight_sha256:string;source_context_state:'current_unreviewed_question'|'source_reassessment_required';
+ manual_dependency_revision_id:string|null;manual_context_state:'current_unreviewed'|'reassessment_required'|null;
  needs_recheck:boolean;is_overdue:boolean;is_due_soon:boolean;clinical_approval:false;
  history:readonly FollowthroughEvent[];
 }>;
@@ -56,12 +57,14 @@ export const FOLLOWTHROUGH_TRANSITIONS:Readonly<Record<FollowthroughStatus,reado
 export function followthroughTransitionContext(task:FollowthroughTask):string{
  return JSON.stringify([task.patient_id,task.case_id,task.task_id,task.question_id,task.revision,task.status,
   task.owner_label,task.source_id,task.source_line,task.source_version,task.source_sha256,
-  task.source_snapshot_contract,task.source_snapshot_sha256,task.preflight_sha256,task.source_context_state]);
+  task.source_snapshot_contract,task.source_snapshot_sha256,task.preflight_sha256,task.source_context_state,
+  task.manual_dependency_revision_id,task.manual_context_state]);
 }
 const canonical='oi.pg-source-world-model/1',legacy='oi.synthetic-postgres-world-model-sources/1';
 const taskFields=['task_id','question_id','patient_id','case_id','title','detail','owner_label','due_date','review_trigger',
  'created_at','status','revision','source_id','source_line','source_sha256','source_version','source_snapshot_contract',
- 'source_snapshot_sha256','preflight_sha256','source_context_state','needs_recheck','is_overdue','is_due_soon','clinical_approval','history'];
+ 'source_snapshot_sha256','preflight_sha256','source_context_state','manual_dependency_revision_id',
+ 'manual_context_state','needs_recheck','is_overdue','is_due_soon','clinical_approval','history'];
 function exact(value:unknown,fields:readonly string[]):value is Record<string,unknown>{
  return value!==null&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).length===fields.length&&
   fields.every(key=>Object.hasOwn(value,key));
@@ -101,7 +104,8 @@ export function validFollowthroughTransition(task:FollowthroughTask,draft:Follow
  return status(draft.status)&&FOLLOWTHROUGH_TRANSITIONS[task.status].includes(draft.status)&&
   validFollowthroughText(draft.reason,3,600)&&
   validFollowthroughText(draft.owner_label,draft.status==='assigned'?2:0,80)&&
-  (draft.status==='assigned'||draft.owner_label==='');
+  (draft.status==='assigned'||draft.owner_label==='')&&
+  !(draft.status==='completed'&&task.manual_context_state==='reassessment_required');
 }
 
 export function decodeFollowthrough(value:unknown,patient:string,caseId:string):FollowthroughList{
@@ -125,6 +129,9 @@ export function decodeFollowthrough(value:unknown,patient:string,caseId:string):
    ![canonical,legacy].includes(String(row.source_snapshot_contract))||
    !['current_unreviewed_question','source_reassessment_required'].includes(String(row.source_context_state))||
    (row.source_snapshot_contract===legacy&&row.source_context_state!=='source_reassessment_required')||
+   !((row.manual_dependency_revision_id===null&&row.manual_context_state===null)||
+     (id(row.manual_dependency_revision_id,'PASSAGES-')&&
+      ['current_unreviewed','reassessment_required'].includes(String(row.manual_context_state))))||
    row.clinical_approval!==false||!Array.isArray(row.history)||row.history.length!==row.revision||row.history.length>750)
    throw Error('task row');
   taskIds.add(row.task_id);
@@ -143,7 +150,8 @@ export function decodeFollowthrough(value:unknown,patient:string,caseId:string):
   const last=history.at(-1),open=['created','assigned','acknowledged'].includes(row.status);
   const due=row.due_date===null?null:Date.parse((row.due_date as string)+'T00:00:00Z');
   if(!last||last.status!==row.status||last.owner_label!==row.owner_label||
-   row.needs_recheck!==(open&&row.source_context_state==='source_reassessment_required')||
+   row.needs_recheck!==(open&&(row.source_context_state==='source_reassessment_required'||
+     row.manual_context_state==='reassessment_required'))||
    row.is_overdue!==(open&&due!==null&&due<today)||
    row.is_due_soon!==(open&&due!==null&&due>=today&&due<=today+7*86400000))throw Error('task projection');
   return Object.freeze({...row,history} as FollowthroughTask);
@@ -161,7 +169,7 @@ export function decodeFollowthroughReceipt(value:unknown,intent:FollowthroughInt
 
 export const FOLLOWTHROUGH_FILTERS=Object.freeze([
  {key:'all',label:'All work'},
- {key:'recheck',label:'Source changed'},
+ {key:'recheck',label:'Evidence changed'},
  {key:'overdue',label:'Revisit date passed'},
  {key:'unassigned',label:'Unassigned'},
  {key:'history',label:'Completed / deferred'},

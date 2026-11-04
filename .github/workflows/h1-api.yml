@@ -20,9 +20,9 @@ concurrency:
 jobs:
   synthetic-postgres-contract:
     runs-on: ubuntu-24.04
-    # The connected socket/report suite reached its final recovery PASS at the
-    # former 20-minute limit; retain every gate and allow inventory to complete.
-    timeout-minutes: 30
+    # Verified #469 run 41883746990 took nearly 30 minutes with all seven
+    # recovery gates. Preserve them and allow populated migration acceptance.
+    timeout-minutes: 40
     env:
       PYTHONDONTWRITEBYTECODE: '1'
       PIP_DISABLE_PIP_VERSION_CHECK: '1'
@@ -87,6 +87,14 @@ jobs:
           python --version
       - name: Apply the explicit migration to the disposable database
         run: python -m oi_api.migrate upgrade head
+      - name: Verify both populated laboratory and manual-task upgrade paths first
+        run: |
+          python - <<'PYTEST'
+          import unittest
+          suite = unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_lab_manual_convergence.py')
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          raise SystemExit(0 if result.wasSuccessful() and result.testsRun == 4 and not result.skipped else 1)
+          PYTEST
       - name: Run contracts and real PostgreSQL migration tests
         run: |
           python - <<'PY'

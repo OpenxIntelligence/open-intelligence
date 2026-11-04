@@ -32,6 +32,7 @@ function task(n,status='created',changes={}){
   source_id:sourceId,source_line:8,source_sha256:sourceHash,source_version:1,
   source_snapshot_contract:'oi.pg-source-world-model/1',source_snapshot_sha256:fingerprint,
   preflight_sha256:preflightHash,source_context_state:'current_unreviewed_question',
+  manual_dependency_revision_id:null,manual_context_state:null,
   needs_recheck:false,is_overdue:false,is_due_soon:false,clinical_approval:false,
   history:sequence.map((value,i)=>({event_id:'TASK-EVENT-'+(n*10+i).toString(16).toUpperCase().padStart(32,'0'),
    revision:i+1,previous_status:i?sequence[i-1]:null,status:value,owner_label:owner,

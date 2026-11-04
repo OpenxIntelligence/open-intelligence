@@ -83,10 +83,14 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
 
     def remove_owned_fixtures(self):
         with self.engine.begin() as conn:
+            # Drop the declared 0016 FK child before its canonical task owner;
+            # RESTRICT remains in effect for every unknown dependency.
+            conn.execute(text("DROP TABLE IF EXISTS coordination.question_followthrough_manual_dependencies"))
             conn.execute(text("DROP TABLE IF EXISTS coordination.question_followthrough_events"))
             conn.execute(text("DROP TABLE IF EXISTS coordination.question_followthrough_tasks"))
             conn.execute(text("DROP FUNCTION IF EXISTS coordination.guard_question_followthrough_event_insert()"))
             conn.execute(text("DROP FUNCTION IF EXISTS coordination.guard_question_followthrough_task_insert()"))
+            conn.execute(text("DROP FUNCTION IF EXISTS coordination.guard_question_followthrough_manual_dependency()"))
             conn.execute(text("DROP TABLE IF EXISTS investigation.question_evidence_links"))
             conn.execute(text("DROP FUNCTION IF EXISTS investigation.guard_question_evidence_insert()"))
             conn.execute(text("DROP TABLE IF EXISTS investigation.evidence_rights_decisions"))

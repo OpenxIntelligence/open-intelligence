@@ -15,6 +15,7 @@ from sqlalchemy.engine import make_url
 
 from oi_api.app import create_app
 from oi_api.config import Settings
+from oi_api.contracts import SCHEMA_REVISION
 from oi_api.database import make_engine
 from oi_api.migrate import migrate
 from http_support import running_server
@@ -287,7 +288,7 @@ class LaboratoryFHIRHTTPTests(unittest.TestCase):
         with self.engine.connect() as c:
             self.assertEqual(c.execute(text(
                 "SELECT version_num FROM public.alembic_version")).scalar_one(),
-                             "0016_fhir_laboratory_sources")
+                             SCHEMA_REVISION)
             self.assertEqual(c.execute(text(
                 "SELECT to_regclass('clinical_source.fhir_laboratory_sources')")).scalar_one(),
                              "clinical_source.fhir_laboratory_sources")
