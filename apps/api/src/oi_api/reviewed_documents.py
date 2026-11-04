@@ -61,6 +61,17 @@ def selection_reference(doc, patient_id, case_id, revision_id, selection_key):
 
 
 class ReviewedDocuments(PostgresSourceVersions):
+    def resolve_selection_locked(self, patient_id, case_id, source_id, revision_id, selection_key, *, organization, purpose):
+        """Resolve an exact anchor for a trusted, authorized question consumer.
+
+        Caller owns response encoding, fresh grants and audit in this same
+        transaction. This projection itself never grants disclosure authority.
+        """
+        if not self.registry._transaction_active:
+            raise PatientRegistryError("Document selection requires caller transaction")
+        self._binding(patient_id, case_id, organization, purpose)
+        return selection_reference(self._load(case_id, source_id), patient_id, case_id, revision_id, selection_key)
+
     def _authorize(self, patient_id, case_id, organization, purpose, recheck):
         with self.registry.transaction():
             self._binding(patient_id, case_id, organization, purpose)

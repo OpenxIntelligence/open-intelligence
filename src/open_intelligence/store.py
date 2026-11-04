@@ -1315,6 +1315,34 @@ class CaseStore:
             "SELECT id,actor,case_id,route,result,occurred_at FROM access_log "
             "WHERE case_id=? ORDER BY id", (case_id,)).fetchall())
 
+
+    def _stale_case_model_investigations(self, case_id: str) -> list[int]:
+        """Invalidate model runs when their case-wide source context changes.
+
+        Every live/replay prompt can inspect current case assertions. Its final
+        citations, or even an abstention with no claims, are not a complete
+        dependency record. Until captured input dependencies are persisted,
+        source imports conservatively stale all current runs for THIS case.
+        Independently authored snapshots retain anchor-specific invalidation.
+        Caller owns the source-import transaction; no extra event is emitted.
+        """
+        if not self.db.in_transaction:
+            raise InvalidInput("Model invalidation requires the source transaction")
+        rows = self.db.execute(
+            "SELECT id FROM investigations WHERE case_id=? AND stale=0 ORDER BY id",
+            (case_id,)).fetchall()
+        if not rows:
+            return []
+        # Reopen only questions belonging to runs that are newly stale.
+        self.db.execute(
+            """UPDATE questions SET state='open' WHERE case_id=? AND id IN
+            (SELECT question_id FROM investigations WHERE case_id=? AND stale=0)""",
+            (case_id, case_id))
+        self.db.execute(
+            "UPDATE investigations SET stale=1 WHERE case_id=? AND stale=0",
+            (case_id,))
+        return [int(row["id"]) for row in rows]
+
     def import_report(self, case_id: str, raw: bytes, *,
                       assignee_label: str | None = None, due_date: str | None = None) -> dict:
         """Durably ingest bytes. An explicit amendment is required for changed text.
@@ -1460,10 +1488,6 @@ class CaseStore:
                 self.db.execute(f"UPDATE snapshots SET state='stale' WHERE id IN ({marks})", invalidated)
                 self.db.execute(f"""UPDATE questions SET state='open' WHERE case_id=? AND id IN
                     (SELECT question_id FROM snapshots WHERE id IN ({marks}))""", [case_id, *invalidated])
-                # An amendment changes freshness for investigations too:
-                # they cite the superseded source's facts, so mark them stale
-                # rather than silently leaving them current.
-                self.db.execute("UPDATE investigations SET stale=1 WHERE case_id=? AND stale=0", (case_id,))
             # OI-021, same transaction: only options in THIS case that
             # cite the superseded version or a stale snapshot reopen.
             invalidated_options = self._invalidate_options(
@@ -1480,6 +1504,8 @@ class CaseStore:
             # the prior answer in history.
             invalidated_workspace = self._reopen_workspace_questions(
                 case_id, previous["id"], report.document_id, version)
+        # Even a new, non-amended source can change the model's case-wide input.
+        newly_stale_model_ids = self._stale_case_model_investigations(case_id)
         invalidated_inventory = []
         if previous:
             # Anchor-exact, like snapshots: only assertions citing the
@@ -1537,6 +1563,7 @@ class CaseStore:
         event_id = self._event(case_id, "source_imported", document_id=report.document_id,
                     version=version, source_id=source_id, amends_id=previous["id"] if previous else None,
                     invalidated_snapshots=invalidated, invalidated_options=invalidated_options,
+                    invalidated_model_investigation_ids=newly_stale_model_ids,
                     invalidated_inventory_assertions=invalidated_inventory,
                     invalidated_bio_explanations=invalidated_bio_explanations,
                     invalidated_bio_assay_observations=invalidated_bio_assays,
@@ -1552,6 +1579,7 @@ class CaseStore:
                 finding_diff=self._source_finding_diff(previous["id"], source_id))
         return {"result": "imported", "source_id": source_id, "version": version,
                 "invalidated_snapshots": invalidated, "invalidated_options": invalidated_options,
+                "invalidated_model_investigation_ids": newly_stale_model_ids,
                 "invalidated_inventory_assertions": invalidated_inventory,
                 "invalidated_bio_explanations": invalidated_bio_explanations,
                 "invalidated_bio_assay_observations": invalidated_bio_assays,
