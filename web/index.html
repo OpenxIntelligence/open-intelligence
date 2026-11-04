@@ -69,6 +69,7 @@
           <a href="#changes-since-review">What changed</a>
           <a href="#re-review-tasks">Re-review tasks</a>
           <a href="#options">Options &amp; dependencies</a>
+          <a href="#packet">Case packet</a>
           <a href="#visits">Visits</a>
           <a href="#second-survivorship">Second opinion &amp; survivorship</a>
           <a href="#followthrough">Follow-through</a>
@@ -940,6 +941,17 @@
         <div class="subhead">New questions since the anchor</div><div id="changes-questions" class="questions" aria-live="polite"></div>
       </section>
 
+      <section class="panel" id="packet" aria-labelledby="packet-heading">
+        <div class="panel-head"><div><div class="eyebrow">PACKET · PRINTABLE</div><h2 id="packet-heading">Case packet</h2></div><span class="pill pill-warn">FICTIONAL DEMO DATA — not a real patient</span></div>
+        <p class="muted">One printable packet for this fictional case only. It gathers the same sections the workspace shows, with the same source references. Nothing new is written.</p>
+        <div class="actions">
+          <button id="packet-download-json" type="button" class="button secondary">Download packet (JSON)</button>
+          <button id="packet-download-text" type="button" class="button secondary">Download packet (text)</button>
+          <button id="packet-print" type="button" class="button secondary">Print packet</button>
+        </div>
+        <p id="packet-status" class="muted tiny" role="status" aria-live="polite">Packet not loaded yet.</p>
+        <div class="subhead">Packet summary</div><div id="packet-summary" class="cards" aria-live="polite"></div>
+      </section>
       <section class="panel" id="followthrough" aria-labelledby="followthrough-heading">
         <div class="panel-head"><div><div class="eyebrow">FOLLOW-THROUGH · RECORDS FOR HUMANS</div><h2 id="followthrough-heading">Follow-through tasks</h2></div><span class="pill pill-warn">FICTIONAL DEMO DATA — not a real patient</span></div>
         <p class="muted">Agreed work for a human to do: what was agreed, who owns it, and when to revisit it. Recording a task here does nothing by itself — it does not send a message, change a record, or perform any clinical step. A task counts as done only after the owner has acknowledged it and a human records the completion, with who, when, and why kept in history.</p>

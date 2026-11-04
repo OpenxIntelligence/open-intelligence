@@ -15,6 +15,7 @@ from tools.crossref_metadata import MetadataInputError, fetch_public_doi, projec
 
 from .case_search import list_cases
 from .changes import changes_since_review
+from .packet import build_case_packet, render_packet_text
 from .followthrough import followthrough_view
 from .investigation import (
     TEMPLATES,
@@ -335,6 +336,15 @@ class Handler(BaseHTTPRequestHandler):
             if exported:
                 contents = store.export_markdown(exported[1], int(exported[2])).encode("utf-8")
                 return self._send(200, contents, "text/markdown; charset=utf-8")
+            packet = re.fullmatch(rf"/api/cases/{ID_PART}/packet", path)
+            if packet:
+                query = parse_qs(urlsplit(self.path).query)
+                fmt = query.get("format", [None])[0]
+                data = build_case_packet(store, packet[1])
+                if fmt == "text":
+                    contents = render_packet_text(data).encode("utf-8")
+                    return self._send(200, contents, "text/plain; charset=utf-8")
+                return self._json(200, data)
             question_synthesis = re.fullmatch(rf"/api/cases/{ID_PART}/questions/([0-9]+)/synthesis", path)
             if question_synthesis:
                 return self._json(200, store.question_synthesis(question_synthesis[1], int(question_synthesis[2])))
