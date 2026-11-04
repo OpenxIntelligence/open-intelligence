@@ -112,3 +112,10 @@ This section is based on direct readout of the latest-attempt GitHub workflow **
 | #422 | [41794564799](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41794564799) | **failure** in PostgreSQL contract test stage; downstream recovery probes skipped | API preview acceptance failed; root cause requires logs and bounded repair |
 
 The presence of a SUCCESS job is not clinical validity, production deployment or merge authorization. No model/clinical-use claims change.
+
+
+## FHIR preview failure triage — direct job-log diagnosis
+
+Downloaded and inspected the decoded GitHub job log for [#422 API run 41794564799](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41794564799), job 126455480502. **688 tests executed, one failure**. All **4 real PostgreSQL/HTTP** tests in `test_laboratory_fhir_http.py` and all **8 parser** tests in `test_laboratory_fhir_r4.py` reported `ok`. The sole failure was `test_contracts.HTTPContractTests.test_openapi_is_local_versioned_and_describes_failure`, `apps/api/tests/test_contracts.py:134`: the expected exact OpenAPI `schema["paths"]` set omitted the newly added `/v1/patients/{patient_id}/cases/{case_id}/laboratory/fhir-r4/preview` route. The suite stopped before downstream backup/restore and revocation probes.
+
+**Classification:** isolated route-schema regression in the test oracle for this new endpoint, **not evidence of a failed laboratory safety or nonwrite scenario**. Engineering repair: amend the canonical OpenAPI expected-route set after checking the endpoint's declared methods/status/authorization, then rerun all exact-head H1 API/PG, recovery, web/browser, synthetic and rights gates. Do not weaken the contract to an unrestricted subset match or skip the assertion. Branch remains draft and not integrated; successful isolated tests are not full acceptance.
