@@ -209,3 +209,50 @@ rights-qualified live-evidence connection through the existing question owner.
 Production accounts/consent, professional review, source licensing, clinical
 qualification and real-patient release remain separate unresolved gates.
 No merge, deployment or clinical validation is authorized or claimed.
+
+## Connected follow-up attention — 3 November 2026
+
+The next bounded continuation restores the existing follow-up attention feature
+from #299 into the source-reading/evidence/report candidate #322. The latter's
+combined application still showed only an undifferentiated task list. This is
+reuse of the original presentation owner, not a second work ledger or urgency
+model. Existing OI-007/009/010/013 remain the acceptance items.
+
+### Design and execution plan
+
+- Base: #322 `19b75317701ae01fc93844077ac94c351fd982bd`, tree
+  `9f120084d641ad340a0ee3d85b755480d990e45b`. The isolated local checkout
+  reconstructed this exact tree from #318 plus the seven-file #322 patch.
+- Donor: #299 `b47cc6ddde922bb53aa399b7d05adaee2d07620c`.
+  Preserve its two production files, 21 unit tests and browser journey byte for
+  byte. Its existing design remains the behavior contract.
+- Reuse All work, Source changed, Revisit date passed, Unassigned and Completed /
+  deferred filters. Counts overlap and use the server's dated snapshot. Preserve
+  exact task identities/order/history and unsaved transition text while filtering.
+- Withhold tasks/counts on absent, loading, denied or contradictory scope; a
+  known empty authorized result is distinct from unavailable work. A new receipt
+  resets to All work. Filtering itself performs no reads or writes.
+- Add one real composed React/session regression for simultaneous authored
+  evidence and follow-up attention, including independent task-read denial.
+- Run compiled client tests, production build, dependency gate and the existing
+  hosted PostgreSQL/FastAPI/Chromium journey at the published head. Preserve all
+  source-reading, report-download, amendment, recovery and permission assertions.
+  Obtain a separate read-only code review before declaring completion.
+
+### Observed local checkpoint
+
+Tests first: all 278 inherited client checks passed and all 21 unchanged donor
+attention tests failed on the #322 tree because the projection was absent. The
+new composed-screen test separately failed at the missing attention controls,
+after successfully loading and rendering the existing evidence packet.
+After applying the donor implementation, all **300 compiled client tests passed**
+with zero failures, cancellations or skips. The four donor code/test/browser
+blobs exactly match their published #299 object hashes. Build, hosted combined
+acceptance and independent review are recorded in the continuation PR as they
+complete; they are not inferred from either parent's prior green workflow.
+
+No backend, migrations, session/authentication code, dependency, CSS or workflow
+changes. Source owners and main remain unchanged; only a draft child is prepared.
+Next: converge owner-reviewed candidates and exercise the same connected workflow
+with reviewed document intake and the separately governed DOI connector. These
+are separate pending branches, not capabilities delivered by this increment.
