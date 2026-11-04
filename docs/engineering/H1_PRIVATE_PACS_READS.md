@@ -134,3 +134,65 @@ integration. Protect its socket directory and dedicated service UID separately.
 Same-UID/root compromise, other backend listeners, distributed revocation,
 production consent, broader image profiles and clinical qualification remain
 outside this change. Per-request limits are not global concurrency control.
+
+
+## Concurrent transport capacity continuation — 3 November 2026
+
+Parent #320 published and verified the prior transport at
+`583f77255b6fb00386fbed3005a01cc3c8874c6b`; its PR execution record supersedes
+the historical unpublished/database-NOT-RUN checkpoint above. This continuation
+adds non-waiting capacity to that same client, not a gateway or a new image owner.
+
+`UnixSocketImageArchive` now defaults to four concurrent transport reads.
+An optional keyword-only `capacity=ArchiveReadCapacity(max_in_flight=N)` accepts
+exact integers 1..16, excluding booleans. Share one capacity object across
+operator-created adapters in the same process when they need one combined limit:
+
+```python
+from oi_api.archive_socket import ArchiveReadCapacity, UnixSocketImageArchive
+
+capacity = ArchiveReadCapacity(max_in_flight=4)
+# Operator-selected paths/UIDs only, never request fields; construct after fork.
+archive = UnixSocketImageArchive(socket_path, expected_peer_uid, capacity=capacity)
+# Existing create_app(..., image_archive=archive) injection remains explicit.
+```
+
+Excess calls return the existing generic transport error before socket creation;
+there is no waiting queue, retry or local fallback. Accepted calls hold their slot
+through peer verification, send, receive, EOF, parsing and socket closure. A
+finally block releases admitted capacity on success/failure or cancellation-like
+unwinding; refused callers never release someone else's slot. Patient/source
+identity, canonical byte comparison, final authority and receipts remain owned
+by the unchanged application path.
+
+Local evidence: the unchanged reader admitted a fifth request while four real
+socket peers were held; the new regression failed with `ArchiveTransportError
+not raised`. After implementation, 14 new capacity tests and all 34 unchanged
+transport tests pass. The 245 reference tests and existing bounded data scanner
+also pass. A five-cycle run of the initial 14-test suite passed before a further
+strengthening of the separate-default-capacities test; the final 48-test suite
+then passed again. A prior combined shell command exceeded its 45-second budget
+after the reference suite and seven complete capacity cycles; that interrupted
+command is not presented as a complete ten-cycle run.
+
+Three new PostgreSQL/HTTP methods cover overload without fallback/receipt,
+subsequent successful retrieval, timeout release and permission withdrawal during
+an admitted read. They are authored but NOT RUN locally: this environment has
+no PostgreSQL/Docker executable and lacks the exact pg8000/code-only-pydicom
+runtime. Exact-head hosted API/recovery/browser acceptance remains pending at
+this committed checkpoint; record later results on the continuation PR.
+
+The complete bounded delta was self-reviewed. No independent reviewer/subagent
+was available or dispatched; independent review remains open. Source, schema,
+migrations, dependencies, permissions, frontend and workflows are unchanged.
+
+Limits: one shared object bounds transport work in one process only. Other
+capacity objects/workers are independent; canonical preflight and caller-owned
+returned bytes are outside the bound. Default 4/maximum 16 are engineering
+limits, not measured production sizing. No whole-service/global-memory bound,
+live PACS, network isolation, raw-backend bypass prevention, clinical validation,
+merge, deployment or automatic archive activation is claimed.
+
+Design/acceptance plan:
+`docs/superpowers/specs/2026-11-03-h1-archive-read-capacity-design.md` and
+`docs/superpowers/plans/2026-11-03-h1-archive-read-capacity.md`.

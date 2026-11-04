@@ -7,11 +7,12 @@ default; no endpoint or credentials are accepted from an HTTP request.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import math
 import re
 import socket
 import struct
+from threading import BoundedSemaphore
 import time
 
 
@@ -29,6 +30,22 @@ _BOUNDARY = re.compile(r"[0-9A-Za-z'()+_,./:=? -]{1,70}\Z")
 
 class ArchiveTransportError(RuntimeError):
     """Generic failure; no private path, identifiers or upstream diagnostics."""
+
+
+@dataclass(frozen=True, slots=True, repr=False, eq=False)
+class ArchiveReadCapacity:
+    """Non-waiting transport slots shared explicitly within one process.
+
+    Instantiate after worker startup/fork. This limits socket/receive/parse work,
+    not canonical custody queries, caller-owned returned bytes or other workers.
+    """
+    max_in_flight: int = 4
+    _slots: BoundedSemaphore = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        if type(self.max_in_flight) is not int or not 1 <= self.max_in_flight <= 16:
+            raise ValueError("Invalid archive read capacity")
+        object.__setattr__(self, "_slots", BoundedSemaphore(self.max_in_flight))
 
 
 def _remaining(deadline: float) -> float:
@@ -178,6 +195,7 @@ class UnixSocketImageArchive:
     socket_path: str
     expected_peer_uid: int
     timeout_seconds: float = 5.0
+    capacity: ArchiveReadCapacity = field(default_factory=ArchiveReadCapacity, kw_only=True)
 
     def __post_init__(self) -> None:
         path = self.socket_path
@@ -189,16 +207,22 @@ class UnixSocketImageArchive:
             and type(timeout) in (int, float) and 0.05 <= timeout <= 30 and math.isfinite(timeout)
             and type(getattr(socket, "SO_PEERCRED", None)) is int
             and hasattr(socket, "AF_UNIX")
+            and type(self.capacity) is ArchiveReadCapacity
         )
         if not valid:
             raise ValueError("Invalid archive transport configuration")
 
     def read(self, study_uid: str, series_uid: str, sop_uid: str) -> bytes:
         """Retrieve one bounded replica; custody/clinical validation is caller-owned."""
+        admitted = False
         try:
             for uid in (study_uid, series_uid, sop_uid):
                 if type(uid) is not str or not 3 <= len(uid) <= 64 or _UID.fullmatch(uid) is None:
                     raise ValueError()
+            # No queue: excess callers leave before opening an upstream socket.
+            admitted = self.capacity._slots.acquire(blocking=False)
+            if not admitted:
+                raise ValueError()
             path = f"/studies/{study_uid}/series/{series_uid}/instances/{sop_uid}".encode("ascii")
             request = (b"GET " + path + b" HTTP/1.1\r\nHost: oi-archive\r\n"
                        b'Accept: multipart/related; type="application/dicom", application/dicom\r\n'
@@ -217,5 +241,10 @@ class UnixSocketImageArchive:
                 return _receive(sock, deadline, path)
         except (OSError, ValueError, OverflowError, struct.error):
             pass
+        finally:
+            # The socket context has exited, including on timeout or cancellation.
+            # Rejected callers must never release another read's capacity.
+            if admitted:
+                self.capacity._slots.release()
         # Outside the except block: no retained upstream exception context.
         raise ArchiveTransportError("Archive transport unavailable")
