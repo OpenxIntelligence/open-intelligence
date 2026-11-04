@@ -19,7 +19,8 @@ proposals governed by a typed task contract:
   diagnoses. A template that asks for any of those is rejected by the
   policy gate before any model call or token is spent.
 - The model API key comes only from the operator environment
-  (META_API_KEY), is used server-side only, and is never logged,
+  (MODEL_API_KEY; legacy META_API_KEY also supported), is used server-side
+  only, and is never logged,
   stored, or sent to the browser. No case identifiers beyond the
   fictional case id, and no patient-like fields, are in the payload.
 - Replay mode uses a recorded, human-authored fixture so the full
@@ -82,6 +83,10 @@ ABSTAIN_REASONS = frozenset(
 
 class InvestigationError(ValueError):
     """A bounded investigation could not be run or validated."""
+
+
+class ModelAPIConfigurationError(InvestigationError):
+    """No unambiguous operator credential is configured for live mode."""
 
 
 @dataclass
@@ -254,10 +259,23 @@ def call_meta_api(prompt: str, api_key: str) -> dict:
 
 
 def meta_api_key() -> str:
-    key = os.environ.get("META_API_KEY", "")
+    """Read Meta's documented key name or the original OI key alias.
+
+    A conflicting pair fails closed rather than selecting the wrong account.
+    Never include either credential in an error message or a log entry.
+    """
+    documented = os.environ.get("MODEL_API_KEY", "").strip()
+    legacy = os.environ.get("META_API_KEY", "").strip()
+    if documented and legacy and documented != legacy:
+        raise ModelAPIConfigurationError(
+            "MODEL_API_KEY and META_API_KEY have conflicting values; "
+            "configure only one key for live mode or use mode=replay"
+        )
+    key = documented or legacy
     if not key:
-        raise InvestigationError(
-            "META_API_KEY is not set; run with mode=replay for the recorded "
-            "offline demonstration, or set the operator key and retry"
+        raise ModelAPIConfigurationError(
+            "MODEL_API_KEY (or legacy META_API_KEY) is not set; "
+            "run with mode=replay for the recorded offline demonstration, "
+            "or configure a key in the server environment"
         )
     return key

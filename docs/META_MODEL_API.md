@@ -22,10 +22,14 @@ instead of substituting another vendor.
 
 ## Key handling
 
-- The key comes only from the operator environment: `META_API_KEY`.
+- The key comes only from the operator environment: **`MODEL_API_KEY`**
+  (Meta's documented name) or the existing OI-compatible **`META_API_KEY`**.
+  If both are set they must match; conflicting values fail closed with HTTP
+  503, without printing either key. The variable is read server-side only.
+  See [official Meta authentication](https://dev.meta.ai/docs/authentication).
 - It is used server-side only, never stored in the repository, never
   logged, never sent to the browser, and never committed.
-- Without the key, live investigations return HTTP 503 with a message
+- Without an unambiguous key, live investigations return HTTP 503 with a message
   pointing at replay mode. The local demo never fails silently into
   pretending a replay is a live run.
 
