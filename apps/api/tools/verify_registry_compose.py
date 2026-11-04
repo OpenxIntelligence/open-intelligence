@@ -18,6 +18,8 @@ from urllib.error import HTTPError, URLError
 from urllib.request import ProxyHandler, Request, build_opener
 import uuid
 
+from oi_api.contracts import SCHEMA_REVISION
+
 
 ROOT = Path(__file__).resolve().parents[3]
 BASE = "http://127.0.0.1:8000"
@@ -135,7 +137,7 @@ def main():
                 "(SELECT version_num FROM public.alembic_version)"
             )
             restored = command(["exec", "-T", "db", "psql", "-U", "oi_api", "-d", "oi_api_test_restore", "-At", "-c", query], capture_output=True, text=True).stdout.strip()
-            assert restored == "1|1|1|0015_manual_report_context", restored
+            assert restored == "1|1|1|" + SCHEMA_REVISION, restored
             restored_id = command(["exec", "-T", "db", "psql", "-U", "oi_api", "-d", "oi_api_test_restore", "-At", "-c", "SELECT patient_id FROM identity.identity_patients"], capture_output=True, text=True).stdout.strip()
             assert restored_id == patient
             credentials[0]["patient_ids"] = []
