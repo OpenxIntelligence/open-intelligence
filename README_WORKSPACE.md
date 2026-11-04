@@ -6,7 +6,7 @@ This extends the existing application, not a second patient record or replacemen
 python3 run_open_intelligence.py
 ```
 
-Open **http://127.0.0.1:8765**. Python 3.10 or newer is required. The default database is `.local/workspace.sqlite`. Another port or path can be selected with `--port` and `--db`. `--with-examples` explicitly imports the existing fictional Alpha/Beta examples; the default starts empty.
+Open **http://127.0.0.1:8765**. Python 3.11 or newer is required. The default database is `.local/workspace.sqlite`. Another port or path can be selected with `--port` and `--db`. `--with-examples` explicitly imports the existing fictional Alpha/Beta examples; the default starts empty.
 
 ## Complete development journey
 
@@ -20,11 +20,26 @@ Open **http://127.0.0.1:8765**. Python 3.10 or newer is required. The default da
 
 The same existing workspace contains patient-oriented wording, source history, research/evidence assessment, bibliography, timeline, worklist and review history. Availability of a control is not evidence that hospital integration or clinical reasoning is implemented.
 
+## Patient and care-team views
+
+`web/views.css` and `web/views.js` regroup the same page into two views without changing any original file, API or saved record. Every original section is moved, never copied or removed, so its controls, saved state and element IDs keep working.
+
+- **Care team.** Seven destinations in the sidebar: Worklist (all fictional cases with new material since review, review status, open questions and last recorded update, sorted by review status with no clinical urgency inferred; workspace setup and the original Incoming board, collapsed), Overview (reported findings and review status under a persistent case header), Records & timeline (including Add original records), Investigations, Evidence & research, Review & changes and Options & tasks. "Needs review" offers a direct comparison of the amended report versions. Investigations follow the working order (question, model run, saved drafts), with the hand-written draft form collapsed until it holds unsaved text. Each draft states its origin (recorded replay, live model, hand-written, demo acknowledgment). Source and comparison views dock on the right as an inspector. Counts, the original case title box and the next-investigation card are parked, not removed.
+- **Patient.** Home, My records, My questions and Research, read-only. Home shows one sentence about the record, one primary action and the most relevant update ("A report was updated. The earlier summary needs another look. You can still view both versions."). My questions lists saved questions and unsettled results with the report behind each. My records lists each result with its plain status and exact source line, then the timeline and report versions. Care-team authoring tools are parked, not removed.
+- **Switching views.** The header's **Dev view** switch exists for development only; real deployments would sign each person in to their own view. `?role=patient` or `?role=careteam` selects a view. For a side-by-side demo, open both in two windows with `&live=1`. Each window then re-reads the selected case every few seconds, unless a draft is unsaved or a source view is open.
+
+Not included yet: patient messaging, an AI assistant for patients, reviewer accept/reject decisions and drafts that cite exact lines. Each needs its own reviewed change.
+
+```sh
+PYTHONPATH=src python -m unittest tests.test_workspace_start_http -v
+PYTHONPATH=src python tests/role_views_browser_journey.py
+```
+
 ## Boundaries
 
 Use **independently authored fictional data only**, not actual, public or disguised patient records. File intake currently accepts UTF-8 `.txt` files with LF line endings and the existing `OI-SYNTHETIC-REPORT/1` contract, maximum 64 KiB. CRLF, BOM, invalid UTF-8 and unsupported formats are rejected rather than silently normalized. There is no normal PDF/OCR extraction or clinical inference here. Source statements are authored annotations, not model discoveries. A checkbox cannot prove consent, identity or data rights.
 
-The launcher binds only to loopback, does not enable live literature/Crossref, and clears inherited supported model-API credentials for this process. This is not production authentication, a PHI environment or a deployed clinical service. Actual identities, patient/proxy permissions, clinician approval, licensed scientific evidence, clinical evaluation and production operations remain separate integration gates.
+The launcher binds only to loopback, does not enable live literature/Crossref, and clears inherited supported model-API credentials for this process. To show a live Meta Model API investigation (fictional data only), set `META_API_KEY` in your own shell and pass `--enable-meta-live`; only that key is kept, and Replay stays available. The key is never stored in the repository. This is not production authentication, a PHI environment or a deployed clinical service. Actual identities, patient/proxy permissions, clinician approval, licensed scientific evidence, clinical evaluation and production operations remain separate integration gates.
 
 The accepted H1 target remains FastAPI/PostgreSQL and React/Vite/TypeScript. This increment makes the existing stdlib/SQLite reference application operable end to end while preserving its canonical contracts; it does not claim that migration is complete. No project distribution license or third-party clearance is selected.
 

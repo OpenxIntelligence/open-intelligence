@@ -1,0 +1,233 @@
+/* Patient / care-team view layer for the connected workspace host.
+   Re-themes the existing first-party tokens and lays out the regrouped
+   sections. Local system fonts only; no remote assets. */
+/* Visual system: warm off-white ground, white working surfaces, deep forest
+   green for navigation and primary actions, charcoal text. Amber is reserved
+   for review attention and always paired with a written label; violet marks
+   model-origin content. Green means "action", never "medically fine". */
+:root {
+  --color-paper: #ffffff;
+  --color-paper-2: #f6f4ef;
+  --color-paper-3: #ebe8e1;
+  --color-ink: #1f2421;
+  --color-ink-2: #2d3330;
+  --color-muted: #4e5550;
+  --color-rule: #e1ddd4;
+  --color-accent: #1f5c46;
+  --color-accent-ink: #ffffff;
+  --color-source: #1f5c46;
+  --color-source-ink: #163f31;
+  --color-focus: #1f5c46;
+  --color-error: #b42318;
+  --color-error-paper: #fef3f2;
+  --color-success: #1f5c46;
+  --color-backdrop: rgb(0 0 0 / 40%);
+  --view-attention: #b7791f;
+  --view-attention-ink: #7a4a00;
+  --view-attention-paper: #fdf4e3;
+  --view-ai: #5b4a8f;
+  --view-ai-paper: #f1eef8;
+  --font-display: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-body: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-soft: ui-rounded, "SF Pro Rounded", var(--font-display);
+  --radius-control: 6px;
+  --radius-panel: 10px;
+  --view-inspector: min(460px, 38vw);
+}
+/* Reading density per audience: larger patient text, compact clinician rows. */
+html[data-view-role="patient"] { font-size: 17px; }
+html[data-view-role="careteam"] { font-size: 15px; }
+
+body { background: var(--color-paper-2); }
+.top { background: var(--color-paper); }
+.panel, .hero { box-shadow: 0 1px 2px rgb(0 0 0 / 4%); }
+.hero { background: var(--color-paper); }
+h1, h2 { letter-spacing: -0.015em; }
+
+/* Attention states keep amber (the shared accent is now the action green). */
+.pill-warn, .pill-alert { border-color: color-mix(in oklab, var(--view-attention) 55%, var(--color-rule)); background: var(--view-attention-paper); color: var(--view-attention-ink); }
+.quarantine { border-color: color-mix(in oklab, var(--view-attention) 50%, var(--color-rule)); background: var(--view-attention-paper); }
+.review-attention[data-state="needs-review"] { border-inline-start-color: var(--view-attention); background: var(--view-attention-paper); }
+#dialog-text mark.source-highlight { background: #fbe7b5; outline-color: var(--view-attention); }
+.dialog-fictional-label { border-color: var(--view-attention); }
+.finding { background: var(--color-paper); }
+
+/* One demo banner in the header: only in-panel pills that repeat it are hidden
+   (marked by views.js). Other boundary labels and the rail note stay. */
+.view-dup-banner { display: none; }
+/* Navigation now does the guide box's job ("inspect chronology", "browse documents"). */
+.glance-review .glance-guide { display: none; }
+
+/* Role switch (development control). */
+.view-role { display: flex; align-items: center; gap: var(--space-2); }
+.view-role-label { color: var(--color-muted); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.06em; }
+.view-role-group { display: flex; gap: 2px; padding: 3px; border: 1px solid var(--color-rule); border-radius: var(--radius-control); background: var(--color-paper-2); }
+.view-role-group button { min-height: 32px; padding: 0 var(--space-3); border: 1px solid transparent; border-radius: 4px; background: transparent; color: var(--color-muted); font: inherit; font-size: var(--text-sm); font-weight: 550; cursor: pointer; }
+.view-role-group button[aria-pressed="true"] { border-color: var(--color-rule); background: var(--color-paper); color: var(--color-ink); font-weight: 700; box-shadow: 0 1px 2px rgb(0 0 0 / 6%); }
+
+/* Grouped navigation replaces the long section list. */
+.rail .view-nav { display: grid; gap: 2px; margin-top: var(--space-2); }
+.rail .view-nav a { display: flex; min-height: 40px; align-items: center; justify-content: space-between; gap: var(--space-2); padding: var(--space-2) var(--space-3); border: 1px solid transparent; border-radius: var(--radius-control); color: var(--color-ink-2); font-weight: 550; text-decoration: none; }
+.rail .view-nav a:hover { background: var(--color-paper); border-color: var(--color-rule); }
+.rail .view-nav a[aria-current="page"] { background: var(--color-paper); border-color: var(--color-rule); color: var(--color-ink); font-weight: 700; box-shadow: 0 1px 2px rgb(0 0 0 / 5%); }
+.rail .view-nav .view-nav-board { margin-bottom: var(--space-3); }
+.view-badge { min-width: 20px; padding: 0 6px; border-radius: 999px; background: var(--view-attention-paper); color: var(--view-attention-ink); border: 1px solid var(--view-attention); font-size: var(--text-xs); font-weight: 700; text-align: center; }
+.view-badge[hidden] { display: none; }
+
+/* Tab panels. */
+.view-panels { display: block; }
+.view-panel { display: flex; flex-direction: column; gap: var(--space-5); }
+.view-panel[hidden] { display: none; }
+.view-parking { display: none; }
+
+/* Read-only cards built from the existing case state. */
+.view-card, .view-card > div { display: flex; flex-direction: column; gap: var(--space-4); }
+[data-view-role="patient"] #new-workspace-button { display: none; }
+.view-eyebrow { margin: 0; color: var(--color-muted); font-size: var(--text-xs); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
+.view-card h2, .view-card h3 { margin: 0; }
+.view-status { display: flex; align-items: center; gap: var(--space-2); margin: 0; font-weight: 600; }
+.view-status::before { content: ""; width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--color-success); }
+.view-status[data-tone="attention"]::before { background: var(--view-attention); }
+.view-change { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-4); border: 1px solid var(--view-attention); border-radius: var(--radius-panel); background: var(--view-attention-paper); }
+.view-change-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2) var(--space-3); }
+.view-was { color: var(--color-muted); text-decoration: line-through; }
+.view-now { font-size: var(--text-xl); font-weight: 700; }
+.view-table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
+.view-table th, .view-table td { padding: var(--space-3) var(--space-2); border-top: 1px solid var(--color-rule); text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+.view-table tr:last-child th, .view-table tr:last-child td { border-bottom: 1px solid var(--color-rule); }
+.view-table th { font-weight: 600; }
+.view-table td:last-child { text-align: right; white-space: nowrap; }
+.view-quote { display: block; margin-top: 2px; color: var(--color-muted); font-weight: 400; }
+.view-list { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.view-list li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-2) var(--space-4); padding: var(--space-3) 0; border-top: 1px solid var(--color-rule); }
+.view-list li:last-child { border-bottom: 1px solid var(--color-rule); }
+.view-label { color: var(--color-muted); font-size: var(--text-sm); font-weight: 600; }
+.view-label[data-tone="attention"] { color: #8a4b00; }
+.view-link-button { min-height: 32px; padding: 0 var(--space-2); border: 0; background: transparent; color: var(--color-source); font: inherit; font-size: var(--text-sm); font-weight: 600; cursor: pointer; }
+.view-link-button:hover { text-decoration: underline; }
+#view-compare-changed { margin-top: var(--space-2); }
+
+/* Overview findings as quiet rows: name + status, quote, exact-source link.
+   The panel header already states these are source statements. */
+.glance-findings .findings { gap: 0; }
+.glance-findings .finding {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: var(--space-4);
+  row-gap: 2px;
+  padding: var(--space-3) 0;
+  border: 0;
+  border-top: 1px solid var(--color-rule);
+  border-radius: 0;
+  background: transparent;
+}
+.glance-findings .finding:last-child { border-bottom: 1px solid var(--color-rule); }
+.glance-findings .finding-head { grid-column: 1 / -1; }
+.glance-findings .finding-labels .pill-neutral { display: none; }
+.glance-findings .finding-labels .pill { min-height: 0; padding: 0; border: 0; background: transparent; color: var(--color-ink-2); font-size: var(--text-sm); font-weight: 600; }
+.glance-findings .finding-labels .pill-warn { color: #8a4b00; }
+.glance-findings .finding .quoted { margin: 0; color: var(--color-muted); }
+.glance-findings .finding .source-jump {
+  align-self: start;
+  min-height: 32px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-source);
+  font-family: var(--font-outlier);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-align: right;
+}
+.glance-findings .finding .source-jump:hover:not(:disabled) { text-decoration: underline; }
+
+/* Investigations in workflow order: question, run, saved drafts, then by hand. */
+#investigations .investigation-grid.view-single { grid-template-columns: minmax(0, 1fr); }
+#investigations > .model-investigation { margin-top: var(--space-5); padding-top: var(--space-4); border-top: 1px solid var(--color-rule); }
+.view-disclosure { margin-top: var(--space-5); padding-top: var(--space-3); border-top: 1px solid var(--color-rule); }
+.view-disclosure > summary { display: flex; min-height: 44px; align-items: center; font-weight: 650; cursor: pointer; }
+.view-disclosure[open] > summary { margin-bottom: var(--space-3); }
+.view-disclosure > summary { list-style: none; gap: var(--space-2); }
+.view-disclosure > summary::-webkit-details-marker { display: none; }
+.view-disclosure > summary::before { content: "▸"; display: inline-block; color: var(--color-muted); transition: transform 120ms ease; }
+.view-disclosure[open] > summary::before { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { .view-disclosure > summary::before { transition: none; } }
+.view-mission { margin-top: 0; padding: var(--space-3) var(--space-5); border-top: 1px solid var(--color-rule); }
+.view-mission > .panel { padding: 0; border: 0; box-shadow: none; }
+
+/* Source inspector: the existing source/compare dialogs dock to the right. */
+dialog.view-inspector[open] {
+  position: fixed;
+  inset: var(--view-top, 0px) 0 0 auto;
+  width: var(--view-inspector);
+  max-width: none;
+  height: auto;
+  max-height: none;
+  margin: 0;
+  overflow: auto;
+  border-width: 0 0 0 1px;
+  border-radius: 0;
+  box-shadow: -8px 0 24px rgb(0 0 0 / 6%);
+  z-index: 20;
+}
+dialog.view-inspector pre { max-height: none; }
+dialog.view-inspector .comparison-grid { grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 60.0625rem) {
+  body.view-inspector-open .main { padding-right: calc(var(--view-inspector) + var(--space-5)); }
+}
+
+/* Empty workspace: keep the original entry rule working inside the panels. */
+body[data-workspace-state="empty"] .main > .view-panels { display: block !important; }
+body[data-workspace-state="empty"] .view-panel > :not(#overview):not(#workspace-start) { display: none; }
+body[data-workspace-state="empty"] .rail .view-nav { display: none; }
+
+@media (max-width: 60rem) {
+  .rail .view-nav { display: flex; overflow-x: auto; gap: var(--space-1); }
+  .rail .view-nav a { flex: none; white-space: nowrap; }
+  .rail .view-nav .view-nav-board { margin-bottom: 0; }
+  .view-role-label { display: none; }
+  dialog.view-inspector[open] { width: 100%; border-left: 0; }
+}
+
+@media (max-width: 40rem) {
+  .view-table, .view-table tbody, .view-table tr, .view-table th, .view-table td { display: block; }
+  .view-table tr { padding: var(--space-3) 0; border-top: 1px solid var(--color-rule); }
+  .view-table tr:last-child { border-bottom: 1px solid var(--color-rule); }
+  .view-table th, .view-table td, .view-table tr:last-child th, .view-table tr:last-child td { padding: 2px 0; border: 0; text-align: left; }
+  .view-table td:last-child { text-align: left; }
+  .glance-findings .finding { grid-template-columns: minmax(0, 1fr); }
+  .glance-findings .finding .source-jump { text-align: left; }
+}
+
+/* Persistent case header (clinician workspace). */
+.view-casebar { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2) var(--space-4); margin-bottom: var(--space-4); padding: var(--space-3) var(--space-4); border: 1px solid var(--color-rule); border-radius: var(--radius-panel); background: var(--color-paper); font-size: var(--text-sm); color: var(--color-muted); }
+.view-casebar[hidden] { display: none; }
+.view-casebar strong { color: var(--color-ink); font-size: var(--text-lg); }
+.view-casebar-id { font-family: var(--font-outlier); color: var(--color-ink-2); }
+.view-casebar-tag { margin-left: auto; padding: 1px var(--space-2); border: 1px solid var(--view-attention); border-radius: 999px; background: var(--view-attention-paper); color: var(--view-attention-ink); font-size: var(--text-xs); font-weight: 600; }
+
+/* Worklist. */
+.view-worklist-table thead th { color: var(--color-muted); font-size: var(--text-xs); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+.view-worklist-table td:last-child { width: 1%; }
+
+/* Patient home: calm introduction, one clear primary action, generous spacing. */
+.view-hello h2 { font-family: var(--font-soft); font-size: var(--text-3xl); letter-spacing: -0.02em; }
+.view-intro { margin: 0; font-size: var(--text-lg); color: var(--color-ink-2); }
+.view-primary { align-self: flex-start; }
+html[data-view-role="patient"] .view-panel { gap: var(--space-6); }
+html[data-view-role="patient"] .view-card { padding: var(--space-6); }
+.view-change-lead { margin: 0; color: var(--color-ink-2); }
+
+/* Content origin: source statements, model drafts and demo acknowledgments look different. */
+.view-origin { display: inline-flex; align-self: flex-start; margin-bottom: var(--space-2); padding: 2px var(--space-2); border: 1px solid var(--color-rule); border-radius: var(--radius-control); background: var(--color-paper-2); color: var(--color-ink-2); font-size: var(--text-xs); font-weight: 600; }
+.view-origin[data-origin="ai"] { border-color: color-mix(in oklab, var(--view-ai) 40%, var(--color-rule)); background: var(--view-ai-paper); color: var(--view-ai); }
+.view-origin[data-origin="stale"], .view-origin[data-origin="demo"] { border-color: var(--view-attention); background: var(--view-attention-paper); color: var(--view-attention-ink); }
+.view-change .view-link-button { align-self: flex-start; padding-left: 0; }
+
+/* Less on screen: the rail keeps the case picker and navigation only. The
+   header banner and page footer still state the demo's boundaries. */
+.rail > .tiny, .rail .side-bottom { display: none; }
+
+/* Logo mark: the shared accent-ink is now white (button text), so colour it green. */
+.brand-mark { color: var(--color-accent); }

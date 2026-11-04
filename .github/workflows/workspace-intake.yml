@@ -25,6 +25,7 @@ jobs:
           python -m compileall -q src tests run_open_intelligence.py
           node --check web/intake.js
           node --check web/workspace-entry.js
+          node --check web/views.js
           python run_open_intelligence.py --help
       - name: Existing and intake JavaScript checks
         shell: bash
@@ -42,6 +43,13 @@ jobs:
         run: |
           set -o pipefail
           python tests/workspace_start_browser_journey.py 2>&1 | tee verification-artifacts/connected-browser.txt
+      - name: Patient and care-team views over the connected workspace
+        shell: bash
+        env:
+          OI_VIEWS_ARTIFACT_DIR: verification-artifacts/views-screenshots
+        run: |
+          set -o pipefail
+          python tests/role_views_browser_journey.py 2>&1 | tee verification-artifacts/role-views-browser.txt
       - name: Original Composer and review regression
         run: python tests/composer_browser_journey.py
       - name: Record actual source and incomplete inventory
