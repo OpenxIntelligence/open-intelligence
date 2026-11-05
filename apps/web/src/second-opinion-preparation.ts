@@ -42,6 +42,30 @@ export function secondOpinionPreparation(state:ViewState){
  // Use only the successfully authorized case-bound question history. A loading,
  // denied, disconnected, or wrong-case read must never expose an older agenda.
  const authorizedQuestions=questions&&state.questions?state.questions:null;
+ // Source and citation reads use separate grants. These counts are not evidence
+ // appraisal, current clinical interpretations or options for treatment.
+ const evidenceReadiness=(question:NonNullable<typeof authorizedQuestions>[number])=>{
+  const original=question.source_context_state==='source_reassessment_required'?'changed':
+   !index?'unchecked':index.sources.some(src=>src.source_id===question.source_id&&
+    src.version===question.source_version&&src.sha256===question.source_sha256&&src.state==='current')
+    ?'matched':'not_matched';
+  const links=state.evidenceLinks;
+  const checked=state.evidenceLinksPhase==='ready'&&state.evidenceQuestionId===question.question_id&&
+   links?.contract==='oi.pg-question-evidence-links/1'&&links.patient_id===patientId&&
+   links.case_id===caseId&&links.question_id===question.question_id&&
+   links.source_context_state===question.source_context_state&&
+   links.synthetic===true&&links.model_executed===false&&links.content_appraised===false&&
+   links.clinical_approval===false&&Array.isArray(links.links)&&links.links.every(link=>
+    ['available','rights_restricted','superseded','unavailable'].includes(link.status));
+  const citations=checked&&links?{
+   total:links.links.length,
+   metadataOnly:links.links.filter(link=>link.status==='available').length,
+   restricted:links.links.filter(link=>link.status==='rights_restricted').length,
+   superseded:links.links.filter(link=>link.status==='superseded').length,
+   unavailable:links.links.filter(link=>link.status==='unavailable').length,
+  }:null;
+  return {original,citations} as const;
+ };
  const agenda=authorizedQuestions?{
   total:authorizedQuestions.length,
   preview:authorizedQuestions.slice(0,5).map(question=>({
@@ -50,6 +74,7 @@ export function secondOpinionPreparation(state:ViewState){
    sourceVersion:question.source_version,
    sourceLine:question.source_line,
    sourceContextState:question.source_context_state,
+   evidenceReadiness:evidenceReadiness(question),
    work:questionWork(question.question_id),
   })),
  }:null;

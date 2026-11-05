@@ -51,3 +51,47 @@ test('organized inputs remain preparation only and coordination is descriptive',
  assert.equal(view.state,'inputs_prepared');assert.deepEqual(view.records,{current:1,historical:1});
  assert.deepEqual(view.coordination,{open:0,assigned:0,sourceChanged:0});
 });
+
+const checkedCitation=(status='available')=>({
+ contract:'oi.pg-question-evidence-links/1',patient_id:'PAT-ONE',case_id:'CASE-ONE',
+ question_id:'QUESTION-'+'C'.repeat(32),source_context_state:'current_unreviewed_question',
+ source_access_receipt_id:'ACCESS-'+'F'.repeat(32),synthetic:true,
+ model_executed:false,content_appraised:false,clinical_approval:false,
+ links:[{status,link_id:'EVIDENCE-LINK-'+'D'.repeat(32)}],
+});
+const preparedState=()=>({...base(),recordsPhase:'ready',sourceIndex:sourceIndex([source()]),
+ questions:[question('current_unreviewed_question')]});
+test('second-opinion source and citation checks are distinct, never inferred',()=>{
+ const s=preparedState(),id=s.questions[0].question_id;
+ let row=secondOpinionPreparation(s).agenda.preview[0];
+ assert.equal(row.evidenceReadiness.original,'matched');
+ assert.equal(row.evidenceReadiness.citations,null);
+ row=secondOpinionPreparation({...s,evidenceQuestionId:id,evidenceLinksPhase:'ready',
+  evidenceLinks:{...checkedCitation(),links:[]}}).agenda.preview[0];
+ assert.deepEqual(row.evidenceReadiness.citations,{total:0,metadataOnly:0,restricted:0,superseded:0,unavailable:0});
+});
+test('citation metadata counts are not scientific appraisals or eligibility',()=>{
+ const s=preparedState(),id=s.questions[0].question_id;
+ const links=['available','rights_restricted','superseded','unavailable'].map((status,n)=>({status,link_id:'LINK-'+n}));
+ const row=secondOpinionPreparation({...s,evidenceQuestionId:id,evidenceLinksPhase:'ready',
+  evidenceLinks:{...checkedCitation(),links}}).agenda.preview[0];
+ assert.deepEqual(row.evidenceReadiness.citations,{total:4,metadataOnly:1,restricted:1,superseded:1,unavailable:1});
+});
+test('stale, denied or wrong-case citation read cannot surface as evidence',()=>{
+ const s={...preparedState(),evidenceQuestionId:'QUESTION-'+'C'.repeat(32),
+  evidenceLinksPhase:'ready',evidenceLinks:checkedCitation()};
+ for(const patch of [{evidenceLinksPhase:'error'},{evidenceLinksPhase:'loading'},
+  {evidenceQuestionId:'QUESTION-'+'A'.repeat(32)},
+  {evidenceLinks:{...checkedCitation(),patient_id:'PAT-OTHER'}},
+  {evidenceLinks:{...checkedCitation(),case_id:'CASE-OTHER'}},
+  {evidenceLinks:{...checkedCitation(),source_context_state:'source_reassessment_required'}},
+  {evidenceLinks:{...checkedCitation(),content_appraised:true}}]){
+  assert.equal(secondOpinionPreparation({...s,...patch}).agenda.preview[0].evidenceReadiness.citations,null,JSON.stringify(patch));
+ }
+});
+test('changed original or missing exact source hash cannot be called a current match',()=>{
+ const s=preparedState();
+ assert.equal(secondOpinionPreparation({...s,questions:[question('source_reassessment_required')]}).agenda.preview[0].evidenceReadiness.original,'changed');
+ assert.equal(secondOpinionPreparation({...s,recordsPhase:'error'}).agenda.preview[0].evidenceReadiness.original,'unchecked');
+ assert.equal(secondOpinionPreparation({...s,sourceIndex:sourceIndex([{...source(),sha256:'b'.repeat(64)}])}).agenda.preview[0].evidenceReadiness.original,'not_matched');
+});

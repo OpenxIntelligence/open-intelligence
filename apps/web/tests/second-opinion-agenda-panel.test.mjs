@@ -133,3 +133,31 @@ test('historical-only task status is counted, never presented as an open action'
  assert.doesNotMatch(html,/data-testid="second-opinion-question-task"/);
  assert.match(html,/Historical work remains available in Investigations/);
 });
+
+test('question-specific citation readiness distinguishes unchecked from checked empty',()=>{
+ const s={...base(),questions:[question()]};
+ assert.match(render(s),/data-testid="second-opinion-citations-unchecked"/);
+ const e={contract:'oi.pg-question-evidence-links/1',patient_id:patientId,case_id:caseId,
+  question_id:question().question_id,source_context_state:'current_unreviewed_question',
+  source_access_receipt_id:'ACCESS-'+'A'.repeat(32),synthetic:true,model_executed:false,
+  content_appraised:false,clinical_approval:false,links:[]};
+ const checked=render({...s,evidenceQuestionId:question().question_id,evidenceLinksPhase:'ready',evidenceLinks:e});
+ assert.match(checked,/data-testid="second-opinion-citations-empty"/);
+ assert.doesNotMatch(checked,/data-testid="second-opinion-citations-unchecked"/);
+ assert.match(checked,/does not establish that no scientific evidence exists/);
+ assert.match(checked,/Trial eligibility, treatment benefit and clinical decisions have not been assessed/);
+});
+test('citation denial hides prior counted links but preserves separately authorized question',()=>{
+ const s={...base(),questions:[question()]};
+ const e={contract:'oi.pg-question-evidence-links/1',patient_id:patientId,case_id:caseId,
+  question_id:question().question_id,source_context_state:'current_unreviewed_question',
+  source_access_receipt_id:'ACCESS-'+'A'.repeat(32),synthetic:true,model_executed:false,
+  content_appraised:false,clinical_approval:false,links:[{status:'available'}]};
+ const ready={...s,evidenceQuestionId:question().question_id,evidenceLinksPhase:'ready',evidenceLinks:e};
+ assert.match(render(ready),/data-testid="second-opinion-citations-counts"/);
+ const denied=render({...ready,evidenceLinksPhase:'error'});
+ assert.match(denied,/data-testid="second-opinion-citations-unchecked"/);
+ assert.doesNotMatch(denied,/data-testid="second-opinion-citations-counts"/);
+ assert.match(denied,/Could we discuss fictional marker/);
+ assert.doesNotMatch(render({...ready,questionListPhase:'error'}),/data-testid="second-opinion-question-evidence"/);
+});
