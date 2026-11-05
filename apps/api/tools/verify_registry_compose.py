@@ -11,6 +11,8 @@ import os
 from pathlib import Path
 import re
 import secrets
+import sqlite3
+from contextlib import closing
 import subprocess
 import tempfile
 import time
@@ -19,6 +21,7 @@ from urllib.request import ProxyHandler, Request, build_opener
 import uuid
 
 from oi_api.contracts import SCHEMA_REVISION
+from oi_api.encounter_relay import FeedUnavailable, backup_receiver, receive_once, verify_history
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -30,7 +33,8 @@ def main():
     compose = ["docker", "compose", "--project-name", project,
                "--file", str(ROOT / "apps/api/compose.yaml"),
                "--file", str(ROOT / "apps/api/compose.synthetic-access.yaml")]
-    with tempfile.TemporaryDirectory(prefix="oi-synthetic-access-") as directory:
+    with (tempfile.TemporaryDirectory(prefix="oi-synthetic-access-") as directory,
+          tempfile.TemporaryDirectory(prefix="oi-private-receiver-") as receiver_directory):
         access = Path(directory)
         # Only synthetic grants and token hashes are mounted; raw keys stay in
         # this process. The unprivileged API container needs read/traverse access.
@@ -151,7 +155,15 @@ def main():
             encounter_actions = ["encounter.schedule", "encounter.transition", "note.write", "note.read"]
             for credential in credentials:
                 credential["actions"].extend(encounter_actions)
+            credentials[0]["actions"].extend(["encounter.read", "encounter.events.read"])
             save_access()
+            running_receiver = Path(receiver_directory) / "activity.sqlite"
+            restored_receiver = Path(receiver_directory) / "restored.sqlite"
+            relay_args = (8000, patient, lambda: tokens[0])
+            def receipts(file):
+                with closing(sqlite3.connect(file.absolute().as_uri()+"?mode=ro", uri=True)) as db:
+                    return db.execute("SELECT event_id,event_sha256,event_type,access_receipt "
+                                      "FROM activity_receipts ORDER BY event_id").fetchall()
             visit_path = path + "/encounters"
             schedule = {"synthetic": True, "request_key": "SCHEDULE-PROOF", "external_key": "PROOF-VISIT",
                         "kind": "outpatient", "service_date": "2026-05-04"}
@@ -171,6 +183,14 @@ def main():
                 assert request(note_path, tokens[0], command_body) == written
                 note_commands.append(command_body)
                 note_receipts.append(written)
+                delivery = receive_once(running_receiver, *relay_args)
+                assert delivery["applied"] == (3 if i == 0 else 1)
+                if i == 0:
+                    # Deliberately keep the receiver one note behind the producer's dump.
+                    saved_receiver = backup_receiver(running_receiver, restored_receiver, *relay_args)
+                    assert saved_receiver["status"] == "backup_verified" and saved_receiver["verified_events"] == 3
+                    first_receipts = receipts(restored_receiver)
+                    assert first_receipts == receipts(running_receiver)
             versions = request(note_path, tokens[0])[1]["versions"]
             assert [v["body"] for v in versions] == drafts
             assert request(note_path, tokens[1])[0] == 404
@@ -180,6 +200,7 @@ def main():
                 assert request("/v1/patients", tokens[0], payload) == (200, {"patient_id": patient, "duplicate": True})
                 assert request(path, tokens[0])[1]["patient_id"] == patient
                 assert request(note_path, tokens[0])[1]["versions"] == versions
+                assert receive_once(running_receiver, *relay_args)["applied"] == 0
                 print("Canonical identity and idempotency persisted after " + service + " restart")
 
             # A real server dump/restore checks identity history, not only an
@@ -196,7 +217,7 @@ def main():
                 "(SELECT version_num FROM public.alembic_version)"
             )
             restored = command(["exec", "-T", "db", "psql", "-U", "oi_api", "-d", "oi_api_test_restore", "-At", "-c", query], capture_output=True, text=True).stdout.strip()
-            assert restored == "1|1|1|8|" + SCHEMA_REVISION, restored
+            assert restored == "1|1|1|13|" + SCHEMA_REVISION, restored
             restored_id = command(["exec", "-T", "db", "psql", "-U", "oi_api", "-d", "oi_api_test_restore", "-At", "-c", "SELECT patient_id FROM identity.identity_patients"], capture_output=True, text=True).stdout.strip()
             assert restored_id == patient
             restored_notes = command(["exec", "-T", "db", "psql", "-U", "oi_api", "-d", "oi_api_test_restore",
@@ -211,6 +232,14 @@ def main():
             assert snapshot("oi_api_test_restore") == original, "Restore changed EHR rows or sequence state"
             serve_database("oi_api_test_restore")
             assert snapshot("oi_api_test_restore") == original, "Restored API startup changed history"
+            assert verify_history(restored_receiver, *relay_args)["verified_events"] == 3
+            expected_counts = {"clinical_encounter_scheduled": 1, "clinical_encounter_state_changed": 1,
+                               "clinical_note_draft_saved": 2}
+            recovered = receive_once(restored_receiver, *relay_args)
+            assert recovered == {"status": "ok", "applied": 1, "has_more": False, "counts": expected_counts}
+            assert receive_once(restored_receiver, *relay_args)["applied"] == 0
+            assert receipts(restored_receiver)[:3] == first_receipts
+            assert [r[:3] for r in receipts(restored_receiver)] == [r[:3] for r in receipts(running_receiver)]
             assert request(note_path, tokens[0])[1]["versions"] == versions
             for note_command, note_receipt in zip(note_commands, note_receipts):
                 assert request(note_path, tokens[0], note_command) == note_receipt
@@ -227,6 +256,10 @@ def main():
             assert [row["body"] for row in restored_versions] == drafts + [third_body]
             assert restored_versions[2]["id"] > max(row["id"] for row in versions)
             assert restored_versions[2]["supersedes_id"] == versions[-1]["id"]
+            delivery = receive_once(restored_receiver, *relay_args)
+            assert delivery["applied"] == 1 and delivery["counts"] == {**expected_counts, "clinical_note_draft_saved": 3}
+            assert verify_history(restored_receiver, *relay_args)["verified_events"] == 5
+            final_receipts = receipts(restored_receiver)
             restored_state = snapshot("oi_api_test_restore")
             assert len(restored_state["ehr.clinical_encounter_commands"]) == 5
             assert len(restored_state["ehr.clinical_note_versions"]) == 3
@@ -237,10 +270,25 @@ def main():
                             if event["event_type"] == "clinical_note_draft_saved"
                             and event["metadata_json"]["version"] == 3]
             assert third_event["id"] > max(event["id"] for event in old_events)
+            assert final_receipts[-1][0] == third_event["id"]
+            authorized_reads = {row["metadata_json"]["receipt_id"] for row in new_events
+                                if row["event_type"] == "clinical_encounter_read_authorized"
+                                and row["metadata_json"]["action"] == "encounter.events.read"}
+            assert all(r[3] in authorized_reads for r in final_receipts)
             assert snapshot() == original, "Restored HTTP reads/writes changed the original database"
             credentials[0]["actions"].remove("note.read")
             save_access()
             assert request(note_path, tokens[0])[0] == 404
+            for operation in (verify_history, receive_once):
+                try:
+                    operation(restored_receiver, *relay_args)
+                except FeedUnavailable:
+                    pass
+                else:
+                    raise AssertionError("Revoked receiver access must withhold verification and delivery")
+            assert receipts(restored_receiver) == final_receipts
+            print("PASS paired recovery: private three-event receiver snapshot verified against restored PostgreSQL; "
+                  "caught up once, verified five events with attributable receipts, refused revoked access")
             assert snapshot("oi_api_test_restore") == restored_state, "Denied note read changed restored history"
             assert request(path, tokens[0])[0] == 200
             assert "note.write" in credentials[0]["actions"]
