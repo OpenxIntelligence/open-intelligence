@@ -26,7 +26,9 @@
 .visit-leave-dialog::backdrop{background:rgb(17 39 31 / .52)}
 .encounter-chart :is(h3,h5)[tabindex="-1"]{scroll-margin-top:var(--workspace-offset,24px)}
 .encounter-chart :is(h3,h5)[tabindex="-1"]:focus-visible{outline:3px solid #90691b;outline-offset:3px}
-.encounter-chart .encounter-row{padding:12px 16px}
+.encounter-chart .case-list{grid-template-columns:minmax(0,1fr)}
+.encounter-chart .encounter-row{padding:12px 16px;min-width:0}
+.encounter-row>div{min-width:0;max-width:100%;overflow-wrap:anywhere}
 .encounter-chart .encounter-version pre{max-width:78ch;line-height:1.6}
 .visit-record-entry{margin-bottom:16px}
 @media(max-width:760px){.visit-filters{grid-template-columns:minmax(0,1fr)}}

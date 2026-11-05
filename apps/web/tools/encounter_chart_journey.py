@@ -187,7 +187,9 @@ def exercise(cd, patient_id, token, credentials, write_grants, case, source_id, 
             cd.command('Emulation.setPageScaleFactor', {'pageScaleFactor':1})
             cd.evaluate('new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(()=>done(true))))')
             layout=cd.evaluate('({width:document.documentElement.clientWidth,overflow:document.documentElement.scrollWidth,viewport:visualViewport.width})')
-            assert layout['overflow'] <= width+1 and abs(layout['viewport']-width)<=20, (width, layout)
+            if layout['overflow'] > width+1 or abs(layout['viewport']-width)>20:
+                offenders=cd.evaluate('Array.from(document.querySelectorAll("main *")).filter(e=>e.getBoundingClientRect().right>'+str(width+1)+').slice(0,12).map(e=>[e.tagName,e.className,e.id])')
+                raise AssertionError((width,layout,offenders))
             history_selector='document.getElementById("encounter-history-heading")'
             cd.evaluate(history_selector+'.scrollIntoView({block:"start"})')
             cd.evaluate('new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(()=>done(true))))')
