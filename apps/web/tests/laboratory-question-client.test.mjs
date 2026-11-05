@@ -19,14 +19,14 @@ function prepared(w,o){
       issued_at:o.issued_at,status:o.status,value_text:o.value_text,unit_code:o.unit_code,absent_reason:o.absent_reason,
       source_reported:true,review_state:'not_established',clinical_review:'not_performed'}};
 }
-async function ready(onPost,onList,worldReply=projection){
+async function ready(onPost,onList,worldReply=projection,onPatientRead=()=>null){
   const binding={case_id:caseId,patient_id:patient,source_organization:'ORG-A',source_system:'SYS-A',source_subject_ref:'SUBJECT-A',review_ref:'REVIEW-A',status:'active',revision:1,created_at:'2026-11-02T10:00:00Z',revoked_at:null,source_identity_verified:false,clinical_sources_linked:false,clinical_conclusions:false};
   const session=new RegistrySession(async(url,init)=>{
     if(init.method==='POST')return onPost(url,JSON.parse(init.body));
     if(url.endsWith('/world-model'))return reply(worldReply());
     if(url.endsWith('/composer/laboratory-questions'))return onList(url,init);
     if(url.endsWith('/case-bindings'))return reply({patient_id:patient,mappings:[binding],synthetic:true,source_identity_verified:false,clinical_sources_linked:false});
-    return reply({patient_id:patient,origin_org:'ORG-A',status:'active',revision:1,created_at:'2026-11-02T10:00:00Z'});
+    return onPatientRead(url)??reply({patient_id:patient,origin_org:'ORG-A',status:'active',revision:1,created_at:'2026-11-02T10:00:00Z'});
   });
   session.connect(token);await session.read(patient);await session.loadCases();await session.loadWorldModel(caseId);
   const world=session.snapshot().worldModel;assert.ok(world,session.snapshot().worldMessage);
@@ -132,4 +132,89 @@ test('late list success cannot reappear after an authorized same-case refresh',a
  await f.session.saveLabQuestion(f.world,await f.send());assert.equal(f.session.snapshot().labQuestionSavedId,qid);
  const later=await f.send();await f.session.loadLabQuestions(f.world);assert.equal(f.session.snapshot().labQuestionSavedId,null);
  await f.session.saveLabQuestion(f.world,later);assert.equal(writes,1);
+});
+
+
+test('same-patient access recheck preserves the exact lab save, including an in-flight or temporarily unreachable response',async()=>{
+ for(const mode of ['lost','in flight','transient patient failure']){
+  let release, status=200;
+  const writes=[];
+  const f=await ready((url,body)=>{
+   if(url.endsWith('/laboratory-preflight'))return reply(prepared(f.world,f.item));
+   writes.push(JSON.stringify(body));
+   if(writes.length===1)return mode==='in flight'?new Promise(resolve=>{release=resolve;}):reply({},503);
+   return reply({question_id:qid,duplicate:true},200);
+  },undefined,projection,()=>status===200?null:reply({},status));
+  const outstanding=f.session.saveLabQuestion(f.world,await f.send());
+  if(mode!=='in flight')await outstanding;
+  assert.equal(f.session.snapshot().labQuestionWritePhase,mode==='in flight'?'saving':'unknown');
+  if(mode==='transient patient failure')status=503;
+  await f.session.read(patient);
+  assert.equal(f.session.snapshot().labQuestionWritePhase,'unknown',mode);
+  assert.equal(f.session.snapshot().worldModel,null);
+  await f.session.retryLabQuestion(f.world);assert.equal(writes.length,1);
+  if(status===503){status=200;await f.session.read(patient);}
+  await f.session.loadCases();await f.session.loadWorldModel(caseId);
+  await f.session.retryLabQuestion(f.session.snapshot().worldModel);
+  assert.deepEqual(writes,[writes[0],writes[0]],mode);
+  assert.equal(f.session.snapshot().labQuestionSavedId,qid);
+  if(release){release(reply({},404));await outstanding;assert.equal(f.session.snapshot().labQuestionSavedId,qid);}
+ }
+});
+
+test('a denied patient recheck or a switch to a different patient clears the uncertain lab save',async()=>{
+ for(const reason of [401,403,404,'different patient']){
+  let deny=false;const writes=[];
+  const f=await ready((url,body)=>{
+   if(url.endsWith('/laboratory-preflight'))return reply(prepared(f.world,f.item));
+   writes.push(body);return reply({},503);
+  },undefined,projection,url=>{
+   if(url.endsWith('/PAT-OTHER'))return reply({patient_id:'PAT-OTHER',origin_org:'ORG-A',status:'active',revision:1,created_at:'2026-11-02T10:00:00Z'});
+   return deny?reply({},reason):null;
+  });
+  await f.session.saveLabQuestion(f.world,await f.send());
+  assert.equal(f.session.snapshot().labQuestionWritePhase,'unknown');
+  deny=true;await f.session.read(reason==='different patient'?'PAT-OTHER':patient);
+  assert.equal(f.session.snapshot().labQuestionWritePhase,'idle');
+  if(reason==='different patient')assert.equal(f.session.snapshot().patient.patient_id,'PAT-OTHER');
+  deny=false;if(!f.session.snapshot().connected)f.session.connect(token);
+  await f.session.read(patient);await f.session.loadCases();await f.session.loadWorldModel(caseId);
+  await f.session.retryLabQuestion(f.session.snapshot().worldModel);
+  assert.equal(writes.length,1);
+ }
+});
+
+test('text question conflict in the same case retains the uncertain laboratory command for exact recovery',async()=>{
+ const world=projection(),source={...world.current_sources[0],kind:'pathology',source_id:'SRC-'+'F'.repeat(32),document_id:'FICT-PATH'};
+ world.current_sources.push(source);
+ const text={source_id:source.source_id,document_id:source.document_id,document_version:source.version,source_sha256:source.sha256,
+   source_kind:source.kind,finding_key:'marker',reported_state:'reported',source_statement:'Independently fictional text.',
+   source_line:8,specimen_id:source.specimen_id,event_date:source.event_date,issued_at:source.issued_at,
+   review_state:'not_established',clinical_meaning:null};
+ world.observations=[text];world.summary.current_sources++;world.summary.current_observations++;
+ const textReceipt={contract:'oi.synthetic-source-composer-preflight/2',source_snapshot_contract:world.contract,access_receipt_id:access,
+   patient_id:patient,case_id:caseId,question,source_snapshot_sha256:world.snapshot_fingerprint,
+   selected_source:{source_id:source.source_id,document_id:source.document_id,version:source.version,sha256:source.sha256,
+     kind:source.kind,line:text.source_line,finding_key:text.finding_key,reported_state:text.reported_state,statement:text.source_statement,
+     event_date:source.event_date,issued_at:source.issued_at,specimen_id:source.specimen_id},
+   source_context_only:true,biomedical_evidence_rights_verified:false,model_execution_authorized:false,durable_question_created:false,
+   durable_review_connected:false,clinical_approval:false,clinical_interpretation:'not_performed',
+   reassessment_policy:'revalidate_source_and_authority_before_any_future_write',limitations:'Independently authored fictional text.',preflight_sha256:'c'.repeat(64)};
+ const labWrites=[];
+ const f=await ready((url,body)=>{
+   if(url.endsWith('/laboratory-preflight'))return reply(prepared(world,world.laboratory_observations[0]));
+   if(url.endsWith('/source-preflight'))return reply(textReceipt);
+   if(url.endsWith('/questions'))return reply({},409);
+   assert.ok(url.endsWith('/composer/laboratory-questions'));labWrites.push(JSON.stringify(body));
+   return labWrites.length===1?reply({},503):reply({question_id:qid,duplicate:true});
+ },undefined,()=>world);
+ await f.session.saveLabQuestion(f.world,await f.send());
+ assert.equal(f.session.snapshot().labQuestionWritePhase,'unknown');
+ await f.session.prepareSourceContext(source.source_id,text.source_line,question);
+ assert.equal(f.session.snapshot().composerPhase,'ready');
+ await f.session.savePreparedQuestion();
+ assert.equal(f.session.snapshot().worldModel,null);
+ assert.equal(f.session.snapshot().labQuestionWritePhase,'unknown');
+ await f.session.loadWorldModel(caseId);await f.session.retryLabQuestion(f.session.snapshot().worldModel);
+ assert.deepEqual(labWrites,[labWrites[0],labWrites[0]]);assert.equal(f.session.snapshot().labQuestionSavedId,qid);
 });

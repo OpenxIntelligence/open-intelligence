@@ -120,6 +120,9 @@ const emptyInvestigation=()=>({questionDraft:null,composerPreview:null,composerP
   questionListMessage:'Open an authorized case to inspect saved source questions.',
   ...emptyEvidenceState(),...emptyBrief(),sourceQuotePacket:null,sourceQuotePhase:'idle' as const,
   sourceQuoteMessage:'Select a saved question to inspect its source quotation and evidence gaps.'});
+const unconfirmedLabQuestion = {labQuestionWritePhase:'unknown',labQuestionWriteMessage:
+  'The earlier save is unconfirmed. Retry its unchanged request after reopening this case.'} as const;
+
 const fresh = (): ViewState => Object.freeze({...emptyLabQuestions(),manualPassageDraftQuestionIds:Object.freeze([]),connected:false,phase:'disconnected',patient:null,created:null,message:'Connect a local synthetic credential to use the patient registry.',cases:null,sourceIndex:null,recordsPhase:'idle',recordMessage:'Open an authorized fictional patient in Overview first.',...emptyIntake(),...emptyLaboratory(),...emptyWorld(),...emptyInvestigation(),...emptyReview(),...emptyFollowthrough(),...emptyEvidence(),...emptySourceImages()});
 const emptyRecords=()=>({...emptyIntake(),...emptyLaboratory(),...emptyWorld(),...emptySourceImages(),cases:null,sourceIndex:null,recordsPhase:'idle' as const,recordMessage:'Load the current authorized case mappings to inspect original source metadata.'});
 function exact(value: unknown, fields: string[]): value is Record<string,unknown> {
@@ -347,7 +350,7 @@ export class RegistrySession {
   #resetLabQuestions(preserveCase?:string):LabQuestionView{
     this.#labSave++;this.#labList++;this.#labDrafts=new WeakMap();
     if(this.#labPending&&preserveCase===this.#labPending.caseId&&this.#state.patient?.patient_id===this.#labPending.patient){
-      return {...emptyLabQuestions(),labQuestionWritePhase:'unknown',labQuestionWriteMessage:'The earlier save is unconfirmed. Retry its unchanged request after reopening this case.'};
+      return {...emptyLabQuestions(),...unconfirmedLabQuestion};
     }
     this.#labPending=null;return emptyLabQuestions();
   }
@@ -412,7 +415,13 @@ export class RegistrySession {
     const pendingEvidence=this.#state.evidenceWriteIntent;
     const preserveEvidence=pendingEvidence?.patient_id===id&&
       ['saving','unknown'].includes(this.#state.evidenceWritePhase)?pendingEvidence:null;
-    this.#records++;this.#publish({patient:null,...emptyRecords(),...this.#resetInvestigation(),
+    // Invalidate the earlier response and every displayed source. Retain only the
+    // exact command for this patient until its case can be authorized again.
+    const pendingLabQuestion=this.#labPending?.patient===id?this.#labPending:null;
+    const clearedInvestigation=this.#resetInvestigation();
+    this.#labPending=pendingLabQuestion;
+    this.#records++;this.#publish({patient:null,...emptyRecords(),...clearedInvestigation,
+      ...(pendingLabQuestion?unconfirmedLabQuestion:{}),
       ...(preserveLaboratory?{laboratoryIntent:preserveLaboratory,laboratoryPhase:'unknown' as const,
         laboratoryMessage:'The earlier laboratory import remains uncertain. Recheck this case, then retry its exact saved request.'}:{}),
       ...(preserveEvidence?{evidenceWriteIntent:preserveEvidence,evidenceWritePhase:'unknown' as const,
@@ -894,14 +903,14 @@ export class RegistrySession {
       if(response.status===401){this.#httpError(401);return;}
       if([403,404,409,413,422].includes(response.status)){
         this.#labPending=null;this.#labDrafts=new WeakMap();this.#publish({...emptyLabQuestions(),labQuestionWritePhase:'error',
-          labQuestionWriteMessage:response.status===409?'The report or request no longer matches. Refresh Journey and recheck the result.':'Question save unavailable. Recheck access and prepare the question again.'});return;
+          labQuestionWriteMessage:response.status===409?'A changed report, conflicting request or full history can prevent a save. Reopen the saved questions and check the current report.':'Question save unavailable. Recheck access and prepare the question again.'});return;
       }
       if(![200,201].includes(response.status))throw Error('unknown');
       const saved=decodeSavedQuestion(await json(response));
       if(saved.duplicate!==(response.status===200))throw Error('unknown');
       if(!current())return;
       this.#labPending=null;this.#publish({labQuestionWritePhase:'saved',labQuestionSavedId:saved.question_id,
-        labQuestionWriteMessage:saved.duplicate?'Original save receipt recovered. The question was not duplicated.':'Laboratory question saved for review.'});
+        labQuestionWriteMessage:saved.duplicate?'Original save receipt recovered.':'Laboratory question saved.'});
     }catch{if(current())this.#publish({labQuestionWritePhase:'unknown',labQuestionWriteMessage:'Save outcome unknown. Retry the exact request to recover its receipt.'});}
     finally{clearTimeout(timer);this.#controllers.delete(control);}
   }
@@ -1043,7 +1052,9 @@ export class RegistrySession {
       if(![200,201].includes(res.status)){
         if(![403,404,409,413,422].includes(res.status))throw Error('unconfirmed');
         if(res.status===409){
-          this.#resetWorld();
+          // Refresh stale source context while keeping this case's outstanding
+          // commands recoverable with their original idempotency keys.
+          this.#resetWorld(prepared.case_id);
           this.#publish({questionSavePhase:'error',questionSaveMessage:
             'Source/version or request intent changed. Refresh current originals and saved questions.'});
         }else{

@@ -242,8 +242,19 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     committed, = operator(laboratory_history)['questions']
     assert committed['question'] == question and committed['source_context_state'] == 'current_unreviewed_question'
     assert committed['source_id'] == first['source_id'] and committed['source_sha256'] == first['sha256']
+    navigate('Overview')
+    cd.evaluate('document.querySelector("[data-testid=patient-card] button").click()')
+    cd.wait('Boolean(document.querySelector("[data-testid=patient-card]"))', 'same patient access rechecked before question retry')
+    navigate('Journey')
+    cd.evaluate('document.querySelector("[data-testid=world-load-cases]").click()')
+    cd.wait('[...document.querySelectorAll(".world-cases li")].some(e=>e.textContent.includes(' + json.dumps(CASE) + '))', 'reopen authorized case for question retry')
+    journey('0')
+    cd.wait("Boolean(document.querySelector('[data-testid=lab-question-retry]'))", 'same patient retains exact question recovery')
+    assert cd.evaluate('window.__oiLabQuestionPosts.length') == 1
     cd.evaluate("document.querySelector('[data-testid=lab-question-retry]').click()")
-    cd.wait("window.__oiLabQuestionPosts.length===2 && !document.querySelector('[data-testid=lab-question-retry]')", 'recover the committed question')
+    cd.wait("window.__oiLabQuestionPosts.length===2 && document.querySelector('[data-testid=lab-question-save-status]')?.textContent.includes(" + json.dumps(committed['question_id']) + ")", 'client accepted the recovered question identity')
+    assert not cd.evaluate("Boolean(document.querySelector('[data-testid=lab-question-retry]'))")
+    assert 'Original save receipt recovered' in cd.evaluate("document.querySelector('[data-testid=lab-question-save-status]').textContent")
     posts = cd.evaluate('window.__oiLabQuestionPosts')
     assert [p['status'] for p in posts] == [201, 200] and posts[0]['body'] == posts[1]['body']
     assert operator(laboratory_history)['questions'] == [committed]
@@ -303,7 +314,7 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
         'synthetic': True, 'case_id': CASE, 'question_id': committed['question_id'],
         'original_source_id': first['source_id'], 'original_sha256': first['sha256'],
         'current_source_id': current['source_id'], 'observation_reference': committed['observation_reference'],
-        'save_statuses': [p['status'] for p in posts], 'same_retry_body': posts[0]['body']==posts[1]['body'],
+        'save_statuses': [p['status'] for p in posts], 'same_retry_body': posts[0]['body']==posts[1]['body'], 'rechecked_patient_before_retry': True,
         'historical_state': reopened['source_context_state'], 'revoked_history_withheld': True,
         'observed_history_statuses': cd.evaluate('window.__oiLabHistoryCodes'),
     }, indent=2) + '\n')
