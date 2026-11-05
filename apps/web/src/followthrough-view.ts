@@ -1,16 +1,21 @@
 /** Typed projection over the canonical follow-through owner. No client ledger or authority. */
 import type {SourceQuestion} from './source-questions-view.js';
-import type {SourceWorldModel} from './source-world-model.js';
+import type {SavedLabQuestion} from './laboratory-question.js';
+import type {ViewState} from './registry-client.js';
 import {canPrepareSourceBrief} from './source-brief.js';
 import {citationEvidenceTimestamp} from './evidence-timestamp.js';
 
+export {canPrepareSourceBrief as canCreateFollowthrough};
+export const FOLLOWTHROUGH_V2_MEDIA='application/vnd.open-intelligence.followthrough.v2+json';
+export type FollowthroughQuestion=SourceQuestion|SavedLabQuestion;
+export type FollowthroughFamily='text'|'laboratory';
 export type FollowthroughStatus='created'|'assigned'|'acknowledged'|'completed'|'deferred';
 export type FollowthroughDraft=Readonly<{
  title:string;detail:string;owner_label:string;due_date:string|null;review_trigger:string;reason:string;
 }>;
 /** Unsent presentation input, bound to an already authorized question context. */
 export type FollowthroughUnsentDraft=Readonly<{
- patient_id:string;case_id:string;source_snapshot_sha256:string;preflight_sha256:string;fields:FollowthroughDraft;
+ patient_id:string;case_id:string;source_snapshot_sha256:string;preflight_sha256:string;laboratoryAnchor?:string;fields:FollowthroughDraft;
 }>;
 export type FollowthroughTransition=Readonly<{status:FollowthroughStatus;owner_label:string;reason:string}>;
 export type FollowthroughTransitionFields=Readonly<Pick<FollowthroughTransition,'owner_label'|'reason'>>;
@@ -24,15 +29,15 @@ export type FollowthroughEvent=Readonly<{
 export type FollowthroughTask=Readonly<{
  task_id:string;question_id:string;patient_id:string;case_id:string;
  title:string;detail:string;owner_label:string;due_date:string|null;review_trigger:string;
- created_at:string;status:FollowthroughStatus;revision:number;source_id:string;source_line:number;
+ created_at:string;status:FollowthroughStatus;revision:number;source_id:string;
  source_sha256:string;source_version:number;source_snapshot_contract:string;source_snapshot_sha256:string;
  preflight_sha256:string;source_context_state:'current_unreviewed_question'|'source_reassessment_required';
  manual_dependency_revision_id:string|null;manual_context_state:'current_unreviewed'|'reassessment_required'|null;
  needs_recheck:boolean;is_overdue:boolean;is_due_soon:boolean;clinical_approval:false;
  history:readonly FollowthroughEvent[];
-}>;
+}&({source_line:number;observation_reference?:never}|{source_line:null;observation_reference:string})>;
 export type FollowthroughList=Readonly<{
- contract:'oi.pg-question-followthrough/1';patient_id:string;case_id:string;access_receipt_id:string;
+ contract:'oi.pg-question-followthrough/1'|'oi.pg-question-followthrough/2';patient_id:string;case_id:string;access_receipt_id:string;
  evaluated_on:string;tasks:readonly FollowthroughTask[];synthetic:true;clinical_approval:false;external_notification_sent:false;
 }>;
 export type FollowthroughReceipt=Readonly<{
@@ -58,13 +63,14 @@ export function followthroughTransitionContext(task:FollowthroughTask):string{
  return JSON.stringify([task.patient_id,task.case_id,task.task_id,task.question_id,task.revision,task.status,
   task.owner_label,task.source_id,task.source_line,task.source_version,task.source_sha256,
   task.source_snapshot_contract,task.source_snapshot_sha256,task.preflight_sha256,task.source_context_state,
-  task.manual_dependency_revision_id,task.manual_context_state]);
+  task.manual_dependency_revision_id,task.manual_context_state,...(task.source_line===null?[task.observation_reference]:[])]);
 }
 const canonical='oi.pg-source-world-model/1',legacy='oi.synthetic-postgres-world-model-sources/1';
 const taskFields=['task_id','question_id','patient_id','case_id','title','detail','owner_label','due_date','review_trigger',
  'created_at','status','revision','source_id','source_line','source_sha256','source_version','source_snapshot_contract',
  'source_snapshot_sha256','preflight_sha256','source_context_state','manual_dependency_revision_id',
  'manual_context_state','needs_recheck','is_overdue','is_due_soon','clinical_approval','history'];
+const labTaskFields=[...taskFields,'observation_reference'];
 function exact(value:unknown,fields:readonly string[]):value is Record<string,unknown>{
  return value!==null&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).length===fields.length&&
   fields.every(key=>Object.hasOwn(value,key));
@@ -96,35 +102,66 @@ export function validFollowthroughDraft(draft:FollowthroughDraft):boolean{
   validFollowthroughText(draft.reason,3,600)&&(draft.due_date===null||validFollowthroughDate(draft.due_date))&&
   (draft.due_date!==null||draft.review_trigger.trim().length>0);
 }
-export function canCreateFollowthrough(question:SourceQuestion,world:SourceWorldModel|null):boolean{
- // Source identity is a prerequisite only. Each write still needs its own server grant.
- return canPrepareSourceBrief(question,world);
+/** A fresh scoped question history and the exact source anchor are prerequisites to editing or creating work. */
+export function currentFollowthroughQuestion(state:ViewState,questionId:string,family:FollowthroughFamily):FollowthroughQuestion|null{
+ const world=state.worldModel;
+ if(!state.connected||state.phase!=='ready'||state.patient?.status!=='active'||!world||state.worldPhase!=='ready'||
+    state.patient.patient_id!==world.patient_id||!state.cases?.some(c=>c.patient_id===world.patient_id&&
+      c.case_id===world.case_id&&c.status==='active'))return null;
+ if(family==='text'){
+  const row=state.questionListPhase==='ready'&&state.questionsCaseId===world.case_id?
+   state.questions?.find(q=>q.question_id===questionId):null;
+  return row&&canPrepareSourceBrief(row,world)?row:null;
+ }
+ const history=state.labQuestionHistory;
+ if(state.labQuestionListPhase!=='ready'||history?.patient_id!==world.patient_id||history.case_id!==world.case_id||
+    history.checked_source_snapshot_sha256!==world.snapshot_fingerprint)return null;
+ const row=history.questions.find(q=>q.question_id===questionId);
+ return row?.source_context_state==='current_unreviewed_question'&&row.source_snapshot_sha256===world.snapshot_fingerprint&&
+  world.laboratory_observations.some(o=>o.source_id===row.source_id&&o.observation_reference===row.observation_reference&&
+   o.source_sha256===row.source_sha256&&o.document_version===row.source_version)?row:null;
+}
+
+export function followthroughLaboratoryAnchor(question:SavedLabQuestion):string{
+ return JSON.stringify([question.source_id,question.source_version,question.source_sha256,question.observation_reference]);
+}
+
+export function matchesFollowthroughDraft(draft:FollowthroughUnsentDraft,row:FollowthroughQuestion):boolean{
+ return row.source_context_state==='current_unreviewed_question'&&row.preflight_sha256===draft.preflight_sha256&&
+  row.source_snapshot_sha256===draft.source_snapshot_sha256&&
+  draft.laboratoryAnchor===('observation_reference' in row?followthroughLaboratoryAnchor(row):undefined);
 }
 export function validFollowthroughTransition(task:FollowthroughTask,draft:FollowthroughTransition):boolean{
  return status(draft.status)&&FOLLOWTHROUGH_TRANSITIONS[task.status].includes(draft.status)&&
   validFollowthroughText(draft.reason,3,600)&&
   validFollowthroughText(draft.owner_label,draft.status==='assigned'?2:0,80)&&
   (draft.status==='assigned'||draft.owner_label==='')&&
-  !(draft.status==='completed'&&task.manual_context_state==='reassessment_required');
+  !(draft.status==='completed'&&(task.manual_context_state==='reassessment_required'||
+    (task.source_line===null&&task.source_context_state==='source_reassessment_required')));
 }
 
 export function decodeFollowthrough(value:unknown,patient:string,caseId:string):FollowthroughList{
  if(!exact(value,['contract','patient_id','case_id','access_receipt_id','evaluated_on','tasks','synthetic',
-  'clinical_approval','external_notification_sent'])||value.contract!=='oi.pg-question-followthrough/1'||
+  'clinical_approval','external_notification_sent'])||(value.contract!=='oi.pg-question-followthrough/1'&&value.contract!=='oi.pg-question-followthrough/2')||
   value.patient_id!==patient||value.case_id!==caseId||!id(value.access_receipt_id,'ACCESS-')||
   !validFollowthroughDate(value.evaluated_on)||!Array.isArray(value.tasks)||value.tasks.length>250||
   value.synthetic!==true||value.clinical_approval!==false||value.external_notification_sent!==false)throw Error('task contract');
  const taskIds=new Set<string>(),eventIds=new Set<string>();
  const evaluatedOn=value.evaluated_on,today=Date.parse(evaluatedOn+'T00:00:00Z');
+ const extended=value.contract==='oi.pg-question-followthrough/2';
  const tasks=Object.freeze(value.tasks.map((row:unknown)=>{
-  if(!exact(row,taskFields)||!id(row.task_id,'TASK-')||taskIds.has(row.task_id)||
+  const laboratory=extended&&exact(row,labTaskFields);
+  if((!laboratory&&!exact(row,taskFields))||!id(row.task_id,'TASK-')||taskIds.has(row.task_id)||
    !id(row.question_id,'QUESTION-')||row.patient_id!==patient||row.case_id!==caseId||
    !validFollowthroughText(row.title,3,160)||!validFollowthroughText(row.detail,0,2000)||
    !validFollowthroughText(row.owner_label,0,80)||!validFollowthroughText(row.review_trigger,0,500)||
    (row.due_date!==null&&!validFollowthroughDate(row.due_date))||
    (row.due_date===null&&row.review_trigger.trim()==='')||!instant(row.created_at)||
    !status(row.status)||!positive(row.revision)||!id(row.source_id,'SRC-')||
-   !positive(row.source_line)||row.source_line>10000||!positive(row.source_version)||!hash(row.source_sha256)||
+   (laboratory?(row.source_line!==null||typeof row.observation_reference!=='string'||
+    !/^Observation\/[A-Za-z0-9.-]{1,64}$/.test(row.observation_reference)||row.source_snapshot_contract!==canonical||
+    row.manual_dependency_revision_id!==null||row.manual_context_state!==null):(!positive(row.source_line)||row.source_line>10000))||
+   !positive(row.source_version)||!hash(row.source_sha256)||
    !hash(row.source_snapshot_sha256)||!hash(row.preflight_sha256)||
    ![canonical,legacy].includes(String(row.source_snapshot_contract))||
    !['current_unreviewed_question','source_reassessment_required'].includes(String(row.source_context_state))||

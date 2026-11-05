@@ -15,6 +15,7 @@ import test_lab_manual_convergence as joined
 import test_laboratory_question_migration as previous
 from test_source_versions import SourceVersionFixture
 
+CITATIONS = "0019_laboratory_citations"
 PREVIOUS = previous.QUESTION_REVISION
 
 
@@ -29,7 +30,7 @@ class LaboratoryCitationMigrationTests(SourceVersionFixture):
         with self.services() as registry:
             seed_fictional_records(registry, fictional_records(), recorded_by="FICTIONAL-AUTHOR")
         before = self.snapshot()
-        migrate(self.admin, "upgrade", SCHEMA_REVISION)
+        migrate(self.admin, "upgrade", CITATIONS)
         self.assertEqual(self.snapshot(before[0]), before)
         self.assertEqual(self.snapshot()[0]["investigation.laboratory_citation_anchors"], [])
         migrate(self.admin, "downgrade", PREVIOUS)

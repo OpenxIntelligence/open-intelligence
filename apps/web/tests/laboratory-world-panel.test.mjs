@@ -13,7 +13,7 @@ before(async()=>{
  ({WorldModelView}=await import(pathToFileURL(resolve('.test-dist/laboratory-world-ui/world-model-view.mjs')).href));
 });
 import {patient,caseId,sourceId,hash,projection} from './laboratory-projection-fixture.mjs';
-const idleQuestionSave = {questionSavePhase:'idle', questionSaveMessage:''};
+const idleQuestionSave = {questionSavePhase:'idle', questionSaveMessage:'', followthroughDrafts:{}};
 const render=model=>renderToStaticMarkup(createElement(WorldModelView,{session:{},state:{...idleQuestionSave,patient:{patient_id:patient},cases:[],worldPhase:'ready',recordsPhase:'ready',worldMessage:'Fresh read',worldModel:model},busy:false,onOverview(){}}));
 test('laboratory-only projection renders zero, negative and absent results with exact unreviewed provenance',()=>{
  const html=render(parseSourceWorldModel(projection(),patient,caseId));
@@ -63,6 +63,7 @@ test('saved laboratory question shows historical provenance and reassessment wit
  assert.ok(html.includes('data-testid="lab-questions-reopen"'));assert.ok(!html.includes('data-testid="world-laboratory-results"'));
  const saved=html.split('data-testid="lab-saved-question"')[1].split('</li>')[0];
  for(const value of [row.question,'Needs reassessment',row.observation_reference,'source version 1',oldSource,prior,row.question_id])assert.ok(saved.includes(value),value);
+ assert.match(saved,/data-testid="followthrough-open-create" disabled/);
  assert.ok(!saved.includes('10*9/L'));assert.ok(!saved.includes('write a source-linked question'));assert.ok(!saved.includes('source line'));
 });
 

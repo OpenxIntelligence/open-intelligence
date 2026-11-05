@@ -68,6 +68,15 @@ class PopulatedImageEvidenceUpgradeTests(PopulatedImageReviewFixture):
         "investigation.question_evidence_links": "link_id",
     }
 
+    def _snapshot(self, tables=None):
+        rows = super()._snapshot(tables)
+        # On 0023 a legacy text task acquires exactly one new null field.
+        # Normalize only that additive schema difference, preserving all values.
+        for task in rows.get(TASK_TABLES[0], []):
+            if task.get("observation_reference") is None and task["source_line"] is not None:
+                task.pop("observation_reference", None)
+        return rows
+
     def _schema_definition(self):
         # Compare actual owner definitions before/after a no-DDL merge or a
         # rolled-back migration, without depending on PostgreSQL object OIDs.

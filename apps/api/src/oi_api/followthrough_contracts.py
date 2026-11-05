@@ -219,3 +219,16 @@ class FollowthroughList(Contract):
             if (task.patient_id, task.case_id) != (self.patient_id, self.case_id):
                 raise ValueError("Task scope mismatch")
         return self
+
+
+class LaboratoryFollowthroughTask(FollowthroughTask):
+    """An Observation in an immutable original has no text line or manual passage."""
+    source_line: None
+    observation_reference: str = Field(strict=True, pattern=r"^Observation/[A-Za-z0-9.-]{1,64}$")
+    manual_dependency_revision_id: None = None
+    manual_context_state: None = None
+
+
+class FollowthroughListV2(FollowthroughList):
+    contract: Literal["oi.pg-question-followthrough/2"]
+    tasks: list[FollowthroughTask | LaboratoryFollowthroughTask] = Field(max_length=250)

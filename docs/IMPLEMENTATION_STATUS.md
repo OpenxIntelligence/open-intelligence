@@ -9,6 +9,30 @@ draft labels, schema heads and test counts are not current acceptance claims.
 
 **Stage:** local experimental synthetic-only code. **Not released for clinical use.**
 
+## H1 execution foundation — accepted-main reconciliation, 5 November 2026
+
+[PR #529](https://github.com/OpenxIntelligence/open-intelligence/pull/529)
+continues foundation construction toward the entire Open Intelligence core.
+It implements independent source/question contracts and one durable PostgreSQL
+source-brief worker with current actor authority, exact source pins, bounded
+leases/retries and immutable execution history. This is concrete foundation
+progress, not completion of the PF/PD portfolio or the specialist engines.
+See [the execution guide](engineering/H1_DURABLE_EXECUTION.md) for scope.
+
+The candidate cleanly incorporates accepted main
+`f188aecc70f3415741dac0e7dd5bf3f2d9fd02a9` and accepted
+[#527](https://github.com/OpenxIntelligence/open-intelligence/pull/527), preserving
+its 13-file contribution and SQLite reference per-agent provenance writer.
+The join introduces no migration and retains the existing H1 owners.
+
+Pre-join source `24ebf806befa1f10ac0a4e78a13f7cd1a8e28a2f` passed
+[43/43 focused PostgreSQL tests with zero skips](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/42090201333),
+including process-kill recovery, populated restore and security edge cases.
+The merged candidate needs its own exact-source CI; this earlier result is not
+a combined pass. This is a source-publication checkpoint. PR #529 maintains
+current source/test receipts and landing status; no deployment or clinical
+qualification follows from this increment.
+
 ## Provenance write contract (Slice 1) — 5 November 2026
 
 Branch `program/slice1-write-contract`, from main `4b13bc2`. Implements

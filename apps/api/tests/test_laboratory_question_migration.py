@@ -27,6 +27,7 @@ class LaboratoryQuestionMigrationTests(SourceVersionFixture):
     start_at = evidence.EvidenceConvergenceMigrationTests.start_at
     snapshot = evidence.EvidenceConvergenceMigrationTests.snapshot
     seed_lab = previous.LabManualPopulatedMigrationTests.seed_lab
+    assert_existing_history_preserved = previous.LabManualPopulatedMigrationTests.assert_existing_history_preserved
 
     def seed(self):
         patient, text_question, _ = self.start_at(previous.JOIN)

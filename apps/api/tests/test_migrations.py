@@ -83,6 +83,15 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
 
     def remove_owned_fixtures(self):
         with self.engine.begin() as conn:
+            # Release only the declared 0019 execution children and functions.
+            # Unknown dependencies still stop cleanup through RESTRICT.
+            conn.execute(text("DROP TABLE IF EXISTS investigation.composer_tool_run_results"))
+            conn.execute(text("DROP TABLE IF EXISTS investigation.composer_tool_run_events"))
+            conn.execute(text("DROP TABLE IF EXISTS investigation.composer_tool_runs"))
+            conn.execute(text("DROP FUNCTION IF EXISTS investigation.require_composer_run_consistency()"))
+            conn.execute(text("DROP FUNCTION IF EXISTS investigation.guard_composer_run_result()"))
+            conn.execute(text("DROP FUNCTION IF EXISTS investigation.guard_composer_run_event()"))
+            conn.execute(text("DROP FUNCTION IF EXISTS investigation.guard_composer_run()"))
             # Drop the declared 0016 FK child before its canonical task owner;
             # RESTRICT remains in effect for every unknown dependency.
             conn.execute(text("ALTER TABLE IF EXISTS ehr.clinical_note_headers DROP CONSTRAINT IF EXISTS latest_note_version_exists"))
@@ -96,6 +105,9 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
             conn.execute(text("DROP TABLE IF EXISTS coordination.question_followthrough_tasks"))
             conn.execute(text("DROP FUNCTION IF EXISTS coordination.guard_question_followthrough_event_insert()"))
             conn.execute(text("DROP FUNCTION IF EXISTS coordination.guard_question_followthrough_task_insert()"))
+            conn.execute(text("DROP FUNCTION IF EXISTS coordination.guard_lab_followthrough_task_insert()"))
+            conn.execute(text("DROP FUNCTION IF EXISTS coordination.guard_lab_followthrough_completion()"))
+            conn.execute(text("DROP FUNCTION IF EXISTS investigation.lab_question_sources_current(text,text,text,text)"))
             conn.execute(text("DROP FUNCTION IF EXISTS coordination.guard_question_followthrough_manual_dependency()"))
             conn.execute(text("DROP TABLE IF EXISTS investigation.laboratory_citation_anchors"))
             conn.execute(text("DROP TABLE IF EXISTS investigation.question_evidence_links"))

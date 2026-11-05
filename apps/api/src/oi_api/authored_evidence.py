@@ -25,7 +25,7 @@ from .authored_evidence_contracts import (AssessEvidence, EvidenceAssessment, Ev
                                  PrepareEvidenceReport, checked_report_snapshot)
 from .evidence_report import (canonical_hash, canonical_json, human_content_allowed,
                               packet_hash, quote_offset, render_evidence_report, visible_line)
-from .patients import QuestionSourceState
+from .source_question_contracts import QuestionSourceState
 from .question_review_returns import _question_id
 from .source_questions import PostgresSourceQuestions
 from .source_world_model import project_source_world_model

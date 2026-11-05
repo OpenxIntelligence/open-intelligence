@@ -21,7 +21,7 @@ class LaboratoryQuestionLegacyBoundaryTests(SourceVersionFixture):
         with self.engine.connect() as db:
             return db.execute(text("SELECT count(*) FROM identity.identity_domain_events")).scalar_one()
 
-    def test_supported_text_and_unsupported_lab_ids_in_same_case(self):
+    def test_text_only_consumers_and_wrong_task_fingerprint_refuse_lab_target(self):
         self.creds[0]["actions"].extend((
             "composer_context_read", "question_create", "question_read", "source_brief_export",
             "evidence_read", "authored_evidence_read", "review_packet_read", "review_queue_read",
@@ -96,7 +96,10 @@ class LaboratoryQuestionLegacyBoundaryTests(SourceVersionFixture):
                 if body and "request_key" in body:
                     body = {**body, "request_key": body["request_key"] + "-LAB"}
                 with self.subTest(route=suffix, is_write=body is not None):
-                    denied = expect(404, typed + suffix, body)
+                    # Task writes now support either origin, but a text question's
+                    # preflight can never authorize a task for a laboratory result.
+                    expected_status = 409 if suffix == "/followthrough" else 404
+                    denied = expect(expected_status, typed + suffix, body)
                     self.assertEqual(set(denied), {"detail"})
                     self.assertNotIn(lab_qid, json.dumps(denied))
             self.assertEqual(self.event_count(), before, "refused operations must not commit read/write receipts")

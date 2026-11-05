@@ -39,7 +39,9 @@ class EHRLaboratoryGraphTests(unittest.TestCase):
     def test_single_head_depends_on_both_published_owners(self):
         script = graph()
         self.assertEqual(script.get_heads(), [SCHEMA_REVISION])
-        self.assertEqual(script.get_revision(SCHEMA_REVISION).down_revision, "0021_lab_citation_freshness")
+        self.assertEqual(script.get_revision("0023_lab_question_followthrough").down_revision, "0022_lab_citation_source_scope")
+        self.assertEqual(script.get_revision("0022_lab_citation_source_scope").down_revision,
+                         "0021_lab_citation_freshness")
         self.assertEqual(script.get_revision("0021_lab_citation_freshness").down_revision,
                          "0020_ehr_lab_convergence")
         self.assertEqual(set(script.get_revision("0020_ehr_lab_convergence").down_revision), {EHR, LAB})
@@ -89,6 +91,8 @@ class EHRLaboratoryUpgradeTests(SourceVersionFixture):
         patient, url, command, receipt = self.seed_citation()
         previous = "0021_lab_citation_freshness"
         migrate(self.admin, "upgrade", previous)
+        # Exercise the changing citation guard with both sibling schemas present.
+        migrate(self.admin, "upgrade", "0019_composer_runs")
         # Ordinary reviewed bytes and user selections are outside this saved
         # laboratory question's canonical structured-source snapshot. Import
         # them after the question, while the published guard is still present.
@@ -265,7 +269,7 @@ class EHRLaboratoryUpgradeTests(SourceVersionFixture):
         migrate(self.admin, "upgrade", "head")
         self.assertEqual(self.heads(), {SCHEMA_REVISION})
         self.readiness(True)
-        self.assertEqual(self.snapshot(names), before)
+        laboratory.LabManualPopulatedMigrationTests.assert_existing_history_preserved(self, before)
 
     def check_note(self, base, url, receipt):
         self.assertEqual(request(base, url, token=TOKEN_A, body={"synthetic": True, **NOTE})[:2],
@@ -319,3 +323,41 @@ class EHRLaboratoryUpgradeTests(SourceVersionFixture):
             self.write()
             self.assertEqual(request(base, url, token=TOKEN_A)[0], 404)
             self.assertEqual(request(base, note[0], token=TOKEN_A)[0], 200)
+
+    def test_published_clinical_head_reopens_citation_note_and_observation_task_after_join(self):
+        from oi_api.question_followthrough import PostgresQuestionFollowthrough
+        from test_laboratory_followthrough import V2
+
+        patient, url, citation_command, citation = self.seed_citation()
+        previous = "0023_lab_question_followthrough"
+        migrate(self.admin, "upgrade", previous)
+        question = url.split("/")[-2]
+        task_intent = {
+            "request_key": "CLINICAL-JOIN-FOLLOWUP",
+            "title": "Review the fictional laboratory source",
+            "detail": "", "owner_label": "", "due_date": None,
+            "review_trigger": "When the source changes",
+            "reason": "Revisit the recorded Observation with its source.",
+            **{key: citation_command[key] for key in (
+                "source_snapshot_contract", "expected_source_snapshot_sha256", "expected_preflight_sha256")},
+        }
+        with self.services() as registry:
+            task = PostgresQuestionFollowthrough(registry).create(
+                patient, "CASE-ALPHA", question, **evidence.OPTIONS, **task_intent)
+        note = self.seed_encounter(patient)
+        tables, _ = self.snapshot()
+        snapshot = self.snapshot([*tables, *EHR_TABLES])
+        self.readiness(False)
+        migrate(self.admin, "upgrade", "head")
+        migrate(self.admin, "upgrade", "head")
+        self.assertEqual(self.heads(), {SCHEMA_REVISION})
+        laboratory.LabManualPopulatedMigrationTests.assert_existing_history_preserved(self, snapshot)
+        with running_server(create_app(self.settings)) as base:
+            self.check_citation(base, url, citation_command, citation)
+            self.check_note(base, *note)
+            path = f"/v1/patients/{patient}/cases/CASE-ALPHA/followthrough"
+            code, page, _ = request(base, path, token=TOKEN_A, headers={"Accept": V2})
+            self.assertEqual(code, 200, page)
+            restored, = [item for item in page["tasks"] if item["task_id"] == task["task_id"]]
+            self.assertEqual(restored["question_id"], question)
+            self.assertTrue(restored["observation_reference"].startswith("Observation/"))

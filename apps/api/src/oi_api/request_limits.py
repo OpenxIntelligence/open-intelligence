@@ -18,6 +18,7 @@ class PatientRequestLimit:
             route.startswith("/v1/patients/") and (
                 route.endswith("/encounters") or "/encounters/" in route or
                 route.endswith("/record-requests") or route.endswith("/case-bindings") or route.endswith("/sources") or
+                route.endswith("/runs") or re.fullmatch(r"/v1/patients/[^/]+/cases/[^/]+/questions/[^/]+/runs/[^/]+/cancel", route) is not None or
                 route.endswith("/questions") or route.endswith(("/composer/source-preflight",
                     "/composer/laboratory-preflight", "/composer/laboratory-questions")) or
                 route.endswith("/documents") or "/documents/" in route or

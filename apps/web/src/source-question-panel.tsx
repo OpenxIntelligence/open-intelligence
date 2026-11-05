@@ -1,12 +1,14 @@
+import {BackgroundBriefPanel} from './background-brief-panel';
 import {SourceOncologyLabel} from './source-oncology-label';
 import type {RegistrySession,ViewState} from './registry-client';
 import {canPrepareSourceBrief,downloadSourceBrief} from './source-brief';
+import type {FollowthroughTask} from './followthrough-view';
 import {FollowthroughCreate,FollowthroughPanel} from './followthrough-panel';
 import {QuestionEvidencePanel,QuestionEvidenceRecovery} from './question-evidence-panel';
 import {AuthoredEvidencePanel} from './authored-evidence-panel';
 
 /** Reuses the source-question intake panel from PR238 over the canonical World Model. */
-export function SourceQuestionPanel({state,session,busy,onReview}:{state:ViewState;session:RegistrySession;busy:boolean;onReview?:()=>void}){
+export function SourceQuestionPanel({state,session,busy,onReview,onTaskOriginal}:{state:ViewState;session:RegistrySession;busy:boolean;onReview?:()=>void;onTaskOriginal?:(task:FollowthroughTask)=>void}){
  const caseId=state.worldModel?.case_id??'';
  const brief=state.sourceBrief;
  const draft=state.questionDraft;
@@ -119,6 +121,7 @@ export function SourceQuestionPanel({state,session,busy,onReview}:{state:ViewSta
             disabled={busy||state.briefPhase==='loading'||state.worldPhase!=='ready'||
               !canPrepareSourceBrief(item,state.worldModel)}
             onClick={()=>void session.prepareSourceBrief(item.question_id)}>Prepare source brief</button>
+          <BackgroundBriefPanel question={item} state={state} session={session} busy={busy}/>
           {!canPrepareSourceBrief(item,state.worldModel)&&<p className="muted">
             Prepare a new question from the current source context before exporting a brief.</p>}
           <FollowthroughCreate key={item.question_id+':'+item.preflight_sha256}
@@ -169,7 +172,7 @@ export function SourceQuestionPanel({state,session,busy,onReview}:{state:ViewSta
     </section>}
    </section>
    <FollowthroughPanel key={(state.patient?.patient_id??'')+':'+(state.worldModel?.case_id??state.followthroughCaseId??'')}
-    state={state} session={session} busy={busy}/>
+    state={state} session={session} busy={busy} onTaskOriginal={onTaskOriginal}/>
    <p role="status" aria-live="polite" data-testid="source-quote-packet-status"
     className={'status '+(state.sourceQuotePhase==='error'?'error':'')}>
     {state.sourceQuoteMessage}</p>
