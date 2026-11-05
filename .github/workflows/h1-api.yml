@@ -92,6 +92,10 @@ jobs:
           python - <<'PYTEST'
           import unittest
           suite = unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_ehr_laboratory_convergence.py')
+          # These RESTRICT fixtures must release every declared function after
+          # testing populated/current heads, without hiding unknown dependencies.
+          suite.addTests(unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_image_evidence_migration.py'))
+          suite.addTests(unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_registry_migrations.py'))
           result = unittest.TextTestRunner(verbosity=2).run(suite)
           raise SystemExit(0 if result.wasSuccessful() and result.testsRun and not result.skipped else 1)
           PYTEST

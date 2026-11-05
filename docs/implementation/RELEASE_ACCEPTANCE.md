@@ -24,6 +24,16 @@ aligns only the guard's source set with the existing canonical snapshot; its
 downgrade restores the original 0021 function, without dropping its trigger.
 Final repaired-head acceptance is required; the red run is not acceptance.
 
+The first repaired head `6c98111460df07412766624407199f3abcb6b24a` passed all
+six joined-core and five populated-parent checks, the full web/browser/demo gate,
+676 client tests and 13 rights tests. Its complete API run executed 833 tests,
+then failed with 29 setup/teardown errors because two old RESTRICT fixture
+cleanups did not explicitly remove `require_lab_citation_current_sources()`.
+No assertion failures or skips were reported. The fixture repair adds only that
+declared function to both disposable cleanup lists; no CASCADE or production
+guard change. Those affected migration suites now run in the early CI gate too.
+Full acceptance, including all recovery stages, must rerun on the repaired head.
+
 ## Test-first integration evidence
 
 The four existing #539 fixture/test files were added to #540 before integration.
