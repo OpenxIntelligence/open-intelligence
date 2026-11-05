@@ -1,8 +1,6 @@
 name: Actual CPU-weight synthetic semantic inference (non-NVIDIA smoke test)
 
 on:
-  push:
-    branches: [research/semantic-real-cpu-model-smoke-20261104]
   pull_request:
     branches: [research/semantic-governed-runner-20261104]
   workflow_dispatch:
@@ -42,7 +40,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p cpu-research-evidence
-          python -m compileall -q tools/semantic_cpu_model_server.py
+          python -m compileall -q tools/semantic_cpu_model_server.py tools/semantic_cpu_inprocess_run.py
           python tools/semantic_question_packet.py --output "$RUNNER_TEMP/oi-cpu-questions.json" \
             > cpu-research-evidence/question-packet-receipt.json
           python - <<'PY'
@@ -97,64 +95,63 @@ jobs:
           PY
           rm -rf "$RUNNER_TEMP/oi-cpu-model/.cache"
           chmod -R a+rX "$RUNNER_TEMP/oi-cpu-model"
-      - name: Build disposable inference-only container (no reference answers)
+      - name: Build disposable model-only container without gold references
         shell: bash
         run: |
           set -euo pipefail
           context="$RUNNER_TEMP/oi-cpu-server-build"
           mkdir -p "$context"
-          cp tools/semantic_cpu_model_server.py "$context/server.py"
+          for file in semantic_cpu_model_server.py semantic_cpu_inprocess_run.py \
+              semantic_local_model_runner.py semantic_question_packet.py \
+              semantic_adversarial_eval.py semantic_benchmark.py semantic_contract_probe.py; do
+            cp "tools/$file" "$context/$file"
+          done
           cat > "$context/Dockerfile" <<'DOCKERFILE'
           FROM python:3.12-slim
           ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 HF_HUB_DISABLE_TELEMETRY=1 TOKENIZERS_PARALLELISM=false
           RUN python -m pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu "torch==2.6.0" \
               && python -m pip install --no-cache-dir "transformers==4.50.3" "huggingface_hub==0.30.2" "safetensors==0.5.3"
           WORKDIR /app
-          COPY server.py /app/server.py
+          RUN mkdir -p /input /results
+          COPY *.py /app/
           USER 65532:65532
-          EXPOSE 18763
-          ENTRYPOINT ["python","-u","/app/server.py"]
+          ENTRYPOINT ["python","-u","/app/semantic_cpu_inprocess_run.py"]
           DOCKERFILE
           docker build -t oi-synthetic-cpu-reference:local "$context"
-          docker network create --internal --driver bridge oi-synthetic-isolated
-          docker run -d --name oi-synthetic-cpu-model \
-            --network oi-synthetic-isolated --publish 127.0.0.1:18763:18763 \
-            --read-only --cap-drop ALL --security-opt no-new-privileges:true \
-            --memory 4g --cpus 2 --pids-limit 80 \
-            --tmpfs /tmp:rw,noexec,nosuid,size=128m \
-            --mount type=bind,src="$RUNNER_TEMP/oi-cpu-model",dst=/weights,readonly \
-            oi-synthetic-cpu-reference:local
-      - name: Verify local server readiness and zero-public-network policy
-        shell: bash
-        run: |
-          set -euo pipefail
-          for i in $(seq 1 90); do
-            if curl -fsS --connect-timeout 2 --max-time 2 --noproxy '*' \
-                http://127.0.0.1:18763/health/live > /dev/null; then
-              echo "Model loaded locally, no clinical data"; break
-            fi
-            if [ "$i" -eq 90 ]; then
-              docker logs oi-synthetic-cpu-model 2>&1 | tail -80
-              exit 1
-            fi
-            sleep 2
-          done
-          docker inspect oi-synthetic-cpu-model \
-            --format '{{json .NetworkSettings.Networks}}' > cpu-research-evidence/model-network.json
-      - name: Run actual local weights on all 72 fictional questions
+          echo "Model-only container contains no patient records, answer labels or research worktree"
+      - name: Run actual pinned weights with network=none and no gold labels
         shell: bash
         run: |
           set -euo pipefail
           packet="$RUNNER_TEMP/oi-cpu-questions.json"
           expected="$(python -c 'import json,sys;print(json.load(open(sys.argv[1]))["packet_sha256"])' "$packet")"
-          python tools/semantic_local_model_runner.py \
-            --packet "$packet" \
-            --expected-packet-sha256 "$expected" \
-            --endpoint http://127.0.0.1:18763/v1/chat/completions \
-            --declared-model-id "$MODEL_REPO" \
-            --max-tasks 72 \
-            --timeout-seconds 30 \
-            --output cpu-research-evidence/real-model-run.json
+          output="$RUNNER_TEMP/oi-cpu-output"
+          mkdir -p "$output"
+          sudo chown 65532:65532 "$output"
+          docker run --rm --name oi-synthetic-cpu-inprocess \
+            --network none \
+            --read-only --cap-drop ALL --security-opt no-new-privileges:true \
+            --memory 4g --cpus 2 --pids-limit 80 \
+            --tmpfs /tmp:rw,noexec,nosuid,size=128m \
+            --mount type=bind,src="$RUNNER_TEMP/oi-cpu-model",dst=/weights,readonly \
+            --mount type=bind,src="$packet",dst=/input/questions.json,readonly \
+            --mount type=bind,src="$output",dst=/results \
+            oi-synthetic-cpu-reference:local \
+              --packet /input/questions.json \
+              --expected-packet-sha256 "$expected" \
+              --model-revision "$MODEL_REVISION" \
+              --output /results/real-model-run.json \
+              --token-report /results/real-token-usage.json
+          sudo cp "$output"/real-model-run.json "$output"/real-token-usage.json cpu-research-evidence/
+          sudo chown "$USER":"$USER" cpu-research-evidence/real-model-run.json cpu-research-evidence/real-token-usage.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          x=json.loads(Path('cpu-research-evidence/real-token-usage.json').read_text())
+          assert x['runtime_kind']=='real_cpu_weights_inprocess_no_network'
+          assert x['questions']==72 and x['nvidia_auto_ontology_inference'] is False
+          print('72 actual model calls ran inside a network-disabled container')
+          PY
       - name: Score real model outputs separately against public synthetic gold
         shell: bash
         run: |
@@ -189,7 +186,7 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           import json,hashlib,os,platform,subprocess
-          paths=['tools/semantic_cpu_model_server.py','.github/workflows/semantic-real-cpu-smoke.yml']
+          paths=['tools/semantic_cpu_model_server.py','tools/semantic_cpu_inprocess_run.py','.github/workflows/semantic-real-cpu-smoke.yml']
           source={'commit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
                   'run_id':os.environ.get('GITHUB_RUN_ID'),
                   'python':platform.python_version(),
@@ -204,13 +201,12 @@ jobs:
           Path('cpu-research-evidence/execution-receipt.json').write_text(json.dumps(source,indent=2,sort_keys=True)+'\n')
           print(json.dumps(source,sort_keys=True))
           PY
-          docker logs oi-synthetic-cpu-model 2>&1 | tail -30 > cpu-research-evidence/container-diagnostics.txt || true
+          echo "Model ran under Docker --network none; no HTTP server exposed" > cpu-research-evidence/container-diagnostics.txt
       - name: Stop disposable local CPU model
         if: always()
         shell: bash
         run: |
-          docker rm -f oi-synthetic-cpu-model >/dev/null 2>&1 || true
-          docker network rm oi-synthetic-isolated >/dev/null 2>&1 || true
+          docker rm -f oi-synthetic-cpu-inprocess >/dev/null 2>&1 || true
       - name: Preserve bounded research-only evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
