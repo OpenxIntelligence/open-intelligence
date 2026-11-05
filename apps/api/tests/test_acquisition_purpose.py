@@ -204,6 +204,15 @@ class AcquisitionPurposeTests(SourceVersionFixture):
                 self.assertEqual(receive(record, case, source), 201)
                 accepted.append((record, case, source))
             before = self.state()
+            unscoped = self.records(base, records)[1]["requests"]
+            self.assertEqual({r["source_reference"]["case_id"] for r in unscoped}, set(cases))
+            for case in cases:
+                scoped = self.records(base, records + "?case_id=" + case)[1]["requests"]
+                self.assertEqual({r["request_id"] for r in scoped}, {r[0] for r in accepted})
+                for row in scoped:
+                    reference = next(item["source_reference"] for item in unscoped
+                                     if item["request_id"] == row["request_id"])
+                    self.assertEqual(row["source_reference"], reference if reference["case_id"] == case else None)
             # Meet only after each writer owns its submitted request, binding and source.
             barrier = Barrier(2, timeout=4)
             lookup = PostgresRecordRequests._receipt

@@ -180,6 +180,9 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, screen
             'amended source requires reconciliation against the original receipt')
     after_amendment, = [row for row in operator('/record-requests')['requests'] if row['request_id'] == tracked['request_id']]
     assert after_amendment['source_reference'] == linked['source_reference']
+    cd.evaluate("document.querySelector(" + json.dumps(receipt_row) + ").scrollIntoView({block:'center'})")
+    (screenshots/'record-request-amended-receipt.png').write_bytes(
+        base64.b64decode(cd.command('Page.captureScreenshot', {'format': 'png'})['data']))
     click(cd, receipt_row + ' [data-testid=request-inspect-original]')
     cd.wait("document.querySelector('[data-testid=server-original]')?.textContent===" +
             json.dumps(ORIGINAL.decode()), 'receipt opens the exact historical original after amendment')

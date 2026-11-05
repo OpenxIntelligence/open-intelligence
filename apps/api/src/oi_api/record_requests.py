@@ -89,6 +89,7 @@ class PostgresRecordRequests:
 
     def _receipt(self, patient_id: str, request_id: str, kind: str,
                  organization: str, purpose: str, *, disclose_source: bool = False,
+                 workspace_case_id: str | None = None,
                  expected_reference: tuple[str, str] | None = None) -> dict | None:
         """Resolve one immutable receipt through its original source owner.
 
@@ -124,7 +125,7 @@ class PostgresRecordRequests:
         else:
             state = "source_current_unreviewed"
         ref = None
-        if disclose_source and binding[0] == "active":
+        if disclose_source and binding[0] == "active" and workspace_case_id in (None, case_id):
             ref = {"case_id": case_id, "source_id": source_id,
                    "version": source[2], "sha256": digest}
         return {
@@ -133,11 +134,11 @@ class PostgresRecordRequests:
         }
 
     def _record(self, row: tuple, *, organization: str, purpose: str,
-                disclose_source: bool = False) -> dict:
+                disclose_source: bool, workspace_case_id: str | None) -> dict:
         (request_id, patient_id, kind, record_label, provider, status, revision,
          created_at, updated_at) = row
         received = self._receipt(patient_id, request_id, kind, organization, purpose,
-                                 disclose_source=disclose_source)
+                                 disclose_source=disclose_source, workspace_case_id=workspace_case_id)
         if status == "cancelled" and received is not None:
             raise PatientRegistryError("Contradictory received/cancelled history")
         return {
@@ -178,7 +179,7 @@ class PostgresRecordRequests:
             for row in rows:
                 try:
                     record = self._record(row, organization=organization, purpose=purpose,
-                                          disclose_source=disclose_source)
+                                          disclose_source=disclose_source, workspace_case_id=workspace_case_id)
                 except _ReceiptOutsidePurpose:
                     # v1 cannot describe a withheld receipt without leaking source state.
                     continue

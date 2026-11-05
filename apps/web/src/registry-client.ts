@@ -310,10 +310,10 @@ export class RegistrySession {
     this.recordRequests=new RecordRequestSession({
       index:()=>requestIndex(this.#state),view:()=>this.#state.requestsView,publish:requestsView=>this.#publish({requestsView}),
       request:(path,controller,body)=>this.transport(path,this.#init(controller,body)),json,
-      replaceSources:sourceIndex=>{
+      replaceSources:(sourceIndex,notice)=>{
         this.#records++;
         this.#publish({...emptyWorld(),...this.#resetInvestigation(sourceIndex.case_id),original:null,sourceIndex,recordsPhase:'ready',
-          recordMessage:'Source versions changed. Reopen Record requests and refresh to see the updated choices and receipts.'});
+          recordMessage:(notice?notice+' ':'')+'Source versions changed. Reopen Record requests and refresh to see the updated choices and receipts.'});
       },
       denied:status=>status===401?this.#httpError(401):
         this.#publish(this.#resetDeniedCaseSources('Record requests unavailable under current permissions. Reload case permissions.')),
@@ -438,18 +438,21 @@ export class RegistrySession {
     const patientId=this.#state.patient?.patient_id;
     const hadWorld=this.#state.worldModel?.case_id===caseId;
     const hadIndex=this.#state.sourceIndex?.case_id===caseId&&this.#state.sourceIndex.patient_id===patientId;
-    const reset=this.#resetDeniedCaseSources();
+    // The question grant can be denied while the case and acquisition grants remain active.
+    // Keep only the undisclosed create command until its own scope is checked again.
+    const reset=this.#resetDeniedCaseSources(undefined,true);
     const scope=this.#scope,records=this.#records,questions=this.#questionRead,quotes=this.#quoteRead,brief=this.#briefRead;
     const current=()=>scope===this.#scope&&records===this.#records&&questions===this.#questionRead&&
       quotes===this.#quoteRead&&brief===this.#briefRead&&this.#state.patient?.patient_id===patientId;
     this.#publish(reset);
     if(!patientId||!current())return;
-    const read=async(url:string,limit:number)=>{
+    const read=async(url:string,limit:number,caseAuthority:boolean)=>{
       if(!current()||control.signal.aborted)throw Error('scope changed');
       const response=await this.transport(url,this.#init(control));
       if(!current()||control.signal.aborted||response.status!==200){
         void response.body?.cancel().catch(()=>{});
         if(current()&&response.status===401)this.#httpError(401);
+        else if(current()&&caseAuthority&&(response.status===403||response.status===404))this.recordRequests.reset();
         throw Error('access unavailable');
       }
       const result=await json(response,limit);
@@ -459,16 +462,18 @@ export class RegistrySession {
     const patientPath='/v1/patients/'+encodeURIComponent(patientId);
     const casePath=patientPath+'/cases/'+encodeURIComponent(caseId);
     try{
-      const model=parseSourceWorldModel(await read(casePath+'/world-model',1048576),patientId,caseId);
-      const cases=parseCaseBindingList(await read(patientPath+'/case-bindings',65536),patientId);
+      const model=parseSourceWorldModel(await read(casePath+'/world-model',1048576,true),patientId,caseId);
+      const cases=parseCaseBindingList(await read(patientPath+'/case-bindings',65536,true),patientId);
+      if(!current())return;
+      this.recordRequests.checkBindings(cases);
       if(!cases.some(item=>item.case_id===caseId&&item.status==='active'))throw Error('case unavailable');
-      const sourceIndex=hadIndex?parseSourceIndex(await read(casePath+'/sources',65536),patientId,caseId):null;
+      const sourceIndex=hadIndex?parseSourceIndex(await read(casePath+'/sources',65536,true),patientId,caseId):null;
       const patch:Partial<ViewState>={cases,sourceIndex,recordsPhase:'ready',recordMessage:sourceIndex?
         'Original source metadata rechecked. Open an original to inspect its bytes.':'Case access rechecked. Select the case to reopen Records.'};
       const world=hadWorld&&restore!=='case'?{worldModel:model,worldPhase:'ready' as const,
         worldMessage:'Source-derived snapshot verified at last read.'}:{};
       if(restore==='questions'){
-        const history=decodeSourceQuestions(await read(casePath+'/questions',1048576),patientId,caseId);
+        const history=decodeSourceQuestions(await read(casePath+'/questions',1048576,false),patientId,caseId);
         if(current())this.#publish({...patch,...world,questions:history.questions,questionsAccessReceiptId:history.access_receipt_id,
           questionsCaseId:caseId,questionListPhase:'ready',questionListMessage:'Saved question access rechecked.',...failure});
       }else if(current())this.#publish({...patch,...world,...failure});

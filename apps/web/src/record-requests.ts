@@ -62,7 +62,7 @@ type Port = {
   index:()=>SourceIndex|null; view:()=>RequestsView; publish:(view:RequestsView)=>void; denied:(status:number)=>void;
   request:(path:string,controller:AbortController,body?:string)=>Promise<Response>;
   json:(response:Response,limit:number)=>Promise<unknown>;
-  replaceSources:(fresh:SourceIndex)=>void;
+  replaceSources:(fresh:SourceIndex,notice:string)=>void;
 };
 type CreateIntent = Readonly<{patient:string;caseId:string;body:string;fields:RequestFields}>;
 const uncertain = 'The create receipt is uncertain. Retry the exact request to recover its receipt.';
@@ -128,22 +128,20 @@ export class RecordRequestSession {
     if(control.signal.aborted)throw Error('Timed out');
     return {status:res.status,value};
   }
-  async #list(index:SourceIndex,control:AbortController,current:()=>boolean,after:string,checkSources=false){
+  async #list(index:SourceIndex,control:AbortController,current:()=>boolean,after:string){
     const reply=await this.#reply(control,current,this.#path(index));
     if(!reply || !current())return;
     if(reply.status!==200)throw Error('List unavailable');
     const rows=readRequests(reply.value,index);
-    if(checkSources){
-      const sourceReply=await this.#reply(control,current,sourceIndexPath(index.patient_id,index.case_id),undefined,65536);
-      if(!sourceReply || !current())return;
-      if(sourceReply.status!==200)throw Error('Source index unavailable');
-      const fresh=parseSourceIndex(sourceReply.value,index.patient_id,index.case_id);
-      // Each authorized read issues a new access receipt. Only a change to the
-      // actual source versions or reported statements invalidates the open case.
-      if(JSON.stringify(fresh.sources)!==JSON.stringify(index.sources) ||
-         JSON.stringify(fresh.source_reported_assertions)!==JSON.stringify(index.source_reported_assertions)){
-        this.port.replaceSources(fresh);return;
-      }
+    const sourceReply=await this.#reply(control,current,sourceIndexPath(index.patient_id,index.case_id),undefined,65536);
+    if(!sourceReply || !current())return;
+    if(sourceReply.status!==200)throw Error('Source index unavailable');
+    const fresh=parseSourceIndex(sourceReply.value,index.patient_id,index.case_id);
+    // Each authorized read issues a new access receipt. Only a change to the
+    // actual source versions or reported statements invalidates the open case.
+    if(JSON.stringify(fresh.sources)!==JSON.stringify(index.sources) ||
+       JSON.stringify(fresh.source_reported_assertions)!==JSON.stringify(index.source_reported_assertions)){
+      this.port.replaceSources(fresh,after);return;
     }
     this.#listAuthorized=true;
     this.#show(rows,false,after || (this.#pending?uncertain:rows.length?'Patient requests checked.':'No record requests are listed for this patient.'));
@@ -152,7 +150,7 @@ export class RecordRequestSession {
     if(!this.#available(index))return;
     await this.#run(index,async(c,current)=>{
       this.#listAuthorized=false;
-      this.#show(null,true,'Checking requests and current source versions…');await this.#list(index,c,current,'',true);
+      this.#show(null,true,'Checking requests and current source versions…');await this.#list(index,c,current,'');
     },()=>this.#show(null,false,'Requests could not be verified. Refresh to check again.'));
   }
   async create(index:SourceIndex,fields:RequestFields){

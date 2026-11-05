@@ -300,3 +300,75 @@ test('an overdue source recheck cannot replace a newly selected case or expire a
     assert.equal(requestIndex(s.snapshot())?.case_id,credentialChange?undefined:'CASE-BETA');
   }
 });
+
+test('question access denial preserves the exact create only when its case and source access survive independent rechecks',async()=>{
+  for(const denied of ['question only','source','mapping','revoked case']){
+    const writes=[];
+    let checking=false;
+    const s=new RegistrySession(transportForImages((url,init)=>{
+      if(url===scopedPath){
+        if(init.method==='GET')return response(list());
+        writes.push(init.body);return writes.length===1?response({},503):response({request_id:requestId,duplicate:true},200);
+      }
+      if(checking){
+        if(url.endsWith('/questions'))return response({},404);
+        if(denied==='source' && url.endsWith('/sources'))return response({},404);
+        if(denied==='mapping' && url.endsWith('/case-bindings'))return response({},403);
+        if(denied==='revoked case' && url.endsWith('/case-bindings')){
+          const mapped=cases();mapped.mappings[0].status='revoked';mapped.mappings[0].revoked_at=time;return response(mapped);
+        }
+      }
+    }));
+    await readyImages(s);const api=s.recordRequests,index=requestIndex(s.snapshot());
+    api.open(index);await api.refresh(index);await api.create(index,fields);
+    assert.equal(s.snapshot().requestsView.retryCreate,true);
+    await s.loadWorldModel(caseId);checking=true;await s.loadSavedQuestions(caseId);checking=false;
+    assert.equal(s.snapshot().questionListPhase,'error');
+    assert.equal(s.snapshot().requestsView.retryFields,null);
+    if(denied==='question only')assert.ok(requestIndex(s.snapshot()));
+    else {assert.equal(requestIndex(s.snapshot()),null);await s.loadCases();await s.loadSources(caseId);}
+    const next=requestIndex(s.snapshot());api.open(next);await api.retryCreate(next);
+    assert.equal(writes.length,1);
+    await api.refresh(next);
+    const recoverable=denied==='question only';
+    assert.equal(s.snapshot().requestsView.retryCreate,recoverable,denied);
+    await api.retryCreate(next);
+    assert.deepEqual(writes,recoverable?[writes[0],writes[0]]:[writes[0]]);
+  }
+});
+
+test('create and receive reload the source owner after a confirmed write and retain its receipt notice if sources changed',async()=>{
+  for(const action of ['create','receive']){
+    const nextSource='SRC-'+'9'.repeat(32);
+    let changed=false,indexReads=0;
+    const s=new RegistrySession(transportForImages((url,init)=>{
+      if(url===scopedPath && init.method==='GET'){
+        const linked=received();linked.receipt_status='source_superseded_reconciliation_required';
+        return response(list(changed && action==='receive'?linked:row()));
+      }
+      if(init.method==='POST' && (url===scopedPath || url===path+'/'+requestId+'/receive')){
+        changed=true;
+        return response(action==='create'?{request_id:requestId,duplicate:false}:{request_id:requestId,duplicate:false,source_id:sourceId,version:1},201);
+      }
+      if(url.endsWith('/sources')){
+        indexReads++;
+        const i=sourceIndex();
+        if(changed){
+          i.access_receipt_id='ACCESS-'+'9'.repeat(32);
+          i.sources[0].state='superseded';
+          i.sources.push({...i.sources[0],source_id:nextSource,version:2,state:'current',supersedes_id:sourceId,sha256:'2'.repeat(64)});
+          i.source_reported_assertions[0].source_id=nextSource;
+        }
+        return response(i);
+      }
+    }));
+    await readyImages(s);const api=s.recordRequests,index=requestIndex(s.snapshot());
+    api.open(index);await api.refresh(index);assert.equal(indexReads,2);
+    if(action==='create')await api.create(index,fields);else await api.receive(index,requestId,sourceId);
+    assert.equal(indexReads,3,action+' needs a new source check');
+    assert.equal(s.snapshot().requestsView.rows,null);
+    assert.match(s.snapshot().recordMessage,action==='create'?/Local request saved/:/Source receipt confirmed/);
+    assert.match(s.snapshot().recordMessage,/Source versions changed/);
+    assert.equal(requestIndex(s.snapshot()).sources.find(s=>s.source_id===sourceId).state,'superseded');
+  }
+});
