@@ -10,7 +10,10 @@ const summary={
  inputs_prepared:'The currently loaded records and questions are organized for preparation.',
 } as const;
 
-export function SecondOpinionPreparation({state,onNavigate,onResumeQuestion}:{state:ViewState;onNavigate:(section:string)=>void;onResumeQuestion:(questionId:string)=>void}){
+export function SecondOpinionPreparation({state,onNavigate,onResumeQuestion,onCheckEvidence}:{
+ state:ViewState;onNavigate:(section:string)=>void;onResumeQuestion:(questionId:string)=>void;
+ onCheckEvidence:(questionId:string)=>void;
+}){
  const view=secondOpinionPreparation(state);
  if(!view)return null;
  return <section className="panel second-opinion-preparation" data-testid="second-opinion-preparation" data-state={view.state} aria-labelledby="second-opinion-heading">
@@ -74,8 +77,13 @@ export function SecondOpinionPreparation({state,onNavigate,onResumeQuestion}:{st
        <section className="second-opinion-proposal-readiness" data-testid="second-opinion-proposal-readiness"
         data-checked={item.comparisonReadiness!==null} aria-label="Human-authored evidence comparison status">
         <h4>Proposed evidence relationships</h4>
+        <button type="button" data-testid="second-opinion-check-proposals"
+         disabled={state.evidencePhase==='loading'||state.evidenceWritePhase==='saving'||state.evidenceWritePhase==='unknown'}
+         onClick={()=>onCheckEvidence(item.questionId)}>
+         {state.evidencePhase==='loading'?'Checking evidence permission…':'Check authored comparisons'}
+        </button>
         {item.comparisonReadiness===null?
-         <p data-testid="second-opinion-proposals-unchecked">Human-authored comparison history has not been verified for this exact question and source snapshot. Reopen the question in Investigations for a fresh authorized check.</p>:
+         <p data-testid="second-opinion-proposals-unchecked">Human-authored comparisons have not been freshly checked for this question and source snapshot. Use the button above to request an authorized read here, or inspect the question in Investigations.</p>:
          <div data-testid="second-opinion-proposals-checked">
           <p data-testid="second-opinion-proposals-counts">
            {item.comparisonReadiness.proposed.support} proposed support · {item.comparisonReadiness.proposed.contradiction} proposed contradiction · {item.comparisonReadiness.proposed.context} context · {item.comparisonReadiness.proposed.unknown} relationship unknown.

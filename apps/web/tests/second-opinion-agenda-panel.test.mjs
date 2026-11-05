@@ -29,7 +29,7 @@ function question(state='current_unreviewed_question'){
   question:'Could we discuss fictional marker & <unverified note>?',source_version:2,source_line:14,
   source_context_state:state};
 }
-const render=state=>renderToStaticMarkup(createElement(SecondOpinionPreparation,{state,onNavigate:()=>{},onResumeQuestion:()=>{}}));
+const render=state=>renderToStaticMarkup(createElement(SecondOpinionPreparation,{state,onNavigate:()=>{},onResumeQuestion:()=>{},onCheckEvidence:()=>{}}));
 
 test('saved agenda rows offer question-specific inspection and keep unsent passage recovery distinct',()=>{
  const saved=question(),draft={...question(),question_id:'QUESTION-'+'C'.repeat(32),question:'Another fictional question'};
@@ -198,4 +198,15 @@ test('separately revoked comparison access withholds old counts and keeps saved 
  assert.doesNotMatch(denied,/1 proposed contradiction/);
  assert.match(denied,/Could we discuss fictional marker/);
  assert.doesNotMatch(render({...ready,questionListPhase:'error'}),/data-testid="second-opinion-proposal-readiness"/);
+});
+
+test('authored comparisons require an explicit click and are disabled during uncertain writes',()=>{
+ const s={...base(),questions:[question()]};
+ const initial=render(s);
+ assert.match(initial,/data-testid="second-opinion-check-proposals"/);
+ assert.match(initial,/Use the button above to request an authorized read here/);
+ assert.match(initial,/data-checked="false"/);
+ const pending=render({...s,evidenceWritePhase:'unknown'});
+ assert.match(pending,/data-testid="second-opinion-check-proposals" disabled=""/);
+ assert.doesNotMatch(render({...s,questionListPhase:'error'}),/data-testid="second-opinion-check-proposals"/);
 });
