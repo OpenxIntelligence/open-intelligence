@@ -170,8 +170,12 @@ def project_source_world_model(index: dict, laboratory_observations=()) -> dict:
         "case_id": case_id,
         "current_sources": current,
         "observations": observations,
-        "laboratory_observations": labs,
     }
+    # The laboratory key is additive only when labs are present. An
+    # always-present empty key would churn every existing case fingerprint
+    # (and every pinned snapshot hash derived from it) for no information.
+    if labs:
+        fingerprint_input["laboratory_observations"] = labs
     digest = hashlib.sha256(json.dumps(
         fingerprint_input, ensure_ascii=False, sort_keys=True,
         separators=(",", ":"), allow_nan=False,
