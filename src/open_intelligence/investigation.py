@@ -34,7 +34,7 @@ import json
 import os
 import re
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 META_API_URL = "https://api.meta.ai/v1/messages"
 META_MODEL = "muse-spark-1.3"
@@ -79,6 +79,64 @@ ABSTAIN_REASONS = frozenset(
     {"no_evidence", "insufficient_evidence", "out_of_scope", "conflicting_evidence"}
 )
 
+# Vertical wiring for the deterministic K-checks (program plan slice
+# C2). These are the vertical's own predicates, passed as explicit
+# parameters to the domain-free checker in `kchecks.py` — no vertical
+# knowledge lives in that module.
+#
+# ONCOLOGY_SYNONYMS maps value paraphrases to the case's own certainty
+# words. It is grounded in the seeded case vocabulary (reported,
+# not-reported, indeterminate, pending, not-assessed) and in the seed
+# documents' own phrasings for those states.
+ONCOLOGY_SYNONYMS = {
+    "not tested": "not-reported",
+    "not reported": "not-reported",
+    "present": "reported",
+    "detected": "reported",
+    "found": "reported",
+    "observed": "reported",
+    "unclear": "indeterminate",
+    "uncertain": "indeterminate",
+    "cannot be assessed": "indeterminate",
+    "could not be assessed": "indeterminate",
+    "awaiting": "pending",
+    "unavailable": "pending",
+    "not assessed": "not-assessed",
+    "not evaluated": "not-assessed",
+}
+
+# Condition terms for the K6 "you have" scope pattern.
+CONDITION_TERMS = [
+    "cancer", "carcinoma", "neoplasm", "malignancy", "malignant", "tumour", "tumor",
+]
+
+# K6 scope patterns beyond the structural language guard above: the
+# scope predicates the guard does not cover. A claim matching one is
+# dropped with reason "k6_scope". Each pattern must add value the
+# guard does not already provide, so fixtures for it use phrasings the
+# guard passes.
+K6_SCOPE_PATTERNS = [
+    re.compile(r"\bfirst[- ]line (choice|option|treatment|therapy)\b", re.IGNORECASE),
+    re.compile(r"\bdose of\b", re.IGNORECASE),
+    re.compile(r"\bmg\s*/", re.IGNORECASE),
+    re.compile(r"\beligible for\b", re.IGNORECASE),
+    re.compile(
+        r"(?:\b(trial|study|NCT[0-9]*)\b.{0,40}\bmatches\b"
+        r"|\bmatches\b.{0,40}\b(trial|study|NCT[0-9]*)\b)",
+        re.IGNORECASE | re.DOTALL,
+    ),
+    re.compile(r"\bprognosis\b", re.IGNORECASE),
+    re.compile(
+        r"\byou have\b.{0,40}\b(" + "|".join(CONDITION_TERMS) + r")\b",
+        re.IGNORECASE | re.DOTALL,
+    ),
+    re.compile(r"\bshould (consider|choose|select)\b", re.IGNORECASE),
+    re.compile(
+        r"\brank\w*\b.{0,40}\b(options|treatments|therapies|drugs)\b",
+        re.IGNORECASE | re.DOTALL,
+    ),
+]
+
 
 class InvestigationError(ValueError):
     """A bounded investigation could not be run or validated."""
@@ -92,6 +150,9 @@ class ValidatedInvestigation:
     dropped: list[dict]
     model: str
     mode: str
+    # Run-level K-check findings (case-data issues, snapshot changes).
+    # Returned, not persisted by save_investigation in slice C2.
+    findings: list[dict] = field(default_factory=list)
 
 
 def build_prompt(template_id: str, question: str, assertions: list[dict],
@@ -161,8 +222,16 @@ def build_prompt(template_id: str, question: str, assertions: list[dict],
 
 
 def validate_output(payload: object, valid_sources: set[int],
-                    valid_assessments: set[int]) -> ValidatedInvestigation:
-    """Validate raw model JSON. Returns only kept claims; drops the rest."""
+                    valid_assessments: set[int],
+                    kcheck_context=None) -> ValidatedInvestigation:
+    """Validate raw model JSON. Returns only kept claims; drops the rest.
+
+    With `kcheck_context` (a `kchecks.KCheckContext`), the kept claims
+    then run the deterministic K-checks K1-K7: a citation to a known
+    superseded version drops here with reason "k5_stale" instead of
+    "unresolved_citation", and the K-check phase drops failures with
+    typed k-reasons. Without a context the behaviour is exactly as
+    before, so existing callers and tests are unaffected."""
     if not isinstance(payload, dict):
         raise InvestigationError("Model output was not a JSON object")
     claims: list[dict] = []
@@ -185,6 +254,7 @@ def validate_output(payload: object, valid_sources: set[int],
             dropped.append({"claim": raw, "reason": "missing_citations"})
             continue
         resolved = True
+        stale_citation = None
         for cite in citations:
             if not isinstance(cite, dict):
                 resolved = False
@@ -193,10 +263,19 @@ def validate_output(payload: object, valid_sources: set[int],
                 continue
             if cite.get("type") == "assessment" and type(cite.get("id")) is int and cite["id"] in valid_assessments:
                 continue
+            if (kcheck_context is not None and cite.get("type") == "source"
+                    and type(cite.get("id")) is int):
+                version = kcheck_context.source_versions.get(cite["id"])
+                if version is not None and version.state == "superseded":
+                    stale_citation = cite["id"]
             resolved = False
             break
         if not resolved:
-            dropped.append({"claim": raw, "reason": "unresolved_citation"})
+            if stale_citation is not None:
+                dropped.append({"claim": raw, "reason": "k5_stale", "check": "K5",
+                                "detail": {"source_version_id": stale_citation}})
+            else:
+                dropped.append({"claim": raw, "reason": "unresolved_citation"})
             continue
         claims.append({
             "text": raw["text"].strip(),
@@ -206,6 +285,13 @@ def validate_output(payload: object, valid_sources: set[int],
             "uncertainty": raw["uncertainty"],
             "limits": raw.get("limits", "") if isinstance(raw.get("limits"), str) else "",
         })
+    findings: list[dict] = []
+    if kcheck_context is not None:
+        from .kchecks import run_kchecks
+        checked = run_kchecks(claims, kcheck_context)
+        claims = checked.kept
+        dropped.extend(checked.dropped)
+        findings = checked.findings
     abstentions: list[dict] = []
     for raw in payload.get("abstentions", []) if isinstance(payload.get("abstentions", []), list) else []:
         if isinstance(raw, dict) and isinstance(raw.get("topic"), str) and raw.get("reason") in ABSTAIN_REASONS:
@@ -217,7 +303,7 @@ def validate_output(payload: object, valid_sources: set[int],
         abstentions.append({"topic": "question", "reason": "insufficient_evidence"})
     return ValidatedInvestigation(
         status=status, claims=claims, abstentions=abstentions,
-        dropped=dropped, model=META_MODEL, mode="live",
+        dropped=dropped, model=META_MODEL, mode="live", findings=findings,
     )
 
 

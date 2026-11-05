@@ -39,6 +39,13 @@ package ownership. Historical PR receipts describe their exact revisions only.
 
 ## Current increment
 
+Accepted main advanced during verification from f188aec to
+`aad241e5cce9a1bcff3e431d63cecd16e948d731` (#538). The latest candidate preserves
+that complete main history and its deterministic reference claim checks as a
+real merge parent. The reference suite grows from 853 to 919 methods; final
+combined tests must run on the reconciled head. These lexical/deterministic
+checks are not general clinical entailment or an H1 model-execution feature.
+
 Strict text/FHIR source identity is now composed with encounter notes and the
 database citation-freshness repair. The existing source, patient, question,
 evidence, note, event and receipt owners remain canonical. No new dependencies,

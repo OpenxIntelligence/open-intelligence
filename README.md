@@ -134,8 +134,24 @@ reason; a stored run can be replay-checked from its route, snapshot, and
 recorded inputs, and a superseded source version invalidates the replay.
 Local suite at the slice branch: 796 tests, with the same 17 pre-existing
 `test_pdf_intake` failures as main (missing local `pypdf`) and zero new
-failures. Not yet a clinical claim: K-checks, the Skeptic, and parallel
-role agents are later slices; the single existing model call writes as A1
+failures.
+
+**Deterministic K-checks K1–K7 (Slice 2, 5 November 2026):** every kept
+investigation claim runs the deterministic checks of program plan C2 —
+K1 identifier format; K2 slot–field match against the cited facets;
+K3 temporal (cite only versions recorded at or before the snapshot);
+K4 contradiction (the later of two contradicting claims drops);
+K5 staleness (superseded or out-of-snapshot citations drop); K6 scope
+guard; K7 support (every number, identifier, and named-substance token
+must appear in the cited evidence; low-tier support must carry the
+fixed limits phrase); K7+ injection. The checker
+(`src/open_intelligence/kchecks.py`) is domain-free — the vertical's
+predicates arrive as parameters — and a test scans it for vertical
+literals. Failures go to `dropped` with a typed reason, never silently
+repaired. Local suite at the slice branch: 889 tests, with the same 17
+pre-existing `test_pdf_intake` failures as main (823 tests) and zero
+new failures. Not yet a clinical claim: the Skeptic and parallel role
+agents are later slices; the single existing model call writes as A1
 until the roster is wired.
 
 ## Development boundaries

@@ -23,6 +23,9 @@ from .changes import changes_since_review
 from .packet import build_case_packet, render_packet_text
 from .followthrough import followthrough_view
 from .investigation import (
+    CONDITION_TERMS,
+    K6_SCOPE_PATTERNS,
+    ONCOLOGY_SYNONYMS,
     TEMPLATES,
     InvestigationError,
     ValidatedInvestigation,
@@ -31,13 +34,14 @@ from .investigation import (
     meta_api_key,
     validate_output,
 )
+from .kchecks import build_kcheck_context
 from .clinician_overview import build_clinician_overview
 from .mission import build_patient_mission
 from .patient_attention import case_patient_attention
 from .provenance import case_provenance
 from .patient_report import build_patient_report, render_text
 from .owned_questions import question_gap_rollup
-from .store import CaseStore, InvalidInput, MAX_SOURCE_BYTES, SESSION_TTL_SECONDS
+from .store import CaseStore, InvalidInput, MAX_SOURCE_BYTES, SESSION_TTL_SECONDS, now_utc
 from .synthetic_metrics import fixture_run
 from .timeline import case_timeline
 
@@ -1002,6 +1006,21 @@ class Handler(BaseHTTPRequestHandler):
                     if type(question_id) is not int:
                         raise InvalidInput("question_id must be an integer")
                     facts = store.investigation_facts(case_id, question_id)
+                    # Slice 2 K-checks (program plan C2): the deterministic
+                    # verification half. The vertical's own predicates are
+                    # passed as explicit parameters; the condition-scope,
+                    # substance, and tier sub-checks are data-pending in
+                    # the runtime (no relation, tier, or substance data
+                    # exists yet), so they skip live and run in tests.
+                    # No run snapshot is pinned yet, so the snapshot-hash
+                    # comparison is not supplied live either.
+                    kcheck_context = build_kcheck_context(
+                        facts, store.source_version_facts(case_id),
+                        case_id=case_id, snapshot_as_of=now_utc(),
+                        synonyms=ONCOLOGY_SYNONYMS,
+                        scope_patterns=K6_SCOPE_PATTERNS,
+                        condition_terms=CONDITION_TERMS,
+                        substance_names=[], evidence_tiers={})
                     if mode == "replay":
                         fixture = json.loads((SYNTHETIC / "demo-investigation.json").read_text())
                         # Replace placeholders with real current ids, then
@@ -1014,14 +1033,16 @@ class Handler(BaseHTTPRequestHandler):
                                     cite["id"] = first_source
                                 if cite.get("id") == "FIRST_ASSESSMENT" and first_assessment is not None:
                                     cite["id"] = first_assessment
-                        validated = validate_output(fixture, facts["valid_sources"], facts["valid_assessments"])
+                        validated = validate_output(fixture, facts["valid_sources"], facts["valid_assessments"],
+                                                    kcheck_context)
                         validated.model = "recorded-replay"
                         validated.mode = "replay"
                     else:
                         prompt = build_prompt(template, facts["question"]["question"],
                                               facts["assertions"], facts["assessments"])
                         payload = call_meta_api(prompt, meta_api_key())
-                        validated = validate_output(payload, facts["valid_sources"], facts["valid_assessments"])
+                        validated = validate_output(payload, facts["valid_sources"], facts["valid_assessments"],
+                                                    kcheck_context)
                     # Slice 1 write contract (program plan section 5.4):
                     # the run is stored only with its complete, validated
                     # contract attached; a missing or mismatched contract
@@ -1032,7 +1053,11 @@ class Handler(BaseHTTPRequestHandler):
                     investigation_id = store.save_investigation(
                         case_id, question_id, template, validated, mode,
                         write_contract=contract)
-                    return self._json(201, store.get_investigation(case_id, investigation_id))
+                    stored = store.get_investigation(case_id, investigation_id)
+                    # K-check findings are returned, not persisted (slice
+                    # C2 follow-up: persisting them is a schema change).
+                    stored["kcheck_findings"] = validated.findings
+                    return self._json(201, stored)
                 visits_record = re.fullmatch(rf"/api/cases/{ID_PART}/visits", path)
                 if visits_record:
                     return self._json(201, store.record_visit(

@@ -34,6 +34,15 @@ declared function to both disposable cleanup lists; no CASCADE or production
 guard change. Those affected migration suites now run in the early CI gate too.
 Full acceptance, including all recovery stages, must rerun on the repaired head.
 
+During the fixture-repaired run, main advanced to
+`aad241e5cce9a1bcff3e431d63cecd16e948d731` (#538). Default-checkout workflows
+therefore tested merge `f8740eb19380dcd229e0841c3a5d86edcbaea7b3`, tree
+`eb91701414790a9b06e3079fdb377ca1dd0c0226`, which is different from proposed
+head `7e8a37de` / tree `2540dac8`. Their 919 reference tests must not be
+attributed to that proposed head. The latest candidate now merges the complete
+accepted main explicitly and must rerun all exact-head acceptance gates. The
+merge adds no new dependency and retains #538's reference checks and limitations.
+
 ## Test-first integration evidence
 
 The four existing #539 fixture/test files were added to #540 before integration.

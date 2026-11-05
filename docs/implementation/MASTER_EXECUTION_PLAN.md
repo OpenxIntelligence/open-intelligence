@@ -16,6 +16,11 @@ production deployment, license selection or external data egress is authorized.
 ## Phase 0: one integration candidate
 
 Accepted main was inspected at `f188aecc70f3415741dac0e7dd5bf3f2d9fd02a9`.
+During acceptance, main advanced to
+`aad241e5cce9a1bcff3e431d63cecd16e948d731` with #538's deterministic reference
+claim checks. It is now a full Git parent of this candidate. The merge was clean;
+all seven accepted-main changed paths are retained. These reference checks do
+not establish a qualified H1 clinical copilot or general clinical entailment.
 PR #481 is merged at `62e218e1e2bd6996bb126fcc1ea956fcf18199e6`; do not
 reapply it. Current main already preserves source-reported cancer episodes.
 

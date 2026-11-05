@@ -7,6 +7,14 @@ The reviewed-document mismatch was reproduced in hosted PostgreSQL run
 pre-repair boundary; final repaired-head PostgreSQL/browser/recovery acceptance
 is tracked in draft [#542](https://github.com/OpenxIntelligence/open-intelligence/pull/542).
 
+Main reconciliation: accepted `aad241e5cce9a1bcff3e431d63cecd16e948d731` (#538)
+is also preserved. Its reference `kchecks.py` adds deterministic format,
+slot/value, temporal, contradiction, freshness, scope, numeric support and
+injection checks. The published limitations remain: some live data arms are
+absent, lexical support is not semantic entailment, and a passing structural
+or numeric check cannot authorize clinical record promotion. H1 clinical
+copilot qualification and independent clinical gold adjudication remain open.
+
 Updated 2026-11-05. This executes OI-011/OI-014 in the
 [existing backlog](../EXECUTION_BACKLOG.csv) and the
 [master execution plan](MASTER_EXECUTION_PLAN.md). Current work uses independently
