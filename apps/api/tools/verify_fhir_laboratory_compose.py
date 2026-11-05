@@ -22,6 +22,8 @@ ROOT = Path(__file__).resolve().parents[3]
 BASE = "http://127.0.0.1:8000"
 CASE = "CASE-FHIR-LAB"
 RESTORED = "oi_api_test_fhir_lab_restore"
+REVOKED_RESTORE = "oi_api_test_fhir_lab_revoked"
+OBSERVATION = "Observation/FICTIONAL-OBS-A"
 
 FHIR_V1 = (
     '{"resourceType":"Bundle","type":"collection","entry":['
@@ -65,7 +67,8 @@ def main():
         env = dict(os.environ, OI_API_ACCESS_DIRECTORY=directory)
         token = secrets.token_urlsafe(32)
         actions = ["patient_create", "patient_read", "case_binding_create", "case_binding_read",
-                   "case_binding_revoke", "source_import", "source_read", "source_original_read"]
+                   "case_binding_revoke", "source_import", "source_read", "source_original_read",
+                   "composer_context_read", "question_create", "question_read"]
         credential = {
             "token_sha256": hashlib.sha256(token.encode()).hexdigest(),
             "actor": "ACTOR-FHIR-LAB-PROOF", "organization": "ORG-FHIR-LAB-PROOF",
@@ -128,7 +131,16 @@ def main():
               'observations',(SELECT COALESCE(json_agg(x ORDER BY x.source_id,x.position),'[]'::json)
                 FROM (SELECT * FROM clinical_source.fhir_laboratory_observations) x),
               'commands',(SELECT COALESCE(json_agg(x ORDER BY x.request_key),'[]'::json)
-                FROM (SELECT * FROM clinical_source.fhir_laboratory_commands) x)
+                FROM (SELECT * FROM clinical_source.fhir_laboratory_commands) x),
+              'questions',(SELECT COALESCE(json_agg(x ORDER BY x.question_id),'[]'::json)
+                FROM (SELECT * FROM investigation.source_questions) x),
+              'question_anchors',(SELECT COALESCE(json_agg(x ORDER BY x.question_id),'[]'::json)
+                FROM (SELECT * FROM investigation.laboratory_question_anchors) x),
+              'question_events',(SELECT COALESCE(json_agg(x ORDER BY x.id),'[]'::json)
+                FROM (SELECT * FROM identity.identity_domain_events
+                       WHERE event_type='investigation.question.created') x),
+              'bindings',(SELECT COALESCE(json_agg(x ORDER BY x.case_id),'[]'::json)
+                FROM (SELECT * FROM coordination.patient_case_bindings) x)
             )""", database)
 
         def body(raw, key, previous=None):
@@ -149,6 +161,35 @@ def main():
             timeline, = world["laboratory_timeline"]
             assert timeline["source_id"] == source_id
             assert timeline["clinical_interpretation"] == "not_performed"
+            return world["snapshot_fingerprint"]
+
+        def save_question(case_path, source, fingerprint, key, literal):
+            fields = {"synthetic": True, "source_id": source["source_id"],
+                      "observation_reference": OBSERVATION, "question": literal,
+                      "expected_source_snapshot_sha256": fingerprint}
+            status, preview = request(case_path + "/composer/laboratory-preflight", fields)
+            assert status == 200 and preview["durable_question_created"] is False
+            assert preview["selected_source"]["sha256"] == source["original_sha256"]
+            command = {**fields, "expected_preflight_sha256": preview["preflight_sha256"],
+                       "request_key": key}
+            status, saved = request(case_path + "/composer/laboratory-questions", command)
+            assert status == 201 and saved["duplicate"] is False
+            return command, saved
+
+        def verify_questions(endpoint, versions, patient):
+            status, result = request(endpoint)
+            assert status == 200 and (result["patient_id"], result["case_id"]) == (patient, CASE)
+            rows = {item["question_id"]: item for item in result["questions"]}
+            assert len(rows) == len(result["questions"]) == len(versions)
+            for source, command, saved, state in versions:
+                row = rows[saved["question_id"]]
+                expected = {"source_id": source["source_id"], "source_version": source["version"],
+                            "source_sha256": source["original_sha256"], "observation_reference": OBSERVATION,
+                            "question": command["question"], "source_context_state": state,
+                            "source_snapshot_sha256": command["expected_source_snapshot_sha256"],
+                            "preflight_sha256": command["expected_preflight_sha256"]}
+                assert all(row[k] == v for k, v in expected.items()) and "source_line" not in row
+            return result["access_receipt_id"]
 
         def verify_original(patient_path, source_id, raw, version, state):
             status, original = request(patient_path + "/cases/" + CASE + "/sources/" + source_id)
@@ -191,7 +232,9 @@ def main():
                 "source_system":"SYS-FHIR-LAB-R4","source_subject_ref":"FICTIONAL-PATIENT-A",
                 "review_ref":"REVIEW-FHIR-LAB-PROOF"})
             assert status == 201 and binding["case_id"] == CASE
-            endpoint=patient_path+"/cases/"+CASE+"/laboratory/fhir-r4/sources"
+            case_path = patient_path+"/cases/"+CASE
+            endpoint = case_path+"/laboratory/fhir-r4/sources"
+            questions = case_path+"/composer/laboratory-questions"
 
             status, first = request(endpoint,body(FHIR_V1,"FHIR-LAB-IMPORT-1"))
             assert status == 201 and first["version"] == 1 and first["observation_count"] == 1
@@ -199,7 +242,10 @@ def main():
             assert request(endpoint,body(FHIR_V1,"FHIR-LAB-IMPORT-1")) == (
                 200,{**first,"duplicate":True})
             verify_original(patient_path,first_id,FHIR_V1,1,"current")
-            verify_world(patient_path,first_id,"4.20",0)
+            first_fingerprint = verify_world(patient_path,first_id,"4.20",0)
+            cmd1, saved1 = save_question(case_path, first, first_fingerprint, "LAB-QUESTION-ORIGINAL",
+                                         "What does the first fictional source report?")
+            verify_questions(questions, [(first, cmd1, saved1, "current_unreviewed_question")], patient)
 
             assert request(endpoint,body(FHIR_V2,"FHIR-LAB-AMEND-WRONG"))[0] == 409
             status, second = request(endpoint,body(FHIR_V2,"FHIR-LAB-AMEND-1",first_id))
@@ -207,13 +253,25 @@ def main():
             second_id=second["source_id"]
             verify_original(patient_path,first_id,FHIR_V1,1,"superseded")
             verify_original(patient_path,second_id,FHIR_V2,2,"current")
-            verify_world(patient_path,second_id,"5.00",1)
+            second_fingerprint = verify_world(patient_path,second_id,"5.00",1)
+            cmd2, saved2 = save_question(case_path, second, second_fingerprint, "LAB-QUESTION-AMENDED",
+                                         "What changed in the amended fictional report?")
+            assert saved2["question_id"] != saved1["question_id"]
+            versions = [(first, cmd1, saved1, "source_reassessment_required"),
+                        (second, cmd2, saved2, "current_unreviewed_question")]
+            verify_questions(questions, versions, patient)
             assert request(endpoint,body(FHIR_V1,"FHIR-LAB-STALE-REPLAY"))[0] == 409
 
             state=snapshot()
             assert state["revision"] == SCHEMA_REVISION
             assert len(state["sources"])==2 and len(state["fhir_sources"])==2
             assert len(state["observations"])==2 and len(state["commands"])==2
+            assert len(state["questions"]) == len(state["question_events"]) == len(state["question_anchors"]) == 2
+            assert {(a["question_id"], a["source_id"], a["observation_reference"])
+                    for a in state["question_anchors"]} == {
+                        (saved1["question_id"], first_id, OBSERVATION),
+                        (saved2["question_id"], second_id, OBSERVATION),
+                    }
             for row,raw in zip(state["sources"],(FHIR_V1,FHIR_V2)):
                 digest=hashlib.sha256(raw.encode()).hexdigest()
                 assert row["sha256"] == row["raw_sha256"] == digest
@@ -224,6 +282,7 @@ def main():
                 verify_original(patient_path,first_id,FHIR_V1,1,"superseded")
                 verify_original(patient_path,second_id,FHIR_V2,2,"current")
                 verify_world(patient_path,second_id,"5.00",1)
+                verify_questions(questions, versions, patient)
 
             before_restore=restore("oi_api_synthetic",RESTORED)
             verify_original(patient_path,first_id,FHIR_V1,1,"superseded")
@@ -231,22 +290,38 @@ def main():
             verify_world(patient_path,second_id,"5.00",1)
             assert request(endpoint,body(FHIR_V2,"FHIR-LAB-AMEND-1",first_id)) == (
                 200,{**second,"duplicate":True})
-            after=snapshot(RESTORED)
-            for key in ("sources","fhir_sources","observations","commands"):
-                assert after[key] == before_restore[key]
+            # A restored read must commit its new receipt in the restored DB only.
+            receipt = verify_questions(questions, versions, patient)
+            receipts_sql = """SELECT COALESCE(json_agg(metadata_json->>'receipt_id'),'[]'::json)
+                             FROM identity.identity_domain_events WHERE event_type='source.read_authorized'"""
+            assert receipt in query(receipts_sql, RESTORED) and receipt not in query(receipts_sql)
+            for _, saved_command, saved, _ in versions:
+                assert request(questions, saved_command) == (200, {**saved, "duplicate": True})
+            assert request(questions, {**cmd1, "request_key": "STALE-RESTORED-CONTEXT"})[0] == 409
+            assert snapshot(RESTORED) == before_restore == snapshot()
 
             status, revoked = request(patient_path+"/case-bindings/"+CASE+"/revoke",{
                 "synthetic":True,"reason":"Fictional FHIR mapping withdrawn after restore"})
             assert status == 200 and revoked["case_id"] == CASE
+            # Back up the revoked DB and point a fresh API at this second restore.
+            # The credential keeps all original grants; the restored binding itself must deny.
+            banned = restore(RESTORED, REVOKED_RESTORE)
+            assert banned["bindings"][0]["status"] == "revoked"
+            before_receipts = query(receipts_sql, REVOKED_RESTORE)
             for path,payload in (
+                (questions, None), (questions, cmd1), (questions, cmd2),
                 (patient_path+"/cases/"+CASE+"/world-model",None),
                 (patient_path+"/cases/"+CASE+"/sources/"+second_id,None),
                 (endpoint,body(FHIR_V2,"FHIR-LAB-AFTER-REVOKE",second_id)),
             ):
                 assert request(path,payload)[0] == 404
-            print("PASS FHIR LABORATORY RECOVERY: exact JSON source versions, typed observations, "
-                  "explicit amendment, API/DB restart, pg_dump/pg_restore, exact retry and restored "
-                  "binding revocation; source-reported only, no clinical interpretation.")
+            assert snapshot(REVOKED_RESTORE) == banned
+            assert sorted(query(receipts_sql, REVOKED_RESTORE)) == sorted(before_receipts)
+            print("PASS FHIR LABORATORY RECOVERY: exact source versions, typed observations and "
+                  "both durable question anchors survived API/DB restart and pg_dump/pg_restore; "
+                  "historical/current retries preserved IDs and fresh read receipt was restore-local; "
+                  "second restored revoked binding denied original, history and both retries. "
+                  "Source-reported only, no clinical interpretation.")
         finally:
             command(["down","--volumes","--remove-orphans"],check=False,
                     stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)

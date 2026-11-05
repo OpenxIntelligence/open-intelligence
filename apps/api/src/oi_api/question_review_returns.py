@@ -91,6 +91,9 @@ class PostgresQuestionReviewReturns:
         )
         if len(receipt_rows) > MAX_RECEIPTS:
             raise PatientRegistryError("Review receipt history exceeds bounded limit")
+        text_questions = {q["question_id"] for q in questions}
+        if any(row[1] not in text_questions for row in receipt_rows):
+            raise RuntimeError("Stored review receipt has no matching text question")
         pairs = {(SOURCE_SNAPSHOT_CONTRACT, FINGERPRINT_CONTRACT),
                  (LEGACY_SNAPSHOT_CONTRACT, LEGACY_FINGERPRINT_CONTRACT)}
         for row in receipt_rows:

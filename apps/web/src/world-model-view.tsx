@@ -1,4 +1,6 @@
 import type {WorldObservation} from './source-world-model';
+import {LaboratoryQuestionPanel,SavedLaboratoryQuestions} from './laboratory-question-panel';
+import {questionSaveBlocksSourceChange} from './source-questions-view.js';
 import type {RegistrySession,ViewState} from './registry-client';
 import {SourceQuestionPanel} from './source-question-panel';
 
@@ -38,12 +40,12 @@ export function WorldModelView({session,state,onOverview,busy,showQuestions=fals
       <blockquote data-testid="world-statement">{item.source_statement}</blockquote>
       <small>Not clinically established · {item.document_id} v{item.document_version} · <code>{item.source_id}</code> · line {item.source_line}</small>
       <div className="source-context-action"><button type="button" data-testid="composer-preflight"
-        disabled={loading||busy||state.composerPhase==='loading'||state.questionSaveMessage.startsWith('Save outcome unknown.')}
+        disabled={loading||busy||state.composerPhase==='loading'||questionSaveBlocksSourceChange(state)}
         onClick={()=>{session.chooseQuestionDraft(item.source_id,item.source_line);void session.prepareDraftQuestion();onInvestigations?.();}}>
         Prepare source-only question context
       </button>{' '}
       <button type="button" data-testid="choose-question-draft"
-        disabled={loading||busy||state.questionSavePhase==='saving'||state.questionSaveMessage.startsWith('Save outcome unknown.')}
+        disabled={loading||busy||questionSaveBlocksSourceChange(state)}
         onClick={()=>{session.chooseQuestionDraft(item.source_id,item.source_line);onInvestigations?.();}}>
         Write a source-linked question
       </button></div>
@@ -111,7 +113,9 @@ export function WorldModelView({session,state,onOverview,busy,showQuestions=fals
               </details>
             </li>;
           })}</ol>
+          {state.worldPhase==='ready'&&<LaboratoryQuestionPanel key={model.access_receipt_id} session={session} model={model} state={state} busy={loading||busy} sourceSavePending={questionSaveBlocksSourceChange(state)}/>}
         </section>}
+        {state.worldPhase==='ready'&&<SavedLaboratoryQuestions session={session} model={model} state={state} busy={loading||busy} sourceSavePending={questionSaveBlocksSourceChange(state)}/>}
         {episodes.size>0&&<section aria-label="Source-reported cancer episodes">
           <h3>Source-reported cancer episodes</h3>
           <p>Reports are grouped by the episode identifier in the original finding. Each statement retains its reported status.</p>

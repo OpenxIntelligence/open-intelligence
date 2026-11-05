@@ -1,7 +1,7 @@
 /** Transient manual context; source originals and canonical questions stay server-owned. */
 import {canonicalEvidenceJson} from './authored-evidence.js';
 import {authoredEvidenceTimestamp} from './evidence-timestamp.js';
-import type {DocumentReply} from './reviewed-documents.js';
+import type {Document,DocumentReply,Finding} from './reviewed-documents.js';
 
 export type PassageScope=Readonly<{patient_id:string;case_id:string;question_id:string}>;
 export type PassageReference=Readonly<{source_id:string;annotation_revision_id:string;selection_key:string;anchor_sha256:string}>;
@@ -50,6 +50,29 @@ export async function decodeSelection(value:unknown,scope:Pick<PassageScope,'pat
  const p=await decodePassage(Object.fromEntries(passageFields.map(k=>[k,value[k]])),scope);
  if(p.anchor.source_id!==reference.source_id||p.anchor.annotation_revision_id!==reference.annotation_revision_id||p.anchor.selection_key!==reference.selection_key)throw Error('Different selection returned');
  return p;
+}
+/** Bind the independently fetched anchor to the quotation that was on screen. */
+export async function decodeChosenPassage(value:unknown,scope:Pick<PassageScope,'patient_id'|'case_id'>,doc:Document,finding:Finding):Promise<ResolvedPassage>{
+ const revision=doc.revisions.at(-1);
+ if(!revision||doc.state!=='current')throw Error('Refresh the saved record before choosing a passage.');
+ const passage=await decodeSelection(value,scope,{
+  source_id:doc.source_id,annotation_revision_id:revision.revision_id,selection_key:finding.key,
+ });
+ if(passage.selection_state!=='current_unreviewed_selection')throw Error('This selection changed. Refresh the document before attaching it.');
+ const anchor=passage.anchor;
+ const line=doc.preview.lines[finding.line-1];
+ const pdf=doc.preview.media_type==='application/pdf';
+ const sameOriginal=anchor.document_id===doc.document_id&&anchor.source_version===doc.version&&anchor.original_sha256===doc.sha256;
+ const sameRendition=anchor.extraction_method===(pdf?'pypdf-text-v1':'utf8-plain-text-v1')
+  &&anchor.extraction_sha256===(doc.preview.extraction_sha256??null);
+ const sameLocation=line?.line===finding.line&&anchor.line===finding.line&&anchor.page===(pdf?line.page:null);
+ const sameReview=anchor.annotation_revision===revision.revision&&anchor.review_sha256===revision.review_sha256
+  &&anchor.selected_by===revision.actor&&anchor.selected_at===revision.created_at;
+ if(!sameOriginal||!sameRendition||!sameLocation||!sameReview||
+    anchor.quote!==finding.quote||anchor.selected_state!==finding.state){
+  throw Error('The saved passage differs from the one displayed. Reopen the record and check the quotation again.');
+ }
+ return passage;
 }
 export async function decodeManualContext(value:unknown,scope:PassageScope,packet=false):Promise<ManualContext|ManualPacket>{
  if(!exact(value,packet?[...contextFields,'access_receipt_id']:contextFields)||value.contract!=='oi.question-manual-passages/1'||
@@ -102,7 +125,11 @@ export class QuestionPassageClient{
  }
  choose(passage:ResolvedPassage):boolean{
   if(passage.anchor.patient_id!==this.scope.patient_id||passage.anchor.case_id!==this.scope.case_id||passage.selection_state!=='current_unreviewed_selection')return false;
-  return this.#edit(this.#state.chosen.some(p=>p.anchor_sha256===passage.anchor_sha256)?this.#state.chosen:[...this.#state.chosen,passage]);
+  const {source_id,annotation_revision_id,selection_key}=passage.anchor;
+  const prior=this.#state.chosen.find(({anchor})=>anchor.source_id===source_id
+   &&anchor.annotation_revision_id===annotation_revision_id&&anchor.selection_key===selection_key);
+  if(prior&&prior.anchor_sha256!==passage.anchor_sha256)return false;
+  return this.#edit(prior?this.#state.chosen:[...this.#state.chosen,passage]);
  }
  remove(anchorSha:string):boolean{return this.#edit(this.#state.chosen.filter(p=>p.anchor_sha256!==anchorSha));}
  async discardDraft(){

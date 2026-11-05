@@ -84,16 +84,21 @@ function sourceBrief(){
   clinical_approval:false,model_executed:false,biomedical_evidence_included:false};
 }
 test('patient overview follows actual draft, uncertain retry, confirmed save and disconnect',async()=>{
- const fixture=await ready(makeSession({failFirstWrite:true}));
+ const fixture=await ready(makeSession({failFirstWrite:true,questionHistory:{...history(),questions:[]}}));
  const {s}=fixture;
  s.chooseQuestionDraft(SID,8);s.changeQuestionDraft(QUESTION);
  assert.equal(patientContinuity(s.snapshot()).draft,'unsaved');
  await s.prepareDraftQuestion();await s.savePreparedQuestion();
  assert.equal(patientContinuity(s.snapshot()).draft,'needs_attention');
- const first=JSON.parse(fixture.requests.filter(([url])=>url===path+'/questions')[0][1].body);
+ await s.loadSavedQuestions(CASE);
+ const overview=patientContinuity(s.snapshot());
+ assert.deepEqual(overview.questions,{current:0,reassessment:0});
+ assert.equal(overview.draft,'needs_attention');
+ assert.ok(!overview.preparation.some(item=>item.key==='prepare-a-question'));
+ const first=JSON.parse(fixture.requests.filter(([url,init])=>url===path+'/questions'&&init.method==='POST')[0][1].body);
  s.dismissSourceBrief();s.dismissSourceQuotePacket();
  await s.savePreparedQuestion();
- const second=JSON.parse(fixture.requests.filter(([url])=>url===path+'/questions')[1][1].body);
+ const second=JSON.parse(fixture.requests.filter(([url,init])=>url===path+'/questions'&&init.method==='POST')[1][1].body);
  assert.equal(first.request_key,second.request_key);
  assert.equal(patientContinuity(s.snapshot()).draft,'saved');
  s.disconnect();assert.equal(patientContinuity(s.snapshot()),null);
@@ -111,7 +116,7 @@ function makeSession(options={}){
    return response(prepared(q,q===QUESTION?'c'.repeat(64):'b'.repeat(64)));
   }
   if(url===path+'/questions'){
-   if(init.method==='GET')return response(history());
+   if(init.method==='GET')return response(options.questionHistory??history());
    writes++;
    if(options.failFirstWrite&&writes===1)throw Error('uncertain fictional network');
    return response({question_id:QID,duplicate:writes>1},writes>1?200:201);

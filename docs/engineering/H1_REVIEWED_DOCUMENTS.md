@@ -40,6 +40,37 @@ case escaped Unicode), with a separate 64 KiB original bound. No OCR is provided
 
 ## Verification and remaining work
 
+### Checking a passage against the selected original
+
+Before showing a new preview, the web client hashes the bytes it sent and checks
+the returned filename, byte count, digest, media type and extraction and
+annotation methods. A mismatch withholds the preview and the save form. If
+the reviewer discards the file while hashing is in progress, the completed
+hash cannot bring its preview back.
+
+PDF passage selections and saved revision history show the physical page,
+line within that page's extraction and document-wide extraction line. The
+reviewer checks the visible specimen label, value and unit on the original
+page. The [paired PDF experiment](https://github.com/OpenxIntelligence/open-intelligence/pull/466)
+shows how drawing order can separate those words. Editing document metadata
+or a correction reason clears the confirmation and requires a new one to save.
+This confirmation applies to manual transcription. Clinical review has its own
+workflow.
+
+The connected browser journey exercises a substituted hash on one real preview
+response, retries the selected file, corrects a selection on page two and
+checks the page locations on both saved revisions.
+
+When a reviewer chooses a saved passage in Investigations, the picker shows the
+physical page and document-wide extraction line that its selection receipt carries. A fresh selection receipt must match the
+displayed document version, original and extraction hashes, selection revision,
+reviewer label, review time, review digest, quotation, classification, extraction
+line and physical page. A second digest for the same saved selection is refused. A difference asks
+the reviewer to reopen the record before choosing the passage. The browser
+journey exercises this using a shortened, valid substring while the selection
+endpoint returns the original quotation. It then reopens the document and
+follows the exact wording and physical page into the preserved report.
+
 The draft PR records final commit-specific hosted results. Local verification
 covers strict wire contracts, isolated parser tests, client state and production
 build. The independent whole-change review found a too-small history response

@@ -51,7 +51,7 @@ def fictional_bundle(*, amended=False):
 
 
 def exercise(cd, patient_id, directory, token, credentials, write_grants, artifacts):
-    grants = {'case_binding_create', 'case_binding_read', 'source_import', 'source_read', 'source_original_read'}
+    grants = {'case_binding_create', 'case_binding_read', 'source_import', 'source_read', 'source_original_read', 'question_read', 'question_create', 'composer_context_read'}
     credentials[0]['actions'] = sorted(set(credentials[0]['actions']) | grants)
     write_grants()
     root = '/v1/patients/' + patient_id
@@ -70,6 +70,15 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
 
     def navigate(name):
         cd.evaluate('[...document.querySelectorAll("nav button")].find(e=>e.textContent.startsWith(' + json.dumps(name) + ')).click()')
+
+    def reopen_patient():
+        navigate('Overview')
+        cd.wait("Boolean(document.querySelector('#patient-id'))", 'patient can reopen after independent grant check')
+        cd.evaluate("(() => {const e=document.querySelector('#patient-id');"
+                    "Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e," + json.dumps(patient_id) + ");"
+                    "e.dispatchEvent(new Event('input',{bubbles:true}));})()")
+        cd.evaluate("document.querySelector('#patient-id').form.requestSubmit()")
+        cd.wait("document.querySelector('[data-testid=patient-card]')?.textContent.includes(" + json.dumps(patient_id) + ")", 'patient reopened under fresh authority')
 
     def records():
         navigate('Records')
@@ -102,12 +111,20 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     raw = fictional_bundle()
     records()
     cd.evaluate('''(() => {
-      window.__oiLabFetch=window.fetch;window.__oiLabWrites=[];window.__oiLabDrop=true;window.__oiLabRequests=0;
+      window.__oiLabFetch=window.fetch;window.__oiLabWrites=[];window.__oiLabDrop=true;window.__oiLabRequests=0;window.__oiLabPrepareCodes=[];window.__oiLabQuestionPosts=[];window.__oiLabHistoryCodes=[];
       window.fetch=async(input,init)=>{
         window.__oiLabRequests++;
         const laboratory=String(input).endsWith('/laboratory/fhir-r4/sources')&&init?.method==='POST';
         if(laboratory)window.__oiLabWrites.push(JSON.parse(init.body));
         const response=await window.__oiLabFetch(input,init);
+        if(String(input).endsWith('/composer/laboratory-questions')&&init?.method==='GET')window.__oiLabHistoryCodes.push(response.status);
+        if(String(input).endsWith('/composer/laboratory-questions')&&init?.method==='POST'){
+          window.__oiLabQuestionPosts.push({body:JSON.parse(init.body),status:response.status});
+          if(window.__oiLabQuestionPosts.length===1&&response.status===201){
+            await response.clone().json();throw Error('Fictional lost question save response');
+          }
+        }
+        if(String(input).endsWith('/composer/laboratory-preflight'))window.__oiLabPrepareCodes.push(response.status);
         if(laboratory&&window.__oiLabDrop&&response.ok){window.__oiLabDrop=false;await response.clone().json();throw Error('Fictional lost laboratory response');}
         return response;
       };
@@ -149,6 +166,43 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
                    node.get('name', {}).get('value') == 'Selected laboratory JSON, not imported' for node in tree), 'Keyboard reader needs an accessible name that distinguishes local inspection from import'
         key('PageDown', 34)
         cd.wait('document.querySelector("[data-testid=laboratory-local-original]").scrollTop>0', 'PageDown scrolls exact laboratory JSON')
+        if width == 390:
+            # Finish the native PageDown animation before recording the reading position.
+            position = cd.evaluate('''new Promise(resolve => {
+              const reader = document.activeElement;
+              let previous = reader.scrollTop, stable = 0;
+              function sample() {
+                const current = reader.scrollTop;
+                stable = current === previous ? stable + 1 : 0;
+                previous = current;
+                if (stable >= 4) resolve(current); else requestAnimationFrame(sample);
+              }
+              requestAnimationFrame(sample);
+            })''')
+            resize_observations = []
+            for new_height in (256, height):
+                cd.command('Emulation.setDeviceMetricsOverride', {
+                    'width':width, 'height':new_height, 'deviceScaleFactor':1, 'mobile':False})
+                cd.wait('innerHeight===' + str(new_height), 'viewport resized during reading')
+                cd.evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))')
+                reading = cd.evaluate('''(() => {
+                  const reader = document.querySelector('[data-testid=laboratory-local-original]');
+                  const header = document.querySelector('.topbar');
+                  const bounds = reader.getBoundingClientRect();
+                  return {width:innerWidth, height:innerHeight, focused:document.activeElement===reader,
+                    top:bounds.top, bottom:bounds.bottom, position:reader.scrollTop,
+                    contextBottom:header.dataset.sticky==='true' ? header.getBoundingClientRect().bottom : 0,
+                    requests:window.__oiLabRequests, writes:window.__oiLabWrites.length,
+                    confirmed:document.querySelector('[data-testid=laboratory-confirm]').checked};
+                })()''')
+                resize_observations.append(reading)
+                (artifacts / 'laboratory-reading-resize.json').write_text(json.dumps(resize_observations, indent=2))
+                assert reading['focused'] and abs(reading['position'] - position) <= 1, reading
+                assert reading['top'] >= reading['contextBottom'] and reading['bottom'] <= new_height, (
+                    'Resizing while reading must keep the focused preview fully visible', reading)
+                assert reading['requests'] == requests_before_selection and reading['writes'] == 0, reading
+                assert not reading['confirmed'], reading
+            print('PASS READER RESIZE: a native PageDown survives shrinking and expanding the viewport with visible focus, preserved reading position and no inspection requests.')
         assert cd.evaluate('document.querySelector("[data-testid=laboratory-local-original]").textContent') == raw.decode()
         assert cd.evaluate('!document.querySelector("[data-testid=laboratory-confirm]").checked && document.querySelector("[data-testid=laboratory-import]").disabled'), 'Reading must not confirm or import'
         key('Tab', 9)
@@ -180,6 +234,10 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
 
     def journey(expected_value):
         navigate('Journey')
+        has_case = '[...document.querySelectorAll(".world-cases li")].some(e=>e.textContent.includes(' + json.dumps(CASE) + '))'
+        if not cd.evaluate(has_case):
+            cd.evaluate('document.querySelector("[data-testid=world-load-cases]").click()')
+            cd.wait(has_case, 'authorized laboratory case available')
         cd.evaluate('[...document.querySelectorAll(".world-cases li")].find(e=>e.textContent.includes(' + json.dumps(CASE) + ')).querySelector("[data-testid=world-load]").click()')
         cd.wait('document.querySelectorAll("[data-testid=world-laboratory-observation]").length===3', 'three typed source laboratory results')
         rendered = cd.evaluate('[...document.querySelectorAll("[data-testid=world-laboratory-observation]")].map(e=>({text:e.textContent,value:e.querySelector("[data-testid=world-laboratory-value]").textContent}))')
@@ -191,7 +249,70 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
         assert cd.evaluate('document.querySelectorAll("[data-testid=world-laboratory-observation] script").length===0')
         return rows
 
+    def draft_question(source_id, suffix, question):
+        before = cd.evaluate('window.__oiLabRequests')
+        target = source_id + '|Observation/FICT-WEB-' + suffix
+        cd.evaluate("(() => {const e=document.querySelector('[data-testid=lab-question-result]');"
+                    "e.value=" + json.dumps(target) + ";e.dispatchEvent(new Event('change',{bubbles:true}));})()")
+        cd.wait("Boolean(document.querySelector('[data-testid=lab-question-text]'))", 'editable question for selected lab result')
+        cd.evaluate("(() => {const e=document.querySelector('[data-testid=lab-question-text]');"
+                    "Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e," + json.dumps(question) + ");"
+                    "e.dispatchEvent(new Event('input',{bubbles:true}));})()")
+        cd.wait("document.querySelector('[data-testid=lab-question-prepare]')?.disabled===false", 'human question ready')
+        assert cd.evaluate('window.__oiLabRequests') == before, 'Selection and editing must make no network request'
+
+    def submit_question():
+        cd.evaluate("document.querySelector('[data-testid=lab-question-prepare]').click()")
+
+    question = 'What does this report say about my fictional specimen?'
+    questions_path = '/cases/' + CASE + '/questions'
     journey('0')
+    navigate('Investigations')
+    cd.evaluate('document.querySelector("[data-testid=load-source-questions]").click()')
+    cd.wait('Boolean(document.querySelector("[data-testid=source-question-history]"))', 'authorized laboratory case question history')
+    navigate('Overview')
+    cd.wait('document.querySelector("[data-testid=continuity-current]")?.textContent==="0"', 'checked empty laboratory question history')
+    assert cd.evaluate('Boolean(document.querySelector("[data-testid=continuity-preparation-item][data-kind=unresolved-statements]"))')
+    assert not cd.evaluate('Boolean(document.querySelector("[data-testid=continuity-preparation-item][data-kind=prepare-a-question]"))')
+    cd.evaluate('document.querySelector("[data-testid=continuity-preparation-item][data-kind=unresolved-statements] button").click()')
+    cd.wait('document.querySelectorAll("[data-testid=world-laboratory-observation]").length===3', 'Overview returns to the three source-reported laboratory results')
+    assert operator(questions_path)['questions'] == []
+    draft_question(first['source_id'], 'ZERO', question)
+    submit_question()
+    cd.wait("window.__oiLabPrepareCodes.length===1", 'explicit preparation completed over HTTP')
+    assert cd.evaluate("window.__oiLabPrepareCodes") == [200], 'Expected scoped laboratory HTTP success'
+    cd.wait("Boolean(document.querySelector('[data-testid=lab-question-receipt]')) || !document.querySelector('[data-testid=world-projection]')", 'client accepted or rejected the prepared source')
+    assert cd.evaluate("Boolean(document.querySelector('[data-testid=lab-question-receipt]'))"), cd.evaluate("document.querySelector('[data-testid=world-status]').textContent")
+    prepared = cd.evaluate("document.querySelector('[data-testid=lab-question-receipt]').textContent")
+    assert all(x in prepared for x in (question, first['source_id'], first['sha256'], 'Observation/FICT-WEB-ZERO', 'ACCESS-'))
+    laboratory_history = '/cases/' + CASE + '/composer/laboratory-questions'
+    assert operator(laboratory_history)['questions'] == []
+    cd.evaluate("document.querySelector('[data-testid=lab-question-save]').click()")
+    cd.wait("Boolean(document.querySelector('[data-testid=lab-question-retry]'))", 'lost question response exposes exact retry')
+    committed, = operator(laboratory_history)['questions']
+    assert committed['question'] == question and committed['source_context_state'] == 'current_unreviewed_question'
+    assert committed['source_id'] == first['source_id'] and committed['source_sha256'] == first['sha256']
+    navigate('Overview')
+    cd.evaluate('document.querySelector("[data-testid=patient-card] button").click()')
+    cd.wait('Boolean(document.querySelector("[data-testid=patient-card]"))', 'same patient access rechecked before question retry')
+    navigate('Journey')
+    cd.evaluate('document.querySelector("[data-testid=world-load-cases]").click()')
+    cd.wait('[...document.querySelectorAll(".world-cases li")].some(e=>e.textContent.includes(' + json.dumps(CASE) + '))', 'reopen authorized case for question retry')
+    journey('0')
+    cd.wait("Boolean(document.querySelector('[data-testid=lab-question-retry]'))", 'same patient retains exact question recovery')
+    assert cd.evaluate('window.__oiLabQuestionPosts.length') == 1
+    cd.evaluate("document.querySelector('[data-testid=lab-question-retry]').click()")
+    cd.wait("window.__oiLabQuestionPosts.length===2 && document.querySelector('[data-testid=lab-question-save-status]')?.textContent.includes(" + json.dumps(committed['question_id']) + ")", 'client accepted the recovered question identity')
+    assert not cd.evaluate("Boolean(document.querySelector('[data-testid=lab-question-retry]'))")
+    assert 'Original save receipt recovered' in cd.evaluate("document.querySelector('[data-testid=lab-question-save-status]').textContent")
+    posts = cd.evaluate('window.__oiLabQuestionPosts')
+    assert [p['status'] for p in posts] == [201, 200] and posts[0]['body'] == posts[1]['body']
+    assert operator(laboratory_history)['questions'] == [committed]
+    cd.evaluate("document.querySelector('[data-testid=lab-questions-reopen]').click()")
+    cd.wait("document.querySelector('[data-testid=lab-saved-question]')?.textContent.includes(" + json.dumps(question) + ")", 'reopen saved laboratory question')
+    draft_question(first['source_id'], 'ABSENT', 'Why was the selected result not performed?')
+    assert not cd.evaluate("Boolean(document.querySelector('[data-testid=lab-question-receipt]'))"), 'Editing clears previous receipt'
+    assert operator(questions_path)['questions'] == []
     records()
     amended = fictional_bundle(amended=True)
     select(amended, 'fictional-lab-amended.json')
@@ -209,6 +330,49 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     inspect(current['source_id'], amended)
     rows = journey('1')
     assert all(current['source_id'] in row and first['source_id'] not in row for row in rows)
+    assert not cd.evaluate("Boolean(document.querySelector('[data-testid=lab-question-receipt]'))")
+    reopened, = operator(laboratory_history)['questions']
+    assert reopened == {**committed, 'source_context_state': 'source_reassessment_required'}
+    cd.evaluate("document.querySelector('[data-testid=lab-questions-reopen]').click()")
+    cd.wait("document.querySelector('[data-testid=lab-saved-question]')?.textContent.toLowerCase().includes('needs reassessment')", 'amendment flags the historical question')
+    row = cd.evaluate("document.querySelector('[data-testid=lab-saved-question]').textContent")
+    assert all(v in row for v in (question, first['source_id'], first['sha256'], 'Observation/FICT-WEB-ZERO'))
+    credentials[0]['actions'].remove('question_read');write_grants()
+    cd.evaluate("document.querySelector('[data-testid=lab-questions-reopen]').click()")
+    cd.wait("window.__oiLabHistoryCodes.at(-1)===404 && Boolean(document.querySelector('[data-testid=world-no-patient]')) && !document.querySelector('[data-testid=lab-saved-question]')", 'denied question read removes prior history')
+    credentials[0]['actions'].append('question_read');write_grants()
+    reopen_patient()
+    journey('1')
+    draft_question(current['source_id'], 'ABSENT', question)
+    submit_question()
+    cd.wait("document.querySelector('[data-testid=lab-question-receipt]')?.textContent.includes('Observation/FICT-WEB-ABSENT')", 'absent result prepared on amended report')
+    amended_receipt = cd.evaluate("document.querySelector('[data-testid=lab-question-receipt]').textContent")
+    assert current['sha256'] in amended_receipt and first['source_id'] not in amended_receipt
+    credentials[0]['actions'].remove('composer_context_read');write_grants()
+    submit_question()
+    cd.wait("window.__oiLabPrepareCodes.at(-1)===404 && Boolean(document.querySelector('[data-testid=world-no-patient]'))", 'Composer denial withholds projection and prepared answer')
+    assert not cd.evaluate("Boolean(document.querySelector('[data-testid=lab-question-receipt]'))")
+    assert operator(questions_path)['questions'] == []
+    credentials[0]['actions'].append('composer_context_read');write_grants()
+    reopen_patient()
+    (artifacts / 'laboratory-question-preparation.json').write_text(json.dumps({
+        'synthetic': True, 'case_id': CASE, 'original': prepared, 'amendment': amended_receipt,
+        'http_statuses': cd.evaluate('window.__oiLabPrepareCodes'),
+        'requests_on_selection_or_edit': 0, 'saved_questions_before_explicit_save': 0,
+        'edited_receipt_cleared': True, 'denied_projection_withheld': True,
+    }, indent=2) + '\n')
+    assert cd.evaluate('window.__oiLabPrepareCodes') == [200, 200, 404]
+    (artifacts / 'durable-laboratory-question.json').write_text(json.dumps({
+        'synthetic': True, 'case_id': CASE, 'question_id': committed['question_id'],
+        'original_source_id': first['source_id'], 'original_sha256': first['sha256'],
+        'current_source_id': current['source_id'], 'observation_reference': committed['observation_reference'],
+        'save_statuses': [p['status'] for p in posts], 'same_retry_body': posts[0]['body']==posts[1]['body'], 'rechecked_patient_before_retry': True,
+        'historical_state': reopened['source_context_state'], 'revoked_history_withheld': True,
+        'observed_history_statuses': cd.evaluate('window.__oiLabHistoryCodes'),
+    }, indent=2) + '\n')
+    print('PASS DURABLE LAB QUESTION: explicit save, lost response recovered, same stored ID and original after amendment, denied history cleared.')
+    print('PASS LAB QUESTION: exact current and amended results, explicit human question, zero implicit requests or saves, Composer revocation withheld the preview.')
+    journey('1')
     # The integrated Journey action must re-read this case's source metadata
     # without automatically disclosing an original or creating a new source.
     writes_before_navigation = cd.evaluate('window.__oiLabWrites.length')
@@ -234,7 +398,7 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     cd.evaluate('[...document.querySelectorAll(".world-cases li")].find(e=>e.textContent.includes(' + json.dumps(CASE) + ')).querySelector("[data-testid=world-load]").click()')
     cd.wait('!document.querySelector("[data-testid=world-projection]") && document.querySelector("[data-testid=world-status]").textContent.includes("unavailable or revoked")', 'revoked laboratory projection cleared')
     credentials[0]['actions'].append('source_read');write_grants()
-    cd.evaluate('window.fetch=window.__oiLabFetch;delete window.__oiLabFetch;delete window.__oiLabWrites;delete window.__oiLabDrop;delete window.__oiLabRequests')
+    cd.evaluate('window.fetch=window.__oiLabFetch;delete window.__oiLabFetch;delete window.__oiLabWrites;delete window.__oiLabDrop;delete window.__oiLabRequests;delete window.__oiLabPrepareCodes;delete window.__oiLabQuestionPosts;delete window.__oiLabHistoryCodes')
     navigate('Overview')
     (artifacts / 'laboratory-fhir-workflow.json').write_text(json.dumps({
         'synthetic': True, 'case_id': CASE, 'original_source_id': first['source_id'],
@@ -243,5 +407,6 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
         'selection_writes': 0, 'lost_response_retry_same_intent': True,
         'preserved_original_and_history': True, 'original_denial': True,
         'projection_denial': True, 'journey_to_records_fresh_metadata_only': True,
+        'laboratory_only_overview_inspection': True,
         'clinical_interpretation': False}, indent=2) + '\n')
     print('PASS LABORATORY: actual fictional file selection; zero implicit writes; exact lost-response retry; typed zero/number/absence; explicit amendment; exact current/historical JSON; original and projection revocation; 390px layout.')
