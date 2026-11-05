@@ -398,7 +398,10 @@ class ComposerRunMigrationTests(SourceVersionFixture):
         self.assertEqual(self.row(run)["state"], "completed")
 
     def test_populated_execution_history_refuses_downgrade_without_data_loss(self):
-        _, question = self.seed()
+        # Exercise the original execution migration's guard directly. At the
+        # current head, 0020 correctly refuses first because its outbox retains
+        # source history; that guard has its own populated downgrade regression.
+        _, question, _ = self.start_at(REVISION)
         run = self.queue(question)
         self.claim(run)
         self.complete(run)
