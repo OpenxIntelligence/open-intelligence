@@ -180,6 +180,15 @@ def exercise(cd,patient_id,token,credentials,write_grants,artifacts):
         report=operator(qpath+'/evidence-reports/'+report_id)
         assert report['snapshot']['manual_passages']=={k:v for k,v in saved_context.items() if k!='access_receipt_id'}
         assert 'physical page 2' in report['body'] and 'ADDITIONAL MANUAL RECORD CONTEXT' in report['body']
+        # Positive control for the post-revocation leak check below: while
+        # source_original_read is still granted, the exact manual quotation
+        # is present in the authorized evidence-report body (renderer emits
+        # 'Exact manual quotation: "<quote>"' per selected passage). Without
+        # this, the absence check after revocation would pass even for an
+        # invented literal the projections never carried.
+        denied_quote='A fictional violet label is pending.'
+        assert denied_quote in report['body'], (
+            'Positive control failed: authorized report body does not carry the manual quotation')
         destination=artifacts/'manual-context-report-download';destination.mkdir(parents=True,exist_ok=True)
         cd.command('Browser.setDownloadBehavior',{'behavior':'allow','downloadPath':str(destination.resolve())})
         click('[data-testid=evidence-report-download]')
@@ -292,7 +301,9 @@ def exercise(cd,patient_id,token,credentials,write_grants,artifacts):
                     if item['question_id']==question_id)['current_return_receipt_id']==review_receipt['receipt_id']
         # Independently authorized workflow metadata must not disclose an
         # exact quotation whose document-original permission was revoked.
-        denied_quote='A fictional violet label is pending.'
+        # denied_quote is defined above with its positive control (present
+        # in the authorized report body while granted), so this absence
+        # check compares against a real held quotation.
         assert denied_quote not in json.dumps(scoped_tasks,ensure_ascii=False), (
             'Task metadata leaked the revoked manual-document quotation')
         assert denied_quote not in json.dumps(scoped_reviews,ensure_ascii=False), (
