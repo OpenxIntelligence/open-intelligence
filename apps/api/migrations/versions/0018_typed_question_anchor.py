@@ -55,30 +55,34 @@ def _guard_sql():
 
 
 def _legacy_guard_sql():
-    return r"""
-    CREATE OR REPLACE FUNCTION investigation.guard_question_insert() RETURNS trigger
-    LANGUAGE plpgsql AS $oi_question$
-    BEGIN
-        IF NOT EXISTS (
-            SELECT 1 FROM identity.identity_patients p
-            JOIN coordination.patient_case_bindings b ON b.patient_id=p.patient_id
-            WHERE p.patient_id=NEW.patient_id
-              AND p.origin_org=NEW.origin_org AND p.status='active'
-              AND b.case_id=NEW.case_id AND b.origin_org=NEW.origin_org
-              AND b.status='active'
-        ) THEN RAISE EXCEPTION 'OI-QUESTION-IDENTITY-BOUNDARY'; END IF;
-        IF NOT EXISTS (
-            SELECT 1 FROM clinical_source.source_versions s
-            JOIN clinical_source.assertions a ON a.source_id=s.source_id
-            WHERE s.source_id=NEW.source_id
-              AND s.case_id=NEW.case_id AND s.state='current'
-              AND s.version=NEW.source_version AND s.sha256=NEW.source_sha256
-              AND a.source_line=NEW.source_line
-        ) THEN RAISE EXCEPTION 'OI-QUESTION-SOURCE-BOUNDARY'; END IF;
-        RETURN NEW;
-    END;
-    $oi_question$;
-    """
+    # Preserve the original 0006 function body whitespace as well as behavior.
+    # pg_get_functiondef() exposes the stored body, and populated downgrade
+    # acceptance intentionally requires byte-stable restoration.
+    return r"""CREATE OR REPLACE FUNCTION investigation.guard_question_insert() RETURNS trigger
+        LANGUAGE plpgsql AS $oi_question$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM identity.identity_patients p
+                JOIN coordination.patient_case_bindings b
+                  ON b.patient_id=p.patient_id
+                WHERE p.patient_id=NEW.patient_id
+                  AND p.origin_org=NEW.origin_org AND p.status='active'
+                  AND b.case_id=NEW.case_id AND b.origin_org=NEW.origin_org
+                  AND b.status='active'
+            ) THEN RAISE EXCEPTION 'OI-QUESTION-IDENTITY-BOUNDARY'; END IF;
+            IF NOT EXISTS (
+                SELECT 1 FROM clinical_source.source_versions s
+                JOIN clinical_source.assertions a
+                  ON a.source_id=s.source_id
+                WHERE s.source_id=NEW.source_id
+                  AND s.case_id=NEW.case_id AND s.state='current'
+                  AND s.version=NEW.source_version
+                  AND s.sha256=NEW.source_sha256
+                  AND a.source_line=NEW.source_line
+            ) THEN RAISE EXCEPTION 'OI-QUESTION-SOURCE-BOUNDARY'; END IF;
+            RETURN NEW;
+        END;
+        $oi_question$;"""
 
 
 def upgrade():
