@@ -103,8 +103,30 @@ def exercise(cd, patient_id, token, credentials, write_grants, artifacts):
         for version, original in enumerate(originals, start=1):
             inspect_original(version, original)
 
+        # Compare a second report against the current EP-A line. Both versions
+        # of DOC-ALPHA are in custody, but only v2 belongs in the comparison.
+        comparison = (originals[0].split('Oncology-Finding:', 1)[0].replace('DOC-ALPHA', 'DOC-COMPARE')
+                      + 'Oncology-Finding: breast|primary|EP-A|negative|Fictional contrasting statement.\n')
+        added = operator(source_path, {'synthetic': True, 'original_text': comparison})
+        select_case('Journey', 'world-load-cases', '.world-cases li', 'world-load')
+        cd.wait('document.querySelectorAll("[data-testid=world-conflict]").length===1',
+                'episode-specific disagreement from two current originals')
+        cd.evaluate('document.querySelector("[data-testid=world-conflict] summary").click()')
+        rows = cd.evaluate("""[...document.querySelectorAll('[data-testid=world-conflict] details[open] li')]
+            .map(row=>[row.querySelector('code').textContent,row.querySelector('blockquote').textContent,
+                       row.textContent])""")
+        by_source = {source_id: (quote, text) for source_id, quote, text in rows}
+        assert len(rows) == 2 and set(by_source) == {selected_ids[-1], added['source_id']}, rows
+        quote, label = by_source[selected_ids[-1]]
+        assert quote == 'Fictional breast primary.' and 'DOC-ALPHA v2 · line 9' in label, rows
+        quote, label = by_source[added['source_id']]
+        assert quote == 'Fictional contrasting statement.' and 'DOC-COMPARE v1 · line 8' in label, rows
+
         # A protected action and an explicit projection refresh can each discover
         # withdrawal. Both must also clear the previously inspected original in Records.
+        # Reopen the original so the following denial also exercises the Records cache.
+        select_case('Records', 'load-cases', '[data-testid=case-row]', 'load-sources')
+        inspect_original(2, originals[-1])
         navigate('Journey')
         load = case_button('.world-cases li', 'world-load')
         cd.wait(load + ' && !' + load + '.disabled', 'episode case retained from Records')
@@ -136,6 +158,7 @@ def exercise(cd, patient_id, token, credentials, write_grants, artifacts):
             'source_sha256': [hashlib.sha256(s.encode()).hexdigest() for s in originals],
             'primary_episodes': ['EP-A', 'EP-B'], 'nodule_episode_history': [None, 'EP-B'],
             'nodule_reported_state': 'indeterminate', 'source_only_preflights': 2,
+            'compared_current_originals': [selected_ids[-1], added['source_id']],
             'historical_original_verified': True, 'denied_read_cleared_records': True,
             'denied_preflight_cleared_records': True,
         }, indent=2) + '\n')

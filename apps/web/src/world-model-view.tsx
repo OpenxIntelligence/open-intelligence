@@ -25,7 +25,7 @@ export function WorldModelView({session,state,onOverview,busy,showQuestions=fals
   const loading=state.worldPhase==='loading'||state.recordsPhase.startsWith('loading');
   const model=state.worldModel;
   const laboratoryByRef=new Map(model?.laboratory_observations.map(item=>[item.source_id+':'+item.observation_reference,item])??[]);
-  const contextsByLine=new Map(model?.observations.map(item=>[item.source_id+':'+item.source_line,item.oncology])??[]);
+  const observationsByLine=new Map(model?.observations.map(item=>[item.source_id+':'+item.source_line,item])??[]);
   const episodes=new Map<string|null,WorldObservation[]>();
   const ordinary:WorldObservation[]=[];
   for(const item of model?.observations??[]){
@@ -135,9 +135,19 @@ export function WorldModelView({session,state,onOverview,busy,showQuestions=fals
           <h3 id="source-disagreements">Unresolved source disagreements</h3>
           <p>Conflicting source-reported states for the same documented specimen, date and finding; no clinical adjudication is performed.</p>
           <ul>{model.conflicts.map(item=><li key={item.source_refs[0].source_id+':'+item.source_refs[0].source_line} data-testid="world-conflict">
-            <SourceOncologyLabel context={contextsByLine.get(item.source_refs[0].source_id+':'+item.source_refs[0].source_line)}/>
+            <SourceOncologyLabel context={observationsByLine.get(item.source_refs[0].source_id+':'+item.source_refs[0].source_line)?.oncology}/>
             <strong>{item.finding_key}</strong> · specimen {item.specimen_id} · {item.event_date} · reported states {item.reported_states.join(' / ')}
-            <p>{item.source_refs.map(ref=><code key={ref.source_id+':'+ref.source_line}>{ref.source_id} line {ref.source_line}; </code>)}</p>
+            <details><summary>Compare source statements ({item.source_refs.length})</summary>
+              <ul>{item.source_refs.map(ref=>{
+                const anchor=ref.source_id+':'+ref.source_line;
+                const observation=observationsByLine.get(anchor)!;
+                return <li key={anchor}>
+                  <strong>{observation.reported_state}</strong> · {observation.document_id} v{observation.document_version} · line {ref.source_line}
+                  <blockquote>{observation.source_statement}</blockquote>
+                  <code>{ref.source_id}</code>
+                </li>;
+              })}</ul>
+            </details>
           </li>)}</ul>
         </section>}
         {model.history.length>0&&<details className="world-history"><summary>Superseded original history ({model.history.length})</summary>
