@@ -149,6 +149,43 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
                    node.get('name', {}).get('value') == 'Selected laboratory JSON, not imported' for node in tree), 'Keyboard reader needs an accessible name that distinguishes local inspection from import'
         key('PageDown', 34)
         cd.wait('document.querySelector("[data-testid=laboratory-local-original]").scrollTop>0', 'PageDown scrolls exact laboratory JSON')
+        if width == 390:
+            # Finish the native PageDown animation before recording the reading position.
+            position = cd.evaluate('''new Promise(resolve => {
+              const reader = document.activeElement;
+              let previous = reader.scrollTop, stable = 0;
+              function sample() {
+                const current = reader.scrollTop;
+                stable = current === previous ? stable + 1 : 0;
+                previous = current;
+                if (stable >= 4) resolve(current); else requestAnimationFrame(sample);
+              }
+              requestAnimationFrame(sample);
+            })''')
+            resize_observations = []
+            for new_height in (256, height):
+                cd.command('Emulation.setDeviceMetricsOverride', {
+                    'width':width, 'height':new_height, 'deviceScaleFactor':1, 'mobile':False})
+                cd.wait('innerHeight===' + str(new_height), 'viewport resized during reading')
+                cd.evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))')
+                reading = cd.evaluate('''(() => {
+                  const reader = document.querySelector('[data-testid=laboratory-local-original]');
+                  const header = document.querySelector('.topbar');
+                  const bounds = reader.getBoundingClientRect();
+                  return {width:innerWidth, height:innerHeight, focused:document.activeElement===reader,
+                    top:bounds.top, bottom:bounds.bottom, position:reader.scrollTop,
+                    contextBottom:header.dataset.sticky==='true' ? header.getBoundingClientRect().bottom : 0,
+                    requests:window.__oiLabRequests, writes:window.__oiLabWrites.length,
+                    confirmed:document.querySelector('[data-testid=laboratory-confirm]').checked};
+                })()''')
+                resize_observations.append(reading)
+                (artifacts / 'laboratory-reading-resize.json').write_text(json.dumps(resize_observations, indent=2))
+                assert reading['focused'] and abs(reading['position'] - position) <= 1, reading
+                assert reading['top'] >= reading['contextBottom'] and reading['bottom'] <= new_height, (
+                    'Resizing while reading must keep the focused preview fully visible', reading)
+                assert reading['requests'] == requests_before_selection and reading['writes'] == 0, reading
+                assert not reading['confirmed'], reading
+            print('PASS READER RESIZE: a native PageDown survives shrinking and expanding the viewport with visible focus, preserved reading position and no inspection requests.')
         assert cd.evaluate('document.querySelector("[data-testid=laboratory-local-original]").textContent') == raw.decode()
         assert cd.evaluate('!document.querySelector("[data-testid=laboratory-confirm]").checked && document.querySelector("[data-testid=laboratory-import]").disabled'), 'Reading must not confirm or import'
         key('Tab', 9)
