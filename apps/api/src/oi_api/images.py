@@ -203,7 +203,8 @@ class PostgresSourceImages:
     def original(self, patient_id: str, case_id: str, source_id: str, image_id: str, *,
                  organization: str, actor: str, purpose: str,
                  recheck_authority: Callable[[], None],
-                 prepare_response: Callable[[bytes, str], PreparedResponse] | None = None
+                 prepare_response: Callable[[bytes, str], PreparedResponse] | None = None,
+                 access_event: str = "image.original_read_authorized",
                  ) -> tuple[bytes, str] | PreparedResponse:
         """Validate and prepare bounded original bytes before final authority.
 
@@ -212,6 +213,8 @@ class PostgresSourceImages:
         final authority and receipt commit. Preparation never streams.
         """
         _image_id(image_id)
+        if access_event not in {"image.original_read_authorized", "image.preview_read_authorized"}:
+            raise ValueError("Unsupported image access event")
         remote = None
         if self.archive is not None:
             # Preflight uses canonical custody and server-stored identifiers;
@@ -259,7 +262,7 @@ class PostgresSourceImages:
                         else (raw, receipt_id))
             self.sources._read_receipt(
                 patient_id, case_id, actor=actor, purpose=purpose, binding_revision=revision,
-                event="image.original_read_authorized", receipt_id=receipt_id,
+                event=access_event, receipt_id=receipt_id,
                 recheck_authority=recheck_authority,
                 source_id=source_id, source_version=source["version"], source_sha256=source["sha256"],
                 image_id=image_id, sha256=row["sha256"], byte_count=len(raw))

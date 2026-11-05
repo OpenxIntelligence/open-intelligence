@@ -27,7 +27,7 @@ import {decodeQuestionEvidenceSearch,decodeQuestionEvidenceLinks,decodeQuestionE
 import type {QuestionEvidenceSearch,QuestionEvidenceLinks,QuestionEvidenceIntent,
   QuestionEvidenceReceipt} from './question-evidence-view.js';
 import {QuestionEvidenceSession,emptyEvidenceState} from './authored-evidence-session.js';
-import {decodeSourceImages,readSourceImageOriginal,emptySourceImages} from './source-images.js';
+import {decodeSourceImages,readSourceImageOriginal,readSourceImagePreview,emptySourceImages} from './source-images.js';
 import type {SourceImagesState} from './source-images.js';
 import type {EvidenceState,EvidenceDraftPatch} from './authored-evidence-session.js';
 import type {ContentItem,Permissions,Relation,Applicability} from './authored-evidence.js';
@@ -245,7 +245,7 @@ export class RegistrySession {
   #followRead=0; #followWrite=0; #savingFollowthrough=false;
   #evidenceRead=0; #evidenceWrite=0; #savingEvidence=false;
   #quoteRead=0;
-  #imageRead=0; #imageDownload=0;
+  #imageRead=0; #imageDownload=0; #imagePreview=0;
   #laboratoryWrite=0; #laboratoryWriting=false;
   #inspectionQuestionId:string|null=null;
   #listeners=new Set<()=>void>(); #controllers=new Set<AbortController>(); #creating=false; #uploading=false;
@@ -1478,7 +1478,7 @@ export class RegistrySession {
   }
 
   /** Original is an independently permission-checked read; hash verification is not clinical validation. */
-  #resetSourceImages(){this.#imageRead++;this.#imageDownload++;return emptySourceImages();}
+  #resetSourceImages(){this.#imageRead++;this.#imageDownload++;this.#imagePreview++;return emptySourceImages();}
   dismissSourceImages=()=>this.#publish(this.#resetSourceImages());
   async loadSourceImages(sourceId:string):Promise<void>{
     const patientId=this.#state.patient?.patient_id,index=this.#state.sourceIndex;
@@ -1543,6 +1543,47 @@ export class RegistrySession {
     }catch(_){if(current()&&!control.signal.aborted)this.#publish({sourceImageDownload:null,sourceImageDownloadPhase:'error',sourceImageDownloadMessage:'Original image failed byte verification or could not be downloaded. No previous original is reused.'});}
     finally{clearTimeout(timeout);this.#controllers.delete(control);}
   }
+  dismissSourceImagePreview=()=>{
+    this.#imagePreview++;
+    this.#publish({sourceImagePreview:null,sourceImagePreviewPhase:'idle',sourceImagePreviewMessage:''});
+  };
+  async previewSourceImage(sourceId:string,imageId:string):Promise<void>{
+    const patientId=this.#state.patient?.patient_id,index=this.#state.sourceIndex,images=this.#state.sourceImages;
+    const source=index?.sources.find(item=>item.source_id===sourceId),image=images?.images.find(item=>item.image_id===imageId);
+    const request=++this.#imagePreview;
+    this.#publish({sourceImagePreview:null,sourceImagePreviewPhase:'idle',sourceImagePreviewMessage:''});
+    if(!this.#token||!patientId||this.#state.phase!=='ready'||!index||!source||
+       source.kind!=='imaging'||source.state!=='current'||!images||!image||this.#uploading||
+       images.patient_id!==patientId||images.case_id!==index.case_id||images.source_id!==sourceId||
+       this.#state.sourceImagesPhase!=='ready'||!this.#state.cases?.some(item=>item.case_id===index.case_id&&item.status==='active')){
+      this.#publish({sourceImagePreviewPhase:'error',sourceImagePreviewMessage:'Inspect the exact current source image list before requesting a preview.'});return;
+    }
+    const scope=this.#scope,read=this.#read,imageRead=this.#imageRead,caseId=index.case_id;
+    const current=()=>scope===this.#scope&&read===this.#read&&request===this.#imagePreview&&imageRead===this.#imageRead&&
+      this.#state.patient?.patient_id===patientId&&this.#state.sourceIndex===index&&this.#state.sourceImages===images;
+    const control=new AbortController();this.#controllers.add(control);
+    const timeout=setTimeout(()=>{control.abort();if(current())this.#publish({sourceImagePreview:null,
+      sourceImagePreviewPhase:'error',sourceImagePreviewMessage:'Preview request timed out. No image is shown; recheck and try again.'});},10000);
+    this.#publish({sourceImagePreviewPhase:'loading',sourceImagePreviewMessage:'Rechecking original-image permission and generating a bounded non-diagnostic preview…'});
+    try{
+      const init=this.#init(control);init.headers={...init.headers,Accept:'image/png'};
+      const res=await this.transport('/v1/patients/'+encodeURIComponent(patientId)+'/cases/'+encodeURIComponent(caseId)+
+        '/sources/'+encodeURIComponent(sourceId)+'/images/'+encodeURIComponent(imageId)+'/preview',init);
+      if(!current()||control.signal.aborted)return;
+      if(res.status===401){this.#httpError(401);return;}
+      if(res.status!==200){this.#publish({sourceImagePreview:null,sourceImagePreviewPhase:'error',
+        sourceImagePreviewMessage:'Preview unavailable or permission denied. No earlier pixels are reused.'});return;}
+      const verified=await readSourceImagePreview(res,image);
+      if(!current()||control.signal.aborted)return;
+      this.#publish({sourceImagePreview:Object.freeze({patient_id:patientId,case_id:caseId,source_id:sourceId,image_id:imageId,
+        original_sha256:image.sha256,access_receipt_id:verified.accessReceiptId,png_bytes:verified.bytes}),
+        sourceImagePreviewPhase:'ready',
+        sourceImagePreviewMessage:'Non-diagnostic preview generated from the freshly authorized original. It is not a clinical display or interpretation.'});
+    }catch(_){if(current()&&!control.signal.aborted)this.#publish({sourceImagePreview:null,sourceImagePreviewPhase:'error',
+      sourceImagePreviewMessage:'Preview failed verification or could not be generated. No previous pixels are reused.'});}
+    finally{clearTimeout(timeout);this.#controllers.delete(control);}
+  }
+
   dismissOriginal=()=>{
     this.#records++;
     this.#publish({...(this.#state.worldPhase==='loading'?emptyWorld():{}),original:null,recordsPhase:'ready'});
