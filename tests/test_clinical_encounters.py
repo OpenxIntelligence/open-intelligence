@@ -1,0 +1,555 @@
+"""PD-01 first-party encounter operations regression, using synthetic test patients."""
+import json
+import sqlite3
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+from open_intelligence.store import CaseStore, InvalidInput
+from open_intelligence.clinical_encounters import (
+    ClinicalEncounters, ClinicalAuthorizationError, ClinicalConflict,
+)
+
+
+class ClinicalEncounterTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.path = Path(self.tmp.name) / 'oi.sqlite'
+        self.store = CaseStore(self.path)
+        self.store.add_case('CASE-ONE', 'Independent synthetic patient')
+        self.store.add_case('CASE-TWO', 'Different synthetic patient')
+        self.authorized = lambda actor, case, action, purpose: (
+            actor == 'idp:clinician-001' and case == 'CASE-ONE'
+            and purpose == 'care' and action in {
+                'encounter.schedule', 'encounter.transition', 'encounter.read',
+                'note.write', 'note.read', 'note.attest'})
+        self.ops = ClinicalEncounters(self.store, self.authorized)
+        self.actor = {'actor': 'idp:clinician-001', 'purpose': 'care'}
+
+    def tearDown(self):
+        self.store.close()
+        self.tmp.cleanup()
+
+    def schedule(self, key='req-schedule-0001'):
+        return self.ops.schedule('CASE-ONE', 'ENCOUNTER-001', 'outpatient',
+                                 '2026-11-02', request_key=key, **self.actor)
+
+    def begin(self):
+        scheduled = self.schedule()
+        return self.ops.transition('CASE-ONE', scheduled['encounter_id'], 'in_progress',
+                                   expected_revision=1, request_key='req-begin-000001',
+                                   **self.actor)
+
+    def test_new_domain_runs_with_independent_canonical_patient_host(self):
+        """Real domain functions without any legacy CaseStore/cases table."""
+        class CanonicalHost:
+            def __init__(self, path):
+                self.db = sqlite3.connect(path)
+                self.db.row_factory = sqlite3.Row
+                self.db.execute('CREATE TABLE domain_test_events ('
+                                'id INTEGER PRIMARY KEY,patient_id TEXT,kind TEXT,payload TEXT)')
+                self.patients = {'oi:patient.12345'}
+
+            def require_patient(self, patient_id):
+                if patient_id not in self.patients:
+                    raise InvalidInput('Patient does not exist in canonical registry')
+
+            def append_event(self, patient_id, kind, **details):
+                self.db.execute('INSERT INTO domain_test_events (patient_id,kind,payload) '
+                                'VALUES(?,?,?)', (patient_id, kind, json.dumps(details)))
+
+        with tempfile.TemporaryDirectory() as root:
+            host = CanonicalHost(Path(root) / 'standalone.sqlite')
+            try:
+                service = ClinicalEncounters(host, lambda actor, subject, action, purpose:
+                                             actor == 'idp:clinician-001' and purpose == 'care')
+                subject = 'oi:patient.12345'
+                created = service.schedule(subject, 'ENCOUNTER-001', 'telehealth', '2026-11-02',
+                                           request_key='cmd-host-00001', **self.actor)
+                self.assertEqual(created['status'], 'scheduled')
+                service.transition(subject, created['encounter_id'], 'in_progress',
+                                   expected_revision=1, request_key='cmd-host-00002', **self.actor)
+                note = service.write_note(subject, created['encounter_id'], 'NOTE-001',
+                                          'Clinician-authored encounter note', expected_version=0,
+                                          request_key='cmd-host-00003', **self.actor)
+                self.assertEqual(note['status'], 'draft')
+                self.assertEqual(service.attest_note(subject, created['encounter_id'], 'NOTE-001',
+                                                      expected_version=1, request_key='cmd-host-00004',
+                                                      **self.actor)['status'], 'attested')
+                self.assertEqual(host.db.execute('SELECT COUNT(*) FROM domain_test_events').fetchone()[0], 4)
+                self.assertEqual(host.db.execute("SELECT COUNT(*) FROM sqlite_master "
+                                                 "WHERE type='table' AND name='cases'").fetchone()[0], 0)
+                with self.assertRaises(InvalidInput):
+                    service.list_encounters('oi:patient.unknown', **self.actor)
+            finally:
+                host.db.close()
+
+    def test_no_host_authorizer_denies_both_read_and_write(self):
+        instance = ClinicalEncounters(self.store)
+        with self.assertRaises(ClinicalAuthorizationError):
+            instance.list_encounters('CASE-ONE', **self.actor)
+        with self.assertRaises(ClinicalAuthorizationError):
+            instance.schedule('CASE-ONE', 'ENCOUNTER-002', 'outpatient', '2026-11-02',
+                              request_key='req-schedule-0002', **self.actor)
+        self.assertEqual(self.ops.list_encounters('CASE-ONE', **self.actor), [])
+
+    def test_fake_or_wrong_subject_or_purpose_is_denied(self):
+        for actor, case, purpose in [
+            ('fake:clinician-002', 'CASE-ONE', 'care'),
+            ('idp:clinician-001', 'CASE-TWO', 'care'),
+            ('idp:clinician-001', 'CASE-ONE', 'research')]:
+            with self.subTest(actor=actor, case=case):
+                with self.assertRaises(ClinicalAuthorizationError):
+                    self.ops.list_encounters(case, actor=actor, purpose=purpose)
+        self.assertEqual(self.store.db.execute('SELECT COUNT(*) FROM clinical_encounters').fetchone()[0], 0)
+
+    def test_authorizer_exception_fails_closed(self):
+        denial = ClinicalEncounters(self.store, lambda *_: (_ for _ in ()).throw(RuntimeError('oops')))
+        with self.assertRaises(ClinicalAuthorizationError):
+            denial.list_encounters('CASE-ONE', **self.actor)
+
+    def test_schedule_persists_in_same_patient_database_and_event_ledger(self):
+        a = self.schedule()
+        self.assertEqual(a['status'], 'scheduled')
+        self.assertEqual(a['revision'], 1)
+        self.assertEqual(len(self.store.cases()), 2)
+        self.assertEqual(self.ops.list_encounters('CASE-ONE', **self.actor)[0]['id'], a['encounter_id'])
+        event = self.store.db.execute("SELECT * FROM events WHERE kind='clinical_encounter_scheduled'").fetchone()
+        self.assertEqual(event['case_id'], 'CASE-ONE')
+        detail = json.loads(event['details'])
+        self.assertEqual(detail['encounter_id'], a['encounter_id'])
+        self.assertNotIn('Independent synthetic patient', event['details'])
+        self.assertNotIn('ENCOUNTER-001', event['details'])
+
+    def test_commands_idempotent_across_database_restart(self):
+        first = self.schedule()
+        self.assertEqual(self.schedule(), first)
+        count = self.store.db.execute('SELECT COUNT(*) FROM events WHERE kind=?',
+                                      ('clinical_encounter_scheduled',)).fetchone()[0]
+        self.assertEqual(count, 1)
+        self.store.close()
+        self.store = CaseStore(self.path)
+        self.ops = ClinicalEncounters(self.store, self.authorized)
+        self.assertEqual(self.schedule(), first)
+        self.assertEqual(self.store.db.execute("SELECT COUNT(*) FROM clinical_encounters").fetchone()[0], 1)
+
+    def test_idempotency_reuse_for_different_command_fails_closed(self):
+        self.schedule()
+        with self.assertRaisesRegex(ClinicalConflict, 'Idempotency'):
+            self.ops.schedule('CASE-ONE', 'ENCOUNTER-002', 'telehealth', '2026-11-02',
+                              request_key='req-schedule-0001', **self.actor)
+        with self.assertRaisesRegex(ClinicalConflict, 'Idempotency'):
+            self.ops.transition('CASE-ONE', 1, 'in_progress', expected_revision=1,
+                                request_key='req-schedule-0001', **self.actor)
+        self.assertEqual(len(self.ops.list_encounters('CASE-ONE', **self.actor)), 1)
+
+    def test_unique_encounter_identifier_and_invalid_input(self):
+        self.schedule()
+        with self.assertRaisesRegex(ClinicalConflict, 'already exists'):
+            self.ops.schedule('CASE-ONE', 'ENCOUNTER-001', 'outpatient', '2026-11-02',
+                              request_key='req-other-create', **self.actor)
+        with self.assertRaises(InvalidInput):
+            self.ops.schedule('CASE-ONE', 'INVALID-1', 'unknown', '2026-11-02',
+                              request_key='req-new-create', **self.actor)
+        with self.assertRaises(InvalidInput):
+            self.ops.schedule('CASE-ONE', 'INVALID-1', 'other', '2026-99-99',
+                              request_key='req-new-create', **self.actor)
+
+    def test_transition_requires_expected_version_and_valid_edges(self):
+        id_ = self.schedule()['encounter_id']
+        with self.assertRaises(ClinicalConflict):
+            self.ops.transition('CASE-ONE', id_, 'completed', expected_revision=1,
+                                request_key='req-invalid-edge', **self.actor)
+        started = self.ops.transition('CASE-ONE', id_, 'in_progress', expected_revision=1,
+                                      request_key='req-begin-000001', **self.actor)
+        self.assertEqual(started['revision'], 2)
+        with self.assertRaisesRegex(ClinicalConflict, 'revision changed'):
+            self.ops.transition('CASE-ONE', id_, 'completed', expected_revision=1,
+                                request_key='req-stale-rev-1', **self.actor)
+        done = self.ops.transition('CASE-ONE', id_, 'completed', expected_revision=2,
+                                   request_key='req-finish-00001', **self.actor)
+        self.assertEqual(done['revision'], 3)
+        with self.assertRaises(ClinicalConflict):
+            self.ops.transition('CASE-ONE', id_, 'in_progress', expected_revision=3,
+                                request_key='req-return-to-work', **self.actor)
+
+    def test_cancelled_encounter_cannot_accept_notes(self):
+        id_ = self.schedule()['encounter_id']
+        self.ops.transition('CASE-ONE', id_, 'cancelled', expected_revision=1,
+                            request_key='req-cancel-00001', **self.actor)
+        with self.assertRaises(ClinicalConflict):
+            self.ops.write_note('CASE-ONE', id_, 'NOTE-001', 'Cancelled clinical record',
+                                expected_version=0, request_key='req-note-0000001', **self.actor)
+
+    def test_note_draft_attestation_and_correction_are_immutable(self):
+        id_ = self.begin()['encounter_id']
+        one = self.ops.write_note('CASE-ONE', id_, 'NOTE-001', 'First clinician-authored clinical note',
+                                  expected_version=0, request_key='req-note-0000001', **self.actor)
+        self.assertEqual(one['status'], 'draft')
+        two = self.ops.write_note('CASE-ONE', id_, 'NOTE-001', 'Corrected wording before attestation',
+                                  expected_version=1, request_key='req-note-0000002', **self.actor)
+        self.assertEqual(two['version'], 2)
+        attested = self.ops.attest_note('CASE-ONE', id_, 'NOTE-001', expected_version=2,
+                                       request_key='req-attest-00001', **self.actor)
+        self.assertEqual(attested['status'], 'attested')
+        with self.assertRaisesRegex(ClinicalConflict, 'correction reason'):
+            self.ops.write_note('CASE-ONE', id_, 'NOTE-001', 'Silent rewrite attempted',
+                                expected_version=3, request_key='req-unsafe-overwrite', **self.actor)
+        pending = self.ops.write_note('CASE-ONE', id_, 'NOTE-001', 'Late corrected clinical wording',
+                                      expected_version=3, correction_reason='Original transcription error',
+                                      request_key='req-amend-000001', **self.actor)
+        self.assertEqual(pending['status'], 'draft_correction')
+        self.assertNotEqual(pending['sha256'], one['sha256'])
+        final = self.ops.attest_note('CASE-ONE', id_, 'NOTE-001', expected_version=4,
+                                     request_key='req-attest-00002', **self.actor)
+        self.assertEqual(final['status'], 'attested_correction')
+        history = self.ops.note_history('CASE-ONE', id_, 'NOTE-001', **self.actor)
+        self.assertEqual([x['version'] for x in history], [1, 2, 3, 4, 5])
+        self.assertEqual(history[0]['body'], 'First clinician-authored clinical note')
+        self.assertEqual(history[2]['body'], 'Corrected wording before attestation')
+        self.assertEqual(history[3]['amendment_reason'], 'Original transcription error')
+        self.assertEqual(history[4]['supersedes_id'], history[3]['id'])
+        self.assertEqual(history[4]['sha256'], history[3]['sha256'])
+        self.assertEqual(self.store.db.execute("SELECT COUNT(*) FROM events WHERE kind LIKE 'clinical_note_%'").fetchone()[0], 5)
+        # Clinical note text itself must never leak into the event log.
+        all_events = ' '.join(e['details'] for e in self.store.db.execute('SELECT details FROM events').fetchall())
+        self.assertNotIn('First clinician-authored clinical note', all_events)
+        self.assertNotIn('Late corrected clinical wording', all_events)
+
+    def test_immutable_versions_enforced_by_database_not_only_service(self):
+        encounter_id = self.begin()['encounter_id']
+        note = self.ops.write_note('CASE-ONE', encounter_id, 'NOTE-001',
+                                   'Immutable content in the original source',
+                                   expected_version=0, request_key='req-note-0000001',
+                                   **self.actor)
+        version_id = self.ops.note_history('CASE-ONE', encounter_id, 'NOTE-001',
+                                           **self.actor)[0]['id']
+        with self.assertRaisesRegex(sqlite3.IntegrityError, 'immutable'):
+            with self.store.db:
+                self.store.db.execute('UPDATE clinical_note_versions SET body=? WHERE id=?',
+                                      ('unattributed replacement', version_id))
+        with self.assertRaisesRegex(sqlite3.IntegrityError, 'immutable'):
+            with self.store.db:
+                self.store.db.execute('DELETE FROM clinical_note_versions WHERE id=?', (version_id,))
+        with self.assertRaisesRegex(sqlite3.IntegrityError, 'immutable'):
+            with self.store.db:
+                self.store.db.execute('DELETE FROM clinical_encounter_commands WHERE patient_id=?', ('CASE-ONE',))
+        self.assertEqual(self.ops.note_history('CASE-ONE', encounter_id, 'NOTE-001',
+                                               **self.actor)[0]['sha256'], note['sha256'])
+
+    def test_no_reassignment_or_other_case_event_on_cross_patient_id(self):
+        # Even a permissive test authorizer cannot escape the SQL case scope.
+        created = self.schedule()
+        cross_case = ClinicalEncounters(self.store, lambda *_: True)
+        before = self.store.db.execute('SELECT COUNT(*) FROM events').fetchone()[0]
+        with self.assertRaisesRegex(InvalidInput, 'not found in this patient'):
+            cross_case.transition('CASE-TWO', created['encounter_id'], 'in_progress',
+                                  expected_revision=1, request_key='req-wrong-subject',
+                                  **self.actor)
+        self.assertEqual(before, self.store.db.execute('SELECT COUNT(*) FROM events').fetchone()[0])
+
+    def test_same_idempotency_key_is_not_usable_by_different_actor(self):
+        self.schedule()
+        alternative = ClinicalEncounters(self.store, lambda actor, *_: actor in {'idp:clinician-001', 'idp:clinician-002'})
+        with self.assertRaises(ClinicalConflict):
+            alternative.schedule('CASE-ONE', 'ENCOUNTER-001', 'outpatient', '2026-11-02',
+                                 request_key='req-schedule-0001', actor='idp:clinician-002', purpose='care')
+
+    def test_note_patient_scope_prevents_cross_patient_leakage(self):
+        id_ = self.begin()['encounter_id']
+        self.ops.write_note('CASE-ONE', id_, 'NOTE-001', 'Source-linked first-party note',
+                            expected_version=0, request_key='req-note-0000001', **self.actor)
+        instance = ClinicalEncounters(self.store, lambda *_: True)  # fake authorized test of ID scope
+        with self.assertRaisesRegex(InvalidInput, 'not found in this patient'):
+            instance.note_history('CASE-TWO', id_, 'NOTE-001', **self.actor)
+        with self.assertRaisesRegex(InvalidInput, 'not found in this patient'):
+            instance.write_note('CASE-TWO', id_, 'NOTE-001', 'Unsafe case crossover',
+                                expected_version=1, request_key='req-wrong-case-1', **self.actor)
+
+    def test_transaction_rolls_back_if_shared_event_insert_fails(self):
+        with patch.object(self.store, '_event', side_effect=sqlite3.IntegrityError('simulated event failure')):
+            with self.assertRaises(sqlite3.IntegrityError):
+                self.schedule()
+        self.assertEqual(self.store.db.execute('SELECT COUNT(*) FROM clinical_encounters').fetchone()[0], 0)
+        self.assertEqual(self.store.db.execute('SELECT COUNT(*) FROM clinical_encounter_commands').fetchone()[0], 0)
+        self.assertEqual(self.schedule()['revision'], 1)
+
+    def test_attestation_denied_without_authority_even_if_can_edit(self):
+        id_ = self.begin()['encounter_id']
+        self.ops.write_note('CASE-ONE', id_, 'NOTE-001', 'Clinician draft awaiting attestation',
+                            expected_version=0, request_key='req-note-0000001', **self.actor)
+        no_attest = ClinicalEncounters(self.store, lambda actor, case, action, purpose: action != 'note.attest')
+        with self.assertRaises(ClinicalAuthorizationError):
+            no_attest.attest_note('CASE-ONE', id_, 'NOTE-001', expected_version=1,
+                                  request_key='req-bypass-0001', **self.actor)
+        self.assertEqual(len(self.ops.note_history('CASE-ONE', id_, 'NOTE-001', **self.actor)), 1)
+
+    def test_idempotency_has_conflict_when_content_differs(self):
+        id_ = self.begin()['encounter_id']
+        first = self.ops.write_note('CASE-ONE', id_, 'NOTE-001', 'Original signed-text draft',
+                                    expected_version=0, request_key='req-note-0000001', **self.actor)
+        self.assertEqual(self.ops.write_note('CASE-ONE', id_, 'NOTE-001', 'Original signed-text draft',
+                                             expected_version=0, request_key='req-note-0000001', **self.actor), first)
+        with self.assertRaises(ClinicalConflict):
+            self.ops.write_note('CASE-ONE', id_, 'NOTE-001', 'Content changed with reused key',
+                                expected_version=0, request_key='req-note-0000001', **self.actor)
+        self.assertEqual(len(self.ops.note_history('CASE-ONE', id_, 'NOTE-001', **self.actor)), 1)
+
+    def test_revoked_authority_during_encounter_command_rolls_back_all_effects(self):
+        """A grant lost after the event append cannot authorize commit."""
+        grant = {'active': True}
+        guarded = ClinicalEncounters(self.store, lambda actor, case, action, purpose:
+                                     grant['active'] and self.authorized(actor, case, action, purpose))
+        original = self.store._event
+
+        def revoke_after_event(case_id, kind, **details):
+            original(case_id, kind, **details)
+            if kind == 'clinical_encounter_scheduled':
+                grant['active'] = False
+
+        with patch.object(self.store, '_event', side_effect=revoke_after_event):
+            with self.assertRaises(ClinicalAuthorizationError):
+                guarded.schedule('CASE-ONE', 'ENCOUNTER-001', 'outpatient',
+                                 '2026-11-02', request_key='req-revoke-mid-001', **self.actor)
+        self.assertEqual(self.store.db.execute('SELECT COUNT(*) FROM clinical_encounters').fetchone()[0], 0)
+        self.assertEqual(self.store.db.execute('SELECT COUNT(*) FROM clinical_encounter_commands').fetchone()[0], 0)
+        self.assertEqual(self.store.db.execute(
+            "SELECT COUNT(*) FROM events WHERE kind='clinical_encounter_scheduled'").fetchone()[0], 0)
+        grant['active'] = True
+        self.assertEqual(guarded.schedule('CASE-ONE', 'ENCOUNTER-001', 'outpatient',
+                                          '2026-11-02', request_key='req-revoke-mid-001',
+                                          **self.actor)['status'], 'scheduled')
+
+    def test_revoked_authority_during_note_attestation_keeps_prior_version(self):
+        """A late grant revocation cannot persist an attestation or receipt."""
+        encounter_id = self.begin()['encounter_id']
+        self.ops.write_note('CASE-ONE', encounter_id, 'NOTE-001', 'Reviewable fictional draft',
+                            expected_version=0, request_key='req-note-before-001', **self.actor)
+        grant = {'active': True}
+        guarded = ClinicalEncounters(self.store, lambda actor, case, action, purpose:
+                                     grant['active'] and self.authorized(actor, case, action, purpose))
+        original = self.store._event
+
+        def revoke_after_event(case_id, kind, **details):
+            original(case_id, kind, **details)
+            if kind == 'clinical_note_attestation_recorded':
+                grant['active'] = False
+
+        with patch.object(self.store, '_event', side_effect=revoke_after_event):
+            with self.assertRaises(ClinicalAuthorizationError):
+                guarded.attest_note('CASE-ONE', encounter_id, 'NOTE-001',
+                                    expected_version=1, request_key='req-attest-mid-001', **self.actor)
+        versions = self.ops.note_history('CASE-ONE', encounter_id, 'NOTE-001', **self.actor)
+        self.assertEqual([(row['version'], row['status']) for row in versions], [(1, 'draft')])
+        self.assertEqual(self.store.db.execute(
+            "SELECT COUNT(*) FROM events WHERE kind='clinical_note_attestation_recorded'").fetchone()[0], 0)
+        self.assertEqual(self.store.db.execute(
+            "SELECT COUNT(*) FROM clinical_encounter_commands WHERE request_key=?",
+            ('req-attest-mid-001',)).fetchone()[0], 0)
+
+
+    def test_idempotent_replay_rechecks_revoked_grant_before_return(self):
+        """An existing receipt must not bypass a grant revoked during a replay."""
+        first = self.schedule()
+        calls = []
+
+        def withdraw_during_read(actor, case, action, purpose):
+            calls.append((actor, case, action, purpose))
+            return len(calls) == 1 and self.authorized(actor, case, action, purpose)
+
+        replay = ClinicalEncounters(self.store, withdraw_during_read)
+        with self.assertRaises(ClinicalAuthorizationError):
+            replay.schedule('CASE-ONE', 'ENCOUNTER-001', 'outpatient',
+                            '2026-11-02', request_key='req-schedule-0001', **self.actor)
+        self.assertGreaterEqual(len(calls), 2, 'repeat receipt needs a final authorization check')
+        self.assertEqual(self.store.db.execute(
+            'SELECT COUNT(*) FROM clinical_encounters').fetchone()[0], 1)
+        self.assertEqual(self.schedule(), first)
+
+    def test_note_history_rechecks_revoked_grant_before_disclosing_body(self):
+        """Withhold sensitive note history when the current grant has changed."""
+        encounter_id = self.begin()['encounter_id']
+        self.ops.write_note('CASE-ONE', encounter_id, 'NOTE-001',
+                            'Private fictional note for late-read revocation',
+                            expected_version=0, request_key='req-private-note-001', **self.actor)
+        calls = []
+
+        def withdraw_during_read(actor, case, action, purpose):
+            calls.append((actor, case, action, purpose))
+            return len(calls) == 1 and self.authorized(actor, case, action, purpose)
+
+        reader = ClinicalEncounters(self.store, withdraw_during_read)
+        with self.assertRaises(ClinicalAuthorizationError):
+            reader.note_history('CASE-ONE', encounter_id, 'NOTE-001', **self.actor)
+        self.assertGreaterEqual(len(calls), 2, 'note content requires a final read permission check')
+        self.assertEqual(self.ops.note_history('CASE-ONE', encounter_id, 'NOTE-001',
+                                               **self.actor)[0]['body'],
+                         'Private fictional note for late-read revocation')
+
+    def test_encounter_list_rechecks_revoked_grant_before_disclosing(self):
+        """Disclose no clinical index following a late source grant withdrawal."""
+        self.schedule()
+        calls = []
+
+        def withdraw_during_read(actor, case, action, purpose):
+            calls.append((actor, case, action, purpose))
+            return len(calls) == 1 and self.authorized(actor, case, action, purpose)
+
+        reader = ClinicalEncounters(self.store, withdraw_during_read)
+        with self.assertRaises(ClinicalAuthorizationError):
+            reader.list_encounters('CASE-ONE', **self.actor)
+        self.assertGreaterEqual(len(calls), 2, 'encounter index requires a final permission check')
+
+
+    def test_attestation_receipt_replay_rechecks_revoked_grant(self):
+        """A previous attestation is not authority to disclose a now-denied result."""
+        encounter_id = self.begin()['encounter_id']
+        self.ops.write_note('CASE-ONE', encounter_id, 'NOTE-001', 'Initial clinical draft',
+                            expected_version=0, request_key='req-before-attest-001', **self.actor)
+        original = self.ops.attest_note('CASE-ONE', encounter_id, 'NOTE-001',
+                                        expected_version=1, request_key='req-attest-replay-001',
+                                        **self.actor)
+        observed = []
+
+        def withdraw_during_replay(actor, case, action, purpose):
+            observed.append(action)
+            return len(observed) == 1 and self.authorized(actor, case, action, purpose)
+
+        reader = ClinicalEncounters(self.store, withdraw_during_replay)
+        with self.assertRaises(ClinicalAuthorizationError):
+            reader.attest_note('CASE-ONE', encounter_id, 'NOTE-001',
+                               expected_version=1, request_key='req-attest-replay-001',
+                               **self.actor)
+        self.assertGreaterEqual(len(observed), 2)
+        self.assertEqual(original['status'], 'attested')
+        self.assertEqual(len(self.ops.note_history('CASE-ONE', encounter_id, 'NOTE-001',
+                                                   **self.actor)), 2)
+        self.assertEqual(self.store.db.execute(
+            "SELECT COUNT(*) FROM clinical_encounter_commands WHERE request_key=?",
+            ('req-attest-replay-001',)).fetchone()[0], 1)
+
+
+    def test_corrupted_current_note_cannot_be_attested(self):
+        """A restored/altered note with an invalid digest cannot be signed."""
+        encounter_id = self.begin()['encounter_id']
+        self.ops.write_note('CASE-ONE', encounter_id, 'NOTE-001',
+                            'Original fictional clinical draft', expected_version=0,
+                            request_key='req-corrupt-note-001', **self.actor)
+        with self.store.db:
+            self.store.db.execute('DROP TRIGGER clinical_note_versions_block_update')
+            self.store.db.execute('UPDATE clinical_note_versions SET body=? WHERE version=1',
+                                  ('Altered fictional note content',))
+        before = self.store.db.execute('SELECT COUNT(*) FROM events').fetchone()[0]
+        with self.assertRaisesRegex(ClinicalConflict, 'integrity'):
+            self.ops.attest_note('CASE-ONE', encounter_id, 'NOTE-001',
+                                 expected_version=1, request_key='req-corrupt-attest-001',
+                                 **self.actor)
+        self.assertEqual(self.store.db.execute('SELECT COUNT(*) FROM events').fetchone()[0], before)
+        self.assertEqual(self.store.db.execute('SELECT COUNT(*) FROM clinical_note_versions').fetchone()[0], 1)
+        self.assertEqual(self.store.db.execute(
+            "SELECT COUNT(*) FROM clinical_encounter_commands WHERE request_key=?",
+            ('req-corrupt-attest-001',)).fetchone()[0], 0)
+
+    def test_corrupted_historical_note_not_disclosed(self):
+        """A history read cannot silently return an altered prior note version."""
+        encounter_id = self.begin()['encounter_id']
+        self.ops.write_note('CASE-ONE', encounter_id, 'NOTE-001',
+                            'Original version retained', expected_version=0,
+                            request_key='req-before-history-001', **self.actor)
+        self.ops.write_note('CASE-ONE', encounter_id, 'NOTE-001',
+                            'Second version retained', expected_version=1,
+                            request_key='req-before-history-002', **self.actor)
+        with self.store.db:
+            self.store.db.execute('DROP TRIGGER clinical_note_versions_block_update')
+            self.store.db.execute('UPDATE clinical_note_versions SET body=? WHERE version=1',
+                                  ('Altered historical note',))
+        with self.assertRaisesRegex(ClinicalConflict, 'integrity'):
+            self.ops.note_history('CASE-ONE', encounter_id, 'NOTE-001', **self.actor)
+        self.assertEqual(self.store.db.execute('SELECT COUNT(*) FROM clinical_note_versions').fetchone()[0], 2)
+
+
+    def test_corrupted_note_digest_blocks_draft_revision(self):
+        """An invalid stored digest cannot be inherited by a new note draft."""
+        encounter_id = self.begin()['encounter_id']
+        self.ops.write_note('CASE-ONE', encounter_id, 'NOTE-001',
+                            'Fictional note before digest corruption', expected_version=0,
+                            request_key='req-digest-base-001', **self.actor)
+        with self.store.db:
+            self.store.db.execute('DROP TRIGGER clinical_note_versions_block_update')
+            self.store.db.execute('UPDATE clinical_note_versions SET sha256=? WHERE version=1',
+                                  ('0' * 64,))
+        before = self.store.db.execute('SELECT COUNT(*) FROM events').fetchone()[0]
+        with self.assertRaisesRegex(ClinicalConflict, 'integrity'):
+            self.ops.write_note('CASE-ONE', encounter_id, 'NOTE-001',
+                                'New fictional note that must not be persisted',
+                                expected_version=1, request_key='req-digest-update-001', **self.actor)
+        self.assertEqual(self.store.db.execute('SELECT COUNT(*) FROM events').fetchone()[0], before)
+        self.assertEqual(self.store.db.execute('SELECT COUNT(*) FROM clinical_note_versions').fetchone()[0], 1)
+        self.assertEqual(self.store.db.execute(
+            "SELECT COUNT(*) FROM clinical_encounter_commands WHERE request_key=?",
+            ('req-digest-update-001',)).fetchone()[0], 0)
+
+
+    def test_distinct_specialty_notes_preserve_facility_and_department_by_version(self):
+        """Two specialties contribute notes without merging their provenance."""
+        eid = self.begin()['encounter_id']
+        cardiology = self.ops.write_note(
+            'CASE-ONE', eid, 'NOTE-CARDIOLOGY', 'Fictional cardiac consultation',
+            expected_version=0, facility_id='ORG-HOSPITAL-ONE',
+            department_id='DEPT-CARDIOLOGY', note_kind='consultation',
+            request_key='req-cardiology-write-001', **self.actor)
+        primary = self.ops.write_note(
+            'CASE-ONE', eid, 'NOTE-PRIMARY', 'Fictional referring primary care history',
+            expected_version=0, facility_id='ORG-CLINIC-TWO',
+            department_id='DEPT-PRIMARYCARE', note_kind='history_and_physical',
+            request_key='req-primary-write-001', **self.actor)
+        self.assertEqual(cardiology['status'], 'draft')
+        self.assertEqual(primary['status'], 'draft')
+        self.ops.attest_note('CASE-ONE', eid, 'NOTE-CARDIOLOGY',
+                             expected_version=1, request_key='req-cardiology-attest-001',
+                             **self.actor)
+        self.ops.write_note('CASE-ONE', eid, 'NOTE-CARDIOLOGY', 'Corrected fictional consultation',
+                            expected_version=2, correction_reason='Corrected fictional summary',
+                            request_key='req-cardiology-correct-001', **self.actor)
+        history = self.ops.note_history('CASE-ONE', eid, 'NOTE-CARDIOLOGY', **self.actor)
+        self.assertEqual([h['version'] for h in history], [1, 2, 3])
+        self.assertEqual([h['facility_id'] for h in history], ['ORG-HOSPITAL-ONE'] * 3)
+        self.assertEqual([h['department_id'] for h in history], ['DEPT-CARDIOLOGY'] * 3)
+        self.assertEqual([h['note_kind'] for h in history], ['consultation'] * 3)
+        other = self.ops.note_history('CASE-ONE', eid, 'NOTE-PRIMARY', **self.actor)
+        self.assertEqual(len(other), 1)
+        self.assertEqual(other[0]['facility_id'], 'ORG-CLINIC-TWO')
+        self.assertEqual(other[0]['department_id'], 'DEPT-PRIMARYCARE')
+        self.assertEqual(other[0]['note_kind'], 'history_and_physical')
+
+    def test_note_provenance_participates_in_idempotent_command_identity(self):
+        """A different department cannot reuse the same receipt and silently relabel."""
+        eid = self.begin()['encounter_id']
+        args = dict(patient_id='CASE-ONE', encounter_id=eid, note_key='NOTE-001',
+                    body='Fictional note', expected_version=0,
+                    facility_id='ORG-HOSPITAL-ONE', department_id='DEPT-CARDIOLOGY',
+                    note_kind='consultation', request_key='req-provenance-001', **self.actor)
+        before = self.ops.write_note(**args)
+        self.assertEqual(self.ops.write_note(**args), before)
+        with self.assertRaises(ClinicalConflict):
+            self.ops.write_note(**dict(args, department_id='DEPT-PRIMARYCARE'))
+        self.assertEqual(len(self.ops.note_history('CASE-ONE', eid, 'NOTE-001', **self.actor)), 1)
+        with self.assertRaises(InvalidInput):
+            self.ops.write_note(**dict(args, note_kind='diagnosis_assumed'))
+        with self.assertRaises(InvalidInput):
+            self.ops.write_note(**dict(args, facility_id=''))
+
+    def test_absent_specialty_and_facility_remain_unknown(self):
+        """Legacy notes have no invented department, facility, or note classification."""
+        eid = self.begin()['encounter_id']
+        self.ops.write_note('CASE-ONE', eid, 'NOTE-LEGACY', 'Unclassified fictional note',
+                            expected_version=0, request_key='req-legacy-note-001', **self.actor)
+        history = self.ops.note_history('CASE-ONE', eid, 'NOTE-LEGACY', **self.actor)
+        self.assertIsNone(history[0]['facility_id'])
+        self.assertIsNone(history[0]['department_id'])
+        self.assertIsNone(history[0]['note_kind'])
+
+
+if __name__ == '__main__':
+    unittest.main()

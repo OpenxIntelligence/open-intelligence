@@ -59,6 +59,12 @@ class RegistryMigrationTests(unittest.TestCase):
         # Remove only known test-owned objects. RESTRICT is intentional: an
         # unexpected dependent object must stop cleanup rather than be erased.
         with self.engine.begin() as connection:
+            connection.execute(text("ALTER TABLE IF EXISTS ehr.clinical_note_headers DROP CONSTRAINT IF EXISTS latest_note_version_exists"))
+            connection.execute(text("DROP TABLE IF EXISTS ehr.clinical_note_versions"))
+            connection.execute(text("DROP TABLE IF EXISTS ehr.clinical_note_headers"))
+            connection.execute(text("DROP TABLE IF EXISTS ehr.clinical_encounter_commands"))
+            connection.execute(text("DROP TABLE IF EXISTS ehr.clinical_encounters"))
+            connection.execute(text("DROP SCHEMA IF EXISTS ehr"))
             connection.execute(text("DROP TABLE IF EXISTS public.oi_registry_external_reference"))
             connection.execute(text("DROP TABLE IF EXISTS coordination.question_followthrough_manual_dependencies"))
             connection.execute(text("DROP TABLE IF EXISTS coordination.question_followthrough_events"))
