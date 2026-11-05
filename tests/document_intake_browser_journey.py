@@ -16,9 +16,14 @@ import signal
 import subprocess
 import sys
 import tempfile
-from urllib.request import urlopen
-
-from browser_journey import ChromeSession, free_port, wait_for
+from browser_journey import (
+    ChromeSession,
+    free_port,
+    provision_demo_access,
+    sign_in_demo,
+    urlopen,
+    wait_for,
+)
 from open_intelligence.store import CaseStore
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -202,6 +207,9 @@ def main() -> None:
             store.add_case("CASE-BETA", "Fictional case Beta")
         finally:
             store.close()
+        # No seed() here: provision the demo account, its grants, and its
+        # password directly, as seed() would have.
+        provision_demo_access(db, ("CASE-ALPHA", "CASE-BETA"))
         app_port, debug_port = free_port(), free_port()
         server = subprocess.Popen(
             [sys.executable, "-m", "open_intelligence", "serve", "--db", db,
@@ -232,6 +240,7 @@ def main() -> None:
                 "width": 1440, "height": 1000, "deviceScaleFactor": 1, "mobile": False,
             })
             session.command("Page.navigate", {"url": url})
+            sign_in_demo(session)
             session.wait("document.querySelector('#case-heading')?.textContent === 'Fictional case Alpha'",
                          "empty Alpha workspace loaded")
             before = ledger(db)

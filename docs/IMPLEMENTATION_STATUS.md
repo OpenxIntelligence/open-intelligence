@@ -159,7 +159,7 @@ These are integration candidates, not a verified combined product. Check each cu
 
 ## Important unproven areas
 
-- No authenticated identity, consent, delegation, role controls, auditing suitable for real patients, access revocation, or full security assessment.
+- Local demo accounts, roles, and sessions now exist (operator / clinician / patient read-only on their own case / auditor; operator-created accounts only; 24-hour server-side sessions; case routes require a live grant plus role permission; access decisions are logged and readable by operator/auditor). These are local demo labels, not verified identities — there is still no authenticated identity, consent, delegation, production access control, auditing suitable for real patients, or full security assessment. The safety packet still needs a refresh for this change.
 - No PDF/OCR, automated clinical assertion extraction, FHIR/mCODE exchange, biological or imaging analysis, medical literature appraisal, trial searching, model inference, or provider integration.
 - No independent professional review; demo acknowledgments are explicitly labeled and do not establish clinical correctness.
 - The Patient Mission panel is a workflow projection, not a patient summary, diagnostic assessment, treatment plan, safety monitor, trial matcher, care coordinator, or clinical decision-support system.
