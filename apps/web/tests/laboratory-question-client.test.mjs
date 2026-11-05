@@ -336,3 +336,9 @@ test('an older laboratory catalog result cannot restore a title after rights-che
    if(action==='rights refresh')assert.equal(s.snapshot().evidenceLinks.links[0].record,null);
  }
 });
+test('an authenticated laboratory question history retains its source case and read snapshot for the overview',()=>{
+ const w=projection(),raw=history(),parsed=readLabQuestionList(raw,w);
+ assert.equal(parsed.patient_id,patient);
+ assert.equal(parsed.case_id,caseId);
+ assert.equal(parsed.checked_source_snapshot_sha256,w.snapshot_fingerprint);
+});

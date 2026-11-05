@@ -49,7 +49,8 @@ export type SavedLabQuestion=Readonly<{
   observation_reference:string;source_snapshot_sha256:string;preflight_sha256:string;
   source_context_state:'current_unreviewed_question'|'source_reassessment_required';
 }>;
-export type LabQuestionList=Readonly<{access_receipt_id:string;questions:readonly SavedLabQuestion[]}>;
+export type LabQuestionList=Readonly<{patient_id:string;case_id:string;checked_source_snapshot_sha256:string;
+  access_receipt_id:string;questions:readonly SavedLabQuestion[]}>;
 export type LabQuestionView=Readonly<{
   labQuestionHistory:LabQuestionList|null;labQuestionListPhase:'idle'|'loading'|'ready'|'error';
   labQuestionListMessage:string;labQuestionWritePhase:'idle'|'saving'|'unknown'|'saved'|'error';
@@ -80,5 +81,7 @@ export function readLabQuestionList(raw:unknown,model:SourceWorldModel):LabQuest
       (row.source_context_state==='current_unreviewed_question'&&(row.source_snapshot_sha256!==model.snapshot_fingerprint||source.state!=='current'||!currentObservations.has(row.source_id+'|'+row.observation_reference))))throw Error('laboratory question source');
     ids.add(row.question_id);return Object.freeze(row as SavedLabQuestion);
   });
-  return Object.freeze({access_receipt_id:raw.access_receipt_id,questions:Object.freeze(questions)});
+  return Object.freeze({patient_id:model.patient_id,case_id:model.case_id,
+    checked_source_snapshot_sha256:model.snapshot_fingerprint,
+    access_receipt_id:raw.access_receipt_id,questions:Object.freeze(questions)});
 }

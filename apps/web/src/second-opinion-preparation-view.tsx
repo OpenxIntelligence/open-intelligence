@@ -5,7 +5,8 @@ import './second-opinion-agenda.css';
 const summary={
  needs_check:'Check the case inputs before preparing a second-opinion discussion.',
  needs_records:'No current original source version is loaded for this case.',
- needs_question:'Original records are available, but no current source-grounded question is loaded.',
+ needs_question:'Original records are available, but no current text-anchored question is loaded in this agenda. Laboratory questions are checked separately.',
+ needs_laboratory_review:'Saved laboratory questions exist, but they are not yet connected to this text-source evidence, report and review agenda. Reopen them in Journey for discussion.',
  needs_reassessment:'A source changed. Reassess affected questions before relying on earlier preparation.',
  inputs_prepared:'The currently loaded records and questions are organized for preparation.',
 } as const;
@@ -24,24 +25,28 @@ export function SecondOpinionPreparation({state,onNavigate,onResumeQuestion}:{st
     <dd>{view.records?view.records.current===0?'Checked: no current source version returned.':<>{view.records.current} current source {view.records.current===1?'version':'versions'}{view.records.historical>0?' · '+view.records.historical+' historical':''}</>:'Not checked for the selected case.'}</dd>
    </div>
    <div data-testid="second-opinion-questions">
-    <dt>Focused questions</dt>
+    <dt>Text-anchored focused questions</dt>
     <dd>{view.questions?<>{view.questions.current} current · {view.questions.reassessment} needing source reassessment</>:'Not checked for the selected case.'}</dd>
    </div>
+   {view.laboratoryAvailable&&<div data-testid="second-opinion-lab-questions">
+    <dt>Saved laboratory questions</dt>
+    <dd>{view.laboratoryQuestions?<>{view.laboratoryQuestions.current} current · {view.laboratoryQuestions.reassessment} needing source reassessment. These are unreviewed and are not part of the text-line agenda.</>:'Not checked for this case, or independently unavailable. Do not infer zero.'}</dd>
+   </div>}
    <div data-testid="second-opinion-coordination">
     <dt>Recorded coordination</dt>
     <dd>{view.coordination?<>{view.coordination.open} open · {view.coordination.assigned} with a recorded owner{view.coordination.sourceChanged>0?' · '+view.coordination.sourceChanged+' source-changed':''}</>:'Follow-up work has not been checked or is unavailable.'}</dd>
    </div>
   </dl>
   <section className="second-opinion-agenda" aria-labelledby="second-opinion-agenda-heading" data-testid="second-opinion-agenda">
-   <h3 id="second-opinion-agenda-heading">Saved questions for discussion</h3>
-   <p>These are your exact saved questions, not generated recommendations or clinically reviewed conclusions. Primary source status is from the last authorized read.</p>
+   <h3 id="second-opinion-agenda-heading">Text-source questions for discussion</h3>
+   <p>These are your exact text-anchored saved questions, not generated recommendations or clinically reviewed conclusions. Laboratory questions are tracked separately in Journey until their evidence and review path is implemented. Source status is from the last authorized read.</p>
    <p data-testid="second-opinion-context-scope">Attached passages and preserved reports need a separate freshness check in Investigations.</p>
    {view.agenda&&state.manualPassageDraftQuestionIds.length>0&&<p data-testid="second-opinion-passage-drafts">
     {state.manualPassageDraftQuestionIds.length} {state.manualPassageDraftQuestionIds.length===1?'question has':'questions have'} unsaved record-passage changes in this session, not yet attached.
     {' '}Open the matching question to recheck and resume. Questions outside this preview are available in Investigations.
    </p>}
    {!view.agenda?<p role="status" data-testid="second-opinion-agenda-unavailable">Questions have not been checked for this case, or that history is no longer available. Return to Investigations for an authorized read.</p>:
-    view.agenda.total===0?<p data-testid="second-opinion-agenda-empty">No saved questions were returned for this case and grant. This does not establish that there are no care questions.</p>:<>
+    view.agenda.total===0?<p data-testid="second-opinion-agenda-empty">No text-anchored questions were returned for this case and grant. Laboratory questions are tracked separately; this does not establish that there are no care questions.</p>:<>
      <p className="small" data-testid="second-opinion-agenda-coverage">Showing {view.agenda.preview.length} of {view.agenda.total} saved {view.agenda.total===1?'question':'questions'} in the recorded order. Open Investigations to see the full history.</p>
      <ol className="second-opinion-agenda-list" aria-label="Saved discussion questions">
       {view.agenda.preview.map(item=><li key={item.questionId} data-testid="second-opinion-agenda-item" data-question-id={item.questionId} data-source-context={item.sourceContextState}>

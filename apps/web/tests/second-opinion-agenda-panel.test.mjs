@@ -133,3 +133,22 @@ test('historical-only task status is counted, never presented as an open action'
  assert.doesNotMatch(html,/data-testid="second-opinion-question-task"/);
  assert.match(html,/Historical work remains available in Investigations/);
 });
+
+test('second-opinion UI shows laboratory questions as a separate unreviewed source, never a fictional line',()=>{
+ const state=base(),sid='SRC-'+'F'.repeat(32),sha='a'.repeat(64);
+ const snapshot=state.worldModel.snapshot_fingerprint;
+ const scope={...state,worldModel:{...state.worldModel,current_sources:[{source_id:sid,version:1,
+  sha256:sha,kind:'laboratory',state:'current'}],history:[],laboratory_observations:[{
+  source_id:sid,observation_reference:'Observation/FICTIONAL-OBS'}]},labQuestionListPhase:'ready',
+  labQuestionHistory:{patient_id:patientId,case_id:caseId,checked_source_snapshot_sha256:snapshot,
+   access_receipt_id:'ACCESS-'+'D'.repeat(32),questions:[{question_id:'QUESTION-'+'F'.repeat(32),
+   source_id:sid,source_version:1,source_sha256:sha,source_context_state:'current_unreviewed_question'}]}};
+ const html=renderToStaticMarkup(createElement(SecondOpinionPreparation,
+  {state:scope,onNavigate(){},onResumeQuestion(){}}));
+ assert.match(html,/data-state="needs_laboratory_review"/);
+ assert.match(html,/data-testid="second-opinion-lab-questions"/);
+ assert.match(html,/1 current · 0 needing source reassessment/);
+ assert.match(html,/text-line agenda/);
+ assert.match(html,/No text-anchored questions were returned/);
+ assert.doesNotMatch(html,/Primary source version 1, line 0/);
+});
