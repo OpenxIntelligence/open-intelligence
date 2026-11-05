@@ -12,7 +12,7 @@ def exercise(cd, patient_id, token, credentials, write_grants, artifacts):
     previous = list(credentials[0]['actions'])
     credentials[0]['actions'] = sorted(set(previous) | {
         'patient_read', 'case_binding_create', 'case_binding_read', 'source_import',
-        'source_read', 'source_original_read', 'composer_context_read',
+        'source_read', 'source_original_read', 'composer_context_read', 'episode_draft_read', 'episode_draft_create',
     })
     write_grants()
 
@@ -94,6 +94,27 @@ def exercise(cd, patient_id, token, credentials, write_grants, artifacts):
             expected.setdefault('Episode unassigned' if version == 1 else 'Episode EP-B', []).append(('nodule', 'indeterminate'))
             assert {k: sorted((key,state) for key,state,_ in items) for k,items in groups.items()} == expected, groups
             assert all(current['source_id'] in anchor and f'v{version}' in anchor for items in groups.values() for _,_,anchor in items)
+            if version == 1:
+                for line in (8, 9):
+                    value = json.dumps(current['source_id'] + ':' + str(line))
+                    cd.evaluate("(() => {const s=document.querySelector('section[aria-label=\"Episode drafts\"] select');"
+                                + "s.value=" + value + ";s.dispatchEvent(new Event('change',{bubbles:true}));})()")
+                    button = "[...document.querySelectorAll('button')].find(b=>b.textContent==='Save episode draft')"
+                    cd.wait(button + ' && !' + button + '.disabled', 'selected explicit primary origin')
+                    cd.evaluate(button + '.click()')
+                    cd.wait(f'document.querySelectorAll("[data-testid=saved-episode-draft]").length==={line-7}',
+                            'explicit episode draft saved and re-read')
+                draft_ids = cd.evaluate("""[...document.querySelectorAll('[data-testid=saved-episode-draft] details')]
+                    .map(d=>d.querySelector('code').textContent)""")
+                assert len(set(draft_ids)) == 2
+            else:
+                cd.evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent==='Open saved episode drafts').click()")
+                cd.wait('document.querySelectorAll("[data-testid=saved-episode-draft]").length===2', 'reopened original drafts')
+                returned = cd.evaluate("""[...document.querySelectorAll('[data-testid=saved-episode-draft]')]
+                    .map(d=>[d.querySelector('details code').textContent,d.textContent])""")
+                assert [r[0] for r in returned] == draft_ids
+                assert all('Reassessment required' in body and 'DOC-ALPHA v1' in body
+                           and 'superseded original' in body and selected_ids[0] in body for _,body in returned)
             cd.evaluate(nodule_preflight + '.click()')
             expected_context = 'Source-reported metastasis · ' + ('Episode unassigned' if version == 1 else 'EP-B') + ' · indeterminate'
             cd.wait('document.querySelector("[data-testid=composer-context]")?.textContent.includes('
@@ -156,6 +177,7 @@ def exercise(cd, patient_id, token, credentials, write_grants, artifacts):
         (artifacts / 'oncology-episodes.json').write_text(json.dumps({
             'synthetic': True, 'case_id': CASE, 'source_ids': selected_ids,
             'source_sha256': [hashlib.sha256(s.encode()).hexdigest() for s in originals],
+            'durable_episode_draft_ids': draft_ids, 'amended_basis_flagged': True,
             'primary_episodes': ['EP-A', 'EP-B'], 'nodule_episode_history': [None, 'EP-B'],
             'nodule_reported_state': 'indeterminate', 'source_only_preflights': 2,
             'compared_current_originals': [selected_ids[-1], added['source_id']],

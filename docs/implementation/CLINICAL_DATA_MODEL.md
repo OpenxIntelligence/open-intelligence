@@ -1,5 +1,14 @@
 # Clinical data model
 
+## First operational episode draft
+
+On the #556 clinical-core line, `clinical_source.episode_drafts` stores a new opaque episode identity, its immutable source assertion key, the source snapshot hash, author, time and creation event. Patient, case, source version, dates, digest and quote resolve from the existing owners. Creating two drafts requires two explicit user commands. Matching source labels across documents never joins episodes. A draft can begin only from a current explicitly attributed primary line whose state is reported.
+
+Journey calls GET and POST `/v1/patients/{patient_id}/cases/{case_id}/episode-drafts`. Both require operations purpose, current patient and source access, an active case binding and draft-read authority. POST additionally requires draft-create authority. The case lock serializes imports, concurrent saves and binding withdrawal. The same actor can recover an exact prior command, even after amendment. A changed basis conflicts and a later version of the same document/finding cannot create another identity. An amendment or independent structured import marks the saved basis for reassessment. The previous quote, source state, version and digest remain inspectable. The bounded case limit is 64 drafts.
+
+The application encodes the response inside the source transaction and reauthenticates after event persistence. A populated downgrade refuses data loss. The PostgreSQL, browser and Compose suites exercise author revocation, wrong-patient denial, concurrent retry, two primary drafts, amended origins and read/retry after backup restore. These tests use synthetic sources. Relating several sources to the same draft, adjudicating origin, clinical status and professional attestation require subsequent commands.
+
+
 Current repair: additive `0022_lab_citation_source_scope` now aligns the database
 guard with the existing structured-source snapshot and preserves published 0021.
 The reviewed-document mismatch was reproduced in hosted PostgreSQL run

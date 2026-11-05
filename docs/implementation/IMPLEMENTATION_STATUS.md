@@ -4,6 +4,8 @@ Observed 2026-11-05. This is the current execution index for the founder's
 post-audit mandate; existing backlog `docs/EXECUTION_BACKLOG.csv` retains work
 package ownership. Historical PR receipts describe their exact revisions only.
 
+The first Phase 1 candidate extends verified [#556](https://github.com/OpenxIntelligence/open-intelligence/pull/556) at `92257c2c`, which carried the five-file disagreement repair onto [#542](https://github.com/OpenxIntelligence/open-intelligence/pull/542). The candidate adds migration `0023_episode_drafts` on that line. Reconcile its named revision with the separate ownership/event integration branches before merging. The draft PR records hosted results for its own head.
+
 | Deliverable | Status | Evidence and next gate |
 |---|---|---|
 | Repository/main/audit reconciliation | Implemented | Main inspected at f188aec; #481 already merged; current source and all six named donor PRs inspected |
@@ -11,7 +13,7 @@ package ownership. Historical PR receipts describe their exact revisions only.
 | PostgreSQL migration graph | Implemented | Published EHR/laboratory 0019 siblings join at 0020, then 0021 freshness and additive 0022 scope correction; no parent migration rewritten; populated hosted acceptance required |
 | Current synthetic source custody | Tested on prior accepted revisions | Original text/PDF, manual passages, constrained DICOM, FHIR laboratory custody, source versions, saved questions, reports and tasks retained; combined candidate must rerun recovery/browser acceptance |
 | Source-reported cancer episode attribution | Implemented | Existing v2 parser, exact source-line validation, World Model context and Journey grouping; no clinically reconciled episode master |
-| Typed oncology episode master and relationships | Not started | Extend existing source evidence with append-only reconciliation and reviewed associations; see clinical model and Phase 1 plan |
+| Typed oncology episodes and relationships | In progress | Journey can explicitly save and reopen a draft from a reported primary line, with immutable identity and whole-snapshot reassessment. Adding a second source to an existing episode, adjudicating competing links and clinical confirmation remain open. |
 | Conditions/medication/allergy/observation reconciliation | Not started | No complete H1 typed record; reference implementations are not migration acceptance |
 | Pathology/biomarker extraction and authorized promotion | Not started | Deterministic baseline, exact spans, absence states and independent adjudication required |
 | Chronology and staging | Not started | Source dates exist; episode-aware reviewed chronology and versioned staging content remain work |

@@ -1,5 +1,8 @@
 # Release acceptance
 
+The episode-draft candidate has a separate exact-head gate above verified #556. Run `test_episode_drafts` on disposable PostgreSQL 16, the oncology episode Chromium journey and the source Compose recovery gate. Inspect the web receipt for two durable IDs on their historical origins and the source recovery receipt for `episode_draft_restored`. Record any skips separately and keep the source and authorization boundaries closed on failure.
+
+
 Date: 2026-11-05. Scope: independently fictional H1 engineering consolidation.
 No clinical validation, real-patient qualification, merge or deployment is implied.
 
