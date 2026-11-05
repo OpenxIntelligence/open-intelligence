@@ -22,7 +22,7 @@ from oi_api.source_questions import PostgresSourceQuestions
 from oi_api.source_world_model import project_source_world_model
 from oi_api.sources import PostgresSourceVersions
 from open_intelligence.postgres_registry import PostgresPatientRegistry
-from test_evidence_owner_convergence import AUTHORED_ACTIONS, MERGED_REVISION, ORIGINAL_EVIDENCE, QUOTE
+from test_evidence_owner_convergence import AUTHORED_ACTIONS, CURRENT_HEAD, MERGED_REVISION, ORIGINAL_EVIDENCE, QUOTE
 from test_patients import TOKEN_A, request
 from test_source_versions import ORIGINAL, SourceVersionFixture
 
@@ -111,7 +111,7 @@ class EvidenceConvergenceMigrationTests(SourceVersionFixture):
             self.assertEqual(after[1][name], state)
         with self.engine.connect() as connection:
             self.assertEqual(connection.execute(text("SELECT version_num FROM public.alembic_version"))
-                             .scalars().all(), [MERGED_REVISION])
+                             .scalars().all(), [CURRENT_HEAD])
         probe = Database(self.settings)
         self.addCleanup(probe.close)
         self.assertEqual(probe.check().status, "ready")

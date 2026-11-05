@@ -24,6 +24,7 @@ from test_source_versions import AMENDED, SourceVersionFixture
 
 PREFIX = "/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}"
 MERGED_REVISION = "0011_evidence_convergence"
+CURRENT_HEAD = "0012_second_opinion_packets"
 AUTHORED_ACTIONS = (
     "authored_evidence_read", "authored_evidence_import", "authored_evidence_assess",
     "authored_evidence_original_read", "authored_evidence_withdraw", "evidence_report_export",
@@ -57,8 +58,9 @@ class EvidenceConvergenceContractTests(unittest.TestCase):
         config = Config()
         config.set_main_option("script_location", str(Path(__file__).resolve().parents[1] / "migrations"))
         script = ScriptDirectory.from_config(config)
-        self.assertEqual(script.get_heads(), [MERGED_REVISION],
-                         "The converged app needs one explicit head, not one abandoned owner")
+        self.assertEqual(script.get_heads(), [CURRENT_HEAD],
+                         "The application needs one explicit head, not one abandoned owner")
+        self.assertEqual(script.get_revision(CURRENT_HEAD).down_revision, MERGED_REVISION)
         self.assertEqual(set(script.get_revision(MERGED_REVISION).down_revision),
                          {"0010_question_evidence", "0010_authored_evidence_origin"})
         self.assertEqual(script.get_revision("0010_question_evidence").down_revision,
