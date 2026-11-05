@@ -81,11 +81,11 @@ def provision_demo_access(db: str, case_ids) -> None:
 
 def sign_in_demo(session: ChromeSession) -> None:
     session.evaluate(
-        "(account, password) => {"
+        "((account, password) => {"
         "  document.querySelector('#signin-account').value = account;"
         "  document.querySelector('#signin-password').value = password;"
         "  document.querySelector('#signin-apply').click();"
-        "}(" + json.dumps(DEMO_SIGNIN_ACCOUNT) + ", "
+        "})(" + json.dumps(DEMO_SIGNIN_ACCOUNT) + ", "
         + json.dumps(DEMO_SIGNIN_PASSWORD) + ")")
     session.wait("document.querySelector('#signin-view')?.hidden === true",
                  "demo sign-in")
