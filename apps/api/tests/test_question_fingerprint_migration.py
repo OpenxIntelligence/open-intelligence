@@ -6,29 +6,43 @@ import unittest
 from sqlalchemy import text
 
 from oi_api.app import create_app
+from oi_api.case_bindings import CanonicalCaseBindings
 from oi_api.contracts import SCHEMA_REVISION
 from oi_api.migrate import migrate
+from oi_api.source_world_model import project_source_world_model
+from oi_api.sources import PostgresSourceVersions
 from http_support import running_server
+import test_evidence_convergence_migrations as existing_upgrades
+from test_evidence_convergence_migrations import COMMON, OPTIONS
 from test_patients import TOKEN_A, request
 from test_source_versions import ORIGINAL, SourceVersionFixture
 
 
 class QuestionFingerprintMigrationTests(SourceVersionFixture):
+    services = existing_upgrades.EvidenceConvergenceMigrationTests.services
+
     def test_legacy_upgrade_preserves_history_even_when_hash_matches_canonical(self):
-        # The current API requires the head schema. Create its source fixture
-        # first, then recreate the actual old question schema before insertion.
-        with running_server(create_app(self.settings)) as base:
-            patient = self.setup_case(base)
-            status, imported, _ = self.ingest(base, patient)
-            self.assertEqual(status, 201, imported)
+        # Establish the real old schema while the fixture is empty. A source
+        # imported at head has immutable outbox history and cannot be downgraded.
+        # Existing owners can seed this schema without relaxing HTTP readiness.
+        migrate(self.admin, "downgrade", "0006_source_questions")
+        with self.services() as registry:
+            patient = registry.create_patient(**COMMON, request_key="CREATE-ALPHA")["patient_id"]
+            CanonicalCaseBindings(registry).bind(
+                patient, **COMMON, case_id="CASE-ALPHA", source_organization="ORG-INSTITUTION",
+                source_system="SYS-SYNTH", source_subject_ref="SUBJECT-ALPHA", review_ref="REVIEW-SYNTH")
+            imported = PostgresSourceVersions(registry).import_original(
+                patient, "CASE-ALPHA", ORIGINAL.encode("utf-8"), **OPTIONS)
+            self.assertEqual((imported["result"], imported["version"]), ("imported", 1))
             source_id = imported["source_id"]
-            prefix = f"/v1/patients/{patient}/cases/CASE-ALPHA"
-            status, world, _ = request(base, prefix + "/world-model", token=TOKEN_A)
-            self.assertEqual(status, 200, world)
+            index = PostgresSourceVersions(registry).list(patient, "CASE-ALPHA", **OPTIONS)
+            world = project_source_world_model(index)
             self.assertEqual(world["contract"], "oi.pg-source-world-model/1")
             fingerprint = world["snapshot_fingerprint"]
+        self.creds[0]["patient_ids"].append(patient)
+        self.write()
+        prefix = f"/v1/patients/{patient}/cases/CASE-ALPHA"
 
-        migrate(self.admin, "downgrade", "0006_source_questions")
         legacy_id = "QUESTION-" + "A" * 32
         with self.engine.begin() as connection:
             # Downgrading the question branch retains the independent image

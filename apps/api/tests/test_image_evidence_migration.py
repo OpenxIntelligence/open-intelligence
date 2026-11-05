@@ -369,24 +369,26 @@ class PopulatedImageEvidenceUpgradeTests(PopulatedImageReviewFixture):
                                                       {"table": table}).scalar_one())
 
     def _reject_populated_downgrade(self, target, reason):
+        # Exercise the historical guard before 0020 adds its own populated
+        # source-outbox refusal. Current-head upgrade/readiness is tested above.
         before = self._snapshot()
         definitions = self._schema_definition()
         with self.assertRaisesRegex(CommandError, reason):
             migrate(self.settings, "downgrade", target)
-        self.assertEqual(self._heads(), {SCHEMA_REVISION})
+        self.assertEqual(self._heads(), {"0019_composer_runs"})
         self.assertEqual(self._snapshot(), before)
         self.assertEqual(self._schema_definition(), definitions)
-        self._assert_readiness(True)
+        self._assert_readiness(False)
 
     def test_populated_evidence_blocks_downgrade_without_changing_images_tasks_or_receipts(self):
         self._seed_parent(EVIDENCE_REVISION)
-        migrate(self.settings, "upgrade", "head")
+        migrate(self.settings, "upgrade", "0019_composer_runs")
         self._seed_image()
         self._reject_populated_downgrade("0009_question_followthrough", "Populated evidence history")
 
     def test_populated_tasks_roll_back_removal_of_empty_evidence_schema_and_preserve_images(self):
         self._seed_parent(IMAGE_REVISION)
-        migrate(self.settings, "upgrade", "head")
+        migrate(self.settings, "upgrade", "0019_composer_runs")
         self._seed_task()
         self._reject_populated_downgrade("0008_review_convergence", "Follow-through history")
 

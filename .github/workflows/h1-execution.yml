@@ -71,6 +71,11 @@ jobs:
           suite = unittest.TestSuite([
               unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_composer_run*.py'),
               unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_source_event*.py'),
+              unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_laboratory_question_migration.py'),
+              unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_question_fingerprint_migration.py'),
+              unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_review_convergence_migration.py'),
+              unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_image_evidence_migration.py'),
+              unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_image_review_migration.py'),
           ])
           result = unittest.TextTestRunner(verbosity=2).run(suite)
           if result.skipped:
