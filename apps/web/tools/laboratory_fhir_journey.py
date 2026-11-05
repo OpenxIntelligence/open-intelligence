@@ -257,12 +257,18 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
         assert cd.evaluate('document.querySelectorAll("[data-testid=world-laboratory-observation] script").length===0')
         return rows
 
-    def draft_question(source_id, suffix, question):
-        before = cd.evaluate('window.__oiLabRequests')
+    def choose_result(source_id, suffix):
         target = source_id + '|Observation/FICT-WEB-' + suffix
         cd.evaluate("(() => {const e=document.querySelector('[data-testid=lab-question-result]');"
                     "e.value=" + json.dumps(target) + ";e.dispatchEvent(new Event('change',{bubbles:true}));})()")
         cd.wait("Boolean(document.querySelector('[data-testid=lab-question-text]'))", 'editable question for selected lab result')
+
+    def question_text():
+        return cd.evaluate("document.querySelector('[data-testid=lab-question-text]').value")
+
+    def draft_question(source_id, suffix, question):
+        before = cd.evaluate('window.__oiLabRequests')
+        choose_result(source_id, suffix)
         cd.evaluate("(() => {const e=document.querySelector('[data-testid=lab-question-text]');"
                     "Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e," + json.dumps(question) + ");"
                     "e.dispatchEvent(new Event('input',{bubbles:true}));})()")
@@ -285,7 +291,28 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     cd.evaluate('document.querySelector("[data-testid=continuity-preparation-item][data-kind=unresolved-statements] button").click()')
     cd.wait('document.querySelectorAll("[data-testid=world-laboratory-observation]").length===3', 'Overview returns to the three source-reported laboratory results')
     assert operator(questions_path)['questions'] == []
+    source = first['source_id']
+    alternate = 'Which measurement is associated with this second fictional result?'
+    requests = cd.evaluate('window.__oiLabRequests')
+    draft_question(source, 'ZERO', question)
+    choose_result(source, 'NUMBER')
+    assert question_text() == '', 'Another result must start with its own wording'
+    draft_question(source, 'NUMBER', alternate)
+    choose_result(source, 'ZERO')
+    assert question_text() == question, 'Switching laboratory results lost the first unsaved question'
+    choose_result(source, 'NUMBER')
+    assert question_text() == alternate, 'The second result must recover its own wording'
+    assert cd.evaluate('window.__oiLabRequests') == requests, 'Switching between drafts must stay local'
+    assert operator('/cases/' + CASE + '/composer/laboratory-questions')['questions'] == []
+    journey('0')
+    for suffix in ('ZERO', 'NUMBER'):
+        choose_result(source, suffix)
+        assert question_text() == '', 'A fresh authorized report view must start with empty drafts'
     draft_question(first['source_id'], 'ZERO', question)
+    # The subsequent real save and lost-response retry must use the resumed
+    # wording and original Observation, even after visiting a different result.
+    choose_result(source, 'NUMBER')
+    choose_result(source, 'ZERO')
     submit_question()
     cd.wait("window.__oiLabPrepareCodes.length===1", 'explicit preparation completed over HTTP')
     assert cd.evaluate("window.__oiLabPrepareCodes") == [200], 'Expected scoped laboratory HTTP success'
@@ -427,6 +454,13 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     cd.wait("document.querySelector('[data-testid=lab-question-receipt]')?.textContent.includes('Observation/FICT-WEB-ABSENT')", 'absent result prepared on amended report')
     amended_receipt = cd.evaluate("document.querySelector('[data-testid=lab-question-receipt]').textContent")
     assert current['sha256'] in amended_receipt and first['source_id'] not in amended_receipt
+    requests = cd.evaluate('window.__oiLabRequests')
+    choose_result(current['source_id'], 'NUMBER')
+    choose_result(current['source_id'], 'ABSENT')
+    assert question_text() == question
+    assert not cd.evaluate("Boolean(document.querySelector('[data-testid=lab-question-save]'))"), 'Returning to a draft must require fresh preparation'
+    assert cd.evaluate('window.__oiLabRequests') == requests
+    print('PASS LABORATORY QUESTION DRAFTS: switching restores wording only for its exact result, refresh clears drafts, and returning to prepared wording requires a fresh check.')
     credentials[0]['actions'].remove('composer_context_read');write_grants()
     submit_question()
     cd.wait("window.__oiLabPrepareCodes.at(-1)===404 && Boolean(document.querySelector('[data-testid=world-no-patient]'))", 'Composer denial withholds projection and prepared answer')

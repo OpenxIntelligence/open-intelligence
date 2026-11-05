@@ -7,10 +7,16 @@ import {validLabQuestion} from './laboratory-question';
 import type {LabPreparation,LabQuestionView} from './laboratory-question';
 
 export function LaboratoryQuestionPanel({session,model,busy,sourceSavePending,state}:{session:RegistrySession;model:SourceWorldModel;busy:boolean;sourceSavePending:boolean;state:LabQuestionView}){
-  const [selection,select]=useState(''),[question,edit]=useState(''),[pending,setPending]=useState(false);
+  const [selection,select]=useState(''),[pending,setPending]=useState(false);
+  const [wordingByResult, setWordingByResult] = useState<Record<string, string>>({});
+  const question = wordingByResult[selection] ?? '';
   const [receipt,setReceipt]=useState<LabPreparation|null>(null),active=useRef<AbortController|null>(null);
   const locked=state.labQuestionWritePhase==='saving'||state.labQuestionWritePhase==='unknown';
   const stop=()=>{active.current?.abort();active.current=null;setPending(false);setReceipt(null);};
+  function editQuestion(text: string) {
+    stop();
+    setWordingByResult(previous => ({...previous, [selection]: text}));
+  }
   useEffect(()=>()=>{active.current?.abort();active.current=null;},[]);
   useEffect(()=>{if(state.labQuestionListPhase==='error'||state.labQuestionWritePhase==='error'){active.current?.abort();active.current=null;setReceipt(null);setPending(false);}},[state.labQuestionListPhase,state.labQuestionWritePhase]);
   const keyOf=(o:SourceWorldModel['laboratory_observations'][number])=>o.source_id+'|'+o.observation_reference;
@@ -26,9 +32,9 @@ export function LaboratoryQuestionPanel({session,model,busy,sourceSavePending,st
   const save=()=>{if(!receipt||!item||locked||sourceSavePending||busy)return;const verified=receipt;setReceipt(null);void session.saveLabQuestion(model,verified);};
   return <form className="lab-question-form" aria-label="Question about a laboratory result" onSubmit={e=>{e.preventDefault();void prepare();}}>
     <h4>Prepare a question about a result</h4>
-    <p>Choose a result and write what you want to ask your care team. Check the wording against the current report. You can then save the question for your next discussion.</p>
+    <p>You can switch between results as you write your questions. Check and save any you want to keep before refreshing the report or leaving Journey.</p>
     <label>Laboratory result
-      <select data-testid="lab-question-result" disabled={locked} value={selection} onChange={e=>{stop();select(e.target.value);edit('');}}>
+      <select data-testid="lab-question-result" disabled={locked} value={selection} onChange={e=>{stop();select(e.target.value);}}>
         <option value="">Choose a result</option>
         {model.laboratory_observations.map(o=><option key={keyOf(o)} value={keyOf(o)}>
           {o.document_id} v{o.document_version} · {o.observation_reference} · {o.status==='reported_value'?o.value_text+' '+o.unit_code:'Absent: '+o.absent_reason}
@@ -36,7 +42,7 @@ export function LaboratoryQuestionPanel({session,model,busy,sourceSavePending,st
       </select>
     </label>
     {item&&<><label>Your question
-      <textarea data-testid="lab-question-text" disabled={locked} value={question} onChange={e=>{stop();edit(e.target.value);}} maxLength={500}/>
+      <textarea data-testid="lab-question-text" disabled={locked} value={question} onChange={e=>editQuestion(e.target.value)} maxLength={500}/>
     </label>
     <button type="submit" data-testid="lab-question-prepare" disabled={busy||sourceSavePending||locked||pending||!validLabQuestion(question)}>Check question against report</button></>}
     {sourceSavePending&&<p role="status">Finish the current question save or recover its receipt in Investigations before checking this result.</p>}
