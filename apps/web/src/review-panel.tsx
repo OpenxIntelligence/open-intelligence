@@ -1,7 +1,7 @@
 import {AttributionReview} from './attribution-review';
 import {useEffect,useState} from 'react';
 import type {RegistrySession,ViewState} from './registry-client';
-import {FICTIONAL_RETURN_REASON,validReturnReason} from './review-queue-view';
+import {attributionReviewStatus,FICTIONAL_RETURN_REASON,validReturnReason} from './review-queue-view';
 
 function reviewCaseId(state:ViewState):string{
  return state.worldModel?.case_id??state.questionsCaseId??state.sourceIndex?.case_id??
@@ -149,7 +149,7 @@ export function ReviewPanel({state,session,busy,onOverview,onInvestigations,onOr
       {receipt.comparison_source&&(()=>{
        const first=queue.items.find(item=>item.question_id===receipt.question_id)!;
        const second=receipt.comparison_source;
-       return <div><p>{first.review_state==='source_reassessment_required'?'Source context changed. Reassess these passages.':'Recorded passages'}</p>
+       return <div><p>{attributionReviewStatus(first,second,state.worldModel?.case_id===caseId?state.worldModel.history:[])}</p>
         <button type="button" disabled={busy||returning||uncertain} onClick={()=>onOriginal(caseId,first.source_id,first.source_version,first.source_sha256)}>First original · v{first.source_version}, line {first.source_line}</button>{' '}
         <button type="button" disabled={busy||returning||uncertain} onClick={()=>onOriginal(caseId,second.source_id,second.source_version,second.source_sha256)}>Second original · {second.document_id} v{second.source_version}, line {second.source_line}</button>
        </div>;

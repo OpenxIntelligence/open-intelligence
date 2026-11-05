@@ -1,3 +1,4 @@
+import {attributionReviewStatus} from './review-queue-view';
 import {SourceOncologyLabel} from './source-oncology-label';
 import type {WorldObservation} from './source-world-model';
 import {LaboratoryQuestionPanel,SavedLaboratoryQuestions} from './laboratory-question-panel';
@@ -140,7 +141,7 @@ export function WorldModelView({session,state,onOverview,busy,showQuestions=fals
             <p>{item.source_refs.map(ref=><code key={ref.source_id+':'+ref.source_line}>{ref.source_id} line {ref.source_line}; </code>)}</p>
           </li>)}</ul>
         </section>}
-        {!showQuestions&&episodes.size>0&&<section aria-label="Episode attribution reviews">
+        {!showQuestions&&(episodes.size>0||model.history.length>0)&&<section aria-label="Episode attribution reviews">
           <h3>Episode attribution reviews</h3>
           <button type="button" disabled={loading||busy||state.reviewPhase==='loading'}
            onClick={()=>void session.loadReviewQueue(model.case_id)}>Check recorded attribution reviews</button>
@@ -148,11 +149,12 @@ export function WorldModelView({session,state,onOverview,busy,showQuestions=fals
           {state.reviewPhase==='ready'&&state.reviewQueue?.case_id===model.case_id&&
             state.reviewQueue.patient_id===model.patient_id&&(()=>{
              const queue=state.reviewQueue;
-             const paired=new Set(queue.receipts.filter(r=>r.comparison_source).map(r=>r.question_id));
-             const items=queue.items.filter(q=>paired.has(q.question_id));
-             return items.length?<><ul>{items.map(q=><li key={q.question_id}>
-              <strong>{q.question}</strong> · {q.review_state==='source_reassessment_required'?
-               'Source context changed — reassessment required':'Attribution remains unresolved'}
+             const questions=new Map(queue.items.map(q=>[q.question_id,q]));
+             const paired=queue.receipts.flatMap(r=>r.comparison_source?
+              [{receipt:r,peer:r.comparison_source,question:questions.get(r.question_id)!}]:[]);
+             return paired.length?<><ul>{paired.map(({receipt,peer,question})=><li key={receipt.receipt_id}>
+              <strong>{question.question}</strong> · {peer.document_id} v{peer.source_version}, line {peer.source_line}
+              <p>{attributionReviewStatus(question,peer,model.history)}</p>
              </li>)}</ul><button type="button" onClick={onReview}>Inspect reasons and original passages</button></>:
               <p>No paired attribution reviews are recorded for this case.</p>;
             })()}

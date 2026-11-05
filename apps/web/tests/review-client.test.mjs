@@ -557,3 +557,12 @@ test('a historical review exposes the captured secondary source only with a dist
   assert.throws(()=>decodeReviewQueue(packet(invalid),patientId,caseId));
  }
 });
+
+test('Journey names the changed original for each comparison on the same question',async()=>{
+ const {attributionReviewStatus}=await import('../.test-dist/review-queue-view.js');
+ const q=historyItem(), peer={source_id:'SRC-'+'E'.repeat(32)};
+ const historic=[{source_id:peer.source_id,document_id:'DOC-CONSULT',version:1}];
+ assert.match(attributionReviewStatus(q,peer,historic),/DOC-CONSULT v1 amended/);
+ assert.doesNotMatch(attributionReviewStatus(q,{source_id:'SRC-'+'F'.repeat(32)},historic),/amended/);
+ assert.match(attributionReviewStatus(q,peer,[]),/case context/i);
+});

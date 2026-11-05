@@ -172,7 +172,7 @@ def exercise(cd, patient_id, token, credentials, write_grants, artifacts):
         reviews = element('section[aria-label="Episode attribution reviews"]')
         cd.wait('Boolean(' + reviews + ')', 'amended source model')
         cd.evaluate(reviews + '.querySelector("button").click()')
-        cd.wait(reviews + '.textContent.includes("reassessment required")', 'Journey identifies the affected review')
+        cd.wait(reviews + '.textContent.includes("DOC-CONSULT v1 amended — reassessment required")', 'Journey identifies the affected review')
         cd.evaluate(reviews + '.querySelectorAll("button")[1].click()')
         history = element('[data-testid=review-return-history]')
         cd.wait(history + '?.textContent.includes(' + json.dumps(reason) + ')', 'original reason retained')

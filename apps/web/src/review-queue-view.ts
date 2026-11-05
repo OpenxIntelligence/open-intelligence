@@ -1,6 +1,7 @@
 /** Source-owned H1 review inbox + immutable nonterminal return receipts.
  * This is not clinical approval, verified clinician identity or notification.
  */
+import type {SourceVersion} from './source-contracts.js';
 import type {WorldRef} from './source-world-model.js';
 import {citationEvidenceTimestamp as time} from './evidence-timestamp.js';
 
@@ -158,3 +159,10 @@ export function decodeReviewQueue(value:unknown,patient:string,caseId:string):Re
   receipts:Object.freeze(history)} as ReviewQueue);
 }
 
+
+export function attributionReviewStatus(question:ReviewQueueItem,peer:WorldRef,history:readonly SourceVersion[]):string{
+ const amended=history.filter(source=>source.source_id===question.source_id||source.source_id===peer.source_id);
+ if(amended.length)return amended.map(source=>source.document_id+' v'+source.version+' amended').join(', ')+' — reassessment required';
+ return question.review_state==='source_reassessment_required'?
+  'Case context changed — reassessment required':'Attribution remains unresolved';
+}
