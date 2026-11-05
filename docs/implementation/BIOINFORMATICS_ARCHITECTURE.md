@@ -1,0 +1,25 @@
+# Bioinformatics architecture
+
+**At `f188aecc70f3`, 5 November 2026, there is no connected sequencing service.** The reference [biological asset contract](../BIOLOGICAL_ASSET_PROVENANCE.md) and [SQLite store](../../src/open_intelligence/store.py) link assets and inventory assertions to an exact case, episode and source version. A genomics pointer records lineage; it does not store sequencing reads or grant specimen release. The [RNA probe](../../tools/research/rna_expression_probe.py) handles GCT parsing/comparison; the [single-cell probe](../../tools/research/single_cell_probe.py) has matrix and descriptive aggregation helpers. Neither starts a clinically validated pipeline.
+
+## First execution contract: one fictional specimen
+
+Use OI-016 to prove input-to-result custody before scheduling a broad workflow. Begin with a small, independently generated read pair and artificial reference with an independently specified expected result. Register a research project and purpose, sample/aliquot identifiers, the source-owned specimen reference and a scoped asset manifest. Reject unresolved pairing, absent permissions or mismatched builds before scheduling. Keep clinical identity and source ownership in H1; give the worker opaque research object references only.
+
+| Record (proposed) | Required fields and behavior |
+|---|---|
+| Dataset and input artifact | Exact source/release, specimen/material type, assay, collection time and precision, consent/usage decision ID, hashes and sizes of original inputs, encoding, permitted purpose, retention and deletion owner. No patient identifier in a public path or log. |
+| Workflow definition | Stable ID and version, immutable source revision, exact tool/dependency versions and container digests, reference genome/build **and hash** (or explicit not-applicable for a non-genomic job), annotation release, parameter schema, QC rules and expected outputs. |
+| Run and attempt | Idempotency key bound to project, dataset version, definition, effective parameters and input hashes. Record submitting actor/purpose, execution time, attempt ID, seed, runtime/CPU/memory bounds, exit/error type, redacted diagnostics and cancellation. Separate queued/running/failed/cancelled/succeeded from scientific review. |
+| Result | Output manifest with parent artifacts, types, sizes, hashes, QC metrics plus thresholds and failures, environment/reproduction instructions, scientific review status and version. Keep bytes in restricted artifact storage; PostgreSQL holds metadata, links, rights and audit. A location alone does not prove content identity. |
+
+Authorize at admission, before worker access and before download. Use isolated, resource-bounded execution with no default egress or clinical write credentials. Write intermediate outputs to attempt-scoped storage; expose an immutable successful manifest only after validating all expected artifacts. Retry after failure must avoid double publication; recheck permissions on retries and reuse. A cancellation or lease loss must fence stale completion. The [open H1 deterministic worker #529](https://github.com/OpenxIntelligence/open-intelligence/pull/529) is a lifecycle design to evaluate, not a scientific executor on main. Select an engine only after measuring the need.
+
+| Expansion after the first reproducible run | Scientific gates |
+|---|---|
+| DNA QC, alignment, variants and annotation | Inputs and reference build/contigs agree; tumor/normal identity explicitly verified when paired; benchmark known synthetic variants, no-calls and reference mismatch separately. |
+| RNA sequencing and differential expression | Record library prep/strandedness, count units, reference transcriptome, replicate design and covariates; reject invalid comparisons. A descriptive GCT summary is not a differential-expression result. |
+| Single-cell | Preserve raw counts and feature/cell metadata, sample/batch identity, QC exclusions, doublets, normalization, seeds and versioned annotations. Test sparse and missing data. |
+| Multi-omics | Require explicit patient/sample/timepoint relationships and per-modality preprocessing; separate mismatched builds, absent modalities and batch effects. Do not treat matching gene names as evidence of comparable measurements. |
+
+**Acceptance:** reproduce hashes for deterministic outputs on a clean worker; define a measured tolerance in advance for nondeterministic metrics. Corrupt an input, swap sample/build, crash the worker after staging bytes, revoke access and restore a populated metadata database plus artifact store. Expect no unauthorized artifact, partial result, duplicate publication or clinical write. Preserve conflict/no-call outcomes and independently adjudicate scientific accuracy against the fixture truth. [Offline CI](../../.github/workflows/offline-scientific-safety.yml) and [retired personal-data guards](../../tools/research/data_policy.py) must remain effective. A public study identifier is not authority to download, train on or redistribute participant data.

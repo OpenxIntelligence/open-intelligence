@@ -13,6 +13,32 @@ for save, retry and history behavior.
 The [convergence record](../../docs/engineering/H1_ACCEPTED_DEMO_CONVERGENCE.md)
 maps the retained source, document, image, laboratory, question, report and task owners.
 
+### Patient command admission
+
+The synthetic API accepts a burst of 240 patient commands per process and refills
+at four commands per second. Override `OI_API_PATIENT_COMMANDS_PER_MINUTE`
+(1–60,000) to set both the burst size and the sustained per-minute budget for
+that instance. This is a development default. All callers share the budget,
+including unauthenticated attempts and POST requests that prepare a read.
+Each admitted request still passes through its normal authentication and
+authorization checks. GET, health and readiness checks have their usual behavior.
+
+A refused command returns HTTP 429 with an integer `Retry-After` in seconds
+before the body is consumed. Retry the same intended command with its original
+request key after that delay. New POST, PUT, PATCH and DELETE patient routes get
+a 16 KiB body limit automatically. The existing registered upload operations
+have larger explicit limits. The encounter note version POST accepts up to
+242,000 bytes so a 20,000-character note can be serialized with JSON Unicode
+escapes. Add a maximum-size payload test when registering another large transport. The budget resets on process restart. Multiple
+workers or replicas would each get their own budget.
+
+The H1 web workflow emits `build-inputs.json` alongside the wheel SBOM and web
+notice inventory. To reproduce the package input inventory without installing
+packages, run `python tools/h1_build_inputs.py --output /tmp/build-inputs.json`
+from the repository root. Use `--verify` and the two gate receipts to check an
+installation. Host, image layers, model and content rights require separate
+review.
+
 ## Historical document/image checkpoint — #381
 
 The named checkpoint statuses below are preserved historical receipts, not current

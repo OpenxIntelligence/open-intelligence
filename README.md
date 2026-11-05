@@ -4,6 +4,8 @@ Open Intelligence is building a patient-centered healthcare intelligence platfor
 initially focused on oncology. The full product ambition and canonical architecture
 remain in the [first-principles plan](docs/FIRST_PRINCIPLES_PLAN.md).
 
+The [implementation status](docs/implementation/IMPLEMENTATION_STATUS.md) distinguishes merged behavior, this clinical integration candidate and remaining work. The [execution plan](docs/implementation/MASTER_EXECUTION_PLAN.md) links the platform stages to their acceptance criteria.
+
 ## Run the connected fictional application
 
 Start with the [persistent demo guide](docs/H1_DEMO.md). The connected H1 application
@@ -15,7 +17,7 @@ patient/case/source; repeated setup and stop/resume retain its saved work.
 [Consolidation and acceptance #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481)
 records the original integrated application and its acceptance results.
 The [convergence record](docs/engineering/H1_ACCEPTED_DEMO_CONVERGENCE.md) identifies
-the retained contributions. This revision requires `0021_lab_citation_freshness` for
+the retained contributions. This revision requires `0022_lab_citation_source_scope` for
 [encounters and draft notes](apps/api/README.md#connected-encounter-and-note-service) and [laboratory questions and citations](docs/engineering/H1_LABORATORY_CITATIONS.md).
 The Python/SQLite application is retained as a separate reference implementation.
 
