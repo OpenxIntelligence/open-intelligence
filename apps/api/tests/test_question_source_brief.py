@@ -31,7 +31,7 @@ RESPONSE_FIELDS = {
 }
 
 
-def fictional_brief_inputs(state="not-assessed"):
+def fictional_source_index(state="not-assessed"):
     """Complete existing source-index shape; no real patient or partial doubles."""
     original = ("Independently fictional report.\n" + STATEMENT + "\n").encode()
     digest = hashlib.sha256(original).hexdigest()
@@ -52,6 +52,12 @@ def fictional_brief_inputs(state="not-assessed"):
             "clinical_review_state": "not_established",
         }],
     }
+    return index
+
+
+def fictional_brief_inputs(state="not-assessed"):
+    index = fictional_source_index(state)
+    digest = index["sources"][0]["sha256"]
     world = project_source_world_model(index)
     question = {
         "question_id": QUESTION_ID, "patient_id": PATIENT, "case_id": "CASE-ALPHA",

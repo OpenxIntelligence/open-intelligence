@@ -245,7 +245,23 @@ class SourceVersion(Contract):
     supersedes_id: str | None
 
 
-class SourceFinding(Contract):
+class ReportedOncologyContext(Contract):
+    role: Literal["primary", "metastasis"]
+    episode_id: str | None = Field(pattern=r"^EP-[A-Z0-9][A-Z0-9-]{0,35}$")
+
+
+class SourceOncologyFields(Contract):
+    oncology: ReportedOncologyContext | None = Field(default=None, exclude_if=lambda value: value is None)
+
+    @field_validator("oncology", mode="before")
+    @classmethod
+    def require_context_if_present(cls, value):
+        if value is None:
+            raise ValueError("Omit oncology when the original has no attribution")
+        return value
+
+
+class SourceFinding(SourceOncologyFields):
     source_id: str
     finding_key: str
     reported_state: str
@@ -285,7 +301,7 @@ class WorldSourceRef(Contract):
     source_line: int = Field(ge=1)
 
 
-class WorldObservation(Contract):
+class WorldObservation(SourceOncologyFields):
     source_id: str
     document_id: str
     document_version: int = Field(ge=1)
@@ -393,7 +409,7 @@ class PrepareSourceComposer(Contract):
         return value
 
 
-class SelectedComposerSource(Contract):
+class SelectedComposerSource(SourceOncologyFields):
     source_id: str
     document_id: str
     version: int = Field(ge=1)
@@ -671,7 +687,7 @@ class QuestionReviewSourceAnchor(Contract):
     preflight_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
-class QuestionSourceQuote(Contract):
+class QuestionSourceQuote(SourceOncologyFields):
     source_id: str
     document_id: str
     document_version: int = Field(ge=1)

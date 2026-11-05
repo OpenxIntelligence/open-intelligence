@@ -19,8 +19,9 @@ class SourceIntegrityError(RuntimeError):
 def validate_snapshot(rows: Sequence[Mapping[str, object]], assertions: Sequence[tuple], *,
                       requested_case_id: str,
                       fhir_sources: Mapping[str, Mapping[str, object]] | None = None,
-                      fhir_observations: Mapping[str, Sequence[Mapping[str, object]]] | None = None) -> None:
-    """Verify complete current finding tuples against the original source history.
+                      fhir_observations: Mapping[str, Sequence[Mapping[str, object]]] | None = None
+                      ) -> dict[tuple[str, int], dict]:
+    """Verify current finding tuples and return their explicit oncology attributions.
 
     Reuses the source owner's parser and exact-original checks. Historical bytes
     are checked too: an otherwise valid current amendment cannot hide corrupted
@@ -38,6 +39,7 @@ def validate_snapshot(rows: Sequence[Mapping[str, object]], assertions: Sequence
             raise ValueError()
         histories = defaultdict(list)
         expected = []
+        oncology_by_line = {}
         for row in rows:
             source_id = row["source_id"]
             if source_id in fhir_sources:
@@ -53,9 +55,12 @@ def validate_snapshot(rows: Sequence[Mapping[str, object]], assertions: Sequence
                 )
             histories[row["document_id"]].append(row)
             if row["state"] == "current" and source_id not in fhir_sources:
-                expected.extend((row["source_id"], finding.key, finding.state,
-                                 finding.quote, finding.line)
-                                for finding in parse_report(raw).findings)
+                for finding in parse_report(raw, allow_oncology=True).findings:
+                    expected.append((source_id, finding.key, finding.state, finding.quote, finding.line))
+                    if finding.oncology is not None:
+                        oncology_by_line[(source_id, finding.line)] = {
+                            "role": finding.oncology.role, "episode_id": finding.oncology.episode_id,
+                        }
         for history in histories.values():
             history.sort(key=lambda row: row["version"])
             for version, row in enumerate(history, start=1):
@@ -66,6 +71,7 @@ def validate_snapshot(rows: Sequence[Mapping[str, object]], assertions: Sequence
         # keys, states, quotations and literal line anchors.
         if Counter(expected) != Counter(tuple(assertion) for assertion in assertions):
             raise ValueError()
+        return oncology_by_line
     except Exception:
         raise SourceIntegrityError("Stored source snapshot integrity check failed") from None
 
@@ -105,7 +111,7 @@ def validate_original(row: Mapping[str, object], *, requested_case_id: str,
         raw = bytes(supplied)
         if len(raw) != size or hashlib.sha256(raw).hexdigest() != row["sha256"]:
             raise ValueError()
-        parsed = parse_report(raw)
+        parsed = parse_report(raw, allow_oncology=True)
         if type(row["event_date"]) is not date or type(row["issued_at"]) is not date:
             raise ValueError()
         context = (row["case_id"], row["document_id"], row["kind"],

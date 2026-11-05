@@ -19,6 +19,16 @@ UNRESOLVED = frozenset((
 ))
 
 
+def source_comparison_key(observation: dict) -> tuple[str, str, str, str, str] | None:
+    """Return the source-declared scope shared by comparable findings."""
+    specimen = observation["specimen_id"]
+    context = observation.get("oncology")
+    if specimen is None or (context is not None and context["episode_id"] is None):
+        return None
+    return (specimen, observation["event_date"], observation["finding_key"],
+            context["episode_id"] if context else "", context["role"] if context else "")
+
+
 def project_source_world_model(index: dict, laboratory_observations: list[dict] | tuple = ()) -> dict:
     """Project a single transactionally read source index without a second ledger.
 
@@ -104,6 +114,7 @@ def project_source_world_model(index: dict, laboratory_observations: list[dict] 
             "issued_at": source["issued_at"],
             "review_state": "not_established",
             "clinical_meaning": None,
+            **({"oncology": item["oncology"]} if "oncology" in item else {}),
         })
     observations.sort(
         key=lambda o: (o["event_date"], o["document_id"],
@@ -147,13 +158,13 @@ def project_source_world_model(index: dict, laboratory_observations: list[dict] 
     laboratory.sort(key=lambda o: (
         o["effective_at"], o["document_id"], o["document_version"],
         o["observation_reference"], o["source_id"]))
-    grouped: dict[tuple[str, str, str], list[dict]] = defaultdict(list)
+    grouped: dict[tuple[str, str, str, str, str], list[dict]] = defaultdict(list)
     for item in observations:
-        if item["specimen_id"] is not None:
-            grouped[(item["specimen_id"], item["event_date"],
-                     item["finding_key"])].append(item)
+        key = source_comparison_key(item)
+        if key is not None:
+            grouped[key].append(item)
     conflicts = []
-    for (specimen, event_date, finding_key), items in sorted(grouped.items()):
+    for (specimen, event_date, finding_key, _, _), items in sorted(grouped.items()):
         states = {item["reported_state"] for item in items}
         if not {"reported", "negative"}.issubset(states):
             continue

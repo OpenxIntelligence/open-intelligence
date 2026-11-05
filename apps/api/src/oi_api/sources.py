@@ -1,6 +1,6 @@
 """PG16 persistence port of the first-party CaseStore's original-source contract.
 
-Only independently authored OI-SYNTHETIC-REPORT/1 is accepted. The original
+Structured report versions 1 and 2 accept independently authored synthetic inputs. The original
 bytes and source-line assertions have one H1 owner, linked by FK to the H1
 canonical case binding. Source quotes remain unreviewed; no patient data,
 clinical interpretation or automatic research/medical authorization is added.
@@ -118,7 +118,7 @@ class PostgresSourceVersions:
             for r in rows
         ]
 
-    def _validate_index(self, case_id: str, sources: list[dict], assertions: list[tuple]) -> None:
+    def _validate_index(self, case_id: str, sources: list[dict], assertions: list[tuple]) -> dict[tuple[str, int], dict]:
         # One additional case-scoped read, not one query per finding. Existing
         # patient/binding locks still cover materialization and validation.
         rows = self.registry._fetchall(
@@ -166,7 +166,7 @@ class PostgresSourceVersions:
             for row in observation_rows:
                 item = dict(zip(observation_fields, row))
                 fhir_observations.setdefault(row[0], []).append(item)
-        validate_snapshot(
+        return validate_snapshot(
             originals, assertions, requested_case_id=case_id,
             fhir_sources=fhir_sources, fhir_observations=fhir_observations)
 
@@ -210,17 +210,19 @@ class PostgresSourceVersions:
             "WHERE s.case_id=%s AND s.state='current' "
             "ORDER BY s.document_id,s.version,a.source_line", (case_id,),
         )
-        self._validate_index(case_id, sources, rows)
+        oncology_by_line = self._validate_index(case_id, sources, rows)
+        findings = []
+        for source_id, key, state, quote, line in rows:
+            finding = {"source_id": source_id, "finding_key": key, "reported_state": state,
+                       "source_statement": quote, "source_line": line,
+                       "clinical_review_state": "not_established"}
+            if (source_id, line) in oncology_by_line:
+                finding["oncology"] = oncology_by_line[(source_id, line)]
+            findings.append(finding)
         result = {
             "contract": "oi.synthetic-original-sources/1",
             "patient_id": patient_id, "case_id": case_id,
-            "sources": sources,
-            "source_reported_assertions": [
-                {"source_id": r[0], "finding_key": r[1],
-                 "reported_state": r[2], "source_statement": r[3],
-                 "source_line": r[4], "clinical_review_state": "not_established"}
-                for r in rows
-            ],
+            "sources": sources, "source_reported_assertions": findings,
             "synthetic": True, "clinical_interpretation": False,
             "research_review_invalidation_integrated": False,
         }
@@ -353,7 +355,7 @@ class PostgresSourceVersions:
         # Reuse the original CaseStore parser; never infer a finding from
         # free text, rewrite an external Patient header or normalize LF/UTF-8.
         try:
-            parsed = parse_report(original)
+            parsed = parse_report(original, allow_oncology=True)
         except InvalidInput:
             raise PatientRegistryError("Unsupported fictional report format") from None
         digest = hashlib.sha256(original).hexdigest()

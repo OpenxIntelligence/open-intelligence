@@ -263,7 +263,7 @@ class PostgresQuestionEvidence:
         if row is None:
             raise ValueError()
         raw = bytes(row[0])
-        parsed = parse_report(raw)
+        parsed = parse_report(raw, allow_oncology=True)
         metadata = [s for s in c["index"]["sources"] if s["source_id"] == source["source_id"]]
         findings = [f for f in parsed.findings if f.line == source["line"]]
         if len(metadata) != 1 or len(findings) != 1:
@@ -273,6 +273,8 @@ class PostgresQuestionEvidence:
                   "sha256": m["sha256"], "line": f.line, "finding_key": f.key,
                   "reported_state": f.state, "statement": f.quote, "kind": m["kind"],
                   "event_date": m["event_date"], "issued_at": m["issued_at"], "specimen_id": m["specimen_id"]}
+        if f.oncology is not None:
+            actual["oncology"] = {"role": f.oncology.role, "episode_id": f.oncology.episode_id}
         if actual != source:
             raise ValueError()
 

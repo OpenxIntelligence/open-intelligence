@@ -36,6 +36,24 @@ test('report validates immutable question/source/evidence snapshots and body has
  }
 });
 
+test('historical report snapshots retain assigned and unassigned episodes and reject malformed rehashed context',async()=>{
+ const stale={...question(),source_context_state:'source_reassessment_required'};
+ const decode=oncology=>{
+  const r=report();r.state='historical_reassessment_required';r.snapshot.selected_source.oncology=oncology;
+  r.snapshot_sha256=hash(r.snapshot);
+  return decodeEvidenceReport(r,stale,reportId);
+ };
+ for(const oncology of [{role:'primary',episode_id:'EP-B'},{role:'metastasis',episode_id:null}]){
+  const snapshot=(await decode(oncology)).snapshot;
+  assert.deepEqual(snapshot.selected_source.oncology,oncology);
+  assert.ok(Object.isFrozen(snapshot.selected_source.oncology));
+ }
+ for(const bad of [null,{role:'primary'},{role:'confirmed',episode_id:'EP-A'},
+   {role:'primary',episode_id:'?'},{role:'metastasis',episode_id:null,clinically_verified:true}]){
+  await assert.rejects(()=>decode(bad));
+ }
+});
+
 test('historical reports preserve original bytes while withdrawn reports carry only history metadata',async()=>{
  const historical={...report(),state:'historical_reassessment_required'};
  const stale={...question(),source_context_state:'source_reassessment_required'};
