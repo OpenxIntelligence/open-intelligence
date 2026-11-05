@@ -96,7 +96,8 @@ class PostgresQuestionEvidence:
                 "SELECT question_id,patient_id,case_id,question,source_id,source_line,source_sha256,"
                 "source_version,source_snapshot_sha256,preflight_sha256,created_at,source_snapshot_contract "
                 "FROM investigation.source_questions "
-                "WHERE patient_id=%s AND case_id=%s AND origin_org=%s AND question_id=%s",
+                "WHERE patient_id=%s AND case_id=%s AND origin_org=%s AND question_id=%s "
+                "AND anchor_kind='text_line'",
                 (patient_id, case_id, organization, question_id))
             if row is None:
                 raise PatientRegistryDenied("Evidence question unavailable")

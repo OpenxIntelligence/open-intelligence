@@ -79,7 +79,7 @@ class PostgresQuestionSourcePacket:
                 "preflight_sha256,created_at,source_snapshot_contract "
                 "FROM investigation.source_questions "
                 "WHERE question_id=%s AND patient_id=%s AND case_id=%s "
-                "AND origin_org=%s",
+                "AND origin_org=%s AND anchor_kind='text_line'",
                 (question_id,patient_id,case_id,organization),
             )
             if row is None:
