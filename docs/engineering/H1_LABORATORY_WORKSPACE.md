@@ -29,6 +29,22 @@ report and observation locators. Records permits independently authorized
 inspection of both current and historical JSON originals after byte-hash and
 source-binding verification. Existing authored-text validation remains strict.
 
+## Bundle-local references
+
+The bounded H1 reader resolves a canonical `urn:uuid:` reference against the
+exact `fullUrl` of an entry in the same uploaded bundle. The referenced resource
+must have the expected type. The patient must still match the active case's
+provider-qualified subject. Report results must cover each Observation exactly
+once, even if two references use different spellings. Resolution is independent
+of entry order and performs no network access.
+
+The original JSON and its hash identify the source version. The World Model and
+saved questions use the resolved `ResourceType/id` together with that version.
+Existing H1 fictional bundles using relative `ResourceType/id` links remain
+readable as a profile-specific compatibility convention. The general R4 rules
+for relative links depend on the enclosing entry's base.
+[HL7 R4 Bundle reference resolution](https://hl7.org/fhir/R4/bundle.html#references)
+
 ## State and authority
 
 - One existing patient, case, source and World Model owner; no new data store,
