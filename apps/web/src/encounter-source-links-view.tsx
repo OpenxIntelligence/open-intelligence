@@ -5,14 +5,14 @@ import {parseLinkedSources,parseLinkReceipt,prepareSourceLink} from './encounter
 import type {LinkIntent,LinkPage} from './encounter-source-links';
 
 type VisitChoice = Readonly<{id:number;service_date:string;external_key:string}>;
-type Props = {session:RegistrySession;patientId:string;index:SourceIndex;
+type Props = {session:RegistrySession;patientId:string;index:SourceIndex;requestedVisit?:number;
   onOpenOriginal:(sourceId:string,trigger:HTMLButtonElement)=>void};
 
 // Retain just the prepared pointer and key if the network loses the reply.
 // The registry replaces the patient object when access or identity changes.
 const unresolved = new WeakMap<object,Map<string,LinkIntent>>();
 
-export function EncounterSourceLinks({session,patientId,index,onOpenOriginal}:Props) {
+export function EncounterSourceLinks({session,patientId,index,requestedVisit,onOpenOriginal}:Props) {
   const patient=session.snapshot().patient;
   const [visits,setVisits]=useState<readonly VisitChoice[]|null>(null);
   const [visitNext,setVisitNext]=useState<number|null>(null);
@@ -56,6 +56,19 @@ export function EncounterSourceLinks({session,patientId,index,onOpenOriginal}:Pr
   async function readPage(id:number,after:number,seq:number) {
     const raw=await session.encounterSourceRequest(patientId,id,index.case_id,after);
     if(current(seq)) setPage(parseLinkedSources(raw,index,id,after));
+  }
+  async function openRequestedVisit(id:number) {
+    const seq=begin();if(seq===null)return;
+    setVisits(null);setVisitNext(null);setVisit(0);setSourceId('');setPage(null);
+    try{
+      const list=await session.encounterChart(patientId).visits(id-1);
+      if(!current(seq))return;
+      const requested=list.encounters.find(item=>item.id===id);
+      if(!requested){setMessage('The selected visit is unavailable. Choose another visit.');return;}
+      await readPage(id,0,seq);
+      if(current(seq)){setVisits([requested]);setVisit(id);setMessage('Checked the selected visit and its links in this case.');}
+    }catch{if(current(seq))setMessage('The selected visit or its linked records could not be verified for this case.');}
+    finally{finish(seq);}
   }
   async function readLinks(after=0) {
     const seq=begin();
@@ -102,6 +115,7 @@ export function EncounterSourceLinks({session,patientId,index,onOpenOriginal}:Pr
   return <section aria-labelledby="visit-records-heading" data-testid="encounter-source-links">
     <h3 id="visit-records-heading">Visit records</h3>
     <p>Attach the exact version of a case record to the visit where it was used.</p>
+    {requestedVisit!==undefined&&<button type="button" className="primary" data-testid="visit-records-handoff" disabled={busy} onClick={()=>void openRequestedVisit(requestedVisit)}>Check records for selected visit</button>}
     <button type="button" data-testid="encounter-link-visits" disabled={busy} onClick={()=>void loadVisits()}>
       {visits===null?'Choose a visit':'Refresh visits'}
     </button>

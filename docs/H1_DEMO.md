@@ -41,10 +41,10 @@ workflow; importing a report does not itself create a question.
 
 ## Record a visit and its supporting records
 
-1. Open the fictional patient and go to **Records**. Check visits, schedule an outpatient visit with a fictional visit identifier and service date, then start it.
-2. Open the visit and create a draft note. Give it a note identifier and enter the fictional text. Optional department, facility and note kind identify the origin of that version.
+1. Open the fictional patient and go to **Visits** (also accessible from **Records**). Check visits and choose **Schedule a visit**. Pick an outpatient visit and a service date. The form can generate the visit reference. Save the visit, then start it.
+2. Open the visit and create a draft note. Enter fictional text. The note reference can be generated at save. Optional department, facility and note kind identify the origin of that version.
 3. Reopen the note, revise the text and save. Read the version history to compare the two drafts. If another user edited it first, inspect the latest version before choosing how to apply your edits.
-4. In the same Records screen, check the authorized cases and inspect source versions for `CASE-DEMO`. Under **Visit records**, choose the visit, select a current source version, then choose **Link this version to the visit**.
+4. From the selected visit, choose **Inspect linked records**. In Records, check the authorized cases and inspect source versions for `CASE-DEMO`. Under **Visit records**, choose **Check records for selected visit**, select a current source version, then choose **Link this version to the visit**.
 5. Choose **Check linked records** and **Inspect linked original**. An amendment leaves the visit pointing to the version you chose. To associate the replacement, explicitly link its new version.
 
 The source link records which original was used for this visit. Its read operation checks both the encounter and the case. Opening the original requires its own permission. Clinical notes remain drafts. The demo accepts independently authored structured reports and the supported synthetic laboratory bundle for visit linkage.

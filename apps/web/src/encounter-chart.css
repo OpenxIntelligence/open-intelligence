@@ -18,3 +18,15 @@
 .encounter-conflict {background:#f8f3e9;border-left:3px solid #b28b52;padding:12px;margin-top:14px}
 .encounter-conflict p {margin:0 0 10px}
 @media(max-width:600px){.encounter-chart{padding:12px}.encounter-chart button{max-width:100%;overflow-wrap:anywhere}}
+
+.visit-filters{display:grid;grid-template-columns:minmax(12rem,2fr) minmax(9rem,1fr) auto;gap:12px;align-items:center;margin:18px 0 4px}
+.visit-filters input,.visit-filters select{margin-bottom:0}
+.visit-filters [role="status"]{font-size:.875rem;color:#496258}
+.visit-leave-dialog{width:min(28rem,calc(100% - 32px));border:1px solid #a4b8a9;padding:24px;color:#193d33;border-radius:10px}
+.visit-leave-dialog::backdrop{background:rgb(17 39 31 / .52)}
+.encounter-chart :is(h3,h5)[tabindex="-1"]{scroll-margin-top:var(--workspace-offset,24px)}
+.encounter-chart :is(h3,h5)[tabindex="-1"]:focus-visible{outline:3px solid #90691b;outline-offset:3px}
+.encounter-chart .encounter-row{padding:12px 16px}
+.encounter-chart .encounter-version pre{max-width:78ch;line-height:1.6}
+.visit-record-entry{margin-bottom:16px}
+@media(max-width:760px){.visit-filters{grid-template-columns:minmax(0,1fr)}}
