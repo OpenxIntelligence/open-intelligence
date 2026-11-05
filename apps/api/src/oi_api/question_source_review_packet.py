@@ -26,6 +26,7 @@ from .case_bindings import _case_id
 from .composer_preflight import SOURCE_SNAPSHOT_CONTRACT
 from .source_world_model import project_source_world_model
 from .sources import PostgresSourceVersions
+from .source_questions import text_question_filter
 
 Packet = TypeVar("Packet")
 QUESTION_ID = re.compile(r"QUESTION-[0-9A-F]{32}\Z")
@@ -79,7 +80,7 @@ class PostgresQuestionSourcePacket:
                 "preflight_sha256,created_at,source_snapshot_contract "
                 "FROM investigation.source_questions "
                 "WHERE question_id=%s AND patient_id=%s AND case_id=%s "
-                "AND origin_org=%s",
+                "AND origin_org=%s" + text_question_filter(self.registry),
                 (question_id,patient_id,case_id,organization),
             )
             if row is None:

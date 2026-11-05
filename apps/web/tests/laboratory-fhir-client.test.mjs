@@ -17,6 +17,7 @@ const RECEIPT={source_id:SID,version:1,duplicate:false,original_sha256:HASH,obse
 const reply=(v,status=200)=>new Response(JSON.stringify(v),{status,headers:{'Content-Type':'application/json'}});
 const bytes=s=>new TextEncoder().encode(s);
 const deferred=()=>{let done;return{promise:new Promise(r=>done=r),resolve:x=>done(x)}};
+const waitFor=async(predicate,label)=>{const deadline=Date.now()+2000;while(Date.now()<deadline){if(predicate())return;await new Promise(r=>setTimeout(r,1));}throw Error('Timed out waiting for '+label);};
 async function ready(operation){
  const flags={patient:200,cases:200,sources:200};const calls=[];const session=new RegistrySession(async(url,init)=>{
   calls.push([url,init]);
@@ -142,7 +143,9 @@ test('explicit patient, source or case denial clears uncertain laboratory custod
 test('same-patient recheck during sending retains unknown request and late old reply cannot overwrite recovered success',async()=>{
  const hold=deferred();let attempt=0;
  const{session,calls}=await ready(()=>++attempt===1?hold.promise:reply({...RECEIPT,duplicate:true},200));
- const old=session.importLaboratory(CID,RAW,true);await new Promise(r=>setTimeout(r,10));
+ const old=session.importLaboratory(CID,RAW,true);
+ await waitFor(()=>session.snapshot().laboratoryPhase==='sending'&&session.snapshot().laboratoryIntent!==null,
+   'in-flight laboratory intent');
  const original=session.snapshot().laboratoryIntent.body;
  await session.read(PID);await session.loadCases();await session.loadSources(CID);
  assert.equal(session.snapshot().laboratoryPhase,'unknown');await session.retryLaboratoryImport();

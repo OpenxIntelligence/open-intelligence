@@ -17,6 +17,7 @@ from .contracts import Contract
 from .composer_preflight import PostgresSourceComposerPreflight
 from .laboratory_fhir_r4 import LaboratoryBundleRejected, prepare_laboratory_bundle
 from .laboratory_fhir_store import PostgresLaboratoryFHIR
+from .source_questions import PostgresSourceQuestions
 from .sources import PostgresSourceVersions
 
 
@@ -107,6 +108,57 @@ class PreparedLaboratorySource(Contract):
     clinical_review: Literal["not_performed"]
 
 
+class SaveLaboratoryQuestion(Contract):
+    synthetic: StrictBool
+    request_key: StrictStr = Field(min_length=3, max_length=128)
+    source_id: StrictStr = Field(pattern=r"^SRC-[0-9A-F]{32}$")
+    observation_reference: StrictStr = Field(pattern=r"^Observation/[A-Za-z0-9.-]{1,64}$")
+    question: StrictStr = Field(min_length=8, max_length=500)
+    expected_source_snapshot_sha256: StrictStr = Field(pattern=r"^[0-9a-f]{64}$")
+    expected_preflight_sha256: StrictStr = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class SavedLaboratoryQuestion(Contract):
+    question_id: StrictStr = Field(pattern=r"^QUESTION-[0-9A-F]{32}$")
+    duplicate: StrictBool
+
+
+class LaboratoryQuestionState(Contract):
+    question_id: StrictStr = Field(pattern=r"^QUESTION-[0-9A-F]{32}$")
+    patient_id: StrictStr
+    case_id: StrictStr
+    question: StrictStr
+    anchor_kind: Literal["fhir_observation"]
+    source_id: StrictStr = Field(pattern=r"^SRC-[0-9A-F]{32}$")
+    observation_reference: StrictStr = Field(pattern=r"^Observation/[A-Za-z0-9.-]{1,64}$")
+    source_sha256: StrictStr = Field(pattern=r"^[0-9a-f]{64}$")
+    source_version: StrictInt = Field(ge=1)
+    source_snapshot_sha256: StrictStr = Field(pattern=r"^[0-9a-f]{64}$")
+    source_snapshot_contract: Literal["oi.pg-source-world-model/1"]
+    preflight_sha256: StrictStr = Field(pattern=r"^[0-9a-f]{64}$")
+    created_at: StrictStr
+    source_context_state: Literal["current_unreviewed_question", "source_reassessment_required"]
+    human_review_state: Literal["not_submitted"]
+    clinical_review_connected: Literal[False]
+    evidence_workflow_connected: Literal[False]
+    followthrough_connected: Literal[False]
+    clinical_approval: Literal[False]
+    model_executed: Literal[False]
+
+
+class LaboratoryQuestionsList(Contract):
+    contract: Literal["oi.synthetic-laboratory-questions/1"]
+    patient_id: StrictStr
+    case_id: StrictStr
+    access_receipt_id: StrictStr = Field(pattern=r"^ACCESS-[0-9A-F]{32}$")
+    questions: list[LaboratoryQuestionState]
+    synthetic: Literal[True]
+    clinical_review_connected: Literal[False]
+    evidence_workflow_connected: Literal[False]
+    followthrough_connected: Literal[False]
+    clinical_approval: Literal[False]
+
+
 class PreparedLaboratoryQuestion(Contract):
     contract: Literal["oi.synthetic-laboratory-question-preflight/1"]
     patient_id: StrictStr
@@ -131,6 +183,63 @@ class PreparedLaboratoryQuestion(Contract):
 
 def register_laboratory_fhir_routes(router, *, principal, registry,
                                     records_authorized, final_authority, errors):
+    @router.get("/{patient_id}/cases/{case_id}/questions/laboratory",
+                response_model=LaboratoryQuestionsList, responses=errors,
+                operation_id="list_fictional_laboratory_questions_v1")
+    def list_laboratory_questions(request: Request, patient_id: str, case_id: str,
+                                  context=Depends(principal)):
+        if context.purpose != "operations" or request.query_params:
+            raise HTTPException(404, "Laboratory question history unavailable")
+        try:
+            with registry(context) as patients:
+                actions = ("question_read", "source_read")
+                for action in actions:
+                    records_authorized(patients, context, patient_id, action)
+                return PostgresSourceQuestions(patients).list_laboratory(
+                    patient_id, case_id, organization=context.organization,
+                    actor=context.actor, purpose=context.purpose,
+                    prepare_response=lambda result: JSONResponse(
+                        content=LaboratoryQuestionsList(**result).model_dump(mode="json"),
+                        headers={"Cache-Control": "no-store",
+                                 "X-Content-Type-Options": "nosniff"}),
+                    recheck_authority=lambda: final_authority(
+                        request, context, patients, patient_id, actions),
+                )
+        except PatientRegistryDenied:
+            raise HTTPException(404, "Laboratory question history unavailable") from None
+
+    @router.post("/{patient_id}/cases/{case_id}/questions/laboratory",
+                 response_model=SavedLaboratoryQuestion, status_code=201,
+                 responses={200: {"model": SavedLaboratoryQuestion}, **errors},
+                 operation_id="save_fictional_laboratory_question_v1")
+    def save_laboratory_question(request: Request, patient_id: str, case_id: str,
+                                 payload: SaveLaboratoryQuestion,
+                                 context=Depends(principal)):
+        if payload.synthetic is not True or context.purpose != "operations" or request.query_params:
+            raise HTTPException(404, "Laboratory question intake unavailable")
+        try:
+            with registry(context) as patients:
+                actions = ("question_create", "composer_context_read", "source_read")
+                for action in actions:
+                    records_authorized(patients, context, patient_id, action)
+                return PostgresSourceQuestions(patients).create_laboratory(
+                    patient_id, case_id, organization=context.organization,
+                    actor=context.actor, purpose=context.purpose, request_key=payload.request_key,
+                    source_id=payload.source_id, observation_reference=payload.observation_reference,
+                    question=payload.question,
+                    expected_source_snapshot_sha256=payload.expected_source_snapshot_sha256,
+                    expected_preflight_sha256=payload.expected_preflight_sha256,
+                    prepare_response=lambda result: JSONResponse(
+                        content=SavedLaboratoryQuestion(**result).model_dump(mode="json"),
+                        status_code=200 if result["duplicate"] else 201,
+                        headers={"Cache-Control": "no-store",
+                                 "X-Content-Type-Options": "nosniff"}),
+                    recheck_authority=lambda: final_authority(
+                        request, context, patients, patient_id, actions),
+                )
+        except PatientRegistryDenied:
+            raise HTTPException(404, "Laboratory question intake unavailable") from None
+
     @router.post("/{patient_id}/cases/{case_id}/composer/laboratory-preflight",
                  response_model=PreparedLaboratoryQuestion, responses=errors,
                  operation_id="prepare_fictional_laboratory_question_v1")

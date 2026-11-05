@@ -19,18 +19,43 @@ from open_intelligence.patient_registry import (
 from open_intelligence.postgres_registry import PostgresPatientRegistry
 
 from .case_bindings import _case_id
-from .composer_preflight import PostgresSourceComposerPreflight, SHA256, SOURCE_SNAPSHOT_CONTRACT
+from .composer_preflight import (
+    PostgresSourceComposerPreflight, SHA256, SOURCE_SNAPSHOT_CONTRACT,
+    prepare_laboratory_question,
+)
+from .laboratory_fhir_store import PostgresLaboratoryFHIR
 from .sources import PostgresSourceVersions, _source_id
 from .source_world_model import project_source_world_model
 from .source_brief import render_source_brief
 
 LEGACY_SNAPSHOT_CONTRACT = "oi.synthetic-postgres-world-model-sources/1"
 QUESTION_LIST_CONTRACT = "oi.synthetic-source-questions/2"
+LABORATORY_QUESTION_LIST_CONTRACT = "oi.synthetic-laboratory-questions/1"
 PreparedResponse = TypeVar("PreparedResponse")
 
 
 def _request_key(value: str) -> str:
     return _key(value, "request_key")
+
+
+def typed_question_schema_available(registry: PostgresPatientRegistry) -> bool:
+    """True only when the forward typed-anchor columns exist in this DB revision.
+
+    Current runtime readiness requires the latest schema, but populated migration
+    tests deliberately execute current domain code against historical published
+    revisions before upgrading them. Legacy text-question behavior must remain
+    available there; typed operations must not.
+    """
+    row = registry._fetchone(
+        "SELECT EXISTS(SELECT 1 FROM information_schema.columns "
+        "WHERE table_schema='investigation' AND table_name='source_questions' "
+        "AND column_name='anchor_kind')"
+    )
+    return bool(row and row[0])
+
+
+def text_question_filter(registry: PostgresPatientRegistry) -> str:
+    return " AND anchor_kind='text_line'" if typed_question_schema_available(registry) else ""
 
 
 class PostgresSourceQuestions:
@@ -54,6 +79,49 @@ class PostgresSourceQuestions:
             "source_snapshot_contract": SOURCE_SNAPSHOT_CONTRACT,
             "preflight_sha256": preflight_sha256,
         })
+
+    @staticmethod
+    def _laboratory_intent(patient_id: str, case_id: str, organization: str,
+                           actor: str, purpose: str, key: str, source_id: str,
+                           observation_reference: str, question: str, fingerprint: str,
+                           preflight_sha256: str) -> str:
+        return _digest({
+            "patient": patient_id, "case": case_id, "organization": organization,
+            "actor": actor, "purpose": purpose, "request_key": key,
+            "anchor_kind": "fhir_observation", "source_id": source_id,
+            "observation_reference": observation_reference, "question": question,
+            "source_snapshot_sha256": fingerprint,
+            "source_snapshot_contract": SOURCE_SNAPSHOT_CONTRACT,
+            "preflight_sha256": preflight_sha256,
+        })
+
+    @staticmethod
+    def _laboratory_question_state(row: tuple, world: dict) -> dict:
+        (qid, pid, cid, question, sid, reference, digest, version,
+         old_fingerprint, preflight_sha, created_at, snapshot_contract) = row
+        anchors = {(item["source_id"], item["observation_reference"]):
+                   (item["source_sha256"], item["document_version"])
+                   for item in world["laboratory_observations"]}
+        current = (snapshot_contract == SOURCE_SNAPSHOT_CONTRACT
+                   and anchors.get((sid, reference)) == (digest, version)
+                   and hmac.compare_digest(old_fingerprint, world["snapshot_fingerprint"]))
+        return {
+            "question_id": qid, "patient_id": pid, "case_id": cid,
+            "question": question, "anchor_kind": "fhir_observation",
+            "source_id": sid, "observation_reference": reference,
+            "source_sha256": digest, "source_version": version,
+            "source_snapshot_sha256": old_fingerprint,
+            "source_snapshot_contract": snapshot_contract,
+            "preflight_sha256": preflight_sha,
+            "created_at": created_at.isoformat() if isinstance(created_at, datetime) else str(created_at),
+            "source_context_state": ("current_unreviewed_question" if current
+                                     else "source_reassessment_required"),
+            "human_review_state": "not_submitted",
+            "clinical_review_connected": False,
+            "evidence_workflow_connected": False,
+            "followthrough_connected": False,
+            "clinical_approval": False, "model_executed": False,
+        }
 
     @staticmethod
     def _question_state(row: tuple, world: dict) -> dict:
@@ -113,7 +181,8 @@ class PostgresSourceQuestions:
                 "source_line,source_sha256,source_version,source_snapshot_sha256,"
                 "preflight_sha256,created_at,source_snapshot_contract "
                 "FROM investigation.source_questions "
-                "WHERE patient_id=%s AND case_id=%s AND origin_org=%s AND question_id=%s",
+                "WHERE patient_id=%s AND case_id=%s AND origin_org=%s AND question_id=%s"
+                + text_question_filter(self.registry),
                 (patient_id, case_id, organization, question_id),
             )
             if row is None:
@@ -177,14 +246,18 @@ class PostgresSourceQuestions:
             return prepare_response(result) if prepare_response is not None else result
 
         def save(index):
+            typed_schema = typed_question_schema_available(self.registry)
             old = self.registry._fetchone(
-                "SELECT question_id,intent_sha256,source_snapshot_contract "
+                "SELECT question_id,intent_sha256,source_snapshot_contract"
+                + (",anchor_kind" if typed_schema else "") + " "
                 "FROM investigation.source_questions "
                 "WHERE patient_id=%s AND request_key=%s FOR UPDATE",
                 (patient_id, request_key),
             )
             if old is not None:
-                if old[2] != SOURCE_SNAPSHOT_CONTRACT or not hmac.compare_digest(old[1], intent):
+                anchor_kind = old[3] if typed_schema else "text_line"
+                if (old[2] != SOURCE_SNAPSHOT_CONTRACT or anchor_kind != "text_line"
+                        or not hmac.compare_digest(old[1], intent)):
                     raise PatientRegistryConflict("Question request key reused with changed intent")
                 # Exact retries preserve their original anchor even after an
                 # amendment. The enclosing source owner still validates current
@@ -219,18 +292,118 @@ class PostgresSourceQuestions:
             )
             if created is None:
                 winner = self.registry._fetchone(
-                    "SELECT question_id,intent_sha256,source_snapshot_contract "
+                    "SELECT question_id,intent_sha256,source_snapshot_contract"
+                    + (",anchor_kind" if typed_schema else "") + " "
                     "FROM investigation.source_questions WHERE patient_id=%s AND request_key=%s",
                     (patient_id, request_key),
                 )
+                winner_kind = winner[3] if (winner is not None and typed_schema) else "text_line"
                 if (winner is None or winner[2] != SOURCE_SNAPSHOT_CONTRACT
-                        or not hmac.compare_digest(winner[1], intent)):
+                        or winner_kind != "text_line" or not hmac.compare_digest(winner[1], intent)):
                     raise PatientRegistryConflict("Question request intent changed")
                 return receipt(winner[0], True)
             self.registry.append_event(
                 patient_id, "investigation.question.created",
                 question_id=question_id, case_id=case_id, source_id=source_id,
                 source_line=source_line, source_snapshot_sha256=expected_source_snapshot_sha256,
+                source_snapshot_contract=SOURCE_SNAPSHOT_CONTRACT, actor=actor,
+            )
+            return receipt(question_id, False)
+
+        with self.registry.transaction():
+            return PostgresSourceVersions(self.registry).list_locked(
+                patient_id, case_id, organization=organization, actor=actor, purpose=purpose,
+                prepare_response=save, recheck_authority=recheck_authority,
+            )
+
+    def create_laboratory(self, patient_id: str, case_id: str, *, organization: str,
+                          actor: str, purpose: str, request_key: str,
+                          source_id: str, observation_reference: str, question: str,
+                          expected_source_snapshot_sha256: str, expected_preflight_sha256: str,
+                          recheck_authority: Callable[[], None],
+                          prepare_response: Callable[[dict], PreparedResponse] | None = None
+                          ) -> dict | PreparedResponse:
+        patient_id = _key(patient_id, "patient_id")
+        case_id = _case_id(case_id)
+        organization = _key(organization, "organization")
+        actor = _key(actor, "actor")
+        request_key = _request_key(request_key)
+        source_id = _source_id(source_id)
+        if (purpose != "operations" or type(observation_reference) is not str
+                or not observation_reference.startswith("Observation/")
+                or type(expected_preflight_sha256) is not str
+                or not SHA256.fullmatch(expected_preflight_sha256)):
+            raise PatientRegistryDenied("Laboratory question intake unavailable")
+        if (type(expected_source_snapshot_sha256) is not str
+                or not SHA256.fullmatch(expected_source_snapshot_sha256)):
+            raise PatientRegistryError("Source fingerprint must be SHA-256")
+        if not typed_question_schema_available(self.registry):
+            raise PatientRegistryError("Typed laboratory question owner unavailable at this schema")
+        intent = self._laboratory_intent(
+            patient_id, case_id, organization, actor, purpose, request_key, source_id,
+            observation_reference, question, expected_source_snapshot_sha256,
+            expected_preflight_sha256)
+
+        def receipt(question_id, duplicate):
+            result = {"question_id": question_id, "duplicate": duplicate}
+            return prepare_response(result) if prepare_response is not None else result
+
+        def save(index):
+            old = self.registry._fetchone(
+                "SELECT question_id,intent_sha256,source_snapshot_contract,anchor_kind,"
+                "observation_reference FROM investigation.source_questions "
+                "WHERE patient_id=%s AND request_key=%s FOR UPDATE",
+                (patient_id, request_key),
+            )
+            if old is not None:
+                if (old[2] != SOURCE_SNAPSHOT_CONTRACT or old[3] != "fhir_observation"
+                        or old[4] != observation_reference
+                        or not hmac.compare_digest(old[1], intent)):
+                    raise PatientRegistryConflict("Question request key reused with changed intent")
+                return receipt(old[0], True)
+
+            observations = PostgresLaboratoryFHIR(self.registry).current_observations_locked(case_id)
+            prepared = prepare_laboratory_question(
+                index, observations, patient_id=patient_id, case_id=case_id,
+                source_id=source_id, observation_reference=observation_reference,
+                question=question,
+                expected_source_snapshot_sha256=expected_source_snapshot_sha256,
+            )
+            if not hmac.compare_digest(prepared["preflight_sha256"], expected_preflight_sha256):
+                raise PatientRegistryConflict("Laboratory preflight changed before question write")
+            self.registry._allow(actor, patient_id, "question_create", purpose)
+            recheck_authority()
+            source = prepared["selected_source"]
+            question_id = "QUESTION-" + uuid.uuid4().hex.upper()
+            created = self.registry._fetchone(
+                "INSERT INTO investigation.source_questions "
+                "(question_id,patient_id,case_id,origin_org,request_key,intent_sha256,actor,purpose,"
+                "question,source_id,source_line,source_sha256,source_version,source_snapshot_sha256,"
+                "preflight_sha256,source_snapshot_contract,anchor_kind,observation_reference) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NULL,%s,%s,%s,%s,%s,'fhir_observation',%s) "
+                "ON CONFLICT (patient_id,request_key) DO NOTHING RETURNING question_id",
+                (question_id, patient_id, case_id, organization, request_key, intent, actor, purpose,
+                 question, source_id, source["sha256"], source["version"],
+                 expected_source_snapshot_sha256, expected_preflight_sha256,
+                 SOURCE_SNAPSHOT_CONTRACT, observation_reference),
+            )
+            if created is None:
+                winner = self.registry._fetchone(
+                    "SELECT question_id,intent_sha256,source_snapshot_contract,anchor_kind,"
+                    "observation_reference FROM investigation.source_questions "
+                    "WHERE patient_id=%s AND request_key=%s",
+                    (patient_id, request_key),
+                )
+                if (winner is None or winner[2] != SOURCE_SNAPSHOT_CONTRACT
+                        or winner[3] != "fhir_observation" or winner[4] != observation_reference
+                        or not hmac.compare_digest(winner[1], intent)):
+                    raise PatientRegistryConflict("Question request intent changed")
+                return receipt(winner[0], True)
+            self.registry.append_event(
+                patient_id, "investigation.question.created",
+                question_id=question_id, case_id=case_id, source_id=source_id,
+                anchor_kind="fhir_observation", observation_reference=observation_reference,
+                source_snapshot_sha256=expected_source_snapshot_sha256,
                 source_snapshot_contract=SOURCE_SNAPSHOT_CONTRACT, actor=actor,
             )
             return receipt(question_id, False)
@@ -262,8 +435,9 @@ class PostgresSourceQuestions:
             "source_line,source_sha256,source_version,source_snapshot_sha256,"
             "preflight_sha256,created_at,source_snapshot_contract "
             "FROM investigation.source_questions "
-            "WHERE patient_id=%s AND case_id=%s AND origin_org=%s "
-            "ORDER BY created_at,question_id LIMIT 251",
+            "WHERE patient_id=%s AND case_id=%s AND origin_org=%s"
+            + text_question_filter(self.registry) +
+            " ORDER BY created_at,question_id LIMIT 251",
             (patient_id, case_id, organization),
         )
         if len(rows) > 250:
@@ -291,6 +465,48 @@ class PostgresSourceQuestions:
                 "clinical_approval": False, "model_executed": False,
             })
         return results
+
+    def list_laboratory(self, patient_id: str, case_id: str, *, organization: str,
+                        actor: str, purpose: str, recheck_authority: Callable[[], None],
+                        prepare_response: Callable[[dict], PreparedResponse] | None = None
+                        ) -> dict | PreparedResponse:
+        patient_id = _key(patient_id, "patient_id")
+        case_id = _case_id(case_id)
+        organization = _key(organization, "organization")
+        if purpose != "operations":
+            raise PatientRegistryDenied("Laboratory question intake unavailable")
+        if not typed_question_schema_available(self.registry):
+            raise PatientRegistryError("Typed laboratory question owner unavailable at this schema")
+
+        def prepare(index):
+            observations = PostgresLaboratoryFHIR(self.registry).current_observations_locked(case_id)
+            world = project_source_world_model(index, observations)
+            rows = self.registry._fetchall(
+                "SELECT question_id,patient_id,case_id,question,source_id,observation_reference,"
+                "source_sha256,source_version,source_snapshot_sha256,preflight_sha256,created_at,"
+                "source_snapshot_contract FROM investigation.source_questions "
+                "WHERE patient_id=%s AND case_id=%s AND origin_org=%s "
+                "AND anchor_kind='fhir_observation' ORDER BY created_at,question_id LIMIT 251",
+                (patient_id, case_id, organization),
+            )
+            if len(rows) > 250:
+                raise PatientRegistryError("Laboratory question list exceeds bounded read limit")
+            result = {
+                "contract": LABORATORY_QUESTION_LIST_CONTRACT,
+                "patient_id": patient_id, "case_id": case_id,
+                "access_receipt_id": index["access_receipt_id"],
+                "questions": [self._laboratory_question_state(row, world) for row in rows],
+                "synthetic": True, "clinical_review_connected": False,
+                "evidence_workflow_connected": False, "followthrough_connected": False,
+                "clinical_approval": False,
+            }
+            return prepare_response(result) if prepare_response is not None else result
+
+        with self.registry.transaction():
+            return PostgresSourceVersions(self.registry).list_locked(
+                patient_id, case_id, organization=organization, actor=actor, purpose=purpose,
+                prepare_response=prepare, recheck_authority=recheck_authority,
+            )
 
     def list(self, patient_id: str, case_id: str, *, organization: str,
              actor: str, purpose: str, recheck_authority: Callable[[], None],

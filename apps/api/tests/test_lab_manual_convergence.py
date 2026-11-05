@@ -26,14 +26,16 @@ from test_source_versions import SourceVersionFixture
 LAB = "0016_fhir_laboratory_sources"
 MANUAL = "0016_manual_task_dependency"
 JOIN = "0017_lab_manual_convergence"
+TYPED = "0018_typed_question_anchor"
 RAW = b"Independently fictional upgrade document.\nMarker pending.\n"
 
 
 class LabManualMigrationContractTests(unittest.TestCase):
     def test_one_join_preserves_both_published_parents(self):
         script = graph()
-        self.assertEqual(script.get_heads(), [JOIN])
-        self.assertEqual(SCHEMA_REVISION, JOIN)
+        self.assertEqual(script.get_heads(), [TYPED])
+        self.assertEqual(SCHEMA_REVISION, TYPED)
+        self.assertEqual(script.get_revision(TYPED).down_revision, JOIN)
         self.assertEqual(set(script.get_revision(JOIN).down_revision), {LAB, MANUAL})
         for revision in (LAB, MANUAL):
             self.assertEqual(script.get_revision(revision).down_revision,
@@ -102,8 +104,22 @@ class LabManualPopulatedMigrationTests(SourceVersionFixture):
 
     def upgrade_preserving(self, before):
         migrate(self.admin, "upgrade", "head")
-        self.assertEqual(self.heads(), {JOIN})
-        self.assertEqual(self.snapshot(before[0]), before)
+        self.assertEqual(self.heads(), {SCHEMA_REVISION})
+        after = self.snapshot(before[0])
+        evidence.assert_snapshot_preserved(self, before, after)
+        with self.engine.connect() as connection:
+            columns = {
+                row[0]: (row[1], row[2])
+                for row in connection.execute(text(
+                    "SELECT column_name,is_nullable,column_default FROM information_schema.columns "
+                    "WHERE table_schema='investigation' AND table_name='source_questions' "
+                    "AND column_name IN ('source_line','anchor_kind','observation_reference')"
+                )).all()
+            }
+        self.assertEqual(set(columns), {"source_line", "anchor_kind", "observation_reference"})
+        self.assertEqual(columns["source_line"][0], "YES")
+        self.assertEqual(columns["observation_reference"][0], "YES")
+        self.assertIn("text_line", columns["anchor_kind"][1])
         self.readiness(True)
 
     def replay(self, patient, question, *, laboratory=None, manual=None):
@@ -169,9 +185,15 @@ class LabManualPopulatedMigrationTests(SourceVersionFixture):
         self.assertEqual(self.heads(), {MANUAL, LAB})
         self.readiness(False)
         before, schema = self.snapshot(), self.schema_definition()
-        self.upgrade_preserving(before)
+        # First prove the published 0017 join itself still adds no DDL.
+        migrate(self.admin, "upgrade", JOIN)
+        self.assertEqual(self.heads(), {JOIN})
+        self.assertEqual(self.snapshot(before[0]), before)
         self.assertEqual(self.schema_definition(), schema)
-        # Removing only the join is reversible and cannot erase either owner.
+        self.readiness(False)
+        # Then advance through the new typed-anchor DDL and prove old rows/sequences survive.
+        self.upgrade_preserving(before)
+        # With no typed rows, removing 0018 and then the join is reversible.
         migrate(self.admin, "downgrade", LAB)
         self.assertEqual(self.heads(), {MANUAL, LAB})
         self.assertEqual(self.snapshot(), before)

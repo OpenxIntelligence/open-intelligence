@@ -27,7 +27,7 @@ from .evidence_report import (canonical_hash, canonical_json, human_content_allo
                               packet_hash, quote_offset, render_evidence_report, visible_line)
 from .patients import QuestionSourceState
 from .question_review_returns import _question_id
-from .source_questions import PostgresSourceQuestions
+from .source_questions import PostgresSourceQuestions, text_question_filter
 from .source_world_model import project_source_world_model
 from .sources import PostgresSourceVersions
 from .question_passages import QuestionPassages, reference_audit
@@ -96,7 +96,8 @@ class PostgresQuestionEvidence:
                 "SELECT question_id,patient_id,case_id,question,source_id,source_line,source_sha256,"
                 "source_version,source_snapshot_sha256,preflight_sha256,created_at,source_snapshot_contract "
                 "FROM investigation.source_questions "
-                "WHERE patient_id=%s AND case_id=%s AND origin_org=%s AND question_id=%s",
+                "WHERE patient_id=%s AND case_id=%s AND origin_org=%s AND question_id=%s"
+                + text_question_filter(self.registry),
                 (patient_id, case_id, organization, question_id))
             if row is None:
                 raise PatientRegistryDenied("Evidence question unavailable")

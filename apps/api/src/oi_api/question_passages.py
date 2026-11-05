@@ -11,6 +11,7 @@ from open_intelligence.patient_registry import PatientRegistryConflict, PatientR
 from .reviewed_documents import ReviewedDocuments, canonical, fingerprint
 from .question_passage_contracts import ManualContext, ReplaceQuestionPassages, context_hash
 from .sources import PostgresSourceVersions
+from .source_questions import text_question_filter
 
 
 def reference_audit(context):
@@ -198,7 +199,9 @@ class QuestionPassages:
             recheck_authority(needs_original)
         def prepare(index):
             if purpose!='operations' or self.registry._fetchone(
-                'SELECT question_id FROM investigation.source_questions WHERE patient_id=%s AND case_id=%s AND origin_org=%s AND question_id=%s',
+                "SELECT question_id FROM investigation.source_questions "
+                "WHERE patient_id=%s AND case_id=%s AND origin_org=%s AND question_id=%s"
+                + text_question_filter(self.registry),
                 (patient_id,case_id,organization,question_id)) is None:
                 raise PatientRegistryDenied('Question context unavailable')
             current=self.context_locked(c)

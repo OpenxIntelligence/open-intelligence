@@ -16,7 +16,7 @@ class PatientRequestLimit:
         bounded = route == "/v1/patients" or (
             route.startswith("/v1/patients/") and (
                 route.endswith("/record-requests") or route.endswith("/case-bindings") or route.endswith("/sources") or
-                route.endswith("/questions") or route.endswith(("/composer/source-preflight",
+                route.endswith("/questions") or route.endswith("/questions/laboratory") or route.endswith(("/composer/source-preflight",
                     "/composer/laboratory-preflight")) or
                 route.endswith("/documents") or "/documents/" in route or
                 ("/questions/" in route and route.endswith("/return-for-verification")) or
