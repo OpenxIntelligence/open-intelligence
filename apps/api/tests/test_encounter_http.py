@@ -145,3 +145,58 @@ class EncounterHTTPTests(SourceVersionFixture):
                 self.assertEqual(conn.execute(text(f"SELECT count(*) FROM ehr.{table}")).scalar_one(), 0)
             self.assertEqual(conn.execute(text("SELECT count(*) FROM identity.identity_domain_events "
                 "WHERE event_type='clinical_encounter_scheduled'")).scalar_one(), 0)
+
+
+class EncounterActivityDeliveryTests(SourceVersionFixture):
+    def test_committed_encounter_to_independent_receiver_and_revoked_grant(self):
+        from contextlib import closing
+        from pathlib import Path
+        import sqlite3
+        from urllib.parse import urlsplit
+        from oi_api.encounter_relay import FeedUnavailable, receive_once
+
+        self.creds[0]["actions"].extend(["encounter.read", "encounter.schedule", "encounter.transition",
+                                        "note.read", "note.write", "encounter.events.read"])
+        self.write()
+        receiver = Path(self.temp.name) / "activity.sqlite"
+        with running_server(create_app(self.settings)) as base:
+            patient = self.setup_case(base)
+            url = f"/v1/patients/{patient}/encounters"
+            port = urlsplit(base).port
+
+            def deliver(token=TOKEN_A):
+                return receive_once(receiver, port, patient, lambda: token)
+
+            def post(path, body):
+                code, data, _ = request(base, path, token=TOKEN_A, body=body)
+                self.assertEqual(code, 200, data)
+                return data
+
+            self.assertEqual(deliver()["counts"], {})
+            first = post(url, EncounterHTTPTests.schedule)
+            self.assertEqual(post(url, EncounterHTTPTests.schedule), first)
+            visit = f'{url}/{first["encounter_id"]}'
+            post(visit + "/transitions", {"synthetic": True, "request_key": "START-ONE",
+                 "target": "in_progress", "expected_revision": 1})
+            draft = {"synthetic": True, "request_key": "WRITE-ONE", "expected_version": 0,
+                     "body": "Fictional note text stays with the EHR.", "note_kind": "consultation"}
+            note = visit + "/notes/NOTE-ONE/versions"
+            post(note, draft)
+            expected = {"clinical_encounter_scheduled": 1, "clinical_encounter_state_changed": 1,
+                        "clinical_note_draft_saved": 1}
+            result = deliver()
+            self.assertEqual((result["applied"], result["counts"]), (3, expected))
+            self.assertEqual(deliver()["applied"], 0)
+            post(note, dict(draft, request_key="WRITE-TWO", expected_version=1, body="Fictional revision."))
+            with self.assertRaises(FeedUnavailable):
+                deliver(TOKEN_B)
+            self.creds[0]["actions"].remove("note.read")
+            self.write()
+            with self.assertRaises(FeedUnavailable):
+                deliver()
+            with closing(sqlite3.connect(receiver)) as db:
+                self.assertEqual(db.execute("SELECT count(*) FROM activity_receipts").fetchone()[0], 3)
+            self.creds[0]["actions"].append("note.read")
+            self.write()
+            self.assertEqual(deliver()["applied"], 1)
+            self.assertNotIn(draft["body"].encode(), receiver.read_bytes())
