@@ -29,7 +29,7 @@ function exact(value:unknown,keys:readonly string[]):value is Record<string,unkn
   Object.keys(value).length===keys.length&&keys.every(key=>Object.hasOwn(value,key));
 }
 function uid(value:unknown):value is string{
- return typeof value==='string'&&value.length<=64&&/^(?:0|[1-9][0-9]*)(?:\.(?:0|[1-9][0-9]*))*$/.test(value);
+ return typeof value==='string'&&value.length<=64&&/^(?:0|[1-9][0-9]*)(?:\.(?:0|[1-9][0-9]*))+$/.test(value);
 }
 function day(value:unknown):value is string{
  if(typeof value!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(value))return false;

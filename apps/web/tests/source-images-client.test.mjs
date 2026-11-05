@@ -19,6 +19,7 @@ test('image list rejects wrong identities, digests, duplicate objects and imposs
  for(const change of [p=>p.patient_id='PAT-OTHER',p=>p.case_id='CASE-BETA',p=>p.source_id='SRC-'+'B'.repeat(32),
   p=>p.images[0].source_id='SRC-'+'B'.repeat(32),p=>p.images[0].case_id='CASE-BETA',
   p=>p.images[0].sha256='not-a-digest',p=>p.images.push({...p.images[0]}),p=>p.images[0].byte_count=2_097_153,
+  p=>p.images[0].study_uid='1',p=>p.images[0].series_uid='2',p=>p.images[0].sop_uid='3',
   p=>p.access_receipt_id='not-a-receipt',p=>p.images[0].study_date='2026-01-11']){
   const bad=images();change(bad);const s=new RegistrySession(transportForImages(url=>url.endsWith('/images')?response(bad):undefined));
   await readyImages(s);await s.loadSourceImages?.(sourceId);

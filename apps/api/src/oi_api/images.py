@@ -205,11 +205,15 @@ class PostgresSourceImages:
             revision, source, binding = self._scope(patient_id, case_id, source_id, organization, purpose)
             # A metadata index also discloses source-bound image identities.
             # Check the current custody budget before fetching any bytea.
-            count, size = self.registry._fetchone(
-                "SELECT count(*),coalesce(sum(byte_count),0) "
-                "FROM clinical_source.dicom_objects o JOIN clinical_source.source_image_links l "
-                "ON l.image_id=o.image_id WHERE o.case_id=%s AND l.source_id=%s",
+            # Count every source link. A legacy cross-case link (or a missing
+            # object) must withhold this index, not disappear from its receipt.
+            count, local_count, size = self.registry._fetchone(
+                "SELECT count(*),count(o.image_id),coalesce(sum(o.byte_count),0) "
+                "FROM clinical_source.source_image_links l LEFT JOIN clinical_source.dicom_objects o "
+                "ON o.image_id=l.image_id AND o.case_id=%s WHERE l.source_id=%s",
                 (case_id, source_id))
+            if count != local_count:
+                raise ImageIntegrityError("Stored image link outside source context")
             if count > MAX_CASE_IMAGES or size > MAX_CASE_IMAGE_BYTES:
                 raise ImageIntegrityError("Image index exceeds custody profile")
             rows = self.registry._fetchall(

@@ -220,6 +220,33 @@ class ImageCustodyHTTPTests(SourceVersionFixture):
             self.assertIsNone(headers.get("X-OI-Access-Receipt"))
             self.assertEqual(self.events(), before)
 
+    def test_cross_case_link_in_restored_data_withholds_the_entire_source_index(self):
+        with running_server(create_app(self.settings)) as base:
+            patient, source, path = self.prepare(base)
+            self.assertEqual(image_request(base, path, raw=image_bytes())[0], 201)
+            other = self.setup_case(base, token=TOKEN_B, case="CASE-BETA", key="CREATE-BETA",
+                                    source_subject="SUBJECT-BETA")
+            other_source = self.ingest(base, other, REPORT.replace("CASE-ALPHA", "CASE-BETA"),
+                                       case="CASE-BETA", token=TOKEN_B)[1]["source_id"]
+            other_path = self.url(other, "CASE-BETA") + "/" + other_source + "/images"
+            other_image = image_request(base, other_path, token=TOKEN_B,
+                                        raw=image_bytes(patient_id="SUBJECT-BETA"))[1]["image_id"]
+
+            # Reproduce inconsistent historical data as a fixture administrator.
+            with self.engine.begin() as connection:
+                connection.exec_driver_sql("ALTER TABLE clinical_source.source_image_links "
+                                           "DISABLE TRIGGER oi_image_link_insert_guard")
+                connection.execute(text("INSERT INTO clinical_source.source_image_links(source_id,image_id) "
+                                        "VALUES (:source,:image)"), {"source": source, "image": other_image})
+                connection.exec_driver_sql("ALTER TABLE clinical_source.source_image_links "
+                                           "ENABLE TRIGGER oi_image_link_insert_guard")
+            with patch.object(PostgresSourceImages, "_validated_object",
+                              side_effect=AssertionError("No original should be fetched")) as parse:
+                self.assertEqual(image_request(base, path)[:2], (503, {"detail": "Patient registry unavailable"}))
+                parse.assert_not_called()
+            self.assertEqual(image_request(base, path + "/" + other_image)[0], 404)
+            self.assertEqual(self.events("AND event_type='image.read_authorized'"), [])
+
     def test_legacy_conflict_across_reports_withholds_index_and_preserves_original_access(self):
         with running_server(create_app(self.settings)) as base:
             patient, _, path = self.prepare(base)
