@@ -40,6 +40,18 @@ class CanonicalCaseBindings:
         # FOR SHARE keeps patient suspension from racing the write transaction.
         PostgresRecordRequests(self.registry)._active_patient(patient_id, organization)
 
+    def require_workspace_case(self, patient_id: str, case_id: str, organization: str,
+                               purpose: str, *, lock: bool) -> None:
+        """Bind a patient-scoped acquisition operation to the case open in Records."""
+        row = self.registry._fetchone(
+            "SELECT 1 FROM coordination.patient_case_bindings "
+            "WHERE case_id=%s AND patient_id=%s AND origin_org=%s AND purpose=%s AND status='active'"
+            + (" FOR SHARE" if lock else ""),
+            (_case_id(case_id), patient_id, organization, purpose),
+        )
+        if row is None:
+            raise PatientRegistryDenied("Case mapping unavailable")
+
     @staticmethod
     def _view(row: tuple) -> dict:
         (case_id, patient_id, source_organization, source_system, source_subject_ref,

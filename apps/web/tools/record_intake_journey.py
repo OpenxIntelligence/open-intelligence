@@ -145,7 +145,9 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, screen
     click(cd, '[data-testid=request-create]')
     cd.wait("Boolean(document.querySelector('[data-testid=request-row][data-status=requested]'))",
             'created local missing-record request')
-    tracked, = operator('/record-requests')['requests']
+    tracked, = [row for row in operator('/record-requests')['requests']
+                if row['record_label'] == 'Fictional pathology report from North']
+    receipt_row = '[data-testid=request-row][data-request-id="' + tracked['request_id'] + '"]'
     assert tracked['status'] == 'requested' and tracked['external_request_sent'] is False
     assert tracked['kind'] == 'pathology' and tracked['source_reference'] is None
 
@@ -158,9 +160,9 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, screen
             'current pathology original is available for the missing record')
     select_value('request-source', first['source_id'])
     click(cd, '[data-testid=request-receive]')
-    cd.wait("Boolean(document.querySelector('[data-testid=request-row][data-receipt-status=source_current_unreviewed]'))",
+    cd.wait("document.querySelector(" + json.dumps(receipt_row) + ")?.dataset.receiptStatus==='source_current_unreviewed'",
             'receipt reopened after explicit original selection')
-    linked, = operator('/record-requests')['requests']
+    linked, = [row for row in operator('/record-requests')['requests'] if row['request_id'] == tracked['request_id']]
     assert linked['request_id'] == tracked['request_id']
     assert linked['source_reference'] == {'source_id': first['source_id'], 'case_id': CASE,
                                          'sha256': first['sha256'], 'version': 1}
@@ -174,11 +176,11 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, screen
     assert new['state']=='current' and new['sha256']==hashlib.sha256(AMENDED).hexdigest()
     assert new['supersedes_id']==old['source_id']
     refresh_requests()
-    cd.wait("Boolean(document.querySelector('[data-testid=request-row][data-receipt-status=source_superseded_reconciliation_required]'))",
+    cd.wait("document.querySelector(" + json.dumps(receipt_row) + ")?.dataset.receiptStatus==='source_superseded_reconciliation_required'",
             'amended source requires reconciliation against the original receipt')
-    after_amendment, = operator('/record-requests')['requests']
+    after_amendment, = [row for row in operator('/record-requests')['requests'] if row['request_id'] == tracked['request_id']]
     assert after_amendment['source_reference'] == linked['source_reference']
-    click(cd, '[data-testid=request-inspect-original]')
+    click(cd, receipt_row + ' [data-testid=request-inspect-original]')
     cd.wait("document.querySelector('[data-testid=server-original]')?.textContent===" +
             json.dumps(ORIGINAL.decode()), 'receipt opens the exact historical original after amendment')
     print('PASS RECORD ACQUISITION: created a missing-record request in Records, selected the '
@@ -204,12 +206,16 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, screen
     credentials[0]['purpose'] = 'research'
     write_grants()
     try:
+        refresh_requests()
+        cd.wait("!document.querySelector('[data-testid=source-index]')"
+                " && !document.querySelector('[data-testid=server-original]')"
+                " && !document.querySelector('[data-testid=request-row]')",
+                'request refresh under research removes the old operations source and request')
         cd.evaluate("document.querySelector('[data-testid=load-cases]').click()")
         cd.wait("document.querySelector('[data-testid=records-cases]')"
                 " && !document.querySelector('[data-testid=load-cases]').disabled"
                 " && !document.querySelector('[data-testid=case-row]')",
                 'same patient has no research mappings')
-        assert not cd.evaluate("Boolean(document.querySelector('[data-testid=source-index], [data-testid=server-original]'))")
     finally:
         credentials[0]['purpose'] = 'operations'
         write_grants()

@@ -75,7 +75,8 @@ def main():
             assert cd.evaluate('localStorage.length===0 && sessionStorage.length===0')
             assert tokens[0] not in cd.evaluate('document.documentElement.outerHTML')
             # Add only operator-controlled fictional grants; no UI self-authorization.
-            credentials[0]['actions'].extend(['case_binding_create','case_binding_read','source_import','source_read'])
+            credentials[0]['actions'].extend(['case_binding_create','case_binding_read','source_import','source_read',
+                                               'record_request_create','record_request_receive','record_request_read'])
             write_grants()
             def add_synthetic(path,payload):
                 url='http://127.0.0.1:8000'+path
@@ -96,10 +97,20 @@ def main():
                 'Specimen: SPECIMEN-ONE\n'
                 'Finding: marker|not-reported|Fictional café <script>literal</script>.\n'
             )
+            requests_path = root + '/record-requests?case_id=' + case
+            status, missing = add_synthetic(requests_path, {
+                'synthetic': True, 'request_key': 'INITIAL-PATHOLOGY-REQUEST', 'kind': 'pathology',
+                'record_label': 'Initial pathology report', 'source_organization': 'Fictional institution',
+            })
+            assert status == 201 and missing['duplicate'] is False
             status,receipt=add_synthetic(root+'/cases/'+case+'/sources',{
                 'synthetic':True,'original_text':original})
             assert status==201 and receipt['result']=='imported'
             original_id=receipt['source_id']
+            status, acquired = add_synthetic(root + '/record-requests/' + missing['request_id'] + '/receive', {
+                'synthetic': True, 'case_id': case, 'source_id': original_id,
+            })
+            assert status == 201 and acquired['source_id'] == original_id and acquired['version'] == 1
             cd.evaluate("Array.from(document.querySelectorAll('nav[aria-label=\"Patient workspace\"] button')).find(b=>b.textContent.includes('Records')).click()")
             cd.wait("Boolean(document.querySelector('[data-testid=records-workspace]'))",'actual read-only Records screen')
             assert pid in cd.evaluate("document.querySelector('[data-testid=records-patient]').textContent")
@@ -209,6 +220,27 @@ def main():
                       {question:r.question.question,source_id:r.selected_source.source_id}]))""")
                 assert len(saved_questions) == 3
                 assert saved_questions[questions.original_question_id]['source_id'] == original_id
+                # The receipt and the question now both refer to the same prior
+                # original. Read the actual persisted receipt after the amendment.
+                prior_actions = credentials[0]['actions'][:]
+                credentials[0]['actions'] = sorted(set(prior_actions) | {
+                    'record_request_read', 'patient_read', 'case_binding_read', 'source_read'})
+                write_grants()
+                try:
+                    req = Request('http://127.0.0.1:8000' + requests_path,
+                                  headers={'Authorization': 'Bearer ' + tokens[0]})
+                    with urlopen(req, timeout=5) as response:
+                        stored, = json.load(response)['requests']
+                    assert stored['request_id'] == missing['request_id']
+                    assert stored['receipt_status'] == 'source_superseded_reconciliation_required'
+                    assert stored['source_reference']['source_id'] == saved_questions[questions.original_question_id]['source_id']
+                    assert stored['source_reference']['version'] == 1
+                    print('PASS CONNECTED ACQUISITION: the missing-record request, source question, '
+                          'review return, evidence link and follow-through use the same original across amendment.')
+                finally:
+                    credentials[0]['actions'] = prior_actions
+                    write_grants()
+
                 current_questions = {qid:value for qid,value in saved_questions.items()
                                      if value['source_id'] == new_receipt['source_id']}
                 assert len(current_questions) == 2

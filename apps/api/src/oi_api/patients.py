@@ -813,7 +813,26 @@ def patient_router(database: Database, authentication: Authentication, *, image_
         except PatientRegistryDenied:
             raise HTTPException(404, "Patient unavailable") from None
 
-    def acquisition_response(request, context, patients, patient_id, actions, build_body, *, creating=False):
+    def acquisition_grants(request, context, patients, patient_id, action, case_id):
+        # Patient-wide v1 callers can operate without an open case. A caller
+        # acting from a case must still hold its mapping and source grants.
+        if case_id is not None:
+            if len(request.query_params.getlist("case_id")) != 1:
+                raise HTTPException(422, "Ambiguous workspace case")
+            actions = (action, "case_binding_read", "source_read")
+        elif action == "record_request_read" and "source_read" in context.actions:
+            actions = (action, "source_read")
+        else:
+            actions = (action,)
+        for grant in actions:
+            records_authorized(patients, context, patient_id, grant)
+        if case_id is not None:
+            CanonicalCaseBindings(patients).require_workspace_case(
+                patient_id, case_id, context.organization, context.purpose, lock=False)
+        return actions
+
+    def acquisition_response(request, context, patients, patient_id, actions, build_body, *,
+                             creating=False):
         """Prepare the actual response and recheck its grants inside the owner's transaction."""
         def prepare(result):
             body = build_body(result)
@@ -826,24 +845,18 @@ def patient_router(database: Database, authentication: Authentication, *, image_
 
     @router.get("/{patient_id}/record-requests", response_model=RecordRequests,
                 responses=errors, operation_id="list_record_requests_v1")
-    def list_records(request: Request, patient_id: str, context: Principal = Depends(principal)):
+    def list_records(request: Request, patient_id: str, case_id: str | None = None,
+                     context: Principal = Depends(principal)):
         try:
             with registry(context) as patients:
-                records_authorized(patients, context, patient_id, "record_request_read")
-                # Request-read permission alone exposes receipt state, not
-                # source identifiers. Original source metadata requires its
-                # independent source_read action; original bytes have a third.
-                source_grant = "source_read" in context.actions
-                if source_grant:
-                    patients._allow(context.actor, patient_id,
-                                    "source_read", context.purpose)
-                actions = ("record_request_read", "source_read") if source_grant else ("record_request_read",)
+                actions = acquisition_grants(request, context, patients, patient_id,
+                                             "record_request_read", case_id)
                 prepare = acquisition_response(
                     request, context, patients, patient_id, actions,
                     lambda rows: RecordRequests(patient_id=patient_id, requests=rows))
                 return PostgresRecordRequests(patients, prepare_result=prepare).list(
                     patient_id, organization=context.organization, purpose=context.purpose,
-                    disclose_source=source_grant)
+                    disclose_source="source_read" in actions, workspace_case_id=case_id)
         except PatientRegistryDenied:
             raise HTTPException(404, "Patient unavailable") from None
 
@@ -851,18 +864,19 @@ def patient_router(database: Database, authentication: Authentication, *, image_
                  status_code=201, responses={200: {"model": RecordRequestReceipt}, **errors},
                  operation_id="create_record_request_v1")
     def create_record(request: Request, patient_id: str, payload: CreateRecordRequest,
-                      context: Principal = Depends(principal)):
+                      case_id: str | None = None, context: Principal = Depends(principal)):
         try:
             with registry(context) as patients:
-                records_authorized(patients, context, patient_id, "record_request_create")
+                actions = acquisition_grants(request, context, patients, patient_id,
+                                             "record_request_create", case_id)
                 prepare = acquisition_response(
-                    request, context, patients, patient_id, ("record_request_create",),
+                    request, context, patients, patient_id, actions,
                     lambda result: RecordRequestReceipt(**result), creating=True)
                 return PostgresRecordRequests(patients, prepare_result=prepare).create(
                     patient_id, organization=context.organization, actor=context.actor,
                     purpose=context.purpose, request_key=payload.request_key, kind=payload.kind,
                     record_label=payload.record_label,
-                    source_organization=payload.source_organization)
+                    source_organization=payload.source_organization, workspace_case_id=case_id)
         except PatientRegistryDenied:
             raise HTTPException(404, "Patient unavailable") from None
 

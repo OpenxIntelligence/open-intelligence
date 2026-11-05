@@ -98,6 +98,66 @@ class AcquisitionPurposeTests(SourceVersionFixture):
             self.assertEqual((row["receipt_status"], row["source_reference"]),
                              ("binding_revoked_not_usable", None))
 
+    def test_workspace_scope_is_required_for_disclosure_create_and_retry(self):
+        with running_server(create_app(self.settings)) as base:
+            patient = self.setup_case(base)
+            requests = f"/v1/patients/{patient}/record-requests"
+            scoped = requests + "?case_id=CASE-ALPHA"
+            created = self.create_record(base, scoped, "WORKSPACE-REQUEST")
+            self.assertEqual(created[0], 201)
+            self.assertEqual(self.create_record(base, scoped, "WORKSPACE-REQUEST")[:2],
+                             (200, {**created[1], "duplicate": True}))
+            before = self.state()
+            for changes in ({"purpose": "research"}, {"patient_ids": []},
+                            {"actions": [a for a in self.creds[0]["actions"] if a != "case_binding_read"]},
+                            {"actions": [a for a in self.creds[0]["actions"] if a != "source_read"]}):
+                with self.subTest(changes=changes), self.credential(**changes):
+                    self.assertEqual(self.records(base, scoped)[0], 404)
+                    self.assertEqual(self.create_record(base, scoped, "WORKSPACE-REQUEST")[0], 404)
+                    self.assertEqual(self.create_record(base, scoped, "ANOTHER-REQUEST")[0], 404)
+                    self.assertEqual(self.state(), before)
+            self.assertEqual(self.create_record(base, requests, "WORKSPACE-REQUEST")[0], 409)
+            for query in ("?case_id=CASE-ALPHA&case_id=CASE-BETA", "?case_id=wrong"):
+                self.assertEqual(self.records(base, requests + query)[0], 422)
+                self.assertEqual(self.create_record(base, requests + query, "INVALID-CONTEXT")[0], 422)
+            self.assertEqual(self.state(), before)
+
+    def test_revoke_before_scoped_response_rolls_back_a_new_request(self):
+        with running_server(create_app(self.settings)) as base:
+            patient = self.setup_case(base)
+            scoped = f"/v1/patients/{patient}/record-requests?case_id=CASE-ALPHA"
+            before = self.state()
+            append = PostgresPatientRegistry.append_event
+            def after_event(owner, subject, event, **details):
+                append(owner, subject, event, **details)
+                if event == "record.request.created":
+                    self.creds[0]["actions"].remove("case_binding_read")
+                    self.write()
+            with self.credential(), patch.object(PostgresPatientRegistry, "append_event", after_event):
+                self.assertEqual(self.create_record(base, scoped, "WITHDRAWN-IN-FLIGHT")[0], 404)
+            self.assertEqual(self.state(), before)
+
+    def test_case_revoked_during_scoped_create_leaves_only_the_independent_revocation(self):
+        with running_server(create_app(self.settings)) as base:
+            patient = self.setup_case(base)
+            patient_path = f"/v1/patients/{patient}"
+            append = PostgresPatientRegistry.append_event
+            def revoke_after_insert(owner, subject, event, **details):
+                append(owner, subject, event, **details)
+                if event == "record.request.created":
+                    reply = self.post(base, patient_path + "/case-bindings/CASE-ALPHA/revoke",
+                                      reason="Withdraw the open fictional case")
+                    self.assertEqual(reply[0], 200)
+            with patch.object(PostgresPatientRegistry, "append_event", revoke_after_insert):
+                reply = self.create_record(base, patient_path + "/record-requests?case_id=CASE-ALPHA",
+                                           "REQUEST-REVOKED-CASE")
+            self.assertEqual(reply[0], 404)
+            bindings, records, events = self.state()
+            self.assertEqual(bindings, [("CASE-ALPHA", "revoked", 2)])
+            self.assertEqual(records, [])
+            self.assertEqual([event for event, _ in events], [
+                "identity.patient.created", "identity.case_binding_created", "identity.case_binding_revoked"])
+
     def test_legacy_mixed_purpose_receipt_withholds_source_identity(self):
         with running_server(create_app(self.settings)) as base:
             patient = self.setup_case(base)

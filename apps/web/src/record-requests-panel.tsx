@@ -15,7 +15,7 @@ const receiptLabels:Record<RequestRow['receipt_status'],string>={
 function Item({row,index,busy,session,onOriginal}:Omit<Props,'view'>&{row:RequestRow}){
   const [selection,select]=useState('');
   const options=index.sources.filter(s=>s.state==='current' && s.kind===row.kind);
-  return <li className="case-row" data-testid="request-row" data-status={row.status} data-receipt-status={row.receipt_status}>
+  return <li className="case-row" data-testid="request-row" data-request-id={row.request_id} data-status={row.status} data-receipt-status={row.receipt_status}>
     <strong>{row.record_label}</strong>
     <p>{row.source_organization} · {row.kind} · {row.status}</p>
     {row.status==='requested'?<div>

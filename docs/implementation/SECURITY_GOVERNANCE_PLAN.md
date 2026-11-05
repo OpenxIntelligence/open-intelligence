@@ -119,6 +119,10 @@ scoped to the credential's current purpose. Receiving an original requires both 
 case binding and the request to match that purpose. Before returning a successful
 list or command receipt, the API serializes the response and checks the actor,
 organization, purpose, patient and relevant grants inside the owner's transaction.
+In Records, list and create include the open case as a server-enforced precondition.
+The case is locked and rechecked before commit. A scoped create retry binds the
+same case into its intent fingerprint. Patient-wide v1 callers retain their existing
+API contract. Refresh also rereads the case's authorized source versions.
 
 Older mixed-purpose receipts remain in the immutable journal. The v1 list omits
 the affected request because its status vocabulary cannot safely describe an

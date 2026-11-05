@@ -3,7 +3,7 @@ import {readLaboratoryCitationReport} from './laboratory-citation-report.js';
 export {patientContinuity} from './patient-continuity.js';
 import {RecordRequestSession,emptyRequests} from './record-requests.js';
 import type {RequestsView} from './record-requests.js';
-import {parseCaseBindingList, parseSourceIndex} from './source-contracts.js';
+import {parseCaseBindingList, parseSourceIndex,sourceIndexPath} from './source-contracts.js';
 import {decodeQuestionSourcePacket} from './source-quote-review-packet.js';
 import type {QuestionSourceReviewPacket} from './source-quote-review-packet.js';
 import type {CaseBinding, SourceIndex} from './source-contracts.js';
@@ -264,7 +264,10 @@ export class RegistrySession {
       // Status is authoritative even when a proxy returns a non-JSON body.
       if([401,403,404].includes(response.status)){
         if(response.status===401)this.#httpError(401);
-        else this.#publish(this.#resetDeniedCaseSources('Document access unavailable or mapping changed. Reload case permissions.'));
+        else{
+          const independentDocumentAction=path.endsWith('/original') || path==='/documents/preview' || (path==='/documents' && body!==undefined);
+          this.#publish(this.#resetDeniedCaseSources('Document access unavailable or mapping changed. Reload case permissions.',independentDocumentAction));
+        }
         void response.body?.cancel().catch(()=>{});
         return{status:response.status,body:null,headers:response.headers};
       }
@@ -307,6 +310,11 @@ export class RegistrySession {
     this.recordRequests=new RecordRequestSession({
       index:()=>requestIndex(this.#state),view:()=>this.#state.requestsView,publish:requestsView=>this.#publish({requestsView}),
       request:(path,controller,body)=>this.transport(path,this.#init(controller,body)),json,
+      replaceSources:sourceIndex=>{
+        this.#records++;
+        this.#publish({...emptyWorld(),...this.#resetInvestigation(sourceIndex.case_id),original:null,sourceIndex,recordsPhase:'ready',
+          recordMessage:'Source versions changed. Reopen Record requests and refresh to see the updated choices and receipts.'});
+      },
       denied:status=>status===401?this.#httpError(401):
         this.#publish(this.#resetDeniedCaseSources('Record requests unavailable under current permissions. Reload case permissions.')),
     });
@@ -419,8 +427,9 @@ export class RegistrySession {
   #resetWorld(preserveReviewCase?:string){
     this.#publish({...emptyWorld(),...this.#resetInvestigation(preserveReviewCase)});
   }
-  #resetDeniedCaseSources(recordMessage='Source access must be rechecked. Reload case permissions to reopen records.'){
-    this.recordRequests.reset();this.#records++;
+  #resetDeniedCaseSources(recordMessage='Source access must be rechecked. Reload case permissions to reopen records.',keepRequestIntent=false){
+    if(!keepRequestIntent)this.recordRequests.reset();
+    this.#records++;
     return {...emptyRecords(),...this.#resetInvestigation(),recordsPhase:'error' as const,recordMessage};
   }
   // A question endpoint combines source_read with an action-specific grant. Hide
@@ -644,7 +653,7 @@ export class RegistrySession {
     this.#publish({...emptyWorld(),...this.#resetInvestigation(caseId),...(this.#state.sourceIndex?.case_id!==caseId?emptyIntake():{original:null}),sourceIndex:null,recordsPhase:'loading-sources',
       recordMessage:'Checking exact source versions and current permissions…'});
     try{
-      const url='/v1/patients/'+encodeURIComponent(patientId)+'/cases/'+encodeURIComponent(caseId)+'/sources';
+      const url=sourceIndexPath(patientId,caseId);
       const res=await this.transport(url,this.#init(control));
       if(!current())return;
       if(res.status===401){this.#httpError(401);return;}
@@ -1854,7 +1863,7 @@ export class RegistrySession {
       const res=await this.transport('/v1/patients/'+encodeURIComponent(patientId)+'/cases/'+encodeURIComponent(caseId)+'/sources/'+encodeURIComponent(sourceId),this.#init(control));
       if(!current())return;
       if(res.status===401){this.#httpError(401);return;}
-      if(res.status!==200){if(res.status===403||res.status===404)this.recordRequests.reset();this.#publish({original:null,recordsPhase:'error',recordMessage:'Original unavailable or permission denied. No previously opened text is retained.'});return;}
+      if(res.status!==200){this.#publish({original:null,recordsPhase:'error',recordMessage:'Original unavailable or permission denied. No previously opened text is retained.'});return;}
       // A 64 KiB original can expand under JSON escaping. Keep the envelope bounded too.
       const subject=this.#state.cases?.find(item=>item.case_id===caseId&&item.status==='active')?.source_subject_ref;
       const original=await verifyOriginal(await json(res,524288),caseId,source,subject?'Patient/'+subject:undefined);
@@ -1921,7 +1930,6 @@ export class RegistrySession {
       if(!current())return;
       if(response.status===401){this.#httpError(401);return;}
       if([403,404].includes(response.status)){
-        this.recordRequests.reset();
         this.#publish({...emptyRecords(),...this.#resetInvestigation(),recordsPhase:'error',
           recordMessage:'Laboratory import permission or case binding unavailable. Reload current access.'});return;
       }
@@ -1966,7 +1974,7 @@ export class RegistrySession {
       if(!current())return;
       if(res.status===401){this.#httpError(401);return;}
       if([403,404,409,413,422].includes(res.status)){
-        if([403,404].includes(res.status)){this.recordRequests.reset();this.#clearManualDrafts();}
+        if([403,404].includes(res.status))this.#clearManualDrafts();
         this.#publish({cases:null,sourceIndex:null,original:null,recordsPhase:'error',importOutcome:'rejected',
           ...([403,404].includes(res.status)?{...emptyLaboratory(),...this.#resetLabQuestions(),...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence(),...this.#evidenceSession.reset()}:{}),
           importMessage:'The server rejected this import. Reload current case permissions; no success is claimed.'});return;

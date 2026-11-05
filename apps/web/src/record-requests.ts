@@ -1,3 +1,4 @@
+import {parseSourceIndex,sourceIndexPath} from './source-contracts.js';
 import type {CaseBinding, SourceIndex, SourceVersion} from './source-contracts.js';
 import {citationEvidenceTimestamp} from './evidence-timestamp.js';
 
@@ -61,6 +62,7 @@ type Port = {
   index:()=>SourceIndex|null; view:()=>RequestsView; publish:(view:RequestsView)=>void; denied:(status:number)=>void;
   request:(path:string,controller:AbortController,body?:string)=>Promise<Response>;
   json:(response:Response,limit:number)=>Promise<unknown>;
+  replaceSources:(fresh:SourceIndex)=>void;
 };
 type CreateIntent = Readonly<{patient:string;caseId:string;body:string;fields:RequestFields}>;
 const uncertain = 'The create receipt is uncertain. Retry the exact request to recover its receipt.';
@@ -70,11 +72,12 @@ const uncertain = 'The create receipt is uncertain. Retry the exact request to r
 export class RecordRequestSession {
   #index:SourceIndex|null=null;
   #open=false;
+  #listAuthorized=false;
   #inflight:AbortController|null=null;
   #pending:CreateIntent|null=null;
   constructor(private port:Port){}
   setContext(index:SourceIndex|null):RequestsView {
-    this.#inflight?.abort();this.#inflight=null;this.#open=false;this.#index=index;
+    this.#inflight?.abort();this.#inflight=null;this.#open=false;this.#listAuthorized=false;this.#index=index;
     if(index && (index.patient_id!==this.#pending?.patient || index.case_id!==this.#pending?.caseId))this.#pending=null;
     return emptyRequests();
   }
@@ -87,16 +90,20 @@ export class RecordRequestSession {
   open(index:SourceIndex){
     if(this.#index!==index || this.port.index()!==index || this.#open)return;
     this.#open=true;
-    this.port.publish({...emptyRequests(),...(this.#pending?{retryCreate:true,message:uncertain}:{})});
+    this.port.publish(emptyRequests());
   }
   close(index:SourceIndex){
     if(this.#index!==index || !this.#open)return;
-    this.#open=false;this.#inflight?.abort();this.#inflight=null;this.port.publish(emptyRequests());
+    this.#open=false;this.#listAuthorized=false;this.#inflight?.abort();this.#inflight=null;this.port.publish(emptyRequests());
   }
   #available(index:SourceIndex){return this.#open && this.#index===index && this.port.index()===index && !this.#inflight;}
-  #path(index:SourceIndex){return '/v1/patients/'+encodeURIComponent(index.patient_id)+'/record-requests';}
+  #path(index:SourceIndex,requestId?:string){
+    const base='/v1/patients/'+encodeURIComponent(index.patient_id)+'/record-requests';
+    return requestId?base+'/'+requestId+'/receive':base+'?case_id='+encodeURIComponent(index.case_id);
+  }
   #show(rows:RequestsView['rows'],busy:boolean,message:string){
-    this.port.publish({rows,busy,message,retryCreate:this.#pending!==null,retryFields:this.#pending && !busy && rows?this.#pending.fields:null});
+    const retryCreate=this.#pending!==null && this.#listAuthorized;
+    this.port.publish({rows,busy,message,retryCreate,retryFields:retryCreate && !busy && rows?this.#pending!.fields:null});
   }
   async #run(index:SourceIndex,work:(control:AbortController,current:()=>boolean)=>Promise<void>,onError:()=>void){
     const control=new AbortController();this.#inflight=control;
@@ -106,32 +113,46 @@ export class RecordRequestSession {
     catch{if(current())onError();}
     finally{clearTimeout(timeout);if(this.#inflight===control)this.#inflight=null;}
   }
-  async #reply(index:SourceIndex,control:AbortController,current:()=>boolean,path:string,body?:string){
+  async #reply(control:AbortController,current:()=>boolean,url:string,body?:string,limit=body===undefined?1024*1024:4096){
     if(!current())return null;
     if(control.signal.aborted)throw Error('Timed out');
-    const res=await this.port.request(this.#path(index)+path,control,body);
+    const res=await this.port.request(url,control,body);
     if(!current()){void res.body?.cancel().catch(()=>{});return null;}
     if([401,403,404].includes(res.status)){
       this.#pending=null;void res.body?.cancel().catch(()=>{});this.port.denied(res.status);return null;
     }
     if(control.signal.aborted)throw Error('Timed out');
     if(res.status!==200 && res.status!==201){void res.body?.cancel().catch(()=>{});return {status:res.status,value:null};}
-    const value=await this.port.json(res,body===undefined?1024*1024:4096);
+    const value=await this.port.json(res,limit);
     if(!current())return null;
     if(control.signal.aborted)throw Error('Timed out');
     return {status:res.status,value};
   }
-  async #list(index:SourceIndex,control:AbortController,current:()=>boolean,after:string){
-    const reply=await this.#reply(index,control,current,'');
+  async #list(index:SourceIndex,control:AbortController,current:()=>boolean,after:string,checkSources=false){
+    const reply=await this.#reply(control,current,this.#path(index));
     if(!reply || !current())return;
     if(reply.status!==200)throw Error('List unavailable');
     const rows=readRequests(reply.value,index);
+    if(checkSources){
+      const sourceReply=await this.#reply(control,current,sourceIndexPath(index.patient_id,index.case_id),undefined,65536);
+      if(!sourceReply || !current())return;
+      if(sourceReply.status!==200)throw Error('Source index unavailable');
+      const fresh=parseSourceIndex(sourceReply.value,index.patient_id,index.case_id);
+      // Each authorized read issues a new access receipt. Only a change to the
+      // actual source versions or reported statements invalidates the open case.
+      if(JSON.stringify(fresh.sources)!==JSON.stringify(index.sources) ||
+         JSON.stringify(fresh.source_reported_assertions)!==JSON.stringify(index.source_reported_assertions)){
+        this.port.replaceSources(fresh);return;
+      }
+    }
+    this.#listAuthorized=true;
     this.#show(rows,false,after || (this.#pending?uncertain:rows.length?'Patient requests checked.':'No record requests are listed for this patient.'));
   }
   async refresh(index:SourceIndex){
     if(!this.#available(index))return;
     await this.#run(index,async(c,current)=>{
-      this.#show(null,true,'Checking patient requests…');await this.#list(index,c,current,'');
+      this.#listAuthorized=false;
+      this.#show(null,true,'Checking requests and current source versions…');await this.#list(index,c,current,'',true);
     },()=>this.#show(null,false,'Requests could not be verified. Refresh to check again.'));
   }
   async create(index:SourceIndex,fields:RequestFields){
@@ -141,7 +162,7 @@ export class RecordRequestSession {
     await this.#write(index,this.#pending.body);
   }
   async retryCreate(index:SourceIndex){
-    if(!this.#available(index) || !this.#pending)return;
+    if(!this.#available(index) || !this.#pending || !this.#listAuthorized)return;
     await this.#write(index,this.#pending.body);
   }
   abandonCreate(index:SourceIndex){
@@ -159,7 +180,7 @@ export class RecordRequestSession {
     let confirmed=false;
     await this.#run(index,async(c,current)=>{
       this.#show(null,true,receive?'Linking the selected source version…':'Saving the local request…');
-      const reply=await this.#reply(index,c,current,receive?'/'+receive.request+'/receive':'',body);
+      const reply=await this.#reply(c,current,this.#path(index,receive?.request),body);
       if(!reply || !current())return;
       const {status,value}=reply;
       if(status>=400 && status<500 && status!==408){

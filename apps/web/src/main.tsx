@@ -162,12 +162,12 @@ function App(){
       {state.sourceIndex&&<section className="records-detail" data-testid="source-index" aria-labelledby="sources-heading">
        <h3 id="sources-heading" ref={sourcesHeading} tabIndex={-1}>Source history for <code>{state.sourceIndex.case_id}</code></h3>
        <p>Immutable original source identifiers, hashes and historical versions. These records are independently fictional.</p>
-       {requestScope&&<RecordRequestsDisclosure key={'requests:'+requestScope.access_receipt_id} index={requestScope} session={session.recordRequests}
-         view={state.requestsView} busy={busy||state.recordsPhase.startsWith('loading')} onOriginal={openOriginal}/>}
        <ReviewedDocumentDisclosure key={"documents:"+state.patient.patient_id+":"+state.sourceIndex.case_id} session={session} patientId={state.patient.patient_id} caseId={state.sourceIndex.case_id}/>
        <RecordImportDisclosure key={state.patient.patient_id+':'+state.sourceIndex.case_id} initiallyOpen={state.sourceIndex.sources.length===0}>
         <SourceIntake session={session} patientId={state.patient.patient_id} caseId={state.sourceIndex.case_id} sending={state.importOutcome==='sending'}/>
        </RecordImportDisclosure>
+       {requestScope&&<RecordRequestsDisclosure key={'requests:'+requestScope.access_receipt_id} index={requestScope} session={session.recordRequests}
+         view={state.requestsView} busy={busy||state.recordsPhase.startsWith('loading')} onOriginal={openOriginal}/>}
        <SourceReading index={state.sourceIndex} view={view} filters={filters}
         onFiltersChange={next=>setSourceFilters({scope:state.sourceIndex,...next})}
         busy={busy||state.recordsPhase.startsWith('loading')}

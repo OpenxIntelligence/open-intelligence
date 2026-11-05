@@ -58,6 +58,15 @@ class PostgresRecordRequests:
         if row is None or row[0] != organization or row[1] != "active":
             raise PatientRegistryDenied("Patient unavailable")
 
+    def _workspace_result(self, result, patient_id, organization, purpose, workspace_case_id):
+        if workspace_case_id is not None:
+            from .case_bindings import CanonicalCaseBindings
+            # Receive locks its request before the case. Holding a case lock
+            # while waiting to read a request would invert that order.
+            CanonicalCaseBindings(self.patients).require_workspace_case(
+                patient_id, workspace_case_id, organization, purpose, lock=True)
+        return self.prepare_result(result)
+
     def _receipt_event(self, patient_id: str, request_id: str, organization: str, purpose: str):
         # Purpose, tenant and patient on a binding are immutable. Check these
         # before touching another case's locks, including on a conflicting retry.
@@ -154,7 +163,7 @@ class PostgresRecordRequests:
         }
 
     def list(self, patient_id: str, *, organization: str, purpose: str,
-             disclose_source: bool = False):
+             disclose_source: bool = False, workspace_case_id: str | None = None):
         patient_id = _key(patient_id, "patient_id")
         organization = _key(organization, "organization")
         with self.patients.transaction():
@@ -174,11 +183,11 @@ class PostgresRecordRequests:
                     # v1 cannot describe a withheld receipt without leaking source state.
                     continue
                 visible.append(record)
-            return self.prepare_result(visible)
+            return self._workspace_result(visible, patient_id, organization, purpose, workspace_case_id)
 
     def create(self, patient_id: str, *, organization: str, actor: str, purpose: str,
                request_key: str, kind: str, record_label: str,
-               source_organization: str):
+               source_organization: str, workspace_case_id: str | None = None):
         patient_id = _key(patient_id, "patient_id")
         organization = _key(organization, "organization")
         actor = _key(actor, "actor")
@@ -189,11 +198,14 @@ class PostgresRecordRequests:
         source_organization = _label(source_organization, 100)
         if purpose not in ("operations", "research"):
             raise PatientRegistryError("Invalid purpose")
-        digest = _digest({
+        intent = {
             "patient": patient_id, "org": organization, "actor": actor,
             "purpose": purpose, "kind": kind, "record_label": record_label,
             "source_organization": source_organization,
-        })
+        }
+        if workspace_case_id is not None:
+            intent["workspace_case_id"] = workspace_case_id
+        digest = _digest(intent)
         request_id = "RECORD-" + uuid.uuid4().hex.upper()
         with self.patients.transaction():
             self._active_patient(patient_id, organization)
@@ -206,19 +218,22 @@ class PostgresRecordRequests:
                 (request_id, patient_id, organization, request_key, digest, kind,
                  record_label, source_organization, actor, purpose),
             )
-            if row is None:
+            duplicate = row is None
+            if duplicate:
                 old = self.patients._fetchone(
                     "SELECT request_id,intent_sha256 FROM coordination.record_requests "
                     "WHERE patient_id=%s AND request_key=%s", (patient_id, request_key),
                 )
                 if old is None or old[1] != digest:
                     raise PatientRegistryConflict("Request key reused with changed intent")
-                return self.prepare_result({"request_id": old[0], "duplicate": True})
-            self.patients.append_event(
-                patient_id, "record.request.created",
-                request_id=request_id, actor=actor, revision=1,
-            )
-            return self.prepare_result({"request_id": request_id, "duplicate": False})
+                request_id = old[0]
+            else:
+                self.patients.append_event(
+                    patient_id, "record.request.created",
+                    request_id=request_id, actor=actor, revision=1,
+                )
+            return self._workspace_result({"request_id": request_id, "duplicate": duplicate},
+                                          patient_id, organization, purpose, workspace_case_id)
 
     def cancel(self, patient_id: str, request_id: str, *,
                organization: str, actor: str, purpose: str, reason: str):
