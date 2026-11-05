@@ -102,7 +102,8 @@ original source version and exact Observation reference.
 Open Investigations and refresh **Follow-up work**. Assign or acknowledge the
 task to record responsibility. After importing an amended report in Records,
 reopen the case and refresh the tasks. The task retains its earlier Observation
-and history. The application flags it for reassessment and prevents completion
+and history. Choose **Inspect original laboratory report** to reopen those exact
+bytes in Records, including when a newer report is available. The application flags it for reassessment and prevents completion
 against that stale basis. A newly prepared question can anchor work on the
 amended report.
 

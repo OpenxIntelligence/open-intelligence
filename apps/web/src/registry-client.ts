@@ -22,9 +22,9 @@ import {decodeReviewQueue,decodeReviewReturnResult,validReturnReason,FICTIONAL_R
 import type {ReviewQueue,ReviewReturnResult} from './review-queue-view.js';
 import {canPrepareSourceBrief,decodeSourceBrief} from './source-brief.js';
 import type {SourceBrief} from './source-brief.js';
-import {currentFollowthroughQuestion,followthroughLaboratoryAnchor,matchesFollowthroughDraft,FOLLOWTHROUGH_V2_MEDIA,decodeFollowthrough,decodeFollowthroughReceipt,
+import {projectFollowthroughAttention,currentFollowthroughQuestion,followthroughLaboratoryAnchor,matchesFollowthroughDraft,FOLLOWTHROUGH_V2_MEDIA,decodeFollowthrough,decodeFollowthroughReceipt,
   validFollowthroughDraft,validFollowthroughTransition,followthroughTransitionContext,FOLLOWTHROUGH_TRANSITIONS} from './followthrough-view.js';
-import type {FollowthroughFamily,FollowthroughDraft,FollowthroughUnsentDraft,FollowthroughIntent,FollowthroughList,
+import type {FollowthroughTask,FollowthroughFamily,FollowthroughDraft,FollowthroughUnsentDraft,FollowthroughIntent,FollowthroughList,
   FollowthroughReceipt,FollowthroughTransition,FollowthroughTransitionFields,FollowthroughUnsentTransition} from './followthrough-view.js';
 import {decodeQuestionEvidenceSearch,decodeQuestionEvidenceLinks,decodeQuestionEvidenceReceipt,
   laboratoryEvidenceAnchor,matchesLaboratoryEvidenceAnchor,unwrapLaboratoryEvidence,validEvidenceQuery} from './question-evidence-view.js';
@@ -612,7 +612,13 @@ export class RegistrySession {
         recordMessage:'Case response failed validation or the service is unavailable. No records are shown.'});
     }finally{clearTimeout(timeout);this.#controllers.delete(control);}
   }
-  async loadSources(caseId:string):Promise<void>{
+  async loadSources(caseId:string,taskOriginal?:FollowthroughTask):Promise<void>{
+    if(taskOriginal&&(taskOriginal.case_id!==caseId||taskOriginal.source_line!==null||
+       !projectFollowthroughAttention(this.#state)?.list.tasks.includes(taskOriginal))){
+      this.#records++;
+      this.#publish({original:null,recordsPhase:'error',recordMessage:'Refresh recorded work before inspecting its original laboratory report.'});
+      return;
+    }
     const patientId=this.#state.patient?.patient_id;
     if(!patientId || !this.#token || this.#state.phase!=='ready' ||
        !this.#state.cases?.some(item=>item.case_id===caseId && item.status==='active')){
@@ -642,8 +648,15 @@ export class RegistrySession {
       }
       const index=parseSourceIndex(await json(res),patientId,caseId);
       if(!current())return;
+      if(taskOriginal&&!index.sources.some(source=>source.kind==='laboratory'&&source.source_id===taskOriginal.source_id&&
+         source.version===taskOriginal.source_version&&source.sha256===taskOriginal.source_sha256)){
+        this.#publish({sourceIndex:index,recordsPhase:'error',
+          recordMessage:'The source versions available for this case do not match the laboratory report recorded on this task.'});
+        return;
+      }
       this.#publish({sourceIndex:index,recordsPhase:'ready',
         recordMessage:'Exact original source metadata read. Extracted statements are not clinical assessments.'});
+      if(taskOriginal&&current())await this.loadOriginal(taskOriginal.source_id,taskOriginal.observation_reference);
     }catch(_){
       if(current())this.#publish({cases:null,sourceIndex:null,recordsPhase:'error',
         recordMessage:'Source response failed validation or the service is unavailable. No sources are shown.'});
@@ -1819,7 +1832,7 @@ export class RegistrySession {
     this.#records++;
     this.#publish({...(this.#state.worldPhase==='loading'?emptyWorld():{}),original:null,recordsPhase:'ready'});
   };
-  async loadOriginal(sourceId:string):Promise<void>{
+  async loadOriginal(sourceId:string,expectedObservation?:string):Promise<void>{
     const patientId=this.#state.patient?.patient_id,index=this.#state.sourceIndex;
     const source=index?.sources.find(s=>s.source_id===sourceId);
     this.#publish({original:null});
@@ -1838,7 +1851,7 @@ export class RegistrySession {
       if(res.status!==200){this.#publish({original:null,recordsPhase:'error',recordMessage:'Original unavailable or permission denied. No previously opened text is retained.'});return;}
       // A 64 KiB original can expand under JSON escaping. Keep the envelope bounded too.
       const subject=this.#state.cases?.find(item=>item.case_id===caseId&&item.status==='active')?.source_subject_ref;
-      const original=await verifyOriginal(await json(res,524288),caseId,source,subject?'Patient/'+subject:undefined);
+      const original=await verifyOriginal(await json(res,524288),caseId,source,subject?'Patient/'+subject:undefined,expectedObservation);
       if(!current())return;
       this.#publish({original,recordsPhase:'ready',recordMessage:'Exact original bytes verified against the selected source hash. Clinical review remains not established.'});
     }catch(_){if(current())this.#publish({original:null,recordsPhase:'error',recordMessage:'Original failed verification or service unavailable. Reload metadata before trying again.'});}

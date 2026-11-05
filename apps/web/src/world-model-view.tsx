@@ -1,4 +1,5 @@
 import {SourceOncologyLabel} from './source-oncology-label';
+import type {FollowthroughTask} from './followthrough-view';
 import type {WorldObservation} from './source-world-model';
 import {LaboratoryQuestionPanel,SavedLaboratoryQuestions} from './laboratory-question-panel';
 import {questionSaveBlocksSourceChange} from './source-questions-view.js';
@@ -13,7 +14,7 @@ type Props={
   showQuestions?:boolean;
   onInvestigations?:()=>void;
   onReview?:()=>void;
-  onRecords?:(caseId:string)=>void;
+  onRecords?:(caseId:string,taskOriginal?:FollowthroughTask)=>void;
 };
 
 /** First-party PG read-only Patient World Model view.
@@ -71,7 +72,8 @@ export function WorldModelView({session,state,onOverview,busy,showQuestions=fals
          </li>)}</ul>}
       </section>}
       <p role="status" aria-live="polite" className={'status '+(state.worldPhase==='error'?'error':'')} data-testid="world-status">{state.worldMessage}</p>
-      {showQuestions&&<SourceQuestionPanel session={session} state={state} busy={busy} onReview={onReview}/>}
+      {showQuestions&&<SourceQuestionPanel session={session} state={state} busy={busy} onReview={onReview}
+        onTaskOriginal={onRecords?task=>onRecords(task.case_id,task):undefined}/>}
       {model&&<div data-testid="world-projection">
         <p><strong>Case:</strong> <code>{model.case_id}</code> · Source statements unreviewed · Context checked at last read</p>
         <div className="world-summary" aria-label="Source context summary">

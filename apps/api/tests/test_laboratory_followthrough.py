@@ -2,6 +2,8 @@
 import json
 from unittest.mock import patch
 
+from sqlalchemy import text
+
 from http_support import running_server
 from oi_api.app import create_app
 from open_intelligence.postgres_registry import PostgresPatientRegistry
@@ -206,6 +208,29 @@ class LaboratoryFollowthroughHTTPTests(SourceVersionFixture):
                     {"synthetic": True, "reason": "Withdraw the fictional laboratory binding."})
         for _, perform in operations:
             self.rejected(404, perform, qid, tid)
+
+    def test_wrong_organization_on_last_lab_event_withholds_both_lists_and_receipts(self):
+        qid, prepared = self.saved_question()
+        status, created, _ = self.create(qid, prepared)
+        self.assertEqual(status, 201, created)
+        tid = created["task_id"]
+        status, assigned, _ = self.record(tid, "assigned", 1)
+        self.assertEqual(status, 201, assigned)
+        self.assertEqual(self.listing()["tasks"][0]["revision"], 2)
+        self.assertEqual(self.listing(1)["tasks"], [])
+        # Simulate a damaged restore in this disposable database. An event query
+        # restricted to the old organization would silently lose the last revision.
+        with self.engine.begin() as db:
+            db.exec_driver_sql("ALTER TABLE coordination.question_followthrough_events "
+                               "DISABLE TRIGGER oi_followthrough_event_immutable")
+            event_id = db.execute(text("UPDATE coordination.question_followthrough_events "
+                                       "SET origin_org='ORG-WRONG-FIXTURE' WHERE event_id=:event_id "
+                                       "RETURNING event_id"), {"event_id": assigned["event_id"]}).scalar_one()
+            self.assertEqual(event_id, assigned["event_id"])
+            db.exec_driver_sql("ALTER TABLE coordination.question_followthrough_events "
+                               "ENABLE TRIGGER oi_followthrough_event_immutable")
+        for version in (1, 2):
+            self.rejected(503, lambda: self.read(version=version), qid, tid, assigned["event_id"])
 
     def test_revocation_after_access_audit_rolls_back_create_transition_replay_and_typed_read(self):
         qid, prepared = self.saved_question()

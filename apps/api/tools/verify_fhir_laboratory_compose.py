@@ -523,6 +523,26 @@ finally:
             tasks.verify_revoked()
             assert snapshot(REVOKED_RESTORE) == banned
             assert sorted(query(receipts_sql, REVOKED_RESTORE)) == sorted(before_receipts)
+            output = os.environ.get("OI_LABORATORY_TASK_ACCEPTANCE_FILE")
+            if output:
+                summary = {
+                    "contract": "oi.laboratory-followthrough-recovery/1", "synthetic": True,
+                    "schema_revision": banned["revision"], "case_id": CASE,
+                    "original_task_count": len(before_restore["tasks"]),
+                    "restored_task_count": len(banned["tasks"]),
+                    "restored_event_count": len(banned["task_events"]),
+                    "restored_task_audit_count": len(banned["task_audit"]),
+                    "fresh_task_created_after_restore": restored_task,
+                    "restored_binding_status": banned["bindings"][0]["status"],
+                    "source_anchors": [
+                        {key: row[key] for key in ("task_id", "question_id", "source_id", "source_version",
+                                                   "source_sha256", "observation_reference", "source_snapshot_sha256")}
+                        for row in banned["tasks"]
+                    ],
+                }
+                destination = Path(output)
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_text(json.dumps(summary, indent=2) + "\n")
             print("PASS LABORATORY FOLLOWTHROUGH RECOVERY: task origins, observation references and full "
                   "attributed history survived API/DB restarts and pg_dump/pg_restore. Both HTTP list versions, "
                   "exact retries, restored-only reads and new writes, stale completion refusal and revoked "

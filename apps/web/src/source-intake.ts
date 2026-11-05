@@ -40,7 +40,7 @@ export function parseImportReceipt(v:unknown):ImportReceipt{
  * Full FHIR validation and authorization remain with the canonical server owner.
  * JSON is never reserialized; the exact original bytes must match the source hash.
  */
-function verifyLaboratoryOriginal(text:string,source:SourceVersion,expectedSubject:string|undefined):void{
+function verifyLaboratoryOriginal(text:string,source:SourceVersion,expectedSubject:string|undefined,expectedObservation?:string):void{
   if(source.kind!=='laboratory'||typeof expectedSubject!=='string'||
      !/^Patient\/[A-Za-z0-9.-]{1,64}$/.test(expectedSubject))throw Error('contract');
   const bundle:unknown=JSON.parse(text);
@@ -82,12 +82,13 @@ function verifyLaboratoryOriginal(text:string,source:SourceVersion,expectedSubje
     if(!resources.has(ref)||!ref.startsWith('Observation/')||resultRefs.has(ref))throw Error('contract');
     resultRefs.add(ref);
   }
+  if(expectedObservation!==undefined&&!resultRefs.has(expectedObservation))throw Error('Original laboratory result missing');
   for(const [,observation] of observations){
     if(observation.status!=='final'||resolveReference(observation.subject)!==expectedSubject||
        resolveReference(observation.specimen)!==specimenRef)throw Error('contract');
   }
 }
-export async function verifyOriginal(v:unknown,caseId:string,source:SourceVersion,expectedSubject?:string):Promise<OriginalSource>{
+export async function verifyOriginal(v:unknown,caseId:string,source:SourceVersion,expectedSubject?:string,expectedObservation?:string):Promise<OriginalSource>{
   if(!exact(v,['source_id','case_id','access_receipt_id','document_id','version','state','sha256','original_text','synthetic','clinical_review_state'])||
      v.source_id!==source.source_id||v.case_id!==caseId||v.document_id!==source.document_id||
      v.version!==source.version||v.state!==source.state||v.sha256!==source.sha256||
@@ -96,10 +97,11 @@ export async function verifyOriginal(v:unknown,caseId:string,source:SourceVersio
   const bytes=new TextEncoder().encode(v.original_text);
   if(bytes.length<1||bytes.length>65536)throw Error('contract');
   if(/^OI-SYNTHETIC-REPORT\/[12]\n/.test(v.original_text)){
+    if(expectedObservation!==undefined)throw Error('Original laboratory bundle required');
     const prepared=prepareSource(bytes,'original.txt');
     if(prepared.declaredCase!==caseId||prepared.text!==v.original_text)throw Error('contract');
   }else{
-    verifyLaboratoryOriginal(v.original_text,source,expectedSubject);
+    verifyLaboratoryOriginal(v.original_text,source,expectedSubject,expectedObservation);
   }
   const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('');
   if(hash!==source.sha256)throw Error('contract');

@@ -1,4 +1,7 @@
 """Task routes registered inside the canonical patient router and authority port."""
+import re
+from urllib.request import parse_http_list
+
 from fastapi import Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
@@ -13,20 +16,32 @@ from .question_followthrough import PostgresQuestionFollowthrough
 
 MAX_RESPONSE_BYTES = 4 * 1024 * 1024
 V2_MEDIA_TYPE = "application/vnd.open-intelligence.followthrough.v2+json"
+MAX_ACCEPT_BYTES = 8192
+_WEIGHT = re.compile(r"q[ \t]*=[ \t]*(0(?:\.[0-9]{0,3})?|1(?:\.0{0,3})?)", re.I)
 
 
 def _accepts_v2(request: Request) -> bool:
-    for header in request.headers.getlist("accept"):
-        for item in header.split(","):
-            media, *parameters = (part.strip().lower() for part in item.split(";"))
-            if media == V2_MEDIA_TYPE:
-                quality = next((p[2:] for p in parameters if p.startswith("q=")), "1")
-                try:
-                    if 0 < float(quality) <= 1:
-                        return True
-                except ValueError:
-                    pass
-    return False
+    headers = request.headers.getlist("accept")
+    if sum(len(header) + 1 for header in headers) > MAX_ACCEPT_BYTES:
+        return False
+    weights = {}
+    for item in parse_http_list(",".join(headers)):
+        media, separator, parameter = item.partition(";")
+        media = media.strip().lower()
+        if media not in (V2_MEDIA_TYPE, "application/json", "application/*", "*/*"):
+            continue
+        quality = 1.0
+        if separator:
+            match = _WEIGHT.fullmatch(parameter.strip())
+            if match is None:
+                continue
+            quality = float(match.group(1))
+        weights[media] = max(weights.get(media, 0), quality)
+    # An exact vendor range opts in. For the default JSON representation the
+    # most specific matching range wins, even when its weight is zero.
+    vendor = weights.get(V2_MEDIA_TYPE, 0)
+    default = next((weights[m] for m in ("application/json", "application/*", "*/*") if m in weights), 0)
+    return vendor > 0 and vendor >= default
 
 
 def _prepare(model, result, *, command=False):

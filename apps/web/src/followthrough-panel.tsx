@@ -62,7 +62,7 @@ export function FollowthroughCreate({state,session,busy,question}:Props&{questio
  </div>;
 }
 
-function TaskCard({task,session,disabled,hidden,draft}:{task:FollowthroughTask;session:RegistrySession;disabled:boolean;hidden:boolean;draft:FollowthroughUnsentTransition|undefined}){
+function TaskCard({task,session,disabled,hidden,draft,onTaskOriginal}:{onTaskOriginal?:(task:FollowthroughTask)=>void;task:FollowthroughTask;session:RegistrySession;disabled:boolean;hidden:boolean;draft:FollowthroughUnsentTransition|undefined}){
  const retained=draft?.context===followthroughTransitionContext(task)?draft.fields:null;
  const owner=retained?.owner_label??task.owner_label,reason=retained?.reason??'';
  const choices=FOLLOWTHROUGH_TRANSITIONS[task.status];
@@ -81,6 +81,8 @@ function TaskCard({task,session,disabled,hidden,draft}:{task:FollowthroughTask;s
   {task.source_context_state==='source_reassessment_required'&&!task.needs_recheck&&<p className="muted">Original source context needs reassessment. This completed or deferred task remains historical.</p>}
   {task.source_line===null&&task.status==='acknowledged'&&task.source_context_state==='source_reassessment_required'&&
    <p>Completion is unavailable because the original laboratory result needs reassessment. You can defer this work and record why.</p>}
+  {task.source_line===null&&onTaskOriginal&&<button type="button" data-testid="followthrough-open-laboratory-original"
+   disabled={disabled||hidden} onClick={()=>onTaskOriginal(task)}>Inspect original laboratory report</button>}
   <details><summary>Original question and source provenance</summary>
    <p>Question <code>{task.question_id}</code> · Task <code>{task.task_id}</code> · revision {task.revision}</p>
    <p>Original <code>{task.source_id}</code> · v{task.source_version}{task.source_line===null?
@@ -120,7 +122,7 @@ function TaskCard({task,session,disabled,hidden,draft}:{task:FollowthroughTask;s
  </li>;
 }
 
-export function FollowthroughPanel({state,session,busy}:Props){
+export function FollowthroughPanel({state,session,busy,onTaskOriginal}:Props&{onTaskOriginal?:(task:FollowthroughTask)=>void}){
  const intent=state.followthroughIntent;
  const caseId=state.worldModel?.case_id??intent?.case_id??state.followthroughCaseId??'';
  const attention=projectFollowthroughAttention(state);
@@ -183,7 +185,7 @@ export function FollowthroughPanel({state,session,busy}:Props){
     <>
      {attention.counts[filter]===0&&<p data-testid="followthrough-filter-empty">No recorded tasks match this filter in the last successful read.</p>}
      <ul id="followthrough-items" className="followthrough-items">{list.tasks.map(task=><TaskCard key={task.task_id+':'+task.revision}
-      task={task} session={session} hidden={!matchesFollowthroughFilter(task,filter)}
+      task={task} session={session} onTaskOriginal={onTaskOriginal} hidden={!matchesFollowthroughFilter(task,filter)}
       draft={state.followthroughTransitionDrafts[task.task_id]}
       disabled={busy||saving||unknown||state.followthroughPhase!=='ready'}/>)}</ul>
     </>}

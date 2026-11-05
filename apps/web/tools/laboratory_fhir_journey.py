@@ -12,7 +12,7 @@ CASE = 'CASE-WEB-LAB'
 SUBJECT = 'FICT-WEB-LAB'
 
 
-def fictional_bundle(*, amended=False):
+def fictional_bundle(*, amended=False, patient_resource_id=SUBJECT):
     """Independently authored numeric-zero, negative-number and absent fixtures."""
     # Source originals may mix exact fullUrl references with local resource IDs.
     subject = {'reference': 'urn:uuid:10000000-0000-4000-8000-000000000001'}
@@ -34,7 +34,7 @@ def fictional_bundle(*, amended=False):
                                     'system': 'http://unitsofmeasure.org', 'code': '10*9/L'}
         observations.append(row)
     resources = [
-        {'resourceType': 'Patient', 'id': SUBJECT},
+        {'resourceType': 'Patient', 'id': patient_resource_id},
         {'resourceType': 'Specimen', 'id': 'FICT-WEB-SPEC', 'subject': subject,
          'type': {'text': 'Fictional sample <script>literal</script>'},
          'collection': {'collectedDateTime': effective}},
@@ -249,7 +249,7 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     assert cd.evaluate(preview_results + '.querySelectorAll("script").length') == 0
     assert cd.evaluate('document.querySelector("[data-testid=laboratory-import]").disabled')
     assert operator(source_path)['sources'] == []
-    wrong_subject = raw.replace(('Patient/' + SUBJECT).encode(), b'Patient/FICT-OTHER')
+    wrong_subject = fictional_bundle(patient_resource_id='FICT-OTHER')
     select(wrong_subject, 'fictional-unmatched-lab.json')
     assert cd.evaluate(preview_results + '===null')
     cd.evaluate(preview_button + '.click()')
@@ -566,16 +566,41 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     fill(cd, task_card + ' [data-testid=followthrough-transition-reason]', 'This original now needs review.')
     complete = task_dom + '.querySelector("[data-testid=followthrough-complete]")'
     assert cd.evaluate('!(' + complete + ') || ' + complete + '.matches(":disabled")')
+    # A task can lead back to its own superseded original, even when the
+    # current version uses the same local Observation identifier.
+    click(cd, task_card + ' [data-testid=followthrough-open-laboratory-original]')
+    cd.wait('document.querySelector("[data-testid=server-original]")?.textContent===' + json.dumps(raw.decode()),
+            'task opens exact earlier laboratory original after amendment')
+    original_text = cd.evaluate('document.querySelector("[data-testid=server-original]").textContent')
+    assert hashlib.sha256(original_text.encode()).hexdigest() == committed['source_sha256']
+    assert original_text != amended.decode()
+    # Reading a task never grants permission to disclose its original bytes.
+    journey('1')
+    open_recorded_task()
+    credentials[0]['actions'].remove('source_original_read')
+    write_grants()
+    try:
+        click(cd, task_card + ' [data-testid=followthrough-open-laboratory-original]')
+        cd.wait('Boolean(document.querySelector("[data-testid=records-status]")) && '
+                'document.querySelector("[data-testid=records-status]").textContent.toLowerCase().includes("denied")',
+                'task original requires an independent current original-read grant')
+        assert not cd.evaluate('Boolean(document.querySelector("[data-testid=server-original]"))')
+    finally:
+        credentials[0]['actions'].append('source_original_read')
+        write_grants()
     (artifacts / 'laboratory-task-reassessment.json').write_text(json.dumps({
         'synthetic': True, 'task_id': task_id, 'question_id': question_id, 'origin': expected_anchor,
         'initial_status': before['status'], 'current_source_id': current['source_id'],
+        'inspected_task_original_sha256': hashlib.sha256(original_text.encode()).hexdigest(),
         'task_source_state_after_amendment': after['source_context_state'],
         'task_status_after_amendment': after['status'], 'history': [e['status'] for e in after['history']],
         'clinical_approval': after['clinical_approval'],
     }, indent=2) + '\n')
     print('PASS LABORATORY FOLLOW-UP: created from saved Observation, assigned and acknowledged, '
           'then reopened against its original report after amendment with stale completion blocked.')
-    navigate('Journey')
+    journey('1')
+    click(cd, '[data-testid=lab-questions-reopen]')
+    cd.wait(exists('followthrough-open-create'), 'saved laboratory history reloaded before revocation')
     credentials[0]['actions'].remove('question_read');write_grants()
     cd.evaluate("document.querySelector('[data-testid=lab-questions-reopen]').click()")
     cd.wait("window.__oiLabHistoryCodes.at(-1)===404 && Boolean(document.querySelector('[data-testid=world-no-patient]')) && !document.querySelector('[data-testid=lab-saved-question]')", 'denied question read removes prior history')

@@ -1,5 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
 import {RegistrySession} from '../.test-dist/registry-client.js';
 import {decodeFollowthrough,projectFollowthroughAttention} from '../.test-dist/followthrough-view.js';
 import {secondOpinionPreparation} from '../.test-dist/second-opinion-preparation.js';
@@ -795,4 +797,68 @@ test('an original laboratory transition draft clears when a refreshed task ancho
  await s.loadFollowthrough(cid);assert.ok(s.snapshot().followthroughTransitionDrafts[labTask]);
  lab={...lab,observation_reference:mixedWorld().laboratory_observations[1].observation_reference};
  await s.loadFollowthrough(cid);assert.deepEqual(s.snapshot().followthroughTransitionDrafts,{});
+});
+
+const originalLabBytes=readFileSync(new URL('../../../examples/synthetic/fictional-fhir-r4-lab-bundle.json',import.meta.url),'utf8')
+ .replaceAll('FICTIONAL-PATIENT-A','FICT-SUBJECT-0');
+const originalLabHash=createHash('sha256').update(originalLabBytes).digest('hex');
+async function taskReport({historical=false,failure,hold}={}){
+ const meta={...mixedWorld().current_sources[0],sha256:originalLabHash,state:historical?'superseded':'current'};
+ const replacement={...meta,source_id:'SRC-'+'F'.repeat(32),version:2,state:'current',supersedes_id:meta.source_id,sha256:'e'.repeat(64)};
+ const row=labRow(['created'],{source_sha256:originalLabHash,observation_reference:failure==='observation'?'Observation/OTHER':'Observation/FICTIONAL-OBS-A',
+  ...(historical?{source_context_state:'source_reassessment_required',needs_recheck:true}:{})});
+ const original={source_id:meta.source_id,case_id:cid,document_id:meta.document_id,version:1,state:meta.state,sha256:originalLabHash,
+  access_receipt_id:'ACCESS-'+'D'.repeat(32),original_text:originalLabBytes,synthetic:true,clinical_review_state:'not_established'};
+ const reads=[];
+ const s=session(async(url,init)=>{
+  assert.equal(init.method,'GET');
+  if(url.endsWith('/followthrough'))return response(mixedProjection([row,taskRow()]));
+  reads.push(url);
+  if(url===path+'/sources'){
+   if(hold)await hold.promise;
+   if(failure==='index denied')return response({},403);
+   const sources=failure==='replacement only'?[replacement]:[historical?replacement:null,
+    {...meta,...(failure==='wrong version'?{version:2}:failure==='wrong hash'?{sha256:'e'.repeat(64)}:{})}].filter(Boolean);
+   return response({contract:'oi.synthetic-original-sources/1',patient_id:failure==='wrong patient'?'PAT-OTHER':pid,
+    case_id:failure==='wrong case'?otherCase:cid,access_receipt_id:'ACCESS-'+'E'.repeat(32),sources,source_reported_assertions:[],
+    synthetic:true,clinical_interpretation:false,research_review_invalidation_integrated:false});
+  }
+  assert.equal(url,path+'/sources/'+meta.source_id);
+  return failure==='original denied'?response({},404):response({...original,...(failure==='changed bytes'?{original_text:originalLabBytes+' '}: {})});
+ });
+ await open(s);await s.loadFollowthrough(cid);
+ return {s,task:s.snapshot().followthrough.tasks[0],reads,sourcePath:path+'/sources/'+meta.source_id};
+}
+
+test('a laboratory task in either source state opens its exact, freshly authorized Records original on each visit',async()=>{
+ for(const historical of [false,true]){
+  const {s,task,reads,sourcePath}=await taskReport({historical});
+  await s.loadSources(cid,task);
+  assert.deepEqual(reads,[path+'/sources',sourcePath]);
+  assert.equal(s.snapshot().original?.original_text,originalLabBytes);
+  assert.equal(s.snapshot().original?.state,historical?'superseded':'current');
+  await s.loadFollowthrough(cid);
+  const reopen=s.loadSources(cid,s.snapshot().followthrough.tasks[0]);
+  assert.equal(s.snapshot().original,null);
+  await reopen;assert.deepEqual(reads,[path+'/sources',sourcePath,path+'/sources',sourcePath]);
+ }
+});
+
+test('task original inspection withholds changed, missing, mismatched or denied report versions',async()=>{
+ for(const failure of ['replacement only','wrong hash','wrong version','wrong patient','wrong case','index denied','original denied','changed bytes','observation']){
+  const {s,task,reads,sourcePath}=await taskReport({historical:true,failure});
+  await s.loadSources(cid,task);
+  assert.equal(s.snapshot().original,null,failure);assert.equal(s.snapshot().recordsPhase,'error',failure);
+  assert.deepEqual(reads,['original denied','changed bytes','observation'].includes(failure)?
+   [path+'/sources',sourcePath]:[path+'/sources'],failure);
+ }
+});
+
+test('a task replaced by a newer read or a dismissed handoff cannot open an original',async()=>{
+ const hold=deferred(),{s,task,reads}=await taskReport({hold});
+ await s.loadFollowthrough(cid);
+ await s.loadSources(cid,task);assert.deepEqual(reads,[]);
+ const pending=s.loadSources(cid,s.snapshot().followthrough.tasks[0]);s.dismissOriginal();
+ hold.resolve();await pending;
+ assert.deepEqual(reads,[path+'/sources']);assert.equal(s.snapshot().original,null);
 });
