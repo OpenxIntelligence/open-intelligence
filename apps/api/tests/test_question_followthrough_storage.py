@@ -17,6 +17,7 @@ from alembic.script import ScriptDirectory
 from alembic.util.exc import CommandError
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
+from pydantic import ValidationError
 
 from open_intelligence.patient_registry import (
     PatientRegistryConflict, PatientRegistryDenied, PatientRegistryError,
@@ -24,6 +25,7 @@ from open_intelligence.patient_registry import (
 from open_intelligence.postgres_registry import PostgresPatientRegistry
 from oi_api.app import create_app
 from oi_api.contracts import SCHEMA_REVISION
+from oi_api.followthrough_contracts import ManualTaskDependency
 from oi_api.composer_preflight import SOURCE_SNAPSHOT_CONTRACT
 from oi_api.migrate import migrate
 from http_support import running_server
@@ -72,6 +74,36 @@ def authored_rows():
         "reason": "Created for the fictional discussion.", "recorded_at": WHEN,
     }]
     return task, events, question
+
+
+class ManualTaskDependencyContractTests(unittest.TestCase):
+    """Contract-only: no task/Review persistence or action grant is implied."""
+
+    def test_explicit_dependency_has_exact_scoped_versioned_identity(self):
+        fields=dict(patient_id=PATIENT,case_id=CASE,question_id=QUESTION,
+                    revision_id="PASSAGES-"+"E"*32,references_sha256="a"*64)
+        value=ManualTaskDependency(**fields)
+        self.assertEqual(value.model_dump(mode="json"),fields)
+        self.assertNotIn("quote",value.model_dump())
+        with self.assertRaises((TypeError,ValueError)):
+            value.revision_id="PASSAGES-"+"F"*32
+
+    def test_missing_forged_or_unstructured_dependency_is_rejected(self):
+        fields=dict(patient_id=PATIENT,case_id=CASE,question_id=QUESTION,
+                    revision_id="PASSAGES-"+"E"*32,references_sha256="a"*64)
+        for change in (
+            dict(patient_id=""),dict(case_id=""),dict(question_id="QUESTION-WRONG"),
+            dict(revision_id="PASSAGES-INVALID"),
+            dict(references_sha256="a"*63),
+            dict(references_sha256=True),
+            dict(quote="A fictional private passage"),
+            dict(clinical_approval=True),
+        ):
+            with self.subTest(change=change),self.assertRaises(ValidationError):
+                ManualTaskDependency(**(fields|change))
+        for name in fields:
+            with self.subTest(missing=name),self.assertRaises(ValidationError):
+                ManualTaskDependency(**{k:v for k,v in fields.items() if k!=name})
 
 
 class FollowthroughLogicTests(unittest.TestCase):

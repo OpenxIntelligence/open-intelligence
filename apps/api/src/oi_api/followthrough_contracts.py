@@ -24,6 +24,25 @@ def _visible(value: str, field: str, low: int, high: int) -> str:
     return checked
 
 
+class ManualTaskDependency(Contract):
+    """Explicit versioned manual reference, not a source grant or a task write.
+
+    Kept separate from FollowthroughCreate until the existing task owner can
+    atomically persist and revalidate it under its case/permission locks.
+    No original text, quotations, or clinical conclusions may be carried here.
+    """
+    patient_id: str
+    case_id: str
+    question_id: str = Field(pattern=QuestionID)
+    revision_id: str = Field(pattern=r"^PASSAGES-[0-9A-F]{32}$")
+    references_sha256: str = Field(pattern=Digest)
+
+    @field_validator("patient_id", "case_id")
+    @classmethod
+    def scoped_identifier(cls, value, info):
+        return _key(value, info.field_name)
+
+
 class FollowthroughCreate(Contract):
     synthetic: Literal[True]
     request_key: str

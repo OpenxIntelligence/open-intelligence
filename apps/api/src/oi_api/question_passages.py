@@ -4,6 +4,7 @@ Originals/annotations remain with ReviewedDocuments. This helper owns only the
 question's explicitly selected reference set, under the existing case lock.
 """
 import hmac
+import re
 import uuid
 
 from open_intelligence.patient_registry import PatientRegistryConflict, PatientRegistryDenied, PatientRegistryError
@@ -102,6 +103,46 @@ class QuestionPassages:
                     attached_at=row[4].isoformat() if row else None,
                     references=references,
                     state='current_unreviewed' if current else 'reassessment_required')
+
+    def manual_dependency_state_locked(self, c, dependency):
+        """Check an explicitly recorded task/Review passage dependency, without original text.
+
+        This is a read-only primitive for the canonical owner, not a task or
+        Review binding. Its caller must supply a case-scoped authorized
+        transaction; it cannot grant access or record clinical approval.
+        """
+        if not self.registry._transaction_active:
+            raise PatientRegistryError('Manual dependency evaluation requires a transaction')
+        keys={'patient_id','case_id','question_id','revision_id','references_sha256'}
+        if not isinstance(dependency,dict) or set(dependency)!=keys:
+            raise PatientRegistryError('Exact manual dependency identity required')
+        if any(type(c.get(k)) is not str or dependency[k]!=c[k]
+               for k in ('patient_id','case_id','question_id')):
+            raise PatientRegistryDenied('Manual dependency scope differs from question')
+        revision_id=dependency['revision_id']
+        refs_hash=dependency['references_sha256']
+        if (type(revision_id) is not str
+                or re.fullmatch(r'PASSAGES-[0-9A-F]{32}',revision_id) is None
+                or type(refs_hash) is not str
+                or re.fullmatch(r'[0-9a-f]{64}',refs_hash) is None):
+            raise PatientRegistryError('Invalid manual dependency identity')
+        # Historical selection must be available in the same case/owner scope.
+        # It is an integrity failure, not a normal reassessment, if its frozen
+        # reference-set digest has been substituted or altered.
+        historical=self.metadata_locked(c,revision_id=revision_id)
+        if (historical['revision_id']!=revision_id
+                or not historical['references']
+                or not hmac.compare_digest(fingerprint(historical['references']),refs_hash)):
+            raise PatientRegistryError('Manual dependency provenance differs')
+        latest=self.metadata_locked(c)
+        needs_recheck=(latest['revision_id']!=revision_id
+                       or historical['state']!='current_unreviewed')
+        return dict(
+            dependency_revision_id=revision_id,
+            current_revision_id=latest['revision_id'],
+            state='reassessment_required' if needs_recheck else 'current_unreviewed',
+            needs_recheck=needs_recheck,
+        )
 
     def verify_frozen_metadata_locked(self,c,frozen):
         """Verify frozen report provenance/freshness without reading quotations."""

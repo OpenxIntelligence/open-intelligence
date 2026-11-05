@@ -115,7 +115,12 @@ class SourceQuestionChecks:
         assert self.cd.evaluate('window.__oiBriefChecks.reads.at(-1).status') == 404
         assert self.cd.evaluate('window.__oiBriefChecks.blobs') == blobs
         assert not self.cd.evaluate("Boolean(document.querySelector('[data-testid=source-brief-preview]'))")
-        assert sorted(self.artifacts.glob('source-brief-downloads/**/*')) == downloads
+        after_downloads = sorted(self.artifacts.glob('source-brief-downloads/**/*'))
+        assert after_downloads == downloads, (
+            'Revoked export changed the exact source-brief artifact inventory: '
+            f"before={[str(path.relative_to(self.artifacts)) for path in downloads]!r}, "
+            f"after={[str(path.relative_to(self.artifacts)) for path in after_downloads]!r}"
+        )
         assert self.original_download.read_bytes() == self.original_download_bytes
         credentials[0]['actions'].append('source_brief_export')
         write_grants()
