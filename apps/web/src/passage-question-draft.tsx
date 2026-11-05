@@ -41,12 +41,21 @@ export function PassageQuestionDraft({doc,session,patientId,caseId}:{
   setPending(body);setBusy(true);setHistory(null);
   try{
    const reply=await session.documentRequest(caseId,'/'+doc.source_id+'/questions',body);
-   if(request!==generation.current)return;
-   if([401,403,404,409,422].includes(reply.status)){if(!recovering){intent.finish(body);setPending(null);}setMessage('Save refused. Reopen the record to check the current passage.');return;}
+   if([401,403,404,409,422].includes(reply.status)){
+    const terminal=reply.status===409||reply.status===422||!recovering;
+    if(terminal)intent.finish(body);
+    if(request===generation.current){
+     if(terminal){setPending(null);setFinding(null);}
+     setMessage('Save refused. Reopen the record to check the current passage.');
+    }
+    return;
+   }
    const result=reply.body as {question_id?:string;duplicate?:boolean}|null;
    if(![200,201].includes(reply.status)||!result||!/^QUESTION-[A-F0-9]{32}$/.test(result.question_id??'')||
       result.duplicate!==(reply.status===200))throw Error();
-   intent.finish(body);setPending(null);setFinding(null);setQuestion('');setMessage('Question saved. Open saved passage questions to read it again.');
+   intent.finish(body);
+   if(request!==generation.current)return;
+   setPending(null);setFinding(null);setQuestion('');setMessage('Question saved. Open saved passage questions to read it again.');
   }catch{if(request===generation.current)setMessage('Save outcome unknown. Retry this exact question.');}
   finally{if(request===generation.current)setBusy(false);}
  }

@@ -181,7 +181,7 @@ export class RegistrySession {
         this.#documentQuestionIntents.set(key,exact);
         return exact;
       },
-      finish:(body:string)=>{if(current()&&this.#documentQuestionIntents.get(key)===body)this.#documentQuestionIntents.delete(key);},
+      finish:(body:string)=>{if(epoch===this.#scope&&this.#documentQuestionIntents.get(key)===body)this.#documentQuestionIntents.delete(key);},
     };
   }
   #manualPassageIntents=new Map<string,string>();

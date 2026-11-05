@@ -204,6 +204,14 @@ def exercise(cd,patient_id,directory,token,credentials,write_grants,artifacts,re
     assert initial_selection['anchor']['extraction_sha256']==initial_document['preview']['extraction_sha256']
     assert initial_selection['anchor']['classification_origin']=='user_selected'
     assert initial_selection['selection_state']=='current_unreviewed_selection'
+    cd.evaluate("""document.querySelector('section[aria-label="Draft a passage question"] button').click()""")
+    cd.wait("Boolean(document.querySelector('[data-testid=passage-question-draft]'))",'select passage before correction')
+    value('[data-testid=passage-question-draft]','Does this fictional passage need correction?')
+    cd.evaluate("""(()=>{const original=window.fetch;window.fetch=(input,init)=>{
+      if(String(input).endsWith('/questions')&&init?.method==='POST'){window.fetch=original;throw Error('Dropped before sending')}
+      return original(input,init);};})()""")
+    click('Save passage question')
+    cd.wait("document.querySelector('[data-testid=save-passage-question]')?.textContent==='Retry exact save'&&!document.querySelector('[data-testid=save-passage-question]').disabled",'uncommitted pending request')
     click('Remove finding-one');click('Select line 3 · page 2');click('Add exact passage')
     value('[data-testid=document-reason]','Correct the selected fictional passage')
     cd.evaluate("document.querySelector('[data-testid=document-confirm]').click()")
@@ -216,6 +224,10 @@ def exercise(cd,patient_id,directory,token,credentials,write_grants,artifacts,re
     history=cd.evaluate("document.querySelector('[data-testid=reviewed-preview] details').textContent")
     assert 'Page 2, page line 1 (extraction line 2)' in history and 'Page 2, page line 2 (extraction line 3)' in history
     assert operator(source_path)['sources']==structured_sources, 'Manual selections must not enter the structured source index'
+    cd.wait("""[...document.querySelectorAll('button')].some(b=>b.textContent==='Retry exact save'&&!b.disabled)""",'pending intent retained on corrected version')
+    click('Retry exact save')
+    cd.wait("""document.querySelector('section[aria-label="Draft a passage question"]')?.textContent.includes('Save refused.')""",'stale uncommitted retry rejected')
+    assert cd.evaluate("""[...document.querySelectorAll('button')].some(b=>b.textContent.startsWith('Draft a question about')&&!b.disabled)""")
     saved=operator(prefix+'/'+first);assert saved['revisions'][0]['findings'][0]['line']==2
     assert saved['revisions'][1]['findings'][0]['line']==3
     historical_selection=operator(selection_path)
