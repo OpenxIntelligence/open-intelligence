@@ -100,6 +100,9 @@ def main():
                 'synthetic':True,'original_text':original})
             assert status==201 and receipt['result']=='imported'
             original_id=receipt['source_id']
+            out=Path(os.environ.get('OI_WEB_ARTIFACT_DIR',ROOT/'apps/web/.evidence'));out.mkdir(parents=True,exist_ok=True)
+            from encounter_chart_journey import exercise as exercise_encounter_chart
+            exercise_encounter_chart(cd,pid,tokens[0],credentials,write_grants,case,original_id,original,out)
             cd.evaluate("Array.from(document.querySelectorAll('nav[aria-label=\"Patient workspace\"] button')).find(b=>b.textContent.includes('Records')).click()")
             cd.wait("Boolean(document.querySelector('[data-testid=records-workspace]'))",'actual read-only Records screen')
             assert pid in cd.evaluate("document.querySelector('[data-testid=records-patient]').textContent")
@@ -288,7 +291,6 @@ def main():
             cd.command('Accessibility.enable');tree=cd.command('Accessibility.getFullAXTree')['nodes']
             assert any(n.get('role',{}).get('value')=='main' for n in tree)
             assert any(n.get('role',{}).get('value')=='navigation' for n in tree)
-            out=Path(os.environ.get('OI_WEB_ARTIFACT_DIR',ROOT/'apps/web/.evidence'));out.mkdir(parents=True,exist_ok=True)
             cd.command('Emulation.setDeviceMetricsOverride',{'width':1440,'height':1100,'deviceScaleFactor':1,'mobile':False})
             cd.evaluate("document.querySelector('.create-panel').open=false")
             image=cd.command('Page.captureScreenshot',{'format':'png'});(out/'h1-desktop.png').write_bytes(base64.b64decode(image['data']))

@@ -14,6 +14,7 @@ from open_intelligence.store import InvalidInput
 
 from .access import Principal
 from .contracts import Contract
+from .encounter_sources import PostgresEncounterSources
 
 Identifier = Annotated[int, Path(gt=0, le=2**63-1)]
 NoteKey = Annotated[str, Path(pattern=r"^[A-Z][A-Z0-9-]{1,39}$")]
@@ -54,6 +55,37 @@ class DraftNote(Command):
     note_kind: NoteKind | None = None
     facility_id: str | None = Field(default=None, max_length=100)
     department_id: str | None = Field(default=None, max_length=100)
+
+
+class LinkSource(Command):
+    source_id: str = Field(pattern=r"^SRC-[0-9A-F]{32}$")
+    expected_version: int = Field(strict=True, ge=1, le=2**31-1)
+    expected_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class EncounterSourceReceipt(Contract):
+    id: int
+    duplicate: bool
+
+
+class EncounterSourceLink(Contract):
+    id: int
+    encounter_id: int
+    patient_id: str
+    case_id: str
+    source_id: str
+    version: int
+    sha256: str
+    source_state: Literal["current", "superseded"]
+
+
+class EncounterSourcePage(Contract):
+    encounter_id: int
+    patient_id: str
+    case_id: str
+    links: list[EncounterSourceLink]
+    next_after_id: int | None
+    access_receipt_id: str
 
 
 class EncounterReceipt(Contract):
@@ -161,21 +193,28 @@ def encounter_errors():
 def register_encounter_routes(router, *, principal, registry, authorize, refresh, errors):
     prefix = "/{patient_id}/encounters"
 
-    def run(request, context, patient_id, action, model, operation, *, read_refs=None, extra_actions=()):
+    @contextmanager
+    def scoped_transaction(request, context, patient_id, required, *, reading):
         if context.purpose != "operations" or patient_id not in context.patient_ids or (
-                "patient_read" not in context.actions or action not in context.actions):
+                "patient_read" not in context.actions or any(action not in context.actions for action in required)):
             raise HTTPException(404, "Encounter unavailable")
         with registry(context) as patients, encounter_errors(), patients.transaction():
             # Serialize patient retirement and scope changes with disclosure.
             locked = patients._fetchone("SELECT status FROM identity.identity_patients "
-                "WHERE patient_id=%s AND origin_org=%s FOR " + ("SHARE" if read_refs is not None else "UPDATE"),
+                "WHERE patient_id=%s AND origin_org=%s FOR " + ("SHARE" if reading else "UPDATE"),
                 (patient_id, context.organization))
             if locked is None or locked[0] != "active":
                 raise PatientRegistryDenied("Patient unavailable")
-            required = (action, *extra_actions)
             for grant in required:
                 authorize(patients, context, patient_id, grant)
 
+            yield patients
+            # Includes the actual serialized HTTP response and any audit append.
+            refresh(request, context, patients, patient_id, required)
+
+    def run(request, context, patient_id, action, model, operation, *, read_refs=None, extra_actions=()):
+        required = (action, *extra_actions)
+        with scoped_transaction(request, context, patient_id, required, reading=read_refs is not None) as patients:
             def allowed(actor, subject, requested, purpose):
                 if (actor, subject, purpose) != (context.actor, patient_id, context.purpose) or requested not in required:
                     return False
@@ -190,8 +229,39 @@ def register_encounter_routes(router, *, principal, registry, authorize, refresh
                 patients.append_event(patient_id, "clinical_encounter_read_authorized",
                                       receipt_id=receipt, action=action, actor=context.actor,
                                       purpose=context.purpose, **read_refs)
-            response = JSONResponse(model(**data).model_dump(mode="json"))
-            refresh(request, context, patients, patient_id, required)
+            return JSONResponse(model(**data).model_dump(mode="json"))
+
+    source_links = prefix + "/{encounter_id}/cases/{case_id}/source-links"
+    source_grants = ("encounter.read", "source_read")
+
+    @router.post(source_links, response_model=EncounterSourceReceipt, status_code=201,
+                 responses={200: {"model": EncounterSourceReceipt}, **errors},
+                 operation_id="link_encounter_source_v1")
+    def link_encounter_source(patient_id: str, encounter_id: Identifier, case_id: str,
+                              payload: LinkSource, request: Request, context: Principal = Depends(principal)):
+        with scoped_transaction(request, context, patient_id, (*source_grants, "encounter.source.link"),
+                                reading=False) as patients:
+            receipt = EncounterSourceReceipt(**PostgresEncounterSources(patients).link(
+                patient_id, encounter_id, case_id, payload.source_id, payload.expected_version,
+                payload.expected_sha256, payload.request_key, actor=context.actor,
+                organization=context.organization, purpose=context.purpose))
+            return JSONResponse(receipt.model_dump(mode="json"), status_code=200 if receipt.duplicate else 201)
+
+    @router.get(source_links, response_model=EncounterSourcePage, responses=errors,
+                operation_id="list_encounter_sources_v1")
+    def list_encounter_sources(patient_id: str, encounter_id: Identifier, case_id: str, request: Request,
+                               after_id: Cursor = 0, limit: PageSize = 25, context: Principal = Depends(principal)):
+        with scoped_transaction(request, context, patient_id, source_grants, reading=True) as patients:
+            rows = PostgresEncounterSources(patients).list(patient_id, encounter_id, case_id,
+                after_id=after_id, limit=limit + 1, organization=context.organization)
+            receipt = "ACCESS-" + uuid.uuid4().hex.upper()
+            page = EncounterSourcePage(patient_id=patient_id, encounter_id=encounter_id, case_id=case_id,
+                links=rows[:limit], next_after_id=rows[limit-1]["id"] if len(rows)>limit else None,
+                access_receipt_id=receipt)
+            response = JSONResponse(page.model_dump(mode="json"))
+            patients.append_event(patient_id, "clinical_encounter_sources_read_authorized",
+                                  receipt_id=receipt, actor=context.actor, purpose=context.purpose,
+                                  encounter_id=encounter_id, case_id=case_id, after_id=after_id, page_size=limit)
             return response
 
     @router.post(prefix, response_model=EncounterReceipt, responses=errors)

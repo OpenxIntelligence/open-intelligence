@@ -85,6 +85,8 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
         with self.engine.begin() as conn:
             # Drop the declared 0016 FK child before its canonical task owner;
             # RESTRICT remains in effect for every unknown dependency.
+            conn.execute(text("DROP TABLE IF EXISTS ehr.encounter_source_links"))
+            conn.execute(text("DROP FUNCTION IF EXISTS ehr.guard_encounter_source_insert()"))
             conn.execute(text("ALTER TABLE IF EXISTS ehr.clinical_note_headers DROP CONSTRAINT IF EXISTS latest_note_version_exists"))
             conn.execute(text("DROP TABLE IF EXISTS ehr.clinical_note_versions"))
             conn.execute(text("DROP TABLE IF EXISTS ehr.clinical_note_headers"))

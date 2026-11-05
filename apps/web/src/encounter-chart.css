@@ -1,0 +1,20 @@
+.encounter-chart {margin:18px 0 24px;border:1px solid #c9d9cd;border-radius:8px;padding:18px;min-width:0}
+.encounter-chart h3#encounter-heading {margin:5px 0;font-size:19px}
+.encounter-chart h4,.encounter-chart h5 {font-size:16px;margin:10px 0}
+.encounter-chart h5 {font-size:15px;margin-top:18px}
+.encounter-chart .status:empty {display:none}
+.encounter-chart .encounter-row {display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px 16px;border-bottom:1px solid #dce3dc;padding:10px 0}
+.encounter-detail,.encounter-form {min-width:0;margin-top:18px;border-top:1px solid #dce3dc;padding-top:10px}
+.encounter-form fieldset {padding:0;border:0;min-width:0;margin:0}
+.encounter-legend {position:absolute;clip-path:inset(50%);width:1px;height:1px;overflow:hidden}
+.encounter-fields {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:0 14px}
+.encounter-chart label {font-size:14px}
+.encounter-chart :is(select,textarea) {display:block;color:inherit;background:white;width:100%;min-width:0;min-height:44px;border:1px solid #a9b6b3;border-radius:6px;padding:10px;font:inherit;margin:6px 0 14px}
+.encounter-chart textarea {resize:vertical}
+.encounter-chart :is(select,textarea):focus-visible {outline:3px solid #ba8639;outline-offset:3px}
+.encounter-chart p,.encounter-version {overflow-wrap:anywhere}
+.encounter-version {border:1px solid #d7e0d8;background:#fcfdfb;border-radius:7px;padding:12px;font-size:14px}
+.encounter-version pre {white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;border-left:3px solid #a2baaa;padding:8px 12px;margin:12px 0 0}
+.encounter-conflict {background:#f8f3e9;border-left:3px solid #b28b52;padding:12px;margin-top:14px}
+.encounter-conflict p {margin:0 0 10px}
+@media(max-width:600px){.encounter-chart{padding:12px}.encounter-chart button{max-width:100%;overflow-wrap:anywhere}}

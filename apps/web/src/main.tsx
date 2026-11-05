@@ -1,6 +1,8 @@
-import {StrictMode, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
+import {StrictMode, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {createRoot} from 'react-dom/client';
 import {RegistrySession} from './registry-client';
+import {createEncounterScope, EncounterChart} from './encounter-chart';
+import {EncounterSourceLinks} from './encounter-source-links-view';
 import {SourceIntake} from './source-intake-view';
 import {RecordImportDisclosure} from './record-import-disclosure';
 import {ReviewedDocumentDisclosure} from './reviewed-documents-view';
@@ -47,6 +49,8 @@ function WorkspaceContext({section,patientId,readiness,view,onViewChange}:{secti
 }
 function App(){
  const state=useSyncExternalStore(session.subscribe,session.snapshot);
+ const encounterScope=useMemo(()=>state.connected&&state.phase==='ready'&&state.patient?.status==='active'
+  ?createEncounterScope(session,state.patient.patient_id):null,[state.connected,state.phase,state.patient]);
  const reviewReasonDrafts=useReviewReasonDrafts(state);
  const [token,setToken]=useState(''),[patientId,setPatientId]=useState(''),[confirmed,setConfirmed]=useState(false);
  const [requestKey,setRequestKey]=useState(()=>crypto.randomUUID());
@@ -136,6 +140,7 @@ function App(){
       <p className="record-scope" data-testid="records-patient"><strong>Selected patient:</strong> <code>{state.patient.patient_id}</code></p>
       <button className="primary" data-testid="load-cases" disabled={state.recordsPhase.startsWith('loading')||busy} onClick={()=>void session.loadCases()}>Check authorized cases</button>
       <p role="status" aria-live="polite" data-testid="records-status" className={'status '+(state.recordsPhase==='error'?'error':'')}>{state.recordMessage}</p>
+      {encounterScope&&<EncounterChart key={encounterScope.key} scope={encounterScope}/>}
       {state.importOutcome!=='idle'&&<p role="status" aria-live="polite" className="status" data-testid="import-receipt" data-outcome={state.importOutcome} data-result={state.importReceipt?.result??''}>{state.importMessage}</p>}
       {state.original&&<section className="original-panel" aria-labelledby="opened-original" data-testid="opened-original">
        <h3 id="opened-original" ref={originalHeading} tabIndex={-1}>Exact original: {state.original.document_id} · v{state.original.version}</h3>
@@ -176,6 +181,8 @@ function App(){
         onAskQuestion={(sourceId,line)=>{const caseId=state.sourceIndex!.case_id;
           navigate('Investigations');
           void session.beginQuestionFromSourceReading(caseId,sourceId,line);}}/>
+       <EncounterSourceLinks key={state.sourceIndex.access_receipt_id} session={session} patientId={state.patient.patient_id} index={state.sourceIndex}
+        onOpenOriginal={(sourceId,trigger)=>{originalReturn.current={sourceId,trigger,pending:true};void session.loadOriginal(sourceId)}}/>
        <p className="muted">Amendments are preserved as separate versions. Connected questions and reports retain their source context and reassessment states. Clinical approval is not supplied by this screen.</p>
       </section>}
      </div>}

@@ -27,7 +27,9 @@ ACTIONS = ['patient_create', 'patient_read', 'case_binding_create', 'case_bindin
            'source_brief_export', 'review_packet_read', 'followthrough_read',
            'followthrough_create', 'followthrough_update', 'evidence_read', 'evidence_link',
            'authored_evidence_read', 'authored_evidence_import', 'authored_evidence_assess',
-           'authored_evidence_original_read', 'evidence_report_export']
+           'authored_evidence_original_read', 'evidence_report_export',
+           'encounter.read', 'encounter.schedule', 'encounter.transition',
+           'note.read', 'note.write', 'encounter.source.link']
 
 
 def write_json(path, value, mode=0o600):
