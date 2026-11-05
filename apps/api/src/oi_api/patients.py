@@ -16,6 +16,7 @@ from open_intelligence.patient_registry import (
 )
 from open_intelligence.postgres_registry import PostgresPatientRegistry
 
+from .request_limits import COMMAND_METHODS
 from .access import Authentication, Principal, authenticate_request
 from .contracts import Contract
 from .database import Database
@@ -1357,4 +1358,13 @@ def patient_router(database: Database, authentication: Authentication, *, image_
                         request, context, patients, patient_id, "image_original_read"))
         except PatientRegistryDenied:
             raise HTTPException(404, "Image unavailable") from None
+    # Middleware can refuse any command before a domain handler sees its payload.
+    for route in router.routes:
+        if route.methods & COMMAND_METHODS:
+            route.responses[429] = {
+                "description": "Patient command rate limit reached",
+                "headers": {"Retry-After": {"schema": {"type": "integer", "minimum": 1},
+                                           "description": "Seconds before retrying"}},
+                "content": {"application/json": {"schema": Error.model_json_schema()}},
+            }
     return router

@@ -53,7 +53,7 @@ def create_app(settings: Settings | None = None, *, authentication: Authenticati
         docs_url=None,
         redoc_url=None,
     )
-    app.add_middleware(PatientRequestLimit)
+    app.add_middleware(PatientRequestLimit, commands_per_minute=settings.patient_commands_per_minute)
 
     @app.middleware("http")
     async def local_boundary(request: Request, call_next):

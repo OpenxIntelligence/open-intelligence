@@ -4,14 +4,39 @@
 
 Use the [persistent fictional demo](../../docs/H1_DEMO.md) to run this API together
 with the React application. [Consolidation #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481)
-records the original integration. The API requires `0022_lab_citation_source_scope`. Run
-`python -m oi_api.migrate upgrade head` from either published 0019 revision.
+records the original integration. The API requires `0023_ehr_lab_ownership_join`. Its migration joins the published encounter ownership and laboratory citation guards. Run
+`python -m oi_api.migrate upgrade head` from either published 0019 or 0022 revision. If historical ownership is inconsistent, the upgrade stops for explicit reconciliation.
 The join retains both the [encounter and note service](#connected-encounter-and-note-service)
 and the original Observation behind each governed laboratory citation. See
 [the laboratory question contract](../../docs/engineering/H1_DURABLE_LABORATORY_QUESTIONS.md)
 for save, retry and history behavior.
 The [convergence record](../../docs/engineering/H1_ACCEPTED_DEMO_CONVERGENCE.md)
 maps the retained source, document, image, laboratory, question, report and task owners.
+
+### Patient command admission
+
+The synthetic API accepts a burst of 240 patient commands per process and refills
+at four commands per second. Override `OI_API_PATIENT_COMMANDS_PER_MINUTE`
+(1–60,000) to set both the burst size and the sustained per-minute budget for
+that instance. This is a development default. All callers share the budget,
+including unauthenticated attempts and POST requests that prepare a read.
+Each admitted request still passes through its normal authentication and
+authorization checks. GET, health and readiness checks have their usual behavior.
+
+A refused command returns HTTP 429 with an integer `Retry-After` in seconds
+before the body is consumed. Retry the same intended command with its original
+request key after that delay. New POST, PUT, PATCH and DELETE patient routes get
+a 16 KiB body limit automatically. The existing registered upload operations
+have larger explicit limits. The encounter note version POST accepts up to
+242,000 bytes so a 20,000-character note can be serialized with JSON Unicode
+escapes. Add a maximum-size payload test when registering another large transport. The budget resets on process restart. Multiple
+workers or replicas would each get their own budget.
+
+The H1 web workflow emits `build-inputs.json` alongside both the API and web CycloneDX inventories and installed web notices. It binds the declared OCI inputs as well as package manifests. To reproduce the package input inventory without installing
+packages, run `python tools/h1_build_inputs.py --output /tmp/build-inputs.json`
+from the repository root. Use `--verify` and the two gate receipts to check an
+installation. Host, image layers, model and content rights require separate
+review.
 
 ## Historical document/image checkpoint — #381
 
@@ -711,7 +736,7 @@ URLs, SQL, source text and rejected validation inputs.
 | Route | Behavior |
 |---|---|
 | GET /health | Process liveness; 200 even if the database is unavailable. |
-| GET /health/ready | 200 only for PostgreSQL major 16 at revision 0022_lab_citation_source_scope; bounded 503 otherwise. |
+| GET /health/ready | 200 only for PostgreSQL major 16 at revision 0023_ehr_lab_ownership_join; bounded 503 otherwise. |
 | GET /v1 | Reports synthetic_patient_registry stage, implemented synthetic capabilities and the configured authentication mode. |
 | GET /v1/openapi.json | Local typed contract, including bearer security; no CDN documentation UI. |
 | POST /v1/patients | Authenticated synthetic creation; trusted actor/org/purpose; 201 for new identity or 200 for identical retry. |
