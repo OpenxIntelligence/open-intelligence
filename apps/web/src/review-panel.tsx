@@ -1,4 +1,4 @@
-import {AttributionReview} from './attribution-review';
+import {AttributionReview,ReassessmentPassages} from './attribution-review';
 import {useEffect,useState} from 'react';
 import type {RegistrySession,ViewState} from './registry-client';
 import {attributionReviewStatus,FICTIONAL_RETURN_REASON,validReturnReason} from './review-queue-view';
@@ -152,6 +152,14 @@ export function ReviewPanel({state,session,busy,onOverview,onInvestigations,onOr
        return <div><p>{attributionReviewStatus(first,second,state.worldModel?.case_id===caseId?state.worldModel.history:[])}</p>
         <button type="button" disabled={busy||returning||uncertain} onClick={()=>onOriginal(caseId,first.source_id,first.source_version,first.source_sha256)}>First original · v{first.source_version}, line {first.source_line}</button>{' '}
         <button type="button" disabled={busy||returning||uncertain} onClick={()=>onOriginal(caseId,second.source_id,second.source_version,second.source_sha256)}>Second original · {second.document_id} v{second.source_version}, line {second.source_line}</button>
+        <p><button type="button" disabled={busy||returning||uncertain}
+          data-testid="inspect-attribution" onClick={()=>void session.inspectAttribution(receipt.receipt_id)}>
+          Compare recorded and current passages
+        </button></p>
+        {state.attributionTarget===receipt.receipt_id&&<>
+         <p role="status">{state.attributionMessage}</p>
+         {state.attributionInspection&&<ReassessmentPassages packet={state.attributionInspection}/>}
+        </>}
        </div>;
       })()}
       <p><strong>Reason:</strong> {receipt.reason}</p>

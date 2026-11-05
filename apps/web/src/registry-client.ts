@@ -16,6 +16,7 @@ import {decodeComposerPreflight,DEFAULT_SOURCE_QUESTION} from './composer-prefli
 import type {ComposerPreflight} from './composer-preflight-view.js';
 import {decodeSavedQuestion,decodeSourceQuestions,questionSaveBlocksSourceChange} from './source-questions-view.js';
 import type {SavedQuestion,SourceQuestion} from './source-questions-view.js';
+import {decodeAttributionReassessment,type AttributionReassessment} from './attribution-reassessment.js';
 import {decodeReviewQueue,decodeReviewReturnResult,validReturnReason,FICTIONAL_RETURN_REASON} from './review-queue-view.js';
 import type {ReviewQueue,ReviewReturnResult} from './review-queue-view.js';
 import {canPrepareSourceBrief,decodeSourceBrief} from './source-brief.js';
@@ -67,6 +68,7 @@ export type ViewState = Readonly<EvidenceState & SourceImagesState & LaboratoryI
   savedQuestion:SavedQuestion|null;questionSavePhase:'idle'|'saving'|'saved'|'error';questionSaveMessage:string;
   questions:readonly SourceQuestion[]|null;questionListPhase:'idle'|'loading'|'ready'|'error';questionListMessage:string;
   questionsAccessReceiptId:string|null;questionsCaseId:string|null;
+  attributionInspection:AttributionReassessment|null;attributionTarget:string|null;attributionMessage:string;
   reviewQueue:ReviewQueue|null;reviewPhase:'idle'|'loading'|'ready'|'error';reviewMessage:string;
   reviewReturn:ReviewReturnResult|null;reviewReturnPhase:'idle'|'saving'|'saved'|'unknown'|'error';
   reviewReturnMessage:string;reviewReturnIntent:ReviewReturnIntent|null;
@@ -100,7 +102,8 @@ const messages: Record<number,string> = {
 };
 const emptyIntake=()=>({original:null,importReceipt:null,importOutcome:'idle' as const,importMessage:''});
 const emptyWorld=()=>({worldModel:null,worldPhase:'idle' as const,worldMessage:'Choose an authorized active fictional case to inspect its source-derived World Model.'});
-const emptyReview=()=>({reviewQueue:null,reviewPhase:'idle' as const,
+const emptyAttribution=()=>({attributionInspection:null,attributionTarget:null,attributionMessage:''});
+const emptyReview=()=>({...emptyAttribution(),reviewQueue:null,reviewPhase:'idle' as const,
   reviewMessage:'Open the current patient case to inspect saved questions and verification returns.',
   reviewReturn:null,reviewReturnPhase:'idle' as const,reviewReturnIntent:null,
   reviewReturnMessage:'No return action is in progress.'});
@@ -251,7 +254,7 @@ export class RegistrySession {
   // An interrupted write may already have committed. Only a freshly authorized,
   // byte-identical command in this credential/patient/case may recover its key.
   #questionRetryKeys=new Map<string,string>();
-  #reviewRead=0; #reviewWrite=0; #reviewKey=''; #reviewIntent=''; #savingReview=false;
+  #attributionRead=0; #reviewRead=0; #reviewWrite=0; #reviewKey=''; #reviewIntent=''; #savingReview=false;
   #followRead=0; #followWrite=0; #savingFollowthrough=false;
   #evidenceRead=0; #evidenceWrite=0; #savingEvidence=false;
   #quoteRead=0;
@@ -657,6 +660,42 @@ export class RegistrySession {
       if(current())this.#publish({reviewQueue:null,reviewPhase:'error',
         reviewMessage:'The current review projection could not be verified. Prior inbox content is cleared.'});
     }finally{clearTimeout(timeout);this.#controllers.delete(control);}
+  }
+
+  dismissAttributionInspection(){
+    this.#attributionRead++;
+    if(this.#state.attributionTarget)this.#publish(emptyAttribution());
+  }
+
+  async inspectAttribution(receiptId:string):Promise<void>{
+    const queue=this.#state.reviewQueue, generation=++this.#attributionRead;
+    const receipt=queue?.receipts.find(row=>row.receipt_id===receiptId);
+    const question=queue?.items.find(row=>row.question_id===receipt?.question_id);
+    if(!queue||!receipt?.comparison_source||!question||this.#state.reviewPhase!=='ready'||
+       this.#state.patient?.patient_id!==queue.patient_id||!this.#token){
+      this.#publish(emptyAttribution());return;
+    }
+    const current=()=>generation===this.#attributionRead&&queue===this.#state.reviewQueue&&
+      this.#state.reviewPhase==='ready'&&queue.patient_id===this.#state.patient?.patient_id;
+    const controller=new AbortController();this.#controllers.add(controller);
+    const timeout=setTimeout(()=>controller.abort(),10000);
+    this.#publish({attributionInspection:null,attributionTarget:receiptId,attributionMessage:'Checking both originals and their current versions…'});
+    try{
+      const url='/v1/patients/'+encodeURIComponent(queue.patient_id)+'/cases/'+encodeURIComponent(queue.case_id)+
+        '/review-returns/'+encodeURIComponent(receiptId)+'/attribution-reassessment';
+      const response=await this.transport(url,this.#init(controller));
+      if(!current())return;
+      if(response.status===401){this.#httpError(401);return;}
+      if(response.status===403||response.status===404){
+        const message='Access to the review or its original passages has changed. Refresh the inbox before continuing.';
+        this.#publish({...this.#resetDeniedCaseSources(message),reviewPhase:'error',reviewMessage:message});return;
+      }
+      if(response.status!==200)throw Error('unavailable');
+      const packet=decodeAttributionReassessment(await json(response),question,receipt);
+      if(current())this.#publish({attributionInspection:packet,attributionMessage:''});
+    }catch{
+      if(current())this.#publish({attributionInspection:null,attributionMessage:'The comparison could not be verified. Recheck the passages.'});
+    }finally{clearTimeout(timeout);this.#controllers.delete(controller);}
   }
 
   async retryReviewReturn():Promise<void>{

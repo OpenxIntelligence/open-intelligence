@@ -66,3 +66,10 @@ After an amendment, refresh Journey and choose **Check recorded attribution revi
 A changed case snapshot requires reassessment. Open the review history to inspect
 the reason and reopen either exact original with fresh source permissions.
 This workflow uses fictional credentials and records a verification request.
+
+In the return history, choose **Compare recorded and current passages** to read
+the two original quotations alongside the latest version of each document.
+The comparison follows the recorded finding key within each document. If an
+amendment moves that finding, the view shows its new line. If the key disappears,
+the view identifies the missing statement. An explicitly unassigned episode
+and a statement without an episode field are displayed separately.
