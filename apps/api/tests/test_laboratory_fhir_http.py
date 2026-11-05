@@ -43,7 +43,7 @@ class LaboratoryFHIRHTTPTests(unittest.TestCase):
 
     def setUp(self):
         with self.engine.begin() as c:
-            for name in ("investigation", "clinical_source", "coordination", "identity"):
+            for name in ("ehr", "investigation", "clinical_source", "coordination", "identity"):
                 c.execute(text("DROP SCHEMA IF EXISTS " + name + " CASCADE"))
             c.execute(text("DROP TABLE IF EXISTS public.alembic_version"))
         migrate(self.settings, "upgrade", "head")
@@ -64,7 +64,7 @@ class LaboratoryFHIRHTTPTests(unittest.TestCase):
 
     def tearDown(self):
         with self.engine.begin() as c:
-            for name in ("investigation", "clinical_source", "coordination", "identity"):
+            for name in ("ehr", "investigation", "clinical_source", "coordination", "identity"):
                 c.execute(text("DROP SCHEMA IF EXISTS " + name + " CASCADE"))
             c.execute(text("DROP TABLE IF EXISTS public.alembic_version"))
 

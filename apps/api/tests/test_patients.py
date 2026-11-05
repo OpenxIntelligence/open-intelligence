@@ -180,6 +180,7 @@ class PatientHTTPTests(unittest.TestCase):
         with self.engine.begin() as conn:
             conn.execute(text("DROP SCHEMA IF EXISTS investigation CASCADE"))
             conn.execute(text("DROP SCHEMA IF EXISTS clinical_source CASCADE"))
+            conn.execute(text("DROP SCHEMA IF EXISTS ehr CASCADE"))
             conn.execute(text("DROP SCHEMA IF EXISTS coordination CASCADE"))
             conn.execute(text("DROP SCHEMA IF EXISTS identity CASCADE"))
             conn.execute(text("DROP TABLE IF EXISTS public.alembic_version"))
@@ -196,6 +197,7 @@ class PatientHTTPTests(unittest.TestCase):
         with self.engine.begin() as conn:
             conn.execute(text("DROP SCHEMA IF EXISTS investigation CASCADE"))
             conn.execute(text("DROP SCHEMA IF EXISTS clinical_source CASCADE"))
+            conn.execute(text("DROP SCHEMA IF EXISTS ehr CASCADE"))
             conn.execute(text("DROP SCHEMA IF EXISTS coordination CASCADE"))
             conn.execute(text("DROP SCHEMA IF EXISTS identity CASCADE"))
             conn.execute(text("DROP TABLE IF EXISTS public.alembic_version"))
