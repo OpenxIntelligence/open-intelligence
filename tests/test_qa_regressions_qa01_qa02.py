@@ -26,6 +26,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
 
 from open_intelligence import __main__ as oi_main  # noqa: E402
+from open_intelligence.agent_writes import build_investigation_contract  # noqa: E402
 from open_intelligence.investigation import ValidatedInvestigation  # noqa: E402
 from open_intelligence.store import CaseStore  # noqa: E402
 
@@ -135,8 +136,10 @@ class TestAbstainedInvestigationKeepsQuestionOpen(unittest.TestCase):
                 abstentions=[{"topic": "Fictional QA topic",
                               "reason": "insufficient_evidence"}],
                 dropped=[], model="qa-replay", mode="replay")
-            store.save_investigation("CASE-QA1", qid, "evidence-summary",
-                                     abstained, "replay")
+            store.save_investigation(
+                "CASE-QA1", qid, "evidence-summary", abstained, "replay",
+                write_contract=build_investigation_contract(
+                    store, "CASE-QA1", qid, "evidence-summary", "qa-replay"))
             after = store.db.execute(
                 "SELECT state FROM questions WHERE id=?", (qid,)).fetchone()["state"]
             self.assertEqual(after, "open")

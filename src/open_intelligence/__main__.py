@@ -15,6 +15,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from tools.crossref_metadata import MetadataInputError, fetch_public_doi, project_work
 
+from .agent_writes import build_investigation_contract
 from .case_search import list_cases
 from .changes import changes_since_review
 from .packet import build_case_packet, render_packet_text
@@ -853,8 +854,16 @@ class Handler(BaseHTTPRequestHandler):
                                               facts["assertions"], facts["assessments"])
                         payload = call_meta_api(prompt, meta_api_key())
                         validated = validate_output(payload, facts["valid_sources"], facts["valid_assessments"])
+                    # Slice 1 write contract (program plan section 5.4):
+                    # the run is stored only with its complete, validated
+                    # contract attached; a missing or mismatched contract
+                    # is rejected by save_investigation below.
+                    contract = build_investigation_contract(
+                        store, case_id, question_id, template, validated.model,
+                        facts=facts)
                     investigation_id = store.save_investigation(
-                        case_id, question_id, template, validated, mode)
+                        case_id, question_id, template, validated, mode,
+                        write_contract=contract)
                     return self._json(201, store.get_investigation(case_id, investigation_id))
                 visits_record = re.fullmatch(rf"/api/cases/{ID_PART}/visits", path)
                 if visits_record:
