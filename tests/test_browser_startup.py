@@ -2,12 +2,14 @@
 import contextlib
 import http.server
 import json
+from io import BytesIO
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import threading
 import unittest
+from unittest.mock import Mock, patch
 
 import browser_journey
 
@@ -58,6 +60,24 @@ class BrowserStartupTests(unittest.TestCase):
                 self.wait(process, path.with_name("absent"), browser_journey.free_port())
             self.assertIn("exit=7", str(raised.exception))
             self.assertIn("unavailable", str(raised.exception))
+
+    def test_slow_start_waits_for_an_attachable_page(self):
+        page = {"type": "page", "webSocketDebuggerUrl": "ws://127.0.0.1/fixture"}
+        responses = [
+            ConnectionRefusedError(),
+            BytesIO(b'[{"type":"service_worker"}]'),
+            BytesIO(b'[{"type":"page"}]'),
+            BytesIO(json.dumps([page]).encode()),
+        ]
+        # Simulate a cold runner without adding a wall-clock delay to CI.
+        clock = iter([0, 0, 13, 14, 15])
+        with patch.object(browser_journey.time, "monotonic", side_effect=clock), \
+             patch.object(browser_journey.time, "sleep"), \
+             patch.object(browser_journey, "urlopen", side_effect=responses) as probe:
+            targets = browser_journey.wait_for_browser(
+                Mock(poll=Mock(return_value=None)), Path("unused.log"), 9222)
+        self.assertEqual(targets, [page])
+        self.assertEqual(probe.call_count, 4)
 
     def test_ready_target_returns_original_payload(self):
         payload = [{"type": "page", "webSocketDebuggerUrl": "ws://127.0.0.1/fixture"}]
