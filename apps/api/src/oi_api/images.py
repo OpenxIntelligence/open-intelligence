@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import asdict
+from datetime import date
 import hashlib
 import json
 import re
@@ -38,6 +39,23 @@ def _image_id(value: object) -> str:
     if type(value) is not str or re.fullmatch(r"IMG-[0-9A-F]{32}", value) is None:
         raise PatientRegistryError("Invalid image identifier")
     return value
+
+
+def _uid_relations(path):
+    study, series, instance, study_date = path
+    return ((study, ("study", study_date)), (series, ("series", study)),
+            (instance, ("instance", series)))
+
+
+def _hierarchy_agrees(selected, inventory):
+    """Compare only the UIDs touched by this import or report disclosure."""
+    expected = {}
+    for path in selected:
+        for uid, relation in _uid_relations(path):
+            if expected.setdefault(uid, relation) != relation:
+                return False
+    return all(expected.get(uid, relation) == relation
+               for path in inventory for uid, relation in _uid_relations(path))
 
 
 class PostgresSourceImages:
@@ -99,6 +117,19 @@ class PostgresSourceImages:
         except Exception:
             raise ImageIntegrityError("Stored image integrity failure") from None
 
+    def _case_paths_agree(self, case_id, selected):
+        if not selected:
+            return True
+        # _scope holds the case-binding row lock across this check and the
+        # subsequent write/receipt. Only bounded metadata leaves PostgreSQL.
+        inventory = self.registry._fetchall(
+            "SELECT study_uid,series_uid,sop_uid,study_date "
+            "FROM clinical_source.dicom_objects WHERE case_id=%s LIMIT %s",
+            (case_id, MAX_CASE_IMAGES + 1))
+        if len(inventory) > MAX_CASE_IMAGES:
+            raise ImageIntegrityError("Image inventory exceeds custody profile")
+        return _hierarchy_agrees(selected, inventory)
+
     def import_original(self, patient_id: str, case_id: str, source_id: str, original: bytes, *,
                         organization: str, actor: str, purpose: str,
                         recheck_authority: Callable[[], None],
@@ -111,6 +142,10 @@ class PostgresSourceImages:
                 raise PatientRegistryError("Unsupported image input") from None
             if not self._matches_context(identity, source, binding):
                 raise PatientRegistryError("Image context mismatch")
+            path = (identity.study_uid, identity.series_uid, identity.sop_uid,
+                    date.fromisoformat(identity.study_date))
+            if not self._case_paths_agree(case_id, [path]):
+                raise PatientRegistryConflict("Conflicting image hierarchy")
             stored = self.registry._fetchone(
                 "SELECT " + ",".join(_FIELDS) + " FROM clinical_source.dicom_objects "
                 "WHERE case_id=%s AND sop_uid=%s", (case_id, identity.sop_uid))
@@ -141,7 +176,6 @@ class PostgresSourceImages:
                     + ",".join("%s::date" if name == "study_date" else "%s" for name in _FIELDS) + ")",
                     tuple(row[name] for name in _FIELDS))
                 # Metadata serialization uses the same date type as PostgreSQL.
-                from datetime import date
                 row["study_date"] = date.fromisoformat(identity.study_date)
             if result != "duplicate":
                 self.registry._execute(
@@ -169,21 +203,33 @@ class PostgresSourceImages:
              prepare_response: Callable[[dict], PreparedResponse] | None = None) -> dict | PreparedResponse:
         with self.registry.transaction():
             revision, source, binding = self._scope(patient_id, case_id, source_id, organization, purpose)
-            fields = tuple(name for name in _FIELDS if name != "raw")
+            # A metadata index also discloses source-bound image identities.
+            # Check the current custody budget before fetching any bytea.
+            count, size = self.registry._fetchone(
+                "SELECT count(*),coalesce(sum(byte_count),0) "
+                "FROM clinical_source.dicom_objects o JOIN clinical_source.source_image_links l "
+                "ON l.image_id=o.image_id WHERE o.case_id=%s AND l.source_id=%s",
+                (case_id, source_id))
+            if count > MAX_CASE_IMAGES or size > MAX_CASE_IMAGE_BYTES:
+                raise ImageIntegrityError("Image index exceeds custody profile")
             rows = self.registry._fetchall(
-                "SELECT " + ",".join("o." + name for name in fields)
+                "SELECT " + ",".join("o." + name for name in _FIELDS)
                 + " FROM clinical_source.dicom_objects o JOIN clinical_source.source_image_links l "
                 "ON l.image_id=o.image_id WHERE o.case_id=%s AND l.source_id=%s ORDER BY o.image_id LIMIT %s",
                 (case_id, source_id, MAX_CASE_IMAGES + 1))
-            if len(rows) > MAX_CASE_IMAGES:
-                raise ImageIntegrityError("Image index exceeds custody profile")
+            if len(rows) != count:
+                raise ImageIntegrityError("Image index changed during validation")
             images = []
+            paths = []
             for values in rows:
-                row = dict(zip(fields, values))
-                if (row["patient_id"], row["issuer"], row["study_date"]) != (
-                        binding[2], self._issuer(binding), source["event_date"]):
-                    raise ImageIntegrityError("Stored image context failure")
+                row = dict(zip(_FIELDS, values))
+                # Reuse original-read hash and DICOM identity validation.
+                # One bad original withholds all metadata and the new receipt.
+                self._validated_object(row, source, binding)
+                paths.append((row["study_uid"], row["series_uid"], row["sop_uid"], row["study_date"]))
                 images.append(self._metadata(row, source_id))
+            if not self._case_paths_agree(case_id, paths):
+                raise ImageIntegrityError("Stored image hierarchy conflict")
             result = {"patient_id": patient_id, "case_id": case_id, "source_id": source_id,
                       "images": images, "synthetic": True, "source_identity_verified": False}
             snapshot = hashlib.sha256(json.dumps(result, sort_keys=True, ensure_ascii=False,

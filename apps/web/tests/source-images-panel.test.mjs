@@ -27,3 +27,21 @@ test('existing source reader exposes image inspection only for a current imaging
  assert.equal((html.match(/data-testid="ask-source-question"/g)||[]).length,1);
  assert.ok(html.includes(sourceId));assert.ok(!html.includes('type="file"'),'image inspection does not introduce automatic image upload');
 });
+
+test('the source reader nests each original under its own study and series',async()=>{
+ const {images,image}=await import('./source-images-fixtures.mjs');
+ const projection=images();
+ const member=(n,study,series)=>({...image(),image_id:'IMG-'+String(n).repeat(32),
+  study_uid:study,series_uid:series,sop_uid:'2.25.90'+n});
+ projection.images=[
+  member(1,'2.25.101','2.25.102'),member(2,'2.25.201','2.25.202'),
+  member(3,'2.25.101','2.25.103'),member(4,'2.25.101','2.25.102')];
+ const html=renderToStaticMarkup(createElement(SourceReading,{index:sourceIndex(),view:'patient',
+  filters:{query:'',versionState:'all'},onFiltersChange(){},busy:false,questionBusy:false,
+  onAskQuestion(){},onOpenOriginal(){},sourceImages:projection,sourceImagesPhase:'ready',sourceImagesSourceId:sourceId}));
+ assert.equal((html.match(/data-testid="source-image-study"/g)||[]).length,2);
+ assert.equal((html.match(/data-testid="source-image-series"/g)||[]).length,3);
+ assert.equal((html.match(/data-testid="source-image-download"/g)||[]).length,4);
+ const imageIds=[...html.matchAll(/data-image-id="([^"]+)"/g)].map(match=>match[1]);
+ assert.deepEqual(imageIds,[1,4,3,2].map(n=>'IMG-'+String(n).repeat(32)));
+});

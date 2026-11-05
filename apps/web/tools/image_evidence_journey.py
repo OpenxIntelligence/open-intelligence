@@ -141,6 +141,12 @@ def exercise(cd, patient_id, token, credentials, write_grants, directory, artifa
         assert payload['synthetic'] is True and payload['source_identity_verified'] is False
         assert len(payload['images']) == expected_count
         assert cd.evaluate("document.querySelectorAll('[data-testid=source-image-row]').length") == expected_count
+        displayed = cd.evaluate("""Array.from(document.querySelectorAll('[data-testid=source-image-row]'), row => [
+            row.closest('[data-testid=source-image-study]').dataset.studyUid,
+            row.closest('[data-testid=source-image-series]').dataset.seriesUid,
+            row.dataset.imageId])""")
+        assert sorted(displayed) == sorted([item['study_uid'], item['series_uid'], item['image_id']]
+                                           for item in payload['images'])
         return payload
 
     def download_image(source_id, label, *, denied=False):

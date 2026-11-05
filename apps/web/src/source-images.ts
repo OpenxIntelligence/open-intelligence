@@ -43,6 +43,12 @@ export function decodeSourceImages(value:unknown,patientId:string,caseId:string,
   typeof value.access_receipt_id!=='string'||!RECEIPT.test(value.access_receipt_id)||
   value.synthetic!==true||value.source_identity_verified!==false||!Array.isArray(value.images)||value.images.length>256)throw Error('image index');
  const images:SourceImage[]=[],seen=new Set<string>();let total=0;
+ const hierarchy = new Map<string, string>();
+ function bindUid(uid: string, owner: string) {
+  const previous = hierarchy.get(uid);
+  if (previous !== undefined && previous !== owner) throw Error('image hierarchy');
+  hierarchy.set(uid, owner);
+ }
  for(const raw of value.images){
   if(!exact(raw,['image_id','source_id','case_id','sha256','byte_count','study_uid','series_uid','sop_uid','modality','study_date'])||
    typeof raw.image_id!=='string'||!IMAGE.test(raw.image_id)||seen.has(raw.image_id)||
@@ -50,6 +56,9 @@ export function decodeSourceImages(value:unknown,patientId:string,caseId:string,
    typeof raw.byte_count!=='number'||!Number.isSafeInteger(raw.byte_count)||raw.byte_count<132||raw.byte_count>MAX_BYTES||
    !uid(raw.study_uid)||!uid(raw.series_uid)||!uid(raw.sop_uid)||raw.modality!=='CT'||
    !day(raw.study_date)||raw.study_date!==source.event_date)throw Error('image index');
+  bindUid(raw.study_uid, 'study');
+  bindUid(raw.series_uid, 'series:' + raw.study_uid);
+  bindUid(raw.sop_uid, 'instance:' + raw.image_id);
   total+=raw.byte_count;if(total>67_108_864)throw Error('image index');
   seen.add(raw.image_id);images.push(Object.freeze({...raw} as SourceImage));
  }

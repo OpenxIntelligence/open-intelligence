@@ -1,3 +1,4 @@
+import {LaboratoryResultBrowser,LaboratoryResultRow} from './laboratory-result-browser';
 import {SourceOncologyLabel} from './source-oncology-label';
 import type {WorldObservation} from './source-world-model';
 import {LaboratoryQuestionPanel,SavedLaboratoryQuestions} from './laboratory-question-panel';
@@ -91,30 +92,13 @@ export function WorldModelView({session,state,onOverview,busy,showQuestions=fals
         {model.laboratory_observations.length>0&&<section aria-labelledby="laboratory-results-heading" data-testid="world-laboratory-results">
           <h3 id="laboratory-results-heading">Laboratory results (<span data-testid="world-laboratory-count">{model.summary.current_laboratory_observations}</span>)</h3>
           <p>Values, units and dates are reported by the source. An absent result is not a negative result. Clinical interpretation and reference-range assessment have not been performed.</p>
-          <ol className="world-observations">{model.laboratory_timeline.map(entry=>{
+          <LaboratoryResultBrowser key={'labs:'+model.access_receipt_id}>{model.laboratory_timeline.map(entry=>{
             const item=laboratoryByRef.get(entry.source_id+':'+entry.observation_reference)!;
-            return <li key={item.source_id+':'+item.observation_reference} data-testid="world-laboratory-observation">
-              <p><strong>LOINC {item.loinc_code}</strong> · <time dateTime={item.effective_at}>{item.effective_at}</time></p>
-              <p data-testid="world-laboratory-value">{item.status==='reported_value'?<><strong>{item.value_text}</strong> <code>{item.unit_code}</code> (UCUM)</>:<>Result absent · source reason: <strong>{item.absent_reason}</strong></>}</p>
-              <p>{item.specimen_type_text} · Source-reported, not clinically reviewed</p>
-              <details><summary>Inspect result provenance</summary>
-                <dl>
-                  <dt>Original report</dt><dd>{item.document_id} · version {item.document_version}</dd>
-                  <dt>Observation reference</dt><dd><code>{item.observation_reference}</code></dd>
-                  <dt>Report reference</dt><dd><code>{item.report_reference}</code></dd>
-                  <dt>Specimen reference</dt><dd><code>{item.specimen_reference}</code></dd>
-                  <dt>Specimen collected</dt><dd><time dateTime={item.specimen_collected_at}>{item.specimen_collected_at}</time></dd>
-                  <dt>Result effective</dt><dd><time dateTime={item.effective_at}>{item.effective_at}</time></dd>
-                  <dt>Result issued</dt><dd><time dateTime={item.issued_at}>{item.issued_at}</time></dd>
-                  <dt>Source identity</dt><dd><code>{item.source_id}</code></dd>
-                  <dt>Original SHA-256</dt><dd><code>{item.source_sha256}</code></dd>
-                </dl>
-                <p>The reference above locates this result within its exact original.</p>
-                {onRecords&&<button type="button" data-testid="world-laboratory-records" disabled={loading||busy}
-                  onClick={()=>onRecords(model.case_id)}>Open report versions in Records</button>}
-              </details>
-            </li>;
-          })}</ol>
+            return <LaboratoryResultRow key={item.source_id+':'+item.observation_reference} result={item}>
+              {onRecords&&<button type="button" data-testid="world-laboratory-records" disabled={loading||busy}
+                onClick={()=>onRecords(model.case_id)}>Open report versions in Records</button>}
+            </LaboratoryResultRow>;
+          })}</LaboratoryResultBrowser>
           {state.worldPhase==='ready'&&<LaboratoryQuestionPanel key={model.access_receipt_id} session={session} model={model} state={state} busy={loading||busy} sourceSavePending={questionSaveBlocksSourceChange(state)}/>}
         </section>}
         {state.worldPhase==='ready'&&<SavedLaboratoryQuestions session={session} model={model} state={state} busy={loading||busy} sourceSavePending={questionSaveBlocksSourceChange(state)}/>}

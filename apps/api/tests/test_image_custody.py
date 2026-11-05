@@ -170,6 +170,47 @@ class ImageCustodyHTTPTests(SourceVersionFixture):
         self.assertEqual(self.rows("SELECT count(*) FROM clinical_source.dicom_objects")[0][0], 1)
         self.assertEqual(self.rows("SELECT count(*) FROM clinical_source.source_image_links")[0][0], 2)
 
+    def test_concurrent_imports_cannot_assign_one_series_to_two_studies(self):
+        with running_server(create_app(self.settings)) as base:
+            patient, _, path = self.prepare(base)
+            other = self.ingest(base, patient, REPORT.replace("DOC-IMAGE", "DOC-OTHER"))[1]
+            other_path = self.url(patient) + "/" + other["source_id"] + "/images"
+            inputs = [(path, image_bytes()), (other_path, image_bytes(study_uid="2.25.108", sop_uid="2.25.109"))]
+            start = threading.Barrier(2)
+
+            def submit(item):
+                target, raw = item
+                start.wait(timeout=5)
+                return image_request(base, target, raw=raw)
+
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                outcomes = list(pool.map(submit, inputs))
+            self.assertEqual(sorted(item[0] for item in outcomes), [201, 409])
+            for (target, raw), (status, response, _) in zip(inputs, outcomes):
+                index = image_request(base, target)[1]["images"]
+                if status == 201:
+                    self.assertEqual([item["image_id"] for item in index], [response["image_id"]])
+                    self.assertEqual(image_request(base, target, raw=raw)[1]["result"], "duplicate")
+                else:
+                    self.assertEqual(index, [])
+            self.assertEqual(len(self.events("AND event_type='image.original_imported'")), 1)
+            self.assertEqual(self.rows("SELECT count(*) FROM clinical_source.source_image_links")[0][0], 1)
+
+    def test_legacy_conflict_across_reports_withholds_index_and_preserves_original_access(self):
+        with running_server(create_app(self.settings)) as base:
+            patient, _, path = self.prepare(base)
+            original = image_request(base, path, raw=image_bytes())[1]
+            second = self.ingest(base, patient, REPORT.replace("DOC-IMAGE", "DOC-OTHER"))[1]
+            other_path = self.url(patient) + "/" + second["source_id"] + "/images"
+            with patch.object(PostgresSourceImages, "_case_paths_agree", return_value=True):
+                # Reproduce a valid pair of originals admitted by the previous writer.
+                self.assertEqual(image_request(base, other_path, raw=image_bytes(
+                    study_uid="2.25.108", sop_uid="2.25.109"))[0], 201)
+            for target in (path, other_path):
+                self.assertEqual(image_request(base, target)[:2], (503, {"detail": "Patient registry unavailable"}))
+            self.assertEqual(self.events("AND event_type='image.read_authorized'"), [])
+            self.assertEqual(image_request(base, path + "/" + original["image_id"])[:2], (200, image_bytes()))
+
     def test_same_sop_changed_date_is_conflict_rather_than_stored_corruption(self):
         with running_server(create_app(self.settings)) as base:
             patient, source, path = self.prepare(base)
@@ -315,6 +356,8 @@ class ImageCustodyHTTPTests(SourceVersionFixture):
                     connection.execute(text("UPDATE clinical_source.dicom_objects SET raw=:raw,sha256=:sha,byte_count=:n WHERE image_id=:id"),
                                        {"raw": raw, "sha": digest, "n": len(raw), "id": image_id})
                     connection.exec_driver_sql("ALTER TABLE clinical_source.dicom_objects ENABLE TRIGGER oi_image_update_guard")
+                self.assertEqual(image_request(base, path)[:2],
+                                 (503, {"detail": "Patient registry unavailable"}))
                 self.assertEqual(image_request(base, path + "/" + image_id)[:2],
                                  (503, {"detail": "Patient registry unavailable"}))
             self.assertEqual(self.events("AND event_type LIKE '%read_authorized'"), [])

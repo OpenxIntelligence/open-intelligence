@@ -164,3 +164,15 @@ for(const transition of ['patient','case','source-refresh','dismiss']){
   assert.equal(blobs.length,0);assert.equal(links.length,0);assert.equal(s.snapshot().sourceImageDownload,null);
  });
 }
+
+test('ambiguous study, series or instance identities withhold all linked image controls',async()=>{
+ for(const conflict of [{study_uid:'2.25.900'}, {sop_uid:image().sop_uid},
+                         {series_uid:image().study_uid}, {sop_uid:image().series_uid}]){
+  const index=images();
+  index.images.push({...image(),image_id:'IMG-'+'E'.repeat(32),sop_uid:'2.25.908',...conflict});
+  const session=new RegistrySession(transportForImages(url=>url.endsWith('/images')?response(index):undefined));
+  await readyImages(session);await session.loadSourceImages(sourceId);
+  assert.equal(session.snapshot().sourceImagesPhase,'error');
+  assert.equal(session.snapshot().sourceImages,null);
+ }
+});
