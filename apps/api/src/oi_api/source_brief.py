@@ -111,6 +111,10 @@ def render_source_brief(world: dict, question: dict, selected_source: dict, *,
                           f'Source-reported state: {finding["reported_state"]}',
                           f'Original line: {finding["source_line"]}',
                           "Exact source statement (literal text):", finding["source_statement"]]
+                if "oncology" in finding:
+                    context = finding["oncology"]
+                    lines.append(f'Source oncology role: {context["role"]}. '
+                                 f'episode: {context["episode_id"] or "unassigned"}')
     by_anchor = {(item["source_id"], item["source_line"]): item
                  for item in world["observations"]}
     lines += ["", "UNRESOLVED SOURCE STATEMENTS"]

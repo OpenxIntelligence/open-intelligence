@@ -88,11 +88,19 @@ def valid_purpose(value: object) -> str:
 
 
 @dataclass(frozen=True)
+class OncologyAttribution:
+    """Explicit case-local attribution on an authored synthetic source line."""
+    role: str
+    episode_id: str | None
+
+
+@dataclass(frozen=True)
 class Finding:
     key: str
     state: str
     quote: str
     line: int
+    oncology: OncologyAttribution | None = None
 
 
 @dataclass(frozen=True)
@@ -108,7 +116,7 @@ class ParsedReport:
     raw: bytes
 
 
-def parse_report(raw: bytes) -> ParsedReport:
+def parse_report(raw: bytes, *, allow_oncology: bool = False) -> ParsedReport:
     """Parse intentionally structured, independently authored OI test reports.
 
     This is not a general clinical-document extractor. Finding lines are explicit
@@ -123,8 +131,9 @@ def parse_report(raw: bytes) -> ParsedReport:
     if "\x00" in text or "\r" in text:
         raise InvalidInput("NUL and CR characters are not supported in this report format")
     lines = text.splitlines()
-    if not lines or lines[0] != "OI-SYNTHETIC-REPORT/1":
-        raise InvalidInput("Only OI-SYNTHETIC-REPORT/1 is supported")
+    oncology_format = allow_oncology and bool(lines) and lines[0] == "OI-SYNTHETIC-REPORT/2"
+    if not oncology_format and (not lines or lines[0] != "OI-SYNTHETIC-REPORT/1"):
+        raise InvalidInput("Unsupported synthetic report format" if allow_oncology else "Only OI-SYNTHETIC-REPORT/1 is supported")
     fields: dict[str, str] = {}
     findings: list[Finding] = []
     used_keys: set[str] = set()
@@ -135,8 +144,21 @@ def parse_report(raw: bytes) -> ParsedReport:
         if ": " not in line:
             raise InvalidInput(f"Line {line_number}: expected 'Field: value'")
         label, value = line.split(": ", 1)
-        if label == "Finding":
-            parts = value.split("|", 2)
+        if label == "Finding" or (oncology_format and label == "Oncology-Finding"):
+            oncology = None
+            if label == "Oncology-Finding":
+                parts = value.split("|", 4)
+                if len(parts) != 5:
+                    raise InvalidInput(f"Line {line_number}: expected key|role|episode|state|quotation")
+                key, role, episode, state, quote = parts
+                if role not in ("primary", "metastasis"):
+                    raise InvalidInput(f"Line {line_number}: unknown oncology role")
+                if episode != "?" and not re.fullmatch(r"EP-[A-Z0-9][A-Z0-9-]{0,35}", episode):
+                    raise InvalidInput(f"Line {line_number}: expected case-local EP- identifier or ?")
+                oncology = OncologyAttribution(role, None if episode == "?" else episode)
+                parts = [key, state, quote]
+            else:
+                parts = value.split("|", 2)
             if len(parts) != 3:
                 raise InvalidInput(f"Line {line_number}: finding needs key|state|source quotation")
             key, state, quote = (part.strip() for part in parts)
@@ -144,7 +166,7 @@ def parse_report(raw: bytes) -> ParsedReport:
                 raise InvalidInput(f"Line {line_number}: invalid or repeated finding key/status/quotation")
             if len(quote) > 1200:
                 raise InvalidInput(f"Line {line_number}: quotation too long")
-            findings.append(Finding(key, state, quote, line_number))
+            findings.append(Finding(key, state, quote, line_number, oncology))
             used_keys.add(key)
         elif label in field_names and label not in fields and value.strip():
             fields[label] = value.strip()

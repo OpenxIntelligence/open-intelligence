@@ -1,3 +1,4 @@
+import type {WorldObservation} from './source-world-model';
 import type {RegistrySession,ViewState} from './registry-client';
 import {SourceQuestionPanel} from './source-question-panel';
 
@@ -21,6 +22,32 @@ export function WorldModelView({session,state,onOverview,busy,showQuestions=fals
   const loading=state.worldPhase==='loading'||state.recordsPhase.startsWith('loading');
   const model=state.worldModel;
   const laboratoryByRef=new Map(model?.laboratory_observations.map(item=>[item.source_id+':'+item.observation_reference,item])??[]);
+  const episodes=new Map<string|null,WorldObservation[]>();
+  const ordinary:WorldObservation[]=[];
+  for(const item of model?.observations??[]){
+    if(!item.oncology){ordinary.push(item);continue;}
+    const id=item.oncology.episode_id;
+    const group=episodes.get(id);
+    if(group)group.push(item);
+    else episodes.set(id,[item]);
+  }
+  const statementList=(items:readonly WorldObservation[])=>
+    <ul className="world-observations">{items.map(item=><li key={item.source_id+':'+item.source_line} data-testid="world-observation">
+      <p><strong>{item.finding_key}</strong> · <span data-testid="world-reported-state">{item.reported_state}</span> · {item.event_date}</p>
+      {item.oncology&&<p>Source-reported role · {item.oncology.role}</p>}
+      <blockquote data-testid="world-statement">{item.source_statement}</blockquote>
+      <small>Not clinically established · {item.document_id} v{item.document_version} · <code>{item.source_id}</code> · line {item.source_line}</small>
+      <div className="source-context-action"><button type="button" data-testid="composer-preflight"
+        disabled={loading||busy||state.composerPhase==='loading'||state.questionSaveMessage.startsWith('Save outcome unknown.')}
+        onClick={()=>{session.chooseQuestionDraft(item.source_id,item.source_line);void session.prepareDraftQuestion();onInvestigations?.();}}>
+        Prepare source-only question context
+      </button>{' '}
+      <button type="button" data-testid="choose-question-draft"
+        disabled={loading||busy||state.questionSavePhase==='saving'||state.questionSaveMessage.startsWith('Save outcome unknown.')}
+        onClick={()=>{session.chooseQuestionDraft(item.source_id,item.source_line);onInvestigations?.();}}>
+        Write a source-linked question
+      </button></div>
+    </li>)}</ul>;
   return <section className="panel source-world" aria-labelledby="world-heading" data-testid="world-workspace" data-view={showQuestions?'investigations':'journey'}>
     <span className="step">SOURCE-LINKED PATIENT CONTEXT / SYNTHETIC ONLY</span>
     <h2 id="world-heading">{showQuestions?'Source-linked investigations':'Patient World Model — source-only view'}</h2>
@@ -85,28 +112,23 @@ export function WorldModelView({session,state,onOverview,busy,showQuestions=fals
             </li>;
           })}</ol>
         </section>}
+        {episodes.size>0&&<section aria-label="Source-reported cancer episodes">
+          <h3>Source-reported cancer episodes</h3>
+          <p>Reports are grouped by the episode identifier in the original finding. Each statement retains its reported status.</p>
+          {Array.from(episodes,([episode,items])=><section key={episode??'?'}>
+            <h4>{episode===null?'Episode unassigned':`Episode ${episode}`}</h4>
+            {statementList(items)}
+          </section>)}
+        </section>}
+        {(ordinary.length>0||episodes.size===0)&&<>
         <h3>Original source-reported statements</h3>
         <p>These are literal reported statements, not established clinical facts. A missing or pending item must never be interpreted as a negative finding.</p>
-        {model.observations.length===0?<p>No additional source-reported statements are available.</p>:
-        <ul className="world-observations">{model.observations.map(item=><li key={item.source_id+':'+item.source_line} data-testid="world-observation">
-          <p><strong>{item.finding_key}</strong> · <span data-testid="world-reported-state">{item.reported_state}</span> · {item.event_date}</p>
-          <blockquote data-testid="world-statement">{item.source_statement}</blockquote>
-          <small>Not clinically established · <code>{item.source_id}</code> · line {item.source_line}</small>
-          <div className="source-context-action"><button type="button" data-testid="composer-preflight"
-            disabled={loading||busy||state.composerPhase==='loading'||state.questionSaveMessage.startsWith('Save outcome unknown.')}
-            onClick={()=>{session.chooseQuestionDraft(item.source_id,item.source_line);void session.prepareDraftQuestion();onInvestigations?.();}}>
-            Prepare source-only question context
-          </button>{' '}
-          <button type="button" data-testid="choose-question-draft"
-            disabled={loading||busy||state.questionSavePhase==='saving'||state.questionSaveMessage.startsWith('Save outcome unknown.')}
-            onClick={()=>{session.chooseQuestionDraft(item.source_id,item.source_line);onInvestigations?.();}}>
-            Write a source-linked question
-          </button></div>
-        </li>)}</ul>}
+        {ordinary.length===0?<p>No additional source-reported statements are available.</p>:
+        statementList(ordinary)}</>}
         {model.conflicts.length>0&&<section aria-labelledby="source-disagreements">
           <h3 id="source-disagreements">Unresolved source disagreements</h3>
           <p>Conflicting source-reported states for the same documented specimen, date and finding; no clinical adjudication is performed.</p>
-          <ul>{model.conflicts.map(item=><li key={item.specimen_id+':'+item.event_date+':'+item.finding_key} data-testid="world-conflict">
+          <ul>{model.conflicts.map(item=><li key={item.source_refs[0].source_id+':'+item.source_refs[0].source_line} data-testid="world-conflict">
             <strong>{item.finding_key}</strong> · specimen {item.specimen_id} · {item.event_date} · reported states {item.reported_states.join(' / ')}
             <p>{item.source_refs.map(ref=><code key={ref.source_id+':'+ref.source_line}>{ref.source_id} line {ref.source_line}; </code>)}</p>
           </li>)}</ul>

@@ -245,6 +245,11 @@ class SourceVersion(Contract):
     supersedes_id: str | None
 
 
+class ReportedOncologyContext(Contract):
+    role: Literal["primary", "metastasis"]
+    episode_id: str | None = Field(pattern=r"^EP-[A-Z0-9][A-Z0-9-]{0,35}$")
+
+
 class SourceFinding(Contract):
     source_id: str
     finding_key: str
@@ -252,6 +257,7 @@ class SourceFinding(Contract):
     source_statement: str
     source_line: int
     clinical_review_state: Literal["not_established"] = "not_established"
+    oncology: ReportedOncologyContext | None = Field(default=None, exclude_if=lambda value: value is None)
 
 
 class OriginalSourceIndex(Contract):
@@ -300,6 +306,7 @@ class WorldObservation(Contract):
     issued_at: str
     review_state: Literal["not_established"]
     clinical_meaning: None
+    oncology: ReportedOncologyContext | None = Field(default=None, exclude_if=lambda value: value is None)
 
 
 class WorldLaboratoryObservation(Contract):

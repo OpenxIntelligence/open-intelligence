@@ -24,7 +24,7 @@ export function SourceIntake({session,caseId,patientId,sending}:{session:Registr
  }
  return <><section className="intake-panel" aria-labelledby="source-intake-heading" data-testid="source-intake">
   <h3 id="source-intake-heading">Add an original fictional record</h3>
-  <p>Patient <code>{patientId}</code> · case <code>{caseId}</code>. Only authored <code>OI-SYNTHETIC-REPORT/1</code> UTF-8 text with LF line endings is supported here. No PDF extraction or clinical inference.</p>
+  <p>Patient <code>{patientId}</code> · case <code>{caseId}</code>. Choose an authored UTF-8 synthetic report (version 1 or 2) with LF line endings. Version 2 accepts explicit cancer episode labels.</p>
   <form onSubmit={e=>{e.preventDefault();if(prepared)void session.importSource(caseId,prepared.text,confirmed)}}>
    <label htmlFor="original-file">Original .txt file (up to 64 KiB)</label>
    <input ref={file} id="original-file" type="file" accept=".txt,text/plain" disabled={sending} onChange={()=>void select()} aria-describedby="file-status"/>

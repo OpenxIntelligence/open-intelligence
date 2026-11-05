@@ -19,7 +19,7 @@ function projection(){
  const timeline=observations.map(o=>({source_id:o.source_id,observation_reference:o.observation_reference,loinc_code:o.loinc_code,effective_at:o.effective_at,issued_at:o.issued_at,specimen_reference:o.specimen_reference,status:o.status,clinical_interpretation:'not_performed'})).reverse();
  return {contract:'oi.pg-source-world-model/1',patient_id:patient,case_id:caseId,access_receipt_id:'ACCESS-'+'C'.repeat(32),synthetic:true,authority:'source_report_only_unreviewed',clinical_interpretation:false,research_review_invalidation_integrated:false,composer_execution_authorized:false,snapshot_fingerprint:'d'.repeat(64),as_of_received_at:src.received_at,summary:{current_sources:1,historical_sources:0,current_observations:3,current_laboratory_observations:3,unresolved_observations:1,source_disagreements:0},current_sources:[src],history:[],observations:[],laboratory_observations:observations,laboratory_timeline:timeline,unresolved_refs:[],conflicts:[],limitations:['Independently fictional; source-reported only.']};
 }
-const render=model=>renderToStaticMarkup(createElement(WorldModelView,{session:{},state:{patient:{patient_id:patient},cases:[],worldPhase:'ready',recordsPhase:'ready',worldMessage:'Fresh read',worldModel:model},busy:false,onOverview(){}}));
+const render=model=>renderToStaticMarkup(createElement(WorldModelView,{session:{},state:{patient:{patient_id:patient},cases:[],worldPhase:'ready',recordsPhase:'ready',worldMessage:'Fresh read',questionSaveMessage:'',worldModel:model},busy:false,onOverview(){}}));
 test('laboratory-only projection renders zero, negative and absent results with exact unreviewed provenance',()=>{
  const html=render(parseSourceWorldModel(projection(),patient,caseId));
  assert.equal((html.match(/data-testid="world-laboratory-observation"/g)||[]).length,3);
@@ -57,5 +57,35 @@ test('laboratory Records actions are unavailable while the scope is loading or b
  for(const state of [{worldPhase:'loading',recordsPhase:'ready',busy:false},{worldPhase:'ready',recordsPhase:'loading-original',busy:false},{worldPhase:'ready',recordsPhase:'ready',busy:true}]){
  const tree=WorldModelView({session:{},state:{patient:{patient_id:patient},cases:[],worldModel:parseSourceWorldModel(projection(),patient,caseId),...state},busy:state.busy,onOverview(){},onRecords(){}});
  const buttons=nodes(tree).filter(n=>n.props?.['data-testid']==='world-laboratory-records');assert.equal(buttons.length,3);assert.ok(buttons.every(b=>b.props.disabled));
+ }
+});
+
+test('Journey separates simultaneous primaries and an indeterminate lesion with unattributed origin',()=>{
+ const w=projection(), src=w.current_sources[0];
+ const contexts=[{role:'primary',episode_id:'EP-A'},{role:'primary',episode_id:'EP-B'},
+   {role:'metastasis',episode_id:null}];
+ w.observations=contexts.map((oncology,i)=>({
+   source_id:src.source_id,document_id:src.document_id,document_version:src.version,
+   source_sha256:src.sha256,source_kind:src.kind,finding_key:'finding-'+i,
+   reported_state:i===2?'indeterminate':'reported',source_statement:'Fictional statement '+i,
+   source_line:i+8,specimen_id:src.specimen_id,event_date:src.event_date,issued_at:src.issued_at,
+   review_state:'not_established',clinical_meaning:null,oncology,
+ }));
+ w.unresolved_refs.push({source_id:src.source_id,source_line:10});
+ w.summary.unresolved_observations++;w.summary.current_observations+=3;
+ const html=render(parseSourceWorldModel(w,patient,caseId));
+ for(const [label,quote] of [['Episode EP-A','Fictional statement 0'],['Episode EP-B','Fictional statement 1'],
+      ['Episode unassigned','Fictional statement 2']]){
+   assert.ok(html.indexOf(label)>=0 && html.indexOf(label)<html.indexOf(quote));
+   assert.equal(html.split(quote).length,2);
+ }
+ assert.ok(html.indexOf('Fictional statement 0')<html.indexOf('Episode EP-B'));
+ assert.ok(html.indexOf('Fictional statement 1')<html.indexOf('Episode unassigned'));
+ assert.match(html,/indeterminate/);
+ assert.doesNotMatch(render(null),/Episode EP-|Fictional statement/);
+ for(const bad of [{role:'confirmed',episode_id:'EP-A'},{role:'primary',episode_id:''},
+      {role:'metastasis',episode_id:'EP-A',clinically_confirmed:true},null]){
+   w.observations[0].oncology=bad;
+   assert.throws(()=>parseSourceWorldModel(w,patient,caseId));
  }
 });

@@ -123,6 +123,44 @@ class SourceWorldModelHTTPTests(SourceFixture):
                                 and x["clinical_meaning"] is None
                                 for x in body["observations"]))
 
+    def test_cancer_episode_attribution_is_versioned_scoped_and_never_inferred(self):
+        from test_oncology_findings import HEADER, LINES
+
+        with running_server(create_app(self.settings)) as base:
+            patient = self.setup_case(base)
+            status, first, _ = self.ingest(base, patient, HEADER + LINES)
+            self.assertEqual(status, 201)
+            route = self.world_url(patient)
+            before = request(base, route, token=TOKEN_A)[1]
+            indexed = request(base, self.url(patient), token=TOKEN_A)[1]["source_reported_assertions"]
+            expected = [
+                {"role": "primary", "episode_id": "EP-A"},
+                {"role": "primary", "episode_id": "EP-B"},
+                {"role": "metastasis", "episode_id": None}, None,
+            ]
+            self.assertEqual([x.get("oncology") for x in before["observations"]], expected)
+            self.assertEqual([x.get("oncology") for x in indexed], expected)
+            self.assertEqual(before["observations"][2]["reported_state"], "indeterminate")
+            # Same day, specimen and key alone cannot tie different tumors together.
+            second = HEADER.replace("DOC-ALPHA", "DOC-OTHER") + (
+                "Oncology-Finding: breast|primary|EP-B|negative|Fictional negative statement.\n")
+            self.assertEqual(self.ingest(base, patient, second)[0], 201)
+            self.assertEqual(request(base, route, token=TOKEN_A)[1]["conflicts"], [])
+            # The author explicitly resolves the origin on a new version only.
+            amended = HEADER + "Amends: DOC-ALPHA@1\n" + LINES.replace("metastasis|?", "metastasis|EP-B")
+            self.assertEqual(self.ingest(base, patient, amended)[0], 201)
+            after = request(base, route, token=TOKEN_A)[1]
+            nodule = next(x for x in after["observations"] if x["finding_key"] == "nodule")
+            self.assertEqual((nodule["oncology"], nodule["document_version"], nodule["source_line"]),
+                             ({"role": "metastasis", "episode_id": "EP-B"}, 2, 11))
+            self.assertEqual(nodule["reported_state"], "indeterminate")
+            self.assertNotEqual(before["snapshot_fingerprint"], after["snapshot_fingerprint"])
+            prior = request(base, self.url(patient) + "/" + first["source_id"], token=TOKEN_A)[1]
+            self.assertEqual(prior["original_text"], HEADER + LINES)
+            self.creds[0]["actions"].remove("source_read")
+            self.write()
+            self.assertEqual(request(base, route, token=TOKEN_A)[0], 404)
+
     def test_typed_laboratory_projection_does_not_change_source_snapshot_fingerprint(self):
         index = {
             "contract":"oi.synthetic-original-sources/1",

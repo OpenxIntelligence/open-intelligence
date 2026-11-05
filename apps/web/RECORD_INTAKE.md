@@ -11,7 +11,7 @@ The patient must exist in the canonical registry and have an exact patient grant
 ## Browser workflow
 
 1. Open an authorized fictional patient in Overview. Choose Records, check authorized cases and inspect the selected case's source versions.
-2. Choose an independently authored fictional `.txt` report in the existing `OI-SYNTHETIC-REPORT/1` format. Its Patient field must use the selected case reference. Inspect the literal local preview; selection does not upload.
+2. Choose an independently authored fictional `.txt` report in the `OI-SYNTHETIC-REPORT/1` or `OI-SYNTHETIC-REPORT/2` format. Its Patient field must use the selected case reference. Inspect the literal local preview; selection does not upload.
 3. Confirm fictional input and explicitly import. The original bytes are preserved: no newline normalization, source identity rewriting or medical extraction. The interface separately reports imported, duplicate or quarantined. A lost response, server error or malformed receipt is **unknown**, not a proof of rollback. Nothing is automatically retried.
 4. Choose Inspect original on a current or historical version. The API checks original-read authority separately; the client verifies source/case/document/version/state and SHA-256 before showing inert text. A rejected recheck removes the previously opened original.
 5. Import a correctly authored amendment with `Amends: DOCUMENT-ID@previous-version`. The source owner preserves the old version. This H1 screen does not yet invalidate scientific investigations or establish clinical review.
@@ -28,6 +28,18 @@ Issued-At: 2026-01-03
 Specimen: FICTION-TISSUE
 Finding: marker|not-reported|This authored fictional marker was not tested.
 ```
+
+## Source-reported cancer episodes in Journey
+
+For the connected H1 application, change the header to `OI-SYNTHETIC-REPORT/2` to supply typed findings. Keep the same patient, document and date headers. Each line gives a unique finding key, the reported role, a case-local episode identifier (or `?` for unassigned), the existing reported state, and the literal source statement.
+
+```text
+Oncology-Finding: breast|primary|EP-A|reported|The fictional report describes a breast primary.
+Oncology-Finding: colon|primary|EP-B|reported|The fictional report describes a separate colon primary.
+Oncology-Finding: nodule|metastasis|?|indeterminate|The fictional report describes a nodule of uncertain origin.
+```
+
+Use the same episode identifier across documents only when the author explicitly attributes those findings to the same episode in this case. Ordinary `Finding` lines also work in version 2 and have no episode attribution. Journey groups current typed findings and shows their original status, quote, document version and line. An amendment can change attribution while the previous original remains available in Records. The role is an authored label. This workflow does not extract diagnoses from prose, establish a clinical diagnosis, or reconcile identifiers from external systems.
 
 ## Limits and evidence
 

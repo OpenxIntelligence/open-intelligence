@@ -104,6 +104,7 @@ def project_source_world_model(index: dict, laboratory_observations: list[dict] 
             "issued_at": source["issued_at"],
             "review_state": "not_established",
             "clinical_meaning": None,
+            **({"oncology": item["oncology"]} if "oncology" in item else {}),
         })
     observations.sort(
         key=lambda o: (o["event_date"], o["document_id"],
@@ -147,13 +148,18 @@ def project_source_world_model(index: dict, laboratory_observations: list[dict] 
     laboratory.sort(key=lambda o: (
         o["effective_at"], o["document_id"], o["document_version"],
         o["observation_reference"], o["source_id"]))
-    grouped: dict[tuple[str, str, str], list[dict]] = defaultdict(list)
+    grouped: dict[tuple[str, str, str, str, str], list[dict]] = defaultdict(list)
     for item in observations:
-        if item["specimen_id"] is not None:
-            grouped[(item["specimen_id"], item["event_date"],
-                     item["finding_key"])].append(item)
+        context = item.get("oncology")
+        if item["specimen_id"] is None or (context and context["episode_id"] is None):
+            continue
+        # Generic findings retain the legacy rule. Compare attributed findings
+        # only within the same source-declared tumor and role.
+        key = (item["specimen_id"], item["event_date"], item["finding_key"],
+               context["episode_id"] if context else "", context["role"] if context else "")
+        grouped[key].append(item)
     conflicts = []
-    for (specimen, event_date, finding_key), items in sorted(grouped.items()):
+    for (specimen, event_date, finding_key, _, _), items in sorted(grouped.items()):
         states = {item["reported_state"] for item in items}
         if not {"reported", "negative"}.issubset(states):
             continue
