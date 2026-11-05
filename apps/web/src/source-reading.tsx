@@ -9,9 +9,10 @@ export const emptySourceFilters: SourceFilters = {query: '', versionState: 'all'
 function ImagePreview({preview,onClose}:{preview:NonNullable<SourceImagesState['sourceImagePreview']>;onClose?:()=>void}) {
   const [url,setUrl]=useState<string|null>(null);
   useEffect(()=>{
-    const next=URL.createObjectURL(new Blob([preview.png_bytes],{type:'image/png'}));
-    setUrl(next);
-    return()=>URL.revokeObjectURL(next);
+    let active=true;const reader=new FileReader();setUrl(null);
+    reader.onload=()=>{if(active&&typeof reader.result==='string')setUrl(reader.result);};
+    reader.readAsDataURL(new Blob([preview.png_bytes],{type:'image/png'}));
+    return()=>{active=false;if(reader.readyState===FileReader.LOADING)reader.abort();};
   },[preview]);
   return <figure className="source-image-preview" data-testid="source-image-preview-panel">
     <div className="source-heading"><h6>Non-diagnostic preview</h6>
