@@ -77,7 +77,8 @@ class ImageCustodyHTTPTests(SourceVersionFixture):
                          "WHERE event_type LIKE 'image.%' " + suffix + " ORDER BY id")
 
     def test_exact_originals_idempotency_index_receipts_and_restart(self):
-        originals = [image_bytes(), image_bytes(sop_uid="2.25.104", pixels=b"\x01\x00" * 4)]
+        originals = [image_bytes(), image_bytes(modality="MR", series_uid="2.25.105",
+                                                 sop_uid="2.25.104", pixels=b"\x01\x00" * 4)]
         with running_server(create_app(self.settings)) as base:
             patient, source, path = self.prepare(base)
             ids = []
@@ -94,6 +95,8 @@ class ImageCustodyHTTPTests(SourceVersionFixture):
             status, index, _ = request(base, path, token=TOKEN_A)
             self.assertEqual(status, 200)
             self.assertEqual({item["image_id"] for item in index["images"]}, set(ids))
+            self.assertEqual({item["series_uid"]: item["modality"] for item in index["images"]},
+                             {"2.25.102": "CT", "2.25.105": "MR"})
             receipts = [index["access_receipt_id"]]
             for image_id, raw in zip(ids, originals):
                 code, retrieved, headers = image_request(base, path + "/" + image_id)
@@ -195,6 +198,27 @@ class ImageCustodyHTTPTests(SourceVersionFixture):
                     self.assertEqual(index, [])
             self.assertEqual(len(self.events("AND event_type='image.original_imported'")), 1)
             self.assertEqual(self.rows("SELECT count(*) FROM clinical_source.source_image_links")[0][0], 1)
+
+    def test_series_modality_is_case_scoped_and_original_read_has_its_own_grant(self):
+        with running_server(create_app(self.settings)) as base:
+            patient, _, path = self.prepare(base)
+            mr = image_bytes(modality="MR")
+            status, receipt, _ = image_request(base, path, raw=mr)
+            self.assertEqual(status, 201, receipt)
+            self.assertEqual(receipt["modality"], "MR")
+            other = self.ingest(base, patient, REPORT.replace("DOC-IMAGE", "DOC-SECOND"))[1]
+            other_path = self.url(patient) + "/" + other["source_id"] + "/images"
+            before = self.events()
+            self.assertEqual(image_request(base, other_path, raw=image_bytes(sop_uid="2.25.111"))[0], 409)
+            self.assertEqual(self.events(), before)
+            self.creds[0]["actions"].remove("image_original_read")
+            self.write()
+            self.assertEqual(image_request(base, path)[1]["images"][0]["modality"], "MR")
+            before = self.events()
+            status, body, headers = image_request(base, path + "/" + receipt["image_id"])
+            self.assertEqual(status, 404, body)
+            self.assertIsNone(headers.get("X-OI-Access-Receipt"))
+            self.assertEqual(self.events(), before)
 
     def test_legacy_conflict_across_reports_withholds_index_and_preserves_original_access(self):
         with running_server(create_app(self.settings)) as base:

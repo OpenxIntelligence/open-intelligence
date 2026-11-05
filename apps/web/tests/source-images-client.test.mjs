@@ -27,6 +27,20 @@ test('image list rejects wrong identities, digests, duplicate objects and imposs
  }
 });
 
+test('mixed studies accept CT and MR in separate series and reject a conflicting series or unsupported modality',async()=>{
+ const imageList=(series,modality)=>{const result=images(),ct=result.images[0];
+  result.images.push({...ct,image_id:'IMG-'+'F'.repeat(32),series_uid:series,sop_uid:'2.25.8888',modality});
+  return result;};
+ for(const [series,modality,phase] of [['2.25.8889','MR','ready'],[images().images[0].series_uid,'MR','error'],
+  ['2.25.8889','PT','error']]){
+  const data=imageList(series,modality);
+  const session=new RegistrySession(transportForImages(url=>url.endsWith('/images')?response(data):undefined));
+  await readyImages(session);await session.loadSourceImages(sourceId);
+  assert.equal(session.snapshot().sourceImagesPhase,phase);
+  assert.deepEqual(session.snapshot().sourceImages,phase==='ready'?data:null);
+ }
+});
+
 test('image controls cannot request non-imaging, superseded or unknown source versions',async()=>{
  for(const kind of ['pathology','superseded','unknown']){
   let requests=0;const source=()=>{const value=sourceIndex();if(kind==='pathology')value.sources[0].kind='pathology';

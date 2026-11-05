@@ -42,8 +42,8 @@ def _image_id(value: object) -> str:
 
 
 def _uid_relations(path):
-    study, series, instance, study_date = path
-    return ((study, ("study", study_date)), (series, ("series", study)),
+    study, series, instance, study_date, modality = path
+    return ((study, ("study", study_date)), (series, ("series", study, modality)),
             (instance, ("instance", series)))
 
 
@@ -123,7 +123,7 @@ class PostgresSourceImages:
         # _scope holds the case-binding row lock across this check and the
         # subsequent write/receipt. Only bounded metadata leaves PostgreSQL.
         inventory = self.registry._fetchall(
-            "SELECT study_uid,series_uid,sop_uid,study_date "
+            "SELECT study_uid,series_uid,sop_uid,study_date,modality "
             "FROM clinical_source.dicom_objects WHERE case_id=%s LIMIT %s",
             (case_id, MAX_CASE_IMAGES + 1))
         if len(inventory) > MAX_CASE_IMAGES:
@@ -143,7 +143,7 @@ class PostgresSourceImages:
             if not self._matches_context(identity, source, binding):
                 raise PatientRegistryError("Image context mismatch")
             path = (identity.study_uid, identity.series_uid, identity.sop_uid,
-                    date.fromisoformat(identity.study_date))
+                    date.fromisoformat(identity.study_date), identity.modality)
             if not self._case_paths_agree(case_id, [path]):
                 raise PatientRegistryConflict("Conflicting image hierarchy")
             stored = self.registry._fetchone(
@@ -226,7 +226,7 @@ class PostgresSourceImages:
                 # Reuse original-read hash and DICOM identity validation.
                 # One bad original withholds all metadata and the new receipt.
                 self._validated_object(row, source, binding)
-                paths.append((row["study_uid"], row["series_uid"], row["sop_uid"], row["study_date"]))
+                paths.append((row["study_uid"], row["series_uid"], row["sop_uid"], row["study_date"], row["modality"]))
                 images.append(self._metadata(row, source_id))
             if not self._case_paths_agree(case_id, paths):
                 raise ImageIntegrityError("Stored image hierarchy conflict")

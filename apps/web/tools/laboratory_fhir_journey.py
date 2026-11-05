@@ -40,7 +40,9 @@ def fictional_bundle(*, amended=False):
          'collection': {'collectedDateTime': effective}},
         *observations,
         {'resourceType': 'DiagnosticReport', 'id': 'FICT-WEB-REPORT',
-         'status': 'final', 'category': category, 'code': coding('58410-2'),
+         'status': 'final', 'category': [{'coding': [{
+             'system': 'http://terminology.hl7.org/CodeSystem/v2-0074', 'code': 'HM'}]}],
+         'code': coding('58410-2'),
          'subject': subject, 'specimen': [specimen],
          'result': [{'reference': 'Observation/' + row['id']} for row in observations],
          'effectiveDateTime': effective, 'issued': issued},

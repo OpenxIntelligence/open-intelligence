@@ -28,12 +28,12 @@ export function SourceImageStudies({images, disabled, onDownload}: {
   return <div className="source-image-studies">
     {Array.from(groupStudies(images), ([studyUid, study]) =>
       <section key={studyUid} data-testid="source-image-study" data-study-uid={studyUid}
-        aria-label={`CT study ${studyUid}`}>
-        <h6>CT study · <time dateTime={study.date}>{study.date}</time></h6>
+        aria-label={`Imaging study ${studyUid}`}>
+        <h6>Imaging study · <time dateTime={study.date}>{study.date}</time></h6>
         <p className="small">Study UID <code>{studyUid}</code> · {study.series.size} series</p>
         {Array.from(study.series, ([seriesUid, members]) =>
           <details key={seriesUid} open data-testid="source-image-series" data-series-uid={seriesUid}>
-            <summary>Series <code>{seriesUid}</code> · {members.length} linked {members.length === 1 ? 'original' : 'originals'}</summary>
+            <summary>{members[0].modality} series <code>{seriesUid}</code> · {members.length} linked {members.length === 1 ? 'original' : 'originals'}</summary>
             <ul className="source-image-list">{members.map(image =>
               <li key={image.image_id} data-testid="source-image-row" data-image-id={image.image_id}>
                 <p>Instance <code>{image.sop_uid}</code> · {image.byte_count.toLocaleString()} bytes</p>

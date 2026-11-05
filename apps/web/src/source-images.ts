@@ -3,7 +3,7 @@ import type {SourceVersion} from './source-contracts.js';
 
 export type SourceImage=Readonly<{
  image_id:string;source_id:string;case_id:string;sha256:string;byte_count:number;
- study_uid:string;series_uid:string;sop_uid:string;modality:'CT';study_date:string;
+ study_uid:string;series_uid:string;sop_uid:string;modality:'CT'|'MR';study_date:string;
 }>;
 export type SourceImageIndex=Readonly<{
  patient_id:string;case_id:string;source_id:string;images:readonly SourceImage[];
@@ -54,10 +54,10 @@ export function decodeSourceImages(value:unknown,patientId:string,caseId:string,
    typeof raw.image_id!=='string'||!IMAGE.test(raw.image_id)||seen.has(raw.image_id)||
    raw.source_id!==source.source_id||raw.case_id!==caseId||typeof raw.sha256!=='string'||!SHA.test(raw.sha256)||
    typeof raw.byte_count!=='number'||!Number.isSafeInteger(raw.byte_count)||raw.byte_count<132||raw.byte_count>MAX_BYTES||
-   !uid(raw.study_uid)||!uid(raw.series_uid)||!uid(raw.sop_uid)||raw.modality!=='CT'||
+   !uid(raw.study_uid)||!uid(raw.series_uid)||!uid(raw.sop_uid)||(raw.modality!=='CT'&&raw.modality!=='MR')||
    !day(raw.study_date)||raw.study_date!==source.event_date)throw Error('image index');
   bindUid(raw.study_uid, 'study');
-  bindUid(raw.series_uid, 'series:' + raw.study_uid);
+  bindUid(raw.series_uid, 'series:' + raw.study_uid + ':' + raw.modality);
   bindUid(raw.sop_uid, 'instance:' + raw.image_id);
   total+=raw.byte_count;if(total>67_108_864)throw Error('image index');
   seen.add(raw.image_id);images.push(Object.freeze({...raw} as SourceImage));

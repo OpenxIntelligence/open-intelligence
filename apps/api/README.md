@@ -4,7 +4,7 @@
 
 Use the [persistent fictional demo](../../docs/H1_DEMO.md) to run this API together
 with the React application. [Consolidation #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481)
-records the original integration. The API requires `0022_lab_citation_source_scope`. Run
+records the original integration. The API requires `0023_dicom_mr_custody`. Run
 `python -m oi_api.migrate upgrade head` from either published 0019 revision.
 The join retains both the [encounter and note service](#connected-encounter-and-note-service)
 and the original Observation behind each governed laboratory citation. See
@@ -320,7 +320,7 @@ Composer or clinician review. Outside records requests are not sent to real
 institutions. A synthetic case-binding review label is **not verified identity,
 patient consent or rights to source content**. This text-source contract does
 not accept PDFs or DICOM. The separate source-bound image API below accepts only
-its bounded independently fictional CT profile; real-patient records remain excluded.
+its bounded independently fictional CT and MR profile; real-patient records remain excluded.
 
 The received-record continuation above now links an existing exact original to
 its request through the same event owner. Source-derived questions and verification
@@ -610,13 +610,28 @@ image ID; original bytes are not duplicated or moved. Historical source text
 remains readable through its original endpoint. Stored original-image reads
 recompute the digest, reparse metadata and compare both to custody and binding.
 
-The bounded profile is one uncompressed Explicit VR Little Endian CT object,
-single frame, 16-bit MONOCHROME2. The parser validates file framing, lengths,
-unique ordered tags, file-meta identity, identifiers, date and pixel geometry
-before using the typed parser; it performs no pixel decoding or clinical
-interpretation. Unsupported syntax, sequences and malformed input fail closed.
-Maximum input is 2 MiB, with 256 originals/64 MiB per case and no bundled-file imports.
-These are development limits, not a claim of general CT-study ingestion.
+Each POST accepts one independently fictional classic CT or MR object in Explicit
+VR Little Endian. Both profiles require a single 16-bit MONOCHROME2 frame with
+at most 1,024 rows and columns and an exact pixel length. The file-meta and
+dataset SOP class and instance UIDs must agree. CT requires class
+`1.2.840.10008.5.1.4.1.1.2` and modality `CT`. MR requires class
+`1.2.840.10008.5.1.4.1.1.4` and modality `MR`. Each series belongs to one study
+and has one modality across reports in the same case. A study may contain separate
+CT and MR series. Maximum input is 2 MiB per original, with 256 originals and
+64 MiB per case. Enhanced objects, compressed encodings, sequences, multiframe
+objects, diagnostic pixel display and full IOD conformance are outside this profile.
+
+The verified identifiers come from the [DICOM PS3.4 storage class table](https://dicom.nema.org/medical/dicom/current/output/chtml/part04/sect_B.5.html).
+The [PS3.3 General Series Module](https://dicom.nema.org/medical/dicom/current/output/chtml/part03/sect_C.7.3.html)
+defines modality at series level. The parser uses the existing pydicom 3.0.2
+code-only build `1oi1` pinned in `requirements.lock`. Its LICENSE includes the
+MIT terms and the separate GDCM private-dictionary notice. Development fixtures
+are authored in the test suite.
+
+Revision `0023_dicom_mr_custody` follows `0022_lab_citation_source_scope` and
+replaces the CT-only checks on the existing table with a paired class/modality
+constraint. Existing original bytes, source links, receipts and hashes stay in
+place. A test downgrade refuses to proceed when any MR original is present.
 
 Read receipts contain opaque IDs, hashes and counts, not raw image identifiers,
 originals or tokens. The whole buffered response is withheld until final access
@@ -629,7 +644,7 @@ Run the combined question/image restart/restore acceptance with Docker available
 
     python apps/api/tools/verify_images_compose.py
 
-It creates two independently authored originals and canonical source-linked
+It creates independently authored CT and MR originals and canonical source-linked
 questions, checks exact bytes and independent grants, restarts API/PostgreSQL,
 amends the report and explicitly relinks the same images. The v1 question keeps
 its original anchor and requires reassessment; a fresh v2 question remains
@@ -711,7 +726,7 @@ URLs, SQL, source text and rejected validation inputs.
 | Route | Behavior |
 |---|---|
 | GET /health | Process liveness; 200 even if the database is unavailable. |
-| GET /health/ready | 200 only for PostgreSQL major 16 at revision 0022_lab_citation_source_scope; bounded 503 otherwise. |
+| GET /health/ready | 200 only for PostgreSQL major 16 at revision 0023_dicom_mr_custody; bounded 503 otherwise. |
 | GET /v1 | Reports synthetic_patient_registry stage, implemented synthetic capabilities and the configured authentication mode. |
 | GET /v1/openapi.json | Local typed contract, including bearer security; no CDN documentation UI. |
 | POST /v1/patients | Authenticated synthetic creation; trusted actor/org/purpose; 201 for new identity or 200 for identical retry. |

@@ -69,7 +69,7 @@ def exercise(cd, patient_id, token, credentials, write_grants, directory, artifa
     artifacts.mkdir(parents=True, exist_ok=True)
     previous_actions = list(credentials[0]['actions'])
     case_path = f'/v1/patients/{patient_id}/cases/{CASE}'
-    original = dicom_bytes(patient_id='SUBJECT-IMAGE', issuer='ORG-INSTITUTION/SYS-SYNTH',
+    original = dicom_bytes(modality='MR', patient_id='SUBJECT-IMAGE', issuer='ORG-INSTITUTION/SYS-SYNTH',
         study_uid='2.25.33001', series_uid='2.25.33002', sop_uid='2.25.33003', study_date='20260210')
     original_sha = hashlib.sha256(original).hexdigest()
     downloads = []
@@ -140,6 +140,9 @@ def exercise(cd, patient_id, token, credentials, write_grants, directory, artifa
         assert (payload['patient_id'], payload['case_id'], payload['source_id']) == (patient_id, CASE, source_id)
         assert payload['synthetic'] is True and payload['source_identity_verified'] is False
         assert len(payload['images']) == expected_count
+        if expected_count:
+            assert all(image['modality'] == 'MR' for image in payload['images'])
+            assert cd.evaluate("document.querySelector('[data-testid=source-image-series] summary').textContent.startsWith('MR series')")
         assert cd.evaluate("document.querySelectorAll('[data-testid=source-image-row]').length") == expected_count
         displayed = cd.evaluate("""Array.from(document.querySelectorAll('[data-testid=source-image-row]'), row => [
             row.closest('[data-testid=source-image-study]').dataset.studyUid,

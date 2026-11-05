@@ -96,3 +96,27 @@ reproducing regression and bounded repair before expanding the clinical domain.
 
 Production readiness additionally requires independently accepted identity,
 consent, operational controls, rights and clinical intended-use evaluation.
+
+## Lab and imaging extension: evidence to record separately
+
+The parent for this extension is #542's `6c98111460df07412766624407199f3abcb6b24a`, with readiness at `0022_lab_citation_source_scope`. The preceding #540 source `299cfb54` passed the [web job](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/42093139717); its [API job](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/42093139840/job/127476452372) ran 807 tests with 29 errors caused by the shared migration fixture leaving the new `investigation.require_lab_citation_current_sources()` function behind. Recovery did not run in that job. #540 later added scoped cleanup at `0a210cbc`. These donor receipts do not describe the current source. The six-method [test-first #542 run](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/42096046609) reproduced a different business-rule defect; keep both regressions distinct.
+
+| Acceptance handoff | Required evidence for the actual extension revision |
+|---|---|
+| Engineering / laboratory | Inspect a multi-result fictional report with a missing value, negative result and zero. Verify exact source-reported values/units, independent observation identity, source version and permission; keep a withheld/unsupported case visible as such. Test duplicate/missing/malformed identity without silently replacing the report. |
+| Engineering / imaging | Exercise only supported image metadata/links using current patient, case, source version and fresh independent grants. Test revoked/changed scope, empty/missing fields, a changed image selection and stale/out-of-order UI responses. Preserve exact original custody; no diagnosis or diagnostic-grade viewer claim. |
+| Source reproducibility | Record tested source SHA and tree, exact parent/owner histories, lockfile digests, environment/tool versions, check run IDs, pass/fail/skip counts, screenshot/probe retention and residual issues. Match any merge-ref run to its tested tree. A docs-only change is not evidence of a runtime behavior. |
+| Operations and independent review | Require complete API/database/migration/recovery and browser gates on the candidate, not just successful build/client results. Identify who reviewed wrong-scope, stale response, anchor integrity, retries and migration recovery; record outstanding findings and retest disposition. |
+| Distribution, production and clinical use | Separate decisions by responsible rights, operations, privacy/security and clinical authorities; record approved scope, reviewer, date, result, open risks and expiry. All remain on hold absent independent evidence. Research code licenses, green CI and a fictional run cannot approve these decisions. |
+
+Use the [test protocol](TESTING_AND_EVALUATION.md), [operating procedures](DEPLOYMENT_AND_OPERATIONS.md), [security control owners](SECURITY_AND_GOVERNANCE.md) and [AI evaluation plan](AI_EVALUATION_PLAN.md) when preparing that record. No new deployment, provider call, clinical evaluation or tool adoption is implied by this extension.
+
+## Verification of draft #546
+
+The earlier manual upgrade instruction for the parent applies to #542. This branch requires `0023_dicom_mr_custody`, directly after `0022_lab_citation_source_scope`. The migration constrains SOP class and modality together. An existing MR original prevents downgrade. The PostgreSQL tests exercise preservation of populated CT history, refusal of a mismatched direct database insert and preservation of MR history on a refused downgrade.
+
+The initial diagnostic UI commit [84656be6](https://github.com/OpenxIntelligence/open-intelligence/commit/84656be68972d99a28fb0f833278ba7be9f185e1) passed its [web workflow](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/42097733451). It predates MR and the service-section expansion. The parent [#542 API job](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/42096660696) failed in test fixture cleanup after passing its early joined-core check. This branch brings forward the two precisely named fixture drops from [#540's repair](https://github.com/OpenxIntelligence/open-intelligence/commit/0a210cbc05db8f0b146c04863b954c5b72d83eac). Application migrations are cumulative. No test was disabled.
+
+The locally executed Python reference suite passed 853 tests. The first local API run on the initial diagnostic code ran 838 tests with 75 AF_UNIX permission errors and 496 skips in this host. Local results do not establish the PostgreSQL/Compose gates. A client concurrency regression also exposed a fixed 10 ms sleep in the inherited test; the fixture now waits for the actual transport call before it tests the pending-state behavior.
+
+For current combined results, use the commit-specific web and API workflow links in [the draft pull request](https://github.com/OpenxIntelligence/open-intelligence/pull/546). The API job runs the real migration and rollback tests plus all seven recovery exercises; the web job runs the actual laboratory and original-image journeys. A source change requires a fresh run. Human release review follows engineering verification.

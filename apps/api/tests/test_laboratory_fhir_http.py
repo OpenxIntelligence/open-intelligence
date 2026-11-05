@@ -201,8 +201,11 @@ class LaboratoryFHIRHTTPTests(unittest.TestCase):
     def test_persisted_bundle_uses_canonical_source_custody_and_typed_world_model(self):
         with running_server(self.app) as base:
             patient = self.make_patient(base)
-            raw = encode(example()).decode("utf-8")
-            status, receipt, _ = self.import_source(base, patient)
+            bundle = example()
+            resource(bundle, "DiagnosticReport")["category"] = [{"coding": [{
+                "system": "http://terminology.hl7.org/CodeSystem/v2-0074", "code": "LAB"}]}]
+            raw = encode(bundle).decode("utf-8")
+            status, receipt, _ = self.import_source(base, patient, bundle)
             self.assertEqual(status, 201, receipt)
             self.assertFalse(receipt["duplicate"])
             self.assertEqual(receipt["version"], 1)

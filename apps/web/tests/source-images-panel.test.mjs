@@ -35,7 +35,7 @@ test('the source reader nests each original under its own study and series',asyn
   study_uid:study,series_uid:series,sop_uid:'2.25.90'+n});
  projection.images=[
   member(1,'2.25.101','2.25.102'),member(2,'2.25.201','2.25.202'),
-  member(3,'2.25.101','2.25.103'),member(4,'2.25.101','2.25.102')];
+  {...member(3,'2.25.101','2.25.103'),modality:'MR'},member(4,'2.25.101','2.25.102')];
  const html=renderToStaticMarkup(createElement(SourceReading,{index:sourceIndex(),view:'patient',
   filters:{query:'',versionState:'all'},onFiltersChange(){},busy:false,questionBusy:false,
   onAskQuestion(){},onOpenOriginal(){},sourceImages:projection,sourceImagesPhase:'ready',sourceImagesSourceId:sourceId}));
@@ -43,5 +43,7 @@ test('the source reader nests each original under its own study and series',asyn
  assert.equal((html.match(/data-testid="source-image-series"/g)||[]).length,3);
  assert.equal((html.match(/data-testid="source-image-download"/g)||[]).length,4);
  const imageIds=[...html.matchAll(/data-image-id="([^"]+)"/g)].map(match=>match[1]);
+ assert.ok(html.includes('MR series'));assert.ok(html.includes('CT series'));
+ assert.ok(!html.includes('CT study'),'One study contains separate CT and MR series');
  assert.deepEqual(imageIds,[1,4,3,2].map(n=>'IMG-'+String(n).repeat(32)));
 });

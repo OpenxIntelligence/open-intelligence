@@ -26,6 +26,8 @@ _ID = re.compile(r"[A-Za-z0-9.-]{1,64}\Z")
 _LOINC = re.compile(r"[0-9]{1,6}-[0-9]\Z")
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 _ALLOWED_ABSENT = frozenset(("unknown", "not-performed", "error", "masked"))
+_REPORT_SECTION_SYSTEM = "http://terminology.hl7.org/CodeSystem/v2-0074"
+_LAB_REPORT_SECTIONS = frozenset({"LAB", "CH", "HM"})
 _LAB_CATEGORY = "http://terminology.hl7.org/CodeSystem/observation-category"
 
 
@@ -103,12 +105,15 @@ def _concept(value: Any, system: str | None = None) -> dict:
     return code
 
 
-def _lab_category(value: Any) -> None:
+def _lab_category(value: Any, *, report: bool = False) -> None:
     if type(value) is not list or len(value) != 1:
         _reject("A single laboratory category is required")
-    code = _concept(value[0], _LAB_CATEGORY)
-    if code["code"] != "laboratory":
-        _reject("Only laboratory category is supported")
+    coding = _concept(value[0])
+    if (coding["system"], coding["code"]) == (_LAB_CATEGORY, "laboratory"):
+        return
+    if report and coding["system"] == _REPORT_SECTION_SYSTEM and coding["code"] in _LAB_REPORT_SECTIONS:
+        return
+    _reject("Unsupported laboratory category")
 
 
 def _full_url(value: Any) -> str:
@@ -254,7 +259,7 @@ def prepare_laboratory_bundle(raw: bytes, *, expected_subject_reference: str) ->
                         "subject", "specimen", "result", "effectiveDateTime", "issued"})
         if report["status"] != "final":
             _reject("Non-final diagnostic report requires review")
-        _lab_category(report["category"])
+        _lab_category(report["category"], report=True)
         _concept(report["code"], "http://loinc.org")
         if _reference(report["subject"], "Patient", bundle_ids) != subject:
             _reject("Report patient mismatch")
