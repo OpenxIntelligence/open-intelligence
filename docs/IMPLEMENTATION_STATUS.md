@@ -9,6 +9,8 @@ draft labels, schema heads and test counts are not current acceptance claims.
 
 **Stage:** local experimental synthetic-only code. **Not released for clinical use.**
 
+The [post-audit execution record](implementation/IMPLEMENTATION_STATUS.md) tracks Phase 0 acceptance and the next typed oncology increment.
+
 ## Provenance write contract (Slice 1) — 5 November 2026
 
 Branch `program/slice1-write-contract`, from main `4b13bc2`. Implements
