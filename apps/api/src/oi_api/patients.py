@@ -813,58 +813,89 @@ def patient_router(database: Database, authentication: Authentication, *, image_
         except PatientRegistryDenied:
             raise HTTPException(404, "Patient unavailable") from None
 
+    def acquisition_grants(request, context, patients, patient_id, action, case_id):
+        # Patient-wide v1 callers can operate without an open case. A caller
+        # acting from a case must still hold its mapping and source grants.
+        if case_id is not None:
+            if len(request.query_params.getlist("case_id")) != 1:
+                raise HTTPException(422, "Ambiguous workspace case")
+            actions = (action, "case_binding_read", "source_read")
+        elif action == "record_request_read" and "source_read" in context.actions:
+            actions = (action, "source_read")
+        else:
+            actions = (action,)
+        for grant in actions:
+            records_authorized(patients, context, patient_id, grant)
+        if case_id is not None:
+            CanonicalCaseBindings(patients).require_workspace_case(
+                patient_id, case_id, context.organization, context.purpose, lock=False)
+        return actions
+
+    def acquisition_response(request, context, patients, patient_id, actions, build_body, *,
+                             creating=False):
+        """Prepare the actual response and recheck its grants inside the owner's transaction."""
+        def prepare(result):
+            body = build_body(result)
+            response = JSONResponse(content=body.model_dump(mode="json"),
+                                    status_code=201 if creating and not body.duplicate else 200,
+                                    headers={"Cache-Control": "no-store"})
+            final_question_authority(request, context, patients, patient_id, actions)
+            return response
+        return prepare
+
     @router.get("/{patient_id}/record-requests", response_model=RecordRequests,
                 responses=errors, operation_id="list_record_requests_v1")
-    def list_records(patient_id: str, context: Principal = Depends(principal)):
+    def list_records(request: Request, patient_id: str, case_id: str | None = None,
+                     context: Principal = Depends(principal)):
         try:
             with registry(context) as patients:
-                records_authorized(patients, context, patient_id, "record_request_read")
-                # Request-read permission alone exposes receipt state, not
-                # source identifiers. Original source metadata requires its
-                # independent source_read action; original bytes have a third.
-                source_grant = "source_read" in context.actions
-                if source_grant:
-                    patients._allow(context.actor, patient_id,
-                                    "source_read", context.purpose)
-                records = PostgresRecordRequests(patients).list(
-                    patient_id, organization=context.organization,
-                    disclose_source=source_grant)
-                return RecordRequests(patient_id=patient_id, requests=records)
+                actions = acquisition_grants(request, context, patients, patient_id,
+                                             "record_request_read", case_id)
+                prepare = acquisition_response(
+                    request, context, patients, patient_id, actions,
+                    lambda rows: RecordRequests(patient_id=patient_id, requests=rows))
+                return PostgresRecordRequests(patients, prepare_result=prepare).list(
+                    patient_id, organization=context.organization, purpose=context.purpose,
+                    disclose_source="source_read" in actions, workspace_case_id=case_id)
         except PatientRegistryDenied:
             raise HTTPException(404, "Patient unavailable") from None
 
     @router.post("/{patient_id}/record-requests", response_model=RecordRequestReceipt,
                  status_code=201, responses={200: {"model": RecordRequestReceipt}, **errors},
                  operation_id="create_record_request_v1")
-    def create_record(patient_id: str, payload: CreateRecordRequest, response: Response,
-                      context: Principal = Depends(principal)):
+    def create_record(request: Request, patient_id: str, payload: CreateRecordRequest,
+                      case_id: str | None = None, context: Principal = Depends(principal)):
         try:
             with registry(context) as patients:
-                records_authorized(patients, context, patient_id, "record_request_create")
-                result = PostgresRecordRequests(patients).create(
+                actions = acquisition_grants(request, context, patients, patient_id,
+                                             "record_request_create", case_id)
+                prepare = acquisition_response(
+                    request, context, patients, patient_id, actions,
+                    lambda result: RecordRequestReceipt(**result), creating=True)
+                return PostgresRecordRequests(patients, prepare_result=prepare).create(
                     patient_id, organization=context.organization, actor=context.actor,
                     purpose=context.purpose, request_key=payload.request_key, kind=payload.kind,
                     record_label=payload.record_label,
-                    source_organization=payload.source_organization)
+                    source_organization=payload.source_organization, workspace_case_id=case_id)
         except PatientRegistryDenied:
             raise HTTPException(404, "Patient unavailable") from None
-        response.status_code = 200 if result["duplicate"] else 201
-        return RecordRequestReceipt(**result)
 
     @router.post("/{patient_id}/record-requests/{request_id}/cancel",
                  response_model=RecordRequestReceipt, responses=errors,
                  operation_id="cancel_record_request_v1")
-    def cancel_record(patient_id: str, request_id: str, payload: CancelRecordRequest,
+    def cancel_record(request: Request, patient_id: str, request_id: str, payload: CancelRecordRequest,
                       context: Principal = Depends(principal)):
         try:
             with registry(context) as patients:
                 records_authorized(patients, context, patient_id, "record_request_cancel")
-                result = PostgresRecordRequests(patients).cancel(
+                prepare = acquisition_response(
+                    request, context, patients, patient_id, ("record_request_cancel",),
+                    lambda result: RecordRequestReceipt(**result))
+                return PostgresRecordRequests(patients, prepare_result=prepare).cancel(
                     patient_id, request_id, organization=context.organization,
-                    actor=context.actor, reason=payload.reason)
+                    actor=context.actor, purpose=context.purpose, reason=payload.reason)
         except PatientRegistryDenied:
             raise HTTPException(404, "Patient unavailable") from None
-        return RecordRequestReceipt(**result)
 
 
     @router.post("/{patient_id}/record-requests/{request_id}/receive",
@@ -894,25 +925,30 @@ def patient_router(database: Database, authentication: Authentication, *, image_
 
     @router.get("/{patient_id}/case-bindings", response_model=CaseBindingList,
                 responses=errors, operation_id="list_case_bindings_v1")
-    def list_case_bindings(patient_id: str, context: Principal = Depends(principal)):
+    def list_case_bindings(request: Request, patient_id: str, context: Principal = Depends(principal)):
         try:
             with registry(context) as patients:
                 records_authorized(patients, context, patient_id, "case_binding_read")
-                rows = CanonicalCaseBindings(patients).list(
-                    patient_id, organization=context.organization)
-                return CaseBindingList(patient_id=patient_id, mappings=rows)
+                prepare = acquisition_response(
+                    request, context, patients, patient_id, ("case_binding_read",),
+                    lambda rows: CaseBindingList(patient_id=patient_id, mappings=rows))
+                return CanonicalCaseBindings(patients, prepare_result=prepare).list(
+                    patient_id, organization=context.organization, purpose=context.purpose)
         except PatientRegistryDenied:
             raise HTTPException(404, "Patient unavailable") from None
 
     @router.post("/{patient_id}/case-bindings", response_model=CaseBindingReceipt,
                  status_code=201, responses={200: {"model": CaseBindingReceipt}, **errors},
                  operation_id="create_case_binding_v1")
-    def create_case_binding(patient_id: str, payload: CreateCaseBinding,
-                            response: Response, context: Principal = Depends(principal)):
+    def create_case_binding(request: Request, patient_id: str, payload: CreateCaseBinding,
+                            context: Principal = Depends(principal)):
         try:
             with registry(context) as patients:
                 records_authorized(patients, context, patient_id, "case_binding_create")
-                result = CanonicalCaseBindings(patients).bind(
+                prepare = acquisition_response(
+                    request, context, patients, patient_id, ("case_binding_create",),
+                    lambda result: CaseBindingReceipt(**result), creating=True)
+                return CanonicalCaseBindings(patients, prepare_result=prepare).bind(
                     patient_id, organization=context.organization,
                     actor=context.actor, purpose=context.purpose,
                     case_id=payload.case_id, source_organization=payload.source_organization,
@@ -921,23 +957,23 @@ def patient_router(database: Database, authentication: Authentication, *, image_
                     review_ref=payload.review_ref)
         except PatientRegistryDenied:
             raise HTTPException(404, "Patient unavailable") from None
-        response.status_code = 200 if result["duplicate"] else 201
-        return CaseBindingReceipt(**result)
 
     @router.post("/{patient_id}/case-bindings/{case_id}/revoke",
                  response_model=CaseBindingReceipt, responses=errors,
                  operation_id="revoke_case_binding_v1")
-    def revoke_case_binding(patient_id: str, case_id: str,
+    def revoke_case_binding(request: Request, patient_id: str, case_id: str,
                             payload: RevokeCaseBinding, context: Principal = Depends(principal)):
         try:
             with registry(context) as patients:
                 records_authorized(patients, context, patient_id, "case_binding_revoke")
-                result = CanonicalCaseBindings(patients).revoke(
+                prepare = acquisition_response(
+                    request, context, patients, patient_id, ("case_binding_revoke",),
+                    lambda result: CaseBindingReceipt(**result))
+                return CanonicalCaseBindings(patients, prepare_result=prepare).revoke(
                     patient_id, case_id, organization=context.organization,
-                    actor=context.actor, reason=payload.reason)
+                    actor=context.actor, purpose=context.purpose, reason=payload.reason)
         except PatientRegistryDenied:
             raise HTTPException(404, "Patient unavailable") from None
-        return CaseBindingReceipt(**result)
 
 
     def refresh_source_authority(request: Request, initial: Principal,

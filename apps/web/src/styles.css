@@ -238,3 +238,7 @@ h1:focus{outline:2px solid #174b48;outline-offset:5px}
 .continuity-preparation-list h4{font-size:15px;margin:0 0 8px}
 .continuity-preparation-list p{font-size:13px;margin:8px 0}
 @media(max-width:600px){.continuity-preparation-list{grid-template-columns:minmax(0,1fr)}.continuity-preparation-list button{width:100%}}
+.request-panel form{margin:18px 0;padding-top:8px;border-top:1px solid #d7e0d8}
+.request-panel select{display:block;margin:6px 0 12px;padding:8px;min-height:44px;width:100%;min-width:0;max-width:100%;font:inherit;color:inherit;background:white;border:1px solid #a9b6b3;border-radius:6px}
+.request-panel li,.request-panel p{overflow-wrap:anywhere}
+.request-panel .actions{margin-bottom:16px}

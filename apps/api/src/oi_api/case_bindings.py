@@ -6,6 +6,7 @@ no actual source record or clinical authority is introduced.
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime
 
 from open_intelligence.patient_registry import (
@@ -13,7 +14,7 @@ from open_intelligence.patient_registry import (
 )
 from open_intelligence.postgres_registry import PostgresPatientRegistry
 
-from .record_requests import _label, PostgresRecordRequests
+from .record_requests import _label, _unchanged, PostgresRecordRequests
 
 
 def _case_id(raw: object) -> str:
@@ -24,15 +25,32 @@ def _case_id(raw: object) -> str:
 
 
 class CanonicalCaseBindings:
-    def __init__(self, registry: PostgresPatientRegistry):
+    def __init__(self, registry: PostgresPatientRegistry, *, prepare_result: Callable = _unchanged):
         if not isinstance(registry, PostgresPatientRegistry):
             raise TypeError("Existing patient registry required")
         self.registry = registry
+        self.prepare_result = prepare_result
+
+    def _receipt(self, case_id: str, patient_id: str, *, duplicate: bool):
+        return self.prepare_result({"case_id": case_id, "patient_id": patient_id,
+                                    "duplicate": duplicate, "source_identity_verified": False})
 
     def _patient(self, patient_id: str, organization: str):
         # Use the same active patient and origin check as the request owner;
         # FOR SHARE keeps patient suspension from racing the write transaction.
         PostgresRecordRequests(self.registry)._active_patient(patient_id, organization)
+
+    def require_workspace_case(self, patient_id: str, case_id: str, organization: str,
+                               purpose: str, *, lock: bool) -> None:
+        """Bind a patient-scoped acquisition operation to the case open in Records."""
+        row = self.registry._fetchone(
+            "SELECT 1 FROM coordination.patient_case_bindings "
+            "WHERE case_id=%s AND patient_id=%s AND origin_org=%s AND purpose=%s AND status='active'"
+            + (" FOR SHARE" if lock else ""),
+            (_case_id(case_id), patient_id, organization, purpose),
+        )
+        if row is None:
+            raise PatientRegistryDenied("Case mapping unavailable")
 
     @staticmethod
     def _view(row: tuple) -> dict:
@@ -53,7 +71,7 @@ class CanonicalCaseBindings:
             "clinical_conclusions": False,
         }
 
-    def list(self, patient_id: str, *, organization: str) -> list[dict]:
+    def list(self, patient_id: str, *, organization: str, purpose: str):
         patient_id = _key(patient_id, "patient_id")
         organization = _key(organization, "organization")
         with self.registry.transaction():
@@ -62,14 +80,14 @@ class CanonicalCaseBindings:
                 "SELECT case_id,patient_id,source_organization,source_system,"
                 "source_subject_ref,review_ref,status,revision,created_at,revoked_at "
                 "FROM coordination.patient_case_bindings "
-                "WHERE patient_id=%s AND origin_org=%s ORDER BY case_id",
-                (patient_id, organization),
+                "WHERE patient_id=%s AND origin_org=%s AND purpose=%s ORDER BY case_id FOR SHARE",
+                (patient_id, organization, purpose),
             )
-            return [self._view(row) for row in rows]
+            return self.prepare_result([self._view(row) for row in rows])
 
     def bind(self, patient_id: str, *, organization: str, actor: str, purpose: str,
              case_id: str, source_organization: str, source_system: str,
-             source_subject_ref: str, review_ref: str) -> dict:
+             source_subject_ref: str, review_ref: str):
         patient_id = _key(patient_id, "patient_id")
         organization = _key(organization, "organization")
         actor = _key(actor, "actor")
@@ -85,7 +103,7 @@ class CanonicalCaseBindings:
             current = self.registry._fetchone(
                 "SELECT patient_id,origin_org,source_organization,source_system,"
                 "source_subject_ref,review_ref,created_by,purpose,status "
-                "FROM coordination.patient_case_bindings WHERE case_id=%s",
+                "FROM coordination.patient_case_bindings WHERE case_id=%s FOR SHARE",
                 (case_id,),
             )
             intent = (patient_id, organization, source_organization, source_system,
@@ -93,8 +111,7 @@ class CanonicalCaseBindings:
             if current is not None:
                 if tuple(current[:8]) != intent or current[8] != "active":
                     raise PatientRegistryConflict("Case reference is already bound or revoked")
-                return {"case_id": case_id, "patient_id": patient_id,
-                        "duplicate": True, "source_identity_verified": False}
+                return self._receipt(case_id, patient_id, duplicate=True)
             # The unique qualified external subject prevents silent many-to-many
             # reuse. Do not infer identity from subject text; this is a fixture.
             inserted = self.registry._fetchone(
@@ -112,22 +129,20 @@ class CanonicalCaseBindings:
                 conflicting = self.registry._fetchone(
                     "SELECT patient_id,origin_org,source_organization,source_system,"
                     "source_subject_ref,review_ref,created_by,purpose,status "
-                    "FROM coordination.patient_case_bindings WHERE case_id=%s",
+                    "FROM coordination.patient_case_bindings WHERE case_id=%s FOR SHARE",
                     (case_id,),
                 )
                 if conflicting is not None and tuple(conflicting[:8]) == intent and conflicting[8] == "active":
-                    return {"case_id": case_id, "patient_id": patient_id,
-                            "duplicate": True, "source_identity_verified": False}
+                    return self._receipt(case_id, patient_id, duplicate=True)
                 raise PatientRegistryConflict("Case or external subject is already linked")
             self.registry.append_event(
                 patient_id, "identity.case_binding_created",
                 case_id=case_id, actor=actor, review_ref=review_ref,
             )
-            return {"case_id": case_id, "patient_id": patient_id,
-                    "duplicate": False, "source_identity_verified": False}
+            return self._receipt(case_id, patient_id, duplicate=False)
 
     def revoke(self, patient_id: str, case_id: str, *,
-               organization: str, actor: str, reason: str) -> dict:
+               organization: str, actor: str, purpose: str, reason: str):
         patient_id = _key(patient_id, "patient_id")
         case_id = _case_id(case_id)
         organization = _key(organization, "organization")
@@ -139,14 +154,13 @@ class CanonicalCaseBindings:
             self._patient(patient_id, organization)
             row = self.registry._fetchone(
                 "SELECT status,revision FROM coordination.patient_case_bindings "
-                "WHERE patient_id=%s AND origin_org=%s AND case_id=%s FOR UPDATE",
-                (patient_id, organization, case_id),
+                "WHERE patient_id=%s AND origin_org=%s AND case_id=%s AND purpose=%s FOR UPDATE",
+                (patient_id, organization, case_id, purpose),
             )
             if row is None:
                 raise PatientRegistryDenied("Case binding unavailable")
             if row[0] == "revoked":
-                return {"case_id": case_id, "patient_id": patient_id,
-                        "duplicate": True, "source_identity_verified": False}
+                return self._receipt(case_id, patient_id, duplicate=True)
             if row[0] != "active" or row[1] != 1:
                 raise PatientRegistryConflict("Case binding state changed")
             self.registry._execute(
@@ -160,5 +174,4 @@ class CanonicalCaseBindings:
                 patient_id, "identity.case_binding_revoked",
                 case_id=case_id, actor=actor,
             )
-            return {"case_id": case_id, "patient_id": patient_id,
-                    "duplicate": False, "source_identity_verified": False}
+            return self._receipt(case_id, patient_id, duplicate=False)

@@ -86,6 +86,9 @@ export function parseCaseBindingList(v:unknown,expectedPatient:string):ReadonlyA
   }
   return Object.freeze(result);
 }
+export function sourceIndexPath(patientId:string,caseId:string):string{
+  return '/v1/patients/'+encodeURIComponent(patientId)+'/cases/'+encodeURIComponent(caseId)+'/sources';
+}
 export function parseSourceIndex(v:unknown,expectedPatient:string,expectedCase:string):SourceIndex{
   if(!PATIENT.test(expectedPatient) || !CASE.test(expectedCase) ||
     !exact(v,['contract','patient_id','case_id','access_receipt_id','sources','source_reported_assertions',

@@ -108,3 +108,26 @@ UI toggle cannot supply professional authority or permission for patient data.
 Advance one bounded capability after its preceding gates pass. Until production
 governance is established, keep clinician confirmation, real-patient use,
 external clinical integrations and autonomous clinical effects unavailable.
+
+
+### Source acquisition under operations and research grants (PF-01, PF-02, PF-03, PF-10)
+
+Draft [#547](https://github.com/OpenxIntelligence/open-intelligence/pull/547) extends
+the existing patient, case-binding and record-request owners on the clinical candidate.
+For the same fictional patient and actor, case mappings and acquisition requests are
+scoped to the credential's current purpose. Receiving an original requires both its
+case binding and the request to match that purpose. Before returning a successful
+list or command receipt, the API serializes the response and checks the actor,
+organization, purpose, patient and relevant grants inside the owner's transaction.
+In Records, list and create include the open case as a server-enforced precondition.
+The case is locked and rechecked before commit. A scoped create retry binds the
+same case into its intent fingerprint. Patient-wide v1 callers retain their existing
+API contract. Refresh also rereads the case's authorized source versions.
+
+Older mixed-purpose receipts remain in the immutable journal. The v1 list omits
+the affected request because its status vocabulary cannot safely describe an
+out-of-purpose source. Other same-purpose requests remain visible. The recovery
+and browser checks in this PR exercise restored binding scope and the disappearance
+of an already-open original on a purpose refresh. The pull request tracks exact
+execution results. Production issuer identity, delegation and clinical consent
+remain separate qualification gates.

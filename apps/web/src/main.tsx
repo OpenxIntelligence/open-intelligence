@@ -1,6 +1,7 @@
 import {StrictMode, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {createRoot} from 'react-dom/client';
-import {RegistrySession} from './registry-client';
+import {RegistrySession,requestIndex} from './registry-client';
+import {RecordRequestsDisclosure} from './record-requests-panel';
 import {SourceIntake} from './source-intake-view';
 import {RecordImportDisclosure} from './record-import-disclosure';
 import {ReviewedDocumentDisclosure} from './reviewed-documents-view';
@@ -102,6 +103,10 @@ function App(){
   if(trigger?.isConnected&&!trigger.disabled)trigger.focus();
   else (sourcesHeading.current??heading.current)?.focus();
  }
+ function openOriginal(sourceId:string,trigger:HTMLButtonElement){
+  originalReturn.current={sourceId,trigger,pending:true};void session.loadOriginal(sourceId);
+ }
+ const requestScope=requestIndex(state);
  const keyForReceipt=useRef(requestKey);
  useEffect(()=>{let active=true;const c=new AbortController();const timer=setTimeout(()=>c.abort(),5000);
   fetch('/health/ready',{signal:c.signal,credentials:'omit',redirect:'error',cache:'no-store'})
@@ -161,6 +166,8 @@ function App(){
        <RecordImportDisclosure key={state.patient.patient_id+':'+state.sourceIndex.case_id} initiallyOpen={state.sourceIndex.sources.length===0}>
         <SourceIntake session={session} patientId={state.patient.patient_id} caseId={state.sourceIndex.case_id} sending={state.importOutcome==='sending'}/>
        </RecordImportDisclosure>
+       {requestScope&&<RecordRequestsDisclosure key={'requests:'+requestScope.access_receipt_id} index={requestScope} session={session.recordRequests}
+         view={state.requestsView} busy={busy||state.recordsPhase.startsWith('loading')} onOriginal={openOriginal}/>}
        <SourceReading index={state.sourceIndex} view={view} filters={filters}
         onFiltersChange={next=>setSourceFilters({scope:state.sourceIndex,...next})}
         busy={busy||state.recordsPhase.startsWith('loading')}
@@ -172,7 +179,7 @@ function App(){
         onInspectImages={sourceId=>void session.loadSourceImages(sourceId)}
         onDownloadImage={(sourceId,imageId)=>void session.downloadSourceImage(sourceId,imageId)}
         onDismissImages={session.dismissSourceImages}
-        onOpenOriginal={(sourceId,trigger)=>{originalReturn.current={sourceId,trigger,pending:true};void session.loadOriginal(sourceId)}}
+        onOpenOriginal={openOriginal}
         onAskQuestion={(sourceId,line)=>{const caseId=state.sourceIndex!.case_id;
           navigate('Investigations');
           void session.beginQuestionFromSourceReading(caseId,sourceId,line);}}/>
