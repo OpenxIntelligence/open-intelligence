@@ -1,5 +1,5 @@
 import type {ReactNode} from 'react';
-import {useEffect,useState} from 'react';
+import {useEffect,useLayoutEffect,useRef,useState} from 'react';
 import type {RegistrySession,ViewState} from './registry-client';
 import {FICTIONAL_RETURN_REASON,validReturnReason} from './review-queue-view';
 
@@ -44,29 +44,53 @@ export function ReviewPanel({state,session,busy,patientAccess,onInvestigations,d
  const queue=state.reviewQueue?.case_id===caseId&&!changing?state.reviewQueue:null;
  const intent=state.reviewReturnIntent;
  const returning=state.reviewReturnPhase==='saving',uncertain=state.reviewReturnPhase==='unknown';
+ const activeCases=state.cases?.filter(item=>item.status==='active');
+ const caseTrigger=useRef<HTMLButtonElement|null>(null);
+ const questionsHeading=useRef<HTMLHeadingElement>(null);
+ useLayoutEffect(()=>{
+  const button=caseTrigger.current;
+  if(!button||state.reviewPhase==='loading')return;
+  caseTrigger.current=null;
+  if(document.activeElement===document.body){
+   if(button.isConnected&&!button.disabled)button.focus();
+   else if(queue)questionsHeading.current?.focus();
+  }
+ },[queue,state.reviewPhase]);
  if(!state.patient)return <section aria-label="Review" data-testid="review-workspace"><div data-testid="review-no-patient">{patientAccess}</div></section>;
  return <section className="panel review-panel" aria-labelledby="review-heading" data-testid="review-workspace">
-  <span className="step">SAVED QUESTIONS / VERIFICATION RETURN HISTORY</span>
-  <h2 id="review-heading" data-workspace-anchor="Verification queue">Questions for independent verification</h2>
-  <p>Read saved questions in this patient’s source context, record why a source needs independent
-   verification, and inspect the unchanged return history. Recording a return does not assign a
-   clinician, send a notification or approve a clinical decision.</p>
+  <h2 id="review-heading" data-workspace-anchor={caseId?'Verification queue':'Choose a case'}>{caseId?'Questions for independent verification':'Choose a case'}</h2>
+  {caseId&&<p>Inspect saved questions and earlier verification returns. Recording a return preserves the reason for another source check. Clinical sign-off and external notifications are unavailable here.</p>}
 
    <p className="record-scope"><strong>Patient:</strong> <code>{state.patient.patient_id}</code>
     {caseId&&<> · <strong>Case:</strong> <code data-testid="review-case-id">{caseId}</code></>}</p>
+   {!caseId&&<div className="review-case-entry">
+    <p>Check the available cases, then open the inbox you want to review.</p>
+    <button type="button" data-testid="review-check-cases" disabled={busy||changing||state.reviewPhase==='loading'}
+     onClick={()=>void session.loadCases()}>{activeCases?'Refresh case list':'Check available cases'}</button>
+    {state.recordsPhase==='error'&&<p role="status">{state.recordMessage}</p>}
+    {state.recordsPhase==='loading-cases'&&<p role="status">Checking case access…</p>}
+    {activeCases&&(!activeCases.length?<p role="status">No active cases were returned for this patient.</p>:
+     <ul className="case-list">{activeCases.map(item=><li key={item.case_id} className="case-row">
+      <span><strong>{item.case_id}</strong> · {item.source_organization}</span>
+      <button type="button" data-testid="review-open-case" aria-label={'Open review inbox for '+item.case_id}
+       disabled={busy||changing||state.reviewPhase==='loading'} onClick={event=>{
+        caseTrigger.current=event.currentTarget===document.activeElement?event.currentTarget:null;
+        void session.loadReviewQueue(item.case_id);
+       }}>Open review inbox</button>
+     </li>)}</ul>)}
+   </div>}
    <div className="actions">
-    <button type="button" className="primary" data-testid="load-review-queue"
+    {caseId&&<button type="button" className="primary" data-testid="load-review-queue"
      disabled={!caseId||changing||busy||state.reviewPhase==='loading'}
      onClick={()=>void session.loadReviewQueue(caseId)}>
      {state.reviewPhase==='loading'?'Checking source and inbox grants…':'Refresh authorized review inbox'}
-    </button>
+    </button>}
     <button type="button" onClick={onInvestigations}>View source questions</button>
    </div>
-   {!caseId&&<p>Select a source case in Investigations to continue in the same patient context.</p>}
    <p className={'status '+(state.reviewPhase==='error'?'error':'')} data-testid="review-status"
-    role="status" aria-live="polite">{state.reviewMessage}</p>
+    role="status" aria-live="polite" hidden={!caseId&&state.reviewPhase==='idle'}>{state.reviewMessage}</p>
    <p className={'status '+(state.reviewReturnPhase==='error'?'error':'')} data-testid="review-return-status"
-    data-phase={state.reviewReturnPhase} role="status" aria-live="polite">{state.reviewReturnMessage}</p>
+    data-phase={state.reviewReturnPhase} hidden={!caseId&&state.reviewReturnPhase==='idle'} role="status" aria-live="polite">{state.reviewReturnMessage}</p>
    {intent&&(returning||uncertain)&&<section className="review-recovery" data-testid="review-return-intent"
      aria-label="Exact verification return awaiting a receipt">
     <h3>{returning?'Recording the captured return':'Recover the earlier return receipt'}</h3>
@@ -94,7 +118,7 @@ export function ReviewPanel({state,session,busy,patientAccess,onInvestigations,d
      <p>Projection <code>{queue.contract}</code>. This receipt records source access for the inbox read;
       it is not a return authorization or clinical approval.</p>
     </details>
-    <h3 id="verification-questions" data-workspace-anchor="Saved questions">Saved questions and current source status</h3>
+    <h3 ref={questionsHeading} tabIndex={-1} id="verification-questions" data-workspace-anchor="Saved questions">Saved questions and current source status</h3>
     {queue.items.length===0?<p>No source-linked questions are visible for this case.</p>:
      <ul className="review-items">{queue.items.map(item=>{
       const captured=intent?.question_id===item.question_id&&intent.case_id===item.case_id?intent:null;

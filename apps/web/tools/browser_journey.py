@@ -126,6 +126,24 @@ def main():
                 'synthetic':True,'case_id':case,'source_organization':'ORG-INSTITUTION',
                 'source_system':'SYS-SYNTH','source_subject_ref':'SUBJECT-ALPHA','review_ref':'REVIEW-SYNTH'})
             assert status==201 and mapping['case_id']==case and not mapping['source_identity_verified']
+            select_section('Review')
+            cd.evaluate("document.querySelector('[data-testid=review-check-cases]').click()")
+            cd.wait("document.querySelector('[data-testid=review-open-case]')?.getAttribute('aria-label')==='Open review inbox for CASE-ALPHA'",
+                    'Review offers the active mapped case')
+            png=cd.command('Page.captureScreenshot',{'format':'png'})
+            (out/'review-case-selection.png').write_bytes(base64.b64decode(png['data']))
+            cd.evaluate("document.querySelector('[data-testid=review-open-case]').click()")
+            cd.wait("document.querySelector('[data-testid=review-status]').textContent.includes('unavailable')",
+                    'a visible case mapping grants no inbox access')
+            assert cd.evaluate("!document.querySelector('[data-testid=review-queue-result]')")
+            credentials[0]['actions'].extend(['review_queue_read','question_read']);write_grants()
+            cd.evaluate("const openInbox=document.querySelector('[data-testid=review-open-case]');openInbox.focus();openInbox.click()")
+            cd.wait("document.querySelector('[data-testid=review-case-id]')?.textContent==='CASE-ALPHA' && !!document.querySelector('[data-testid=review-queue-result]')",
+                    'explicit case choice opens the independently authorized review inbox')
+            cd.wait("document.activeElement.id==='verification-questions'", 'case selection focuses the saved questions heading')
+            assert cd.evaluate("document.querySelector('h1').textContent==='Review' && !document.querySelector('[data-testid=world-projection]')")
+            credentials[0]['actions'].remove('review_queue_read');credentials[0]['actions'].remove('question_read');write_grants()
+            select_section('Overview')
             original=(
                 'OI-SYNTHETIC-REPORT/1\nPatient: CASE-ALPHA\nDocument: DOC-ONE\n'
                 'Type: pathology\nEvent-Date: 2026-01-10\nIssued-At: 2026-01-11\n'

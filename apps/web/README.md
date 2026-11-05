@@ -12,7 +12,8 @@ Patient lookup is available directly in Journey, Records, Investigations, Review
 and Visits. Connect the operator-issued credential, then enter the exact fictional
 patient ID. An authorized read opens the selected workflow. Each case, source
 and visit operation still checks its own grant. Overview also supports creating
-a fictional identity. Visits requires an active identity.
+a fictional identity. Visits requires an active identity. In Review, check the
+case list and select an active case to open its independently authorized inbox.
 
 This is the first **React + Vite + TypeScript** entry connected to the existing
 **FastAPI/PostgreSQL 16** patient registry (#172, #162). It does not replace the

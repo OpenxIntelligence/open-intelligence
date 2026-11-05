@@ -254,3 +254,6 @@ footer a { color: #285b49; min-height: 44px; display: inline-flex; align-items: 
   .rail nav { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
   .rail nav button { justify-content: center; font-size: 13px; overflow-wrap: anywhere; }
 }
+
+.review-case-entry .case-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; }
+.review-case-entry .case-row span { min-width: 0; overflow-wrap: anywhere; }
