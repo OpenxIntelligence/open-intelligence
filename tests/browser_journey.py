@@ -80,15 +80,41 @@ def provision_demo_access(db: str, case_ids) -> None:
 
 
 def sign_in_demo(session: ChromeSession) -> None:
+    # The app scripts load with `defer`, so Page.navigate returns before
+    # app.js has executed: the sign-in elements exist (the DOM is parsed)
+    # but initialize() has not attached the #signin-apply click handler
+    # yet. Clicking immediately then does nothing — no POST, no error —
+    # and the sign-in view never hides. initialize() sets this heading
+    # after attaching the handler (the static HTML says "Loading case…"),
+    # so the heading proves the handler is attached; the session view
+    # covers a page that is already signed in.
+    session.wait(
+        "document.querySelector('#case-heading')?.textContent === 'Sign in to view the demo cases'"
+        " || document.querySelector('#session-view')?.hidden === false",
+        "app initialized for sign-in")
     session.evaluate(
-        "(account, password) => {"
+        "((account, password) => {"
         "  document.querySelector('#signin-account').value = account;"
         "  document.querySelector('#signin-password').value = password;"
         "  document.querySelector('#signin-apply').click();"
-        "}(" + json.dumps(DEMO_SIGNIN_ACCOUNT) + ", "
+        "})(" + json.dumps(DEMO_SIGNIN_ACCOUNT) + ", "
         + json.dumps(DEMO_SIGNIN_PASSWORD) + ")")
-    session.wait("document.querySelector('#signin-view')?.hidden === true",
-                 "demo sign-in")
+    try:
+        session.wait("document.querySelector('#signin-view')?.hidden === true",
+                     "demo sign-in")
+    except AssertionError as err:
+        # Distinguish a sign-in request that failed from a handler that
+        # never ran: applySignIn reports a failed sign-in in
+        # #signin-status, while a click with no listener leaves it empty.
+        try:
+            status = session.evaluate(
+                "document.querySelector('#signin-status')?.textContent")
+        except RuntimeError:
+            status = "<status unreadable>"
+        raise AssertionError(
+            "demo sign-in did not complete; sign-in status: "
+            f"{status!r} (empty means the sign-in handler never ran; "
+            "a message means the sign-in request failed)") from err
 
 
 def free_port() -> int:
