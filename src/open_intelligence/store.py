@@ -1781,11 +1781,27 @@ class CaseStore:
             (case_id, report.document_id, version, digest, raw, report.kind, report.event_date,
              report.issued_at, now_utc(), report.specimen_id, "current", previous["id"] if previous else None))
         source_id = cur.lastrowid
-        for finding in report.findings:
+        # D1 (A1 anchor checker): parsed findings become assertions only
+        # through the one anchor checker. parse_report already enforces
+        # the same key/state/quote/line rules, so a drop here is
+        # unreachable while it holds -- and fails the import loudly
+        # instead of silently dropping a finding.
+        from .extraction import validate_extraction_proposal
+        proposal = validate_extraction_proposal(
+            self, case_id, source_id,
+            [{"finding_key": finding.key, "certainty": finding.state,
+              "quote": finding.quote, "source_line": finding.line}
+             for finding in report.findings])
+        if proposal.dropped:
+            raise InvalidInput(
+                "Parsed findings failed the A1 anchor check: "
+                + ", ".join(d["reason"] for d in proposal.dropped))
+        for item in proposal.kept:
             self.db.execute("""INSERT INTO assertions
                 (case_id,source_version_id,finding_key,certainty,quote,source_line)
                 VALUES (?,?,?,?,?,?)""",
-                (case_id, source_id, finding.key, finding.state, finding.quote, finding.line))
+                (case_id, source_id, item["finding_key"], item["certainty"],
+                 item["quote"], item["source_line"]))
         invalidated = []
         invalidated_options = []
         invalidated_workspace = []
