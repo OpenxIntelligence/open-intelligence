@@ -325,5 +325,22 @@ class SeparateGoldScorerTests(unittest.TestCase):
         self.assertFalse(scored["production_adoption_approved"])
 
 
+
+    def test_all_abstain_is_not_a_successful_utility_experiment(self):
+        def sender(_url, _body, _timeout):
+            return model_reply({"status": "abstain"})
+        run = runner.evaluate_packet(self.packet,
+                                     url="http://127.0.0.1:18763/v1/chat/completions",
+                                     model_id="synthetic-test-double",
+                                     sender=sender)
+        report = scorer.score_run(run, self.packet, CHALLENGE, ORIGINAL)
+        self.assertEqual(report["counts"]["positive_correct"], 0)
+        self.assertEqual(report["counts"]["negative_abstained"], 36)
+        self.assertEqual(report["counts"]["negative_false_mapping"], 0)
+        self.assertEqual(report["counts"]["negative_invalid"], 0)
+        self.assertTrue(report["experimental_stop_triggered"])
+        self.assertEqual(report["experimental_stop_reasons"], ["zero_correct_field_lookups"])
+
+
 if __name__ == "__main__":
     unittest.main()
