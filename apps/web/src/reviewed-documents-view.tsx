@@ -1,4 +1,5 @@
 import {useEffect,useMemo,useRef,useState,useSyncExternalStore} from 'react';
+import {PassageQuestionDraft} from './passage-question-draft';
 import {DocumentClient,documentByteHash} from './reviewed-documents';
 import type {DocumentUpload,Finding,Preview} from './reviewed-documents';
 import type {RegistrySession} from './registry-client';
@@ -98,6 +99,8 @@ export function ReviewedDocumentWorkspace({session,patientId,caseId}:{session:Re
     <p>Check the original PDF page before confirming a passage. Extracted table text can separate a specimen label from its value or unit.</p></>}
    {state.document&&<><p>{state.document.document_id} · v{state.document.version} · {state.document.state}</p><button data-testid="download-reviewed" disabled={locked} onClick={()=>void download()}>Download exact original</button>
     <details><summary>Preserved selection history ({state.document.revisions.length})</summary>{state.document.revisions.map(r=><section key={r.revision_id}><h4>Revision {r.revision}</h4><p>{r.reason} · user-selected · clinical review not performed</p><ul>{r.findings.map(f=><li key={f.key}>{passageLocation(preview,f.line)} · “{f.quote}” · {f.state}</li>)}</ul></section>)}</details></>}
+   {state.document?.state==='current'&&!locked&&<PassageQuestionDraft key={state.document.source_id+state.document.revisions.at(-1)?.revision_id}
+     doc={state.document} session={session} patientId={patientId} caseId={caseId}/>}
    <ol className="document-lines">{preview.lines.map(row=><li key={row.line}><button type="button" disabled={locked} onClick={()=>{setLine(row.line);setQuote(row.text);setConfirmed(false);}}>Select line {row.line}{row.page?` · page ${row.page}`:''}</button><pre>{row.text||'(blank line)'}</pre></li>)}</ol>
    {state.document?.state!=='superseded'&&<form onSubmit={e=>{e.preventDefault();void save();}}>
     {!state.document&&<div className="document-metadata" onChange={()=>setConfirmed(false)}><label>Document ID<input data-testid="document-id" value={documentId} onChange={e=>setDocumentId(e.target.value)} required pattern="[A-Z][A-Z0-9-]{1,39}"/></label>
