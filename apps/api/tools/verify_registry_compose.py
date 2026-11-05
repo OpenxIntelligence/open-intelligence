@@ -118,11 +118,35 @@ def main():
             save_access()
             assert request(path, tokens[0])[0] == 200
             assert request(path, tokens[1]) == (404, {"detail": "Patient unavailable"})
+            encounter_actions = ["encounter.schedule", "encounter.transition", "note.write", "note.read"]
+            for credential in credentials:
+                credential["actions"].extend(encounter_actions)
+            save_access()
+            visit_path = path + "/encounters"
+            schedule = {"synthetic": True, "request_key": "SCHEDULE-PROOF", "external_key": "PROOF-VISIT",
+                        "kind": "outpatient", "service_date": "2026-05-04"}
+            status, visit = request(visit_path, tokens[0], schedule)
+            assert status == 200 and visit["status"] == "scheduled"
+            visit_path += "/" + str(visit["encounter_id"])
+            assert request(visit_path + "/transitions", tokens[0], {"synthetic": True, "request_key": "START-VISIT",
+                           "target": "in_progress", "expected_revision": 1})[0] == 200
+            note_path = visit_path + "/notes/PROOF-NOTE/versions"
+            drafts = ["Independently fictional draft.", "Revised independently fictional draft."]
+            for i, body in enumerate(drafts):
+                command_body = {"synthetic": True, "request_key": "PROOF-DRAFT-" + str(i),
+                                "expected_version": i, "body": body, "note_kind": "consultation"}
+                written = request(note_path, tokens[0], command_body)
+                assert written[0] == 200 and written[1]["version"] == i + 1
+                assert request(note_path, tokens[0], command_body) == written
+            versions = request(note_path, tokens[0])[1]["versions"]
+            assert [v["body"] for v in versions] == drafts
+            assert request(note_path, tokens[1])[0] == 404
             for service in ("api", "db"):
                 command(["restart", service])
                 ready()
                 assert request("/v1/patients", tokens[0], payload) == (200, {"patient_id": patient, "duplicate": True})
                 assert request(path, tokens[0])[1]["patient_id"] == patient
+                assert request(note_path, tokens[0])[1]["versions"] == versions
                 print("Canonical identity and idempotency persisted after " + service + " restart")
 
             # A real server dump/restore checks identity history, not only an
@@ -133,13 +157,27 @@ def main():
             query = (
                 "SELECT (SELECT count(*) FROM identity.identity_patients),"
                 "(SELECT count(*) FROM identity.identity_create_receipts),"
+                "(SELECT count(*) FROM identity.identity_domain_events WHERE event_type='identity.patient.created'),"
                 "(SELECT count(*) FROM identity.identity_domain_events),"
                 "(SELECT version_num FROM public.alembic_version)"
             )
             restored = command(["exec", "-T", "db", "psql", "-U", "oi_api", "-d", "oi_api_test_restore", "-At", "-c", query], capture_output=True, text=True).stdout.strip()
-            assert restored == "1|1|1|" + SCHEMA_REVISION, restored
+            assert restored == "1|1|1|8|" + SCHEMA_REVISION, restored
             restored_id = command(["exec", "-T", "db", "psql", "-U", "oi_api", "-d", "oi_api_test_restore", "-At", "-c", "SELECT patient_id FROM identity.identity_patients"], capture_output=True, text=True).stdout.strip()
             assert restored_id == patient
+            restored_notes = command(["exec", "-T", "db", "psql", "-U", "oi_api", "-d", "oi_api_test_restore",
+                "-At", "-c", "SELECT sha256 FROM ehr.clinical_note_versions ORDER BY version"],
+                capture_output=True, text=True).stdout.splitlines()
+            assert restored_notes == [hashlib.sha256(b.encode()).hexdigest() for b in drafts]
+            saved = command(["exec", "-T", "db", "psql", "-U", "oi_api", "-d", "oi_api_test_restore",
+                "-At", "-c", "SELECT (SELECT count(*) FROM ehr.clinical_encounter_commands),"
+                "(SELECT count(*) FROM identity.identity_domain_events WHERE event_type='clinical_note_draft_saved')"],
+                capture_output=True, text=True).stdout.strip()
+            assert saved == "4|2", saved
+            credentials[0]["actions"].remove("note.read")
+            save_access()
+            assert request(note_path, tokens[0])[0] == 404
+            print("PASS EHR: two immutable draft versions, exact retry, restart, restored hashes and receipts, access withdrawal")
             credentials[0]["patient_ids"] = []
             save_access()
             assert request(path, tokens[0])[0] == 404

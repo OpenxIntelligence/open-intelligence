@@ -59,6 +59,12 @@ class RegistryMigrationTests(unittest.TestCase):
         # Remove only known test-owned objects. RESTRICT is intentional: an
         # unexpected dependent object must stop cleanup rather than be erased.
         with self.engine.begin() as connection:
+            connection.execute(text("ALTER TABLE IF EXISTS ehr.clinical_note_headers DROP CONSTRAINT IF EXISTS latest_note_version_exists"))
+            connection.execute(text("DROP TABLE IF EXISTS ehr.clinical_note_versions"))
+            connection.execute(text("DROP TABLE IF EXISTS ehr.clinical_note_headers"))
+            connection.execute(text("DROP TABLE IF EXISTS ehr.clinical_encounter_commands"))
+            connection.execute(text("DROP TABLE IF EXISTS ehr.clinical_encounters"))
+            connection.execute(text("DROP SCHEMA IF EXISTS ehr"))
             connection.execute(text("DROP TABLE IF EXISTS public.oi_registry_external_reference"))
             connection.execute(text("DROP TABLE IF EXISTS coordination.question_followthrough_manual_dependencies"))
             connection.execute(text("DROP TABLE IF EXISTS coordination.question_followthrough_events"))
@@ -169,7 +175,11 @@ class RegistryMigrationTests(unittest.TestCase):
     def test_only_canonical_identity_tables_are_installed(self):
         self._apply_registry()
         schemas = set(inspect(self.engine).get_schema_names())
-        self.assertFalse(schemas & {"auth", "ehr", "platform"})
+        self.assertFalse(schemas & {"auth", "platform"})
+        self.assertEqual(set(inspect(self.engine).get_table_names(schema="ehr")), {
+            "clinical_encounters", "clinical_note_headers",
+            "clinical_note_versions", "clinical_encounter_commands",
+        })
         self.assertEqual(inspect(self.engine).get_table_names(schema="public"), ["alembic_version"])
         self.assertEqual(self._scalar("SELECT version_num FROM public.alembic_version"), REGISTRY_REVISION)
         self.assertEqual(self._scalar(
