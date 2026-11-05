@@ -301,6 +301,10 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
         choose_result(source, suffix)
         assert question_text() == '', 'A fresh authorized report view must start with empty drafts'
     draft_question(first['source_id'], 'ZERO', question)
+    # The subsequent real save and lost-response retry must use the resumed
+    # wording and original Observation, even after visiting a different result.
+    choose_result(source, 'NUMBER')
+    choose_result(source, 'ZERO')
     submit_question()
     cd.wait("window.__oiLabPrepareCodes.length===1", 'explicit preparation completed over HTTP')
     assert cd.evaluate("window.__oiLabPrepareCodes") == [200], 'Expected scoped laboratory HTTP success'
