@@ -51,7 +51,7 @@ def fictional_bundle(*, amended=False):
 
 
 def exercise(cd, patient_id, directory, token, credentials, write_grants, artifacts):
-    grants = {'case_binding_create', 'case_binding_read', 'source_import', 'source_read', 'source_original_read', 'question_read', 'composer_context_read'}
+    grants = {'case_binding_create', 'case_binding_read', 'source_import', 'source_read', 'source_original_read', 'question_read', 'question_create', 'composer_context_read'}
     credentials[0]['actions'] = sorted(set(credentials[0]['actions']) | grants)
     write_grants()
     root = '/v1/patients/' + patient_id
@@ -102,12 +102,19 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     raw = fictional_bundle()
     records()
     cd.evaluate('''(() => {
-      window.__oiLabFetch=window.fetch;window.__oiLabWrites=[];window.__oiLabDrop=true;window.__oiLabRequests=0;window.__oiLabPrepareCodes=[];
+      window.__oiLabFetch=window.fetch;window.__oiLabWrites=[];window.__oiLabDrop=true;window.__oiLabRequests=0;window.__oiLabPrepareCodes=[];window.__oiLabQuestionPosts=[];window.__oiLabHistoryCodes=[];
       window.fetch=async(input,init)=>{
         window.__oiLabRequests++;
         const laboratory=String(input).endsWith('/laboratory/fhir-r4/sources')&&init?.method==='POST';
         if(laboratory)window.__oiLabWrites.push(JSON.parse(init.body));
         const response=await window.__oiLabFetch(input,init);
+        if(String(input).endsWith('/composer/laboratory-questions')&&init?.method==='GET')window.__oiLabHistoryCodes.push(response.status);
+        if(String(input).endsWith('/composer/laboratory-questions')&&init?.method==='POST'){
+          window.__oiLabQuestionPosts.push({body:JSON.parse(init.body),status:response.status});
+          if(window.__oiLabQuestionPosts.length===1&&response.status===201){
+            await response.clone().json();throw Error('Fictional lost question save response');
+          }
+        }
         if(String(input).endsWith('/composer/laboratory-preflight'))window.__oiLabPrepareCodes.push(response.status);
         if(laboratory&&window.__oiLabDrop&&response.ok){window.__oiLabDrop=false;await response.clone().json();throw Error('Fictional lost laboratory response');}
         return response;
@@ -228,6 +235,20 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     assert cd.evaluate("Boolean(document.querySelector('[data-testid=lab-question-receipt]'))"), cd.evaluate("document.querySelector('[data-testid=world-status]').textContent")
     prepared = cd.evaluate("document.querySelector('[data-testid=lab-question-receipt]').textContent")
     assert all(x in prepared for x in (question, first['source_id'], first['sha256'], 'Observation/FICT-WEB-ZERO', 'ACCESS-'))
+    laboratory_history = '/cases/' + CASE + '/composer/laboratory-questions'
+    assert operator(laboratory_history)['questions'] == []
+    cd.evaluate("document.querySelector('[data-testid=lab-question-save]').click()")
+    cd.wait("Boolean(document.querySelector('[data-testid=lab-question-retry]'))", 'lost question response exposes exact retry')
+    committed, = operator(laboratory_history)['questions']
+    assert committed['question'] == question and committed['source_context_state'] == 'current_unreviewed_question'
+    assert committed['source_id'] == first['source_id'] and committed['source_sha256'] == first['sha256']
+    cd.evaluate("document.querySelector('[data-testid=lab-question-retry]').click()")
+    cd.wait("window.__oiLabQuestionPosts.length===2 && !document.querySelector('[data-testid=lab-question-retry]')", 'recover the committed question')
+    posts = cd.evaluate('window.__oiLabQuestionPosts')
+    assert [p['status'] for p in posts] == [201, 200] and posts[0]['body'] == posts[1]['body']
+    assert operator(laboratory_history)['questions'] == [committed]
+    cd.evaluate("document.querySelector('[data-testid=lab-questions-reopen]').click()")
+    cd.wait("document.querySelector('[data-testid=lab-saved-question]')?.textContent.includes(" + json.dumps(question) + ")", 'reopen saved laboratory question')
     draft_question(first['source_id'], 'ABSENT', 'Why was the selected result not performed?')
     assert not cd.evaluate("Boolean(document.querySelector('[data-testid=lab-question-receipt]'))"), 'Editing clears previous receipt'
     assert operator(questions_path)['questions'] == []
@@ -249,6 +270,17 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     rows = journey('1')
     assert all(current['source_id'] in row and first['source_id'] not in row for row in rows)
     assert not cd.evaluate("Boolean(document.querySelector('[data-testid=lab-question-receipt]'))")
+    reopened, = operator(laboratory_history)['questions']
+    assert reopened == {**committed, 'source_context_state': 'source_reassessment_required'}
+    cd.evaluate("document.querySelector('[data-testid=lab-questions-reopen]').click()")
+    cd.wait("document.querySelector('[data-testid=lab-saved-question]')?.textContent.toLowerCase().includes('needs reassessment')", 'amendment flags the historical question')
+    row = cd.evaluate("document.querySelector('[data-testid=lab-saved-question]').textContent")
+    assert all(v in row for v in (question, first['source_id'], first['sha256'], 'Observation/FICT-WEB-ZERO'))
+    credentials[0]['actions'].remove('question_read');write_grants()
+    cd.evaluate("document.querySelector('[data-testid=lab-questions-reopen]').click()")
+    cd.wait("window.__oiLabHistoryCodes.at(-1)===404 && !document.querySelector('[data-testid=lab-saved-question]')", 'denied question read removes prior history')
+    credentials[0]['actions'].append('question_read');write_grants()
+    journey('1')
     draft_question(current['source_id'], 'ABSENT', question)
     submit_question()
     cd.wait("document.querySelector('[data-testid=lab-question-receipt]')?.textContent.includes('Observation/FICT-WEB-ABSENT')", 'absent result prepared on amended report')
@@ -263,11 +295,20 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     (artifacts / 'laboratory-question-preparation.json').write_text(json.dumps({
         'synthetic': True, 'case_id': CASE, 'original': prepared, 'amendment': amended_receipt,
         'http_statuses': cd.evaluate('window.__oiLabPrepareCodes'),
-        'requests_on_selection_or_edit': 0, 'saved_questions_after_preparation': 0,
+        'requests_on_selection_or_edit': 0, 'saved_questions_before_explicit_save': 0,
         'edited_receipt_cleared': True, 'denied_projection_withheld': True,
     }, indent=2) + '\n')
     assert cd.evaluate('window.__oiLabPrepareCodes') == [200, 200, 404]
-    print('PASS LAB QUESTION: exact current and amended results, explicit human question, zero implicit requests or saved questions, Composer revocation withheld the preview.')
+    (artifacts / 'durable-laboratory-question.json').write_text(json.dumps({
+        'synthetic': True, 'case_id': CASE, 'question_id': committed['question_id'],
+        'original_source_id': first['source_id'], 'original_sha256': first['sha256'],
+        'current_source_id': current['source_id'], 'observation_reference': committed['observation_reference'],
+        'save_statuses': [p['status'] for p in posts], 'same_retry_body': posts[0]['body']==posts[1]['body'],
+        'historical_state': reopened['source_context_state'], 'revoked_history_withheld': True,
+        'observed_history_statuses': cd.evaluate('window.__oiLabHistoryCodes'),
+    }, indent=2) + '\n')
+    print('PASS DURABLE LAB QUESTION: explicit save, lost response recovered, same stored ID and original after amendment, denied history cleared.')
+    print('PASS LAB QUESTION: exact current and amended results, explicit human question, zero implicit requests or saves, Composer revocation withheld the preview.')
     journey('1')
     # The integrated Journey action must re-read this case's source metadata
     # without automatically disclosing an original or creating a new source.
@@ -294,7 +335,7 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     cd.evaluate('[...document.querySelectorAll(".world-cases li")].find(e=>e.textContent.includes(' + json.dumps(CASE) + ')).querySelector("[data-testid=world-load]").click()')
     cd.wait('!document.querySelector("[data-testid=world-projection]") && document.querySelector("[data-testid=world-status]").textContent.includes("unavailable or revoked")', 'revoked laboratory projection cleared')
     credentials[0]['actions'].append('source_read');write_grants()
-    cd.evaluate('window.fetch=window.__oiLabFetch;delete window.__oiLabFetch;delete window.__oiLabWrites;delete window.__oiLabDrop;delete window.__oiLabRequests;delete window.__oiLabPrepareCodes')
+    cd.evaluate('window.fetch=window.__oiLabFetch;delete window.__oiLabFetch;delete window.__oiLabWrites;delete window.__oiLabDrop;delete window.__oiLabRequests;delete window.__oiLabPrepareCodes;delete window.__oiLabQuestionPosts;delete window.__oiLabHistoryCodes')
     navigate('Overview')
     (artifacts / 'laboratory-fhir-workflow.json').write_text(json.dumps({
         'synthetic': True, 'case_id': CASE, 'original_source_id': first['source_id'],

@@ -18,7 +18,7 @@ class PatientRequestLimit:
             route.startswith("/v1/patients/") and (
                 route.endswith("/record-requests") or route.endswith("/case-bindings") or route.endswith("/sources") or
                 route.endswith("/questions") or route.endswith(("/composer/source-preflight",
-                    "/composer/laboratory-preflight")) or
+                    "/composer/laboratory-preflight", "/composer/laboratory-questions")) or
                 route.endswith("/documents") or "/documents/" in route or
                 ("/questions/" in route and route.endswith("/return-for-verification")) or
                 ("/questions/" in route and route.endswith("/brief")) or

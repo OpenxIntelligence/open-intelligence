@@ -43,3 +43,42 @@ export function readLabPreparation(x:unknown, world:SourceWorldModel, item:World
       typeof preflight_sha256!=='string' || !/^[0-9a-f]{64}$/.test(preflight_sha256)) throw Error('Invalid laboratory preparation');
   return Object.freeze({receipt:access_receipt_id,fingerprint:preflight_sha256});
 }
+
+export type SavedLabQuestion=Readonly<{
+  question_id:string;question:string;source_id:string;source_version:number;source_sha256:string;
+  observation_reference:string;source_snapshot_sha256:string;preflight_sha256:string;
+  source_context_state:'current_unreviewed_question'|'source_reassessment_required';
+}>;
+export type LabQuestionList=Readonly<{access_receipt_id:string;questions:readonly SavedLabQuestion[]}>;
+export type LabQuestionView=Readonly<{
+  labQuestionHistory:LabQuestionList|null;labQuestionListPhase:'idle'|'loading'|'ready'|'error';
+  labQuestionListMessage:string;labQuestionWritePhase:'idle'|'saving'|'unknown'|'saved'|'error';
+  labQuestionWriteMessage:string;labQuestionSavedId:string|null;
+}>;
+export const emptyLabQuestions=():LabQuestionView=>({labQuestionHistory:null,labQuestionListPhase:'idle',
+  labQuestionListMessage:'',labQuestionWritePhase:'idle',labQuestionWriteMessage:'',labQuestionSavedId:null});
+const hash=(v:unknown):v is string=>typeof v==='string'&&/^[0-9a-f]{64}$/.test(v);
+function fields(v:unknown,keys:readonly string[]):v is Record<string,unknown>{
+  return record(v)&&Object.keys(v).length===keys.length&&keys.every(k=>Object.hasOwn(v,k));
+}
+/** Link a fresh authorized list to the selected case's current or historical source version.
+ * No clinical values are reconstructed from a historical observation reference. */
+export function readLabQuestionList(raw:unknown,model:SourceWorldModel):LabQuestionList{
+  if(!fields(raw,['patient_id','case_id','access_receipt_id','questions'])||raw.patient_id!==model.patient_id||raw.case_id!==model.case_id||
+    typeof raw.access_receipt_id!=='string'||!/^ACCESS-[0-9A-F]{32}$/.test(raw.access_receipt_id)||!Array.isArray(raw.questions)||raw.questions.length>512)throw Error('laboratory questions');
+  const ids=new Set<string>(),sources=new Map([...model.current_sources,...model.history].map(s=>[s.source_id,s]));
+  const currentObservations=new Set(model.laboratory_observations.map(o=>o.source_id+'|'+o.observation_reference));
+  const questions=raw.questions.map((row:unknown)=>{
+    if(!fields(row,['question_id','question','source_id','source_version','source_sha256','observation_reference','source_snapshot_sha256','preflight_sha256','source_context_state'])||
+      typeof row.question_id!=='string'||!/^QUESTION-[0-9A-F]{32}$/.test(row.question_id)||ids.has(row.question_id)||
+      typeof row.question!=='string'||!validLabQuestion(row.question)||typeof row.source_id!=='string'||
+      typeof row.observation_reference!=='string'||!/^Observation\/[A-Za-z0-9.-]{1,64}$/.test(row.observation_reference)||
+      !hash(row.source_sha256)||!hash(row.preflight_sha256)||!hash(row.source_snapshot_sha256)||
+      !['current_unreviewed_question','source_reassessment_required'].includes(String(row.source_context_state)))throw Error('laboratory question');
+    const source=sources.get(row.source_id);
+    if(!source||source.kind!=='laboratory'||source.version!==row.source_version||source.sha256!==row.source_sha256||
+      (row.source_context_state==='current_unreviewed_question'&&(row.source_snapshot_sha256!==model.snapshot_fingerprint||source.state!=='current'||!currentObservations.has(row.source_id+'|'+row.observation_reference))))throw Error('laboratory question source');
+    ids.add(row.question_id);return Object.freeze(row as SavedLabQuestion);
+  });
+  return Object.freeze({access_receipt_id:raw.access_receipt_id,questions:Object.freeze(questions)});
+}
