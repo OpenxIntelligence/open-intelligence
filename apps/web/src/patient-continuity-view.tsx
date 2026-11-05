@@ -50,7 +50,7 @@ export function PatientContinuity({state,onNavigate,onRefreshFollowthrough,busy}
       <p><strong data-testid="continuity-lab-reassessment">{view.laboratoryQuestions.reassessment}</strong> needing reassessment after a source change.</p>
       {view.laboratoryQuestions.current+view.laboratoryQuestions.reassessment===0&&<p>No laboratory questions were returned in the last independently authorized read.</p>}
      </>:<p role="status">Laboratory question history has not been checked for this case or is unavailable. A missing check is not zero.</p>}
-     <button type="button" disabled={busy} data-testid="continuity-open-lab-questions" onClick={()=>onNavigate('Journey')}>Reopen laboratory questions in Journey</button>
+     <button type="button" disabled={busy} data-testid="continuity-open-lab-questions" onClick={()=>onNavigate('Labs')}>Reopen questions in Labs</button>
     </section>}
    </div>
    <div className="continuity-item">

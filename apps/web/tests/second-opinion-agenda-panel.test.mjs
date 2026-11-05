@@ -148,7 +148,7 @@ test('second-opinion UI shows laboratory questions as a separate unreviewed sour
  assert.match(html,/data-state="needs_laboratory_review"/);
  assert.match(html,/data-testid="second-opinion-lab-questions"/);
  assert.match(html,/1 current · 0 needing source reassessment/);
- assert.match(html,/Open saved laboratory questions in Journey to inspect the original result/);
+ assert.match(html,/Open saved laboratory questions in Labs to inspect the original result/);
  assert.match(html,/No text-anchored questions were returned/);
  assert.doesNotMatch(html,/Primary source version 1, line 0/);
 });

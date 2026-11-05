@@ -241,8 +241,8 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     assert len(operator(source_path)['sources']) == 1
     inspect(first['source_id'], raw)
 
-    def journey(expected_value):
-        navigate('Journey')
+    def journey(expected_value, section='Journey'):
+        navigate(section)
         has_case = '[...document.querySelectorAll(".world-cases li")].some(e=>e.textContent.includes(' + json.dumps(CASE) + '))'
         if not cd.evaluate(has_case):
             cd.evaluate('document.querySelector("[data-testid=world-load-cases]").click()')
@@ -305,7 +305,12 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
 
     question = 'What does this report say about my fictional specimen?'
     questions_path = '/cases/' + CASE + '/questions'
-    journey('0')
+    journey('0', 'Labs')
+    cd.wait("document.querySelector('h1').textContent==='Labs' && Boolean(document.querySelector('[data-testid=labs-results]'))", 'first-class Labs workspace')
+    cd.evaluate("const statusFilter=document.querySelector('#lab-filter-status');statusFilter.value='reported_absent';statusFilter.dispatchEvent(new Event('change',{bubbles:true}))")
+    cd.wait("document.querySelectorAll('[data-testid=world-laboratory-observation]').length===1 && document.querySelector('[data-testid=world-laboratory-value]').textContent.includes('not-performed')", 'an absent result remains distinct in Labs')
+    cd.evaluate("document.querySelector('#lab-filter-status').scrollIntoView({block:'center'})")
+    (artifacts/'labs-workspace.png').write_bytes(base64.b64decode(cd.command('Page.captureScreenshot',{'format':'png'})['data']))
     navigate('Investigations')
     cd.evaluate('document.querySelector("[data-testid=load-source-questions]").click()')
     cd.wait('Boolean(document.querySelector("[data-testid=source-question-history]"))', 'authorized laboratory case question history')

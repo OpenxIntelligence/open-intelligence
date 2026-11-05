@@ -76,7 +76,7 @@ def main():
                         name + ' is the selected section')
 
             out=Path(os.environ.get('OI_WEB_ARTIFACT_DIR',ROOT/'apps/web/.evidence'));out.mkdir(parents=True,exist_ok=True)
-            for name in ('Journey', 'Investigations', 'Review', 'Visits', 'Records'):
+            for name in ('Journey', 'Investigations', 'Review', 'Visits', 'Labs', 'Imaging', 'Pathology', 'Molecular', 'Records'):
                 select_section(name)
                 cd.wait("document.querySelectorAll('#patient-id').length===1 && !document.querySelector('#patient-id').disabled",
                         name + ' exposes one patient lookup without returning to Overview')
@@ -372,6 +372,26 @@ def main():
             exercise_laboratory(cd,pid,directory,tokens[0],credentials,write_grants,out)
             from oncology_episode_journey import exercise as exercise_episodes
             exercise_episodes(cd,pid,tokens[0],credentials,write_grants,out)
+            select_section('Pathology')
+            cd.evaluate("document.querySelector('[data-testid=load-cases]').click()")
+            alpha_row="[...document.querySelectorAll('[data-testid=case-row]')].find(e=>e.querySelector('code').textContent==='CASE-ALPHA')"
+            cd.wait(f"Boolean({alpha_row})",'pathology case mapping')
+            cd.evaluate(f"{alpha_row}.querySelector('[data-testid=load-sources]').click()")
+            cd.wait("document.querySelectorAll('[data-testid=source-version]').length>=2",'pathology report and amendment')
+            cd.evaluate("document.querySelector('[data-testid=open-original]').click()")
+            cd.wait("document.querySelector('[data-testid=server-original]')?.textContent.includes('Type: pathology')", 'exact pathology original')
+            select_section('Molecular')
+            cd.wait("!!document.querySelector('[data-testid=diagnostic-reports-empty]') && !document.querySelector('[data-testid=server-original]')",
+                    'pathology original stays out of the empty molecular category')
+            molecular=original.replace('DOC-ONE','DOC-PATHOLOGY-LABEL').replace('Type: pathology','Type: molecular')
+            status,_=add_synthetic(root+'/cases/'+case+'/sources',{'synthetic':True,'original_text':molecular})
+            assert status==201
+            cd.evaluate(f"{alpha_row}.querySelector('[data-testid=load-sources]').click()")
+            cd.wait("document.querySelectorAll('[data-testid=source-version]').length===1 && document.querySelector('[data-testid=source-version] h4').textContent.includes('DOC-PATHOLOGY-LABEL')",
+                    'molecular report follows its recorded type even with a misleading document name')
+            cd.evaluate("document.querySelector('[data-testid=open-original]').click()")
+            cd.wait("document.querySelector('[data-testid=server-original]')?.textContent==="+json.dumps(molecular),'molecular original round-trip')
+            select_section('Overview')
             credentials[0]['patient_ids']=[];write_grants();read()
             cd.wait("!document.querySelector('[data-testid=patient-card]') && document.querySelector('[data-testid=status]').textContent.includes('Patient unavailable')",'revoked read removes prior view')
             credentials[0]['expires_at']=(datetime.now(timezone.utc)-timedelta(seconds=1)).isoformat();write_grants();read()

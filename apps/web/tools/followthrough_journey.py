@@ -70,7 +70,7 @@ _OBSERVE = r"""() => {
 def navigate(cd, section):
     cd.evaluate("[...document.querySelectorAll('nav button')].find(e=>e.textContent.startsWith("
                 + json.dumps(section) + ")).click()")
-    selectors = {'Investigations': '[data-view=investigations]',
+    selectors = {'Imaging':'[data-testid=records-workspace]', 'Investigations': '[data-view=investigations]',
                  'Journey': '[data-view=journey]', 'Records': '[data-testid=records-workspace]',
                  'Overview': '[data-testid=patient-card]', 'Review': '[data-testid=review-workspace]'}
     cd.wait('Boolean(document.querySelector(' + json.dumps(selectors[section]) + '))',

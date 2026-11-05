@@ -1,8 +1,9 @@
 """Real source-image UI joined to one canonical question, citation, task and report.
 
 Image import is explicitly operator-controlled HTTP fixture setup. The browser
-lists and downloads exact originals; it does not upload images or read pixels.
-The existing pathology journey and all its acceptance assertions remain intact.
+lists exact originals, downloads exact DICOM bytes, and renders only the bounded
+non-diagnostic synthetic CT preview. It does not upload or clinically interpret
+pixels. The existing pathology journey and all its acceptance assertions remain intact.
 """
 import base64
 import hashlib
@@ -119,8 +120,8 @@ def exercise(cd, patient_id, token, credentials, write_grants, directory, artifa
         else:
             cd.evaluate(expression + '.click()')
 
-    def records(source_id):
-        navigate(cd, 'Records')
+    def records(source_id, section='Records'):
+        navigate(cd, section)
         click(cd, '[data-testid=load-cases]')
         row = ("[...document.querySelectorAll('[data-testid=case-row]')].find(e=>e.querySelector('code')?.textContent==="
                + json.dumps(CASE) + ')')
@@ -209,10 +210,24 @@ def exercise(cd, patient_id, token, credentials, write_grants, directory, artifa
         cd.evaluate('(' + METADATA_OBSERVER + ')()')
         cd.evaluate('(' + TASK_OBSERVER + ')()')
 
-        records(source_id)
+        records(source_id, 'Imaging')
+        assert cd.evaluate("document.querySelector('h1').textContent==='Imaging'")
         initial_index = inspect_images(source_id)
         assert initial_index['images'][0]['image_id'] == image_id
         initial_download = download_image(source_id, 'initial')
+        click(cd, '[data-testid=source-image-preview-open]')
+        cd.wait("(()=>{const e=document.querySelector('[data-testid=source-image-preview]');return Boolean(e)&&e.complete&&e.naturalWidth===2&&e.naturalHeight===2;})()",
+                'bounded non-diagnostic image preview rendered')
+        warning = cd.evaluate("document.querySelector('[data-testid=source-image-preview-panel]').textContent")
+        assert 'Not for diagnosis.' in warning and 'does not apply diagnostic windowing' in warning
+        preview_receipt = cd.evaluate("document.querySelector('[data-testid=source-image-preview-receipt]').textContent")
+        assert preview_receipt.startswith('ACCESS-') and len(preview_receipt) == 39
+        continuity['preview_access_receipt_id'] = preview_receipt
+        cd.command('Emulation.setDeviceMetricsOverride', {'width':1440,'height':1100,'deviceScaleFactor':1,'mobile':False})
+        cd.evaluate("document.querySelector('[data-testid=source-image-preview-panel]').scrollIntoView({block:'center'})")
+        (artifacts / 'image-preview-desktop.png').write_bytes(base64.b64decode(cd.command('Page.captureScreenshot', {'format':'png'})['data']))
+        click(cd, '[data-testid=source-image-preview-close]')
+        cd.wait("!document.querySelector('[data-testid=source-image-preview-panel]')", 'preview closed and transient pixels released')
         cd.command('Emulation.setDeviceMetricsOverride', {'width':1440,'height':1100,'deviceScaleFactor':1,'mobile':False})
         cd.evaluate("document.querySelector('[data-testid=source-images-inspection]').scrollIntoView({block:'center'})")
         (artifacts / 'image-original-desktop.png').write_bytes(base64.b64decode(cd.command('Page.captureScreenshot', {'format':'png'})['data']))
@@ -353,6 +368,8 @@ def exercise(cd, patient_id, token, credentials, write_grants, directory, artifa
             'evidence_amendment_preserves_body_with_fresh_historical_cover':True,
             'source_amendment_requires_explicit_image_relink_and_question_task_reassessment':True,
             'api_restart_preserves_original_image_and_report_history':True,
+            'non_diagnostic_preview_rendered_from_fresh_authorized_original':True,
+            'diagnostic_windowing_applied':False,
             'retained_downloads_unchanged':True, 'synthetic':True, 'pixels_interpreted':False,
             'clinical_approval':False, 'model_executed':False}
         (artifacts / 'image-evidence-continuity.json').write_text(json.dumps(receipt, ensure_ascii=False, indent=2)+'\n', encoding='utf-8')
