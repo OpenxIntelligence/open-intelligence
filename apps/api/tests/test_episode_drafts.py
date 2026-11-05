@@ -26,6 +26,18 @@ class EligibilityTests(unittest.TestCase):
             with self.subTest(role=role, state=state, label=label):
                 self.assertEqual(eligible_primary(role, label, state), expected)
 
+    def test_historical_original_authority_is_required_before_historical_text_is_parsed(self):
+        from oi_api.episode_drafts import _history
+        from unittest.mock import Mock
+        from open_intelligence.patient_registry import PatientRegistryDenied
+        reg = Mock()
+        reg._fetchall.return_value = [("EPISODE-X",8,"a"*64,"ACTOR",None,"SRC-OLD",b"unreadable")]
+        history = {"case_id":"CASE-ALPHA","history":[{"source_id":"SRC-OLD"}],"current_sources":[]}
+        guard = Mock(side_effect=PatientRegistryDenied("Historical original unavailable"))
+        with self.assertRaises(PatientRegistryDenied):
+            _history(reg, history, guard)
+        guard.assert_called_once_with()
+
     def test_command_refuses_fake_clinical_authority_and_coerced_anchors(self):
         command = dict(synthetic=True, source_id="SRC-" + "A"*32, source_line=8,
                        source_version=1, source_sha256="a"*64, snapshot_sha256="b"*64)
@@ -80,6 +92,13 @@ class EpisodeHTTPTests(SourceVersionFixture):
             self.assertEqual(row["statement"], "Fictional breast primary.")
             self.assertTrue(all(d["basis_state"] == "reassessment_required" for d in history["drafts"]))
             self.assertEqual(row["source_state"], "superseded")
+            # A historical literal is a protected read of the old original.
+            self.creds[0]["actions"].remove("source_original_read")
+            self.write()
+            denied, body, _ = request(restarted, url, token=TOKEN_A)
+            self.assertEqual(denied, 404)
+            self.assertNotIn("Fictional breast primary.", str(body))
+            self.creds[0]["actions"].append("source_original_read")
             self.creds[0]["actions"].remove("source_read")
             self.write()
             self.assertEqual(request(restarted, url, token=TOKEN_A)[0], 404)

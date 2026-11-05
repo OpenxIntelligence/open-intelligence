@@ -127,7 +127,7 @@ def _save(registry, world, command, actor):
     return DraftReceipt(**scope, episode_id=episode_id, duplicate=False)
 
 
-def _history(registry, world):
+def _history(registry, world, require_historical_access):
     # list_locked has verified all originals, including historical bytes, in this transaction.
     # Read the attribution from those exact bytes; a later version cannot rename the draft.
     rows = registry._fetchall(
@@ -136,6 +136,9 @@ def _history(registry, world):
         "WHERE s.case_id=%s ORDER BY d.created_at,d.episode_id LIMIT %s", (world["case_id"], MAX_DRAFTS+1))
     if len(rows) > MAX_DRAFTS:
         raise SourceIntegrityError("Excess episode draft rows")
+    historical_ids = {s["source_id"] for s in world["history"]}
+    if any(row[5] in historical_ids for row in rows):
+        require_historical_access()
     sources = {s["source_id"]: s for s in [*world["current_sources"], *world["history"]]}
     drafts = []
     for episode_id, line, basis, actor, created_at, source_id, raw in rows:
@@ -157,8 +160,9 @@ def _history(registry, world):
 
 def register_episode_routes(router, *, principal, registry, authorize, refresh, errors):
     def handle(request, patient_id, case_id, context, command=None):
-        actions = ("source_read", "episode_draft_read") if command is None else (
-            "source_read", "episode_draft_read", "episode_draft_create")
+        actions = ["source_read", "episode_draft_read"]
+        if command is not None:
+            actions.append("episode_draft_create")
         if context.purpose != "operations":
             raise HTTPException(404, "Episode drafts unavailable")
         try:
@@ -166,10 +170,17 @@ def register_episode_routes(router, *, principal, registry, authorize, refresh, 
                 for action in actions:
                     authorize(patients, context, patient_id, action)
 
+                def recheck():
+                    refresh(request, context, patients, patient_id, tuple(actions))
+
+                def require_historical_access():
+                    actions.append("source_original_read")
+                    recheck()
+
                 def prepare(index):
                     world = project_source_world_model(index)
                     if command is None:
-                        body, status = _history(patients, world), 200
+                        body, status = _history(patients, world, require_historical_access), 200
                         patients.append_event(patient_id, "episode.drafts_read", case_id=case_id, actor=context.actor,
                                               purpose=context.purpose, source_receipt_id=index["access_receipt_id"],
                                               draft_count=len(body.drafts))
@@ -182,7 +193,7 @@ def register_episode_routes(router, *, principal, registry, authorize, refresh, 
                 return PostgresSourceVersions(patients).list(
                     patient_id, case_id, organization=context.organization, actor=context.actor,
                     purpose=context.purpose, prepare_response=prepare,
-                    recheck_authority=lambda: refresh(request, context, patients, patient_id, actions))
+                    recheck_authority=recheck)
         except PatientRegistryDenied:
             raise HTTPException(404, "Episode drafts unavailable") from None
 
