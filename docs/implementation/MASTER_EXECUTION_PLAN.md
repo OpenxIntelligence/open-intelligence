@@ -1,4 +1,29 @@
-# Open Intelligence master execution plan
+# Open Intelligence implementation plan
+
+H1 is the connected synthetic React/FastAPI/PostgreSQL application. The [first-principles plan](../FIRST_PRINCIPLES_PLAN.md) remains the product authority. The [execution backlog](../EXECUTION_BACKLOG.csv) owns engineering work. This index maps the November 5 directive to those owners, their evidence and the sequence needed to deliver the platform. Follow [implementation status](IMPLEMENTATION_STATUS.md) for the distinction between merged behavior and branch work.
+
+| Stage | Deliver through the existing platform | Exit evidence and dependencies |
+|---|---|---|
+| 0. Consolidation | Reconcile the November 4 audit with main, preserve the reference app and identify one integration owner for overlapping PRs. OI-005/010. | Record both parent commits, migration heads, concrete source ownership, baseline test results and recovery of populated histories. |
+| 1. Technology and rights | Keep the qualified H1 package set. Use the [technology catalog](OPEN_SOURCE_TECHNOLOGY_CATALOG.md) to evaluate alternatives and the [license and SBOM register](LICENSE_AND_SBOM_REGISTER.md) for actual build inputs. OI-004. | Reproducible package inventory, original notices, two verified install receipts, precise scope and unresolved obligations. Compare representative fictional workloads before selecting new dependencies. |
+| 2. Shared infrastructure | Versioned API, bounded command ingress, identity, access, event receipts, source custody, job lifecycle, telemetry and recovery. OI-005/006/012/013. | Patient registration through source review survives restart and restore. Add failure tests for a revoked principal, retry, divergent intent, stale output, worker loss and denied egress. A deployment for real data needs a separate decision. |
+| 3. Longitudinal oncology | From the source-reported episode fields and encounter owner, add durable episode identity, relationships, conditions, procedures, allergies, medication and treatment history. OI-006/007/009. | Two primary cancers, an unresolved lesion and a later amendment retain distinct source histories. A reviewer can verify which episode and specimen a claim applies to. |
+| 4. Clinical intelligence | Versioned manual and machine extraction, pathology and biomarkers, episode-aware chronology, staging, proposed chart answers. OI-003/011/014. | Independent adjudication of input, position, units, negation, historical context and abstentions. Keep critical errors separate. Clinical promotion requires a scoped human decision. |
+| 5. Interoperability | Extend existing lab R4 and DICOM custody into selected versioned profiles. Add HL7 v2 intake, SMART authorization, controlled export and terminology only with rights. OI-005/006/013. | Round-trip/loss report per supported profile. Refuse cross-subject data, preserve original and return the precise reason for unsupported content. |
+| 6. Advanced oncology | Treatment plans and administration, infusion, radiology/lesions, RECIST, tumor boards, trial screening, registry reporting, patient-reported outcomes and survivorship. OI-007/012/014/017. | Each module proves separate state, authority, provenance and independent clinical acceptance. Start with reported treatment history before executable orders or administrations. |
+| 7. Scientific execution | Artifact custody and recovery before DNA, RNA, single-cell and multi-omics adapters. Then governed research collaboration and population analysis. OI-004/013/016. | One independently authored specimen through a reproducible job with a pinned reference, QC, fenced retries, output hashes and a separate research purpose. Validate cohort eligibility, aggregation and disclosure before population use. |
+| 8. Therapeutic discovery | Traceable literature, targets, combinations, drug/HLA/neoantigen hypotheses, counterevidence and experimental returns. OI-008/016/018. | Reproduce a result from permitted inputs, expose uncertainty and preserve reviewer disagreement. Corrections and withdrawals reach dependent hypotheses. |
+| 9. Production readiness | Jurisdiction- and use-specific controls, identity/consent, encryption and keys, operational recovery, incident response, clinical validation and release governance. OI-012–015. | [Release acceptance](RELEASE_ACCEPTANCE.md) has named reviewers, exact artifacts, measured operating limits and explicit approval for the intended use. |
+
+## Next engineering sequence
+
+1. Inspect the exact [#567 worker, API and browser checks](https://github.com/OpenxIntelligence/open-intelligence/pull/567/checks). They exercise worker loss and reauthorization, result/audit rollback at lease expiry, amendment-driven invalidation, access-scoped historical reopening and the existing return-to-review flow. Check the populated migration, restart/restore and immutable package gates on that same source.
+2. Extend canonical source and case ownership with a persisted, versioned episode identity and separately reviewed source association. Exercise two primaries and an unassigned lesion, an amendment, retained past evidence, refused cross-patient links, and a reopened patient view after restore. Follow the [clinical data model](CLINICAL_DATA_MODEL.md) and retain the source-reported episode projection.
+3. Keep the clinical evidence, authorization and adjudication gates in force for future extraction, staging, orders, scientific jobs and external deployment. Populate only independently authored fictional cases during development.
+
+## Earlier clinical consolidation work packages
+
+The following record belongs to the pinned clinical base. Its named revisions, gates and donor observations are retained for traceability. The current platform increment and its own acceptance are described above.
 
 Date: 2026-11-05. Authority: founder's Master Engineering Execution Mandate,
 post-audit implementation, consolidation and platform development (2026-11-05).

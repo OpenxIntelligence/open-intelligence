@@ -445,6 +445,8 @@ class ComposerRunMigrationTests(SourceVersionFixture):
         self.assertEqual(run_once(self.settings, lambda: TOKEN_A, patient, "CASE-ALPHA")["status"],
                          "completed")
         with running_server(create_app(self.settings)) as restarted:
+            status, latest, _ = request(restarted, path, token=TOKEN_A)
+            self.assertEqual((status, latest["run_id"], latest["state"]), (200, run, "completed"))
             url = f"{path}/{run}/result"
             status, result, _ = request(restarted, url, token=TOKEN_A)
             self.assertEqual(status, 200, result)

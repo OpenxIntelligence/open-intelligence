@@ -15,6 +15,8 @@ for save, retry and history behavior.
 The [convergence record](../../docs/engineering/H1_ACCEPTED_DEMO_CONVERGENCE.md)
 maps the retained source, document, image, laboratory, question, report and task owners.
 
+Patient commands use the shared bounded ingress policy. The per-process command budget defaults to 240 per minute. A 429 response carries a retry delay. Full encounter notes retain their registered 242,000-byte POST envelope. The [operations guide](../../docs/implementation/DEPLOYMENT_AND_OPERATIONS.md) records configuration, recovery and limits.
+
 Follow-up tasks support both exact text lines and saved FHIR Observations.
 `GET /v1/patients/{patient_id}/cases/{case_id}/followthrough` returns the
 existing text-only list by default. Send

@@ -225,7 +225,7 @@ PYTHONPATH=apps/api/src:src python -m oi_api.worker \
 `--lease-seconds` optionally selects a duration from 1 to 300. `--once` is
 required: each process claims at most one eligible run for that actor and scope.
 It emits only a bounded JSON operational status and, where available, attempt
-count. It never prints the brief or credential. `idle` means no run was claimed;
+count. It never prints the brief or credential. `idle` means there was no eligible work. If the third attempt expired, the worker records failure, emits `failed` with attempt count 3 and exits nonzero. The next invocation can claim another run. A result prepared under a live lease is rolled back if the database deadline elapses during its final source-access audit;
 `unavailable` can leave a claim awaiting lease recovery and does not prove that
 work rolled back. A recurring scheduler or service manager is not installed.
 

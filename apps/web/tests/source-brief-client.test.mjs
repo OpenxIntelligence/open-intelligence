@@ -415,3 +415,37 @@ test('an active status after a cancel response cannot confirm cancellation', asy
   assert.match(s.snapshot().backgroundBrief.message, /could not be verified/);
   assert.equal(s.snapshot().backgroundBrief.status.state, 'queued');
 });
+
+test('amended question can find its latest run by GET while creation, replacement and result stay unavailable', async () => {
+  const calls = [];
+  const s = sessionFor((url, init) => {
+    calls.push([url, init.method, init.body]);
+    return response(status('stale', {revision: 2}));
+  }, {questionRows: () => [{...question(), source_context_state: 'source_reassessment_required'}]});
+  await ready(s);
+  for (const action of ['latest', 'result', 'enqueue', 'retry']) await act(s, action);
+  assert.deepEqual(calls, [[runPath, 'GET', undefined]]);
+  assert.equal(s.snapshot().backgroundBrief.status.state, 'stale');
+  assert.equal(s.snapshot().backgroundBrief.result, null);
+});
+
+test('historical lookup with missing or revoked access withholds run and body', async () => {
+  const s = sessionFor(() => response({detail: 'PRIVATE'}, 404),
+    {questionRows: () => [{...question(), source_context_state: 'source_reassessment_required'}]});
+  await ready(s); await act(s, 'latest');
+  assert.equal(s.snapshot().backgroundBrief, null);
+  assert.match(s.snapshot().briefMessage, /No previous background run is visible/);
+  assert.ok(!JSON.stringify(s.snapshot()).includes('PRIVATE'));
+});
+
+test('while amendment delivery is pending, historical status can be refreshed but cannot cancel the run', async () => {
+  const calls = [];
+  const s = sessionFor((path, init) => {
+    calls.push([path, init.method]);
+    return response(status(calls.length === 1 ? 'queued' : 'stale'));
+  }, {questionRows: () => [{...question(), source_context_state: 'source_reassessment_required'}]});
+  await ready(s);
+  for (const action of ['latest', 'cancel', 'refresh']) await act(s, action);
+  assert.deepEqual(calls, [[runPath, 'GET'], [runPath + '/' + runId, 'GET']]);
+  assert.equal(s.snapshot().backgroundBrief.status.state, 'stale');
+});

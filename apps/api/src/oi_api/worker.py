@@ -67,6 +67,8 @@ def run_once(settings: Settings, token_provider: Callable[[], str], patient_id: 
                 return {"status": "blocked"}
             if claim is None:
                 return {"status": "idle"}
+            if claim["state"] == "failed":
+                return {"status": "failed", "attempt_count": claim["attempt_count"]}
             try:
                 runs.complete(claim, recheck_authority=recheck)
                 return {"status": "completed", "attempt_count": claim["attempt_count"]}

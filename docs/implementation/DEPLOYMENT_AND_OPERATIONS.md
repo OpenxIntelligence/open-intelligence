@@ -1,0 +1,28 @@
+# Deployment and operations
+
+The runnable configuration is the [local fictional demo](../H1_DEMO.md) and [API Compose stack](../../apps/api/compose.yaml). Hosted CI uses isolated disposable services and a real PostgreSQL 16 instance. Staging and production configurations with institutionally accepted security, operational ownership and recovery objectives remain open.
+
+| Environment | Entry and operating boundary | What to verify |
+|---|---|---|
+| Developer | Follow the demo guide to install the pinned web build, create the synthetic fixture state, and run `python tools/h1_demo.py up --fictional-only`. The web UI and API use loopback publication. | `/health` indicates process liveness. `/health/ready` requires the supported database major and single expected Alembic revision. Inspect the migration job if readiness is 503. Reusing the same state directory must preserve identity and prior work. |
+| API and dependency build | [Dockerfile](../../apps/api/Dockerfile) prepares reviewed wheels, checks the SBOM and installs hashed artifacts. [Compose](../../apps/api/compose.yaml) uses a separate migration job, internal database network, read-only application filesystem and a local frontend bridge. | Record resolved image identity on every run. The [OCI manifest](../../apps/api/container-image-pins.json) pins the Python and PostgreSQL indexes and platform identifiers. CI checks the actual PostgreSQL runtime config/architecture. Layer contents require separate review. Ordinary frontend routing permits outbound connections and is not an egress policy. |
+| Test and recovery | The [API workflow](../../.github/workflows/h1-api.yml) exercises the registry, sources, labs, images, reviews, tasks and evidence/report recovery. [Web verification](../../.github/workflows/h1-web.yml) runs the built app and retains receipts. | Restore into a separate database. Reopen actual authorized originals, refuse revoked reads, retry an existing command, append only in the recovered database and verify the original instance remains intact. |
+| Staging and production (pending) | Define the identity provider, institutional tenancy, supported environment, key ownership, network boundary, auditing and data custodian before generating deployable profiles. | Measure RPO/RTO from a timed drill; prove access revocation, backup encryption and key recovery, retention/deletion, operational escalation, tested rollback and independent acceptance. |
+
+## Reproduce or refresh container inputs
+
+The [image register](../../apps/api/container-image-pins.json) binds the existing Python 3.12.16 slim Bookworm and PostgreSQL 16.15 Bookworm tags to OCI index digests. It records the Linux amd64 manifest, image configuration digest and an immutable Docker Official Images evidence link for each. Docker resolves the platform manifest from the index. An unavailable digest fails the pull. The locally built API image retains its own identity.
+
+To refresh, inspect the official index and amd64 manifest, update the register and the matching Dockerfile, Compose and CI references in one review. Run the container pin tests, build the API and run the populated restore and revocation workflows. Inspect the observed PostgreSQL configuration in `verification-api/postgres-image.json`. A digest refresh requires a review of the included layers and vulnerabilities for the proposed distribution.
+
+## Patient traffic
+
+The process-local `OI_API_PATIENT_COMMANDS_PER_MINUTE` value controls initial burst and steady refill. The local default is 240 commands, replenished at four per second. A refusal returns HTTP 429 with an integer retry delay; preserve command identity on retry. Access checks still apply to admitted calls. The setting counts POST-based preparation as well as mutations. A busy caller can consume the entire process budget. Multiple processes and restarts have independent budgets. Collect a representative workload and availability requirements before setting institutional quotas or choosing a shared counter.
+
+The combined clinical/worker candidate requires `0026_integrated_core` (including `0023_ehr_lab_ownership_join`); main at `f188aecc` requires `0018_laboratory_questions`. Match the application and migration tree. The note-version POST preserves its 242,000-byte envelope for escaped Unicode.
+
+Use the existing timeout/error boundaries to observe job state, API availability, saturation and recovery duration. A proposed metrics pipeline should emit fixed operation IDs, status classes, bounded latency buckets and retry counts; exclude raw paths, subject IDs, tokens, request bodies, prompts and SQL. Test telemetry with canary input and inspect what is actually exported. On a failed deployment, preserve logs within policy, stop traffic, identify the last known compatible application/schema pair and restore a copy before deciding any downgrade. Do not reverse a populated migration merely to make readiness green.
+
+## Worker recovery
+
+Run the [one-attempt brief worker](../engineering/H1_DURABLE_EXECUTION.md) with its independently supplied credential. Run the [event consumer](../engineering/H1_SOURCE_EVENT_DELIVERY.md) to reconcile source changes. They are separate, explicitly invoked commands. A result contains only bounded status and attempt metadata on stdout. A brief worker returning `failed` on exhausted attempts exits nonzero; `idle` means there was no eligible work in that scope. Recover after a crash by starting a freshly authorized worker for the same scope after lease expiry. Source-change events, failed grants and stale lease tokens never authorize opening the brief body. A scheduler, institutional worker identity and operational service-level targets are still open.

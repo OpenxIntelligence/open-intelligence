@@ -4,6 +4,8 @@ Open Intelligence is building a patient-centered healthcare intelligence platfor
 initially focused on oncology. The full product ambition and canonical architecture
 remain in the [first-principles plan](docs/FIRST_PRINCIPLES_PLAN.md).
 
+See the [implementation status](docs/implementation/IMPLEMENTATION_STATUS.md) for the connected patient brief, recovery evidence, and current clinical and scientific boundaries.
+
 ## Run the connected fictional application
 
 Start with the [persistent demo guide](docs/H1_DEMO.md). The connected H1 application

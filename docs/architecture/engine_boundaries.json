@@ -51,6 +51,7 @@
           "make_engine"
         ],
         "oi_api.request_limits": [
+          "COMMAND_METHODS",
           "PatientRequestLimit"
         ],
         "oi_api.registry_context": [

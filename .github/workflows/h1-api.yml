@@ -36,7 +36,7 @@ jobs:
       COMPOSE_PROJECT_NAME: oi-h1-ci-${{ github.run_id }}-${{ github.run_attempt }}
     services:
       postgres:
-        image: postgres:16.15-bookworm
+        image: postgres:16.15-bookworm@sha256:5264710be20f409750ac6dc4e5706dcef929c87e241605463f0f9aefa932a8d9
         env:
           POSTGRES_USER: oi_api
           POSTGRES_PASSWORD: oi_h1_synthetic_only
@@ -85,7 +85,10 @@ jobs:
       - name: Prepare hash-locked runtime wheels with code-only pydicom
         run: python apps/api/tools/prepare_dependencies.py --wheel-dir /tmp/oi-h1-wheels
       - name: Verify wheel rights and write the resolved package inventory
-        run: python apps/api/tools/check_dependencies.py --wheel-dir /tmp/oi-h1-wheels --sbom /tmp/oi-h1-sbom.json
+        run: |
+          mkdir -p verification-api
+          python apps/api/tools/check_dependencies.py --wheel-dir /tmp/oi-h1-wheels --sbom verification-api/api.cdx.json
+          cp apps/api/THIRD_PARTY_NOTICES.md verification-api/
       - name: Install verified wheels without network resolution
         run: |
           python -m pip install --force-reinstall --no-deps --require-hashes --no-index --find-links /tmp/oi-h1-wheels -r apps/api/requirements.lock
@@ -168,12 +171,22 @@ jobs:
         run: python apps/api/tools/verify_evidence_compose.py
       - name: Record resolved container identities and application packages
         run: |
-          docker image inspect postgres:16.15-bookworm oi-h1-api:synthetic --format '{{.Id}} {{json .RepoDigests}}'
-          python -m pip list --format=json
-          python - <<'PY'
+          python - <<'PYIMAGES'
+          import json
           from pathlib import Path
-          print(Path('/tmp/oi-h1-sbom.json').read_text())
-          PY
+          import subprocess
+          pins = json.loads(Path('apps/api/container-image-pins.json').read_text())
+          postgres = pins['postgres']
+          info = json.loads(subprocess.check_output(['docker', 'image', 'inspect', postgres['reference']]))[0]
+          if (info['Id'], info['Os'] + '/' + info['Architecture']) != (postgres['config'], postgres['platform']):
+              raise SystemExit('Unexpected PostgreSQL platform or image configuration')
+          Path('verification-api').mkdir(exist_ok=True)
+          Path('verification-api/postgres-image.json').write_text(json.dumps({
+              'reference': postgres['reference'], 'platform': postgres['platform'], 'observedConfig': info['Id'],
+          }, indent=2) + '\n')
+          PYIMAGES
+          docker image inspect oi-h1-api:synthetic --format '{{.Id}} {{json .RepoDigests}}'
+          python -m pip list --format=json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
