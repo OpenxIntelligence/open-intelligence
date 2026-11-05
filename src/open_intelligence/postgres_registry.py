@@ -74,7 +74,12 @@ class PostgresPatientRegistry:
         cur = self.db.cursor()
         try:
             cur.execute(sql, params)
-            return cur.fetchone()
+            row = cur.fetchone()
+            # pg8000 returns rows as lists, but every caller (and this
+            # method's contract) treats rows as tuples: whole-row and slice
+            # comparisons against tuples are always unequal for lists, which
+            # silently broke stored-original validation on lab read-back.
+            return None if row is None else tuple(row)
         finally:
             cur.close()
 
@@ -82,7 +87,7 @@ class PostgresPatientRegistry:
         cur = self.db.cursor()
         try:
             cur.execute(sql, params)
-            return cur.fetchall()
+            return [tuple(row) for row in cur.fetchall()]
         finally:
             cur.close()
 

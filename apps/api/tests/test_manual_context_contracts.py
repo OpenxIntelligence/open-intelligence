@@ -46,6 +46,7 @@ class ManualContextContracts(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError,'owner unavailable'):
                 QuestionPassages(registry).metadata_locked({},revision_id='PASSAGES-'+'A'*32)
         for revisions in ([], [('0014_question_passages',)], [('0015_manual_report_context',)],
+                          [('0016_fhir_laboratory_sources',)],
                           [('unknown_revision',)], [('0010_authored_evidence_origin',),('0010_question_evidence',)]):
             registry=Mock()
             registry._transaction_active=True

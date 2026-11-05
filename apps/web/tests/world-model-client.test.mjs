@@ -28,7 +28,7 @@ const world=()=>({
   research_review_invalidation_integrated:false,composer_execution_authorized:false,
   snapshot_fingerprint:'c'.repeat(64),as_of_received_at:'2026-11-02T10:00:00Z',
   summary:{current_sources:1,historical_sources:0,current_observations:1,
-    unresolved_observations:1,source_disagreements:0},
+    current_laboratory_observations:0,unresolved_observations:1,source_disagreements:0},
   current_sources:[source()],history:[],
   observations:[{
     source_id:sourceId,document_id:'DOC-ONE',document_version:1,source_sha256:'b'.repeat(64),
@@ -37,6 +37,7 @@ const world=()=>({
     specimen_id:'SPECIMEN-ONE',event_date:'2026-01-10',issued_at:'2026-01-11',
     review_state:'not_established',clinical_meaning:null,
   }],
+  laboratory_observations:[],laboratory_timeline:[],
   unresolved_refs:[{source_id:sourceId,source_line:8}],conflicts:[],
   limitations:['Independently fictional data only; no professional review or clinical interpretation.'],
 });
@@ -52,6 +53,41 @@ test('strict source-world contract preserves original anchors without assigning 
   assert.equal(m.composer_execution_authorized,false);
   assert.equal(m.summary.unresolved_observations,1);
   assert.ok(Object.isFrozen(m));
+});
+test('strict typed laboratory projection stays source-reported and rejects fabricated interpretation',()=>{
+  const w=world(),labSource='SRC-'+'C'.repeat(32);
+  w.current_sources.push({...source(),source_id:labSource,document_id:'FICTIONAL-REPORT-A',
+    sha256:'e'.repeat(64),kind:'laboratory',event_date:'2026-04-03',issued_at:'2026-04-04',
+    specimen_id:'FICTIONAL-SPECIMEN-A'});
+  const lab={source_id:labSource,document_id:'FICTIONAL-REPORT-A',document_version:1,
+    source_sha256:'e'.repeat(64),observation_reference:'Observation/FICTIONAL-OBS-A',
+    loinc_code:'777-3',effective_at:'2026-04-03T09:05:00-04:00',
+    issued_at:'2026-04-04T12:00:00Z',specimen_reference:'Specimen/FICTIONAL-SPECIMEN-A',
+    specimen_type_text:'Fictional plasma sample',
+    specimen_collected_at:'2026-04-03T09:05:00-04:00',
+    report_reference:'DiagnosticReport/FICTIONAL-REPORT-A',status:'reported_value',
+    value_text:'4.20',unit_code:'10*9/L',absent_reason:null,source_reported:true,
+    review_state:'not_established',clinical_review:'not_performed',clinical_meaning:null};
+  w.laboratory_observations=[lab];
+  w.laboratory_timeline=[{source_id:labSource,observation_reference:lab.observation_reference,
+    loinc_code:'777-3',effective_at:lab.effective_at,issued_at:lab.issued_at,
+    specimen_reference:lab.specimen_reference,status:'reported_value',
+    clinical_interpretation:'not_performed'}];
+  w.summary.current_sources=2;w.summary.current_observations=2;
+  w.summary.current_laboratory_observations=1;
+  const checked=parseSourceWorldModel(w,patientId,caseId);
+  assert.equal(checked.laboratory_observations[0].clinical_meaning,null);
+  assert.equal(checked.laboratory_timeline[0].clinical_interpretation,'not_performed');
+  for(const mutate of [
+    x=>{x.laboratory_observations[0].clinical_review='approved';},
+    x=>{x.laboratory_observations[0].source_sha256='f'.repeat(64);},
+    x=>{x.laboratory_observations[0].status='reported_absent';},
+    x=>{x.laboratory_timeline[0].loinc_code='9999-9';},
+    x=>{x.summary.current_laboratory_observations=0;},
+  ]){
+    const bad=structuredClone(w);mutate(bad);
+    assert.throws(()=>parseSourceWorldModel(bad,patientId,caseId));
+  }
 });
 test('cross-patient, forged clinical authority, hash/source mismatch and count fraud fail closed',()=>{
   for(const mutate of [
@@ -90,7 +126,7 @@ test('known same-specimen same-date contradiction is never promoted to assessmen
     source_refs:[{source_id:sourceId,source_line:8},{source_id:other,source_line:8}],
     clinical_interpretation:'not_performed'}];
   w.summary={current_sources:2,historical_sources:0,current_observations:2,
-    unresolved_observations:1,source_disagreements:1};
+    current_laboratory_observations:0,unresolved_observations:1,source_disagreements:1};
   // There is no "reported" observation: fake source disagreement cannot pass.
   assert.throws(()=>parseSourceWorldModel(w,patientId,caseId));
   assert.equal(Object.isFrozen(w.observations[0]),false,
