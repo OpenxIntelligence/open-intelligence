@@ -217,7 +217,7 @@ def main():
                 "(SELECT version_num FROM public.alembic_version)"
             )
             restored = command(["exec", "-T", "db", "psql", "-U", "oi_api", "-d", "oi_api_test_restore", "-At", "-c", query], capture_output=True, text=True).stdout.strip()
-            assert restored == "1|1|1|13|" + SCHEMA_REVISION, restored
+            assert restored == "1|1|1|14|" + SCHEMA_REVISION, restored
             restored_id = command(["exec", "-T", "db", "psql", "-U", "oi_api", "-d", "oi_api_test_restore", "-At", "-c", "SELECT patient_id FROM identity.identity_patients"], capture_output=True, text=True).stdout.strip()
             assert restored_id == patient
             restored_notes = command(["exec", "-T", "db", "psql", "-U", "oi_api", "-d", "oi_api_test_restore",

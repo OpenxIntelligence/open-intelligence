@@ -83,7 +83,15 @@ def authenticate_request(request: Request, authentication: Authentication) -> Pr
         raise HTTPException(401, "Authentication required",
                             headers={"WWW-Authenticate": "Bearer"})
     scheme, _, token = values[0].partition(" ")
-    if scheme.lower() != "bearer" or re.fullmatch(r"[A-Za-z0-9._~-]{32,256}", token) is None:
+    if scheme.lower() != "bearer":
+        raise HTTPException(401, "Authentication required",
+                            headers={"WWW-Authenticate": "Bearer"})
+    return authenticate_token(token, authentication)
+
+
+def authenticate_token(token: str, authentication: Authentication) -> Principal:
+    """Recheck a supplied bearer using the current trusted authentication provider."""
+    if re.fullmatch(r"[A-Za-z0-9._~-]{32,256}", token) is None:
         raise HTTPException(401, "Authentication required",
                             headers={"WWW-Authenticate": "Bearer"})
     try:

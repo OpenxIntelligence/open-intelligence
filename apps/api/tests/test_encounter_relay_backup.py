@@ -43,6 +43,13 @@ class BackupTests(unittest.TestCase):
                 relay.backup_receiver(self.source, self.backup, 8000, PATIENT, self.token)
             self.assertEqual(list(self.source.parent.iterdir()), [self.source])
 
+    def test_withdrawal_after_staging_cannot_publish(self):
+        with patch.object(relay, "read_page", side_effect=[self.events, relay.FeedUnavailable()]) as reads:
+            with self.assertRaises(relay.FeedUnavailable):
+                relay.backup_receiver(self.source, self.backup, 8000, PATIENT, self.token)
+        self.assertEqual(reads.call_count, 2)
+        self.assertEqual(list(self.source.parent.iterdir()), [self.source])
+
     def test_concurrent_publication_never_overwrites_winner(self):
         def feed(*_):
             self.backup.write_bytes(b"earlier backup")

@@ -4,10 +4,13 @@
 
 Use the [persistent fictional demo](../../docs/H1_DEMO.md) to run this API together
 with the React application. [Consolidation #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481)
-records the original integration. The API requires `0022_lab_citation_source_scope`. Run
-`python -m oi_api.migrate upgrade head` from either published 0019 revision.
-The join retains both the [encounter and note service](#connected-encounter-and-note-service)
-and the original Observation behind each governed laboratory citation. See
+records the original integration. This candidate requires `0023_composer_clinical_join`.
+Run `python -m oi_api.migrate upgrade head` from either published parent,
+`0020_source_event_delivery` or `0022_lab_citation_source_scope`. The join retains the
+[encounter and note service](#connected-encounter-and-note-service), the original
+Observation behind a governed laboratory citation, and the
+[source-brief worker](../../docs/engineering/H1_DURABLE_EXECUTION.md) and its
+[source-event consumer](../../docs/engineering/H1_SOURCE_EVENT_DELIVERY.md). See
 [the laboratory question contract](../../docs/engineering/H1_DURABLE_LABORATORY_QUESTIONS.md)
 for save, retry and history behavior.
 The [convergence record](../../docs/engineering/H1_ACCEPTED_DEMO_CONVERGENCE.md)

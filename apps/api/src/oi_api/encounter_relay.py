@@ -211,6 +211,9 @@ def backup_receiver(path: Path, destination: Path, port, patient, token_provider
         raise ValueError("Use an operator-private backup directory")
     if os.path.lexists(destination):
         raise FileExistsError("Choose an unused backup path")
+    # Require current feed access both before staging private records and while
+    # verifying the copied prefix immediately before publication.
+    checked_events(read_page(port, patient, token_provider(), 0), patient, 0)
     # Copy only the three receiver-owned tables, from one read transaction. Do
     # not export unused pages, triggers or unrelated objects from the source.
     with tempfile.TemporaryDirectory(prefix=".encounter-backup-", dir=directory) as working:

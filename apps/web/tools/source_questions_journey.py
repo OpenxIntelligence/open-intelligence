@@ -220,7 +220,55 @@ class SourceQuestionChecks:
             assert self.original_source_id in self.cd.evaluate(
                 "document.querySelector('[data-testid=source-quote-packet]').textContent")
 
-    def start(self, credentials, write_grants):
+    def background_brief(self, run_worker, credentials, write_grants):
+        row = f'li[data-question-id="{self.original_question_id}"]'
+
+        def click(test_id):
+            selector = json.dumps(f'{row} [data-testid={test_id}]')
+            self.cd.wait(f'document.querySelector({selector})?.disabled === false', test_id)
+            self.cd.evaluate(f'document.querySelector({selector}).click()')
+
+        def read_status(expected):
+            panel = f'document.querySelector({json.dumps(row + " [data-testid=run-status]")})'
+            self.cd.wait(f'{panel}?.dataset.state === {json.dumps(expected)}', expected)
+            return self.cd.evaluate(f'{panel}.dataset.runId')
+
+        click('run-open')
+        initial = read_status('queued')
+        self.history('Current source context')
+        click('run-open')
+        assert read_status('queued') == initial
+        click('run-cancel')
+        assert read_status('cancelled') == initial
+        click('run-retry')
+        replacement = read_status('queued')
+        assert replacement != initial
+        run_worker()
+        click('run-refresh')
+        assert read_status('completed') == replacement
+        click('run-result')
+        body = "document.querySelector('[data-testid=run-result-body]')"
+        self.cd.wait(f'{body}?.textContent.includes({json.dumps(self.original_question_id)})',
+                     'stored background brief disclosed under a fresh grant')
+        assert 'Fictional café <script>literal</script>.' in self.cd.evaluate(f'{body}.textContent')
+        assert self.cd.evaluate(f'{body}.querySelectorAll("script").length') == 0
+        credentials[0]['actions'].remove('source_brief_export')
+        write_grants()
+        try:
+            click('run-result')
+            self.cd.wait("document.querySelector('[data-testid=brief-status]')?.textContent.includes('unavailable under current access')",
+                         'denied background result recheck')
+            assert not self.cd.evaluate(f'Boolean({body})')
+        finally:
+            credentials[0]['actions'].append('source_brief_export')
+            write_grants()
+        self.cd.evaluate("document.querySelector('[data-testid=world-load]').click()")
+        self.cd.wait("Boolean(document.querySelector('[data-testid=world-projection]'))", 'reopen source context')
+        self.history('Current source context')
+        print('PASS BACKGROUND BRIEF: same run after question-history refresh; cancel and replace; separate worker; '
+              'completed source-bound result; withdrawn export clears the displayed result.')
+
+    def start(self, credentials, write_grants, run_worker):
         self.navigate('Investigations')
         assert self.cd.evaluate("!document.querySelector('[data-testid=composer-context]')")
         self.prepare(self.original_source_id, 8)
@@ -229,6 +277,7 @@ class SourceQuestionChecks:
         assert self.original_question_id in history and self.original_source_id in history
         assert 'Clinical approval: none' in history
         self.overview_counts(current=1, reassessment=0)
+        self.background_brief(run_worker, credentials, write_grants)
         preview = self.prepare_brief(self.original_question_id)
         assert 'Fictional café <script>literal</script>.' in preview['body']
         self.original_download, self.original_download_bytes = self.download_brief(self.original_question_id)
@@ -442,7 +491,7 @@ class SourceQuestionChecks:
 
 
 @contextmanager
-def exercise(cd, source_id, credentials, write_grants):
+def exercise(cd, source_id, credentials, write_grants, run_worker):
     previous_actions = list(credentials[0]['actions'])
     try:
         credentials[0]['actions'] = sorted(set(previous_actions) |
@@ -450,7 +499,7 @@ def exercise(cd, source_id, credentials, write_grants):
         write_grants()
         cd.evaluate(f'({_OBSERVE_BRIEFS})()')
         checks = SourceQuestionChecks(cd, source_id)
-        checks.start(credentials, write_grants)
+        checks.start(credentials, write_grants, run_worker)
         yield checks
     finally:
         try:

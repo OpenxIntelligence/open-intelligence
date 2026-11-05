@@ -15,7 +15,6 @@ from oi_api.case_bindings import CanonicalCaseBindings
 from oi_api.composer_preflight import PostgresSourceComposerPreflight
 from oi_api.contracts import SCHEMA_REVISION
 from oi_api.database import Database
-from oi_api.contracts import SCHEMA_REVISION
 from oi_api.evidence_catalog import fictional_records, seed_fictional_records
 from oi_api.migrate import migrate
 from oi_api.question_evidence import PostgresQuestionEvidence as MetadataEvidence

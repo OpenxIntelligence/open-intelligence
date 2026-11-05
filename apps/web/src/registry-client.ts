@@ -21,6 +21,8 @@ import {decodeReviewQueue,decodeReviewReturnResult,validReturnReason,FICTIONAL_R
 import type {ReviewQueue,ReviewReturnResult} from './review-queue-view.js';
 import {canPrepareSourceBrief,decodeSourceBrief} from './source-brief.js';
 import type {SourceBrief} from './source-brief.js';
+import {canRetryRun, readRunReceipt, readRunResult, readRunStatus} from './background-brief.js';
+import type {BackgroundBrief, RunAction} from './background-brief.js';
 import {canCreateFollowthrough,decodeFollowthrough,decodeFollowthroughReceipt,
   validFollowthroughDraft,validFollowthroughTransition,followthroughTransitionContext,FOLLOWTHROUGH_TRANSITIONS} from './followthrough-view.js';
 import type {FollowthroughDraft,FollowthroughUnsentDraft,FollowthroughIntent,FollowthroughList,
@@ -70,6 +72,7 @@ export type ViewState = Readonly<EvidenceState & SourceImagesState & LaboratoryI
   reviewQueue:ReviewQueue|null;reviewPhase:'idle'|'loading'|'ready'|'error';reviewMessage:string;
   reviewReturn:ReviewReturnResult|null;reviewReturnPhase:'idle'|'saving'|'saved'|'unknown'|'error';
   reviewReturnMessage:string;reviewReturnIntent:ReviewReturnIntent|null;
+  backgroundBrief:BackgroundBrief|null;
   sourceBrief:SourceBrief|null;briefPhase:'idle'|'loading'|'ready'|'error';briefMessage:string;
   followthrough:FollowthroughList|null;followthroughCaseId:string|null;
   followthroughDrafts:Readonly<Record<string,FollowthroughUnsentDraft>>;
@@ -104,7 +107,7 @@ const emptyReview=()=>({reviewQueue:null,reviewPhase:'idle' as const,
   reviewMessage:'Open the current patient case to inspect saved questions and verification returns.',
   reviewReturn:null,reviewReturnPhase:'idle' as const,reviewReturnIntent:null,
   reviewReturnMessage:'No return action is in progress.'});
-const emptyBrief=()=>({sourceBrief:null,briefPhase:'idle' as const,
+const emptyBrief=()=>({backgroundBrief:null,sourceBrief:null,briefPhase:'idle' as const,
   briefMessage:'Prepare a source-linked brief from a current saved question. Each download checks permission again.'});
 const emptyFollowthrough=()=>({followthrough:null,followthroughCaseId:null,followthroughPhase:'idle' as const,
   followthroughDrafts:Object.freeze({}) as Readonly<Record<string,FollowthroughUnsentDraft>>,
@@ -1686,6 +1689,87 @@ export class RegistrySession {
     }catch(_){if(current())uncertain();}
     finally{clearTimeout(timeout);this.#controllers.delete(control);
       if(query===this.#followWrite&&scope===this.#scope)this.#savingFollowthrough=false;}
+  }
+
+  async backgroundBriefAction(questionId: string, action: RunAction): Promise<void> {
+    this.#focusSavedQuestion(questionId);
+    const world = this.#state.worldModel;
+    const question = this.#state.questions?.find(item => item.question_id === questionId);
+    const view = this.#state.backgroundBrief;
+    const previous = view?.questionId === questionId ? view.status : null;
+    if (!world || !question || !this.#token || this.#state.phase !== 'ready' || this.#state.worldPhase !== 'ready' ||
+        this.#state.questionListPhase !== 'ready' || this.#state.questionsCaseId !== world.case_id ||
+        this.#state.patient?.patient_id !== world.patient_id || question.patient_id !== world.patient_id ||
+        question.case_id !== world.case_id || question.source_snapshot_contract !== 'oi.pg-source-world-model/1' ||
+        view?.busy || this.#uploading || this.#savingQuestion) return;
+    const enqueue = action === 'enqueue' || action === 'retry';
+    if ((action !== 'enqueue' && !previous) ||
+        (action === 'retry' && (!previous || !canRetryRun(previous.state))) ||
+        (action === 'cancel' && previous?.state !== 'queued' && previous?.state !== 'running') ||
+        (action === 'result' && previous?.state !== 'completed') ||
+        ((action === 'result' || enqueue) && !canPrepareSourceBrief(question, world))) return;
+
+    const query = ++this.#briefRead;
+    const scope = this.#scope;
+    const patientRead = this.#read;
+    const current = () => query === this.#briefRead && scope === this.#scope && patientRead === this.#read &&
+      this.#state.worldModel === world && this.#state.questions?.find(q => q.question_id === questionId) === question;
+    const control = new AbortController();
+    this.#controllers.add(control);
+    const timeout = setTimeout(() => control.abort(), 10000);
+    const pending = {questionId, status: previous, result: null, busy: true, message: 'Checking current access…'};
+    this.#publish({...emptyBrief(), backgroundBrief: pending});
+    try {
+      const base = '/v1/patients/' + encodeURIComponent(question.patient_id) + '/cases/' +
+        encodeURIComponent(question.case_id) + '/questions/' + encodeURIComponent(questionId) + '/runs';
+      // The server scopes this key to the actor, organization and purpose. Reopening after a
+      // lost response or reload repeats the exact intent without retaining any patient data locally.
+      let path = base;
+      let body: string | undefined;
+      if (enqueue) {
+        body = JSON.stringify({synthetic: true, request_key: 'web-brief-v1-' +
+          (action === 'retry' ? previous!.run_id : questionId),
+          source_snapshot_contract: question.source_snapshot_contract,
+          expected_source_snapshot_sha256: question.source_snapshot_sha256,
+          expected_preflight_sha256: question.preflight_sha256});
+      } else {
+        path += '/' + previous!.run_id;
+        if (action === 'cancel') { path += '/cancel'; body = JSON.stringify({synthetic: true}); }
+        if (action === 'result') path += '/result';
+      }
+      const response = await this.transport(path, this.#init(control, body));
+      if (!current()) { void response.body?.cancel().catch(() => {}); return; }
+      if (response.status === 401) { this.#httpError(401); return; }
+      if (response.status === 403 || response.status === 404) {
+        await this.#recheckQuestionDenial(world.case_id, control, 'case', {
+          briefPhase: 'error', briefMessage: 'Background brief unavailable under current access. Reopen the case to check again.'});
+        return;
+      }
+      if (response.status === 409) {
+        this.#resetWorld(world.case_id);
+        this.#publish({briefPhase: 'error', briefMessage: 'The source or run changed. Refresh the case before reopening the brief.'});
+        return;
+      }
+      if (control.signal.aborted || (enqueue ? ![200, 201].includes(response.status) : response.status !== 200))
+        throw Error('Run unavailable');
+      const value = await json(response, 73728);
+      const result = action === 'result' ? await readRunResult(value, previous!, world, question) : null;
+      const status = enqueue ? readRunReceipt(value, response.status, question) :
+        result ? previous! : readRunStatus(value, question, previous!);
+      if (action === 'cancel' && (status.state === 'queued' || status.state === 'running'))
+        throw Error('Cancellation returned active work');
+      if (action === 'retry' && status.run_id === previous!.run_id) throw Error('Replacement returned its predecessor');
+      if (!current()) return;
+      if (control.signal.aborted) throw Error('Run request timed out');
+      this.#publish({backgroundBrief: {questionId, status, result, busy: false, message: ''}});
+    } catch {
+      if (current()) this.#publish({backgroundBrief: {...pending, busy: false, message: enqueue ?
+        'Queue outcome unknown. Repeat the same action to recover its receipt.' :
+        'The latest response could not be verified. Check the run again.'}});
+    } finally {
+      clearTimeout(timeout);
+      this.#controllers.delete(control);
+    }
   }
 
   /** Fresh export of one persisted source question; no model, evidence synthesis or review. */
