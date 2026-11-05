@@ -2,10 +2,12 @@
  * A response is a derived report of fictional source statements, not clinical
  * judgment, consent, or authorization to execute an AI investigation.
  */
-import type {SourceVersion} from './source-contracts.js';
+import {parseOncologyContext} from './source-contracts.js';
+import type {ReportedOncologyContext,SourceVersion} from './source-contracts.js';
 
 export type WorldRef=Readonly<{source_id:string;source_line:number}>;
 export type WorldObservation=Readonly<{
+  oncology?:ReportedOncologyContext;
   source_id:string;document_id:string;document_version:number;source_sha256:string;
   source_kind:string;finding_key:string;reported_state:string;source_statement:string;
   source_line:number;specimen_id:string|null;event_date:string;issued_at:string;
@@ -125,9 +127,10 @@ function labObs(v:unknown,current:Map<string,SourceVersion>):WorldLaboratoryObse
   return Object.freeze({...x} as WorldLaboratoryObservation);
 }
 function obs(v:unknown,current:Map<string,SourceVersion>):WorldObservation{
+  const typed=v!==null && typeof v==='object' && Object.hasOwn(v,'oncology');
   const x=shape(v,['source_id','document_id','document_version','source_sha256',
     'source_kind','finding_key','reported_state','source_statement','source_line',
-    'specimen_id','event_date','issued_at','review_state','clinical_meaning']);
+    'specimen_id','event_date','issued_at','review_state','clinical_meaning',...(typed?['oncology']:[])]);
   const id=str(x.source_id,36),src=current.get(id);
   if(!src||x.document_id!==src.document_id||x.document_version!==src.version||
      x.source_sha256!==src.sha256||x.source_kind!==src.kind||
@@ -137,7 +140,7 @@ function obs(v:unknown,current:Map<string,SourceVersion>):WorldObservation{
   const quote=x.source_statement;
   if(typeof quote!=='string'||!quote||quote.length>8192)return error();
   str(x.finding_key,128);pos(x.source_line);
-  return Object.freeze({...x} as WorldObservation);
+  return Object.freeze({...x,...(typed?{oncology:parseOncologyContext(x.oncology)}:{})} as WorldObservation);
 }
 export function parseSourceWorldModel(raw:unknown,expectedPatient:string,expectedCase:string):SourceWorldModel{
   if(!PID.test(expectedPatient)||!CASE.test(expectedCase))return error();
@@ -224,6 +227,9 @@ export function parseSourceWorldModel(raw:unknown,expectedPatient:string,expecte
     const refs=c.source_refs.map(x=>ref(x,new Set(currentById.keys())));
     const relevant=refs.map(x=>indexedRefs.get(refOf(x)));
     if(relevant.some(x=>!x||x.specimen_id!==specimen||x.event_date!==event||x.finding_key!==finding))return error();
+    const context=relevant[0]?.oncology;
+    if(context?.episode_id===null || relevant.some(x=>x?.oncology?.episode_id!==context?.episode_id ||
+       x?.oncology?.role!==context?.role))return error();
     const states=new Set(relevant.map(x=>x!.reported_state));
     if(!states.has('reported')||!states.has('negative')||
        new Set(refs.map(refOf)).size!==refs.length||

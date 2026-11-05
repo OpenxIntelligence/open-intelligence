@@ -242,6 +242,11 @@ def exercise_draft_boundaries(cd, patient_id, case_id, second_case_id, question_
                 'terminal World Model denial before independent Review recovery')
         credentials[0]['actions'].append('source_read')
         write_grants()
+        # A terminal scope denial also clears the Records case and original.
+        # Re-establish the current case before asking for independent Review access.
+        cd.evaluate("document.querySelector('[data-testid=world-load-cases]').click()")
+        cd.wait("Boolean(document.querySelector('[data-testid=world-load]'))", 'current case mappings restored')
+        select_case(case_id)
         open_review()
         review.reason_value(question_id, 'New fictional reason after independently authorized Review recovery.')
         assert reason() == 'New fictional reason after independently authorized Review recovery.', \

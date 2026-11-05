@@ -83,6 +83,15 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
 
     def remove_owned_fixtures(self):
         with self.engine.begin() as conn:
+            # Release only the declared 0019 execution children and functions.
+            # Unknown dependencies still stop cleanup through RESTRICT.
+            conn.execute(text("DROP TABLE IF EXISTS investigation.composer_tool_run_results"))
+            conn.execute(text("DROP TABLE IF EXISTS investigation.composer_tool_run_events"))
+            conn.execute(text("DROP TABLE IF EXISTS investigation.composer_tool_runs"))
+            conn.execute(text("DROP FUNCTION IF EXISTS investigation.require_composer_run_consistency()"))
+            conn.execute(text("DROP FUNCTION IF EXISTS investigation.guard_composer_run_result()"))
+            conn.execute(text("DROP FUNCTION IF EXISTS investigation.guard_composer_run_event()"))
+            conn.execute(text("DROP FUNCTION IF EXISTS investigation.guard_composer_run()"))
             # Drop the declared 0016 FK child before its canonical task owner;
             # RESTRICT remains in effect for every unknown dependency.
             conn.execute(text("DROP TABLE IF EXISTS coordination.question_followthrough_manual_dependencies"))

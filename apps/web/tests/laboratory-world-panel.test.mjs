@@ -65,3 +65,33 @@ test('saved laboratory question shows historical provenance and reassessment wit
  for(const value of [row.question,'Needs reassessment',row.observation_reference,'source version 1',oldSource,prior,row.question_id])assert.ok(saved.includes(value),value);
  assert.ok(!saved.includes('10*9/L'));assert.ok(!saved.includes('write a source-linked question'));assert.ok(!saved.includes('source line'));
 });
+
+test('Journey separates simultaneous primaries and an indeterminate lesion with unattributed origin',()=>{
+ const w=projection(), src=w.current_sources[0];
+ const contexts=[{role:'primary',episode_id:'EP-A'},{role:'primary',episode_id:'EP-B'},
+   {role:'metastasis',episode_id:null}];
+ w.observations=contexts.map((oncology,i)=>({
+   source_id:src.source_id,document_id:src.document_id,document_version:src.version,
+   source_sha256:src.sha256,source_kind:src.kind,finding_key:'finding-'+i,
+   reported_state:i===2?'indeterminate':'reported',source_statement:'Fictional statement '+i,
+   source_line:i+8,specimen_id:src.specimen_id,event_date:src.event_date,issued_at:src.issued_at,
+   review_state:'not_established',clinical_meaning:null,oncology,
+ }));
+ w.unresolved_refs.push({source_id:src.source_id,source_line:10});
+ w.summary.unresolved_observations++;w.summary.current_observations+=3;
+ const html=render(parseSourceWorldModel(w,patient,caseId));
+ for(const [label,quote] of [['Episode EP-A','Fictional statement 0'],['Episode EP-B','Fictional statement 1'],
+      ['Episode unassigned','Fictional statement 2']]){
+   assert.ok(html.indexOf(label)>=0 && html.indexOf(label)<html.indexOf(quote));
+   assert.equal(html.split(quote).length,2);
+ }
+ assert.ok(html.indexOf('Fictional statement 0')<html.indexOf('Episode EP-B'));
+ assert.ok(html.indexOf('Fictional statement 1')<html.indexOf('Episode unassigned'));
+ assert.match(html,/indeterminate/);
+ assert.doesNotMatch(render(null),/Episode EP-|Fictional statement/);
+ for(const bad of [{role:'confirmed',episode_id:'EP-A'},{role:'primary',episode_id:''},
+      {role:'metastasis',episode_id:'EP-A',clinically_confirmed:true},null]){
+   w.observations[0].oncology=bad;
+   assert.throws(()=>parseSourceWorldModel(w,patient,caseId));
+ }
+});

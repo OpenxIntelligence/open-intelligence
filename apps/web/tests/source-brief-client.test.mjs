@@ -96,6 +96,22 @@ test('current saved question prepares a verified brief through an independent au
  assert.ok(Object.isFrozen(result)&&Object.isFrozen(result.question)&&Object.isFrozen(result.selected_source));
 });
 
+test('a brief requires the selected world line’s exact oncology role and nullable episode',async()=>{
+ const model=world(),context={role:'metastasis',episode_id:null};
+ model.observations[0].oncology=context;
+ let source={...selectedSource(),oncology:{...context}};
+ const s=sessionFor(()=>response({...brief(),selected_source:source}),{model:()=>model});
+ await ready(s);
+ const verified=await s.prepareSourceBrief(questionId);
+ assert.deepEqual(verified.selected_source.oncology,context);
+ assert.ok(Object.isFrozen(verified.selected_source.oncology));
+ for(const wrong of [selectedSource(),{...selectedSource(),oncology:{...context,episode_id:'EP-B'}},
+                      {...selectedSource(),oncology:{...context,role:'primary'}}]){
+  source=wrong;
+  assert.equal(await s.prepareSourceBrief(questionId),null);
+ }
+});
+
 test('unknown, legacy, stale or differently anchored saved questions cannot request an export',async()=>{
  const wrong=[
   [],[{...question(),source_context_state:'source_reassessment_required'}],

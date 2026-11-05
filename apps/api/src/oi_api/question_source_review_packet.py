@@ -11,7 +11,6 @@ claim, clinician review, approved report or transfer of source rights.
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import datetime
 import hashlib
 import hmac
 import json
@@ -19,12 +18,12 @@ import re
 from typing import TypeVar
 
 from open_intelligence.patient_registry import (
-    PatientRegistryDenied, PatientRegistryError, _key,
+    PatientRegistryDenied, _key,
 )
 from open_intelligence.postgres_registry import PostgresPatientRegistry
 from .case_bindings import _case_id
 from .composer_preflight import SOURCE_SNAPSHOT_CONTRACT
-from .source_world_model import project_source_world_model
+from .source_world_model import project_source_world_model, source_comparison_key
 from .sources import PostgresSourceVersions
 
 Packet = TypeVar("Packet")
@@ -42,6 +41,7 @@ def _observation_view(o: dict) -> dict:
         "source_statement": o["source_statement"], "source_kind": o["source_kind"],
         "specimen_id": o["specimen_id"], "event_date": o["event_date"],
         "issued_at": o["issued_at"],
+        **({"oncology": o["oncology"]} if "oncology" in o else {}),
         "review_state": "not_established",
         "clinical_meaning": None,
     }
@@ -109,13 +109,12 @@ class PostgresQuestionSourcePacket:
             selected = _observation_view(matches[0]) if current else None
             related: list[dict] = []
             related_total=0
-            if selected is not None and selected["specimen_id"] is not None:
+            comparison_key = source_comparison_key(selected) if selected is not None else None
+            if comparison_key is not None:
                 related_all=[
                     o for o in world["observations"]
                     if (o["source_id"],o["source_line"])!=(source_id,line)
-                    and o["finding_key"]==selected["finding_key"]
-                    and o["specimen_id"]==selected["specimen_id"]
-                    and o["event_date"]==selected["event_date"]
+                    and source_comparison_key(o) == comparison_key
                 ]
                 related_total=len(related_all)
                 related=[_observation_view(o) for o in related_all[:MAX_RELATED]]

@@ -25,13 +25,14 @@ class LaboratoryQuestionMigrationTests(SourceVersionFixture):
     start_at = evidence.EvidenceConvergenceMigrationTests.start_at
     snapshot = evidence.EvidenceConvergenceMigrationTests.snapshot
     seed_lab = previous.LabManualPopulatedMigrationTests.seed_lab
+    assert_existing_history_preserved = previous.LabManualPopulatedMigrationTests.assert_existing_history_preserved
 
     def seed(self):
         patient, text_question, _ = self.start_at(previous.JOIN)
         _, source = self.seed_lab(patient)
         history = self.snapshot()
         migrate(self.admin, "upgrade", SCHEMA_REVISION)
-        self.assertEqual(self.snapshot(history[0]), history)
+        self.assert_existing_history_preserved(history)
         self.assertEqual(self.snapshot()[0]["investigation.laboratory_question_anchors"], [])
         # A new empty typed owner is reversible without changing existing rows.
         migrate(self.admin, "downgrade", previous.JOIN)

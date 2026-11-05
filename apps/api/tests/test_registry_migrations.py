@@ -59,6 +59,13 @@ class RegistryMigrationTests(unittest.TestCase):
         # Remove only known test-owned objects. RESTRICT is intentional: an
         # unexpected dependent object must stop cleanup rather than be erased.
         with self.engine.begin() as connection:
+            connection.execute(text("DROP TABLE IF EXISTS investigation.composer_tool_run_results"))
+            connection.execute(text("DROP TABLE IF EXISTS investigation.composer_tool_run_events"))
+            connection.execute(text("DROP TABLE IF EXISTS investigation.composer_tool_runs"))
+            connection.execute(text("DROP FUNCTION IF EXISTS investigation.require_composer_run_consistency()"))
+            connection.execute(text("DROP FUNCTION IF EXISTS investigation.guard_composer_run_result()"))
+            connection.execute(text("DROP FUNCTION IF EXISTS investigation.guard_composer_run_event()"))
+            connection.execute(text("DROP FUNCTION IF EXISTS investigation.guard_composer_run()"))
             connection.execute(text("DROP TABLE IF EXISTS public.oi_registry_external_reference"))
             connection.execute(text("DROP TABLE IF EXISTS coordination.question_followthrough_manual_dependencies"))
             connection.execute(text("DROP TABLE IF EXISTS coordination.question_followthrough_events"))

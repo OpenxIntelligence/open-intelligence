@@ -41,6 +41,24 @@ class PostgresSourceQuestions:
             raise TypeError("Canonical PostgreSQL patient registry required")
         self.registry = registry
 
+    def authorize_run_scope_locked(self, patient_id: str, case_id: str, *,
+                                   organization: str, actor: str, purpose: str) -> None:
+        """Reuse question/export authority for scoped execution bookkeeping.
+
+        No source content is read here. This keeps cancellation available after
+        a source amendment while retaining the existing patient/binding locks.
+        The caller owns its transaction and refreshes the external credential.
+        """
+        if not self.registry._transaction_active or purpose != "operations":
+            raise PatientRegistryDenied("Composer run scope unavailable")
+        _key(patient_id, "patient_id")
+        _case_id(case_id)
+        _key(organization, "organization")
+        _key(actor, "actor")
+        for action in ("patient_read", "question_read", "source_read", "source_brief_export"):
+            self.registry._allow(actor, patient_id, action, purpose)
+        PostgresSourceVersions(self.registry)._binding(patient_id, case_id, organization, purpose)
+
     @staticmethod
     def _intent(patient_id: str, case_id: str, organization: str,
                 actor: str, purpose: str, key: str, source_id: str,

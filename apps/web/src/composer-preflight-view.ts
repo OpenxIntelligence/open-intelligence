@@ -1,4 +1,5 @@
 /** Bounded source-only Composer preflight contract; never a model-run token. */
+import {parseOncologyContext,type ReportedOncologyContext} from './source-contracts.js';
 import type {SourceWorldModel,WorldObservation} from './source-world-model.js';
 
 export const DEFAULT_SOURCE_QUESTION =
@@ -7,7 +8,7 @@ export const DEFAULT_SOURCE_QUESTION =
 export type ComposerSource = Readonly<{
  source_id:string;document_id:string;version:number;sha256:string;line:number;
  finding_key:string;reported_state:string;statement:string;kind:string;
- event_date:string;issued_at:string;specimen_id:string|null;
+ event_date:string;issued_at:string;specimen_id:string|null;oncology?:ReportedOncologyContext;
 }>;
 export type ComposerPreflight = Readonly<{
  contract:'oi.synthetic-source-composer-preflight/2';
@@ -36,6 +37,35 @@ function exact(value:unknown,keys:readonly string[]):value is Record<string,unkn
  return value!==null&&typeof value==='object'&&!Array.isArray(value)&&
  Object.keys(value).length===keys.length&&keys.every(k=>Object.hasOwn(value,k));
 }
+/** Reject unknown fields and preserve the distinction between an untyped line and an unassigned episode. */
+export function parseSelectedSourceFields(value:unknown):Record<string,unknown>&{oncology?:ReportedOncologyContext}{
+ if(exact(value,ANCHOR))return {...value};
+ if(!exact(value,[...ANCHOR,'oncology']))throw Error('source anchor');
+ return {...value,oncology:parseOncologyContext(value.oncology)};
+}
+
+export function decodeCurrentComposerSource(value:unknown,observation:WorldObservation):ComposerSource{
+ const item=parseSelectedSourceFields(value);
+ if(typeof item.source_id!=='string'||!SRC.test(item.source_id)||
+    item.source_id!==observation.source_id||
+    typeof item.document_id!=='string'||!DOC.test(item.document_id)||
+    item.document_id!==observation.document_id||
+    item.version!==observation.document_version||
+    typeof item.sha256!=='string'||!HEX.test(item.sha256)||
+    item.sha256!==observation.source_sha256||
+    item.line!==observation.source_line||
+    item.finding_key!==observation.finding_key||
+    item.reported_state!==observation.reported_state||
+    item.statement!==observation.source_statement||
+    item.kind!==observation.source_kind||
+    item.event_date!==observation.event_date||
+    item.issued_at!==observation.issued_at||
+    item.specimen_id!==observation.specimen_id||
+    item.oncology?.role!==observation.oncology?.role||
+    item.oncology?.episode_id!==observation.oncology?.episode_id)throw Error('contract');
+ return Object.freeze(item as ComposerSource);
+}
+
 export function decodeComposerPreflight(value:unknown,world:SourceWorldModel,
   observation:WorldObservation,question:string):ComposerPreflight{
  if(!exact(value,FIELDS)||
@@ -55,24 +85,7 @@ export function decodeComposerPreflight(value:unknown,world:SourceWorldModel,
     value.reassessment_policy!=='revalidate_source_and_authority_before_any_future_write'||
     typeof value.preflight_sha256!=='string'||!HEX.test(value.preflight_sha256)||
     typeof value.limitations!=='string'||value.limitations.length<20||
-    value.limitations.length>1000||
-    !exact(value.selected_source,ANCHOR))throw Error('contract');
- const item=value.selected_source;
- if(typeof item.source_id!=='string'||!SRC.test(item.source_id)||
-    item.source_id!==observation.source_id||
-    typeof item.document_id!=='string'||!DOC.test(item.document_id)||
-    item.document_id!==observation.document_id||
-    item.version!==observation.document_version||
-    typeof item.sha256!=='string'||!HEX.test(item.sha256)||
-    item.sha256!==observation.source_sha256||
-    item.line!==observation.source_line||
-    item.finding_key!==observation.finding_key||
-    item.reported_state!==observation.reported_state||
-    item.statement!==observation.source_statement||
-    item.kind!==observation.source_kind||
-    item.event_date!==observation.event_date||
-    item.issued_at!==observation.issued_at||
-    item.specimen_id!==observation.specimen_id)throw Error('contract');
+    value.limitations.length>1000)throw Error('contract');
  return Object.freeze({...value,
-  selected_source:Object.freeze({...item} as ComposerSource)} as ComposerPreflight);
+  selected_source:decodeCurrentComposerSource(value.selected_source,observation)} as ComposerPreflight);
 }

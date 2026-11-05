@@ -15,8 +15,13 @@ patient/case/source; repeated setup and stop/resume retain its saved work.
 [Consolidation and acceptance #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481)
 records the original integrated application and its acceptance results.
 The [convergence record](docs/engineering/H1_ACCEPTED_DEMO_CONVERGENCE.md) identifies
-the retained contributions. This revision requires `0018_laboratory_questions`
-for [saved laboratory questions](docs/engineering/H1_DURABLE_LABORATORY_QUESTIONS.md).
+the retained contributions. This candidate requires `0019_composer_runs`, extending
+`0018_laboratory_questions` for
+[saved laboratory questions](docs/engineering/H1_DURABLE_LABORATORY_QUESTIONS.md).
+The [durable execution guide](docs/engineering/H1_DURABLE_EXECUTION.md) describes
+the new actor-bound, synthetic source-brief worker and its enqueue/status/cancel/result
+controls. Real PostgreSQL, process-recovery, backup/restore and hosted acceptance
+for this execution candidate are pending; implementation is not a verification receipt.
 The Python/SQLite application is retained as a separate reference implementation.
 
 Use independently authored fictional data only. This application does not establish
@@ -68,7 +73,7 @@ pins every input and separates current acceptance from historical receipts.
 
 The repository now contains an **original, local synthetic-only Python/SQLite research prototype**, alongside the product plan and execution backlog. Its bounded case-workspace features include source-preserving report versions, authored findings with source-line references, persistent investigation questions and review drafts, amendment-triggered staleness, an event chronology, fictional evidence/applicability records, and an optional DOI-only bibliographic metadata view. These are demonstration and engineering capabilities, **not a clinically validated application**.
 
-The local prototype has **no real-patient authorization, verified clinician identity, production access control, clinical inference, treatment recommendations, comprehensive EHR interoperability, or licensed full-text literature analysis**. Do not enter actual patient records or treat demo acknowledgments as clinical sign-off. Scientific model and production architecture choices remain under review.
+The local prototype has local demo accounts, roles, and sessions (operator-created accounts only; no verified identity), but **no real-patient authorization, verified clinician identity, production access control, clinical inference, treatment recommendations, comprehensive EHR interoperability, or licensed full-text literature analysis**. Do not enter actual patient records or treat demo acknowledgments as clinical sign-off. Scientific model and production architecture choices remain under review.
 
 **Historical main baseline (2 November 2026):** commit [`52ea683`](https://github.com/OpenxIntelligence/open-intelligence/commit/52ea683fbe3537b17a05066dceff2ba01f758c5d). That application baseline ran 236 synthetic tests successfully during its audit; this is not a new run of current main or the H1 candidate. Current implementation, proposed changes, unmerged domain work and verification limits are distinguished in [implementation status](docs/IMPLEMENTATION_STATUS.md). Test success is not independent clinical validation.
 

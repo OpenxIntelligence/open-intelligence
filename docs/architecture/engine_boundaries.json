@@ -1,6 +1,6 @@
 {
   "schema_version": "oi.engine-boundaries/1",
-  "baseline_commit": "4b13bc2e802bc785ea36f98d63478e51ee3a66a4",
+  "baseline_commit": "57b8fd9f2b201ab46d338743aaab9f3f980b8a59",
   "scope": {
     "package": "oi_api",
     "path": "apps/api/src/oi_api"
@@ -16,7 +16,8 @@
         "oi_api.contracts",
         "oi_api.database",
         "oi_api.migrate",
-        "oi_api.request_limits"
+        "oi_api.request_limits",
+        "oi_api.registry_context"
       ],
       "exports": {
         "oi_api": [
@@ -27,7 +28,8 @@
           "DenyAuthentication",
           "Principal",
           "SyntheticFileAuthentication",
-          "authenticate_request"
+          "authenticate_request",
+          "authenticate_token"
         ],
         "oi_api.config": [
           "ConfigurationError",
@@ -48,6 +50,9 @@
         ],
         "oi_api.request_limits": [
           "PatientRequestLimit"
+        ],
+        "oi_api.registry_context": [
+          "registry_for_principal"
         ]
       },
       "depends_on": []
@@ -91,7 +96,8 @@
         "oi_api.source_integrity",
         "oi_api.reviewed_documents",
         "oi_api.document_contracts",
-        "oi_api.document_routes"
+        "oi_api.document_routes",
+        "oi_api.source_contracts"
       ],
       "exports": {
         "oi_api.document_contracts": [
@@ -99,6 +105,10 @@
         ],
         "oi_api.document_routes": [
           "register_document_routes"
+        ],
+        "oi_api.source_contracts": [
+          "ReportedOncologyContext",
+          "SourceOncologyFields"
         ]
       },
       "depends_on": [
@@ -110,18 +120,24 @@
       "responsibility": "Existing source world-model projection and bounded source-composer preflight; the projection does not create a second canonical patient record.",
       "modules": [
         "oi_api.source_world_model",
-        "oi_api.composer_preflight"
+        "oi_api.composer_preflight",
+        "oi_api.source_anchor"
       ],
       "exports": {
         "oi_api.source_world_model": [
-          "project_source_world_model"
+          "project_source_world_model",
+          "source_comparison_key"
+        ],
+        "oi_api.source_anchor": [
+          "selected_observation_anchor",
+          "oncology_lines"
         ]
       },
       "depends_on": []
     },
     {
       "id": "questions-review",
-      "responsibility": "Existing durable source questions, source briefs, review-return packets, exact document passages and manual context.",
+      "responsibility": "Existing durable source questions, source briefs, review-return packets, exact document passages and manual context. The bounded Composer execution adapter owns synthetic brief runs, leases, results and worker entry; it does not execute a model or change clinical review.",
       "modules": [
         "oi_api.source_questions",
         "oi_api.source_brief",
@@ -129,7 +145,12 @@
         "oi_api.question_source_review_packet",
         "oi_api.question_passages",
         "oi_api.question_passage_contracts",
-        "oi_api.question_passage_routes"
+        "oi_api.question_passage_routes",
+        "oi_api.source_question_contracts",
+        "oi_api.composer_run_contracts",
+        "oi_api.composer_runs",
+        "oi_api.composer_run_routes",
+        "oi_api.worker"
       ],
       "exports": {
         "oi_api.question_passage_contracts": [
@@ -137,6 +158,14 @@
         ],
         "oi_api.question_passage_routes": [
           "register_question_passage_routes"
+        ],
+        "oi_api.source_question_contracts": [
+          "QuestionSourceState",
+          "SelectedComposerSource",
+          "SourceQuestionBrief"
+        ],
+        "oi_api.composer_run_routes": [
+          "register_composer_run_routes"
         ]
       },
       "depends_on": [
@@ -342,15 +371,6 @@
     },
     {
       "consumer": "oi_api.authored_evidence",
-      "provider": "oi_api.patients",
-      "symbols": [
-        "QuestionSourceState"
-      ],
-      "reason": "Existing evidence contracts import response types housed in HTTP composition. Move SelectedComposerSource and QuestionSourceState into a neutral contract module in a separately verified extraction; preserve current wire behavior.",
-      "backlog": "OI-005"
-    },
-    {
-      "consumer": "oi_api.authored_evidence",
       "provider": "oi_api.question_passages",
       "symbols": [
         "QuestionPassages",
@@ -384,16 +404,6 @@
         "PostgresSourceVersions"
       ],
       "reason": "Existing consumer directly uses source-version storage, prepared-response typing or private source identifiers. Preserve source custody, final authority and caller transaction boundaries until a bounded source port is extracted.",
-      "backlog": "OI-005"
-    },
-    {
-      "consumer": "oi_api.authored_evidence_contracts",
-      "provider": "oi_api.patients",
-      "symbols": [
-        "QuestionSourceState",
-        "SelectedComposerSource"
-      ],
-      "reason": "Existing evidence contracts import response types housed in HTTP composition. Move SelectedComposerSource and QuestionSourceState into a neutral contract module in a separately verified extraction; preserve current wire behavior.",
       "backlog": "OI-005"
     },
     {
@@ -599,8 +609,7 @@
       "consumer": "oi_api.patients",
       "provider": "oi_api.source_brief",
       "symbols": [
-        "MAX_ENVELOPE_BYTES",
-        "check_brief_size"
+        "MAX_ENVELOPE_BYTES"
       ],
       "reason": "Existing HTTP composition enforces saved-brief limits through the concrete brief module. Preserve response sizing and serialization order while isolating shared transport contracts.",
       "backlog": "OI-005"

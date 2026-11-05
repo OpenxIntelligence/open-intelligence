@@ -5,10 +5,11 @@ let active = null;
 let refreshSequence = 0;
 let boardSequence = 0;
 let renderedCaseId = null;
-// B-01 fictional actor: workflow governance only — not identity verification,
-// not a login, not credentialed review. Sent on every API call; the server
-// gates case routes on a live grant for this actor and ignores it elsewhere.
-let fictionalActor = 'FICTIONAL-NAVIGATOR-A';
+// Slice 1 auth: the browser signs in as a local demo account and the
+// session cookie identifies the account on every API call. Accounts are
+// local demo labels, not verified identities; the server gates case routes
+// on a live grant for the signed-in account plus its role.
+let sessionAccount = null;
 let caseCatalog = [];
 let incomingBoardSequence = 0;
 let draftQuestionFilter = null;
@@ -48,9 +49,9 @@ function clearFieldError(fieldId) {
 }
 // End per-field error association (A11Y-031).
 async function api(path, payload) {
-  const actorHeaders = { 'X-Fictional-Actor': fictionalActor };
-  const response = await fetch(path, payload === undefined ? { headers: actorHeaders } : {
-    method: 'POST', headers: { ...actorHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+  // No auth header: the session cookie is sent automatically by the browser.
+  const response = await fetch(path, payload === undefined ? {} : {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
   });
   const type = response.headers.get('content-type') || '';
   const data = type.includes('json') ? await response.json() : await response.text();
@@ -88,13 +89,58 @@ function unfinishedDraftPresent() {
     'synthesis-note-author', 'owner-label-input', 'note-text',
     'scoped-decision-note', 'scoped-dissent-rationale'].some(id => el(id).value.trim());
 }
-function renderActorIndicator() {
-  // The Patient Mission renderer (mission.js) reads this dataset value so
-  // both scripts send the same fictional actor without sharing state.
-  document.body.dataset.fictionalActor = fictionalActor;
-  el('actor-input').value = fictionalActor;
-  el('actor-status').textContent = 'Acting as ' + fictionalActor +
-    ' (fictional grant only — not identity verification).';
+function renderSessionIndicator(account) {
+  sessionAccount = account;
+  el('signin-view').hidden = account !== null;
+  el('session-view').hidden = account === null;
+  if (account === null) {
+    el('session-status').textContent = '';
+    return;
+  }
+  el('session-status').textContent = 'Signed in as ' + account.account_id +
+    ' (' + account.role + '). Local demo account — not a verified identity.';
+}
+async function applySignIn() {
+  const accountId = el('signin-account').value.trim();
+  const password = el('signin-password').value;
+  el('signin-status').textContent = '';
+  if (!accountId || !password) {
+    el('signin-status').textContent = 'Enter an account and password.';
+    return;
+  }
+  try {
+    const account = await api('/api/auth/sign-in', { account_id: accountId, password });
+    el('signin-password').value = '';
+    renderSessionIndicator(account);
+    await startWorkspace();
+  } catch (err) { el('signin-status').textContent = err.message; }
+}
+async function applySignOut() {
+  // An unfinished narrative must never silently become attached to another
+  // account's view.
+  if (unfinishedDraftPresent()) {
+    notice('Save or explicitly clear the unfinished investigation draft before signing out.', true);
+    return;
+  }
+  try { await api('/api/auth/sign-out', {}); } catch (err) { notice(err.message, true); }
+  renderSessionIndicator(null);
+  caseId = null;
+  active = null;
+  clear('case-picker');
+  clearCaseViews('Sign in to view case data.');
+  el('case-heading').textContent = 'Sign in to view the demo cases';
+  el('signin-account').value = '';
+}
+async function startWorkspace() {
+  const cases = await loadCaseList();
+  if (!cases.length) {
+    el('case-heading').textContent = 'No synthetic cases found';
+    notice('Run PYTHONPATH=src python -m open_intelligence seed before opening the demo.', true);
+    return;
+  }
+  await renderIncomingBoard(cases);
+  caseId = cases[0].case_id;
+  await refresh();
 }
 async function loadCaseList() {
   const cases = await api('/api/cases');
@@ -107,44 +153,18 @@ async function loadCaseList() {
   }
   return cases;
 }
-async function applyActor() {
-  const next = el('actor-input').value.trim();
-  if (!/^[A-Z][A-Z0-9-]{1,39}$/.test(next)) {
-    el('actor-input').value = fictionalActor;
-    notice('Fictional actor ids use uppercase A–Z, numbers and hyphens.', true);
-    return;
-  }
-  if (next === fictionalActor) return;
-  // An unfinished narrative must never silently become attached to another actor's view.
-  if (unfinishedDraftPresent()) {
-    el('actor-input').value = fictionalActor;
-    notice('Save or explicitly clear the unfinished investigation draft before switching actors.', true);
-    return;
-  }
-  fictionalActor = next;
-  renderActorIndicator();
-  cancelSourceRead();
-  caseId = null;
-  active = null; // Reject writes while the next case list is loading.
-  if (el('source-dialog').open) el('source-dialog').close();
-  if (el('compare-dialog').open) el('compare-dialog').close();
+async function loadAccessLog() {
+  if (!caseId) { el('access-log-status').textContent = 'No case selected.'; return; }
   try {
-    const cases = await loadCaseList();
-    caseCatalog = cases;
-    await renderIncomingBoard(cases);
-    if (!cases.length) {
-      el('case-heading').textContent = 'No granted cases for this fictional actor';
-      renderedCaseId = null;
-      clear('metrics');
-      clearCaseViews('No case data shown: this fictional actor holds no active grant.');
-      el('changes-anchor').textContent = 'Changes unavailable: this fictional actor holds no active grant.';
-      el('changes-disclaimer').textContent = '';
-      notice('This fictional actor holds no active grant on any case in this demo. Apply a granted fictional actor.', true);
-      return;
+    const data = await api('/api/cases/' + caseId + '/access-log');
+    clear('access-log-list');
+    const rows = data.access_log || [];
+    el('access-log-status').textContent = rows.length ? '' : 'No access entries recorded for this case yet.';
+    for (const row of rows) {
+      el('access-log-list').append(node('p',
+        row.occurred_at + ' — ' + row.actor + ' — ' + row.route + ' — ' + row.result));
     }
-    caseId = cases[0].case_id;
-    await refresh();
-  } catch (err) { notice(err.message, true); }
+  } catch (err) { el('access-log-status').textContent = err.message; }
 }
 function clearCaseViews(denied) {
   for (const id of ['assertion-list', 'question-list', 'snapshot-list', 'source-list',
@@ -156,7 +176,7 @@ function clearCaseViews(denied) {
       // M-3: the mission projection renders case quotes (mission.js
       // renderKnown); it must clear under denial like every other view.
       'mission-summary', 'mission-known', 'mission-unresolved',
-      'mission-changes', 'mission-actions']) {
+      'mission-changes', 'mission-actions', 'access-log-list']) {
     clear(id);
     empty(el(id), denied);
   }
@@ -186,21 +206,22 @@ function renderAccessDenied(requestedCase) {
   // clear every case-bound view and block writes until a granted case loads.
   active = null;
   renderedCaseId = null;
-  el('case-heading').textContent = 'Access denied for this fictional actor';
+  el('case-heading').textContent = 'Access denied for this account';
   el('review-attention-heading').textContent = 'Investigation review status';
-  el('review-attention-summary').textContent = 'Review state unavailable: access denied for this fictional actor.';
+  el('review-attention-summary').textContent = 'Review state unavailable: access denied for this account.';
   el('review-attention').dataset.state = 'no-open-review';
   clear('metrics');
-  clearCaseViews('No case data shown: this fictional actor holds no active grant.');
-  el('changes-anchor').textContent = 'Changes unavailable: access denied for this fictional actor.';
+  clearCaseViews('No case data shown: this account holds no active grant.');
+  el('changes-anchor').textContent = 'Changes unavailable: access denied for this account.';
   el('changes-disclaimer').textContent = '';
-  notice('Fictional actor ' + fictionalActor + ' holds no active grant for ' + requestedCase +
-    '. Switch to a granted case or apply a granted fictional actor.', true);
+  notice('This account holds no active grant for ' + requestedCase +
+    '. Switch to a granted case or sign in with a granted account.', true);
 }
 async function initialize() {
   try {
-    renderActorIndicator();
-    el('actor-apply').addEventListener('click', applyActor);
+    el('signin-apply').addEventListener('click', applySignIn);
+    el('signout-apply').addEventListener('click', applySignOut);
+    el('access-log-apply').addEventListener('click', loadAccessLog);
     const picker = el('case-picker');
     picker.addEventListener('keydown', focusOverviewFromCasePicker);
     picker.addEventListener('change', () => {
@@ -266,15 +287,19 @@ async function initialize() {
       closeSourceViewsWithoutFocusReturn();
       refresh();
     });
-    const cases = await loadCaseList();
-    if (!cases.length) {
-      el('case-heading').textContent = 'No synthetic cases found';
-      notice('Run PYTHONPATH=src python -m open_intelligence seed before opening the demo.', true);
+    // The workspace loads only after sign-in: the session cookie gates
+    // every case route, so an unsigned-in page shows no case data.
+    let account = null;
+    try { account = await api('/api/auth/session'); } catch (err) {
+      if (err.status !== 401) throw err;
+    }
+    renderSessionIndicator(account);
+    if (account === null) {
+      el('case-heading').textContent = 'Sign in to view the demo cases';
+      notice('Sign in with a local demo account to view the synthetic cases.', true);
       return;
     }
-    await renderIncomingBoard(cases);
-    caseId = cases[0].case_id;
-    await refresh();
+    await startWorkspace();
   } catch (err) { notice(err.message, true); }
 }
 async function renderIncomingBoard(cases) {
@@ -449,6 +474,9 @@ async function refresh() {
     active = response;
     el('case-heading').textContent = active.case.label;
     render();
+    // A newly loaded case invalidates the on-demand access-log view.
+    clear('access-log-list');
+    el('access-log-status').textContent = '';
     // The incoming board shows per-case counts for every case, so it goes
     // stale after any write. Refresh it alongside the workspace panels.
     api('/api/cases').then(cases => {

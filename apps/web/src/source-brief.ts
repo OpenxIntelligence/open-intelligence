@@ -1,7 +1,7 @@
 /** Literal, source-linked question brief. No model execution or clinical review. */
 import type {RegistrySession} from './registry-client.js';
 import type {SourceWorldModel} from './source-world-model.js';
-import type {ComposerSource} from './composer-preflight-view.js';
+import {decodeCurrentComposerSource,type ComposerSource} from './composer-preflight-view.js';
 import {decodeSourceQuestion} from './source-questions-view.js';
 import type {SourceQuestion} from './source-questions-view.js';
 
@@ -15,8 +15,6 @@ export type SourceBrief=Readonly<{
 const FIELDS=['contract','synthetic','patient_id','case_id','source_snapshot_contract',
  'source_snapshot_sha256','access_receipt_id','question','selected_source','prepared_at',
  'media_type','body','body_sha256','clinical_approval','model_executed','biomedical_evidence_included'];
-const ANCHOR=['source_id','document_id','version','sha256','line','finding_key',
- 'reported_state','statement','kind','event_date','issued_at','specimen_id'];
 function exact(value:unknown,keys:readonly string[]):value is Record<string,unknown>{
  return value!==null&&typeof value==='object'&&!Array.isArray(value)&&
   Object.keys(value).length===keys.length&&keys.every(k=>Object.hasOwn(value,k));
@@ -48,25 +46,20 @@ export async function decodeSourceBrief(value:unknown,world:SourceWorldModel,
   !Number.isFinite(Date.parse(value.prepared_at))||
   typeof value.body!=='string'||value.body.trim().length===0||
   typeof value.body_sha256!=='string'||value.body_sha256.length!==64||
-  !/^[0-9a-f]{64}$/.test(value.body_sha256)||!exact(value.selected_source,ANCHOR))throw Error('brief contract');
+  !/^[0-9a-f]{64}$/.test(value.body_sha256))throw Error('brief contract');
  const question=decodeSourceQuestion(value.question,world.patient_id,world.case_id);
  if(!Object.entries(selected).every(([key,expected])=>question[key as keyof SourceQuestion]===expected))
   throw Error('brief question');
  const observation=world.observations.find(o=>o.source_id===selected.source_id&&o.source_line===selected.source_line);
- const item=value.selected_source;
- if(!observation||item.source_id!==observation.source_id||item.document_id!==observation.document_id||
-  item.version!==observation.document_version||item.sha256!==observation.source_sha256||
-  item.line!==observation.source_line||item.finding_key!==observation.finding_key||
-  item.reported_state!==observation.reported_state||item.statement!==observation.source_statement||
-  item.kind!==observation.source_kind||item.event_date!==observation.event_date||
-  item.issued_at!==observation.issued_at||item.specimen_id!==observation.specimen_id)throw Error('brief anchor');
+ if(!observation)throw Error('brief anchor');
+ const source=decodeCurrentComposerSource(value.selected_source,observation);
  const bytes=new TextEncoder().encode(value.body);
  if(bytes.byteLength>65536||new TextDecoder('utf-8',{fatal:true}).decode(bytes)!==value.body)
   throw Error('brief bytes');
  const hash=await crypto.subtle.digest('SHA-256',bytes);
  const actual=Array.from(new Uint8Array(hash),b=>b.toString(16).padStart(2,'0')).join('');
  if(actual!==value.body_sha256)throw Error('brief integrity');
- return Object.freeze({...value,question,selected_source:Object.freeze({...item} as ComposerSource)} as SourceBrief);
+ return Object.freeze({...value,question,selected_source:source} as SourceBrief);
 }
 
 /** A preview is never an export permission. Fetch and verify again before creating any Blob. */
