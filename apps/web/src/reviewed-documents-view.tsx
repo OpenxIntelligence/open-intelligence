@@ -1,12 +1,19 @@
 import {useEffect,useMemo,useRef,useState,useSyncExternalStore} from 'react';
-import {DocumentClient} from './reviewed-documents';
-import type {Finding,Preview} from './reviewed-documents';
+import {DocumentClient,documentByteHash} from './reviewed-documents';
+import type {DocumentUpload,Finding,Preview} from './reviewed-documents';
 import type {RegistrySession} from './registry-client';
+
+function passageLocation(preview:Preview,line:number){
+ const anchor=preview.lines[line-1];
+ return preview.media_type==='application/pdf'&&anchor?.page
+  ? `Page ${anchor.page}, page line ${anchor.page_line} (extraction line ${line})`
+  : `Line ${line}`;
+}
 
 export function ReviewedDocumentWorkspace({session,patientId,caseId}:{session:RegistrySession;patientId:string;caseId:string}){
  const client=useMemo(()=>new DocumentClient((path,body)=>session.documentRequest(caseId,path,body)),[session,caseId,patientId]);
  const state=useSyncExternalStore(client.subscribe,client.snapshot);
- const [upload,setUpload]=useState<{synthetic:true;filename:string;original_base64:string}|null>(null);
+ const [upload,setUpload]=useState<DocumentUpload|null>(null);
  const [findings,setFindings]=useState<Finding[]>([]),[line,setLine]=useState(1),[quote,setQuote]=useState(''),[key,setKey]=useState('finding-one'),[classification,setClassification]=useState('not-assessed');
  const [documentId,setDocumentId]=useState(''),[kind,setKind]=useState('other'),[eventDate,setEventDate]=useState(''),[issuedDate,setIssuedDate]=useState(''),[amends,setAmends]=useState('');
  const [confirmed,setConfirmed]=useState(false),[reason,setReason]=useState(''),[localMessage,setLocalMessage]=useState(''),[downloading,setDownloading]=useState(false);
@@ -40,7 +47,7 @@ export function ReviewedDocumentWorkspace({session,patientId,caseId}:{session:Re
  async function download(){const doc=state.document;if(!doc)return;const generation=lifetime.current;setDownloading(true);setLocalMessage('Authorizing original download…');
   try{const response=await session.documentRequest(caseId,'/'+doc.source_id+'/original');
    if(response.status!==200||!(response.body instanceof Uint8Array)||response.headers?.get('X-Content-SHA256')!==doc.sha256||!/^ACCESS-[A-F0-9]{32}$/.test(response.headers?.get('X-Access-Receipt-ID')??''))throw Error('Original download unavailable.');
-   const bytes=response.body;const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new Uint8Array(bytes)))).map(v=>v.toString(16).padStart(2,'0')).join('');
+   const bytes=response.body;const digest=await documentByteHash(new Uint8Array(bytes));
    if(digest!==doc.sha256)throw Error('Original integrity check failed.');
    if(generation!==lifetime.current||selected.current!==doc.source_id+doc.sha256)return;
    const url=URL.createObjectURL(new Blob([new Uint8Array(bytes)],{type:doc.preview.media_type}));const a=document.createElement('a');a.href=url;a.download=doc.filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);setLocalMessage('Exact original downloaded after a fresh authority check.');
@@ -55,18 +62,19 @@ export function ReviewedDocumentWorkspace({session,patientId,caseId}:{session:Re
    <button disabled={state.phase==='saving'} onClick={()=>{fileGeneration.current++;client.discard();setUpload(null);setFindings([]);setLocalMessage('');if(fileInput.current)fileInput.current.value='';}}>Discard local selection or uncertain intent</button></div>
   {state.documents.length>0&&<ul>{state.documents.map(doc=><li key={doc.source_id}><button disabled={locked} onClick={()=>void client.open(doc.source_id)}>{doc.document_id} · v{doc.version} · {doc.state}</button> <span>{doc.filename}</span></li>)}</ul>}
   <label>Fictional text or PDF file<input ref={fileInput} data-testid="reviewed-file" type="file" accept=".txt,.pdf,text/plain,application/pdf" disabled={locked} onChange={e=>void choose(e.target.files?.[0])}/></label>
-  <button data-testid="preview-reviewed" disabled={!upload||locked} onClick={()=>void client.preview(upload)}>Preview selected file without saving</button>
+  <button data-testid="preview-reviewed" disabled={!upload||locked} onClick={()=>{if(upload)void client.preview(upload);}}>Preview selected file without saving</button>
   <p role="status" data-testid="reviewed-status">{state.message}</p>{localMessage&&<p role="status">{localMessage}</p>}
   {state.pending&&<button data-testid="retry-reviewed" disabled={state.phase==='saving'} onClick={()=>void client.retry()}>Retry exact save to recover receipt</button>}
   {state.receipt&&<div data-testid="reviewed-receipt"><p>Saved original <code>{state.receipt.source_id}</code> · v{state.receipt.version}. Selection receipt <code>{state.receipt.annotation_revision_id}</code>.</p><button onClick={()=>void client.open(state.receipt!.source_id)}>Inspect saved original and selection history</button></div>}
   {preview&&<div data-testid="reviewed-preview">
    <p><strong>{preview.filename}</strong> · {preview.byte_count} original bytes · <code>{preview.sha256}</code></p>
-   {preview.extraction_sha256&&<p className="small">Frozen PDF extraction <code>{preview.extraction_sha256}</code>. Physical pages and extraction lines are not guaranteed visual reading order.</p>}
+   {preview.extraction_sha256&&<><p className="small">Frozen PDF extraction <code>{preview.extraction_sha256}</code>.</p>
+    <p>Check the original PDF page before confirming a passage. Extracted table text can separate a specimen label from its value or unit.</p></>}
    {state.document&&<><p>{state.document.document_id} · v{state.document.version} · {state.document.state}</p><button data-testid="download-reviewed" disabled={locked} onClick={()=>void download()}>Download exact original</button>
-    <details><summary>Preserved selection history ({state.document.revisions.length})</summary>{state.document.revisions.map(r=><section key={r.revision_id}><h4>Revision {r.revision}</h4><p>{r.reason} · user-selected · clinical review not performed</p><ul>{r.findings.map(f=><li key={f.key}>Line {f.line}: “{f.quote}” — {f.state}</li>)}</ul></section>)}</details></>}
+    <details><summary>Preserved selection history ({state.document.revisions.length})</summary>{state.document.revisions.map(r=><section key={r.revision_id}><h4>Revision {r.revision}</h4><p>{r.reason} · user-selected · clinical review not performed</p><ul>{r.findings.map(f=><li key={f.key}>{passageLocation(preview,f.line)} · “{f.quote}” · {f.state}</li>)}</ul></section>)}</details></>}
    <ol className="document-lines">{preview.lines.map(row=><li key={row.line}><button type="button" disabled={locked} onClick={()=>{setLine(row.line);setQuote(row.text);setConfirmed(false);}}>Select line {row.line}{row.page?` · page ${row.page}`:''}</button><pre>{row.text||'(blank line)'}</pre></li>)}</ol>
    {state.document?.state!=='superseded'&&<form onSubmit={e=>{e.preventDefault();void save();}}>
-    {!state.document&&<div className="document-metadata"><label>Document ID<input data-testid="document-id" value={documentId} onChange={e=>setDocumentId(e.target.value)} required pattern="[A-Z][A-Z0-9-]{1,39}"/></label>
+    {!state.document&&<div className="document-metadata" onChange={()=>setConfirmed(false)}><label>Document ID<input data-testid="document-id" value={documentId} onChange={e=>setDocumentId(e.target.value)} required pattern="[A-Z][A-Z0-9-]{1,39}"/></label>
      <label>Type<select value={kind} onChange={e=>setKind(e.target.value)}>{['clinical','pathology','laboratory','imaging','molecular','other'].map(x=><option key={x}>{x}</option>)}</select></label>
      <label>Event date<input data-testid="document-event" type="date" value={eventDate} onChange={e=>setEventDate(e.target.value)} required/></label><label>Issued date<input data-testid="document-issued" type="date" value={issuedDate} onChange={e=>setIssuedDate(e.target.value)} required/></label>
      <label>Amends version (optional)<input type="number" min="1" step="1" value={amends} onChange={e=>setAmends(e.target.value)}/></label></div>}
@@ -76,10 +84,12 @@ export function ReviewedDocumentWorkspace({session,patientId,caseId}:{session:Re
      <label>Finding key<input value={key} onChange={e=>setKey(e.target.value)}/></label>
      <label>User-selected status<select value={classification} onChange={e=>setClassification(e.target.value)}>{['not-assessed','not-reported','reported','negative','pending','indeterminate','conflicting'].map(x=><option key={x}>{x}</option>)}</select></label>
      <button type="button" onClick={add}>Add exact passage</button>
-     <ul>{findings.map((f,i)=><li key={f.key}>Line {f.line}: “{f.quote}” · user-selected {f.state} <button type="button" onClick={()=>{setFindings(findings.filter((_,n)=>n!==i));setConfirmed(false);}}>Remove {f.key}</button></li>)}</ul>
+     <ul>{findings.map((f,i)=><li key={f.key}>{passageLocation(preview,f.line)} · “{f.quote}” · user-selected {f.state} <button type="button" onClick={()=>{setFindings(findings.filter((_,n)=>n!==i));setConfirmed(false);}}>Remove {f.key}</button></li>)}</ul>
     </fieldset>
-    {state.document&&<label>Reason for this correction<textarea data-testid="document-reason" required minLength={3} maxLength={500} value={reason} onChange={e=>setReason(e.target.value)}/></label>}
-    <label className="check"><input data-testid="document-confirm" type="checkbox" checked={confirmed} disabled={locked} onChange={e=>setConfirmed(e.target.checked)}/>I confirm this fictional case, document metadata and exact transcription. This is not clinical approval.</label>
+    {state.document&&<label>Reason for this correction<textarea data-testid="document-reason" required minLength={3} maxLength={500} value={reason} onChange={e=>{setReason(e.target.value);setConfirmed(false);}}/></label>}
+    <label className="check"><input data-testid="document-confirm" type="checkbox" checked={confirmed} disabled={locked} onChange={e=>setConfirmed(e.target.checked)}/>{preview.media_type==='application/pdf'
+     ? 'I checked the selected passages against the original PDF pages and confirm this case, the metadata and the transcription.'
+     : 'I confirm this fictional case, document metadata and exact transcription.'} Clinical review is separate.</label>
     <button data-testid="save-reviewed" className="primary" disabled={!confirmed||locked}>{state.document?'Save new selection revision':'Save reviewed original'}</button>
    </form>}
   </div>}

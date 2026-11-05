@@ -210,6 +210,15 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     question = 'What does this report say about my fictional specimen?'
     questions_path = '/cases/' + CASE + '/questions'
     journey('0')
+    navigate('Investigations')
+    cd.evaluate('document.querySelector("[data-testid=load-source-questions]").click()')
+    cd.wait('Boolean(document.querySelector("[data-testid=source-question-history]"))', 'authorized laboratory case question history')
+    navigate('Overview')
+    cd.wait('document.querySelector("[data-testid=continuity-current]")?.textContent==="0"', 'checked empty laboratory question history')
+    assert cd.evaluate('Boolean(document.querySelector("[data-testid=continuity-preparation-item][data-kind=unresolved-statements]"))')
+    assert not cd.evaluate('Boolean(document.querySelector("[data-testid=continuity-preparation-item][data-kind=prepare-a-question]"))')
+    cd.evaluate('document.querySelector("[data-testid=continuity-preparation-item][data-kind=unresolved-statements] button").click()')
+    cd.wait('document.querySelectorAll("[data-testid=world-laboratory-observation]").length===3', 'Overview returns to the three source-reported laboratory results')
     assert operator(questions_path)['questions'] == []
     draft_question(first['source_id'], 'ZERO', question)
     submit_question()
@@ -294,5 +303,6 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
         'selection_writes': 0, 'lost_response_retry_same_intent': True,
         'preserved_original_and_history': True, 'original_denial': True,
         'projection_denial': True, 'journey_to_records_fresh_metadata_only': True,
+        'laboratory_only_overview_inspection': True,
         'clinical_interpretation': False}, indent=2) + '\n')
     print('PASS LABORATORY: actual fictional file selection; zero implicit writes; exact lost-response retry; typed zero/number/absence; explicit amendment; exact current/historical JSON; original and projection revocation; 390px layout.')

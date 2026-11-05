@@ -14,7 +14,7 @@ import {parseSourceWorldModel} from './source-world-model.js';
 import type {SourceWorldModel} from './source-world-model.js';
 import {decodeComposerPreflight,DEFAULT_SOURCE_QUESTION} from './composer-preflight-view.js';
 import type {ComposerPreflight} from './composer-preflight-view.js';
-import {decodeSavedQuestion,decodeSourceQuestions} from './source-questions-view.js';
+import {decodeSavedQuestion,decodeSourceQuestions,questionSaveBlocksSourceChange} from './source-questions-view.js';
 import type {SavedQuestion,SourceQuestion} from './source-questions-view.js';
 import {decodeReviewQueue,decodeReviewReturnResult,validReturnReason,FICTIONAL_RETURN_REASON} from './review-queue-view.js';
 import type {ReviewQueue,ReviewReturnResult} from './review-queue-view.js';
@@ -79,12 +79,6 @@ export type ViewState = Readonly<EvidenceState & SourceImagesState & LaboratoryI
   evidenceLinkIntent:QuestionEvidenceIntent|null;evidenceLinkReceipt:QuestionEvidenceReceipt|null;
   evidenceLinkPhase:'idle'|'saving'|'saved'|'unknown'|'error';evidenceLinkMessage:string;
 }>;
-// A failed reply can follow a committed save. Keep its exact retry key available.
-export function sourceQuestionSaveUnsettled(state:Pick<ViewState,'questionSavePhase'|'questionSaveMessage'>):boolean {
-  return state.questionSavePhase==='saving' ||
-    (state.questionSavePhase==='error' && state.questionSaveMessage.startsWith('Save outcome unknown.'));
-}
-
 export type Transport = (input: string, init: RequestInit) => Promise<Response>;
 const KEY = /^[A-Za-z0-9][A-Za-z0-9_.:-]{2,127}$/;
 const TOKEN = /^[A-Za-z0-9._~-]{32,256}$/;
@@ -665,8 +659,7 @@ export class RegistrySession {
    * A changed/amended source cannot silently become a new question's source.
    */
   async beginQuestionFromSourceReading(caseId:string,sourceId:string,sourceLine:number):Promise<boolean>{
-    if(this.#savingQuestion||this.#state.questionSavePhase==='saving'||
-       this.#state.questionSaveMessage.startsWith('Save outcome unknown.')){
+    if(this.#savingQuestion||questionSaveBlocksSourceChange(this.#state)){
       this.#publish({worldMessage:'Resolve the earlier uncertain question save in Investigations before changing its source.'});
       return false;
     }
@@ -761,7 +754,7 @@ export class RegistrySession {
    * Never persist editable text, credentials or preflight data outside memory.
    */
   chooseQuestionDraft(sourceId:string,sourceLine:number):void{
-    if(this.#savingQuestion||this.#state.questionSaveMessage.startsWith('Save outcome unknown.')){
+    if(this.#savingQuestion||questionSaveBlocksSourceChange(this.#state)){
       this.#publish({composerMessage:'Resolve the uncertain question save with the same request key before changing its source.'});
       return;
     }
@@ -820,7 +813,7 @@ export class RegistrySession {
   /** Preparation is a scoped source read. This path never calls question save. */
   async prepareLabQuestion(model:SourceWorldModel, source:string, reference:string,
                            question:string, signal:AbortSignal):Promise<LabPreparation|null>{
-    if(sourceQuestionSaveUnsettled(this.#state))return null;
+    if(questionSaveBlocksSourceChange(this.#state))return null;
     const scope=this.#scope, patientRead=this.#read, worldRead=this.#worldRead, questionWrite=this.#questionWrite;
     // An older laboratory read must never clear a later question save or its retry key.
     const current=()=>scope===this.#scope && patientRead===this.#read && worldRead===this.#worldRead &&
