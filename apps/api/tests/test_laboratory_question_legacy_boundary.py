@@ -172,6 +172,14 @@ class LaboratoryQuestionDependentStorageTests(EvidenceFixture):
                 else:
                     match = "r.question_id=:text_qid"
                     fields = "jsonb_build_object('question_id',CAST(:lab_qid AS text))"
+                if table == "question_evidence_links":
+                    # Give the link authentic fingerprints for the lab target,
+                    # so its original patient/case/source checks all succeed.
+                    fields += """ || (SELECT jsonb_build_object(
+                        'source_snapshot_contract',q.source_snapshot_contract,
+                        'source_snapshot_sha256',q.source_snapshot_sha256,
+                        'preflight_sha256',q.preflight_sha256)
+                        FROM investigation.source_questions q WHERE q.question_id=:lab_qid)"""
                 identity = "OVERRIDING SYSTEM VALUE" if table == "question_evidence_assessments" else ""
                 with self.subTest(table=table), self.assertRaisesRegex(DBAPIError, "OI-TEXT-QUESTION-TARGET-REQUIRED"):
                     with self.engine.begin() as db:

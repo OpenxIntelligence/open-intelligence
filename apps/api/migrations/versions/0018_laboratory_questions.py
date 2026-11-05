@@ -16,6 +16,14 @@ TEXT_QUESTION_TABLES = (
 )
 
 
+def _target_trigger(table):
+    # PostgreSQL runs BEFORE triggers in name order. The existing evidence
+    # link owner reports patient/case denials before checking the question.
+    if table == "question_evidence_links":
+        return "zz_oi_anchor_text_question_required"
+    return "oi_anchor_text_question_required"
+
+
 def upgrade():
     # Keep all existing question columns, identifiers, rows and versioned
     # intents. A NULL line requires exactly one immutable typed child at commit.
@@ -110,7 +118,7 @@ def upgrade():
     """)
     for table in TEXT_QUESTION_TABLES:
         conn.exec_driver_sql(f"""
-            CREATE TRIGGER oi_anchor_text_question_required BEFORE INSERT ON investigation.{table}
+            CREATE TRIGGER {_target_trigger(table)} BEFORE INSERT ON investigation.{table}
                 FOR EACH ROW EXECUTE FUNCTION investigation.require_text_question_target()
         """)
     # Imports and withdrawals are case-owned and have no question in their receipt.
@@ -131,7 +139,7 @@ def downgrade():
     """).scalar_one():
         raise CommandError("Stored laboratory question history requires explicit reconciliation")
     for table in (*TEXT_QUESTION_TABLES, "evidence_commands"):
-        conn.exec_driver_sql(f"DROP TRIGGER oi_anchor_text_question_required ON investigation.{table}")
+        conn.exec_driver_sql(f"DROP TRIGGER {_target_trigger(table)} ON investigation.{table}")
     conn.exec_driver_sql("DROP FUNCTION investigation.require_text_question_target()")
     conn.exec_driver_sql("""
         DROP TRIGGER oi_lab_question_requires_child ON investigation.source_questions;
