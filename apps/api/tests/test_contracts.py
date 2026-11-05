@@ -169,6 +169,7 @@ class HTTPContractTests(unittest.TestCase):
             "/v1/patients/{patient_id}/cases/{case_id}/sources/{source_id}",
             "/v1/patients/{patient_id}/cases/{case_id}/sources/{source_id}/images",
             "/v1/patients/{patient_id}/cases/{case_id}/sources/{source_id}/images/{image_id}",
+            "/v1/patients/{patient_id}/cases/{case_id}/sources/{source_id}/images/{image_id}/preview",
             "/v1/patients/{patient_id}/cases/{case_id}/world-model",
             "/v1/patients/{patient_id}/record-requests",
             "/v1/patients/{patient_id}/record-requests/{request_id}/cancel",
@@ -188,6 +189,11 @@ class HTTPContractTests(unittest.TestCase):
         self.assertEqual(returning["security"], [{"SyntheticFixture": []}])
         self.assertEqual(schema["paths"]["/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/source-review-packet"]["get"]["operationId"], "read_question_source_review_packet_v1")
         self.assertEqual(schema["paths"]["/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/source-review-packet"]["get"]["security"], [{"SyntheticFixture": []}])
+        image_preview = schema["paths"]["/v1/patients/{patient_id}/cases/{case_id}/sources/{source_id}/images/{image_id}/preview"]["get"]
+        self.assertEqual(image_preview["operationId"], "preview_source_image_v1")
+        self.assertEqual(image_preview["security"], [{"SyntheticFixture": []}])
+        self.assertIn("503", image_preview["responses"])
+        self.assertIn("image/png", image_preview["responses"]["200"]["content"])
         self.assertIn("503", schema["paths"]["/health/ready"]["get"]["responses"])
         self.assertFalse(schema["components"]["schemas"]["Readiness"]["additionalProperties"])
         for suffix, method in (("evidence-search", "post"), ("evidence-links", "post"), ("evidence-links", "get")):
