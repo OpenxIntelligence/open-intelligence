@@ -99,6 +99,7 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
             conn.execute(text("DROP FUNCTION IF EXISTS coordination.guard_question_followthrough_manual_dependency()"))
             conn.execute(text("DROP TABLE IF EXISTS investigation.laboratory_citation_anchors"))
             conn.execute(text("DROP TABLE IF EXISTS investigation.question_evidence_links"))
+            conn.execute(text("DROP FUNCTION IF EXISTS investigation.require_lab_citation_current_sources()"))
             conn.execute(text("DROP FUNCTION IF EXISTS investigation.guard_citation_question_target()"))
             conn.execute(text("DROP FUNCTION IF EXISTS investigation.guard_question_evidence_insert()"))
             conn.execute(text("DROP TABLE IF EXISTS investigation.evidence_rights_decisions"))
