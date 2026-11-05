@@ -24,7 +24,7 @@ export function PatientContinuity({state,onNavigate,onRefreshFollowthrough,busy}
   'Follow-up work has not been checked for the current case.';
  return <section className="panel continuity" aria-labelledby="continuity-heading" data-testid="patient-continuity">
   <span className="step">YOUR RECORDS · YOUR QUESTIONS · FOLLOW-UP</span>
-  <h2 id="continuity-heading">Continue your care preparation</h2>
+  <h2 id="continuity-heading" data-workspace-anchor="Care preparation">Continue your care preparation</h2>
   <p>Return to your records and questions without starting again. These are preparation steps, not medical advice or completed clinical review.</p>
   <p className="small">Patient <code>{view.patientId}</code>{view.caseId?<> · Case <code>{view.caseId}</code></>:<> · No case context loaded</>}</p>
   <div className="continuity-grid">
@@ -74,7 +74,7 @@ export function PatientContinuity({state,onNavigate,onRefreshFollowthrough,busy}
    <p className="muted small">Counts cover the structured records available here. Reviewed documents and records held by other providers may add context.</p>
   </section>}
   <section className="continuity-item continuity-followthrough" data-testid="continuity-followthrough" aria-labelledby="continuity-followthrough-heading">
-   <h3 id="continuity-followthrough-heading">Follow-up work</h3>
+   <h3 id="continuity-followthrough-heading" data-workspace-anchor="Follow-up work">Follow-up work</h3>
    <p>Recorded next steps across your saved questions. Owners and revisit dates describe coordination, not clinical urgency.</p>
    <p role="status" aria-live="polite" data-testid="continuity-followthrough-status" data-phase={readPhase}>{readMessage}</p>
    {pendingWrite&&<div className="continuity-followthrough-recovery" data-testid="continuity-followthrough-recovery" data-phase={writePhase}>

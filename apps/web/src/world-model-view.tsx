@@ -1,3 +1,4 @@
+import type {ReactNode} from 'react';
 import {SourceOncologyLabel} from './source-oncology-label';
 import type {WorldObservation} from './source-world-model';
 import {LaboratoryQuestionPanel,SavedLaboratoryQuestions} from './laboratory-question-panel';
@@ -8,7 +9,7 @@ import {SourceQuestionPanel} from './source-question-panel';
 type Props={
   session:RegistrySession;
   state:ViewState;
-  onOverview:()=>void;
+  patientAccess:ReactNode;
   busy:boolean;
   showQuestions?:boolean;
   onInvestigations?:()=>void;
@@ -21,7 +22,7 @@ type Props={
  * separate client-owned patient/source ledger. All clinical claims remain
  * attributed to the original fictional source and explicitly unreviewed.
  */
-export function WorldModelView({session,state,onOverview,busy,showQuestions=false,onInvestigations,onReview,onRecords}:Props){
+export function WorldModelView({session,state,patientAccess,busy,showQuestions=false,onInvestigations,onReview,onRecords}:Props){
   const loading=state.worldPhase==='loading'||state.recordsPhase.startsWith('loading');
   const model=state.worldModel;
   const laboratoryByRef=new Map(model?.laboratory_observations.map(item=>[item.source_id+':'+item.observation_reference,item])??[]);
@@ -52,14 +53,12 @@ export function WorldModelView({session,state,onOverview,busy,showQuestions=fals
         Write a source-linked question
       </button></div>
     </li>)}</ul>;
+  if(!state.patient)return <section aria-label="Source workspace" data-testid="world-workspace" data-view={showQuestions?'investigations':'journey'}><div data-testid="world-no-patient">{patientAccess}</div></section>;
   return <section className="panel source-world" aria-labelledby="world-heading" data-testid="world-workspace" data-view={showQuestions?'investigations':'journey'}>
     <span className="step">SOURCE-LINKED PATIENT CONTEXT / SYNTHETIC ONLY</span>
-    <h2 id="world-heading">{showQuestions?'Source-linked investigations':'Patient World Model — source-only view'}</h2>
+    <h2 id="world-heading" data-workspace-anchor="Patient and case">{showQuestions?'Source-linked investigations':'Patient World Model — source-only view'}</h2>
     <p>This is a fresh read of the existing PostgreSQL original-source owner. It organizes reported observations, chronology, unresolved statements and source disagreements. It does not interpret cancer, authorize AI research, or replace clinician review.</p>
-    {!state.patient?<div data-testid="world-no-patient">
-      <p>Open an authorized fictional patient before inspecting the source-derived view.</p>
-      <button onClick={onOverview}>Go to patient overview</button>
-    </div>:<>
+
       <p className="record-scope" data-testid="world-patient"><strong>Patient:</strong> <code>{state.patient.patient_id}</code></p>
       <button className="primary" data-testid="world-load-cases" disabled={loading||busy} onClick={()=>void session.loadCases()}>Check authorized cases</button>
       {state.cases!==null&&<section aria-label="Authorized case choices">
@@ -89,7 +88,7 @@ export function WorldModelView({session,state,onOverview,busy,showQuestions=fals
           <details><summary>Exact source receipt</summary><p><code>{item.source_id}</code></p><p>SHA-256 <code>{item.sha256}</code></p></details>
         </li>)}</ol>}
         {model.laboratory_observations.length>0&&<section aria-labelledby="laboratory-results-heading" data-testid="world-laboratory-results">
-          <h3 id="laboratory-results-heading">Laboratory results (<span data-testid="world-laboratory-count">{model.summary.current_laboratory_observations}</span>)</h3>
+          <h3 id="laboratory-results-heading" data-workspace-anchor="Laboratory results">Laboratory results (<span data-testid="world-laboratory-count">{model.summary.current_laboratory_observations}</span>)</h3>
           <p>Values, units and dates are reported by the source. An absent result is not a negative result. Clinical interpretation and reference-range assessment have not been performed.</p>
           <ol className="world-observations">{model.laboratory_timeline.map(entry=>{
             const item=laboratoryByRef.get(entry.source_id+':'+entry.observation_reference)!;
@@ -132,7 +131,7 @@ export function WorldModelView({session,state,onOverview,busy,showQuestions=fals
         {ordinary.length===0?<p>No additional source-reported statements are available.</p>:
         statementList(ordinary)}</>}
         {model.conflicts.length>0&&<section aria-labelledby="source-disagreements">
-          <h3 id="source-disagreements">Unresolved source disagreements</h3>
+          <h3 id="source-disagreements" data-workspace-anchor="Source disagreements">Unresolved source disagreements</h3>
           <p>Conflicting source-reported states for the same documented specimen, date and finding; no clinical adjudication is performed.</p>
           <ul>{model.conflicts.map(item=><li key={item.source_refs[0].source_id+':'+item.source_refs[0].source_line} data-testid="world-conflict">
             <SourceOncologyLabel context={contextsByLine.get(item.source_refs[0].source_id+':'+item.source_refs[0].source_line)}/>
@@ -149,6 +148,6 @@ export function WorldModelView({session,state,onOverview,busy,showQuestions=fals
         </details>
         <p data-testid="world-no-approval" className="muted">Clinical interpretation: not generated. Composer execution: unavailable. Evidence rights and professional review: not integrated into this H1 view.</p>
       </div>}
-    </>}
+
   </section>;
 }

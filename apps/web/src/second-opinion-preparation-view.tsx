@@ -19,7 +19,7 @@ export function SecondOpinionPreparation({state,onNavigate,onResumeQuestion,onCh
  if(!view)return null;
  return <section className="panel second-opinion-preparation" data-testid="second-opinion-preparation" data-state={view.state} aria-labelledby="second-opinion-heading">
   <span className="step">SECOND OPINION · PREPARATION ONLY</span>
-  <h2 id="second-opinion-heading">Prepare a focused second-opinion discussion</h2>
+  <h2 id="second-opinion-heading" data-workspace-anchor="Second-opinion preparation">Prepare a focused second-opinion discussion</h2>
   <p>{summary[view.state]}</p>
   <p className="small">This view organizes the last successfully authorized information in this session. It does not verify record completeness, choose a specialist, create a referral, transmit records, establish eligibility, or confirm an appointment.</p>
   <dl className="second-opinion-checklist" aria-label="Second-opinion preparation status">
@@ -41,7 +41,7 @@ export function SecondOpinionPreparation({state,onNavigate,onResumeQuestion,onCh
    </div>
   </dl>
   <section className="second-opinion-agenda" aria-labelledby="second-opinion-agenda-heading" data-testid="second-opinion-agenda">
-   <h3 id="second-opinion-agenda-heading">Text-source questions for discussion</h3>
+   <h3 id="second-opinion-agenda-heading" data-workspace-anchor="Discussion questions">Text-source questions for discussion</h3>
    <p>Each saved question below refers to a line in a record. Source status reflects the last authorized read.</p>
    <p data-testid="second-opinion-context-scope">Attached passages and preserved reports need a separate freshness check in Investigations.</p>
    {view.agenda&&state.manualPassageDraftQuestionIds.length>0&&<p data-testid="second-opinion-passage-drafts">

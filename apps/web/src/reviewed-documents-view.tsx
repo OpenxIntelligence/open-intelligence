@@ -131,7 +131,7 @@ export function ReviewedDocumentDisclosure({session,patientId,caseId}:{session:R
  const [open,setOpen]=useState(false);
  return <details className="record-import-disclosure" data-testid="reviewed-document-disclosure"
   open={open} onToggle={event=>setOpen(event.currentTarget.open)}>
-  <summary>Text and PDF originals</summary>
+  <summary id="document-intake-entry" data-workspace-anchor="Text and PDF originals">Text and PDF originals</summary>
   <p className="muted small">Preview, save or inspect fictional text and PDF originals. Opening or closing this section keeps your local selection and sends no request.</p>
   <ReviewedDocumentWorkspace session={session} patientId={patientId} caseId={caseId}/>
  </details>;
