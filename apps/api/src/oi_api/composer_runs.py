@@ -102,7 +102,7 @@ class PostgresComposerRuns:
             (row["run_id"], row["revision"], row["state"], row["attempt_count"], reason_code))
         self.registry.append_event(
             row["patient_id"], "composer.run." + row["state"], run_id=row["run_id"],
-            case_id=row["case_id"], question_id=row["question_id"], kind=KIND,
+            case_id=row["case_id"], question_id=row["question_id"], capability=KIND,
             actor=row["actor"], purpose=row["purpose"], revision=row["revision"],
             attempt_count=row["attempt_count"], reason_code=reason_code)
 
