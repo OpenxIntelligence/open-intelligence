@@ -2,6 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {prepareSource,parseImportReceipt,verifyOriginal} from '../.test-dist/source-intake.js';
+import {parseSourceIndex} from '../.test-dist/source-contracts.js';
 import {RegistrySession} from '../.test-dist/registry-client.js';
 import {DocumentClient} from '../.test-dist/reviewed-documents.js';
 const PID='PAT-EXAMPLE-001', CID='CASE-INTAKE', SID='SRC-'+ 'A'.repeat(32), TOKEN='fictional_test_credential_000000000001';
@@ -128,4 +129,27 @@ test('unpaired Unicode surrogate is rejected rather than silently changed by enc
 });
 test('JSON envelope bound is checked before submission without altering source bytes',async()=>{
  const large=RAW+'\\'.repeat(40000);const{session,calls}=await ready(()=>reply({}));await session.importSource(CID,large,true);assert.equal(calls.length,0);assert.equal(session.snapshot().importOutcome,'rejected');
+});
+
+test('Records opens an exact-byte version 2 original and retains explicit unknown episode attribution',async()=>{
+ const text=RAW.replace('REPORT/1','REPORT/2').replace('Finding: marker|not-reported|',
+   'Oncology-Finding: marker|metastasis|?|indeterminate|');
+ const sha256=createHash('sha256').update(text).digest('hex');
+ assert.equal(prepareSource(bytes(text),'episode.txt').text,text);
+ const original=await verifyOriginal({...ORIGINAL,original_text:text,sha256},CID,{...META,sha256});
+ assert.equal(original.original_text,text);
+ const finding={source_id:SID,finding_key:'marker',reported_state:'indeterminate',
+   source_statement:'Fictional attributed statement.',source_line:8,clinical_review_state:'not_established',
+   oncology:{role:'metastasis',episode_id:null}};
+ const index={...INDEX,source_reported_assertions:[finding]};
+ assert.deepEqual(parseSourceIndex(index,PID,CID).source_reported_assertions[0].oncology,finding.oncology);
+ assert.throws(()=>parseSourceIndex({...index,source_reported_assertions:[{...finding,
+   oncology:{role:'metastasis',episode_id:'UNKNOWN'}}]},PID,CID));
+});
+
+test('version 2 preview rejects ambiguous line separators inside a finding',()=>{
+ const typed=RAW.replace('/1\n','/2\n').replace('Finding: marker|','Oncology-Finding: marker|primary|EP-A|');
+ for(const separator of ['\u000b','\u000c','\u001c','\u001d','\u001e','\u0085','\u2028','\u2029']){
+  assert.throws(()=>prepareSource(bytes(typed.trimEnd()+separator+'Oncology-Finding: other|primary|EP-B|reported|Fictional.\n'),'report.txt'),/LF line separators/);
+ }
 });

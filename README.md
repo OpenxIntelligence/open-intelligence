@@ -13,10 +13,10 @@ follow-up work into one patient workspace. Setup deliberately creates one fictio
 patient/case/source; repeated setup and stop/resume retain its saved work.
 
 [Consolidation and acceptance #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481)
-records the current candidate, exact revision, test receipts and landing status.
+records the original integrated application and its acceptance results.
 The [convergence record](docs/engineering/H1_ACCEPTED_DEMO_CONVERGENCE.md) identifies
-the retained contributions. Runtime readiness uses the single
-`0017_lab_manual_convergence` migration head; published histories remain intact.
+the retained contributions. This revision requires `0018_laboratory_questions`
+for [saved laboratory questions](docs/engineering/H1_DURABLE_LABORATORY_QUESTIONS.md).
 The Python/SQLite application is retained as a separate reference implementation.
 
 Use independently authored fictional data only. This application does not establish
@@ -68,7 +68,7 @@ pins every input and separates current acceptance from historical receipts.
 
 The repository now contains an **original, local synthetic-only Python/SQLite research prototype**, alongside the product plan and execution backlog. Its bounded case-workspace features include source-preserving report versions, authored findings with source-line references, persistent investigation questions and review drafts, amendment-triggered staleness, an event chronology, fictional evidence/applicability records, and an optional DOI-only bibliographic metadata view. These are demonstration and engineering capabilities, **not a clinically validated application**.
 
-The local prototype has **no real-patient authorization, verified clinician identity, production access control, clinical inference, treatment recommendations, comprehensive EHR interoperability, or licensed full-text literature analysis**. Do not enter actual patient records or treat demo acknowledgments as clinical sign-off. Scientific model and production architecture choices remain under review.
+The local prototype has local demo accounts, roles, and sessions (operator-created accounts only; no verified identity), but **no real-patient authorization, verified clinician identity, production access control, clinical inference, treatment recommendations, comprehensive EHR interoperability, or licensed full-text literature analysis**. Do not enter actual patient records or treat demo acknowledgments as clinical sign-off. Scientific model and production architecture choices remain under review.
 
 **Historical main baseline (2 November 2026):** commit [`52ea683`](https://github.com/OpenxIntelligence/open-intelligence/commit/52ea683fbe3537b17a05066dceff2ba01f758c5d). That application baseline ran 236 synthetic tests successfully during its audit; this is not a new run of current main or the H1 candidate. Current implementation, proposed changes, unmerged domain work and verification limits are distinguished in [implementation status](docs/IMPLEMENTATION_STATUS.md). Test success is not independent clinical validation.
 
@@ -121,6 +121,38 @@ The current synthetic-only demonstration exercises a bounded portion of the inte
 5. Receive an amended report, identify affected conclusions, preserve history, and prepare a reviewable update.
 
 An incoming amendment marks affected outputs as requiring review. It does not automatically promote a replacement interpretation into a reviewed clinical conclusion.
+
+**Provenance write contract (Slice 1, 5 November 2026):** every stored
+investigation carries a per-agent write contract (program plan §5.4) —
+`writeId`, `agentId`, `agentRole` (A1–A6), `agentVersion`, `promptVersion`,
+`modelId`, `runId`, `routeId`, `snapshotAt` (L1 as-of), `inputs` (source
+versions, assertions, and evidence assessments, each with a content hash),
+and `toolCalls` — held in exactly one place, the `agent_writes` table
+(`src/open_intelligence/agent_writes.py` is the single owner of the
+contract). A write missing any contract field is rejected with a typed
+reason; a stored run can be replay-checked from its route, snapshot, and
+recorded inputs, and a superseded source version invalidates the replay.
+Local suite at the slice branch: 796 tests, with the same 17 pre-existing
+`test_pdf_intake` failures as main (missing local `pypdf`) and zero new
+failures.
+
+**Deterministic K-checks K1–K7 (Slice 2, 5 November 2026):** every kept
+investigation claim runs the deterministic checks of program plan C2 —
+K1 identifier format; K2 slot–field match against the cited facets;
+K3 temporal (cite only versions recorded at or before the snapshot);
+K4 contradiction (the later of two contradicting claims drops);
+K5 staleness (superseded or out-of-snapshot citations drop); K6 scope
+guard; K7 support (every number, identifier, and named-substance token
+must appear in the cited evidence; low-tier support must carry the
+fixed limits phrase); K7+ injection. The checker
+(`src/open_intelligence/kchecks.py`) is domain-free — the vertical's
+predicates arrive as parameters — and a test scans it for vertical
+literals. Failures go to `dropped` with a typed reason, never silently
+repaired. Local suite at the slice branch: 889 tests, with the same 17
+pre-existing `test_pdf_intake` failures as main (823 tests) and zero
+new failures. Not yet a clinical claim: the Skeptic and parallel role
+agents are later slices; the single existing model call writes as A1
+until the roster is wired.
 
 ## Development boundaries
 

@@ -7,8 +7,10 @@ record system. No patient authentication, PHI handling, or clinical validation.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import re
+import secrets
 import sqlite3
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
@@ -37,6 +39,13 @@ STATES = frozenset({"reported", "negative", "pending", "indeterminate", "not-rep
 TYPES = frozenset({"pathology", "molecular", "imaging", "laboratory", "clinical", "other"})
 MAX_SOURCE_BYTES = 65536
 MAX_SUMMARY = 3000
+# Slice 1 local demo accounts: operator-created only, stdlib password
+# hashing, server-side sessions. Accounts are local labels, not verified
+# identities; the fictional-demo framing is unchanged.
+ACCOUNT_ROLES = frozenset({"operator", "clinician", "patient", "auditor"})
+SESSION_TTL_SECONDS = 24 * 3600
+PASSWORD_MIN_LENGTH = 8
+_PBKDF2_ITERATIONS = 200_000
 # Sentinel for "argument absent" in follow-through updates, distinct from an
 # explicit null (which clears the field it names).
 _KEEP = object()
@@ -88,11 +97,19 @@ def valid_purpose(value: object) -> str:
 
 
 @dataclass(frozen=True)
+class OncologyAttribution:
+    """Explicit case-local attribution on an authored synthetic source line."""
+    role: str
+    episode_id: str | None
+
+
+@dataclass(frozen=True)
 class Finding:
     key: str
     state: str
     quote: str
     line: int
+    oncology: OncologyAttribution | None = None
 
 
 @dataclass(frozen=True)
@@ -108,7 +125,7 @@ class ParsedReport:
     raw: bytes
 
 
-def parse_report(raw: bytes) -> ParsedReport:
+def parse_report(raw: bytes, *, allow_oncology: bool = False) -> ParsedReport:
     """Parse intentionally structured, independently authored OI test reports.
 
     This is not a general clinical-document extractor. Finding lines are explicit
@@ -122,9 +139,12 @@ def parse_report(raw: bytes) -> ParsedReport:
         raise InvalidInput("Report must be UTF-8") from None
     if "\x00" in text or "\r" in text:
         raise InvalidInput("NUL and CR characters are not supported in this report format")
+    oncology_format = allow_oncology and text.partition("\n")[0] == "OI-SYNTHETIC-REPORT/2"
+    if oncology_format and re.search(r"[\v\f\x1c-\x1e\x85\u2028\u2029]", text):
+        raise InvalidInput("Version 2 reports require LF line separators")
     lines = text.splitlines()
-    if not lines or lines[0] != "OI-SYNTHETIC-REPORT/1":
-        raise InvalidInput("Only OI-SYNTHETIC-REPORT/1 is supported")
+    if not oncology_format and (not lines or lines[0] != "OI-SYNTHETIC-REPORT/1"):
+        raise InvalidInput("Unsupported synthetic report format" if allow_oncology else "Only OI-SYNTHETIC-REPORT/1 is supported")
     fields: dict[str, str] = {}
     findings: list[Finding] = []
     used_keys: set[str] = set()
@@ -135,8 +155,21 @@ def parse_report(raw: bytes) -> ParsedReport:
         if ": " not in line:
             raise InvalidInput(f"Line {line_number}: expected 'Field: value'")
         label, value = line.split(": ", 1)
-        if label == "Finding":
-            parts = value.split("|", 2)
+        if label == "Finding" or (oncology_format and label == "Oncology-Finding"):
+            oncology = None
+            if label == "Oncology-Finding":
+                parts = value.split("|", 4)
+                if len(parts) != 5:
+                    raise InvalidInput(f"Line {line_number}: expected key|role|episode|state|quotation")
+                key, role, episode, state, quote = parts
+                if role not in ("primary", "metastasis"):
+                    raise InvalidInput(f"Line {line_number}: unknown oncology role")
+                if episode != "?" and not re.fullmatch(r"EP-[A-Z0-9][A-Z0-9-]{0,35}", episode):
+                    raise InvalidInput(f"Line {line_number}: expected case-local EP- identifier or ?")
+                oncology = OncologyAttribution(role, None if episode == "?" else episode)
+                parts = [key, state, quote]
+            else:
+                parts = value.split("|", 2)
             if len(parts) != 3:
                 raise InvalidInput(f"Line {line_number}: finding needs key|state|source quotation")
             key, state, quote = (part.strip() for part in parts)
@@ -144,7 +177,7 @@ def parse_report(raw: bytes) -> ParsedReport:
                 raise InvalidInput(f"Line {line_number}: invalid or repeated finding key/status/quotation")
             if len(quote) > 1200:
                 raise InvalidInput(f"Line {line_number}: quotation too long")
-            findings.append(Finding(key, state, quote, line_number))
+            findings.append(Finding(key, state, quote, line_number, oncology))
             used_keys.add(key)
         elif label in field_names and label not in fields and value.strip():
             fields[label] = value.strip()
@@ -463,6 +496,20 @@ CREATE TABLE IF NOT EXISTS investigations (
   stale INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL
 );
+-- Slice 1 (program plan section 5.4): the per-agent write contract.
+-- Exactly one row per stored investigation, holding the full contract
+-- JSON; the investigations table itself is unchanged so pre-slice rows
+-- keep reading (their contract is NULL). The contract is the single
+-- attribution/replay record for the run; no second copy is kept.
+CREATE TABLE IF NOT EXISTS agent_writes (
+  id INTEGER PRIMARY KEY,
+  write_id TEXT NOT NULL UNIQUE,
+  investigation_id INTEGER NOT NULL REFERENCES investigations(id),
+  case_id TEXT NOT NULL REFERENCES cases(case_id),
+  contract_json TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_agent_writes_investigation ON agent_writes(investigation_id);
 -- Discovery-to-rights linkage: an item may be bound to one rights row at
 -- import (NULL means unlinked: rights unknown, never assumed permitted),
 -- and a link may cite broker links. Revocation/correction of a rights row
@@ -964,6 +1011,29 @@ CREATE TABLE IF NOT EXISTS access_log (
   occurred_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_access_log_case ON access_log(case_id, id);
+-- Slice 1 local demo accounts and sessions. Accounts are operator-created
+-- local labels (display name, role, status), never verified identities.
+-- Passwords are stored only as pbkdf2_hmac digests with a per-account salt;
+-- plaintext is never stored. A patient account binds to one case at
+-- creation (own_case_id); the operator assigns it. Sessions store only a
+-- SHA-256 hash of the token; the token itself is never stored. Revocation
+-- marks rows, never deletes them.
+CREATE TABLE IF NOT EXISTS accounts (
+  account_id TEXT PRIMARY KEY,
+  display_name TEXT NOT NULL,
+  role TEXT NOT NULL CHECK(role IN ('operator','clinician','patient','auditor')),
+  status TEXT NOT NULL CHECK(status IN ('active','disabled')),
+  own_case_id TEXT REFERENCES cases(case_id),
+  password_hash TEXT, password_salt TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_accounts_role ON accounts(role, status);
+CREATE TABLE IF NOT EXISTS sessions (
+  token_hash TEXT PRIMARY KEY,
+  account_id TEXT NOT NULL REFERENCES accounts(account_id),
+  expires_at TEXT NOT NULL, revoked_at TEXT, created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_account ON sessions(account_id, expires_at);
 -- B-08 contradiction synthesis: human-entered limitation notes on one
 -- evidence assessment or one broker link. Append-only: rows are never
 -- updated or deleted, so note history is preserved. Notes are descriptive
@@ -1314,6 +1384,197 @@ class CaseStore:
         return self._dicts(self.db.execute(
             "SELECT id,actor,case_id,route,result,occurred_at FROM access_log "
             "WHERE case_id=? ORDER BY id", (case_id,)).fetchall())
+
+    # -- Slice 1 local demo accounts and sessions -------------------------
+    # Accounts are operator-created local labels, not verified identities.
+    # An account id doubles as the B-01 actor id, so seeded grants keep
+    # working unchanged when the demo actor becomes a demo account.
+
+    @staticmethod
+    def _public_account(row: sqlite3.Row) -> dict:
+        """Account row without credential material (never leaves the store)."""
+        return {"account_id": row["account_id"], "display_name": row["display_name"],
+                "role": row["role"], "status": row["status"],
+                "own_case_id": row["own_case_id"], "created_at": row["created_at"]}
+
+    @staticmethod
+    def _hash_password(password: str, salt: bytes) -> str:
+        return hashlib.pbkdf2_hmac(
+            "sha256", password.encode("utf-8"), salt, _PBKDF2_ITERATIONS).hex()
+
+    def create_account(self, account_id: str, display_name: str, role: str,
+                       password: str | None = None,
+                       own_case_id: str | None = None) -> dict:
+        """Operator-created account. Password is optional at creation: an
+        account without one cannot sign in until an operator sets it.
+        A patient account must bind to exactly one case at creation; other
+        roles bind to no case."""
+        account_id = valid_id(account_id)
+        if not isinstance(display_name, str) or not 1 <= len(display_name.strip()) <= 128:
+            raise InvalidInput("Account display name must have 1–128 characters")
+        if role not in ACCOUNT_ROLES:
+            raise InvalidInput("Account role must be operator, clinician, patient, or auditor")
+        if role == "patient":
+            if own_case_id is None:
+                raise InvalidInput("A patient account binds to one case at creation")
+            self._case(own_case_id)
+        elif own_case_id is not None:
+            raise InvalidInput("Only a patient account binds to a case")
+        if password is not None:
+            if not isinstance(password, str) or len(password) < PASSWORD_MIN_LENGTH:
+                raise InvalidInput(
+                    f"Account password must have at least {PASSWORD_MIN_LENGTH} characters")
+        password_hash = password_salt = None
+        if password is not None:
+            salt = secrets.token_bytes(16)
+            password_salt = salt.hex()
+            password_hash = self._hash_password(password, salt)
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            existing = self.db.execute(
+                "SELECT 1 FROM accounts WHERE account_id=?", (account_id,)).fetchone()
+            if existing is not None:
+                raise InvalidInput("Account already exists")
+            self.db.execute(
+                """INSERT INTO accounts
+                   (account_id,display_name,role,status,own_case_id,
+                    password_hash,password_salt,created_at)
+                   VALUES (?,?,?,'active',?,?,?,?)""",
+                (account_id, display_name.strip(), role, own_case_id,
+                 password_hash, password_salt, now_utc()))
+            row = self.db.execute(
+                "SELECT * FROM accounts WHERE account_id=?", (account_id,)).fetchone()
+            return self._public_account(row)
+
+    def set_account_password(self, account_id: str, password: str) -> dict:
+        """Operator-set password for an existing account. No password is ever
+        stored or returned; only its salted digest is kept."""
+        account_id = valid_id(account_id)
+        if not isinstance(password, str) or len(password) < PASSWORD_MIN_LENGTH:
+            raise InvalidInput(
+                f"Account password must have at least {PASSWORD_MIN_LENGTH} characters")
+        salt = secrets.token_bytes(16)
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            cur = self.db.execute(
+                "UPDATE accounts SET password_hash=?, password_salt=? WHERE account_id=?",
+                (self._hash_password(password, salt), salt.hex(), account_id))
+            if cur.rowcount == 0:
+                raise InvalidInput("Account not found")
+            row = self.db.execute(
+                "SELECT * FROM accounts WHERE account_id=?", (account_id,)).fetchone()
+            return self._public_account(row)
+
+    def set_account_status(self, account_id: str, status: str) -> dict:
+        """Disable or re-enable an account. Disabling also revokes every
+        live session for the account; the rows stay for audit."""
+        account_id = valid_id(account_id)
+        if status not in ("active", "disabled"):
+            raise InvalidInput("Account status must be active or disabled")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            cur = self.db.execute(
+                "UPDATE accounts SET status=? WHERE account_id=?", (status, account_id))
+            if cur.rowcount == 0:
+                raise InvalidInput("Account not found")
+            if status == "disabled":
+                self.db.execute(
+                    "UPDATE sessions SET revoked_at=? WHERE account_id=? AND revoked_at IS NULL",
+                    (now_utc(), account_id))
+            row = self.db.execute(
+                "SELECT * FROM accounts WHERE account_id=?", (account_id,)).fetchone()
+            return self._public_account(row)
+
+    def get_account(self, account_id: str) -> dict | None:
+        """Public account record, or None when unknown. Never raises for
+        unknown ids and never exposes credential material."""
+        if not isinstance(account_id, str):
+            return None
+        row = self.db.execute(
+            "SELECT * FROM accounts WHERE account_id=?", (account_id,)).fetchone()
+        return None if row is None else self._public_account(row)
+
+    def list_accounts(self) -> list[dict]:
+        """All accounts, ordered by id, without credential material."""
+        return [self._public_account(row) for row in self.db.execute(
+            "SELECT * FROM accounts ORDER BY account_id").fetchall()]
+
+    def verify_password(self, account_id: str, password: str) -> bool:
+        """True only for an active account with a set password that matches.
+        Deny by default: unknown, disabled, or passwordless accounts are
+        False. Never raises for unknown ids."""
+        if not isinstance(account_id, str) or not isinstance(password, str):
+            return False
+        row = self.db.execute(
+            "SELECT * FROM accounts WHERE account_id=?", (account_id,)).fetchone()
+        if row is None or row["status"] != "active":
+            return False
+        if row["password_hash"] is None or row["password_salt"] is None:
+            return False
+        try:
+            salt = bytes.fromhex(row["password_salt"])
+        except ValueError:
+            return False
+        digest = self._hash_password(password, salt)
+        return hmac.compare_digest(digest, row["password_hash"])
+
+    def issue_session(self, account_id: str) -> tuple[str, dict]:
+        """Create a 24-hour session for an active account. Returns the bearer
+        token (never stored; only its hash is kept) and the session record."""
+        account = self.get_account(account_id)
+        if account is None or account["status"] != "active":
+            raise InvalidInput("Account is disabled or missing")
+        token = secrets.token_urlsafe(32)
+        token_hash = hashlib.sha256(token.encode("ascii")).hexdigest()
+        created = datetime.now(timezone.utc)
+        expires = (created + timedelta(seconds=SESSION_TTL_SECONDS)).isoformat(timespec="seconds")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            self.db.execute(
+                """INSERT INTO sessions (token_hash,account_id,expires_at,revoked_at,created_at)
+                   VALUES (?,?,?,NULL,?)""",
+                (token_hash, account_id, expires, created.isoformat(timespec="seconds")))
+        return token, {"account_id": account_id, "expires_at": expires,
+                       "created_at": created.isoformat(timespec="seconds")}
+
+    def validate_session(self, token: str) -> dict | None:
+        """Account for a live session token, or None. Expired and revoked
+        sessions are None. Never raises for malformed tokens."""
+        if not isinstance(token, str) or not token:
+            return None
+        token_hash = hashlib.sha256(token.encode("utf-8", errors="ignore")).hexdigest()
+        row = self.db.execute(
+            """SELECT a.* FROM sessions s JOIN accounts a ON a.account_id=s.account_id
+               WHERE s.token_hash=? AND s.revoked_at IS NULL AND s.expires_at>?""",
+            (token_hash, now_utc())).fetchone()
+        if row is None:
+            return None
+        if row["status"] != "active":
+            return None
+        return self._public_account(row)
+
+    def revoke_session(self, token: str) -> bool:
+        """Revoke one session token. True when a live session was revoked."""
+        if not isinstance(token, str) or not token:
+            return False
+        token_hash = hashlib.sha256(token.encode("utf-8", errors="ignore")).hexdigest()
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            cur = self.db.execute(
+                "UPDATE sessions SET revoked_at=? WHERE token_hash=? AND revoked_at IS NULL",
+                (now_utc(), token_hash))
+            return cur.rowcount > 0
+
+    def revoke_account_sessions(self, account_id: str) -> int:
+        """Revoke every live session for one account. Returns the count."""
+        if not isinstance(account_id, str):
+            return 0
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            cur = self.db.execute(
+                "UPDATE sessions SET revoked_at=? WHERE account_id=? AND revoked_at IS NULL",
+                (now_utc(), account_id))
+            return int(cur.rowcount)
 
 
     def _stale_case_model_investigations(self, case_id: str) -> list[int]:
@@ -5609,6 +5870,17 @@ class CaseStore:
                             snapshot_id=task["snapshot_id"], mode="note")
             return {"result": "task_closed", "task_id": task_id, "status": "done"}
 
+    def source_version_facts(self, case_id: str) -> list[dict]:
+        """All source versions of a case, current and superseded, with
+        the dates, specimen, state, and supersession link the K-checks
+        need. Read-only; used to build the K-check context for an
+        investigation run."""
+        self._case(case_id)
+        return self._dicts(self.db.execute(
+            """SELECT id,document_id,version,sha256,kind,event_date,issued_at,received_at,
+            specimen_id,state,supersedes_id FROM source_versions
+            WHERE case_id=? ORDER BY id""", (case_id,)).fetchall())
+
     def investigation_facts(self, case_id: str, question_id: int) -> dict:
         """Facts the investigation prompt may use: question, current assertions, assessments."""
         self._case(case_id)
@@ -5642,13 +5914,34 @@ class CaseStore:
         }
 
     def save_investigation(self, case_id: str, question_id: int, template: str,
-                           validated, mode: str) -> int:
+                           validated, mode: str, write_contract: dict | None = None) -> int:
+        from .agent_writes import (
+            WriteContractRejected,
+            parse_route_id,
+            validate_write_contract,
+        )
         from .investigation import TEMPLATES
         self._case(case_id)
         if mode not in ("live", "replay"):
             raise InvalidInput("Mode must be live or replay")
         if template not in TEMPLATES:
             raise InvalidInput("Unknown investigation template")
+        # Slice 1 write contract (program plan section 5.4): no write is
+        # stored without a complete, validated contract bound to this run.
+        if write_contract is None:
+            raise WriteContractRejected("missing_write_contract")
+        contract = validate_write_contract(write_contract)
+        route_case, route_template, route_question = parse_route_id(contract["routeId"])
+        if (route_case, route_template, route_question) != (case_id, template, question_id):
+            raise WriteContractRejected(
+                "route_mismatch", "routeId",
+                "contract route does not match this investigation",
+            )
+        if contract["modelId"] != validated.model:
+            raise WriteContractRejected(
+                "contract_mismatch", "modelId",
+                "contract model does not match the validated output model",
+            )
         with self.db:
             self.db.execute("BEGIN IMMEDIATE")
             if not self.db.execute("SELECT 1 FROM questions WHERE id=? AND case_id=?",
@@ -5662,6 +5955,12 @@ class CaseStore:
                  json.dumps(validated.claims), json.dumps(validated.abstentions),
                  json.dumps(validated.dropped), now_utc()))
             investigation_id = int(cur.lastrowid)
+            self.db.execute(
+                """INSERT INTO agent_writes
+                (write_id,investigation_id,case_id,contract_json,created_at)
+                VALUES (?,?,?,?,?)""",
+                (contract["writeId"], investigation_id, case_id,
+                 json.dumps(contract, sort_keys=True), now_utc()))
             # An abstention states there is no answer: it must not hide the
             # question as addressed. Only a non-abstained result addresses
             # it here; human drafts address on acknowledgment instead.
@@ -5669,8 +5968,31 @@ class CaseStore:
                 self.db.execute("UPDATE questions SET state='addressed' WHERE id=? AND case_id=?",
                                 (question_id, case_id))
             self._event(case_id, "investigation_created", investigation_id=investigation_id,
-                        template=template, status=validated.status, mode=mode)
+                        template=template, status=validated.status, mode=mode,
+                        write_id=contract["writeId"])
             return investigation_id
+
+    def get_write_contract(self, case_id: str, investigation_id: int) -> dict | None:
+        """Return the stored write contract for an investigation, or None.
+
+        None means the investigation was stored before the write contract
+        existed (pre-slice rows); such rows keep reading, and replay
+        reports them as missing_write_contract rather than failing.
+        """
+        self._case(case_id)
+        if type(investigation_id) is not int:
+            raise InvalidInput("Investigation id must be an integer")
+        row = self.db.execute(
+            """SELECT contract_json FROM agent_writes
+            WHERE investigation_id=? AND case_id=?""",
+            (investigation_id, case_id)).fetchone()
+        if not row:
+            return None
+        try:
+            value = json.loads(row[0])
+        except (json.JSONDecodeError, TypeError):
+            return None
+        return value if isinstance(value, dict) else None
 
     def get_investigation(self, case_id: str, investigation_id: int) -> dict:
         self._case(case_id)
@@ -5686,6 +6008,7 @@ class CaseStore:
         data["dropped"] = json.loads(data.pop("dropped_json"))
         data["kind"] = "hypothesis"
         data["review_state"] = "pending"
+        data["write_contract"] = self.get_write_contract(case_id, investigation_id)
         data["disclaimer"] = ("Research demonstration only. Hypotheses are unreviewed, "
                               "fictional-data based, and not medical advice.")
         return data
@@ -5693,11 +6016,20 @@ class CaseStore:
     def list_investigations(self, case_id: str) -> list[dict]:
         self._case(case_id)
         rows = self._dicts(self.db.execute(
-            "SELECT id,question_id,template,status,mode,model,stale,created_at "
-            "FROM investigations WHERE case_id=? ORDER BY id DESC", (case_id,)).fetchall())
+            """SELECT i.id,i.question_id,i.template,i.status,i.mode,i.model,i.stale,i.created_at,
+            w.write_id,w.contract_json
+            FROM investigations i LEFT JOIN agent_writes w ON w.investigation_id=i.id
+            WHERE i.case_id=? ORDER BY i.id DESC""", (case_id,)).fetchall())
         for row in rows:
             row["kind"] = "hypothesis"
             row["review_state"] = "pending"
+            contract_json = row.pop("contract_json")
+            try:
+                contract = json.loads(contract_json) if contract_json else None
+            except (json.JSONDecodeError, TypeError):
+                contract = None
+            row["agent_role"] = contract.get("agentRole") if isinstance(contract, dict) else None
+            row["route_id"] = contract.get("routeId") if isinstance(contract, dict) else None
         return rows
 
     def state(self, case_id: str) -> dict:

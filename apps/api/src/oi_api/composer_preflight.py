@@ -19,6 +19,7 @@ from open_intelligence.patient_registry import (
 from open_intelligence.postgres_registry import PostgresPatientRegistry
 
 from .case_bindings import _case_id
+from .source_anchor import selected_observation_anchor
 from .sources import PostgresSourceVersions, _source_id
 from .source_world_model import project_source_world_model
 
@@ -144,20 +145,7 @@ class PostgresSourceComposerPreflight:
             "question": question,
             "source_snapshot_contract": SOURCE_SNAPSHOT_CONTRACT,
             "source_snapshot_sha256": world["snapshot_fingerprint"],
-            "selected_source": {
-                "source_id": anchor["source_id"],
-                "document_id": anchor["document_id"],
-                "version": anchor["document_version"],
-                "sha256": anchor["source_sha256"],
-                "line": anchor["source_line"],
-                "finding_key": anchor["finding_key"],
-                "reported_state": anchor["reported_state"],
-                "statement": anchor["source_statement"],
-                "kind": anchor["source_kind"],
-                "event_date": anchor["event_date"],
-                "issued_at": anchor["issued_at"],
-                "specimen_id": anchor["specimen_id"],
-            },
+            "selected_source": selected_observation_anchor(anchor),
             "source_context_only": True,
             "biomedical_evidence_rights_verified": False,
             "model_execution_authorized": False,

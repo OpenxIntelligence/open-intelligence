@@ -18,6 +18,7 @@ from .composer_preflight import PostgresSourceComposerPreflight
 from .laboratory_fhir_r4 import LaboratoryBundleRejected, prepare_laboratory_bundle
 from .laboratory_fhir_store import PostgresLaboratoryFHIR
 from .sources import PostgresSourceVersions
+from .laboratory_questions import PostgresLaboratoryQuestions
 
 
 class LabFHIRPreviewRequest(Contract):
@@ -129,8 +130,95 @@ class PreparedLaboratoryQuestion(Contract):
     access_receipt_id: StrictStr = Field(pattern=r"^ACCESS-[0-9A-F]{32}$")
 
 
+class SaveLaboratoryQuestion(PrepareLaboratoryQuestion):
+    request_key: StrictStr = Field(min_length=3, max_length=128)
+    expected_preflight_sha256: StrictStr = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class LaboratorySaveReceipt(Contract):
+    question_id: StrictStr = Field(pattern=r"^QUESTION-[0-9A-F]{32}$")
+    duplicate: StrictBool
+
+
+class LaboratoryQuestionEntry(Contract):
+    question_id: StrictStr = Field(pattern=r"^QUESTION-[0-9A-F]{32}$")
+    question: StrictStr = Field(min_length=8, max_length=500)
+    source_id: StrictStr = Field(pattern=r"^SRC-[0-9A-F]{32}$")
+    source_version: StrictInt = Field(ge=1)
+    source_sha256: StrictStr = Field(pattern=r"^[0-9a-f]{64}$")
+    observation_reference: StrictStr = Field(pattern=r"^Observation/[A-Za-z0-9.-]{1,64}$")
+    source_snapshot_sha256: StrictStr = Field(pattern=r"^[0-9a-f]{64}$")
+    preflight_sha256: StrictStr = Field(pattern=r"^[0-9a-f]{64}$")
+    source_context_state: Literal["current_unreviewed_question", "source_reassessment_required"]
+
+
+class LaboratoryQuestionHistory(Contract):
+    patient_id: StrictStr
+    case_id: StrictStr
+    access_receipt_id: StrictStr = Field(pattern=r"^ACCESS-[0-9A-F]{32}$")
+    questions: list[LaboratoryQuestionEntry]
+
+
+def _laboratory_question_response(body: Contract, status: int = 200) -> JSONResponse:
+    response = JSONResponse(
+        content=body.model_dump(mode="json"), status_code=status,
+        headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
+    )
+    if len(response.body) > 1_048_576:
+        raise PatientRegistryError("Laboratory question response exceeds the supported size")
+    return response
+
+
 def register_laboratory_fhir_routes(router, *, principal, registry,
                                     records_authorized, final_authority, errors):
+    question_path = "/{patient_id}/cases/{case_id}/composer/laboratory-questions"
+
+    @router.post(question_path, response_model=LaboratorySaveReceipt, status_code=201,
+                 responses={200: {"model": LaboratorySaveReceipt}, **errors},
+                 operation_id="save_fictional_laboratory_question_v1")
+    def save_laboratory_question(request: Request, patient_id: str, case_id: str,
+                                 payload: SaveLaboratoryQuestion, context=Depends(principal)):
+        if payload.synthetic is not True or context.purpose != "operations" or request.query_params:
+            raise HTTPException(404, "Laboratory question unavailable")
+        actions = ("question_create", "composer_context_read", "source_read")
+        try:
+            with registry(context) as patients:
+                for action in actions:
+                    records_authorized(patients, context, patient_id, action)
+
+                def encode(result):
+                    receipt = LaboratorySaveReceipt(**result)
+                    return _laboratory_question_response(receipt, 200 if receipt.duplicate else 201)
+
+                return PostgresLaboratoryQuestions(patients).save(
+                    patient_id, case_id, actor=context.actor, organization=context.organization,
+                    purpose=context.purpose, **payload.model_dump(exclude={"synthetic"}),
+                    prepare_response=encode,
+                    recheck_authority=lambda: final_authority(request, context, patients, patient_id, actions),
+                )
+        except PatientRegistryDenied:
+            raise HTTPException(404, "Laboratory question unavailable") from None
+
+    @router.get(question_path, response_model=LaboratoryQuestionHistory, responses=errors,
+                operation_id="list_fictional_laboratory_questions_v1")
+    def list_laboratory_questions(request: Request, patient_id: str, case_id: str,
+                                  context=Depends(principal)):
+        if context.purpose != "operations" or request.query_params:
+            raise HTTPException(404, "Laboratory questions unavailable")
+        actions = ("question_read", "source_read")
+        try:
+            with registry(context) as patients:
+                for action in actions:
+                    records_authorized(patients, context, patient_id, action)
+                return PostgresLaboratoryQuestions(patients).list(
+                    patient_id, case_id, actor=context.actor, organization=context.organization,
+                    purpose=context.purpose,
+                    prepare_response=lambda result: _laboratory_question_response(LaboratoryQuestionHistory(**result)),
+                    recheck_authority=lambda: final_authority(request, context, patients, patient_id, actions),
+                )
+        except PatientRegistryDenied:
+            raise HTTPException(404, "Laboratory questions unavailable") from None
+
     @router.post("/{patient_id}/cases/{case_id}/composer/laboratory-preflight",
                  response_model=PreparedLaboratoryQuestion, responses=errors,
                  operation_id="prepare_fictional_laboratory_question_v1")

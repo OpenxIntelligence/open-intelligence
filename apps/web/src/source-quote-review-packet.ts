@@ -2,13 +2,10 @@
  * No clinical conclusion, publisher rights, evidence grade or model execution.
  */
 import type {SourceQuestion} from './source-questions-view.js';
+import {parseOncologyContext} from './source-contracts.js';
+import type {SourceWorldModel,WorldObservation} from './source-world-model.js';
 
-export type SourceQuote=Readonly<{
- source_id:string;document_id:string;document_version:number;source_sha256:string;
- source_line:number;finding_key:string;reported_state:string;source_statement:string;
- source_kind:string;specimen_id:string|null;event_date:string;issued_at:string;
- review_state:'not_established';clinical_meaning:null;
-}>;
+export type SourceQuote=WorldObservation;
 export type QuestionSourceReviewPacket=Readonly<{
  contract:'oi.synthetic-question-source-review-packet/1';
  patient_id:string;case_id:string;question_id:string;question:string;
@@ -61,7 +58,8 @@ function nonnegative(v:unknown):v is number{
 function date(v:unknown):boolean{return typeof v==='string'&&DATE.test(v)&&
  Number.isFinite(Date.parse(v+'T00:00:00Z'));}
 function quote(v:unknown):SourceQuote{
- if(!obj(v,quoteKeys)||typeof v.source_id!=='string'||!ID.test(v.source_id)||
+ const typed=v!==null&&typeof v==='object'&&Object.hasOwn(v,'oncology');
+ if(!obj(v,typed?[...quoteKeys,'oncology']:quoteKeys)||typeof v.source_id!=='string'||!ID.test(v.source_id)||
    typeof v.document_id!=='string'||!DOC.test(v.document_id)||
    !positive(v.document_version)||typeof v.source_sha256!=='string'||!HASH.test(v.source_sha256)||
    !positive(v.source_line)||v.source_line>10000||
@@ -72,7 +70,15 @@ function quote(v:unknown):SourceQuote{
    (v.specimen_id!==null&&(typeof v.specimen_id!=='string'||!DOC.test(v.specimen_id)))||
    !date(v.event_date)||!date(v.issued_at)||
    v.review_state!=='not_established'||v.clinical_meaning!==null)throw Error('contract');
- return Object.freeze(v as SourceQuote);
+ return Object.freeze({...v,...(typed?{oncology:parseOncologyContext(v.oncology)}:{})} as SourceQuote);
+}
+function isRelated(selected:SourceQuote,other:SourceQuote):boolean{
+ return (other.source_id!==selected.source_id||other.source_line!==selected.source_line)&&
+   selected.specimen_id!==null&&other.specimen_id===selected.specimen_id&&
+   other.finding_key===selected.finding_key&&other.event_date===selected.event_date&&
+   selected.oncology?.episode_id!==null&&
+   other.oncology?.episode_id===selected.oncology?.episode_id&&
+   other.oncology?.role===selected.oncology?.role;
 }
 function stableJson(v:unknown):string{
  if(Array.isArray(v))return '['+v.map(stableJson).join(',')+']';
@@ -84,7 +90,7 @@ function stableJson(v:unknown):string{
 }
 export async function decodeQuestionSourcePacket(
  value:unknown,expected:SourceQuestion,caseId:string,patientId:string,
- currentFingerprint?:string):Promise<QuestionSourceReviewPacket>{
+ currentWorld?:Pick<SourceWorldModel,'snapshot_fingerprint'|'observations'>):Promise<QuestionSourceReviewPacket>{
  if(!obj(value,packetKeys)||
     value.contract!=='oi.synthetic-question-source-review-packet/1'||
     value.patient_id!==patientId||value.case_id!==caseId||
@@ -104,7 +110,7 @@ export async function decodeQuestionSourcePacket(
     !/^ACCESS-[0-9A-F]{32}$/.test(value.source_access_receipt_id)||
     !Array.isArray(value.related_statements)||value.related_statements.length>16||
     !nonnegative(value.related_statement_count_total)||
-    value.related_statement_count_total<value.related_statements.length||
+    value.related_statements.length!==Math.min(16,value.related_statement_count_total)||
     typeof value.related_statements_truncated!=='boolean'||
     value.related_statements_truncated!==(value.related_statement_count_total>value.related_statements.length)||
     !nonnegative(value.current_source_count)||!nonnegative(value.current_observation_count)||
@@ -119,7 +125,7 @@ export async function decodeQuestionSourcePacket(
    if(expected.source_snapshot_contract!=='oi.pg-source-world-model/1'||
       value.review_next_step!=='independent_source_verification_required'||
       value.current_source_snapshot_sha256!==expected.source_snapshot_sha256||
-      (currentFingerprint!==undefined&&currentFingerprint!==value.current_source_snapshot_sha256)||
+      (currentWorld!==undefined&&currentWorld.snapshot_fingerprint!==value.current_source_snapshot_sha256)||
       value.selected_statement===null)throw Error('contract');
    selected=quote(value.selected_statement);
    if(selected.source_id!==expected.source_id||
@@ -127,11 +133,20 @@ export async function decodeQuestionSourcePacket(
       selected.source_sha256!==expected.source_sha256||
       selected.document_version!==expected.source_version)throw Error('contract');
    related=value.related_statements.map(quote);
+   const seen=new Set<string>();
    for(const other of related){
-     if((other.source_id===selected.source_id&&other.source_line===selected.source_line)||
-       other.finding_key!==selected.finding_key||other.specimen_id===null||
-       selected.specimen_id===null||other.specimen_id!==selected.specimen_id||
-       other.event_date!==selected.event_date)throw Error('contract');
+     const anchor=other.source_id+':'+other.source_line;
+     if(!isRelated(selected,other)||seen.has(anchor))throw Error('contract');
+     seen.add(anchor);
+   }
+   if(currentWorld!==undefined){
+     // A self-consistent packet digest alone cannot detect omitted or rewritten
+     // attribution. Compare exact quotes with the independently loaded snapshot.
+     const origin=currentWorld.observations.find(o=>o.source_id===expected.source_id&&o.source_line===expected.source_line);
+     if(!origin||stableJson(origin)!==stableJson(selected))throw Error('contract');
+     const matches=currentWorld.observations.filter(o=>isRelated(origin,o));
+     if(matches.length!==value.related_statement_count_total||
+        related.some((q,i)=>stableJson(q)!==stableJson(matches[i])))throw Error('contract');
    }
  }else if(value.source_context_state==='source_reassessment_required'){
    if(value.review_next_step!=='refresh_source_and_create_new_question'||

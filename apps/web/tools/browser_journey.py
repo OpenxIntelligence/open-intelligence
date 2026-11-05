@@ -274,7 +274,11 @@ def main():
             assert cd.evaluate("!document.querySelector('[data-testid=world-projection]')")
             cd.evaluate("Array.from(document.querySelectorAll('nav[aria-label=\"Patient workspace\"] button')).find(b=>b.textContent.includes('Records')).click()")
             # Read rights must be checked afresh; a denied refresh discards earlier findings.
-            # source_read was already withdrawn for the source-bound World Model.
+            # The World Model denial cleared the cached cases and originals. Recheck the
+            # independent mapping grant before deliberately retrying the still-denied source read.
+            assert not cd.evaluate("Boolean(document.querySelector('[data-testid=source-index], [data-testid=server-original], [data-testid=load-sources]'))")
+            cd.evaluate("document.querySelector('[data-testid=load-cases]').click()")
+            cd.wait("Boolean(document.querySelector('[data-testid=load-sources]'))", 'fresh authorized case mapping')
             cd.evaluate("document.querySelector('[data-testid=load-sources]').click()")
             cd.wait("document.querySelector('[data-testid=records-status]').textContent.includes('Sources unavailable')",'revoked source permission erases stale view')
             assert cd.evaluate("!document.querySelector('[data-testid=source-index]')")
@@ -311,6 +315,8 @@ def main():
             exercise_image_evidence(cd,pid,tokens[0],credentials,write_grants,directory,out,restart_api)
             from laboratory_fhir_journey import exercise as exercise_laboratory
             exercise_laboratory(cd,pid,directory,tokens[0],credentials,write_grants,out)
+            from oncology_episode_journey import exercise as exercise_episodes
+            exercise_episodes(cd,pid,tokens[0],credentials,write_grants,out)
             credentials[0]['patient_ids']=[];write_grants();read()
             cd.wait("!document.querySelector('[data-testid=patient-card]') && document.querySelector('[data-testid=status]').textContent.includes('Patient unavailable')",'revoked read removes prior view')
             credentials[0]['expires_at']=(datetime.now(timezone.utc)-timedelta(seconds=1)).isoformat();write_grants();read()

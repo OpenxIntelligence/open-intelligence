@@ -9,6 +9,113 @@ draft labels, schema heads and test counts are not current acceptance claims.
 
 **Stage:** local experimental synthetic-only code. **Not released for clinical use.**
 
+## Provenance write contract (Slice 1) — 5 November 2026
+
+Branch `program/slice1-write-contract`, from main `4b13bc2`. Implements
+program-plan §5.4 (Notion OI-09 §5.4): the per-agent write contract, so
+every agent/model write is attributable and replayable, or it is rejected.
+
+New `src/open_intelligence/agent_writes.py` is the single owner of the
+contract: `writeId`, `agentId`, `agentRole` (A1–A6), `agentVersion`,
+`promptVersion`, `modelId`, `runId`, `routeId`, `snapshotAt` (L1 as-of:
+ledger event anchor plus timestamp), `inputs` (source versions,
+assertions, evidence assessments, each with a content hash), and
+`toolCalls`. `CaseStore.save_investigation` stores no write without a
+complete, validated contract bound to the same route and model, and
+records it in the new `agent_writes` table in the same transaction;
+`get_investigation` returns the full contract and `list_investigations`
+carries `write_id`/`agent_role`/`route_id`. Pre-slice rows keep reading
+with a null contract. `check_replay` re-reads every recorded input,
+requires exact content-hash matches with source versions still current,
+and re-validates the stored claims against the recorded input ids; a
+superseded source version, changed input, missing input, route mismatch,
+or tampered contract makes the replay not reproducible with a typed
+reason. The HTTP investigation route builds the contract from the
+ledger state the run read. New `tests/test_agent_writes.py` (24 tests):
+rejection on every missing field, full contract stored, replay
+reproduces the run, stale snapshot invalidates the replay.
+
+Slice-1 mappings recorded in the module, provisional until later
+slices: the single existing model call writes as A1 for every template;
+`routeId` is deterministic (`route:<case>:<template>:<question>`) because
+no `route.decided` record exists yet; `evidenceSnapshotId` carries an
+evidence-assessment id; `toolCalls` is empty (no toolsets exist yet).
+The case-packet builder does not yet surface the contract, and K-checks,
+the Skeptic, and parallel role agents are later slices.
+
+Local suite on the slice branch: 796 tests, FAILED with 9 failures and
+8 errors — the same 17 `test_pdf_intake` failures (12 test names) as the
+main baseline run on the same clone, caused by the missing local `pypdf`
+installation; zero new failures. The pre-slice guard
+`tests/test_case_switch_guards.py` passes on main (6 tests), confirming
+the guard gap is closed with no guard slice needed. This is fictional-only
+engineering, draft and undeployed.
+
+## Deterministic K-checks K1–K7 (Slice 2) — 5 November 2026
+
+Branch `program/c2-kchecks`, from main `f188aecc`. Implements
+program-plan C2 (Notion OI-09 §4.6): the verification dimension's
+deterministic half. New `src/open_intelligence/kchecks.py` is
+domain-free — all vertical knowledge arrives as parameters — and
+checks the claims the structural validator already kept: K1
+identifier format (registry numbers, publication ids, object ids);
+K2 slot–field match against the cited facets after normalisation,
+plus the condition-scope sub-check (unrelated drops, broader/narrower
+keeps with a limits note); K3 temporal (citing a version recorded
+after the snapshot drops; internal version date order and slot range
+order are run-level findings, not drops); K4 contradiction over the
+survivors (same subject and field, different normalised value,
+overlapping valid time, no supersession — the later claim drops;
+different specimens or assays never auto-supersede); K5 staleness
+(citing a superseded version drops with `k5_stale` instead of
+`unresolved_citation`; citing a version outside the snapshot drops;
+a changed snapshot hash or ruleset is a run-level finding); K6 scope
+guard (the vertical's extra scope patterns beyond the language
+guard); K7 support (every number, identifier, and named-substance
+token must appear in the cited evidence; low-tier, case-report-only,
+or preclinical support must carry the fixed limits phrase); K7+
+injection (instruction-shaped markers in the claim or the cited
+evidence drop the claim). Failures go to `dropped` with a typed
+reason, never silently repaired.
+
+Slot assertion is derived lexically: a claim asserts a (field, value)
+pair when it names a derived field and, within two words, a value word
+from the case's own value vocabulary after synonym normalisation.
+The vertical wiring lives in `investigation.py`
+(`ONCOLOGY_SYNONYMS`, `K6_SCOPE_PATTERNS`, `CONDITION_TERMS`) and is
+passed into `validate_output` as an optional fourth argument — without
+a context the behaviour is exactly as before. `store.source_version_facts`
+supplies all versions (current and superseded); `__main__.py` builds
+the context at both the live and replay call sites, and the HTTP
+response carries the run-level findings as `kcheck_findings`
+(returned, not persisted — persisting them is a schema change and a
+follow-up). The condition-scope, named-substance, and evidence-tier
+sub-checks are interface-complete but data-pending live (no relation,
+tier, or substance data exists in the runtime yet), so they skip in
+the live path and run in tests; no run snapshot is pinned yet, so the
+snapshot-hash comparison is not supplied live either. K7+ atomic
+statement (per-sentence derived-from ids) needs a schema and prompt
+change and is out of this slice; free-text entity invention outside
+the number/identifier/substance classes is not deterministically
+detectable without a vocabulary and is the Skeptic's job (slice C4).
+
+New `tests/test_kchecks.py` (66 tests): planted-defect fixtures per
+check written from the Notion spec — K3 has three planted temporal
+defects plus an as-of probe and partial-date probes; K4 has two
+planted contradictions plus specimen, assay, supersession, and
+valid-time fixtures; K5 has stale-version, hash-change, and
+ruleset-change fixtures; K6 fixtures use only patterns the language
+guard does not cover; K7 has invented-number, invented-id, tier, and
+preclinical fixtures; K7+ has tainted-claim and tainted-evidence
+fixtures; plus a vertical-leakage tripwire test that scans
+`kchecks.py` for forbidden vertical literals.
+
+Local suite on the slice branch: 889 tests, FAILED with 9 failures and
+8 errors — the same 17 `test_pdf_intake` failures (12 test names) as
+the main baseline run (823 tests) on the same machine, verified by
+diffing the two failure sets; zero new failures. This is
+fictional-only engineering, draft and undeployed.
+
 ## Connected patient preparation — 3 November 2026
 
 Draft [#288](https://github.com/OpenxIntelligence/open-intelligence/pull/288)
@@ -159,7 +266,7 @@ These are integration candidates, not a verified combined product. Check each cu
 
 ## Important unproven areas
 
-- No authenticated identity, consent, delegation, role controls, auditing suitable for real patients, access revocation, or full security assessment.
+- Local demo accounts, roles, and sessions now exist (operator / clinician / patient read-only on their own case / auditor; operator-created accounts only; 24-hour server-side sessions; case routes require a live grant plus role permission; access decisions are logged and readable by operator/auditor). These are local demo labels, not verified identities — there is still no authenticated identity, consent, delegation, production access control, auditing suitable for real patients, or full security assessment. The safety packet still needs a refresh for this change.
 - No PDF/OCR, automated clinical assertion extraction, FHIR/mCODE exchange, biological or imaging analysis, medical literature appraisal, trial searching, model inference, or provider integration.
 - No independent professional review; demo acknowledgments are explicitly labeled and do not establish clinical correctness.
 - The Patient Mission panel is a workflow projection, not a patient summary, diagnostic assessment, treatment plan, safety monitor, trial matcher, care coordinator, or clinical decision-support system.

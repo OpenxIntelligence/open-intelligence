@@ -3,7 +3,7 @@ import type {ManualContext} from './question-passages.js';
 /** Human-authored fictional evidence contracts. No model or clinical authority. */
 import {decodeSourceQuestion} from './source-questions-view.js';
 import type {SourceQuestion} from './source-questions-view.js';
-import type {ComposerSource} from './composer-preflight-view.js';
+import {parseSelectedSourceFields,type ComposerSource} from './composer-preflight-view.js';
 import type {RegistrySession} from './registry-client.js';
 import {authoredEvidenceTimestamp as utc,evidenceCalendarDate as date} from './evidence-timestamp.js';
 
@@ -69,7 +69,6 @@ const assessmentFields=['assessment_id','question_id','evidence_id','evidence_sh
 const reportFields=['report_id','question_id','prepared_at','body_sha256','snapshot_sha256','state'];
 const packetFields=['contract','patient_id','case_id','question','source_snapshot_sha256','access_receipt_id','evidence','assessments','reports','packet_sha256','synthetic','human_review_state','clinical_approval','model_executed'];
 const fullReportFields=['contract','patient_id','case_id','question_id','report_id','prepared_at','state','body','body_sha256','snapshot','snapshot_sha256','access_receipt_id','synthetic','human_review_state','clinical_approval','model_executed'];
-const sourceFields=['source_id','document_id','version','sha256','line','finding_key','reported_state','statement','kind','event_date','issued_at','specimen_id'];
 function exact(v:unknown,keys:readonly string[]):v is Record<string,unknown>{return v!==null&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).length===keys.length&&keys.every(k=>Object.hasOwn(v,k));}
 function id(v:unknown,prefix:string):v is string{return typeof v==='string'&&new RegExp('^'+prefix+'-[0-9A-F]{32}$').test(v);}
 function member(v:unknown,values:readonly string[]):v is string{return typeof v==='string'&&values.includes(v);}
@@ -149,9 +148,10 @@ export async function decodeEvidencePacket(value:unknown,expected:SourceQuestion
  return Object.freeze({...value,question:q,evidence:Object.freeze(rows),assessments:Object.freeze(assessments),reports:Object.freeze(reports)} as EvidencePacket);
 }
 
-function selectedSource(v:unknown,q:SourceQuestion):ComposerSource{
- if(!exact(v,sourceFields)||v.source_id!==q.source_id||v.version!==q.source_version||v.sha256!==q.source_sha256||v.line!==q.source_line||typeof v.document_id!=='string'||!DOC.test(v.document_id)||typeof v.finding_key!=='string'||!/^[a-z][a-z0-9_-]{0,59}$/.test(v.finding_key)||!member(v.reported_state,['reported','negative','pending','indeterminate','not-reported','not-assessed','conflicting'])||!text(v.statement,1,1200)||!member(v.kind,['clinical','pathology','laboratory','imaging','molecular','other'])||!date(v.event_date)||!date(v.issued_at)||(v.specimen_id!==null&&(typeof v.specimen_id!=='string'||!DOC.test(v.specimen_id))))throw Error('report source');
- return Object.freeze({...v} as ComposerSource);
+function selectedSource(value:unknown,q:SourceQuestion):ComposerSource{
+ const v=parseSelectedSourceFields(value);
+ if(v.source_id!==q.source_id||v.version!==q.source_version||v.sha256!==q.source_sha256||v.line!==q.source_line||typeof v.document_id!=='string'||!DOC.test(v.document_id)||typeof v.finding_key!=='string'||!/^[a-z][a-z0-9_-]{0,59}$/.test(v.finding_key)||!member(v.reported_state,['reported','negative','pending','indeterminate','not-reported','not-assessed','conflicting'])||!text(v.statement,1,1200)||!member(v.kind,['clinical','pathology','laboratory','imaging','molecular','other'])||!date(v.event_date)||!date(v.issued_at)||(v.specimen_id!==null&&(typeof v.specimen_id!=='string'||!DOC.test(v.specimen_id))))throw Error('report source');
+ return Object.freeze(v as ComposerSource);
 }
 export async function decodeEvidenceReport(value:unknown,expected:SourceQuestion,reportId:string,summary?:ReportSummary):Promise<EvidenceReport>{
  if(!exact(value,fullReportFields)||value.contract!=='oi.h1-evidence-report/1'||value.patient_id!==expected.patient_id||value.case_id!==expected.case_id||value.question_id!==expected.question_id||value.report_id!==reportId||!id(value.report_id,'REPORT')||!utc(value.prepared_at)||!member(value.state,REPORT_STATES)||!hex(value.body_sha256)||!hex(value.snapshot_sha256)||!id(value.access_receipt_id,'ACCESS')||!flags(value))throw Error('evidence report');

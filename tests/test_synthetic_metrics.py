@@ -21,6 +21,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from open_intelligence.__main__ import Handler, seed
+from open_intelligence.agent_writes import build_investigation_contract
 from open_intelligence.investigation import ABSTAIN_REASONS, validate_output
 from open_intelligence.store import CaseStore, InvalidInput
 from open_intelligence.synthetic_metrics import (
@@ -66,7 +67,10 @@ def _save_replay(store, case_id, question_id, payload):
     validated = validate_output(payload, facts["valid_sources"], facts["valid_assessments"])
     validated.model = "recorded-replay"
     validated.mode = "replay"
-    return store.save_investigation(case_id, question_id, "evidence-summary", validated, "replay")
+    return store.save_investigation(
+        case_id, question_id, "evidence-summary", validated, "replay",
+        write_contract=build_investigation_contract(
+            store, case_id, question_id, "evidence-summary", validated.model))
 
 
 def _ledger_fingerprint(store):

@@ -431,6 +431,25 @@ test('question and preflight opaque identifiers reject terminal control whitespa
  }
 });
 
+test('preflight preserves the selected line’s literal episode and refuses attribution drift',()=>{
+ const model=worldFixture(),observation=model.observations[0],packet=composerFixture();
+ for(const context of [{role:'primary',episode_id:'EP-A'},{role:'metastasis',episode_id:null}]){
+  observation.oncology=context;
+  const decode=source=>decodeComposerPreflight({...packet,selected_source:source},model,observation,composerQuestion);
+  const typed={...packet.selected_source,oncology:{...context}};
+  const read=decode(typed);
+  assert.deepEqual(read.selected_source.oncology,context);
+  assert.ok(Object.isFrozen(read.selected_source.oncology));
+  assert.throws(()=>decode(packet.selected_source));
+  for(const oncology of [null,{...context,episode_id:'EP-B'},{...context,role:'confirmed'},
+    {...context,role:context.role==='primary'?'metastasis':'primary'},{...context,clinical_approval:true}]){
+   assert.throws(()=>decode({...packet.selected_source,oncology}));
+  }
+  delete observation.oncology;
+  assert.throws(()=>decode(typed));
+ }
+});
+
 test('canonical preflight binds source content fingerprint while access receipts change',()=>{
  const first=worldFixture(),second={...worldFixture(),access_receipt_id:'ACCESS-'+'F'.repeat(32)};
  const packet=composerFixture();

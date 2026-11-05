@@ -24,11 +24,10 @@ from urllib.parse import urlsplit
 from urllib.request import Request, urlopen as _plain_urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
 
-# B-01: case routes require a fictional actor, and seed() grants this demo
-# actor on the demo cases. This module-local wrapper presents the actor on
-# case-API calls and passes everything else (root wait, DevTools endpoint)
-# through untouched, so the journey below reads unchanged.
+# Transitional header: direct API calls in journeys still present the demo
+# actor; the browser itself signs in (see sign_in_demo) and sends no header.
 DEMO_ACTOR_HEADERS = {"X-Fictional-Actor": "FICTIONAL-NAVIGATOR-A"}
 
 
@@ -38,6 +37,84 @@ def urlopen(url, *args, **kwargs):
         return _plain_urlopen(
             Request(target, headers=DEMO_ACTOR_HEADERS), *args, **kwargs)
     return _plain_urlopen(url, *args, **kwargs)
+
+
+# Slice 1: browser journeys sign in as the seeded demo account. seed()
+# creates the account (passwordless) and its grants; the operator sets the
+# password here, then the browser signs in through the form.
+DEMO_SIGNIN_ACCOUNT = "FICTIONAL-NAVIGATOR-A"
+DEMO_SIGNIN_PASSWORD = "fictional-demo-1"
+
+
+def set_demo_account_password(db: str) -> None:
+    from open_intelligence import CaseStore
+    store = CaseStore(db)
+    try:
+        store.set_account_password(DEMO_SIGNIN_ACCOUNT, DEMO_SIGNIN_PASSWORD)
+    finally:
+        store.close()
+
+
+def provision_demo_access(db: str, case_ids) -> None:
+    """Demo account + grants + password, for journeys that do not seed.
+
+    seed() does the account and grants itself; this is only the equivalent
+    for a journey that provisions its cases directly through the store.
+    """
+    from open_intelligence import CaseStore
+    from open_intelligence.__main__ import FICTIONAL_ACTOR_PURPOSE
+    store = CaseStore(db)
+    try:
+        if store.get_account(DEMO_SIGNIN_ACCOUNT) is None:
+            store.create_account(DEMO_SIGNIN_ACCOUNT, "Fictional demo navigator",
+                                 "clinician")
+        for case_id in case_ids:
+            if not store.has_active_grant(DEMO_SIGNIN_ACCOUNT, case_id,
+                                          FICTIONAL_ACTOR_PURPOSE):
+                store.create_grant(DEMO_SIGNIN_ACCOUNT, case_id,
+                                   FICTIONAL_ACTOR_PURPOSE,
+                                   "2020-01-01", "2999-12-31")
+    finally:
+        store.close()
+    set_demo_account_password(db)
+
+
+def sign_in_demo(session: ChromeSession) -> None:
+    # The app scripts load with `defer`, so Page.navigate returns before
+    # app.js has executed: the sign-in elements exist (the DOM is parsed)
+    # but initialize() has not attached the #signin-apply click handler
+    # yet. Clicking immediately then does nothing — no POST, no error —
+    # and the sign-in view never hides. initialize() sets this heading
+    # after attaching the handler (the static HTML says "Loading case…"),
+    # so the heading proves the handler is attached; the session view
+    # covers a page that is already signed in.
+    session.wait(
+        "document.querySelector('#case-heading')?.textContent === 'Sign in to view the demo cases'"
+        " || document.querySelector('#session-view')?.hidden === false",
+        "app initialized for sign-in")
+    session.evaluate(
+        "((account, password) => {"
+        "  document.querySelector('#signin-account').value = account;"
+        "  document.querySelector('#signin-password').value = password;"
+        "  document.querySelector('#signin-apply').click();"
+        "})(" + json.dumps(DEMO_SIGNIN_ACCOUNT) + ", "
+        + json.dumps(DEMO_SIGNIN_PASSWORD) + ")")
+    try:
+        session.wait("document.querySelector('#signin-view')?.hidden === true",
+                     "demo sign-in")
+    except AssertionError as err:
+        # Distinguish a sign-in request that failed from a handler that
+        # never ran: applySignIn reports a failed sign-in in
+        # #signin-status, while a click with no listener leaves it empty.
+        try:
+            status = session.evaluate(
+                "document.querySelector('#signin-status')?.textContent")
+        except RuntimeError:
+            status = "<status unreadable>"
+        raise AssertionError(
+            "demo sign-in did not complete; sign-in status: "
+            f"{status!r} (empty means the sign-in handler never ran; "
+            "a message means the sign-in request failed)") from err
 
 
 def free_port() -> int:
@@ -200,6 +277,7 @@ def main() -> None:
         db = str(Path(directory) / "test.sqlite")
         subprocess.run([sys.executable, "-m", "open_intelligence", "seed", "--db", db],
                        cwd=ROOT, env=env, check=True, stdout=subprocess.DEVNULL)
+        set_demo_account_password(db)
         app_port, debug_port = free_port(), free_port()
         server = subprocess.Popen(
             [sys.executable, "-m", "open_intelligence", "serve", "--db", db, "--port", str(app_port)],
@@ -230,6 +308,10 @@ def main() -> None:
             })
             cd.command("Page.navigate", {"url": url})
 
+            sign_in_demo(cd)
+            assert cd.evaluate("document.querySelector('#session-status')?.textContent.includes('FICTIONAL-NAVIGATOR-A')"), (
+                "session indicator does not show the signed-in demo account"
+            )
             cd.wait("document.querySelector('#case-heading')?.textContent === 'Fictional case Alpha'",
                     "Alpha case loaded")
             cd.wait("document.querySelectorAll('#source-list .source-card').length === 2",
