@@ -7,10 +7,15 @@ export type Document=Summary&{preview:Preview;revisions:Revision[]};
 export type Saved={source_id:string;version:number;annotation_revision_id:string;duplicate:boolean};
 export type DocumentReply={status:number;body:unknown;headers?:Headers};
 export type DocumentRequest=(path:string,body?:string)=>Promise<DocumentReply>;
+export type DocumentUpload={synthetic:true;filename:string;original_base64:string};
 const hash=/^[a-f0-9]{64}$/, source=/^SRC-[A-F0-9]{32}$/, annotation=/^ANN-[A-F0-9]{32}$/;
 const filename=/^[A-Za-z0-9][A-Za-z0-9._ ()-]*\.(txt|pdf)$/i;
 const object=(x:unknown):x is Record<string,unknown>=>typeof x==='object'&&x!==null&&!Array.isArray(x);
 const integer=(x:unknown,min:number,max:number)=>Number.isSafeInteger(x)&&Number(x)>=min&&Number(x)<=max;
+export async function documentByteHash(bytes:Uint8Array<ArrayBuffer>):Promise<string>{
+ const digest=await crypto.subtle.digest('SHA-256',bytes);
+ return Array.from(new Uint8Array(digest),byte=>byte.toString(16).padStart(2,'0')).join('');
+}
 export function parsePreview(x:unknown):Preview{
  if(!object(x)||typeof x.filename!=='string'||x.filename.length>120||!filename.test(x.filename)||x.filename.includes('..')||
     typeof x.sha256!=='string'||!hash.test(x.sha256)||!integer(x.byte_count,1,65536)||typeof x.text!=='string'||new TextEncoder().encode(x.text).length>65536||
@@ -55,16 +60,33 @@ export class DocumentClient{
  #set(patch:Partial<State>){this.#state={...this.#state,...patch};for(const fn of this.#listeners)fn();}
  dispose=()=>{this.#generation++;this.#state=empty();this.#listeners.clear();};
  discard=()=>{if(this.#state.phase==='saving')return;this.#generation++;this.#set({...empty(),documents:this.#state.documents,message:'Local intent discarded. A prior uncertain request may still have been saved.'});};
- async #read(path:string,payload:unknown,accept:(body:unknown)=>Partial<State>){
+ async #read(path:string,payload:unknown,accept:(body:unknown)=>Partial<State>|Promise<Partial<State>>){
   if(this.#state.pending||this.#state.phase==='saving')return;
   const generation=++this.#generation;this.#set({phase:'loading',preview:null,document:null,receipt:null});
   try{const res=await this.request(path,payload===undefined?undefined:JSON.stringify(payload));if(generation!==this.#generation)return;
    if([401,403,404].includes(res.status)){this.#set({...empty(),phase:'error',message:'Document access unavailable. Recheck case access.'});return;}
    if(res.status!==200)throw Error('Document unavailable or unsupported. Nothing has been saved.');
-   this.#set({...accept(res.body),phase:'idle',message:'Inspect the original text and exact selected passages. Clinical review has not been performed.'});
+   const accepted=await accept(res.body);
+   if(generation!==this.#generation)return;
+   this.#set({...accepted,phase:'idle',message:'Inspect the original text and exact selected passages. Clinical review has not been performed.'});
   }catch(e){if(generation===this.#generation)this.#set({phase:'error',message:e instanceof Error?e.message:'Document unavailable'});}
  }
- preview=(payload:unknown)=>this.#read('/preview',payload,body=>({preview:parsePreview(body)}));
+ preview=(payload:DocumentUpload)=>{
+  const {filename,original_base64}=payload;
+  return this.#read('/preview',payload,async body=>{
+   const preview=parsePreview(body);
+   const pdf=filename.toLowerCase().endsWith('.pdf');
+   const bytes=Uint8Array.from(atob(original_base64),c=>c.charCodeAt(0));
+   if(preview.filename!==filename||preview.byte_count!==bytes.length||
+      preview.media_type!==(pdf?'application/pdf':'text/plain; charset=utf-8')||
+      !object(body)||body.extraction_method!==(pdf?'pypdf-text-v1':'utf8-plain-text-v1')||
+      body.annotation_method!==(pdf?'manual-exact-extraction-line-selection':'manual-exact-line-selection')||
+      preview.sha256!==await documentByteHash(bytes)){
+    throw Error('The preview does not match the selected file. Select the original and preview it again.');
+   }
+   return {preview};
+  });
+ };
  load=()=>this.#read('',undefined,body=>{if(!object(body)||!Array.isArray(body.documents)||body.documents.length>512)throw Error('Invalid document listing');return{documents:body.documents.map(summary)};});
  open=(id:string)=>{if(!source.test(id))return Promise.resolve();return this.#read('/'+id,undefined,body=>({document:document(body,id)}));};
  async save(path:string,payload:unknown){if(this.#state.pending||this.#state.phase==='loading'||this.#state.phase==='saving')return;
