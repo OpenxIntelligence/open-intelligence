@@ -7,7 +7,8 @@ import type {CaseBinding, SourceIndex} from './source-contracts.js';
 import {prepareSource,parseImportReceipt,verifyOriginal} from './source-intake.js';
 import type {ImportReceipt,OriginalSource} from './source-intake.js';
 import {emptyLaboratory,prepareLaboratoryFile,parseLaboratoryReceipt} from './laboratory-fhir.js';
-import type {LaboratoryImportState,LaboratoryIntent} from './laboratory-fhir.js';
+import {LABORATORY_PREVIEW_REJECTED,LaboratoryPreviewRejected,readLaboratoryPreview} from './laboratory-preview.js';
+import type {LaboratoryFile,LaboratoryImportState,LaboratoryIntent} from './laboratory-fhir.js';
 import {readLabPreparation,validLabQuestion,emptyLabQuestions,readLabQuestionList} from './laboratory-question.js';
 import type {LabPreparation,LabQuestionView} from './laboratory-question.js';
 import {parseSourceWorldModel} from './source-world-model.js';
@@ -210,10 +211,14 @@ export class RegistrySession {
       this.#state.questionListPhase==='ready'&&this.#state.questionsCaseId===caseId&&this.#state.worldPhase==='ready'&&this.#state.worldModel?.case_id===caseId&&
        Boolean(this.#state.questions?.some(q=>q.question_id===questionId&&q.case_id===caseId&&q.patient_id===patient)):
       this.#state.sourceIndex?.case_id===caseId;
-    const current=()=>scope===this.#scope&&read===this.#read&&records===this.#records&&patient===this.#state.patient?.patient_id&&caseContext();
+    const labPreview=path==='/laboratory/fhir-r4/preview';
+    const selectedIndex=this.#state.sourceIndex;
+    // Closing an unrelated original must not suppress a denial for the selected case.
+    const current=()=>scope===this.#scope && read===this.#read && patient===this.#state.patient?.patient_id &&
+      (labPreview ? selectedIndex===this.#state.sourceIndex : records===this.#records) && caseContext();
     if(!patient||!this.#token||!current())throw Error('Recheck patient and case access');
     const control=new AbortController();this.#controllers.add(control);
-    const timeout=questionId!==undefined?setTimeout(()=>control.abort(),10000):undefined;
+    const timeout=questionId!==undefined||labPreview?setTimeout(()=>control.abort(),10000):undefined;
     try{
       const response=await this.transport('/v1/patients/'+encodeURIComponent(patient)+'/cases/'+encodeURIComponent(caseId)+path,this.#init(control,body));
       if(!current()){
@@ -224,7 +229,7 @@ export class RegistrySession {
       // Status is authoritative even when a proxy returns a non-JSON body.
       if([401,403,404].includes(response.status)){
         if(response.status===401)this.#httpError(401);
-        else this.#publish(this.#resetDeniedCaseSources('Document access unavailable or mapping changed. Reload case permissions.'));
+        else this.#publish(this.#resetDeniedCaseSources(labPreview?'Laboratory preview access unavailable. Reload case permissions.':'Document access unavailable or mapping changed. Reload case permissions.'));
         void response.body?.cancel().catch(()=>{});
         return{status:response.status,body:null,headers:response.headers};
       }
@@ -235,7 +240,7 @@ export class RegistrySession {
         // 64 revisions × 30 quotes × 1200 code points × at most 12 JSON bytes
         // (escaped surrogate pairs), plus bounded findings metadata and 64 KiB rendition.
         // 32 MiB covers the complete permitted history; streaming still limits bad peers.
-        value=await json(response,32*1024*1024);
+        value=await json(response,labPreview?65536:32*1024*1024);
       }
       if(!current())throw Error('Patient or case changed');
       const contentScope=path.includes('/selections/')&&value&&typeof value==='object'?(value as {anchor?:unknown}).anchor:value;
@@ -1779,6 +1784,17 @@ export class RegistrySession {
       this.#publish({original,recordsPhase:'ready',recordMessage:'Exact original bytes verified against the selected source hash. Clinical review remains not established.'});
     }catch(_){if(current())this.#publish({original:null,recordsPhase:'error',recordMessage:'Original failed verification or service unavailable. Reload metadata before trying again.'});}
     finally{clearTimeout(timeout);this.#controllers.delete(control);}
+  }
+  async previewLaboratory(caseId:string,file:LaboratoryFile) {
+    const index=this.#state.sourceIndex;
+    const binding=this.#state.cases?.find(row=>row.case_id===caseId && row.status==='active');
+    if(!index || index.case_id!==caseId || !binding || binding.patient_id!==this.#state.patient?.patient_id ||
+       index.patient_id!==binding.patient_id) throw Error('Recheck patient and case access');
+    const reply=await this.#caseContentRequest(caseId,'/laboratory/fhir-r4/preview',
+      JSON.stringify({synthetic:true,bundle_json:file.text}));
+    if(reply.status===422) throw new LaboratoryPreviewRejected(LABORATORY_PREVIEW_REJECTED);
+    if(reply.status!==200 || this.#state.sourceIndex!==index) throw Error('Laboratory preview unavailable.');
+    return readLaboratoryPreview(reply.body,file,binding);
   }
   /** Preserve one exact in-memory command until its receipt is known or this patient/case is withdrawn. */
   async importLaboratory(caseId:string,text:string,confirmed:boolean,previousSourceId:string|null=null):Promise<void>{
