@@ -1220,6 +1220,42 @@ class CaseStore:
         with self.db:
             self._event(case_id, kind, **details)
 
+    # Route decisions (program plan C3): a route.decided event is the
+    # ledger record of an assignment. The orchestrator builds and
+    # validates the record; the store only appends it to the existing
+    # events ledger and reads it back. No second ledger is created.
+    def record_route_decided(self, case_id: str, route_record: dict) -> int:
+        """Append a validated route.decided event; return its event id."""
+        from .orchestrator import validate_route_record
+        self._case(case_id)
+        record = validate_route_record(route_record)
+        with self.db:
+            return self._event(case_id, "route.decided", **record)
+
+    def get_route_decided(self, case_id: str, route_id: str) -> dict | None:
+        """Latest route.decided record for a route id, or None.
+
+        A plain ledger read: the record is returned as stored. Callers
+        that enforce on it validate through the orchestrator.
+        """
+        self._case(case_id)
+        rows = self.db.execute(
+            """SELECT id, details FROM events
+            WHERE case_id=? AND kind='route.decided' ORDER BY id DESC""",
+            (case_id,),
+        ).fetchall()
+        for row in rows:
+            try:
+                record = json.loads(row[1])
+            except (json.JSONDecodeError, TypeError):
+                continue
+            if isinstance(record, dict) and record.get("routeId") == route_id:
+                # The event id does not exist until the insert, so the
+                # stored record carries None; the row id is the event id.
+                record["eventId"] = int(row[0])
+                return record
+        return None
+
     def quarantine_adapter_delivery(self, case_id: str, raw: bytes,
                                     declared_patient_id: str, reason: str) -> dict:
         """Quarantine a rejected adapter delivery in the existing table.
@@ -5942,6 +5978,17 @@ class CaseStore:
                 "contract_mismatch", "modelId",
                 "contract model does not match the validated output model",
             )
+        # Slice 3 assignment (program plan C3): when a route.decided
+        # record exists for this route, the writing role must be among
+        # the route's assigned agents and the assignment's lease must
+        # still hold. A write whose route was never decided is not
+        # rejected here (pre-C3 rows): the replay is the check that
+        # catches a missing route.
+        from .orchestrator import check_assignment
+        check_assignment(
+            self, case_id, contract["routeId"], contract["agentRole"],
+            require_route=False,
+        )
         with self.db:
             self.db.execute("BEGIN IMMEDIATE")
             if not self.db.execute("SELECT 1 FROM questions WHERE id=? AND case_id=?",
