@@ -198,6 +198,26 @@ baseline (947 tests) and zero new failures. Unproven: the live-model
 half of the metrics (M25/M26/M29 need live runs; the Skeptic's live
 proof is pending the same Meta billing fix).
 
+**Vertical interface (Slice V1, 5 November 2026):** the core holds no
+oncology knowledge — oncology lives behind a vertical interface
+(`src/open_intelligence/vertical.py`: a registry; a vertical
+registers its domain rules, scope patterns, ruleset version, and
+evidence bindings). The oncology predicates moved verbatim out of
+`investigation.py` into `vertical_oncology.py`; the live path and the
+evaluation harness resolve them through the registry. A minimal
+synthetic cardiology vertical (`vertical_cardiology.py`) proves the
+core is domain-free: it runs the same pipeline — route, K-checks,
+Skeptic, T6 — end to end, with the cardiology predicates selecting
+different behavior (a cardiology synonym resolves where oncology's
+does not; "you have heart failure" trips the scope guard under
+cardiology and passes under oncology). A tripwire test scans core
+imports and fails the suite if any core module imports a vertical
+definition module. Local suite at the slice branch: 986 tests, with
+the same 17 pre-existing `test_pdf_intake` failures as the branch
+baseline (972 tests) and zero new failures. Unproven: the live-model
+half is unchanged (Meta billing fix still pending); the cardiology
+run uses stub verdicts.
+
 ## Development boundaries
 
 - Use independently authored synthetic patient examples. Keep real patient records, credentials, and restricted clinical content out of this repository and its issues.

@@ -10,12 +10,15 @@ import re
 import unittest
 from pathlib import Path
 
-from open_intelligence.investigation import (
-    CONDITION_TERMS,
-    K6_SCOPE_PATTERNS,
-    ONCOLOGY_SYNONYMS,
-    validate_output,
-)
+from open_intelligence.investigation import validate_output
+from open_intelligence.vertical import get_vertical
+
+# The oncology wiring, resolved through the vertical interface (slice
+# V1) instead of imported from the vertical module.
+_ONCOLOGY = get_vertical("oncology")
+ONCOLOGY_SYNONYMS = _ONCOLOGY.synonyms
+K6_SCOPE_PATTERNS = _ONCOLOGY.scope_patterns
+CONDITION_TERMS = _ONCOLOGY.condition_terms
 from open_intelligence.kchecks import (
     KCheckContext,
     Slot,
@@ -728,8 +731,9 @@ class ContextBuilderTests(unittest.TestCase):
 class VerticalLeakageTests(unittest.TestCase):
     def test_checker_module_has_no_vertical_literals(self):
         # The tripwire: the domain-free checker must contain no
-        # vertical knowledge of its own. Vertical terms live in the
-        # wiring (investigation.py), never here.
+        # vertical knowledge of its own. Vertical terms live behind
+        # the vertical interface (vertical_oncology.py, resolved
+        # through vertical.py), never here.
         source = (Path(__file__).resolve().parents[1]
                   / "src" / "open_intelligence" / "kchecks.py").read_text().lower()
         forbidden = (
