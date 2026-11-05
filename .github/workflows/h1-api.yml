@@ -87,11 +87,12 @@ jobs:
           python --version
       - name: Apply the explicit migration to the disposable database
         run: python -m oi_api.migrate upgrade head
-      - name: Verify joined EHR and laboratory freshness against populated data
+      - name: Verify joined EHR, laboratory follow-up and migration boundaries
         run: |
           python - <<'PYTEST'
           import unittest
           suite = unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_ehr_laboratory_convergence.py')
+          suite.addTests(unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_laboratory_followthrough*.py'))
           # These RESTRICT fixtures must release every declared function after
           # testing populated/current heads, without hiding unknown dependencies.
           suite.addTests(unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_image_evidence_migration.py'))
@@ -138,6 +139,8 @@ jobs:
           OI_SOURCE_ACCEPTANCE_FILE: verification-api/source-document-recovery.json
         run: python apps/api/tools/verify_sources_compose.py
       - name: Verify native FHIR laboratory custody, amendments and recovery
+        env:
+          OI_LABORATORY_TASK_ACCEPTANCE_FILE: verification-api/laboratory-followthrough-recovery.json
         run: python apps/api/tools/verify_fhir_laboratory_compose.py
       - name: Verify exact image originals, source amendments, image grants and restored custody
         run: python apps/api/tools/verify_images_compose.py

@@ -24,14 +24,21 @@ from open_intelligence.patient_registry import (
 from open_intelligence.postgres_registry import PostgresPatientRegistry
 
 from .case_bindings import _case_id
-from .composer_preflight import PostgresSourceComposerPreflight, SHA256, SOURCE_SNAPSHOT_CONTRACT
+from .composer_preflight import (
+    PostgresSourceComposerPreflight, SHA256, SOURCE_SNAPSHOT_CONTRACT, prepare_laboratory_question,
+)
+from .laboratory_fhir_store import PostgresLaboratoryFHIR
+from .laboratory_fhir_r4 import LaboratoryBundleRejected, _reference
+from .laboratory_questions import PostgresLaboratoryQuestions
 from .source_questions import PostgresSourceQuestions
 from .question_anchors import legacy_text_question_anchor
 from .sources import PostgresSourceVersions
+from .source_integrity import SourceIntegrityError
 from .question_passages import QuestionPassages
 from .followthrough_contracts import ManualTaskDependency
 
 CONTRACT = "oi.pg-question-followthrough/1"
+CONTRACT_V2 = "oi.pg-question-followthrough/2"
 MAX_TASKS = 250
 MAX_EVENTS = 750
 # Published migration fixtures deliberately seed the canonical task owner at
@@ -123,9 +130,17 @@ def _timestamp(value: datetime) -> str:
 def _project_task(task: dict, history: list[dict], question: dict, evaluated_on: str,
                   manual_state: dict | None = None) -> dict:
     """Read-only lifecycle projection from the canonical question's freshness."""
-    task_anchor = legacy_text_question_anchor(task)
-    question_anchor = legacy_text_question_anchor(question)
-    if (not history or task_anchor != question_anchor
+    if "observation_reference" in question:
+        try:
+            reference = _reference({"reference": question["observation_reference"]}, "Observation")
+        except LaboratoryBundleRejected:
+            raise PatientRegistryError("Invalid stored task Observation reference") from None
+        anchor_matches = (task.get("observation_reference") == reference
+                          and task["source_line"] is None and question["source_line"] is None
+                          and manual_state is None)
+    else:
+        anchor_matches = legacy_text_question_anchor(task) == legacy_text_question_anchor(question)
+    if (not history or not anchor_matches
             or any(task[name] != question[name] for name in ANCHOR_FIELDS)
             or task["purpose"] != "operations"
             or question["source_context_state"] not in {
@@ -166,6 +181,7 @@ def _project_task(task: dict, history: list[dict], question: dict, evaluated_on:
     soon = (date.fromisoformat(evaluated_on) + timedelta(days=DUE_SOON_DAYS)).isoformat()
     return {
         **{name: task[name] for name in ("task_id", "title", "detail", "review_trigger", *ANCHOR_FIELDS)},
+        **({"observation_reference": task["observation_reference"]} if "observation_reference" in task else {}),
         "owner_label": effective_owner, "due_date": due,
         "created_at": _timestamp(task["created_at"]), "status": previous, "revision": len(history),
         "source_context_state": question["source_context_state"],
@@ -210,18 +226,24 @@ class PostgresQuestionFollowthrough:
 
         return final
 
-    def _read_locked(self, patient_id, case_id, organization, index, evaluated_on):
+    def _read_locked(self, patient_id, case_id, organization, index, evaluated_on, *, target_question=None):
         questions = {q["question_id"]: q for q in PostgresSourceQuestions(self.registry).project_locked(
             patient_id, case_id, organization=organization, source_index=index)}
         rows = self.registry._fetchall(
-            "SELECT " + ",".join(TASK_FIELDS) + " FROM coordination.question_followthrough_tasks "
+            # Historical revisions can hold text tasks before this column exists.
+            # Read the optional field from the PostgreSQL record; a missing
+            # reference can never satisfy a saved laboratory question's anchor.
+            "SELECT " + ",".join(TASK_FIELDS) + ",to_jsonb(t)->>'observation_reference' "
+            "FROM coordination.question_followthrough_tasks t "
             "WHERE patient_id=%s AND case_id=%s AND origin_org=%s ORDER BY created_at,task_id LIMIT 251",
             (patient_id, case_id, organization),
         )
+        task_ids = [row[0] for row in rows]
         events = self.registry._fetchall(
             "SELECT " + ",".join(EVENT_FIELDS) + " FROM coordination.question_followthrough_events "
-            "WHERE patient_id=%s AND case_id=%s AND origin_org=%s ORDER BY task_id,revision LIMIT 751",
-            (patient_id, case_id, organization),
+            "WHERE (patient_id,case_id,origin_org)=(%s,%s,%s) OR task_id=ANY(%s) "
+            "ORDER BY task_id,revision LIMIT 751",
+            (patient_id, case_id, organization, task_ids),
         )
         # Historical migration acceptance exercises task reads at published
         # pre-manual-owner schema heads. Those schemas cannot contain a manual-task
@@ -243,11 +265,33 @@ class PostgresQuestionFollowthrough:
             manual_rows = self.registry._fetchall(
                 "SELECT task_id,question_id,revision_id,patient_id,case_id,origin_org,references_sha256 "
                 "FROM coordination.question_followthrough_manual_dependencies "
-                "WHERE patient_id=%s AND case_id=%s AND origin_org=%s LIMIT 251",
-                (patient_id, case_id, organization),
+                "WHERE (patient_id,case_id,origin_org)=(%s,%s,%s) OR task_id=ANY(%s) LIMIT 251",
+                (patient_id, case_id, organization, task_ids),
             )
         if len(rows) > MAX_TASKS or len(events) > MAX_EVENTS or len(manual_rows) > MAX_TASKS:
             raise PatientRegistryError("Follow-through exceeds bounded read limit")
+        tasks = []
+        for row in rows:
+            task = dict(zip(TASK_FIELDS, row[:-1], strict=True))
+            if row[-1] is not None:
+                task["observation_reference"] = row[-1]
+            tasks.append(task)
+        # Text-only historical revisions have neither lab questions nor their
+        # tables. Only ask that owner when a task or the creation target needs it.
+        has_laboratory = any(t["source_line"] is None or "observation_reference" in t for t in tasks)
+        if not has_laboratory and target_question is not None and target_question not in questions:
+            has_laboratory = self.registry._fetchone(
+                "SELECT 1 FROM investigation.source_questions WHERE question_id=%s AND patient_id=%s "
+                "AND case_id=%s AND origin_org=%s AND purpose='operations' AND source_line IS NULL",
+                (target_question, patient_id, case_id, organization),
+            ) is not None
+        if has_laboratory:
+            for question in PostgresLaboratoryQuestions(self.registry).project_locked(
+                    patient_id, case_id, organization=organization, source_index=index):
+                questions[question["question_id"]] = {
+                    **question, "patient_id": patient_id, "case_id": case_id, "source_line": None,
+                    "source_snapshot_contract": SOURCE_SNAPSHOT_CONTRACT,
+                }
         histories = {}
         for row in events:
             event = dict(zip(EVENT_FIELDS, row))
@@ -260,40 +304,42 @@ class PostgresQuestionFollowthrough:
                 raise PatientRegistryError("Duplicate manual task dependency")
             manual_by_task[entry["task_id"]] = entry
         output = []
-        for row in rows:
-            task = dict(zip(TASK_FIELDS, row))
+        for task in tasks:
             question = questions.get(task["question_id"])
             if question is None:
-                raise PatientRegistryError("Task question unavailable in canonical context")
+                raise SourceIntegrityError("Task question unavailable in canonical context")
             bound = manual_by_task.pop(task["task_id"], None)
             manual_state = None
             if bound is not None:
-                if (bound["question_id"] != task["question_id"]
+                if ("observation_reference" in question or bound["question_id"] != task["question_id"]
                         or bound["patient_id"] != patient_id
                         or bound["case_id"] != case_id
                         or bound["origin_org"] != organization):
-                    raise PatientRegistryError("Manual task dependency origin mismatch")
+                    raise SourceIntegrityError("Manual task dependency origin mismatch")
                 scope = dict(patient_id=patient_id, case_id=case_id, organization=organization,
                              question_id=task["question_id"], purpose="operations", actor=task["actor"])
                 dependency = {k:bound[k] for k in (
                     "patient_id", "case_id", "question_id", "revision_id", "references_sha256")}
                 manual_state = QuestionPassages(self.registry).manual_dependency_state_locked(scope, dependency)
-            output.append(_project_task(task, histories.pop(task["task_id"], []), question,
-                                        evaluated_on, manual_state))
+            try:
+                output.append(_project_task(task, histories.pop(task["task_id"], []), question,
+                                            evaluated_on, manual_state))
+            except PatientRegistryError as error:
+                raise SourceIntegrityError("Stored task or event history is inconsistent") from error
         if histories or manual_by_task:
-            raise PatientRegistryError("Task history lacks its scoped origin")
+            raise SourceIntegrityError("Task history lacks its scoped origin")
         return output, questions, len(events)
 
-    def _prior(self, patient_id, case_id, organization, request_key, intent):
+    def _prior(self, patient_id, case_id, organization, actor, request_key, intent):
         row = self.registry._fetchone(
-            "SELECT e.task_id,t.question_id,e.event_id,e.revision,e.intent_sha256,e.case_id,e.origin_org "
+            "SELECT e.task_id,t.question_id,e.event_id,e.revision,e.intent_sha256,e.case_id,e.origin_org,e.actor_label "
             "FROM coordination.question_followthrough_events e "
             "JOIN coordination.question_followthrough_tasks t ON t.task_id=e.task_id "
             "WHERE e.patient_id=%s AND e.request_key=%s FOR UPDATE OF e",
             (patient_id, request_key),
         )
         if row is not None:
-            if row[5] != case_id or row[6] != organization:
+            if tuple(row[5:]) != (case_id, organization, actor):
                 raise PatientRegistryDenied("Follow-through target unavailable")
             if not hmac.compare_digest(row[4], intent):
                 raise PatientRegistryConflict("Follow-through request key reused with changed intent")
@@ -325,15 +371,20 @@ class PostgresQuestionFollowthrough:
     def list(self, patient_id: str, case_id: str, *, organization: str, actor: str, purpose: str,
              recheck_authority: Callable[[], None],
              prepare_response: Callable[[dict], PreparedResponse] | None = None,
-             evaluated_on: str | None = None) -> dict | PreparedResponse:
+             evaluated_on: str | None = None, include_laboratory: bool = False) -> dict | PreparedResponse:
         patient_id, case_id, organization, actor = self._scope(patient_id, case_id, organization, actor, purpose)
         day = _due(evaluated_on) if evaluated_on is not None else datetime.now(timezone.utc).date().isoformat()
         final = self._authority(patient_id, actor, purpose, "followthrough_read", recheck_authority)
 
         def prepare(index):
             tasks, _, _ = self._read_locked(patient_id, case_id, organization, index, day)
+            # Validate *every* immutable origin and event before filtering. An
+            # unrecognized or corrupt task must not silently disappear from v1.
+            if not include_laboratory:
+                tasks = [task for task in tasks if task["source_line"] is not None]
             return self._prepared({
-                "contract": CONTRACT, "patient_id": patient_id, "case_id": case_id,
+                "contract": CONTRACT_V2 if include_laboratory else CONTRACT,
+                "patient_id": patient_id, "case_id": case_id,
                 "access_receipt_id": index["access_receipt_id"], "evaluated_on": day, "tasks": tasks,
                 "synthetic": True, "clinical_approval": False, "external_notification_sent": False,
             }, prepare_response)
@@ -374,26 +425,36 @@ class PostgresQuestionFollowthrough:
                           **({"manual_dependency": bound} if bound is not None else {})})
 
         def prepare(index):
-            prior = self._prior(patient_id, case_id, organization, request_key, intent)
-            if prior is not None:
-                return self._prepared(prior, prepare_response)
             tasks, questions, event_count = self._read_locked(
-                patient_id, case_id, organization, index, datetime.now(timezone.utc).date().isoformat())
+                patient_id, case_id, organization, index, datetime.now(timezone.utc).date().isoformat(),
+                target_question=question_id)
+            question = questions.get(question_id)
+            if question is None or (bound is not None and "observation_reference" in question):
+                raise PatientRegistryDenied("Question follow-through target unavailable")
+            prior = self._prior(patient_id, case_id, organization, actor, request_key, intent)
+            if prior is not None:
+                if prior["question_id"] != question_id or prior["revision"] != 1:
+                    raise SourceIntegrityError("Stored creation receipt origin mismatch")
+                return self._prepared(prior, prepare_response)
             if len(tasks) >= MAX_TASKS or event_count >= MAX_EVENTS:
                 raise PatientRegistryError("Follow-through exceeds bounded write limit")
-            question = questions.get(question_id)
-            if question is None:
-                raise PatientRegistryDenied("Question follow-through target unavailable")
             if (question["source_context_state"] != "current_unreviewed_question"
                     or question["source_snapshot_contract"] != source_snapshot_contract
                     or not hmac.compare_digest(question["source_snapshot_sha256"], expected_source_snapshot_sha256)
                     or not hmac.compare_digest(question["preflight_sha256"], expected_preflight_sha256)):
                 raise PatientRegistryConflict("Question source context changed; reassessment required")
-            preflight = PostgresSourceComposerPreflight(self.registry).preview_locked(
-                patient_id, case_id, organization=organization, actor=actor, purpose=purpose,
-                expected_source_snapshot_sha256=expected_source_snapshot_sha256,
-                source_id=question["source_id"], source_line=question["source_line"],
-                question=question["question"], source_index=index)
+            if "observation_reference" in question:
+                preflight = prepare_laboratory_question(
+                    index, PostgresLaboratoryFHIR(self.registry).current_observations_locked(case_id),
+                    patient_id=patient_id, case_id=case_id, source_id=question["source_id"],
+                    observation_reference=question["observation_reference"], question=question["question"],
+                    expected_source_snapshot_sha256=expected_source_snapshot_sha256)
+            else:
+                preflight = PostgresSourceComposerPreflight(self.registry).preview_locked(
+                    patient_id, case_id, organization=organization, actor=actor, purpose=purpose,
+                    expected_source_snapshot_sha256=expected_source_snapshot_sha256,
+                    source_id=question["source_id"], source_line=question["source_line"],
+                    question=question["question"], source_index=index)
             if not hmac.compare_digest(preflight["preflight_sha256"], expected_preflight_sha256):
                 raise PatientRegistryConflict("Saved question preflight requires reassessment")
             if bound is not None:
@@ -403,16 +464,20 @@ class PostgresQuestionFollowthrough:
                 if state["needs_recheck"]:
                     raise PatientRegistryConflict("Selected manual passage dependency requires reassessment")
             task_id = "TASK-" + uuid.uuid4().hex.upper()
+            # Text inserts retain their published column set on historical
+            # revisions as well as their original request fingerprint.
+            origin = {key: question[key] for key in (
+                "source_id", "source_line", "source_sha256", "source_version",
+                "source_snapshot_contract", "source_snapshot_sha256", "preflight_sha256",
+                "observation_reference",
+            ) if key in question}
+            record = dict(task_id=task_id, question_id=question_id, patient_id=patient_id,
+                          case_id=case_id, origin_org=organization, actor=actor, purpose=purpose,
+                          title=title, detail=detail, initial_owner_label=owner_label,
+                          due_date=due_date, review_trigger=review_trigger, **origin)
             self.registry._execute(
-                "INSERT INTO coordination.question_followthrough_tasks "
-                "(task_id,question_id,patient_id,case_id,origin_org,actor,purpose,title,detail,"
-                "initial_owner_label,due_date,review_trigger,source_id,source_line,source_sha256,"
-                "source_version,source_snapshot_contract,source_snapshot_sha256,preflight_sha256) "
-                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                (task_id, question_id, patient_id, case_id, organization, actor, purpose, title, detail,
-                 owner_label, due_date, review_trigger, question["source_id"], question["source_line"],
-                 question["source_sha256"], question["source_version"], source_snapshot_contract,
-                 expected_source_snapshot_sha256, expected_preflight_sha256),
+                "INSERT INTO coordination.question_followthrough_tasks (" + ",".join(record) + ") "
+                "VALUES (" + ",".join(["%s"] * len(record)) + ")", tuple(record.values()),
             )
             if bound is not None:
                 self.registry._execute(
@@ -448,18 +513,23 @@ class PostgresQuestionFollowthrough:
                           "actor": actor, "purpose": purpose, "request_key": request_key, **fields})
 
         def prepare(index):
-            prior = self._prior(patient_id, case_id, organization, request_key, intent)
-            if prior is not None:
-                return self._prepared(prior, prepare_response)
             tasks, _, event_count = self._read_locked(
                 patient_id, case_id, organization, index, datetime.now(timezone.utc).date().isoformat())
             task = next((item for item in tasks if item["task_id"] == task_id), None)
             if task is None:
                 raise PatientRegistryDenied("Follow-through target unavailable")
+            prior = self._prior(patient_id, case_id, organization, actor, request_key, intent)
+            if prior is not None:
+                if prior["task_id"] != task_id or prior["revision"] != expected_revision + 1:
+                    raise SourceIntegrityError("Stored transition receipt origin mismatch")
+                return self._prepared(prior, prepare_response)
             if task["revision"] != expected_revision:
                 raise PatientRegistryConflict("Task revision changed; refresh before recording another transition")
             if status == "completed" and task["manual_context_state"] == "reassessment_required":
                 raise PatientRegistryConflict("Manual-dependent task requires source reassessment before completion")
+            if (status == "completed" and "observation_reference" in task
+                    and task["source_context_state"] != "current_unreviewed_question"):
+                raise PatientRegistryConflict("Laboratory task requires source reassessment before completion")
             if status not in TRANSITIONS[task["status"]]:
                 raise PatientRegistryConflict("Task transition unavailable; completion requires acknowledgment")
             if event_count >= MAX_EVENTS:

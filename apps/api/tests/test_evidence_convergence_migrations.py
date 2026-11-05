@@ -92,9 +92,15 @@ class EvidenceConvergenceMigrationTests(SourceVersionFixture):
                     "WHERE table_schema IN ('identity','coordination','clinical_source','investigation') "
                     "AND table_type='BASE TABLE' ORDER BY table_schema,table_name")).all()
                 names = [f"{schema}.{name}" for schema, name in rows]
-            tables = {name: connection.execute(text(
-                f"SELECT row_to_json(t)::text FROM {name} t ORDER BY row_to_json(t)::text"
-            )).scalars().all() for name in names}
+            tables = {}
+            for name in names:
+                # Text tasks predate the nullable 0023 observation column. Give
+                # their snapshots that exact default while preserving every value.
+                row = ("(jsonb_build_object('observation_reference', NULL) || to_jsonb(t))::text"
+                       if name == "coordination.question_followthrough_tasks" else "row_to_json(t)::text")
+                tables[name] = connection.execute(text(
+                    f"SELECT {row} FROM {name} t ORDER BY 1"
+                )).scalars().all()
             sequences = {}
             for schema, name in connection.execute(text(
                 "SELECT schemaname,sequencename FROM pg_sequences "
