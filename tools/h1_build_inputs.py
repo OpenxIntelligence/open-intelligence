@@ -14,6 +14,7 @@ from pathlib import Path
 import re
 import stat
 import sys
+from urllib.parse import quote
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -184,7 +185,49 @@ def check_web_bom(directory, binding):
     require(re.fullmatch(r"[a-zA-Z0-9_-]+\.cdx\.json", filename), "invalid web BOM filename")
     path = directory / filename
     require(stat.S_ISREG(path.lstat().st_mode), "web BOM must be a regular file and not a symbolic link")
-    require(wheel_gate.digest(path) == binding["sha256"], "web BOM digest differs from its notice receipt")
+    payload = path.read_bytes()
+    require(hashlib.sha256(payload).hexdigest() == binding["sha256"],
+            "web BOM digest differs from its notice receipt")
+    return json.loads(payload, object_pairs_hook=unique_object)
+
+
+def check_web_bom_content(bom, expected, app_name, app_version):
+    """Cross-check the build-environment BOM with independently resolved lock inputs."""
+    require(set(bom) == {"bomFormat", "specVersion", "version", "metadata", "components"}
+            and type(bom["version"]) is int, "unexpected web BOM fields")
+    require((bom["bomFormat"], bom["specVersion"], bom["version"]) == ("CycloneDX", "1.6", 1),
+            "unexpected web BOM format")
+    rows = expected["web_lock_locations"]
+    installed = {row["location"]: row for row in rows if row["expected_in_omit_optional_install"]}
+    metadata = bom["metadata"]
+    require(set(metadata) == {"component", "properties"}, "unexpected web BOM metadata")
+    require(metadata["component"] == {"type": "application", "name": app_name, "version": app_version},
+            "web BOM application mismatch")
+    properties = {p["name"]: p["value"] for p in metadata["properties"]}
+    require(len(properties) == len(metadata["properties"]) and properties == {
+        "oi:scope": "Installed npm build environment for fictional H1 development",
+        "oi:package-lock-sha256": expected["inputs_sha256"][WEB + "package-lock.json"],
+        "oi:absent-optional-count": str(len(rows) - len(installed)),
+        "oi:license-evidence": "inventory.json",
+    }, "web BOM scope or lock mismatch")
+    parts = {part["bom-ref"]: part for part in bom["components"]}
+    require(len(parts) == len(bom["components"]) and parts.keys() == installed.keys(),
+            "web BOM installed locations differ")
+    for loc, row in installed.items():
+        group, _, name = row["name"].rpartition("/")
+        digest = base64.b64decode(row["integrity"][7:], validate=True).hex()
+        identity = quote(row["name"], safe="/") + "@" + quote(row["version"], safe="")
+        wanted = {
+            "type": "library", "bom-ref": loc, "name": name, "version": row["version"],
+            "purl": "pkg:npm/" + identity, "licenses": [{"expression": row["declared_license"]}],
+            "externalReferences": [{"type": "distribution", "url": row["registry_tarball"],
+                                    "hashes": [{"alg": "SHA-512", "content": digest}]}],
+            "properties": [{"name": "oi:development-dependency",
+                            "value": "true" if "dev" in row["dependency_flags"] else "false"}],
+        }
+        if group:
+            wanted["group"] = group
+        require(parts[loc] == wanted, f"web BOM identity or archive evidence differs: {loc}")
 
 
 def check_gates(root, expected, api_sbom, web_receipt):
@@ -198,7 +241,9 @@ def check_gates(root, expected, api_sbom, web_receipt):
     require(got == wanted, "API gate SBOM differs from the current reviewed components or scope")
     receipt = read_json(web_receipt)
     check_web(receipt, expected)
-    check_web_bom(web_receipt.parent, receipt["cyclonedx"])
+    bom = check_web_bom(web_receipt.parent, receipt["cyclonedx"])
+    package = read_json(root / WEB / "package.json")
+    check_web_bom_content(bom, expected, package["name"], package["version"])
 
 
 def main(argv=None):

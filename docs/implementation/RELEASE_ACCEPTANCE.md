@@ -13,6 +13,8 @@ This register applies to one candidate revision, use and deployment profile at a
 
 Withhold release when a required suite skips its necessary backend, a result belongs to a different commit, a backup lacks original bytes or restores an expired grant, a run omits an expected source, or rights are unknown. Record the specific failing check and how to reproduce it. Remediation starts a new candidate evaluation. Separate approval is required for production deployment, real clinical use, external data sharing and irreversible operations.
 
+For this synthetic build, retain the source commit, package locks, API BOM, web BOM and web notice inventory together. The combined verifier must reject a wrong archive digest, alias substitution, repeated or missing location, or inclusion of an omitted optional package. The hosted database image configuration must match the selected platform in the image register. A package or image identity alone leaves layer contents, vulnerability triage and distribution approval open.
+
 ## Clinical base acceptance record for #542
 
 The following record belongs to the pinned clinical base. Its named revisions, gates and donor observations are retained for traceability. The current platform increment and its own acceptance are described above.

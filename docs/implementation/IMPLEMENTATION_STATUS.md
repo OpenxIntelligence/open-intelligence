@@ -2,6 +2,10 @@
 
 **What can be exercised:** the merged H1 application supports a fictional patient, immutable originals and amendments, laboratory observations and questions, exact-source reading, reports and follow-through. This **draft integration candidate** adds shared ingress and build verification to the combined encounter/note and laboratory code from #542. Its single schema head, `0023_ehr_lab_ownership_join`, requires both the published clinical ownership guard and the laboratory citation freshness repair. The first-party clinical system, production governance, clinical AI validation, scientific execution and discovery program each have substantial work ahead.
 
+## Build evidence on the integrated core
+
+The [build verification change](https://github.com/OpenxIntelligence/open-intelligence/pull/555) extends [#552](https://github.com/OpenxIntelligence/open-intelligence/pull/552) at `57556e4`. In a reproduced case, the intake accepted a frontend BOM with a substituted archive hash when its adjacent receipt was updated to match. The verifier now compares each installed location, upstream name, resolved archive and SHA-512 with the independent package lock. The draft also adds a [193-project source index](TECHNOLOGY_SOURCE_EVIDENCE.json) to the existing comparison tables. Its PR records the exact source revision and test results.
+
 ## Audit reconciliation
 
 | November 4 benchmark | State observed on November 5 | Evidence or next acceptance |
