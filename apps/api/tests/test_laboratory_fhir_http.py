@@ -296,6 +296,139 @@ class LaboratoryFHIRHTTPTests(unittest.TestCase):
                 "SELECT to_regclass('clinical_source.fhir_laboratory_observations')")).scalar_one(),
                              "clinical_source.fhir_laboratory_observations")
 
+    def prepare_lab_question(self, base, patient, source_id, fingerprint, *, token=TOKEN_A,
+                             observation_reference="Observation/FICTIONAL-OBS-A", case="CASE-LAB-A"):
+        return request(
+            base, f"/v1/patients/{patient}/cases/{case}/composer/laboratory-preflight",
+            token=token,
+            body={"synthetic": True, "source_id": source_id,
+                  "observation_reference": observation_reference,
+                  "expected_source_snapshot_sha256": fingerprint,
+                  "question": "What should I ask my care team about this source-reported result?"})
+
+    def lab_question_fixture(self, base):
+        self.creds[0]["actions"].append("composer_context_read")
+        self.write_access()
+        patient = self.make_patient(base)
+        status, receipt, _ = self.import_source(base, patient)
+        self.assertEqual(status, 201, receipt)
+        status, world, _ = request(
+            base, f"/v1/patients/{patient}/cases/CASE-LAB-A/world-model", token=TOKEN_A)
+        self.assertEqual(status, 200, world)
+        return patient, receipt["source_id"], world["snapshot_fingerprint"]
+
+    def test_lab_question_preparation_is_typed_audited_and_not_persisted(self):
+        with running_server(self.app) as base:
+            patient, source, fingerprint = self.lab_question_fixture(base)
+            before = self.lab_counts()
+            event_count = self.source_counts()[1]
+            code, first, headers = self.prepare_lab_question(base, patient, source, fingerprint)
+            self.assertEqual(code, 200, first)
+            self.assertEqual(headers["Cache-Control"], "no-store")
+            self.assertEqual(headers["X-Content-Type-Options"], "nosniff")
+            selected = first["selected_source"]
+            self.assertEqual(selected["anchor_kind"], "fhir_observation")
+            self.assertEqual(selected["source_id"], source)
+            self.assertEqual(selected["resource_reference"], "Observation/FICTIONAL-OBS-A")
+            self.assertEqual(selected["specimen_reference"], "Specimen/FICTIONAL-SPECIMEN-A")
+            self.assertEqual(selected["report_reference"], "DiagnosticReport/FICTIONAL-REPORT-A")
+            self.assertEqual(selected["value_text"], "4.20")
+            self.assertNotIn("line", selected)
+            self.assertFalse(first["durable_question_created"])
+            self.assertFalse(first["model_execution_authorized"])
+            self.assertEqual(before, self.lab_counts())
+            self.assertEqual(self.source_counts()[1], event_count + 1)
+            with self.engine.connect() as db:
+                self.assertEqual(db.execute(text("SELECT count(*) FROM investigation.source_questions")).scalar_one(), 0)
+            code, repeated, _ = self.prepare_lab_question(base, patient, source, fingerprint)
+            self.assertEqual(code, 200, repeated)
+            self.assertEqual(repeated["preflight_sha256"], first["preflight_sha256"])
+            self.assertNotEqual(repeated["access_receipt_id"], first["access_receipt_id"])
+            # Typed values do not grant access to the separate original endpoint.
+            self.creds[0]["actions"].remove("source_original_read")
+            self.write_access()
+            self.assertEqual(self.prepare_lab_question(base, patient, source, fingerprint)[0], 200)
+            self.assertEqual(request(base, f"/v1/patients/{patient}/cases/CASE-LAB-A/sources/{source}", token=TOKEN_A)[0], 404)
+
+    def test_lab_question_preparation_requires_current_independent_grants_and_scope(self):
+        with running_server(self.app) as base:
+            patient, source, fingerprint = self.lab_question_fixture(base)
+            before = self.source_counts()
+            for grant in ("patient_read", "source_read", "composer_context_read"):
+                with self.subTest(grant=grant):
+                    self.creds[0]["actions"].remove(grant)
+                    self.write_access()
+                    self.assertEqual(self.prepare_lab_question(base, patient, source, fingerprint)[0], 404)
+                    self.assertEqual(self.source_counts(), before)
+                    self.creds[0]["actions"].append(grant)
+                    self.write_access()
+            self.assertEqual(self.prepare_lab_question(base, patient, source, fingerprint, token=TOKEN_B)[0], 404)
+            self.assertEqual(self.prepare_lab_question(base, patient, source, fingerprint, case="CASE-OTHER")[0], 404)
+            self.assertEqual(self.source_counts(), before)
+
+    def test_lab_question_preparation_rejects_amended_snapshot_and_old_anchor(self):
+        with running_server(self.app) as base:
+            patient, original_source, fingerprint = self.lab_question_fixture(base)
+            code, old, _ = self.prepare_lab_question(base, patient, original_source, fingerprint)
+            self.assertEqual(code, 200, old)
+            changed = example()
+            resource(changed, "Observation")["valueQuantity"]["value"] = 5
+            code, amended, _ = self.import_source(
+                base, patient, changed, request_key="LAB-QUESTION-AMENDMENT",
+                expected_previous_source_id=original_source)
+            self.assertEqual(code, 201, amended)
+            self.assertEqual(self.prepare_lab_question(base, patient, original_source, fingerprint)[0], 409)
+            _, world, _ = request(base, f"/v1/patients/{patient}/cases/CASE-LAB-A/world-model", token=TOKEN_A)
+            new_fingerprint = world["snapshot_fingerprint"]
+            self.assertEqual(self.prepare_lab_question(base, patient, original_source, new_fingerprint)[0], 409)
+            code, fresh, _ = self.prepare_lab_question(base, patient, amended["source_id"], new_fingerprint)
+            self.assertEqual(code, 200, fresh)
+            self.assertEqual(fresh["selected_source"]["value_text"], "5")
+            self.assertNotEqual(fresh["preflight_sha256"], old["preflight_sha256"])
+            self.assertEqual(old["selected_source"]["value_text"], "4.20")
+            self.assertEqual(world["history"][0]["source_id"], original_source)
+
+    def test_lab_question_preparation_revocation_after_serialization_withholds_all(self):
+        from oi_api import laboratory_fhir_routes as routes
+        with running_server(self.app) as base:
+            patient, source, fingerprint = self.lab_question_fixture(base)
+            before = self.source_counts()
+            real_response = routes.JSONResponse
+            def revoke_after_serialization(*args, **kwargs):
+                response = real_response(*args, **kwargs)
+                self.creds[0]["actions"].remove("composer_context_read")
+                self.write_access()
+                return response
+            with patch.object(routes, "JSONResponse", revoke_after_serialization):
+                status, body, _ = self.prepare_lab_question(base, patient, source, fingerprint)
+            self.assertEqual(status, 404)
+            self.assertNotIn("4.20", json.dumps(body))
+            self.assertEqual(self.source_counts(), before)
+
+    def test_lab_question_preparation_audit_tail_denial_and_serialization_failure_roll_back(self):
+        from open_intelligence.postgres_registry import PostgresPatientRegistry
+        from oi_api import laboratory_fhir_routes as routes
+        with running_server(self.app) as base:
+            patient, source, fingerprint = self.lab_question_fixture(base)
+            before = self.source_counts()
+            original_append = PostgresPatientRegistry.append_event
+            def revoke_after_audit(registry, patient_id, event_type, **refs):
+                result = original_append(registry, patient_id, event_type, **refs)
+                if event_type == "source.read_authorized":
+                    self.creds[0]["actions"].remove("composer_context_read")
+                    self.write_access()
+                return result
+            with patch.object(PostgresPatientRegistry, "append_event", revoke_after_audit):
+                status, body, _ = self.prepare_lab_question(base, patient, source, fingerprint)
+            self.assertEqual(status, 404)
+            self.assertEqual(self.source_counts(), before)
+            self.creds[0]["actions"].append("composer_context_read")
+            self.write_access()
+            with patch.object(routes, "JSONResponse", side_effect=RuntimeError("Fictional serialization failure")):
+                status, body, _ = self.prepare_lab_question(base, patient, source, fingerprint)
+            self.assertEqual(status, 503)
+            self.assertEqual(self.source_counts(), before)
+            self.assertNotIn("4.20", json.dumps(body))
 
 if __name__ == "__main__":
     unittest.main()
