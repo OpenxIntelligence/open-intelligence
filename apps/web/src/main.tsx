@@ -18,8 +18,22 @@ function WorkspaceContext({section,patientId,readiness,view,onViewChange}:{secti
  const header=useRef<HTMLElement>(null);
  useLayoutEffect(()=>{
   const element=header.current;if(!element)return;
-  const measure=()=>{const height=Math.ceil(element.getBoundingClientRect().height);const sticky=height<=window.innerHeight/2;
-   element.dataset.sticky=String(sticky);document.documentElement.style.setProperty('--workspace-offset',`${sticky?height+24:24}px`);};
+  const measure = () => {
+   const height = Math.ceil(element.getBoundingClientRect().height);
+   const sticky = height <= window.innerHeight / 2;
+   element.dataset.sticky = String(sticky);
+   document.documentElement.style.setProperty('--workspace-offset', `${sticky ? height + 24 : 24}px`);
+
+   // Resizing a focused reader does not trigger its focus handler again.
+   const reader = document.activeElement;
+   if (reader instanceof HTMLElement && reader.matches(':is(.intake-panel,.original-panel) .original-text')) {
+    const bounds = reader.getBoundingClientRect();
+    const visibleTop = sticky ? element.getBoundingClientRect().bottom : 0;
+    if (bounds.top < visibleTop || bounds.bottom > window.innerHeight) {
+     reader.scrollIntoView({block: 'start', inline: 'nearest'});
+    }
+   }
+  };
   measure();const observer=new ResizeObserver(measure);observer.observe(element);window.addEventListener('resize',measure);
   return()=>{observer.disconnect();window.removeEventListener('resize',measure);document.documentElement.style.removeProperty('--workspace-offset');};
  },[]);

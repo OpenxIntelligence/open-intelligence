@@ -60,12 +60,15 @@ def wait_for(callback, label: str, timeout: float = 12):
     raise AssertionError(f"Timed out waiting for {label}; last error: {last_error}")
 
 
-def wait_for_browser(browser, stderr_path: Path, debug_port: int, timeout: float = 12):
+def wait_for_browser(browser, stderr_path: Path, debug_port: int, timeout: float = 30):
     """Keep startup failures actionable without relaxing the browser gate."""
     def targets():
         if browser.poll() is not None:
             raise AssertionError("Chrome exited before exposing a DevTools target")
-        return json.load(urlopen(f"http://127.0.0.1:{debug_port}/json/list", timeout=1))
+        with urlopen(f"http://127.0.0.1:{debug_port}/json/list", timeout=1) as response:
+            targets = json.load(response)
+        return [target for target in targets
+                if target.get("type") == "page" and target.get("webSocketDebuggerUrl")]
 
     try:
         return wait_for(targets, "Chrome DevTools target", timeout=timeout)

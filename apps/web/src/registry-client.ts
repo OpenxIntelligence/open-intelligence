@@ -8,6 +8,8 @@ import {prepareSource,parseImportReceipt,verifyOriginal} from './source-intake.j
 import type {ImportReceipt,OriginalSource} from './source-intake.js';
 import {emptyLaboratory,prepareLaboratoryFile,parseLaboratoryReceipt} from './laboratory-fhir.js';
 import type {LaboratoryImportState,LaboratoryIntent} from './laboratory-fhir.js';
+import {readLabPreparation,validLabQuestion} from './laboratory-question.js';
+import type {LabPreparation} from './laboratory-question.js';
 import {parseSourceWorldModel} from './source-world-model.js';
 import type {SourceWorldModel} from './source-world-model.js';
 import {decodeComposerPreflight,DEFAULT_SOURCE_QUESTION} from './composer-preflight-view.js';
@@ -806,6 +808,46 @@ export class RegistrySession {
       composerMessage:'Unsaved question draft discarded. No server write was made by this action.',
       savedQuestion:null,questionSavePhase:'idle',
       questionSaveMessage:'Select another source statement to prepare a new question.'});
+  }
+
+  /** Preparation is a scoped source read. This path never calls question save. */
+  async prepareLabQuestion(model:SourceWorldModel, source:string, reference:string,
+                           question:string, signal:AbortSignal):Promise<LabPreparation|null>{
+    if(questionSaveBlocksSourceChange(this.#state))return null;
+    const scope=this.#scope, patientRead=this.#read, worldRead=this.#worldRead, questionWrite=this.#questionWrite;
+    // An older laboratory read must never clear a later question save or its retry key.
+    const current=()=>scope===this.#scope && patientRead===this.#read && worldRead===this.#worldRead &&
+      questionWrite===this.#questionWrite &&
+      !signal.aborted && this.#state.worldModel===model && this.#state.worldPhase==='ready' &&
+      this.#state.phase==='ready' && this.#state.patient?.status==='active' &&
+      this.#state.patient.patient_id===model.patient_id &&
+      this.#state.cases?.some(c=>c.case_id===model.case_id && c.patient_id===model.patient_id && c.status==='active');
+    const item=model.laboratory_observations.find(o=>o.source_id===source && o.observation_reference===reference);
+    if(!this.#token || !current() || !item || !validLabQuestion(question))return null;
+    const controller=new AbortController(), abort=()=>controller.abort();
+    signal.addEventListener('abort',abort,{once:true});this.#controllers.add(controller);
+    const timer=setTimeout(abort,10000);
+    const withhold=(message:string,preserveCase?:string)=>{
+      this.#resetWorld(preserveCase);
+      this.#publish({worldPhase:'error',worldMessage:message});
+    };
+    try{
+      const url='/v1/patients/'+encodeURIComponent(model.patient_id)+'/cases/'+encodeURIComponent(model.case_id)+'/composer/laboratory-preflight';
+      const res=await this.transport(url,this.#init(controller,JSON.stringify({synthetic:true,source_id:source,
+        observation_reference:reference,question,expected_source_snapshot_sha256:model.snapshot_fingerprint})));
+      if(!current())return null;
+      if(res.status===401){this.#httpError(401);return null;}
+      if(res.status!==200){
+        withhold(res.status===409?'The laboratory report changed. Reopen the case to select a current result.':
+          'Laboratory question preparation is unavailable. Recheck access to this case.',
+          [403,404].includes(res.status)?undefined:model.case_id);return null;
+      }
+      const receipt=readLabPreparation(await json(res),model,item,question);
+      return current() && !controller.signal.aborted ? receipt : null;
+    }catch{
+      if(current())withhold('The laboratory question response could not be verified. Reopen the case before trying again.',model.case_id);
+      return null;
+    }finally{clearTimeout(timer);signal.removeEventListener('abort',abort);this.#controllers.delete(controller);}
   }
 
   async prepareDraftQuestion():Promise<void>{
