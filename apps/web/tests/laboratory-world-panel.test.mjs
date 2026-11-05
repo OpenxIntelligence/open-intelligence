@@ -54,3 +54,14 @@ test('laboratory Records actions are unavailable while the scope is loading or b
  const buttons=nodes(tree).filter(n=>n.props?.['data-testid']==='world-laboratory-records');assert.equal(buttons.length,3);assert.ok(buttons.every(b=>b.props.disabled));
  }
 });
+
+test('saved laboratory question shows historical provenance and reassessment without displaying a replacement value',()=>{
+ const model=parseSourceWorldModel(projection(),patient,caseId),oldSource='SRC-'+'E'.repeat(32),prior='e'.repeat(64);
+ const row={question_id:'QUESTION-'+'C'.repeat(32),question:'What changed since the original report?',source_id:oldSource,source_version:1,source_sha256:prior,observation_reference:'Observation/FICTIONAL-OLD',source_snapshot_sha256:'a'.repeat(64),preflight_sha256:'b'.repeat(64),source_context_state:'source_reassessment_required'};
+ const historicalOnly={...model,laboratory_observations:[],laboratory_timeline:[]};
+ const html=renderToStaticMarkup(createElement(WorldModelView,{session:{},state:{...idleQuestionSave,patient:{patient_id:patient},cases:[],worldPhase:'ready',recordsPhase:'ready',worldMessage:'Fresh read',worldModel:historicalOnly,labQuestionHistory:{questions:[row],access_receipt_id:'ACCESS-'+'E'.repeat(32)},labQuestionListPhase:'ready',labQuestionWritePhase:'idle'},onOverview(){},busy:false}));
+ assert.ok(html.includes('data-testid="lab-questions-reopen"'));assert.ok(!html.includes('data-testid="world-laboratory-results"'));
+ const saved=html.split('data-testid="lab-saved-question"')[1].split('</li>')[0];
+ for(const value of [row.question,'Needs reassessment',row.observation_reference,'source version 1',oldSource,prior,row.question_id])assert.ok(saved.includes(value),value);
+ assert.ok(!saved.includes('10*9/L'));assert.ok(!saved.includes('write a source-linked question'));assert.ok(!saved.includes('source line'));
+});

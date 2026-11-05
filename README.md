@@ -13,10 +13,10 @@ follow-up work into one patient workspace. Setup deliberately creates one fictio
 patient/case/source; repeated setup and stop/resume retain its saved work.
 
 [Consolidation and acceptance #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481)
-records the current candidate, exact revision, test receipts and landing status.
+records the original integrated application and its acceptance results.
 The [convergence record](docs/engineering/H1_ACCEPTED_DEMO_CONVERGENCE.md) identifies
-the retained contributions. Runtime readiness uses the single
-`0017_lab_manual_convergence` migration head; published histories remain intact.
+the retained contributions. This revision requires `0018_laboratory_questions`
+for [saved laboratory questions](docs/engineering/H1_DURABLE_LABORATORY_QUESTIONS.md).
 The Python/SQLite application is retained as a separate reference implementation.
 
 Use independently authored fictional data only. This application does not establish

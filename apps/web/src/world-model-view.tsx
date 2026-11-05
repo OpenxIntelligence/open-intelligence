@@ -1,5 +1,5 @@
+import {LaboratoryQuestionPanel,SavedLaboratoryQuestions} from './laboratory-question-panel';
 import {questionSaveBlocksSourceChange} from './source-questions-view.js';
-import {LaboratoryQuestionPanel} from './laboratory-question-panel';
 import type {RegistrySession,ViewState} from './registry-client';
 import {SourceQuestionPanel} from './source-question-panel';
 
@@ -86,8 +86,9 @@ export function WorldModelView({session,state,onOverview,busy,showQuestions=fals
               </details>
             </li>;
           })}</ol>
-          {state.worldPhase==='ready'&&<LaboratoryQuestionPanel key={model.access_receipt_id} session={session} model={model} busy={loading||busy} sourceSavePending={questionSaveBlocksSourceChange(state)}/>}
+          {state.worldPhase==='ready'&&<LaboratoryQuestionPanel key={model.access_receipt_id} session={session} model={model} state={state} busy={loading||busy} sourceSavePending={questionSaveBlocksSourceChange(state)}/>}
         </section>}
+        {state.worldPhase==='ready'&&<SavedLaboratoryQuestions session={session} model={model} state={state} busy={loading||busy} sourceSavePending={questionSaveBlocksSourceChange(state)}/>}
         <h3>Original source-reported statements</h3>
         <p>These are literal reported statements, not established clinical facts. A missing or pending item must never be interpreted as a negative finding.</p>
         {model.observations.length===0?<p>No additional source-reported statements are available.</p>:
