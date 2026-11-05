@@ -11,6 +11,7 @@ from open_intelligence.patient_registry import PatientRegistryConflict, PatientR
 from .reviewed_documents import ReviewedDocuments, canonical, fingerprint
 from .question_passage_contracts import ManualContext, ReplaceQuestionPassages, context_hash
 from .sources import PostgresSourceVersions
+from .source_questions import text_question_filter
 
 
 def reference_audit(context):

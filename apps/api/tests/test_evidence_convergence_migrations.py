@@ -5,6 +5,7 @@ readiness bypass, copied patient ledger or alternate report renderer is used.
 Current authenticated HTTP is exercised only after the real converging upgrade.
 """
 from contextlib import contextmanager
+import json
 
 from sqlalchemy import text
 
@@ -31,6 +32,31 @@ from test_source_versions import ORIGINAL, SourceVersionFixture
 
 COMMON = {"organization": "ORG-ALPHA", "actor": "ACTOR-ALPHA", "purpose": "operations"}
 OPTIONS = {**COMMON, "recheck_authority": lambda: None, "prepare_response": None}
+
+
+def _legacy_question_rows(rows):
+    """Remove only 0018's defaulted columns from pre-0018 text questions."""
+    normalized = []
+    for raw in rows:
+        value = json.loads(raw)
+        if value.get("anchor_kind") == "text_line" and value.get("observation_reference") is None:
+            value.pop("anchor_kind")
+            value.pop("observation_reference")
+        normalized.append(value)
+    return normalized
+
+
+def assert_snapshot_preserved(testcase, before, after):
+    """All historical business rows/sequences survive; only 0018 defaults may appear."""
+    testcase.assertEqual(set(after[0]), set(before[0]))
+    for name, rows in before[0].items():
+        if name == "investigation.source_questions":
+            testcase.assertEqual(_legacy_question_rows(after[0][name]),
+                                 _legacy_question_rows(rows))
+        else:
+            testcase.assertEqual(after[0][name], rows, name)
+    for name, state in before[1].items():
+        testcase.assertEqual(after[1][name], state, name)
 
 
 class EvidenceConvergenceMigrationTests(SourceVersionFixture):
@@ -108,9 +134,7 @@ class EvidenceConvergenceMigrationTests(SourceVersionFixture):
     def upgrade_preserving(self, before):
         migrate(self.admin, "upgrade", "head")
         after = self.snapshot(before[0])
-        self.assertEqual(after[0], before[0])
-        for name, state in before[1].items():
-            self.assertEqual(after[1][name], state)
+        assert_snapshot_preserved(self, before, after)
         with self.engine.connect() as connection:
             self.assertEqual(connection.execute(text("SELECT version_num FROM public.alembic_version"))
                              .scalars().all(), [SCHEMA_REVISION])
