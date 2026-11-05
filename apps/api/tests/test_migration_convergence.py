@@ -190,7 +190,8 @@ class PopulatedMigrationFixture(unittest.TestCase):
             ), {"source": SOURCE_ID})
             self._event(connection, "identity.patient.created", actor="ACTOR-MERGE")
             self._event(connection, "identity.case_binding_created", case_id="CASE-MERGE")
-            self._event(connection, "source.original.imported", source_id=SOURCE_ID)
+            self._event(connection, "source.original.imported", source_id=SOURCE_ID,
+                        case_id="CASE-MERGE", version=1, actor="ACTOR-MERGE")
 
     def _seed_questions(self):
         with self.engine.begin() as connection:

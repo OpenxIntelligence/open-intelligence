@@ -5870,6 +5870,17 @@ class CaseStore:
                             snapshot_id=task["snapshot_id"], mode="note")
             return {"result": "task_closed", "task_id": task_id, "status": "done"}
 
+    def source_version_facts(self, case_id: str) -> list[dict]:
+        """All source versions of a case, current and superseded, with
+        the dates, specimen, state, and supersession link the K-checks
+        need. Read-only; used to build the K-check context for an
+        investigation run."""
+        self._case(case_id)
+        return self._dicts(self.db.execute(
+            """SELECT id,document_id,version,sha256,kind,event_date,issued_at,received_at,
+            specimen_id,state,supersedes_id FROM source_versions
+            WHERE case_id=? ORDER BY id""", (case_id,)).fetchall())
+
     def investigation_facts(self, case_id: str, question_id: int) -> dict:
         """Facts the investigation prompt may use: question, current assertions, assessments."""
         self._case(case_id)

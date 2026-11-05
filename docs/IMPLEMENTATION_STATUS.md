@@ -9,6 +9,34 @@ draft labels, schema heads and test counts are not current acceptance claims.
 
 **Stage:** local experimental synthetic-only code. **Not released for clinical use.**
 
+## H1 source-event delivery — source-publication checkpoint, 5 November 2026
+
+The existing [PR #529](https://github.com/OpenxIntelligence/open-intelligence/pull/529)
+continues PF-06 / WS-08 / CMP-11 construction under
+[#104](https://github.com/OpenxIntelligence/open-intelligence/issues/104). The
+implemented candidate adds `0020_source_event_delivery` after `0019_composer_runs`:
+canonical source-import journal events publish immutable reference obligations
+atomically, and a separately invoked current-authority worker asks the existing
+Composer owner to stale outdated queued/running work in batches of at most 100.
+Transport owns no domain effects; current/terminal runs and human tasks retain
+their owners. The existing source-freshness guards remain authoritative while
+event delivery is idle, delayed or dead-lettered.
+
+The construction baseline joins verified worker source
+`2312755dc52260c3632c5801b1b7b68041671833` with accepted main
+`aad241e5cce9a1bcff3e431d63cecd16e948d731` at
+`cd10a828e499bf65dbbe8eb4ca77207710a5f2b7`. That lineage does not establish a
+passing event-delivery candidate. Exact combined PostgreSQL, process-kill,
+populated-restore and hosted regression acceptance remains pending at this
+source-publication checkpoint; PR #529 records subsequent exact-source receipts.
+See [the operating guide](engineering/H1_SOURCE_EVENT_DELIVERY.md) and
+[implementation plan](superpowers/plans/2026-11-05-source-event-delivery.md).
+
+This is foundation progress toward the entire PF-01–PF-10 / PD-01–PD-16 scope.
+It adds no scheduler, broker, service-delegated authority, production database
+roles, clinical effect or deployment. The dated execution and provenance
+receipts below remain unchanged historical evidence.
+
 ## H1 execution foundation — accepted-main reconciliation, 5 November 2026
 
 [PR #529](https://github.com/OpenxIntelligence/open-intelligence/pull/529)
@@ -74,6 +102,71 @@ installation; zero new failures. The pre-slice guard
 `tests/test_case_switch_guards.py` passes on main (6 tests), confirming
 the guard gap is closed with no guard slice needed. This is fictional-only
 engineering, draft and undeployed.
+
+## Deterministic K-checks K1–K7 (Slice 2) — 5 November 2026
+
+Branch `program/c2-kchecks`, from main `f188aecc`. Implements
+program-plan C2 (Notion OI-09 §4.6): the verification dimension's
+deterministic half. New `src/open_intelligence/kchecks.py` is
+domain-free — all vertical knowledge arrives as parameters — and
+checks the claims the structural validator already kept: K1
+identifier format (registry numbers, publication ids, object ids);
+K2 slot–field match against the cited facets after normalisation,
+plus the condition-scope sub-check (unrelated drops, broader/narrower
+keeps with a limits note); K3 temporal (citing a version recorded
+after the snapshot drops; internal version date order and slot range
+order are run-level findings, not drops); K4 contradiction over the
+survivors (same subject and field, different normalised value,
+overlapping valid time, no supersession — the later claim drops;
+different specimens or assays never auto-supersede); K5 staleness
+(citing a superseded version drops with `k5_stale` instead of
+`unresolved_citation`; citing a version outside the snapshot drops;
+a changed snapshot hash or ruleset is a run-level finding); K6 scope
+guard (the vertical's extra scope patterns beyond the language
+guard); K7 support (every number, identifier, and named-substance
+token must appear in the cited evidence; low-tier, case-report-only,
+or preclinical support must carry the fixed limits phrase); K7+
+injection (instruction-shaped markers in the claim or the cited
+evidence drop the claim). Failures go to `dropped` with a typed
+reason, never silently repaired.
+
+Slot assertion is derived lexically: a claim asserts a (field, value)
+pair when it names a derived field and, within two words, a value word
+from the case's own value vocabulary after synonym normalisation.
+The vertical wiring lives in `investigation.py`
+(`ONCOLOGY_SYNONYMS`, `K6_SCOPE_PATTERNS`, `CONDITION_TERMS`) and is
+passed into `validate_output` as an optional fourth argument — without
+a context the behaviour is exactly as before. `store.source_version_facts`
+supplies all versions (current and superseded); `__main__.py` builds
+the context at both the live and replay call sites, and the HTTP
+response carries the run-level findings as `kcheck_findings`
+(returned, not persisted — persisting them is a schema change and a
+follow-up). The condition-scope, named-substance, and evidence-tier
+sub-checks are interface-complete but data-pending live (no relation,
+tier, or substance data exists in the runtime yet), so they skip in
+the live path and run in tests; no run snapshot is pinned yet, so the
+snapshot-hash comparison is not supplied live either. K7+ atomic
+statement (per-sentence derived-from ids) needs a schema and prompt
+change and is out of this slice; free-text entity invention outside
+the number/identifier/substance classes is not deterministically
+detectable without a vocabulary and is the Skeptic's job (slice C4).
+
+New `tests/test_kchecks.py` (66 tests): planted-defect fixtures per
+check written from the Notion spec — K3 has three planted temporal
+defects plus an as-of probe and partial-date probes; K4 has two
+planted contradictions plus specimen, assay, supersession, and
+valid-time fixtures; K5 has stale-version, hash-change, and
+ruleset-change fixtures; K6 fixtures use only patterns the language
+guard does not cover; K7 has invented-number, invented-id, tier, and
+preclinical fixtures; K7+ has tainted-claim and tainted-evidence
+fixtures; plus a vertical-leakage tripwire test that scans
+`kchecks.py` for forbidden vertical literals.
+
+Local suite on the slice branch: 889 tests, FAILED with 9 failures and
+8 errors — the same 17 `test_pdf_intake` failures (12 test names) as
+the main baseline run (823 tests) on the same machine, verified by
+diffing the two failure sets; zero new failures. This is
+fictional-only engineering, draft and undeployed.
 
 ## Connected patient preparation — 3 November 2026
 

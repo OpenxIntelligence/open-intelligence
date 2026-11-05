@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-SCHEMA_REVISION = "0019_composer_runs"
+SCHEMA_REVISION = "0020_source_event_delivery"
 POSTGRES_MAJOR = 16
 
 
@@ -19,7 +19,7 @@ class Liveness(Contract):
 class DatabaseStatus(Contract):
     status: Literal["unconfigured", "unavailable", "unsupported_version", "schema_mismatch", "ready"]
     required_postgres_major: Literal[16] = POSTGRES_MAJOR
-    required_revision: Literal["0019_composer_runs"] = SCHEMA_REVISION
+    required_revision: Literal["0020_source_event_delivery"] = SCHEMA_REVISION
 
 
 class Readiness(Contract):

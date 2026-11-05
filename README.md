@@ -15,14 +15,18 @@ patient/case/source; repeated setup and stop/resume retain its saved work.
 [Consolidation and acceptance #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481)
 records the original integrated application and its acceptance results.
 The [convergence record](docs/engineering/H1_ACCEPTED_DEMO_CONVERGENCE.md) identifies
-the retained contributions. This candidate requires `0019_composer_runs`, extending
-`0018_laboratory_questions` for
+the retained contributions. This candidate requires `0020_source_event_delivery`,
+extending `0019_composer_runs` with atomic source-event publication and bounded,
+actor-scoped reconciliation. The [source-event guide](docs/engineering/H1_SOURCE_EVENT_DELIVERY.md)
+covers its separate worker credential, one-attempt CLI and pending acceptance.
+The earlier `0018_laboratory_questions` contract supports
 [saved laboratory questions](docs/engineering/H1_DURABLE_LABORATORY_QUESTIONS.md).
 The [durable execution guide](docs/engineering/H1_DURABLE_EXECUTION.md) describes
-the new actor-bound, synthetic source-brief worker and its enqueue/status/cancel/result
-controls. Its source-publication checkpoint records pending PostgreSQL and
-recovery acceptance; [PR #529](https://github.com/OpenxIntelligence/open-intelligence/pull/529)
-maintains current exact-source test and hosted receipts.
+the actor-bound, synthetic source-brief worker and its enqueue/status/cancel/result
+controls. Source-publication checkpoints retain their original verification
+state; [PR #529](https://github.com/OpenxIntelligence/open-intelligence/pull/529)
+maintains current exact-source test and hosted receipts. Existing source-freshness
+checks remain the correctness gate even when the event worker is idle.
 The Python/SQLite application is retained as a separate reference implementation.
 
 Use independently authored fictional data only. This application does not establish
@@ -140,8 +144,24 @@ reason; a stored run can be replay-checked from its route, snapshot, and
 recorded inputs, and a superseded source version invalidates the replay.
 Local suite at the slice branch: 796 tests, with the same 17 pre-existing
 `test_pdf_intake` failures as main (missing local `pypdf`) and zero new
-failures. Not yet a clinical claim: K-checks, the Skeptic, and parallel
-role agents are later slices; the single existing model call writes as A1
+failures.
+
+**Deterministic K-checks K1–K7 (Slice 2, 5 November 2026):** every kept
+investigation claim runs the deterministic checks of program plan C2 —
+K1 identifier format; K2 slot–field match against the cited facets;
+K3 temporal (cite only versions recorded at or before the snapshot);
+K4 contradiction (the later of two contradicting claims drops);
+K5 staleness (superseded or out-of-snapshot citations drop); K6 scope
+guard; K7 support (every number, identifier, and named-substance token
+must appear in the cited evidence; low-tier support must carry the
+fixed limits phrase); K7+ injection. The checker
+(`src/open_intelligence/kchecks.py`) is domain-free — the vertical's
+predicates arrive as parameters — and a test scans it for vertical
+literals. Failures go to `dropped` with a typed reason, never silently
+repaired. Local suite at the slice branch: 889 tests, with the same 17
+pre-existing `test_pdf_intake` failures as main (823 tests) and zero
+new failures. Not yet a clinical claim: the Skeptic and parallel role
+agents are later slices; the single existing model call writes as A1
 until the roster is wired.
 
 ## Development boundaries
