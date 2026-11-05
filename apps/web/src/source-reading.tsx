@@ -9,8 +9,10 @@ export const emptySourceFilters: SourceFilters = {query: '', versionState: 'all'
 
 function ImagePreview({preview,onClose}:{preview:NonNullable<SourceImagesState['sourceImagePreview']>;onClose?:()=>void}) {
   const [url,setUrl]=useState<string|null>(null);
+  const [failed,setFailed]=useState(false);
   useEffect(()=>{
-    let active=true;const reader=new FileReader();setUrl(null);
+    let active=true;const reader=new FileReader();setUrl(null);setFailed(false);
+    reader.onerror=()=>{if(active)setFailed(true);};
     reader.onload=()=>{if(active&&typeof reader.result==='string')setUrl(reader.result);};
     reader.readAsDataURL(new Blob([preview.png_bytes],{type:'image/png'}));
     return()=>{active=false;if(reader.readyState===FileReader.LOADING)reader.abort();};
@@ -19,7 +21,8 @@ function ImagePreview({preview,onClose}:{preview:NonNullable<SourceImagesState['
     <div className="source-heading"><h6>Non-diagnostic preview</h6>
       <button type="button" data-testid="source-image-preview-close" onClick={onClose}>Close preview</button></div>
     <p className="warning-note"><strong>Not for diagnosis.</strong> This 8-bit grayscale view is a bounded engineering preview of the authorized synthetic CT original. It applies per-frame min/max scaling only and does not apply diagnostic windowing, calibration or interpretation.</p>
-    {url&&<img data-testid="source-image-preview" src={url}
+    {failed&&<p role="status">The CT preview could not be displayed. Close it and request a fresh preview.</p>}
+    {url&&!failed&&<img data-testid="source-image-preview" src={url} onError={()=>setFailed(true)}
       alt="Non-diagnostic grayscale preview of the authorized synthetic CT original"/>}
     <figcaption className="small">Original SHA-256 <code>{preview.original_sha256}</code><br/>
       Preview read receipt <code data-testid="source-image-preview-receipt">{preview.access_receipt_id}</code></figcaption>
@@ -48,6 +51,7 @@ export function SourceReading({index, kind, view, filters, onFiltersChange, busy
   onDismissImages?: () => void;
 }&Partial<SourceImagesState>) {
   const input = useRef<HTMLInputElement>(null);
+  const previewOpener = useRef<HTMLButtonElement>(null);
   const imageOpeners = useRef(new Map<string,HTMLButtonElement>());
   const search = filters.query.trim().toLowerCase();
   const reports = kind ? index.sources.filter(source => source.kind === kind) : index.sources;
@@ -132,12 +136,15 @@ export function SourceReading({index, kind, view, filters, onFiltersChange, busy
                     </dl></details>
                     <div className="actions">
                       <button type="button" data-testid="source-image-preview-open" disabled={busy||sourceImagePreviewPhase==='loading'}
-                        onClick={()=>onPreviewImage?.(item.source_id,image.image_id)}>View non-diagnostic preview</button>
+                        onClick={event=>{previewOpener.current=event.currentTarget;onPreviewImage?.(item.source_id,image.image_id);}}>View non-diagnostic preview</button>
                       <button type="button" data-testid="source-image-download" disabled={busy||sourceImageDownloadPhase==='loading'}
                         onClick={()=>onDownloadImage?.(item.source_id,image.image_id)}>Recheck and download original DICOM</button>
                     </div>
                     {sourceImagePreview?.image_id===image.image_id&&sourceImagePreview.source_id===item.source_id&&
-                      <ImagePreview preview={sourceImagePreview} onClose={onDismissImagePreview}/>}
+                      <ImagePreview key={sourceImagePreview.access_receipt_id} preview={sourceImagePreview} onClose={()=>{
+                        onDismissImagePreview?.();
+                        if(previewOpener.current?.isConnected)previewOpener.current.focus();
+                      }}/>}
                   </li>)}</ul>}
                 {sourceImagePreviewPhase!=='idle'&&<p role="status" aria-live="polite" data-testid="source-image-preview-status">{sourceImagePreviewMessage}</p>}
               </>}

@@ -5,13 +5,8 @@ export const imageId='IMG-'+'C'.repeat(32),accessId='ACCESS-'+'C'.repeat(32);
 // Byte-integrity fixture only. Actual DICOM parsing is covered by the existing
 // API/real-browser fixture; this deliberately does not claim a medical image.
 export const original=Buffer.alloc(160);original.write('DICM',128);original.write('fictional',132);
-export const previewPng=Buffer.from([
-  0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a,
-  0x00,0x00,0x00,0x0d,0x49,0x48,0x44,0x52,
-  0x00,0x00,0x00,0x02,0x00,0x00,0x00,0x02,
-  0x08,0x00,0x00,0x00,0x00,0,0,0,0,
-  0x00,0x00,0x00,0x00,0x49,0x45,0x4e,0x44,0,0,0,0
-]);
+// 2 × 2 grayscale output of the synthetic CT preview renderer.
+export const previewPng=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAAAAABX3VL4AAAADklEQVR4nGNgCGVY9R8AA60B/2f7ygkAAAAASUVORK5CYII=','base64');
 export const image=()=>({image_id:imageId,source_id:sourceId,case_id:caseId,sha256:digest(original),
  byte_count:original.length,study_uid:'2.25.101',series_uid:'2.25.102',sop_uid:'2.25.103',
  modality:'CT',study_date:'2026-01-10'});

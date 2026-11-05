@@ -24,7 +24,11 @@ test('non-diagnostic preview makes a fresh authorized PNG read without turning i
 test('preview fails closed on wrong source digest, mode, type, receipt, bounds or PNG header',async()=>{
  const badHeader=Buffer.from(previewPng);badHeader[0]=0;
  const hugeWidth=Buffer.from(previewPng);hugeWidth.writeUInt32BE(1025,16);
+ const missingPixels=Buffer.concat([previewPng.subarray(0,33),previewPng.subarray(-12)]);
  const cases=[
+  ()=>previewBinary(missingPixels),
+  ()=>previewBinary(previewPng.subarray(0,-1)),
+  ()=>previewBinary(previewPng,{'Content-Length':String(previewPng.length+1)}),
   ()=>previewBinary(previewPng,{'X-OI-Original-SHA256':'0'.repeat(64)}),
   ()=>previewBinary(previewPng,{'X-OI-Preview-Mode':'diagnostic'}),
   ()=>previewBinary(previewPng,{'Content-Type':'text/html'}),

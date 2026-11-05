@@ -227,7 +227,7 @@ def exercise(cd, patient_id, token, credentials, write_grants, directory, artifa
         cd.evaluate("document.querySelector('[data-testid=source-image-preview-panel]').scrollIntoView({block:'center'})")
         (artifacts / 'image-preview-desktop.png').write_bytes(base64.b64decode(cd.command('Page.captureScreenshot', {'format':'png'})['data']))
         click(cd, '[data-testid=source-image-preview-close]')
-        cd.wait("!document.querySelector('[data-testid=source-image-preview-panel]')", 'preview closed and transient pixels released')
+        cd.wait("!document.querySelector('[data-testid=source-image-preview-panel]') && document.activeElement.dataset.testid==='source-image-preview-open'", 'closing the preview removes the pixels and restores focus to the opening action')
         cd.command('Emulation.setDeviceMetricsOverride', {'width':1440,'height':1100,'deviceScaleFactor':1,'mobile':False})
         cd.evaluate("document.querySelector('[data-testid=source-images-inspection]').scrollIntoView({block:'center'})")
         (artifacts / 'image-original-desktop.png').write_bytes(base64.b64decode(cd.command('Page.captureScreenshot', {'format':'png'})['data']))

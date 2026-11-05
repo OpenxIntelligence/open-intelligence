@@ -109,12 +109,18 @@ export async function readSourceImagePreview(response:Response,expected:SourceIm
   while(true){const {done,value}=await reader.read();if(done)break;size+=value.byteLength;
    if(size>MAX_PREVIEW_BYTES){await reader.cancel();throw Error('preview bound');}parts.push(value);}
  }finally{reader.releaseLock();}
- if(size<33)throw Error('preview png');
+ if(size<58||(declared!==null&&Number(declared)!==size))throw Error('preview size');
  const bytes=new Uint8Array(size);let offset=0;for(const part of parts){bytes.set(part,offset);offset+=part.length;}
  if(!PNG_SIGNATURE.every((value,index)=>bytes[index]===value)||
     uint32(bytes,8)!==13||String.fromCharCode(...bytes.slice(12,16))!=='IHDR')throw Error('preview png');
  const width=uint32(bytes,16),height=uint32(bytes,20);
  if(width<1||height<1||width>1024||height>1024||width*height>1_048_576||
     bytes[24]!==8||bytes[25]!==0||bytes[26]!==0||bytes[27]!==0||bytes[28]!==0)throw Error('preview png');
+ // The first-party renderer emits one IDAT followed by an empty IEND.
+ const imageDataLength=uint32(bytes,33);
+ const endOffset=45+imageDataLength;
+ if(imageDataLength===0||endOffset+12!==size||
+    String.fromCharCode(...bytes.subarray(37,41))!=='IDAT'||
+    uint32(bytes,endOffset)!==0||String.fromCharCode(...bytes.subarray(endOffset+4,endOffset+8))!=='IEND')throw Error('preview png');
  return{bytes,accessReceiptId};
 }
