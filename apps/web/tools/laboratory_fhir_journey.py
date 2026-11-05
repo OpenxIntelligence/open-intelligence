@@ -130,6 +130,11 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
           p.style.fontSize='32px';p.scrollTop=0;p.closest('details').querySelector('summary').focus();})()''')
         key('Tab', 9)
         cd.evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))')
+        # The focus scroll runs with the scroll-padding in effect at focus time,
+        # but the workspace offset is recomputed asynchronously (ResizeObserver)
+        # after the viewport change, so re-apply the scroll once padding settles.
+        cd.evaluate('document.querySelector("[data-testid=laboratory-local-original]").scrollIntoView({block:"start"})')
+        cd.evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))')
         observation = cd.evaluate('''(() => {const p=document.querySelector('[data-testid=laboratory-local-original]');
           const r=p.getBoundingClientRect(),h=document.querySelector('.topbar');return {
           width:innerWidth,height:innerHeight,focused:document.activeElement===p,
