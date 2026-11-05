@@ -1,7 +1,11 @@
 """Upgrade either published 0019 history with independently fictional records."""
+import json
 import unittest
+import uuid
 
 from alembic.util.exc import CommandError
+from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 
 from http_support import running_server
 from oi_api.app import create_app
@@ -9,6 +13,8 @@ from oi_api.contracts import SCHEMA_REVISION
 from oi_api.evidence_catalog import fictional_records, seed_fictional_records
 from oi_api.migrate import migrate
 from oi_api.question_evidence import PostgresLaboratoryQuestionEvidence
+from oi_api.sources import PostgresSourceVersions
+from open_intelligence.patient_registry import PatientRegistryConflict, _digest
 from open_intelligence.postgres_encounters import PostgresClinicalEncounters
 import test_evidence_convergence_migrations as evidence
 import test_image_report_convergence_migrations as migrations
@@ -32,7 +38,8 @@ class EHRLaboratoryGraphTests(unittest.TestCase):
     def test_single_head_depends_on_both_published_owners(self):
         script = graph()
         self.assertEqual(script.get_heads(), [SCHEMA_REVISION])
-        self.assertEqual(set(script.get_revision(SCHEMA_REVISION).down_revision), {EHR, LAB})
+        self.assertEqual(script.get_revision(SCHEMA_REVISION).down_revision, "0020_ehr_lab_convergence")
+        self.assertEqual(set(script.get_revision("0020_ehr_lab_convergence").down_revision), {EHR, LAB})
         for parent in (EHR, LAB):
             self.assertEqual(script.get_revision(parent).down_revision, COMMON)
 
@@ -74,6 +81,83 @@ class EHRLaboratoryUpgradeTests(SourceVersionFixture):
             receipt = owner.create_link(*scope, **command, **evidence.OPTIONS)
         url = f"/v1/patients/{patient}/cases/CASE-ALPHA{LAB_HISTORY}/{saved['question_id']}/evidence-links"
         return patient, url, command, receipt
+
+    def test_new_citation_refuses_an_independent_case_source_at_the_database_boundary(self):
+        patient, url, command, receipt = self.seed_citation()
+        migrate(self.admin, "upgrade", "0020_ehr_lab_convergence")
+        case = "CASE-ALPHA"
+        question = url.split("/")[-2]
+        scope = (patient, case, question)
+        newer = evidence.ORIGINAL.replace("Document: DOC-ONE", "Document: DOC-TWO")
+        key = "CITATION-AFTER-INDEPENDENT-IMPORT"
+        link = "EVIDENCE-LINK-" + uuid.uuid4().hex.upper()
+        intent = _digest(dict(operation="evidence.link", patient_id=patient, case_id=case,
+                              question_id=question, **evidence.COMMON, request_key=key,
+                              citation=command["citation"], metadata_sha256=command["expected_metadata_sha256"],
+                              source_snapshot_contract=command["source_snapshot_contract"],
+                              source_snapshot_sha256=command["expected_source_snapshot_sha256"],
+                              preflight_sha256=command["expected_preflight_sha256"]))
+
+        def write_directly(conn):
+            # Submit the same new command to both schemas, including its exact
+            # rights decision and observation foreign key. Force deferred checks.
+            params = {"prior": receipt["link_id"], "link": link, "replacements": json.dumps(
+                {"link_id": link, "request_key": key, "intent_sha256": intent})}
+            conn.execute(text("""
+                INSERT INTO investigation.laboratory_citation_anchors
+                    (link_id,question_id,source_id,observation_reference,rights_decision_id)
+                SELECT :link,question_id,source_id,observation_reference,rights_decision_id
+                FROM investigation.laboratory_citation_anchors WHERE link_id=:prior
+            """), params)
+            conn.execute(text("""
+                INSERT INTO investigation.question_evidence_links
+                SELECT (jsonb_populate_record(NULL::investigation.question_evidence_links,
+                    to_jsonb(l) || CAST(:replacements AS jsonb))).*
+                FROM investigation.question_evidence_links l WHERE link_id=:prior
+            """), params)
+            conn.execute(text("SET CONSTRAINTS ALL IMMEDIATE"))
+            self.assertEqual(conn.execute(text("SELECT count(*) FROM investigation.question_evidence_links "
+                                               "WHERE link_id=:link"), params).scalar_one(), 1)
+
+        migrate(self.admin, "upgrade", SCHEMA_REVISION)
+        # A fresh new key is valid even for an anchor saved before upgrade.
+        with self.engine.connect() as conn:
+            write_directly(conn)
+            conn.rollback()
+
+        count_sources = text("SELECT count(*) FROM clinical_source.source_versions WHERE case_id=:case")
+        with self.engine.connect().execution_options(isolation_level="REPEATABLE READ") as conn:
+            at_start = conn.execute(count_sources, {"case": case}).scalar_one()
+            # Separate connection and committed import after the writer's snapshot.
+            with self.services() as registry:
+                PostgresSourceVersions(registry).import_original(
+                    patient, case, newer.encode(), **evidence.OPTIONS)
+            self.assertEqual(conn.execute(count_sources, {"case": case}).scalar_one(), at_start)
+            with self.assertRaisesRegex(DBAPIError, "OI-LAB-CITATION-READ-COMMITTED-REQUIRED"):
+                write_directly(conn)
+        with self.services() as registry:
+            owner = PostgresLaboratoryQuestionEvidence(registry)
+            self.assertEqual(owner.links(*scope, **evidence.OPTIONS)["source_context_state"],
+                             "source_reassessment_required")
+            with self.assertRaises(PatientRegistryConflict):
+                owner.create_link(*scope, **{**command, "request_key": key}, **evidence.OPTIONS)
+
+        migrate(self.admin, "downgrade", "0020_ehr_lab_convergence")
+        # Demonstrate the old schema accepted this command, then roll it back.
+        with self.engine.connect() as conn:
+            with conn.begin_nested() as control:
+                write_directly(conn)
+                control.rollback()
+        before = self.snapshot()
+        migrate(self.admin, "upgrade", SCHEMA_REVISION)
+        with self.assertRaisesRegex(DBAPIError, "OI-LAB-CITATION-CASE-SOURCES-CHANGED"):
+            with self.engine.begin() as conn:
+                write_directly(conn)
+        self.assertEqual(self.snapshot(before[0])[0], before[0])
+        with self.services() as registry:
+            retry = PostgresLaboratoryQuestionEvidence(registry).create_link(*scope, **command, **evidence.OPTIONS)
+            self.assertTrue(retry["duplicate"])
+            self.assertEqual(retry["link_id"], receipt["link_id"])
 
     def upgrade(self, expected_heads):
         self.assertEqual(self.heads(), expected_heads)
