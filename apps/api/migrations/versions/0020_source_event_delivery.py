@@ -148,7 +148,7 @@ def upgrade():
             RAISE EXCEPTION 'OI-DELIVERY-TERMINAL-REVISION'; END IF;
         IF NEW.state='running' THEN
             IF OLD.state NOT IN('queued','running') OR NEW.attempt_count IS DISTINCT FROM OLD.attempt_count+1
-               OR NEW.failure_count IS DISTINCT FROM OLD.failure_count+CASE WHEN OLD.state='running' THEN 1 ELSE 0 END
+               OR NEW.failure_count IS DISTINCT FROM OLD.failure_count+(CASE WHEN OLD.state='running' THEN 1 ELSE 0 END)
                OR NEW.failure_count>=3 OR NEW.lease_token IS NULL OR NEW.lease_token IS NOT DISTINCT FROM OLD.lease_token
                OR NEW.lease_expires_at IS NULL OR NEW.lease_expires_at<=stamp OR NEW.lease_expires_at>stamp+interval '300 seconds'
                OR (OLD.state='running' AND OLD.lease_expires_at>stamp)
@@ -162,7 +162,7 @@ def upgrade():
                 WHERE delivery_id=OLD.delivery_id AND attempt_count=OLD.attempt_count;
             IF FOUND THEN
                 IF OLD.lease_expires_at<=stamp OR receipt.claim_token<>OLD.lease_token
-                   OR NEW.failure_count<>0 OR NEW.state<>CASE WHEN receipt.has_more THEN 'queued' ELSE 'delivered' END THEN
+                   OR NEW.failure_count<>0 OR NEW.state<>(CASE WHEN receipt.has_more THEN 'queued' ELSE 'delivered' END) THEN
                     RAISE EXCEPTION 'OI-DELIVERY-ACK'; END IF;
             ELSE
                 IF NEW.failure_count IS DISTINCT FROM OLD.failure_count+1
