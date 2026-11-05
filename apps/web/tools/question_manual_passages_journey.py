@@ -60,8 +60,9 @@ def exercise(cd,patient_id,token,credentials,write_grants,artifacts):
         evidence_sha256=ev['sha256'],rights_sha256=ev['rights_sha256'],expected_source_snapshot_sha256=world['snapshot_fingerprint'],
         expected_preflight_sha256=preflight['preflight_sha256'],quote='invented violet label uncertain',relation='unknown',applicability='unknown',
         rationale='This authored example requires independent source and relevance verification.'))
-    cd.evaluate("""(()=>{const original=window.fetch;window.__manualJourney={reads:[],posts:[],lose:true,restore:()=>{window.fetch=original;}};
+    cd.evaluate("""(()=>{const original=window.fetch;window.__manualJourney={reads:[],posts:[],taskWrites:0,lose:true,restore:()=>{window.fetch=original;}};
         window.fetch=async(input,init)=>{const path=new URL(input instanceof Request?input.url:input,location.href).pathname;
+        if(path.endsWith('/followthrough')&&init?.method==='POST')window.__manualJourney.taskWrites++;
         const response=await original.call(window,input,init);
         if(path.endsWith('/manual-passages')){const body=await response.clone().json();
             if(init?.method==='POST'){window.__manualJourney.posts.push({body:String(init.body),status:response.status,response:body});
@@ -83,6 +84,12 @@ def exercise(cd,patient_id,token,credentials,write_grants,artifacts):
         cd.wait("document.querySelector('[data-testid=manual-context-status]')?.textContent.includes('inspected') || Boolean(document.querySelector('[data-testid=manual-context-retry]'))",'fresh manual context or scoped recovery')
     try:
         open_workspace()
+        from followthrough_journey import fill
+        row='.question-items li[data-question-id="'+question_id+'"]'
+        click(row+' [data-testid=followthrough-open-create]')
+        cd.wait('Boolean(document.querySelector('+json.dumps(row+' [data-testid=followthrough-title]')+'))','manual question follow-up draft')
+        draft_title='Unsent fictional manual-passage follow-up'
+        fill(cd,row+' [data-testid=followthrough-title]',draft_title)
         click('[data-testid=manual-context-documents]')
         cd.wait("document.querySelectorAll('[data-testid=manual-context-document]').length===2",'saved text and PDF choices')
         for document_id,_,_ in fixtures:
@@ -93,6 +100,22 @@ def exercise(cd,patient_id,token,credentials,write_grants,artifacts):
         assert cd.evaluate("document.querySelectorAll('[data-testid=manual-context-selected] blockquote').length")==2
         click('[data-testid=manual-context-save]')
         cd.wait("Boolean(document.querySelector('[data-testid=manual-context-retry]'))",'lost committed response retains exact intent')
+        navigate('Overview')
+        agenda='[data-testid=second-opinion-agenda-item][data-question-id="'+question_id+'"]'
+        cd.wait('Boolean(document.querySelector('+json.dumps(agenda)+'))','same canonical question in preparation')
+        assert cd.evaluate('document.querySelector('+json.dumps(agenda)+').textContent.includes('+json.dumps(preflight['question'])+')')
+        click('[data-testid=continuity-followthrough-refresh]')
+        cd.wait('Boolean(document.querySelector('+json.dumps(agenda+' [data-testid=second-opinion-question-work-empty]')+'))','independently authorized empty task history')
+        assert not cd.evaluate("document.querySelector('[data-testid=second-opinion-preparation]').textContent.includes("+json.dumps(draft_title)+')')
+        assert cd.evaluate("document.querySelector('[data-testid=second-opinion-context-scope]').textContent.includes('separate freshness check')")
+        assert cd.evaluate('window.__manualJourney.taskWrites')==0
+        screenshot=cd.command('Page.captureScreenshot',{'format':'png'})
+        (artifacts/'manual-context-preparation.png').write_bytes(base64.b64decode(screenshot['data']))
+        navigate('Investigations')
+        cd.wait('Boolean(document.querySelector('+json.dumps(row)+'))','saved question after preparation')
+        click(row+' [data-testid=authored-evidence-open]')
+        cd.wait("Boolean(document.querySelector('[data-testid=manual-context-retry]'))",'navigation retains exact pending passage command')
+        assert cd.evaluate('document.querySelector('+json.dumps(row+' [data-testid=followthrough-title]')+').value')==draft_title
         click('[data-testid=evidence-refresh]')
         cd.wait("Boolean(document.querySelector('[data-testid=manual-context-retry]'))",'ordinary evidence refresh retains the exact uncertain passage intent')
         credentials[0]['actions'].remove('question_create');write_grants()
@@ -215,6 +238,8 @@ def exercise(cd,patient_id,token,credentials,write_grants,artifacts):
             same_question_followthrough_task_id=task_receipt['task_id'],
             task_exact_retry_one_record=True,manual_correction_preserves_task_history=True,
             independently_authorized_review_and_task_survive_original_denial=True,
+            preparation_navigation_preserves_retry=True,unsent_task_excluded_from_agenda=True,
+            navigation_task_writes=cd.evaluate('window.__manualJourney.taskWrites'),
             structured_assertion_count=1,clinical_approval=False),indent=2))
         print('PASS QUESTION MANUAL CONTEXT + HANDOFF: actual text/PDF selection, one canonical question, exact retry, immutable report/download, independent Review return and task, correction invalidation and original-read denial')
     finally:
