@@ -90,3 +90,72 @@ class ManualTaskRetryAuditTests(unittest.TestCase):
                     after["sequences"][SEQUENCE]["last_value"] += 1
                 with self.assertRaises(AssertionError):
                     probe.assert_retry_audit(self.before, after, expected)
+
+    def test_rejects_business_row_numeric_type_drift(self):
+        for replacement in (3.0,):
+            with self.subTest(replacement=replacement):
+                after = deepcopy(self.after)
+                after["tables"]["coordination.question_followthrough_events"][0]["revision"] = replacement
+                with self.assertRaises(AssertionError):
+                    probe.assert_retry_audit(self.before, after, self.expected)
+
+    def test_rejects_boolean_integer_substitution_in_dependency(self):
+        before, after = deepcopy(self.before), deepcopy(self.after)
+        before["tables"][DEPENDENCIES][0]["synthetic"] = True
+        after["tables"][DEPENDENCIES][0]["synthetic"] = 1
+        with self.assertRaises(AssertionError):
+            probe.assert_retry_audit(before, after, self.expected)
+
+    def test_rejects_type_drift_in_historical_event(self):
+        after = deepcopy(self.after)
+        after["tables"][EVENTS][0]["id"] = 1.0
+        with self.assertRaises(AssertionError):
+            probe.assert_retry_audit(self.before, after, self.expected)
+
+    def test_rejects_type_drift_in_new_access_metadata(self):
+        for replacement in (True, 1.0):
+            with self.subTest(replacement=replacement):
+                expected, after = deepcopy(self.expected), deepcopy(self.after)
+                expected[-1]["metadata_json"]["source_count"] = 1
+                after["tables"][EVENTS][-1]["metadata_json"]["source_count"] = replacement
+                with self.assertRaises(AssertionError):
+                    probe.assert_retry_audit(self.before, after, expected)
+
+    def test_rejects_type_drift_in_new_event_identifier(self):
+        after = deepcopy(self.after)
+        after["tables"][EVENTS][-1]["id"] = 3.0
+        with self.assertRaises(AssertionError):
+            probe.assert_retry_audit(self.before, after, self.expected)
+
+    def test_rejects_type_drift_in_sequence_state(self):
+        for sequence, field, replacement in (
+            (SEQUENCE, "last_value", 3.0),
+            (SEQUENCE, "is_called", 1),
+            ("other.sequence", "last_value", 7.0),
+            ("other.sequence", "is_called", 1),
+        ):
+            with self.subTest(sequence=sequence, field=field):
+                after = deepcopy(self.after)
+                after["sequences"][sequence][field] = replacement
+                with self.assertRaises(AssertionError):
+                    probe.assert_retry_audit(self.before, after, self.expected)
+
+    def test_rejects_type_drift_in_snapshot_properties(self):
+        for replacement in (True, 1.0):
+            with self.subTest(replacement=replacement):
+                after = deepcopy(self.after)
+                after["sequence_properties"][0]["increment_by"] = replacement
+                with self.assertRaises(AssertionError):
+                    probe.assert_retry_audit(self.before, after, self.expected)
+
+    def test_rejects_type_drift_when_retry_adds_no_events(self):
+        after = deepcopy(self.before)
+        after["sequences"][SEQUENCE]["is_called"] = 1
+        with self.assertRaises(AssertionError):
+            probe.assert_retry_audit(self.before, after, [])
+
+    def test_accepts_equivalent_json_object_key_order(self):
+        after = deepcopy(self.after)
+        after["tables"][DEPENDENCIES][0] = dict(reversed(list(after["tables"][DEPENDENCIES][0].items())))
+        after["tables"][EVENTS][-1]["metadata_json"] = dict(reversed(list(after["tables"][EVENTS][-1]["metadata_json"].items())))
+        probe.assert_retry_audit(self.before, after, self.expected)

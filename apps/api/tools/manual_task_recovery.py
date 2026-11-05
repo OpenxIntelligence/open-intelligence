@@ -21,17 +21,27 @@ ORIGINAL = (
 )
 
 
+def _exact_json(value):
+    """Compare JSON values without Python's bool/int/float coercion."""
+    try:
+        return json.dumps(value, sort_keys=True, ensure_ascii=False,
+                          separators=(",", ":"), allow_nan=False)
+    except (TypeError, ValueError) as exc:
+        raise AssertionError("Recovery snapshot is not finite JSON") from exc
+
+
 def assert_retry_audit(before, after, expected):
     """Allow exactly the scoped access audits; reject any business mutation."""
     events = "identity.identity_domain_events"
     sequence = "identity.identity_domain_events_id_seq"
     assert before.keys() == after.keys() and before["tables"].keys() == after["tables"].keys()
     for table in before["tables"].keys() - {events}:
-        assert before["tables"][table] == after["tables"][table], "Retry changed " + table
+        assert _exact_json(before["tables"][table]) == _exact_json(after["tables"][table]), "Retry changed " + table
     old = {row["id"]: row for row in before["tables"][events]}
     current = {row["id"]: row for row in after["tables"][events]}
     assert len(old) == len(before["tables"][events]) and len(current) == len(after["tables"][events])
-    assert all(current.get(key) == row for key, row in old.items()), "Retry changed historical events"
+    assert all(_exact_json(current.get(key)) == _exact_json(row) for key, row in old.items()), \
+        "Retry changed historical events"
     fresh = sorted((row for key, row in current.items() if key not in old), key=lambda row: row["id"])
     assert len(fresh) == len(expected), "Retry emitted unexpected business/access events"
     old_receipts = {row["metadata_json"].get("receipt_id") for row in old.values()}
@@ -41,23 +51,25 @@ def assert_retry_audit(before, after, expected):
         receipt = metadata.get("receipt_id")
         assert type(receipt) is str and re.fullmatch(r"ACCESS-[A-F0-9]{32}", receipt)
         assert receipt not in old_receipts, "Retry reused an old access receipt"
-        assert {"patient_id": actual["patient_id"], "event_type": actual["event_type"],
-                "metadata_json": {k: v for k, v in metadata.items() if k != "receipt_id"}} == wanted
+        assert _exact_json({"patient_id": actual["patient_id"], "event_type": actual["event_type"],
+                "metadata_json": {k: v for k, v in metadata.items() if k != "receipt_id"}}) == _exact_json(wanted)
         receipts.append(receipt)
     # A passage replay and its surrounding source preparation share one receipt.
     assert len(set(receipts)) == (1 if expected else 0)
     assert before["sequences"].keys() == after["sequences"].keys()
     for key in before["sequences"].keys() - {sequence}:
-        assert before["sequences"][key] == after["sequences"][key], "Retry moved a business sequence"
+        assert _exact_json(before["sequences"][key]) == _exact_json(after["sequences"][key]), \
+            "Retry moved a business sequence"
     if expected:
         previous = before["sequences"][sequence]
         start = previous["last_value"] + int(previous["is_called"])
-        assert [row["id"] for row in fresh] == list(range(start, start + len(expected)))
-        assert after["sequences"][sequence] == {"last_value": fresh[-1]["id"], "is_called": True}
+        assert _exact_json([row["id"] for row in fresh]) == _exact_json(list(range(start, start + len(expected))))
+        assert _exact_json(after["sequences"][sequence]) == _exact_json(
+            {"last_value": fresh[-1]["id"], "is_called": True})
     else:
-        assert before["sequences"][sequence] == after["sequences"][sequence]
+        assert _exact_json(before["sequences"][sequence]) == _exact_json(after["sequences"][sequence])
     for key in before.keys() - {"tables", "sequences"}:
-        assert before[key] == after[key]
+        assert _exact_json(before[key]) == _exact_json(after[key])
 
 
 def verify_manual_task_restore(*, request, snapshot, restore, command, ready,
