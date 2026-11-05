@@ -72,3 +72,21 @@ This is synthetic frontend software verification, not independent usability,
 complete WCAG, cross-browser or clinical validation. It does not qualify the
 separate backend recovery, identity/consent, owner/security/rights or release
 gates. Draft, unmerged and undeployed.
+
+## Window resize during active reading
+
+Consolidation #481 brought the #473 reading workflow into main. Its browser
+coverage enters the reader after each viewport change. Follow-up #505 exercises
+a different sequence on main revision `62e218e1e2bd6996bb126fcc1ea956fcf18199e6`.
+The user presses PageDown, keeps focus in the reader and changes the window
+height from 844 to 256 pixels and back at a fixed width of 390 pixels.
+
+[Baseline run 41965828560](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41965828560)
+reproduced the failure. With the window 256 pixels high, the focused reader
+occupied y=360.5–544.5 while retaining its internal scroll position of 339.
+The workspace now measures the focused reader after applying its header inset
+and scrolls the surrounding page when the reader falls outside the visible area.
+The connected browser test checks focus, internal reading position, full
+visibility, confirmation and request counts through both height changes.
+[PR #505](https://github.com/OpenxIntelligence/open-intelligence/pull/505)
+records the hosted results for this follow-up.
