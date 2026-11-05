@@ -24,8 +24,13 @@ export function ReviewedDocumentWorkspace({session,patientId,caseId}:{session:Re
  useEffect(()=>{setFindings(state.document?.revisions.at(-1)?.findings??[]);setConfirmed(false);setReason('');setQuote('');setLine(1);},[state.preview,state.document]);
  const preview:Preview|null=state.preview??state.document?.preview??null;
  const locked=['loading','saving','uncertain'].includes(state.phase)||downloading;
+ function resetOriginal(){
+  client.discard();setUpload(null);setFindings([]);setConfirmed(false);setLocalMessage('');
+  setDocumentId('');setKind('other');setEventDate('');setIssuedDate('');setAmends('');
+  setLine(1);setQuote('');setKey('finding-one');setClassification('not-assessed');setReason('');
+ }
  async function choose(file?:File){
-  if(locked)return;setPasted('');const generation=++fileGeneration.current;client.discard();setUpload(null);setLocalMessage('');setFindings([]);
+  if(locked)return;setPasted('');const generation=++fileGeneration.current;resetOriginal();
   if(!file)return;
   try{if(file.size<1||file.size>65536||!/\.(txt|pdf)$/i.test(file.name))throw Error('Choose a nonempty .txt or .pdf file up to 64 KiB.');
    const bytes=new Uint8Array(await file.arrayBuffer());if(generation!==fileGeneration.current)return;
@@ -34,8 +39,7 @@ export function ReviewedDocumentWorkspace({session,patientId,caseId}:{session:Re
  }
  function editPaste(text:string){
   fileGeneration.current++;
-  client.discard();
-  setUpload(null);setFindings([]);setConfirmed(false);setLocalMessage('');setPasted(text);
+  resetOriginal();setPasted(text);
   if(fileInput.current)fileInput.current.value='';
  }
  async function previewPaste(){
@@ -72,7 +76,7 @@ export function ReviewedDocumentWorkspace({session,patientId,caseId}:{session:Re
   <p>Preview a fictional record, confirm its case and select exact passages. Originals and correction history stay preserved. PDF extraction supports small text-based files; no OCR or clinical interpretation.</p>
   <p className="small">Case <code>{caseId}</code> · Patient <code>{patientId}</code></p>
   <div className="actions"><button disabled={locked} onClick={()=>void client.load()}>Refresh reviewed documents</button>
-   <button disabled={state.phase==='saving'} onClick={()=>{fileGeneration.current++;client.discard();setPasted('');setUpload(null);setFindings([]);setLocalMessage('');if(fileInput.current)fileInput.current.value='';}}>Discard local selection or uncertain intent</button></div>
+   <button disabled={state.phase==='saving'} onClick={()=>{fileGeneration.current++;resetOriginal();setPasted('');if(fileInput.current)fileInput.current.value='';}}>Discard local selection or uncertain intent</button></div>
   {state.documents.length>0&&<ul>{state.documents.map(doc=><li key={doc.source_id}><button disabled={locked} onClick={()=>void client.open(doc.source_id)}>{doc.document_id} · v{doc.version} · {doc.state}</button> <span>{doc.filename}</span></li>)}</ul>}
   <label>Fictional text or PDF file<input ref={fileInput} data-testid="reviewed-file" type="file" accept=".txt,.pdf,text/plain,application/pdf" disabled={locked} onChange={e=>void choose(e.target.files?.[0])}/></label>
   <button data-testid="preview-reviewed" disabled={!upload||!!pasted||locked} onClick={()=>void client.preview(upload)}>Preview selected file without saving</button>
