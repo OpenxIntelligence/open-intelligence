@@ -22,9 +22,9 @@ import {decodeReviewQueue,decodeReviewReturnResult,validReturnReason,FICTIONAL_R
 import type {ReviewQueue,ReviewReturnResult} from './review-queue-view.js';
 import {canPrepareSourceBrief,decodeSourceBrief} from './source-brief.js';
 import type {SourceBrief} from './source-brief.js';
-import {canCreateFollowthrough,decodeFollowthrough,decodeFollowthroughReceipt,
+import {currentFollowthroughQuestion,followthroughLaboratoryAnchor,matchesFollowthroughDraft,FOLLOWTHROUGH_V2_MEDIA,decodeFollowthrough,decodeFollowthroughReceipt,
   validFollowthroughDraft,validFollowthroughTransition,followthroughTransitionContext,FOLLOWTHROUGH_TRANSITIONS} from './followthrough-view.js';
-import type {FollowthroughDraft,FollowthroughUnsentDraft,FollowthroughIntent,FollowthroughList,
+import type {FollowthroughFamily,FollowthroughDraft,FollowthroughUnsentDraft,FollowthroughIntent,FollowthroughList,
   FollowthroughReceipt,FollowthroughTransition,FollowthroughTransitionFields,FollowthroughUnsentTransition} from './followthrough-view.js';
 import {decodeQuestionEvidenceSearch,decodeQuestionEvidenceLinks,decodeQuestionEvidenceReceipt,
   laboratoryEvidenceAnchor,matchesLaboratoryEvidenceAnchor,unwrapLaboratoryEvidence,validEvidenceQuery} from './question-evidence-view.js';
@@ -137,8 +137,10 @@ function exact(value: unknown, fields: string[]): value is Record<string,unknown
     Object.keys(value).length===fields.length && fields.every(k=>Object.hasOwn(value,k));
 }
 function boundedKey(value: unknown): value is string { return typeof value==='string' && KEY.test(value); }
-async function json(response: Response, limit=65536): Promise<unknown> {
-  if(!/^application\/json(?:\s*;|$)/i.test(response.headers.get('Content-Type') || '')) throw Error('contract');
+async function json(response: Response, limit=65536, alternateMediaType?:string): Promise<unknown> {
+  const type=response.headers.get('Content-Type')??'';
+  if(!/^application\/json(?:\s*;|$)/i.test(type)&&
+     (!alternateMediaType||type.split(';',1)[0].trim().toLowerCase()!==alternateMediaType))throw Error('contract');
   return JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(await boundedBytes(response,limit)));
 }
 async function boundedBytes(response:Response,limit:number):Promise<Uint8Array>{
@@ -1044,7 +1046,11 @@ export class RegistrySession {
       if(response.status===403||response.status===404){this.#denyLaboratoryQuestionAccess('history');return;}
       if(response.status!==200)throw Error('unavailable');
       const history=readLabQuestionList(await json(response,1048576),model);if(!current())return;
-      this.#publish({labQuestionHistory:history,labQuestionListPhase:'ready',labQuestionListMessage:'Saved questions checked against current access.'});
+      this.#publish({labQuestionHistory:history,labQuestionListPhase:'ready',
+        followthroughDrafts:Object.freeze(Object.fromEntries(Object.entries(this.#state.followthroughDrafts)
+          .filter(([id,draft])=>draft.patient_id===model.patient_id&&draft.case_id===model.case_id&&
+            (!draft.laboratoryAnchor||history.questions.some(row=>row.question_id===id&&matchesFollowthroughDraft(draft,row)))))),
+        labQuestionListMessage:'Saved questions checked against current access.'});
     }catch{if(current())this.#publish({...this.#resetLabQuestions(),labQuestionListPhase:'error',labQuestionListMessage:'Saved questions are unavailable or the source changed. Refresh Journey and check access again.'});}
     finally{clearTimeout(timer);this.#controllers.delete(control);}
   }
@@ -1293,9 +1299,8 @@ export class RegistrySession {
       const pendingEvidence=this.#state.evidenceLinkIntent;
       this.#publish({questions:history.questions,questionsAccessReceiptId:history.access_receipt_id,
         followthroughDrafts:Object.freeze(Object.fromEntries(Object.entries(this.#state.followthroughDrafts)
-          .filter(([id,draft])=>draft.patient_id===patientId&&draft.case_id===caseId&&history.questions.some(item=>
-            item.question_id===id&&item.preflight_sha256===draft.preflight_sha256&&
-            item.source_snapshot_sha256===draft.source_snapshot_sha256&&item.source_context_state==='current_unreviewed_question')))),
+          .filter(([id,draft])=>draft.patient_id===patientId&&draft.case_id===caseId&&
+            (draft.laboratoryAnchor||history.questions.some(item=>item.question_id===id&&matchesFollowthroughDraft(draft,item)))))),
         ...(pendingEvidence&&!pendingEvidence.laboratoryAnchor&&!history.questions.some(item=>item.question_id===pendingEvidence.question_id)?this.#resetEvidence():{}),
         questionsCaseId:caseId,questionListPhase:'ready',
         questionListMessage:history.questions.length?
@@ -1522,7 +1527,8 @@ export class RegistrySession {
     this.#publish({followthroughPhase:'loading',followthroughMessage:'Checking separate task, question and source permissions…'});
     try{
       const url='/v1/patients/'+encodeURIComponent(patientId)+'/cases/'+encodeURIComponent(caseId)+'/followthrough';
-      const res=await this.transport(url,this.#init(control));
+      const init=this.#init(control);init.headers={...init.headers,Accept:FOLLOWTHROUGH_V2_MEDIA+', application/json;q=0.9'};
+      const res=await this.transport(url,init);
       if(!current())return;
       if(res.status===401){this.#httpError(401);return;}
       if(res.status!==200){
@@ -1530,7 +1536,7 @@ export class RegistrySession {
           followthroughPhase:'error',followthroughMessage:'Recorded work is unavailable under current permissions. Prior task content is cleared.'});return;
       }
       if(control.signal.aborted)throw Error('task timeout');
-      const value=decodeFollowthrough(await json(res,4194304),patientId,caseId);
+      const value=decodeFollowthrough(await json(res,4194304,FOLLOWTHROUGH_V2_MEDIA),patientId,caseId);
       if(!current())return;if(control.signal.aborted)throw Error('task timeout');
       this.#publish({followthrough:value,followthroughPhase:'ready',
         followthroughTransitionDrafts:Object.freeze(Object.fromEntries(Object.entries(this.#state.followthroughTransitionDrafts)
@@ -1554,16 +1560,13 @@ export class RegistrySession {
   }
 
   /** Memory only; no command or request key is allocated until explicit submission. */
-  editFollowthroughDraft(questionId:string,fields:FollowthroughDraft):void{
+  editFollowthroughDraft(questionId:string,fields:FollowthroughDraft,family:FollowthroughFamily='text'):void{
     if(this.#followthroughBlocked())return;
-    const patientId=this.#state.patient?.patient_id,model=this.#state.worldModel;
-    const question=this.#state.questions?.find(item=>item.question_id===questionId);
-    if(!this.#token||!patientId||this.#state.phase!=='ready'||this.#uploading||
-       this.#state.worldPhase!=='ready'||this.#state.questionListPhase!=='ready'||!model||!question||
-       this.#state.questionsCaseId!==model.case_id||!canCreateFollowthrough(question,model)||
-       !this.#state.cases?.some(row=>row.case_id===model.case_id&&row.status==='active'))return;
-    const draft=Object.freeze({patient_id:patientId,case_id:model.case_id,
+    const model=this.#state.worldModel,question=currentFollowthroughQuestion(this.#state,questionId,family);
+    if(!this.#token||this.#uploading||!model||!question)return;
+    const draft=Object.freeze({patient_id:model.patient_id,case_id:model.case_id,
       source_snapshot_sha256:question.source_snapshot_sha256,preflight_sha256:question.preflight_sha256,
+      ...('observation_reference' in question?{laboratoryAnchor:followthroughLaboratoryAnchor(question)}:{}),
       fields:Object.freeze({...fields})});
     this.#publish({followthroughCaseId:model.case_id,
       followthroughDrafts:Object.freeze({...this.#state.followthroughDrafts,[questionId]:draft})});
@@ -1575,15 +1578,10 @@ export class RegistrySession {
     this.#publish({followthroughDrafts:Object.freeze(drafts)});
   }
 
-  async createFollowthrough(questionId:string,draft:FollowthroughDraft):Promise<void>{
+  async createFollowthrough(questionId:string,draft:FollowthroughDraft,family:FollowthroughFamily='text'):Promise<void>{
     if(this.#followthroughBlocked())return;
-    const patientId=this.#state.patient?.patient_id,model=this.#state.worldModel;
-    const question=this.#state.questions?.find(item=>item.question_id===questionId);
-    if(!patientId||!this.#token||this.#state.phase!=='ready'||this.#uploading||
-       this.#state.worldPhase!=='ready'||this.#state.questionListPhase!=='ready'||
-       !model||!question||this.#state.questionsCaseId!==model.case_id||
-       !canCreateFollowthrough(question,model)||!validFollowthroughDraft(draft)||
-       !this.#state.cases?.some(row=>row.case_id===model.case_id&&row.status==='active')){
+    const model=this.#state.worldModel,question=currentFollowthroughQuestion(this.#state,questionId,family);
+    if(!this.#token||this.#uploading||!model||!question||!validFollowthroughDraft(draft)){
       this.#publish({followthroughWritePhase:'error',followthroughReceipt:null,followthroughWriteMessage:
         'Use a current saved question, a 3–160 character title, a 3–600 character reason, and a valid due date or review trigger.'});return;
     }
@@ -1591,7 +1589,7 @@ export class RegistrySession {
       detail:draft.detail,owner_label:draft.owner_label,due_date:draft.due_date,review_trigger:draft.review_trigger,
       reason:draft.reason,source_snapshot_contract:'oi.pg-source-world-model/1' as const,
       expected_source_snapshot_sha256:question.source_snapshot_sha256,expected_preflight_sha256:question.preflight_sha256});
-    await this.#writeFollowthrough(Object.freeze({kind:'create',patient_id:patientId,case_id:model.case_id,question_id:questionId,body}));
+    await this.#writeFollowthrough(Object.freeze({kind:'create',patient_id:model.patient_id,case_id:model.case_id,question_id:questionId,body}));
   }
 
   editFollowthroughTransitionDraft(taskId:string,fields:FollowthroughTransitionFields):void{

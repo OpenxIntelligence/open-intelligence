@@ -52,16 +52,17 @@ def fictional_bundle(*, amended=False):
 
 
 def exercise(cd, patient_id, directory, token, credentials, write_grants, artifacts):
-    grants = {'case_binding_create', 'case_binding_read', 'source_import', 'source_read', 'source_original_read', 'question_read', 'question_create', 'composer_context_read', 'evidence_read', 'evidence_link', 'review_packet_read'}
+    grants = {'case_binding_create', 'case_binding_read', 'source_import', 'source_read', 'source_original_read', 'question_read', 'question_create', 'composer_context_read', 'evidence_read', 'evidence_link', 'review_packet_read',
+              'followthrough_create', 'followthrough_read', 'followthrough_update'}
     credentials[0]['actions'] = sorted(set(credentials[0]['actions']) | grants)
     write_grants()
     root = '/v1/patients/' + patient_id
     source_path = '/cases/' + CASE + '/sources'
 
-    def operator(path, payload=None):
+    def operator(path, payload=None, *, accept='application/json'):
         request = Request('http://127.0.0.1:8000' + root + path,
                           data=None if payload is None else json.dumps(payload).encode(),
-                          headers={'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'})
+                          headers={'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json', 'Accept': accept})
         with urlopen(request, timeout=10) as response:
             return json.load(response)
 
@@ -123,6 +124,9 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
         if(laboratory)window.__oiLabWrites.push(JSON.parse(init.body));
         const response=await window.__oiLabFetch(input,init);
         const path=String(input);
+        if(init.method==='POST' && path.endsWith('/followthrough') && response.status===201){
+          window.__oiLabTaskReceipt=await response.clone().json();
+        }
         if(path.includes('/composer/laboratory-questions/')&&(path.endsWith('/evidence-links')||path.endsWith('/evidence-search'))){
           const item={path,method:init.method,body:init.body??null,status:response.status,result:await response.clone().json()};
           window.__oiLabCatalog.push(item);
@@ -451,6 +455,51 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     draft_question(first['source_id'], 'ABSENT', 'Why was the selected result not performed?')
     assert not cd.evaluate("Boolean(document.querySelector('[data-testid=lab-question-receipt]'))"), 'Editing clears previous receipt'
     assert operator(questions_path)['questions'] == []
+    # A saved question about an Observation can own actual coordination work.
+    # Keep the source lines empty for laboratory tasks; the Observation is the locator.
+    task_title = 'Request the original laboratory report for the next visit'
+    click(cd, control('followthrough-open-create'))
+    fill(cd, control('followthrough-title'), task_title)
+    fill(cd, control('followthrough-trigger'), 'When the laboratory issues a correction')
+    fill(cd, control('followthrough-reason'), 'Prepare the saved specimen question for discussion.')
+    click(cd, control('followthrough-create'))
+    cd.wait('Boolean(window.__oiLabTaskReceipt)', 'laboratory task committed through the patient workspace')
+    task_receipt = cd.evaluate('window.__oiLabTaskReceipt')
+    assert task_receipt['question_id'] == question_id and task_receipt['revision'] == 1
+    task_id = task_receipt['task_id']
+    task_card = '[data-testid=followthrough-task][data-task-id="' + task_id + '"]'
+    task_dom = 'document.querySelector(' + json.dumps(task_card) + ')'
+    task_list_path = '/cases/' + CASE + '/followthrough'
+    task_media = 'application/vnd.open-intelligence.followthrough.v2+json'
+
+    def open_recorded_task():
+        navigate('Investigations')
+        click(cd, '[data-testid=followthrough-refresh]')
+        cd.wait(task_dom + '?.textContent.includes(' + json.dumps(task_title) + ')',
+                'exact laboratory work item reopened from the case list')
+
+    def task_at_revision(revision):
+        cd.wait(task_dom + '?.dataset.revision===' + json.dumps(str(revision)),
+                'rendered laboratory follow-up revision ' + str(revision))
+        packet = operator(task_list_path, accept=task_media)
+        assert packet['contract'] == 'oi.pg-question-followthrough/2'
+        task, = packet['tasks']
+        assert task['task_id'] == task_id and task['question_id'] == question_id
+        assert task['source_line'] is None and task['revision'] == revision
+        assert all(task[key] == value for key, value in expected_anchor.items())
+        return task
+
+    open_recorded_task()
+    before = task_at_revision(1)
+    assert before['status'] == 'created' and not before['needs_recheck']
+    assert committed['observation_reference'] in cd.evaluate(task_dom + '.textContent')
+    assert operator(task_list_path)['tasks'] == [], 'legacy text-only list preserves its contract'
+    for action, revision in [('assign', 2), ('acknowledge', 3)]:
+        if action == 'assign':
+            fill(cd, task_card + ' [data-testid=followthrough-transition-owner]', 'Fictional coordinator')
+        fill(cd, task_card + ' [data-testid=followthrough-transition-reason]', 'Record this coordination step.')
+        click(cd, task_card + ' [data-testid=followthrough-' + action + ']')
+        task_at_revision(revision)
     records()
     amended = fictional_bundle(amended=True)
     select(amended, 'fictional-lab-amended.json')
@@ -507,6 +556,26 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
         if fixture_rights.rights_revoked:
             fixture_rights.set_fixture_rights(False)
     print('PASS LABORATORY CITATIONS: exact Observation search, one durable link, lost response recovery, original anchor after amendment, withdrawn metadata withheld from history and report.')
+    assert cd.evaluate('document.querySelector(' + json.dumps(control('followthrough-open-create')) + ').disabled')
+    open_recorded_task()
+    after = task_at_revision(3)
+    assert after['needs_recheck'] and after['source_context_state'] == 'source_reassessment_required'
+    assert [event['status'] for event in after['history']] == ['created', 'assigned', 'acknowledged']
+    cd.wait('Boolean(' + task_dom + '?.querySelector("[data-testid=followthrough-recheck]"))',
+            'amendment requires the original task to be rechecked')
+    fill(cd, task_card + ' [data-testid=followthrough-transition-reason]', 'This original now needs review.')
+    complete = task_dom + '.querySelector("[data-testid=followthrough-complete]")'
+    assert cd.evaluate('!(' + complete + ') || ' + complete + '.matches(":disabled")')
+    (artifacts / 'laboratory-task-reassessment.json').write_text(json.dumps({
+        'synthetic': True, 'task_id': task_id, 'question_id': question_id, 'origin': expected_anchor,
+        'initial_status': before['status'], 'current_source_id': current['source_id'],
+        'task_source_state_after_amendment': after['source_context_state'],
+        'task_status_after_amendment': after['status'], 'history': [e['status'] for e in after['history']],
+        'clinical_approval': after['clinical_approval'],
+    }, indent=2) + '\n')
+    print('PASS LABORATORY FOLLOW-UP: created from saved Observation, assigned and acknowledged, '
+          'then reopened against its original report after amendment with stale completion blocked.')
+    navigate('Journey')
     credentials[0]['actions'].remove('question_read');write_grants()
     cd.evaluate("document.querySelector('[data-testid=lab-questions-reopen]').click()")
     cd.wait("window.__oiLabHistoryCodes.at(-1)===404 && Boolean(document.querySelector('[data-testid=world-no-patient]')) && !document.querySelector('[data-testid=lab-saved-question]')", 'denied question read removes prior history')

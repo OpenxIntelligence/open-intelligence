@@ -7,10 +7,26 @@ from open_intelligence.patient_registry import PatientRegistryDenied
 from .access import Principal
 from .followthrough_contracts import (
     FollowthroughCreate, FollowthroughTransition, FollowthroughReceipt, FollowthroughList,
+    FollowthroughListV2,
 )
 from .question_followthrough import PostgresQuestionFollowthrough
 
 MAX_RESPONSE_BYTES = 4 * 1024 * 1024
+V2_MEDIA_TYPE = "application/vnd.open-intelligence.followthrough.v2+json"
+
+
+def _accepts_v2(request: Request) -> bool:
+    for header in request.headers.getlist("accept"):
+        for item in header.split(","):
+            media, *parameters = (part.strip().lower() for part in item.split(";"))
+            if media == V2_MEDIA_TYPE:
+                quality = next((p[2:] for p in parameters if p.startswith("q=")), "1")
+                try:
+                    if 0 < float(quality) <= 1:
+                        return True
+                except ValueError:
+                    pass
+    return False
 
 
 def _prepare(model, result, *, command=False):
@@ -18,7 +34,9 @@ def _prepare(model, result, *, command=False):
     response = JSONResponse(
         content=validated.model_dump(mode="json"),
         status_code=(200 if validated.duplicate else 201) if command else 200,
-        headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
+        media_type=V2_MEDIA_TYPE if model is FollowthroughListV2 else "application/json",
+        headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
+                 **({} if command else {"Vary": "Accept"})},
     )
     if len(response.body) > MAX_RESPONSE_BYTES:
         raise ValueError("Follow-through response exceeds bounded size")
@@ -43,17 +61,23 @@ def register_followthrough_routes(router, *, principal, registry,
         return actions
 
     @router.get("/{patient_id}/cases/{case_id}/followthrough",
-                response_model=FollowthroughList, responses=errors,
+                response_model=FollowthroughListV2, responses={**errors, 200: {
+                    "model": FollowthroughList, "description": "Text tasks by default; opt in to include laboratory tasks.",
+                    "content": {V2_MEDIA_TYPE: {"schema": {"$ref": "#/components/schemas/FollowthroughListV2"}}},
+                }},
                 operation_id="list_question_followthrough_v1")
     def listing(request: Request, patient_id: str, case_id: str,
                 context: Principal = Depends(principal)):
         try:
             with registry(context) as patients:
                 actions = actions_for(context, patients, patient_id, "followthrough_read")
+                include_laboratory = _accepts_v2(request)
                 return PostgresQuestionFollowthrough(patients).list(
                     patient_id, case_id, organization=context.organization,
                     actor=context.actor, purpose=context.purpose,
-                    prepare_response=lambda result: _prepare(FollowthroughList, result),
+                    include_laboratory=include_laboratory,
+                    prepare_response=lambda result: _prepare(
+                        FollowthroughListV2 if include_laboratory else FollowthroughList, result),
                     recheck_authority=lambda: final_question_authority(
                         request, context, patients, patient_id, actions),
                 )

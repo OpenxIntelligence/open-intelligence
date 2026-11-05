@@ -117,7 +117,7 @@ export function WorldModelView({session,state,onOverview,busy,showQuestions=fals
           })}</ol>
           {state.worldPhase==='ready'&&<LaboratoryQuestionPanel key={model.access_receipt_id} session={session} model={model} state={state} busy={loading||busy} sourceSavePending={questionSaveBlocksSourceChange(state)}/>}
         </section>}
-        {state.worldPhase==='ready'&&<SavedLaboratoryQuestions session={session} model={model} state={state} busy={loading||busy} sourceSavePending={questionSaveBlocksSourceChange(state)}/>}
+        {state.worldPhase==='ready'&&<SavedLaboratoryQuestions onFollowthrough={showQuestions?undefined:onInvestigations} session={session} model={model} state={state} busy={loading||busy} sourceSavePending={questionSaveBlocksSourceChange(state)}/>}
         {episodes.size>0&&<section aria-label="Source-reported cancer episodes">
           <h3>Source-reported cancer episodes</h3>
           <p>Reports are grouped by the episode identifier in the original finding. Each statement retains its reported status.</p>

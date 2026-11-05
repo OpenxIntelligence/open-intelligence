@@ -1,8 +1,9 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {RegistrySession} from '../.test-dist/registry-client.js';
-import {projectFollowthroughAttention} from '../.test-dist/followthrough-view.js';
+import {decodeFollowthrough,projectFollowthroughAttention} from '../.test-dist/followthrough-view.js';
 import {secondOpinionPreparation} from '../.test-dist/second-opinion-preparation.js';
+import {projection as laboratoryWorld} from './laboratory-projection-fixture.mjs';
 
 // Independently authored fictional task and source context; transport is the only mock.
 const token='fictional_test_credential_000000000001';
@@ -683,4 +684,115 @@ test('merged question and task workflows preserve both exact unknown writes thro
  unavailable=false;await s.loadCases();await s.retryReviewReturn();await s.retryFollowthroughWrite();
  assert.equal(reviewBodies[1],reviewBodies[0]);assert.equal(taskBodies[1],taskBodies[0]);
  assert.equal(s.snapshot().reviewReturn.duplicate,true);assert.equal(s.snapshot().followthroughReceipt.duplicate,true);
+});
+
+const mediaV2='application/vnd.open-intelligence.followthrough.v2+json';
+const labId='QUESTION-'+'D'.repeat(32),labTask='TASK-'+'E'.repeat(32);
+function mixedWorld(){
+ const w=world(),lab=laboratoryWorld();
+ return {...lab,patient_id:pid,case_id:cid,snapshot_fingerprint:snapshot,
+  current_sources:[...lab.current_sources,...w.current_sources],observations:w.observations,unresolved_refs:w.unresolved_refs,
+  summary:{...lab.summary,current_sources:2,current_observations:4,unresolved_observations:2}};
+}
+const observation=mixedWorld().laboratory_observations[0];
+function savedLab(){
+ return {question_id:labId,question:'Which fictional record confirms the reported result?',source_id:observation.source_id,
+  source_version:1,source_sha256:observation.source_sha256,observation_reference:observation.observation_reference,
+  source_snapshot_sha256:snapshot,preflight_sha256:'8'.repeat(64),source_context_state:'current_unreviewed_question'};
+}
+function labRow(statuses=['created'],extra={}){
+ const q=savedLab();
+ return taskRow(statuses,{task_id:labTask,question_id:labId,source_id:q.source_id,source_line:null,
+  source_sha256:q.source_sha256,observation_reference:q.observation_reference,
+  preflight_sha256:q.preflight_sha256,history:history(statuses).map((e,i)=>({...e,event_id:eventId(10+i)})),...extra});
+}
+const mixedProjection=rows=>projection(rows,{contract:'oi.pg-question-followthrough/2'});
+function mixedTransport({questionList=()=>[savedLab()],list=()=>response(projection([])),post=()=>assert.fail('Unexpected write')}={}){
+ return session(async(url,init)=>{
+  if(init.method==='POST')return post(url,init);
+  if(url.endsWith('/world-model'))return response(mixedWorld());
+  if(url.endsWith('/composer/laboratory-questions')){
+   const rows=questionList();
+   return rows instanceof Response?rows:response({patient_id:pid,case_id:cid,access_receipt_id:'ACCESS-'+'F'.repeat(32),questions:rows});
+  }
+  if(url.endsWith('/followthrough'))return list(init);
+  return basic(url);
+ });
+}
+
+test('mixed task reads negotiate v2, retain both original anchors and block historical laboratory completion',async()=>{
+ const reads=[],posts=[];
+ const lab=labRow(['created','assigned','acknowledged'],{source_context_state:'source_reassessment_required',needs_recheck:true});
+ const s=mixedTransport({list:init=>{
+  reads.push(new Headers(init.headers).get('Accept'));return new Response(JSON.stringify(mixedProjection([taskRow(),lab])),
+   {headers:{'Content-Type':mediaV2+'; charset=utf-8'}});
+ },post:(url,init)=>{posts.push(JSON.parse(init.body));return response({});}});
+ await open(s);await s.loadFollowthrough(cid);
+ assert.ok(reads[0].includes(mediaV2));
+ const rows=s.snapshot().followthrough?.tasks;assert.ok(rows,s.snapshot().followthroughMessage);
+ assert.equal(rows[0].source_line,8);assert.equal(Object.hasOwn(rows[0],'observation_reference'),false);
+ assert.equal(rows[1].observation_reference,observation.observation_reference);assert.equal(rows[1].source_line,null);
+ assert.equal(rows[1].history.length,3);assert.equal(projectFollowthroughAttention(s.snapshot()).counts.recheck,1);
+ await s.transitionFollowthrough(labTask,{status:'completed',owner_label:'',reason:'Work previously acknowledged.'});
+ assert.equal(posts.length,0);
+ await s.transitionFollowthrough(labTask,{status:'deferred',owner_label:'',reason:'Recheck original observation.'});
+ assert.equal(posts[0].status,'deferred');
+});
+
+test('v2 lab identity rejects fake lines, malformed Observation references, unsupported manual and legacy contexts',()=>{
+ const lab=labRow();
+ for(const changes of [{source_line:1},{observation_reference:undefined},{observation_reference:'Observation/record/other'},
+  {observation_reference:'Observation/x\n'},{manual_dependency_revision_id:'PASSAGES-'+'A'.repeat(32),manual_context_state:'current_unreviewed'},
+  {source_snapshot_contract:'oi.synthetic-postgres-world-model-sources/1',source_context_state:'source_reassessment_required',needs_recheck:true}]){
+  assert.throws(()=>decodeFollowthrough(mixedProjection([{...lab,...changes}]),pid,cid));
+ }
+ assert.throws(()=>decodeFollowthrough(projection([lab]),pid,cid));
+ assert.doesNotThrow(()=>decodeFollowthrough(projection([taskRow()]),pid,cid));
+});
+
+test('a saved Journey question uses the same task writer and preserves its exact uncertain command',async()=>{
+ const writes=[];const s=mixedTransport({post:(url,init)=>{
+  writes.push([url,init.body]);return writes.length===1?response({},503):response(receipt(1,true,{question_id:labId,task_id:labTask}));
+ }});
+ await ready(s);await s.loadLabQuestions(s.snapshot().worldModel);
+ const textDraft=fields(),labDraft={...fields(),title:'Trace the reported laboratory result'};
+ s.editFollowthroughDraft(qid,textDraft);s.editFollowthroughDraft(labId,labDraft,'laboratory');
+ await s.loadSavedQuestions(cid);await s.loadLabQuestions(s.snapshot().worldModel);
+ assert.deepEqual(s.snapshot().followthroughDrafts[qid]?.fields,textDraft);
+ assert.deepEqual(s.snapshot().followthroughDrafts[labId]?.fields,labDraft);
+ await s.createFollowthrough(labId,labDraft,'laboratory');
+ assert.equal(writes[0][0],path+'/questions/'+labId+'/followthrough');
+ const {request_key,...body}=JSON.parse(writes[0][1]);assert.match(request_key,/^[\w-]{36}$/);
+ assert.deepEqual(body,{...labDraft,synthetic:true,source_snapshot_contract:contract,
+  expected_source_snapshot_sha256:snapshot,expected_preflight_sha256:savedLab().preflight_sha256});
+ assert.equal(s.snapshot().followthroughWritePhase,'unknown');await s.createFollowthrough(qid,textDraft);
+ await s.loadWorldModel(cid);await s.retryFollowthroughWrite();assert.deepEqual(writes,[writes[0],writes[0]]);
+ assert.equal(s.snapshot().followthroughReceipt.question_id,labId);assert.equal(s.snapshot().followthroughReceipt.duplicate,true);
+ assert.equal(s.snapshot().followthroughDrafts[labId],undefined);assert.deepEqual(s.snapshot().followthroughDrafts[qid]?.fields,textDraft);
+});
+
+test('an unchecked, historical, removed or denied laboratory question cannot create work or revive a draft',async()=>{
+ for(const change of ['historical','missing','rebound','denied']){
+  let rows=[savedLab()];const writes=[];
+  const s=mixedTransport({questionList:()=>rows,post:()=>{writes.push(1);return response({},403);}});
+  await ready(s);const w=s.snapshot().worldModel;
+  await s.createFollowthrough(labId,fields(),'laboratory');assert.deepEqual(writes,[]);
+  s.editFollowthroughDraft(qid,fields());await s.loadLabQuestions(w);s.editFollowthroughDraft(labId,fields(),'laboratory');
+  assert.ok(s.snapshot().followthroughDrafts[labId]);
+  rows=change==='denied'?response({},403):change==='missing'?[]:[{...savedLab(),...(change==='historical'?
+   {source_context_state:'source_reassessment_required'}:{observation_reference:w.laboratory_observations[1].observation_reference})}];
+  await s.loadLabQuestions(w);assert.equal(s.snapshot().followthroughDrafts[labId],undefined,change);
+  if(change!=='denied')assert.deepEqual(s.snapshot().followthroughDrafts[qid]?.fields,fields());
+  if(change!=='rebound')await s.createFollowthrough(labId,fields(),'laboratory');
+  assert.deepEqual(writes,[],change);
+ }
+});
+
+test('an original laboratory transition draft clears when a refreshed task anchor changes',async()=>{
+ let lab=labRow();const s=mixedTransport({list:()=>response(mixedProjection([lab]))});
+ await open(s);await s.loadFollowthrough(cid);
+ s.editFollowthroughTransitionDraft(labTask,{owner_label:'Fictional coordinator',reason:'Check the original source.'});
+ await s.loadFollowthrough(cid);assert.ok(s.snapshot().followthroughTransitionDrafts[labTask]);
+ lab={...lab,observation_reference:mixedWorld().laboratory_observations[1].observation_reference};
+ await s.loadFollowthrough(cid);assert.deepEqual(s.snapshot().followthroughTransitionDrafts,{});
 });

@@ -91,6 +91,21 @@ to inspect the original measured value or absence reason, specimen, dates and
 currently permitted citation metadata together. The catalog supplies independently
 authored fictional metadata for this workflow.
 
+## Record follow-up work for the same laboratory question
+
+In Journey, reopen the saved laboratory question. Select **Record follow-up work
+for this question**. Enter a title, a reason, and a revisit date or review
+trigger. For example, record a task to request the amended fictional report
+before the next visit. Saving records an operational task with the question,
+original source version and exact Observation reference.
+
+Open Investigations and refresh **Follow-up work**. Assign or acknowledge the
+task to record responsibility. After importing an amended report in Records,
+reopen the case and refresh the tasks. The task retains its earlier Observation
+and history. The application flags it for reassessment and prevents completion
+against that stale basis. A newly prepared question can anchor work on the
+amended report.
+
 ## Verification boundary
 
 `apps/web/tools/demo_journey.py` exercises these exact fixtures through a real built browser and a separately owned Docker/PostgreSQL application, then checks repeated setup and persistence after stopping and resuming. It deletes only its own newly created disposable test project. The ordinary launcher never deletes volumes.
