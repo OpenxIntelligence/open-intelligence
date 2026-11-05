@@ -79,6 +79,12 @@ export type ViewState = Readonly<EvidenceState & SourceImagesState & LaboratoryI
   evidenceLinkIntent:QuestionEvidenceIntent|null;evidenceLinkReceipt:QuestionEvidenceReceipt|null;
   evidenceLinkPhase:'idle'|'saving'|'saved'|'unknown'|'error';evidenceLinkMessage:string;
 }>;
+// A failed reply can follow a committed save. Keep its exact retry key available.
+export function sourceQuestionSaveUnsettled(state:Pick<ViewState,'questionSavePhase'|'questionSaveMessage'>):boolean {
+  return state.questionSavePhase==='saving' ||
+    (state.questionSavePhase==='error' && state.questionSaveMessage.startsWith('Save outcome unknown.'));
+}
+
 export type Transport = (input: string, init: RequestInit) => Promise<Response>;
 const KEY = /^[A-Za-z0-9][A-Za-z0-9_.:-]{2,127}$/;
 const TOKEN = /^[A-Za-z0-9._~-]{32,256}$/;
@@ -814,8 +820,11 @@ export class RegistrySession {
   /** Preparation is a scoped source read. This path never calls question save. */
   async prepareLabQuestion(model:SourceWorldModel, source:string, reference:string,
                            question:string, signal:AbortSignal):Promise<LabPreparation|null>{
-    const scope=this.#scope, patientRead=this.#read, worldRead=this.#worldRead;
+    if(sourceQuestionSaveUnsettled(this.#state))return null;
+    const scope=this.#scope, patientRead=this.#read, worldRead=this.#worldRead, questionWrite=this.#questionWrite;
+    // An older laboratory read must never clear a later question save or its retry key.
     const current=()=>scope===this.#scope && patientRead===this.#read && worldRead===this.#worldRead &&
+      questionWrite===this.#questionWrite &&
       !signal.aborted && this.#state.worldModel===model && this.#state.worldPhase==='ready' &&
       this.#state.phase==='ready' && this.#state.patient?.status==='active' &&
       this.#state.patient.patient_id===model.patient_id &&

@@ -66,3 +66,13 @@ test('late success or denial cannot cross a draft edit, disconnect, or fresh rea
     assert.equal(f.session.snapshot().worldModel,after,action);
   }
 });
+test('world datetime and preflight string use equivalent UTC spellings without losing microseconds or date roles',()=>{
+  const w=projection(), o={...w.laboratory_observations[0],effective_at:'2026-04-03T13:05:00.123456Z',
+    specimen_collected_at:'2026-04-03T13:05:00.123455Z'}, p=prepared(w,o);
+  for(const k of ['issued_at','effective_at','specimen_collected_at'])p.selected_source[k]=o[k].replace(/Z$/,'+00:00');
+  assert.equal(readLabPreparation(p,w,o,question).receipt,access);
+  for(const fields of [{issued_at:o.issued_at.replace(/Z$/,'-00:00')},{effective_at:p.selected_source.specimen_collected_at},
+    {specimen_collected_at:p.selected_source.effective_at},{effective_at:o.effective_at.replace(/Z$/,'+01:00')}]){
+    assert.throws(()=>readLabPreparation({...p,selected_source:{...p.selected_source,...fields}},w,o,question));
+  }
+});

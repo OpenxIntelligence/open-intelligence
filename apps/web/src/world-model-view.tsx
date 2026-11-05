@@ -1,4 +1,5 @@
 import {LaboratoryQuestionPanel} from './laboratory-question-panel';
+import {sourceQuestionSaveUnsettled} from './registry-client';
 import type {RegistrySession,ViewState} from './registry-client';
 import {SourceQuestionPanel} from './source-question-panel';
 
@@ -85,7 +86,7 @@ export function WorldModelView({session,state,onOverview,busy,showQuestions=fals
               </details>
             </li>;
           })}</ol>
-          {state.worldPhase==='ready'&&<LaboratoryQuestionPanel key={model.access_receipt_id} session={session} model={model} busy={loading||busy}/>}
+          {state.worldPhase==='ready'&&<LaboratoryQuestionPanel key={model.access_receipt_id} session={session} model={model} busy={loading||busy} sourceSavePending={sourceQuestionSaveUnsettled(state)}/>}
         </section>}
         <h3>Original source-reported statements</h3>
         <p>These are literal reported statements, not established clinical facts. A missing or pending item must never be interpreted as a negative finding.</p>

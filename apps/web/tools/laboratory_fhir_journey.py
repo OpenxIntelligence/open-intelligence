@@ -102,12 +102,13 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     raw = fictional_bundle()
     records()
     cd.evaluate('''(() => {
-      window.__oiLabFetch=window.fetch;window.__oiLabWrites=[];window.__oiLabDrop=true;window.__oiLabRequests=0;
+      window.__oiLabFetch=window.fetch;window.__oiLabWrites=[];window.__oiLabDrop=true;window.__oiLabRequests=0;window.__oiLabPrepareCodes=[];
       window.fetch=async(input,init)=>{
         window.__oiLabRequests++;
         const laboratory=String(input).endsWith('/laboratory/fhir-r4/sources')&&init?.method==='POST';
         if(laboratory)window.__oiLabWrites.push(JSON.parse(init.body));
         const response=await window.__oiLabFetch(input,init);
+        if(String(input).endsWith('/composer/laboratory-preflight'))window.__oiLabPrepareCodes.push(response.status);
         if(laboratory&&window.__oiLabDrop&&response.ok){window.__oiLabDrop=false;await response.clone().json();throw Error('Fictional lost laboratory response');}
         return response;
       };
@@ -212,7 +213,10 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     assert operator(questions_path)['questions'] == []
     draft_question(first['source_id'], 'ZERO', question)
     submit_question()
-    cd.wait("document.querySelector('[data-testid=lab-question-receipt]')?.textContent.includes('Question prepared')", 'authorized initial preparation')
+    cd.wait("window.__oiLabPrepareCodes.length===1", 'explicit preparation completed over HTTP')
+    assert cd.evaluate("window.__oiLabPrepareCodes") == [200], 'Expected scoped laboratory HTTP success'
+    cd.wait("Boolean(document.querySelector('[data-testid=lab-question-receipt]')) || !document.querySelector('[data-testid=world-projection]')", 'client accepted or rejected the prepared source')
+    assert cd.evaluate("Boolean(document.querySelector('[data-testid=lab-question-receipt]'))"), cd.evaluate("document.querySelector('[data-testid=world-status]').textContent")
     prepared = cd.evaluate("document.querySelector('[data-testid=lab-question-receipt]').textContent")
     assert all(x in prepared for x in (question, first['source_id'], first['sha256'], 'Observation/FICT-WEB-ZERO', 'ACCESS-'))
     draft_question(first['source_id'], 'ABSENT', 'Why was the selected result not performed?')
@@ -249,9 +253,11 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     credentials[0]['actions'].append('composer_context_read');write_grants()
     (artifacts / 'laboratory-question-preparation.json').write_text(json.dumps({
         'synthetic': True, 'case_id': CASE, 'original': prepared, 'amendment': amended_receipt,
+        'http_statuses': cd.evaluate('window.__oiLabPrepareCodes'),
         'requests_on_selection_or_edit': 0, 'saved_questions_after_preparation': 0,
         'edited_receipt_cleared': True, 'denied_projection_withheld': True,
     }, indent=2) + '\n')
+    assert cd.evaluate('window.__oiLabPrepareCodes') == [200, 200, 404]
     print('PASS LAB QUESTION: exact current and amended results, explicit human question, zero implicit requests or saved questions, Composer revocation withheld the preview.')
     journey('1')
     # The integrated Journey action must re-read this case's source metadata
@@ -279,7 +285,7 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     cd.evaluate('[...document.querySelectorAll(".world-cases li")].find(e=>e.textContent.includes(' + json.dumps(CASE) + ')).querySelector("[data-testid=world-load]").click()')
     cd.wait('!document.querySelector("[data-testid=world-projection]") && document.querySelector("[data-testid=world-status]").textContent.includes("unavailable or revoked")', 'revoked laboratory projection cleared')
     credentials[0]['actions'].append('source_read');write_grants()
-    cd.evaluate('window.fetch=window.__oiLabFetch;delete window.__oiLabFetch;delete window.__oiLabWrites;delete window.__oiLabDrop;delete window.__oiLabRequests')
+    cd.evaluate('window.fetch=window.__oiLabFetch;delete window.__oiLabFetch;delete window.__oiLabWrites;delete window.__oiLabDrop;delete window.__oiLabRequests;delete window.__oiLabPrepareCodes')
     navigate('Overview')
     (artifacts / 'laboratory-fhir-workflow.json').write_text(json.dumps({
         'synthetic': True, 'case_id': CASE, 'original_source_id': first['source_id'],

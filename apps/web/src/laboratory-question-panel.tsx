@@ -4,7 +4,7 @@ import type {SourceWorldModel} from './source-world-model';
 import {validLabQuestion} from './laboratory-question';
 import type {LabPreparation} from './laboratory-question';
 
-export function LaboratoryQuestionPanel({session,model,busy}:{session:RegistrySession;model:SourceWorldModel;busy:boolean}){
+export function LaboratoryQuestionPanel({session,model,busy,sourceSavePending}:{session:RegistrySession;model:SourceWorldModel;busy:boolean;sourceSavePending:boolean}){
   const [selection,select]=useState(''),[question,edit]=useState(''),[pending,setPending]=useState(false);
   const [receipt,setReceipt]=useState<LabPreparation|null>(null),active=useRef<AbortController|null>(null);
   const stop=()=>{active.current?.abort();active.current=null;setPending(false);setReceipt(null);};
@@ -12,7 +12,7 @@ export function LaboratoryQuestionPanel({session,model,busy}:{session:RegistrySe
   const keyOf=(o:SourceWorldModel['laboratory_observations'][number])=>o.source_id+'|'+o.observation_reference;
   const item=model.laboratory_observations.find(o=>keyOf(o)===selection);
   const prepare=async()=>{
-    if(!item||busy||active.current||!validLabQuestion(question))return;
+    if(!item||busy||sourceSavePending||active.current||!validLabQuestion(question))return;
     const control=new AbortController();active.current=control;setPending(true);setReceipt(null);
     try{
       const result=await session.prepareLabQuestion(model,item.source_id,item.observation_reference,question,control.signal);
@@ -33,7 +33,8 @@ export function LaboratoryQuestionPanel({session,model,busy}:{session:RegistrySe
     {item&&<><label>Your question
       <textarea data-testid="lab-question-text" value={question} onChange={e=>{stop();edit(e.target.value);}} maxLength={500}/>
     </label>
-    <button type="submit" data-testid="lab-question-prepare" disabled={busy||pending||!validLabQuestion(question)}>Check question against report</button></>}
+    <button type="submit" data-testid="lab-question-prepare" disabled={busy||sourceSavePending||pending||!validLabQuestion(question)}>Check question against report</button></>}
+    {sourceSavePending&&<p role="status">Finish the current question save or recover its receipt in Investigations before checking this result.</p>}
     <div role="status" aria-live="polite">{pending?'Checking the current report and your access…':receipt&&item&&
       <div data-testid="lab-question-receipt"><strong>Question prepared · not saved</strong>
         <p>{question}</p><p>{item.observation_reference} · {item.document_id} v{item.document_version}</p>
