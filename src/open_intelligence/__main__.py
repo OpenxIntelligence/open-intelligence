@@ -23,9 +23,6 @@ from .changes import changes_since_review
 from .packet import build_case_packet, render_packet_text
 from .followthrough import followthrough_view
 from .investigation import (
-    CONDITION_TERMS,
-    K6_SCOPE_PATTERNS,
-    ONCOLOGY_SYNONYMS,
     TEMPLATES,
     InvestigationError,
     ValidatedInvestigation,
@@ -36,6 +33,7 @@ from .investigation import (
 )
 from .kchecks import build_kcheck_context
 from .orchestrator import decide_route
+from .vertical import default_vertical
 from .skeptic import run_verification
 from .clinician_overview import build_clinician_overview
 from .mission import build_patient_mission
@@ -1020,18 +1018,25 @@ class Handler(BaseHTTPRequestHandler):
                                  account["role"])
                     # Slice 2 K-checks (program plan C2): the deterministic
                     # verification half. The vertical's own predicates are
-                    # passed as explicit parameters; the condition-scope,
-                    # substance, and tier sub-checks are data-pending in
-                    # the runtime (no relation, tier, or substance data
-                    # exists yet), so they skip live and run in tests.
-                    # No run snapshot is pinned yet, so the snapshot-hash
-                    # comparison is not supplied live either.
+                    # resolved through the vertical interface (slice V1)
+                    # and passed as explicit parameters; the
+                    # condition-scope, substance, and tier sub-checks are
+                    # data-pending in the runtime (no relation, tier, or
+                    # substance data exists yet), so they skip live and
+                    # run in tests. No run snapshot is pinned yet, so the
+                    # snapshot-hash comparison is not supplied live
+                    # either. The case carries no vertical yet, so the
+                    # default vertical resolves here; a case-vertical
+                    # field is the V2 follow-up that retires it.
+                    vertical = default_vertical()
                     kcheck_context = build_kcheck_context(
                         facts, store.source_version_facts(case_id),
                         case_id=case_id, snapshot_as_of=now_utc(),
-                        synonyms=ONCOLOGY_SYNONYMS,
-                        scope_patterns=K6_SCOPE_PATTERNS,
-                        condition_terms=CONDITION_TERMS,
+                        synonyms=vertical.synonyms,
+                        scope_patterns=vertical.scope_patterns,
+                        condition_terms=vertical.condition_terms,
+                        lot_ruleset=vertical.lot_ruleset,
+                        current_lot_ruleset=vertical.lot_ruleset,
                         substance_names=[], evidence_tiers={})
                     if mode == "replay":
                         fixture = json.loads((SYNTHETIC / "demo-investigation.json").read_text())

@@ -17,12 +17,15 @@ import unittest
 from pathlib import Path
 
 from open_intelligence.agent_writes import build_investigation_contract
-from open_intelligence.investigation import (
-    CONDITION_TERMS,
-    K6_SCOPE_PATTERNS,
-    ONCOLOGY_SYNONYMS,
-    validate_output,
-)
+from open_intelligence.investigation import validate_output
+from open_intelligence.vertical import get_vertical
+
+# The oncology wiring, resolved through the vertical interface (slice
+# V1) instead of imported from the vertical module.
+_ONCOLOGY = get_vertical("oncology")
+ONCOLOGY_SYNONYMS = _ONCOLOGY.synonyms
+K6_SCOPE_PATTERNS = _ONCOLOGY.scope_patterns
+CONDITION_TERMS = _ONCOLOGY.condition_terms
 from open_intelligence.kchecks import (
     KCheckContext,
     Slot,

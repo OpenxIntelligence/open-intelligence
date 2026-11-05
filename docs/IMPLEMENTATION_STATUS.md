@@ -372,6 +372,102 @@ need live runs (and, for M25, human labels); the Skeptic's live
 proof is pending the same Meta billing fix as slice C4 (HTTP 402).
 No live call was attempted here and no substitute model was used.
 
+## Vertical interface: the oncology boundary (Slice V1) — 5 November 2026
+
+Branch `program/v1-cardiology`, from main `004a5cd`. Implements
+program-plan V1: the core holds no oncology knowledge; oncology lives
+behind the vertical interface. This is the slice that makes
+"multi-vertical" real instead of aspirational.
+
+New `src/open_intelligence/vertical.py` is the interface and the
+registry: a `Vertical` dataclass (synonyms, condition terms, scope
+patterns, line-of-therapy ruleset version label, evidence kinds and
+link templates, toolsets, substance names); `register_vertical`,
+`get_vertical` (which lazy-loads a built-in definition module by
+name — the core never imports a vertical definition module by name),
+`default_vertical`, `list_verticals`; and `build_scope_patterns`, the
+one place the nine K6 patterns are assembled from a vertical's own
+condition terms, so every vertical's guard has the same shape.
+
+New `src/open_intelligence/vertical_oncology.py` is the oncology
+vertical: content moved verbatim from `investigation.py` (slice C2)
+— the synonyms map, the condition terms, the scope patterns via the
+builder — plus the ruleset version label `lot-rules-1` and the
+evidence kinds and link templates (the same values as
+`evidence_catalog.py`). No rule's content changed, only its location.
+
+New `src/open_intelligence/vertical_cardiology.py` is the minimal
+synthetic cardiology vertical — V1's stub vertical, made concrete:
+cardiology-distinctive synonyms ("not performed", "seen",
+"identified"), cardiology condition terms, the therapy-ruleset label
+`therapy-rules-1`, and ECG / echocardiogram / cardiac-lab evidence
+kinds. No guideline text is ingested; no real cardiology data is
+used. The full cardiology vertical (domain toolsets, the
+investigation dimensions against cardiology fixtures, the care loop)
+remains slice V2, after the dimensions exist.
+
+Core rewiring: `investigation.py` no longer defines the predicates
+(a comment points at the interface); `__main__.py` resolves the
+default vertical and passes its predicates — plus its ruleset label
+as both the facts-time and validation-time ruleset — at the single
+K-check-context call site shared by the live and replay paths;
+`evaluation.py`'s `fixture_context` defaults resolve through the
+registry. `kchecks.py` is untouched: it was already domain-free.
+
+What did not move, and why: the structural language guard stays in
+`investigation.py` — it is domain-free advice language (no vertical
+literal appears in it) and the vertical's own language contribution
+is its K6 scope patterns; the model prompt still names the synthetic
+oncology case (prompt templating per vertical is future work);
+`store.py`'s oncology report format is a data-format concern,
+untouched; the evidence catalog still validates against its own
+constants — the oncology vertical declares the same kinds and
+templates, and the boundary test binds the two, while per-vertical
+catalog resolution is V2 work. Cases carry no vertical yet, so
+`default_vertical()` is the documented pre-V2 default; a
+case-vertical field is the follow-up that retires it.
+
+Brief discrepancy, recorded honestly: the task brief described V1
+as "synthetic cardiology end-to-end, zero core files changed". That
+is the plan's V2 acceptance, not V1's. V1's defined work is the
+interface, which necessarily touches core files (the interface
+module itself, the rewiring, the oncology relocation). The
+addability falsifier did not fire: the cardiology vertical itself
+landed with zero additional core changes beyond the interface — one
+new module plus its tests. The full V2 proof (zero core changes for
+the whole slice) still follows after D1–D9.
+
+New `tests/test_vertical_boundary.py` (14 tests): the import-graph
+tripwire (no core module imports a vertical definition module; the
+dimension checker is proved against a fake graph while the dimension
+list is still empty); registry tests (resolution, legacy content,
+duplicate/invalid/unknown names, a runtime stub vertical, the
+default); the scope-pattern shape test (the eight generic patterns
+identical, only "you have" differing by condition terms);
+cross-vertical discriminators (a cardiology synonym resolves where
+oncology's does not; "you have heart failure" drops under
+cardiology and passes under oncology, and the reverse for "you have
+cancer"); and the cardiology end-to-end (route decided, K-checks,
+stub Skeptic holding the planted "31 cm" misstatement against "31%"
+evidence, T6 source group on rhythm, AB-CONFLICT origins
+`skeptic_challenge` and `source_disagreement`). `test_kchecks.py`
+and `test_skeptic.py` now resolve the oncology wiring through the
+registry (import lines only; no fixture changed), and the tripwire
+comment in `test_kchecks.py` points at the new location.
+
+Local suite on the slice branch: 986 tests (972 on the post-C5 main
+baseline plus 14 new), FAILED with 9 failures and 8 errors — the
+same 17 `test_pdf_intake` failures as the baseline run on the same
+machine, verified by diffing the two failure sets; zero new
+failures. The evaluation harness runner still passes all 8 metrics
+at target with `model_calls: 0`. This is fictional-only
+engineering, draft and undeployed.
+
+Unproven: the live-model half is unchanged from C4/C5 — the Meta
+billing fix (HTTP 402) is still pending, so the cardiology
+end-to-end uses stub verdicts and proves wiring, not the model. No
+live call was attempted here and no substitute model was used.
+
 ## Connected patient preparation — 3 November 2026
 
 Draft [#288](https://github.com/OpenxIntelligence/open-intelligence/pull/288)

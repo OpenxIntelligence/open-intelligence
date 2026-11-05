@@ -80,12 +80,7 @@ from .agent_writes import (
     build_route_id,
     check_replay,
 )
-from .investigation import (
-    CONDITION_TERMS,
-    K6_SCOPE_PATTERNS,
-    ONCOLOGY_SYNONYMS,
-    validate_output,
-)
+from .investigation import validate_output
 from .kchecks import (
     TIER_LIMITS_PHRASE,
     KCheckContext,
@@ -96,6 +91,7 @@ from .orchestrator import decide_route
 from .skeptic import run_verification
 from .store import CaseStore
 from .synthesis import group_run_contradictions
+from .vertical import get_vertical
 
 HARNESS_VERSION = "evaluation:1"
 SPOT_CHECK_MINIMUM = 30
@@ -148,7 +144,9 @@ def fixture_context(*, synonyms=None, scope_patterns=None,
     document that agrees with v4. Slots are the assertions of those
     versions; v4 also carries a margin reading, so a second
     contradiction pair exists. Vertical knowledge arrives as
-    parameters; the oncology wiring is the default fixture only."""
+    parameters; the oncology wiring is the default fixture only, and
+    it is resolved through the vertical interface (slice V1), not
+    imported from a vertical module."""
     versions = {
         1: _version(1, supersedes_id=3),
         2: _version(2, specimen="SPEC-B", specimen_date="2026-05-17",
@@ -196,9 +194,12 @@ def fixture_context(*, synonyms=None, scope_patterns=None,
         },
         snapshot_as_of="2026-06-01T00:00:00Z",
         snapshot_source_ids={1, 2, 4, 5},
-        synonyms=dict(synonyms if synonyms is not None else ONCOLOGY_SYNONYMS),
-        scope_patterns=list(scope_patterns if scope_patterns is not None else K6_SCOPE_PATTERNS),
-        condition_terms=list(condition_terms if condition_terms is not None else CONDITION_TERMS),
+        synonyms=dict(synonyms if synonyms is not None
+                      else get_vertical("oncology").synonyms),
+        scope_patterns=list(scope_patterns if scope_patterns is not None
+                            else get_vertical("oncology").scope_patterns),
+        condition_terms=list(condition_terms if condition_terms is not None
+                             else get_vertical("oncology").condition_terms),
         substance_names=list(substance_names if substance_names is not None
                              else ["fictional-substance-x", "fictional-substance-y"]),
     )
