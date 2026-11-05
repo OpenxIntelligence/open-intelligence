@@ -15,7 +15,7 @@ import test_lab_manual_convergence as joined
 import test_laboratory_question_migration as previous
 from test_source_versions import SourceVersionFixture
 
-PREVIOUS = "0018_laboratory_questions"
+PREVIOUS = previous.QUESTION_REVISION
 
 
 class LaboratoryCitationMigrationTests(SourceVersionFixture):
@@ -26,7 +26,6 @@ class LaboratoryCitationMigrationTests(SourceVersionFixture):
 
     def test_populated_0018_upgrades_and_exact_anchor_rights_are_required(self):
         patient, _, question, saved = previous.LaboratoryQuestionMigrationTests.seed(self)
-        migrate(self.admin, "downgrade", PREVIOUS)
         with self.services() as registry:
             seed_fictional_records(registry, fictional_records(), recorded_by="FICTIONAL-AUTHOR")
         before = self.snapshot()
@@ -95,7 +94,13 @@ class LaboratoryCitationMigrationTests(SourceVersionFixture):
         with self.assertRaisesRegex(DBAPIError, "OI-LAB-CITATION-RIGHTS"):
             with self.engine.begin() as conn:
                 insert_copy(conn, rights=decision)
-        for command in ("UPDATE investigation.laboratory_citation_anchors SET rights_decision_id=rights_decision_id",
+        # On 0019, PostgreSQL checks the new referencing table before it
+        # runs a parent's BEFORE TRUNCATE trigger. Exercise both boundaries.
+        with self.assertRaisesRegex(DBAPIError, "cannot truncate a table referenced"):
+            with self.engine.begin() as conn:
+                conn.execute(text("TRUNCATE investigation.laboratory_question_anchors"))
+        for command in ("TRUNCATE investigation.laboratory_question_anchors, investigation.laboratory_citation_anchors",
+                        "UPDATE investigation.laboratory_citation_anchors SET rights_decision_id=rights_decision_id",
                         "DELETE FROM investigation.laboratory_citation_anchors",
                         "TRUNCATE investigation.laboratory_citation_anchors"):
             with self.subTest(command=command), self.assertRaisesRegex(DBAPIError, "HISTORY-IMMUTABLE"):
