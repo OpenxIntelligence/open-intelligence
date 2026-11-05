@@ -19,6 +19,7 @@ from open_intelligence.patient_registry import (
 from open_intelligence.postgres_registry import PostgresPatientRegistry
 
 from .case_bindings import _case_id
+from .question_anchors import legacy_text_question_anchor
 from .composer_preflight import PostgresSourceComposerPreflight, SHA256, SOURCE_SNAPSHOT_CONTRACT
 from .sources import PostgresSourceVersions, _source_id
 from .source_world_model import project_source_world_model
@@ -60,11 +61,16 @@ class PostgresSourceQuestions:
         """One projection for saved-question history and its readable brief."""
         (qid, pid, cid, question, sid, line, digest, version,
          old_fingerprint, preflight_sha, created_at, snapshot_contract) = row
+        identity = legacy_text_question_anchor({
+            "patient_id": pid, "case_id": cid, "source_id": sid,
+            "source_line": line, "source_sha256": digest, "source_version": version,
+        })
         anchors = {(item["source_id"], item["source_line"]):
                    (item["source_sha256"], item["document_version"])
                    for item in world["observations"]}
         current = (snapshot_contract == SOURCE_SNAPSHOT_CONTRACT
-                   and anchors.get((sid, line)) == (digest, version)
+                   and anchors.get((identity.source_id, identity.source_line))
+                       == (identity.source_sha256, identity.source_version)
                    and hmac.compare_digest(old_fingerprint, world["snapshot_fingerprint"]))
         return {
             "question_id": qid, "patient_id": pid, "case_id": cid,
@@ -268,29 +274,7 @@ class PostgresSourceQuestions:
         )
         if len(rows) > 250:
             raise PatientRegistryError("Question list exceeds bounded read limit")
-        anchors = {(item["source_id"], item["source_line"]):
-                   (item["source_sha256"], item["document_version"])
-                   for item in world["observations"]}
-        results = []
-        for (qid, pid, cid, question, sid, line, digest, version,
-             old_fingerprint, preflight_sha, created_at, snapshot_contract) in rows:
-            current = (snapshot_contract == SOURCE_SNAPSHOT_CONTRACT
-                       and anchors.get((sid, line)) == (digest, version)
-                       and hmac.compare_digest(old_fingerprint, world["snapshot_fingerprint"]))
-            results.append({
-                "question_id": qid, "patient_id": pid, "case_id": cid,
-                "question": question, "source_id": sid, "source_line": line,
-                "source_sha256": digest, "source_version": version,
-                "source_snapshot_sha256": old_fingerprint,
-                "source_snapshot_contract": snapshot_contract,
-                "preflight_sha256": preflight_sha,
-                "created_at": created_at.isoformat() if isinstance(created_at, datetime) else str(created_at),
-                "source_context_state": ("current_unreviewed_question" if current
-                                         else "source_reassessment_required"),
-                "human_review_state": "not_submitted",
-                "clinical_approval": False, "model_executed": False,
-            })
-        return results
+        return [self._question_state(row, world) for row in rows]
 
     def list(self, patient_id: str, case_id: str, *, organization: str,
              actor: str, purpose: str, recheck_authority: Callable[[], None],
