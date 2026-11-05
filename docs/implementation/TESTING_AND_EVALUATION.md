@@ -25,4 +25,4 @@ python tools/h1_build_inputs.py --verify /tmp/oi-h1-build-inputs.json \
   --api-sbom /tmp/oi-h1-sbom.json --web-receipt apps/web/.licenses/inventory.json
 ```
 
-Keep the original receipts alongside the combined JSON. To reproduce its deterministic bytes, rerun the generator against the same checkout. A successful package check or generated clinical answer is not a validation result. A missing PostgreSQL service, denied Unix socket or skipped dependency is a named test limitation.
+Keep the original receipts alongside the combined JSON. The installed web CycloneDX file must stay beside its notice receipt, with matching bytes. Keep the OCI pin manifest and the runtime image verification with the deployment evidence. To reproduce its deterministic bytes, rerun the generator against the same checkout. A successful package check or generated clinical answer is not a validation result. A missing PostgreSQL service, denied Unix socket or skipped dependency is a named test limitation.

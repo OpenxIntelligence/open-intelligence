@@ -99,6 +99,44 @@ class BuildInputsTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 inputs.check_web(wrong, inventory)
 
+    def test_inventory_binds_image_manifest_bytes_and_declared_platforms(self):
+        path = "apps/api/container-image-pins.json"
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            for rel in inputs.INPUTS:
+                if rel != path:
+                    (root / rel).parent.mkdir(parents=True, exist_ok=True)
+                    (root / rel).symlink_to(inputs.ROOT / rel)
+            (root / path).write_bytes((inputs.ROOT / path).read_bytes())
+            before = inputs.build(root)
+            pins = inputs.read_json(root / path)
+            self.assertEqual(before["declared_oci_images"], pins)
+            pins["postgres"]["config"] = "sha256:" + "1" * 64
+            (root / path).write_text(json.dumps(pins))
+            after = inputs.build(root)
+            self.assertNotEqual(after["inputs_sha256"][path], before["inputs_sha256"][path])
+            self.assertEqual(after["declared_oci_images"]["postgres"]["config"], pins["postgres"]["config"])
+
+    def test_web_bom_requires_the_exact_sibling_written_by_the_notice_gate(self):
+        with TemporaryDirectory() as td:
+            evidence = Path(td) / "licenses"
+            evidence.mkdir()
+            bom = evidence / "web.cdx.json"
+            bom.write_bytes(b'{"bomFormat":"CycloneDX"}\n')
+            binding = {"filename": bom.name, "sha256": hashlib.sha256(bom.read_bytes()).hexdigest()}
+            inputs.check_web_bom(evidence, binding)
+            bom.write_bytes(b'{"bomFormat":"CycloneDX"}')
+            with self.assertRaisesRegex(ValueError, "digest"):
+                inputs.check_web_bom(evidence, binding)
+            bom.rename(Path(td) / bom.name)
+            with self.assertRaises(OSError):
+                inputs.check_web_bom(evidence, binding)
+            with self.assertRaisesRegex(ValueError, "filename"):
+                inputs.check_web_bom(evidence, {**binding, "filename": "../web.cdx.json"})
+            bom.symlink_to(Path(td) / bom.name)
+            with self.assertRaisesRegex(ValueError, "symbolic link"):
+                inputs.check_web_bom(evidence, binding)
+
     def test_api_receipt_cannot_omit_supplier_components_or_replace_wheel_hash(self):
         source = inputs.read_json(inputs.ROOT / inputs.API / "dependency-license-inventory.json")
         sbom = inputs.wheel_gate.cyclonedx({"inventory": source})

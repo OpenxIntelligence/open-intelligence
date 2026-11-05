@@ -2,7 +2,8 @@
 
 --output writes canonical JSON; --verify compares its bytes to this checkout.
 Supply both --api-sbom and --web-receipt on verification to reconcile outputs
-from the *existing* wheel and installed-notice gates, after those gates pass.
+from the wheel and installed-notice gates, including the sibling web CycloneDX
+file identified by the notice receipt, after those gates pass.
 A static inventory alone proves neither installation nor permission.
 """
 import argparse
@@ -11,6 +12,7 @@ import hashlib
 import json
 from pathlib import Path
 import re
+import stat
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -19,12 +21,13 @@ from apps.api.tools import check_dependencies as wheel_gate, pydicom_runtime
 
 API = "apps/api/"
 WEB = "apps/web/"
+IMAGE_PINS = API + "container-image-pins.json"
 INPUTS = (
     API + "requirements.lock", API + "dependency-license-inventory.json",
     API + "THIRD_PARTY_NOTICES.md", API + "tools/pydicom-upstream.lock",
     API + "tools/pydicom-runtime.json", API + "tools/pydicom_runtime.py",
     API + "tools/prepare_dependencies.py", API + "tools/check_dependencies.py",
-    API + "Dockerfile", API + "compose.yaml",
+    API + "Dockerfile", API + "compose.yaml", IMAGE_PINS,
     WEB + "package.json", WEB + "package-lock.json", WEB + "tools/license-gate.mjs",
 )
 NPM_NAME = re.compile(r"(?:@[a-zA-Z0-9_][\w.-]*/)?[a-zA-Z0-9_][\w.-]*", re.ASCII)
@@ -126,14 +129,15 @@ def build(root):
             "API notices differ from the reviewed inventory")
     return {
         "schema": "oi.h1-build-inputs/1",
-        "scope": "Declared package inputs for local fictional H1 development; no installation or release claim.",
+        "scope": "Declared package and container image inputs for local fictional H1 development.",
         "inputs_sha256": inputs,
         "api": wheel_inputs(root, inventory),
         "web_lock_locations": npm_inputs(root),
+        "declared_oci_images": read_json(root / IMAGE_PINS),
         "outside_package_coverage": {
             "python_base_image_and_os_layers": API + "Dockerfile",
             "postgres_image_and_os_layers": API + "compose.yaml",
-            "not_inventoried": ["image digests and layer contents", "host and CI toolchains",
+            "not_inventoried": ["observed container layers and their contents", "host and CI toolchains",
                                 "browser and browser bundle contents", "native linkage", "models, data and services"],
             "commercial_distribution_cleared": False,
         },
@@ -173,6 +177,16 @@ def check_web(receipt, expected):
             require(digest == notice["sha256"], f"notice text/digest mismatch: {loc}")
 
 
+def check_web_bom(directory, binding):
+    # Follow only the sibling named by the notice gate. This remains valid when
+    # the entire evidence directory is copied to a workflow artifact.
+    filename = binding["filename"]
+    require(re.fullmatch(r"[a-zA-Z0-9_-]+\.cdx\.json", filename), "invalid web BOM filename")
+    path = directory / filename
+    require(stat.S_ISREG(path.lstat().st_mode), "web BOM must be a regular file and not a symbolic link")
+    require(wheel_gate.digest(path) == binding["sha256"], "web BOM digest differs from its notice receipt")
+
+
 def check_gates(root, expected, api_sbom, web_receipt):
     inventory = read_json(root / API / "dependency-license-inventory.json")
     wanted = wheel_gate.cyclonedx({"inventory": inventory})
@@ -182,7 +196,9 @@ def check_gates(root, expected, api_sbom, web_receipt):
     for record in (got, wanted):
         del record["metadata"]["timestamp"]
     require(got == wanted, "API gate SBOM differs from the current reviewed components or scope")
-    check_web(read_json(web_receipt), expected)
+    receipt = read_json(web_receipt)
+    check_web(receipt, expected)
+    check_web_bom(web_receipt.parent, receipt["cyclonedx"])
 
 
 def main(argv=None):
