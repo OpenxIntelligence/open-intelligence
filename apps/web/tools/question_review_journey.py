@@ -1,8 +1,9 @@
 """PR245 review-return scenarios through canonical React/FastAPI/PostgreSQL.
 
-Only independently fictional fixtures and operator grants are used. The temporary
-fetch wrapper holds delivery of a completed real response without replacing its
-body or status. It is restored before the remainder of the browser journey.
+Only independently fictional fixtures and operator grants are used. One temporary
+fetch wrapper holds delivery of a completed real return response without replacing
+its body or status. A separate chronology check saves the original successful
+queue response before changing one timestamp. Both wrappers are restored.
 """
 
 import base64
@@ -131,6 +132,89 @@ class QuestionReviewChecks:
         assert self.receipt_id in history and self.reason in history
         self.navigate('Records')
 
+    def chronology(self, authored_question_id, expected_receipt, expected_ids, screenshots):
+        screenshots.mkdir(parents=True, exist_ok=True)
+        for field in ('question', 'history'):
+            unsent_reason = 'Unsubmitted fictional reason before malformed ' + field + ' chronology.'
+            self.reason_value(authored_question_id, unsent_reason)
+            self.cd.evaluate("""((questionId,receiptId,field) => {
+              const original=window.fetch;
+              const fault={original,originalBody:null,mutatedBody:null,restoredBody:null,status:null,writes:0};
+              window.__oiReviewChronology=fault;
+              window.fetch=async (input,init) => {
+                const url=typeof input==='string'?input:input.url;
+                const method=(init?.method??input?.method??'GET').toUpperCase();
+                if(method!=='GET'&&method!=='HEAD')fault.writes++;
+                const response=await original(input,init);
+                if(method==='GET'&&url.endsWith('/review-queue')&&response.status===200){
+                  const body=await response.clone().text();
+                  if(fault.originalBody===null){
+                    fault.originalBody=body;fault.status=response.status;
+                    const changed=JSON.parse(body);
+                    const row=field==='question'?changed.items.find(r=>r.question_id===questionId):
+                      changed.receipts.find(r=>r.receipt_id===receiptId);
+                    if(!row)throw Error('Missing canonical chronology target');
+                    row.created_at=field==='question'?'2026-02-30T10:00:00Z':'2026-11-03T24:00:00Z';
+                    fault.mutatedBody=JSON.stringify(changed);
+                    return new Response(fault.mutatedBody,{status:response.status,
+                      statusText:response.statusText,headers:response.headers});
+                  }
+                  fault.restoredBody=body;
+                }
+                return response;
+              };
+              return true;
+            })(""" + ','.join(map(json.dumps, (authored_question_id, expected_receipt, field))) + ')')
+            try:
+                self.cd.evaluate("document.querySelector('[data-testid=load-review-queue]').click()")
+                self.cd.wait("typeof window.__oiReviewChronology?.mutatedBody==='string'",
+                             'actual successful Review response captured before timestamp fault')
+                original_text = self.cd.evaluate('window.__oiReviewChronology.originalBody')
+                mutated_text = self.cd.evaluate('window.__oiReviewChronology.mutatedBody')
+                (screenshots/('review-chronology-' + field + '-original.json')).write_text(original_text, encoding='utf-8')
+                (screenshots/('review-chronology-' + field + '-fault.json')).write_text(mutated_text, encoding='utf-8')
+                assert self.cd.evaluate('window.__oiReviewChronology.status') == 200
+                original = json.loads(original_text)
+                expected_fault = json.loads(original_text)
+                rows, key, target = ('items', 'question_id', authored_question_id) if field == 'question' else \
+                    ('receipts', 'receipt_id', expected_receipt)
+                target_row = next(row for row in expected_fault[rows] if row[key] == target)
+                target_row['created_at'] = '2026-02-30T10:00:00Z' if field == 'question' else '2026-11-03T24:00:00Z'
+                assert json.loads(mutated_text) == expected_fault, 'Only one actual response timestamp is altered'
+                self.cd.wait("document.querySelector('[data-testid=review-status]').textContent.includes('could not be verified')",
+                             'malformed ' + field + ' chronology withholds the prior Review projection')
+                assert self.cd.evaluate("!document.querySelector('[data-testid=review-queue-result]') && "
+                                        "!document.querySelector('[data-testid=review-return-history]') && "
+                                        "!document.querySelector('[data-testid=review-reason]') && "
+                                        "!document.querySelector('[data-testid=return-for-verification]')")
+                assert self.cd.evaluate('window.__oiReviewChronology.writes') == 0
+
+                self.refresh(expected_receipt)
+                restored_text = self.cd.evaluate('window.__oiReviewChronology.restoredBody')
+                restored = json.loads(restored_text)
+                (screenshots/('review-chronology-' + field + '-restored.json')).write_text(restored_text, encoding='utf-8')
+                assert restored['items'] == original['items'] and restored['receipts'] == original['receipts'], \
+                    'A fresh real read restores the exact unchanged questions and immutable history'
+                assert sorted(self.cd.evaluate("[...document.querySelectorAll('[data-testid=review-queue-item]')].map(e=>e.dataset.questionId)")) == sorted(expected_ids)
+                assert self.cd.evaluate("[...document.querySelectorAll('[data-testid=review-queue-item]')].map(e=>[e.dataset.questionId,e.dataset.sourceId])") == \
+                    [[item['question_id'], item['source_id']] for item in restored['items']], \
+                    'Rendered question/source anchors must match the restored authoritative queue'
+                assert self.cd.evaluate("[...document.querySelectorAll('[data-testid=review-return-history] time')].map(e=>[e.getAttribute('datetime'),e.textContent])") == \
+                    [[receipt['created_at'], receipt['created_at']] for receipt in restored['receipts']], \
+                    'Visible and machine-readable history timestamps must preserve each restored value exactly'
+                history = self.cd.evaluate("document.querySelector('[data-testid=review-return-history]').textContent")
+                assert all(receipt['receipt_id'] in history for receipt in restored['receipts'])
+                row = 'document.querySelector(' + json.dumps(self.item(authored_question_id)) + ')'
+                assert self.cd.evaluate(row + ".querySelector('[data-testid=review-reason]').value") != unsent_reason, \
+                    'A valid reread cannot resurrect an unsent reason cleared by invalid projection data'
+                assert self.cd.evaluate(row + ".querySelector('[data-testid=return-for-verification]').disabled") is False
+                assert self.cd.evaluate('window.__oiReviewChronology.writes') == 0, \
+                    'Fault and restoration reads must not append any verification return'
+            finally:
+                self.cd.evaluate("""(() => {const fault=window.__oiReviewChronology;if(fault){
+                  window.fetch=fault.original;delete window.__oiReviewChronology;}return true;})()""")
+        print('PASS REVIEW CHRONOLOGY: actual successful queue originals saved separately; one impossible question/history timestamp at a time clears prior content and return controls; fresh authorized reads restore unchanged questions/history; unsent reasons stay cleared; no return writes.')
+
     def finish(self, replacement_source_id, credentials, write_grants, screenshots,
                *, replacement_question_id, authored_question_id):
         expected_ids = [self.question_id, replacement_question_id, authored_question_id]
@@ -181,8 +265,12 @@ class QuestionReviewChecks:
             assert self.reason in history and current_reason in history and self.receipt_id in history
             assert authored_question_id not in history, 'Returning the default v2 question cannot return the authored question'
 
+            self.chronology(authored_question_id, new_receipt, expected_ids, screenshots)
+
             # Both independent read gates must clear the displayed projection on denial.
             for action in ('review_queue_read', 'question_read'):
+                unsent_reason = 'Unsubmitted fictional reason before loss of ' + action
+                self.reason_value(authored_question_id, unsent_reason)
                 credentials[0]['actions'].remove(action)
                 write_grants()
                 self.cd.evaluate("document.querySelector('[data-testid=load-review-queue]').click()")
@@ -192,6 +280,9 @@ class QuestionReviewChecks:
                 credentials[0]['actions'].append(action)
                 write_grants()
                 self.refresh(new_receipt)
+                assert self.cd.evaluate('document.querySelector(' + json.dumps(self.item(authored_question_id))
+                                        + ").querySelector('[data-testid=review-reason]').value") != unsent_reason, \
+                    'Restoring authority must not resurrect an unsent reason cleared on denial'
 
             assert sorted(self.cd.evaluate("[...document.querySelectorAll('[data-testid=review-queue-item]')].map(e=>e.dataset.questionId)")) == sorted(expected_ids)
             assert self.cd.evaluate('document.querySelector(' + json.dumps(self.item(authored_question_id)) + ').dataset.state') == 'awaiting_independent_verification'

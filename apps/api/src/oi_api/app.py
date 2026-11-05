@@ -30,7 +30,7 @@ def _loopback_host(host: str) -> bool:
         return False
 
 
-def create_app(settings: Settings | None = None, *, authentication: Authentication | None = None) -> FastAPI:
+def create_app(settings: Settings | None = None, *, authentication: Authentication | None = None, image_archive=None) -> FastAPI:
     settings = settings if settings is not None else Settings.from_env()
     database = Database(settings)
     authentication_kind = "trusted_provider" if authentication is not None else (
@@ -89,6 +89,6 @@ def create_app(settings: Settings | None = None, *, authentication: Authenticati
         return JSONResponse(status_code=422, content={"detail": "Invalid request"},
                             headers={"Cache-Control": "no-store"})
 
-    app.include_router(patient_router(database, authentication))
+    app.include_router(patient_router(database, authentication, image_archive=image_archive))
 
     return app

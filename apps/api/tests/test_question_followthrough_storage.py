@@ -4,6 +4,7 @@ The local pure checks do not emulate PostgreSQL. Database tests inherit the
 existing explicit disposable-PG16 gate and are never counted as local passes.
 """
 from concurrent.futures import ThreadPoolExecutor
+import base64
 from contextlib import contextmanager
 from copy import deepcopy
 from datetime import date, datetime, timezone
@@ -11,18 +12,24 @@ import importlib
 import importlib.util
 from pathlib import Path
 import unittest
+from unittest.mock import Mock, patch
 
 from alembic.config import Config
 from alembic.script import ScriptDirectory
 from alembic.util.exc import CommandError
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
+from pydantic import ValidationError
 
 from open_intelligence.patient_registry import (
     PatientRegistryConflict, PatientRegistryDenied, PatientRegistryError,
 )
 from open_intelligence.postgres_registry import PostgresPatientRegistry
 from oi_api.app import create_app
+from oi_api.contracts import SCHEMA_REVISION
+from oi_api.reviewed_documents import fingerprint
+from test_reviewed_documents import RAW
+from oi_api.followthrough_contracts import ManualTaskDependency
 from oi_api.composer_preflight import SOURCE_SNAPSHOT_CONTRACT
 from oi_api.migrate import migrate
 from http_support import running_server
@@ -71,6 +78,36 @@ def authored_rows():
         "reason": "Created for the fictional discussion.", "recorded_at": WHEN,
     }]
     return task, events, question
+
+
+class ManualTaskDependencyContractTests(unittest.TestCase):
+    """Contract-only: no task/Review persistence or action grant is implied."""
+
+    def test_explicit_dependency_has_exact_scoped_versioned_identity(self):
+        fields=dict(patient_id=PATIENT,case_id=CASE,question_id=QUESTION,
+                    revision_id="PASSAGES-"+"E"*32,references_sha256="a"*64)
+        value=ManualTaskDependency(**fields)
+        self.assertEqual(value.model_dump(mode="json"),fields)
+        self.assertNotIn("quote",value.model_dump())
+        with self.assertRaises((TypeError,ValueError)):
+            value.revision_id="PASSAGES-"+"F"*32
+
+    def test_missing_forged_or_unstructured_dependency_is_rejected(self):
+        fields=dict(patient_id=PATIENT,case_id=CASE,question_id=QUESTION,
+                    revision_id="PASSAGES-"+"E"*32,references_sha256="a"*64)
+        for change in (
+            dict(patient_id=""),dict(case_id=""),dict(question_id="QUESTION-WRONG"),
+            dict(revision_id="PASSAGES-INVALID"),
+            dict(references_sha256="a"*63),
+            dict(references_sha256=True),
+            dict(quote="A fictional private passage"),
+            dict(clinical_approval=True),
+        ):
+            with self.subTest(change=change),self.assertRaises(ValidationError):
+                ManualTaskDependency(**(fields|change))
+        for name in fields:
+            with self.subTest(missing=name),self.assertRaises(ValidationError):
+                ManualTaskDependency(**{k:v for k,v in fields.items() if k!=name})
 
 
 class FollowthroughLogicTests(unittest.TestCase):
@@ -177,12 +214,67 @@ class FollowthroughLogicTests(unittest.TestCase):
                         purpose="operations", recheck_authority=lambda: None)
 
 
+class ManualDependencyHistoricalSchemaBoundaryTests(unittest.TestCase):
+    def test_known_pre_0016_tasks_have_no_manual_origin_but_current_schema_fails_closed(self):
+        # Historical migration tests seed real tasks before 0016; a missing
+        # child table at the *current* revision is never silently tolerated.
+        module = owner_module(self)
+        for revisions, expected_allowed in (
+            ([("0009_question_followthrough",)], True),
+            ([("0015_manual_report_context",)], True),
+            ([("0011_evidence_convergence",), ("0011_image_evidence_merge",)], True),
+            ([("0016_fhir_laboratory_sources",)], True),
+            ([("0016_manual_task_dependency",)], False),
+            ([(SCHEMA_REVISION,)], False),
+            ([("0016_fhir_laboratory_sources",), ("0016_manual_task_dependency",)], False),
+            ([("unrecognized_version",)], False),
+            ([], False),
+            ([("0011_evidence_convergence",)] * 3, False),
+        ):
+            with self.subTest(revisions=revisions):
+                registry = PostgresPatientRegistry(Mock(autocommit=False))
+                registry._fetchone = Mock(return_value=(None,))
+                def rows(sql, params=()):
+                    if "FROM public.alembic_version" in sql:
+                        return revisions
+                    if ("FROM coordination.question_followthrough_tasks" in sql
+                            or "FROM coordination.question_followthrough_events" in sql):
+                        return []
+                    raise AssertionError("An absent manual child must not be queried")
+                registry._fetchall = Mock(side_effect=rows)
+                owner = module.PostgresQuestionFollowthrough(registry)
+                with patch.object(module.PostgresSourceQuestions, "project_locked", return_value=[]):
+                    if expected_allowed:
+                        output, questions, events = owner._read_locked(
+                            "PAT-FAKE", "CASE-ALPHA", "ORG-ALPHA", {}, "2026-11-04")
+                        self.assertEqual((output, questions, events), ([], {}, 0))
+                    else:
+                        with self.assertRaises(PatientRegistryError):
+                            owner._read_locked("PAT-FAKE", "CASE-ALPHA", "ORG-ALPHA", {}, "2026-11-04")
+                registry._fetchone.assert_called_once()
+
+    def test_declared_child_table_reads_normally_without_legacy_exemption(self):
+        module = owner_module(self)
+        registry = PostgresPatientRegistry(Mock(autocommit=False))
+        registry._fetchone = Mock(return_value=("coordination.question_followthrough_manual_dependencies",))
+        def rows(sql, params=()):
+            if "FROM public.alembic_version" in sql:
+                raise AssertionError("Current-schema reads must not use historical exemptions")
+            return []
+        registry._fetchall = Mock(side_effect=rows)
+        with patch.object(module.PostgresSourceQuestions, "project_locked", return_value=[]):
+            self.assertEqual(
+                module.PostgresQuestionFollowthrough(registry)._read_locked(
+                    "PAT-FAKE", "CASE-ALPHA", "ORG-ALPHA", {}, "2026-11-04"),
+                ([], {}, 0))
+
+
 class FollowthroughMigrationGraphTests(unittest.TestCase):
     def test_task_migration_extends_the_published_single_head(self):
         config = Config()
         config.set_main_option("script_location", str(Path(__file__).resolve().parents[1] / "migrations"))
         script = ScriptDirectory.from_config(config)
-        self.assertEqual(script.get_heads(), ["0011_evidence_convergence"])
+        self.assertEqual(script.get_heads(), [SCHEMA_REVISION])
         self.assertEqual(script.get_revision("0010_question_evidence").down_revision,
                          "0009_question_followthrough")
         self.assertEqual(script.get_revision("0009_question_followthrough").down_revision,
@@ -283,6 +375,117 @@ class FollowthroughPostgresTests(SourceVersionFixture):
         with self.assertRaises(PatientRegistryConflict):
             self.transition(created["task_id"], 4, "assigned", key="REOPEN-COMPLETED")
         self.assertEqual(self.rows(), before)
+
+    def test_optional_manual_task_binding_and_targeted_reassessment(self):
+        # No dependency row is implicitly created for a source-only task.
+        task = self.create_task(key="SOURCE-ONLY-TASK")
+        table = "coordination.question_followthrough_manual_dependencies"
+        with self.engine.connect() as db:
+            self.assertEqual(db.execute(text("SELECT count(*) FROM " + table)).scalar_one(), 0)
+        with running_server(create_app(self.settings)) as base:
+            docs = self.url(self.patient).removesuffix("/sources") + "/documents"
+            payload = dict(synthetic=True,filename="fictional.txt",
+                           original_base64=base64.b64encode(RAW).decode())
+            status,preview,_ = request(base,docs+"/preview",token=TOKEN_A,body=payload)
+            self.assertEqual(status,200,preview)
+            payload.update(confirmed_case_id=CASE,expected_sha256=preview["sha256"],
+                metadata=dict(document_id="DOC-DEPENDENCY",kind="pathology",
+                              event_date="2026-01-10",issued_at="2026-01-11",
+                              manual_transcription_confirmed=True),
+                findings=[dict(key="marker",state="pending",quote="Marker pending.",line=2)])
+            status,doc,_=request(base,docs,token=TOKEN_A,body=payload)
+            self.assertEqual(status,201,doc)
+            select=docs+"/"+doc["source_id"]+"/selections/"+doc["annotation_revision_id"]+"/marker"
+            status,selection,_=request(base,select,token=TOKEN_A)
+            self.assertEqual(status,200,selection)
+            ref=dict(source_id=doc["source_id"],annotation_revision_id=doc["annotation_revision_id"],
+                     selection_key="marker",anchor_sha256=selection["anchor_sha256"])
+            manual=f"/v1/patients/{self.patient}/cases/{CASE}/questions/{self.question}/manual-passages"
+            status,current,_=request(base,manual,token=TOKEN_A)
+            self.assertEqual(status,200,current)
+            status,saved,_=request(base,manual,token=TOKEN_A,body=dict(
+                synthetic=True,request_key="TASK-MANUAL-DEPENDENCY",
+                expected_context_sha256=current["context_sha256"],references=[ref]))
+            self.assertEqual(status,201,saved)
+        binding=dict(patient_id=self.patient,case_id=CASE,question_id=self.question,
+                     revision_id=saved["revision_id"],references_sha256=fingerprint([ref]))
+        # Verify the actual HTTP Pydantic boundary, then exact-retry from the
+        # same first-party PostgreSQL task owner across a fresh connection.
+        self.creds[0]["actions"].extend(("followthrough_create","followthrough_read"))
+        self.write()
+        command=dict(synthetic=True,request_key="TASK-MANUAL-BOUND",
+            title="Prepare the fictional source packet",detail="",owner_label="",
+            due_date="2026-11-04",review_trigger="",
+            reason="Recorded for the next fictional discussion.",
+            source_snapshot_contract=SOURCE_SNAPSHOT_CONTRACT,
+            expected_source_snapshot_sha256=self.preflight["source_snapshot_sha256"],
+            expected_preflight_sha256=self.preflight["preflight_sha256"],
+            manual_dependency=binding)
+        path=f"/v1/patients/{self.patient}/cases/{CASE}/questions/{self.question}/followthrough"
+        with running_server(create_app(self.settings)) as base:
+            status,manual_task,_=request(base,path,token=TOKEN_A,body=command)
+            self.assertEqual(status,201,manual_task)
+            retry_status,retry,_=request(base,path,token=TOKEN_A,body=command)
+            self.assertEqual(retry_status,200,retry)
+            self.assertEqual(retry,manual_task|{"duplicate":True})
+        self.assertEqual(self.create_task(key="TASK-MANUAL-BOUND",manual_dependency=binding),
+                         manual_task|{"duplicate":True})
+        tasks={item["task_id"]:item for item in self.listing()["tasks"]}
+        self.assertIsNone(tasks[task["task_id"]]["manual_context_state"])
+        self.assertFalse(tasks[task["task_id"]]["needs_recheck"])
+        self.assertEqual(tasks[manual_task["task_id"]]["manual_context_state"],"current_unreviewed")
+        self.assertFalse(tasks[manual_task["task_id"]]["needs_recheck"])
+        self.assertEqual(tasks[manual_task["task_id"]]["manual_dependency_revision_id"],
+                         saved["revision_id"])
+        self.assertNotIn("Marker pending.",str(tasks))
+
+        with self.engine.connect() as db:
+            row=db.execute(text("SELECT task_id,revision_id,references_sha256 FROM "+table)).one()
+            self.assertEqual(row[0],manual_task["task_id"])
+            self.assertEqual(row[1],saved["revision_id"])
+            self.assertEqual(row[2],fingerprint([ref]))
+        with running_server(create_app(self.settings)) as base:
+            correction=dict(synthetic=True,request_key="TASK-ANNOTATION-CORRECTION",
+                expected_revision_id=doc["annotation_revision_id"],
+                confirmed_case_id=CASE,expected_sha256=payload["expected_sha256"],
+                reason="Recheck the fictional quotation",
+                findings=[dict(key="marker",state="indeterminate",quote="pending.",line=2)])
+            code,result,_=request(base,docs+"/"+doc["source_id"]+"/annotations",
+                                  token=TOKEN_A,body=correction)
+            self.assertEqual(code,201,result)
+        after={item["task_id"]:item for item in self.listing()["tasks"]}
+        self.assertIsNone(after[task["task_id"]]["manual_context_state"])
+        self.assertFalse(after[task["task_id"]]["needs_recheck"])
+        self.assertEqual(after[manual_task["task_id"]]["manual_context_state"],"reassessment_required")
+        self.assertTrue(after[manual_task["task_id"]]["needs_recheck"])
+        self.assertEqual(after[manual_task["task_id"]]["revision"],1)
+        self.transition(manual_task["task_id"],1,"assigned",key="MANUAL-ASSIGNED")
+        self.transition(manual_task["task_id"],2,"acknowledged",key="MANUAL-ACK")
+        with self.assertRaises(PatientRegistryConflict):
+            self.transition(manual_task["task_id"],3,"completed",key="MANUAL-STALE-COMPLETE")
+        self.assertEqual(next(t for t in self.listing()["tasks"] if t["task_id"]==manual_task["task_id"])["revision"],3)
+        self.assertEqual(self.create_task(key="TASK-MANUAL-BOUND",manual_dependency=binding),
+                         manual_task|{"duplicate":True})
+        with self.assertRaises(PatientRegistryConflict):
+            self.create_task(key="TASK-MANUAL-STALE",manual_dependency=binding)
+        with self.assertRaises(PatientRegistryDenied):
+            self.create_task(key="TASK-MANUAL-CROSS-CASE",
+                             manual_dependency=binding|{"case_id":"CASE-BETA"})
+        self.creds[0]["actions"].remove("source_original_read");self.write()
+        hidden=self.listing()["tasks"]
+        self.assertNotIn("Marker pending.",str(hidden))
+        self.assertTrue(next(t for t in hidden if t["task_id"]==manual_task["task_id"])["needs_recheck"])
+        for statement in (
+            "UPDATE "+table+" SET references_sha256='"+("f"*64)+"'",
+            "DELETE FROM "+table,
+        ):
+            with self.assertRaises(DBAPIError):
+                with self.engine.begin() as db:
+                    db.execute(text(statement))
+        with self.assertRaises(CommandError):
+            migrate(self.admin,"downgrade","0015_manual_report_context")
+        with self.engine.connect() as db:
+            self.assertEqual(db.execute(text("SELECT count(*) FROM "+table)).scalar_one(),1)
 
     def test_stale_revision_and_changed_request_intent_cannot_write(self):
         created = self.create_task()

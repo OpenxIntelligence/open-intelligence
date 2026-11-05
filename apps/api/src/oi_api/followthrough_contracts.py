@@ -24,6 +24,25 @@ def _visible(value: str, field: str, low: int, high: int) -> str:
     return checked
 
 
+class ManualTaskDependency(Contract):
+    """Explicit versioned manual reference, not a source grant or a task write.
+
+    Kept separate from FollowthroughCreate until the existing task owner can
+    atomically persist and revalidate it under its case/permission locks.
+    No original text, quotations, or clinical conclusions may be carried here.
+    """
+    patient_id: str
+    case_id: str
+    question_id: str = Field(pattern=QuestionID)
+    revision_id: str = Field(pattern=r"^PASSAGES-[0-9A-F]{32}$")
+    references_sha256: str = Field(pattern=Digest)
+
+    @field_validator("patient_id", "case_id")
+    @classmethod
+    def scoped_identifier(cls, value, info):
+        return _key(value, info.field_name)
+
+
 class FollowthroughCreate(Contract):
     synthetic: Literal[True]
     request_key: str
@@ -36,6 +55,7 @@ class FollowthroughCreate(Contract):
     source_snapshot_contract: Literal["oi.pg-source-world-model/1"]
     expected_source_snapshot_sha256: str = Field(pattern=Digest)
     expected_preflight_sha256: str = Field(pattern=Digest)
+    manual_dependency: ManualTaskDependency | None = None
 
     @field_validator("synthetic", mode="before")
     @classmethod
@@ -142,6 +162,8 @@ class FollowthroughTask(Contract):
     source_snapshot_sha256: str = Field(pattern=Digest)
     preflight_sha256: str = Field(pattern=Digest)
     source_context_state: Literal["current_unreviewed_question", "source_reassessment_required"]
+    manual_dependency_revision_id: str | None = None
+    manual_context_state: Literal["current_unreviewed", "reassessment_required"] | None = None
     needs_recheck: bool
     is_overdue: bool
     is_due_soon: bool

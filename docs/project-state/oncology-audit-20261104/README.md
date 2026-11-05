@@ -12,6 +12,8 @@ The audit captured **501 tracked files on main**, **453 remote refs**, and **126
 
 The connected account listed the product repository and three other repositories: Coding-Agent-Library, Coding-Agent-Skills and legal-agent. They were excluded from product implementation claims; their names do not establish additional oncology services. Other accounts or unlisted repositories have not been exhaustively searched.
 
+**Subsequent integration.** [PR #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481) has since merged into main at [62e218e](https://github.com/OpenxIntelligence/open-intelligence/commit/62e218e1e2bd6996bb126fcc1ea956fcf18199e6). The inventory and scores below describe the original audit snapshot. [PR #492](https://github.com/OpenxIntelligence/open-intelligence/pull/492) records verification of the access-policy repair against the consolidated application.
+
 ### Frozen implementation states
 
 | State | Exact reference | Interpretation |
