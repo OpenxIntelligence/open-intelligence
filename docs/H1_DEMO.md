@@ -55,7 +55,10 @@ If startup fails, inspect the Docker output and retry the same command/state dir
 
 In Records, open the source versions for `CASE-DEMO`. Select
 [the fictional FHIR bundle](../examples/synthetic/fictional-fhir-r4-lab-bundle.json),
-confirm the file, and import it as a new report. In Journey, inspect that case and
+then choose **Preview results without importing**. Check the specimen and the reported
+value of `4.20 10*9/L`. The preview sends the original to the case service for a
+patient-mapping check. Saving requires a separate confirmation. Confirm the file
+and import it as a new report. In Journey, inspect that case and
 select `Observation/FICTIONAL-OBS-A`. Write a question, check it against the
 report, then explicitly save it. Reopen the saved laboratory questions to see
 the original question, report version, file digest and Observation reference.
