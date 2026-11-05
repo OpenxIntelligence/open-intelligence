@@ -1,4 +1,5 @@
 import type {ViewState} from './registry-client.js';
+import {questionSaveBlocksSourceChange} from './source-questions-view.js';
 import {projectFollowthroughAttention} from './followthrough-view.js';
 
 export type PreparationPrompt=Readonly<{
@@ -53,7 +54,8 @@ export function patientContinuity(state:ViewState){
   if(questions===null) add('questions-unchecked','Check saved questions',
    'Question history was not successfully checked for this case; an unavailable read is not a verified empty list.',
    'Investigations','Check question history');
-  else if(questions.current+questions.reassessment===0&&model.observations.length>0)
+  else if(questions.current+questions.reassessment===0&&model.observations.length>0&&
+          !questionSaveBlocksSourceChange(state))
    add('prepare-a-question','Prepare a source-linked question',
     'No saved questions were returned in the last authorized question read. This does not mean no care questions exist.',
     'Journey','Choose a source statement');

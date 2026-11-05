@@ -12,7 +12,7 @@ import {parseSourceWorldModel} from './source-world-model.js';
 import type {SourceWorldModel} from './source-world-model.js';
 import {decodeComposerPreflight,DEFAULT_SOURCE_QUESTION} from './composer-preflight-view.js';
 import type {ComposerPreflight} from './composer-preflight-view.js';
-import {decodeSavedQuestion,decodeSourceQuestions} from './source-questions-view.js';
+import {decodeSavedQuestion,decodeSourceQuestions,questionSaveBlocksSourceChange} from './source-questions-view.js';
 import type {SavedQuestion,SourceQuestion} from './source-questions-view.js';
 import {decodeReviewQueue,decodeReviewReturnResult,validReturnReason,FICTIONAL_RETURN_REASON} from './review-queue-view.js';
 import type {ReviewQueue,ReviewReturnResult} from './review-queue-view.js';
@@ -657,8 +657,7 @@ export class RegistrySession {
    * A changed/amended source cannot silently become a new question's source.
    */
   async beginQuestionFromSourceReading(caseId:string,sourceId:string,sourceLine:number):Promise<boolean>{
-    if(this.#savingQuestion||this.#state.questionSavePhase==='saving'||
-       this.#state.questionSaveMessage.startsWith('Save outcome unknown.')){
+    if(this.#savingQuestion||questionSaveBlocksSourceChange(this.#state)){
       this.#publish({worldMessage:'Resolve the earlier uncertain question save in Investigations before changing its source.'});
       return false;
     }
@@ -753,7 +752,7 @@ export class RegistrySession {
    * Never persist editable text, credentials or preflight data outside memory.
    */
   chooseQuestionDraft(sourceId:string,sourceLine:number):void{
-    if(this.#savingQuestion||this.#state.questionSaveMessage.startsWith('Save outcome unknown.')){
+    if(this.#savingQuestion||questionSaveBlocksSourceChange(this.#state)){
       this.#publish({composerMessage:'Resolve the uncertain question save with the same request key before changing its source.'});
       return;
     }
