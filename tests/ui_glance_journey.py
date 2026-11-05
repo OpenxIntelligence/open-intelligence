@@ -16,7 +16,13 @@ import sys
 import tempfile
 from urllib.request import urlopen
 
-from browser_journey import ChromeSession, free_port, wait_for
+from browser_journey import (
+    ChromeSession,
+    free_port,
+    set_demo_account_password,
+    sign_in_demo,
+    wait_for,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -41,6 +47,7 @@ def main() -> None:
         db = str(Path(temp) / 'case.sqlite')
         subprocess.run([sys.executable, '-m', 'open_intelligence', 'seed', '--db', db],
                        cwd=ROOT, env=env, check=True, stdout=subprocess.DEVNULL)
+        set_demo_account_password(db)
         app_port, debug_port = free_port(), free_port()
         server = subprocess.Popen([sys.executable, '-m', 'open_intelligence', 'serve', '--db', db,
                                    '--port', str(app_port)], cwd=ROOT, env=env,
@@ -67,6 +74,7 @@ def main() -> None:
             cd.command('Emulation.setDeviceMetricsOverride', {
                 'width': 1440, 'height': 900, 'deviceScaleFactor': 1, 'mobile': False})
             cd.command('Page.navigate', {'url': url})
+            sign_in_demo(cd)
             cd.wait("document.querySelector('#case-heading')?.textContent === 'Fictional case Alpha'",
                     'Alpha loaded')
             cd.wait("document.querySelectorAll('#assertion-list .finding').length > 0", 'source findings')

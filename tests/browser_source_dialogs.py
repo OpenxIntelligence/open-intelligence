@@ -15,7 +15,14 @@ import sys
 import tempfile
 from urllib.request import urlopen
 
-from browser_journey import ChromeSession, ROOT, free_port, wait_for
+from browser_journey import (
+    ChromeSession,
+    ROOT,
+    free_port,
+    set_demo_account_password,
+    sign_in_demo,
+    wait_for,
+)
 
 
 def stop(process, *, group=False):
@@ -47,6 +54,7 @@ def main():
         db = str(Path(tmp) / 'case.sqlite')
         subprocess.run([sys.executable, '-m', 'open_intelligence', 'seed', '--db', db],
                        cwd=ROOT, env=env, check=True, stdout=subprocess.DEVNULL)
+        set_demo_account_password(db)
         port, debug_port = free_port(), free_port()
         server = subprocess.Popen([sys.executable, '-m', 'open_intelligence', 'serve',
                                    '--db', db, '--port', str(port)], cwd=ROOT, env=env,
@@ -68,6 +76,7 @@ def main():
             session.command('Page.enable')
             session.command('Runtime.enable')
             session.command('Page.navigate', {'url': url})
+            sign_in_demo(session)
             session.wait("typeof active !== 'undefined' && active?.case.case_id === 'CASE-ALPHA' && renderedCaseId === caseId",
                          'Alpha ready')
             session.evaluate(r"""(() => {

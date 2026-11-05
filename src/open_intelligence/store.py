@@ -7,8 +7,10 @@ record system. No patient authentication, PHI handling, or clinical validation.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import re
+import secrets
 import sqlite3
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
@@ -37,6 +39,13 @@ STATES = frozenset({"reported", "negative", "pending", "indeterminate", "not-rep
 TYPES = frozenset({"pathology", "molecular", "imaging", "laboratory", "clinical", "other"})
 MAX_SOURCE_BYTES = 65536
 MAX_SUMMARY = 3000
+# Slice 1 local demo accounts: operator-created only, stdlib password
+# hashing, server-side sessions. Accounts are local labels, not verified
+# identities; the fictional-demo framing is unchanged.
+ACCOUNT_ROLES = frozenset({"operator", "clinician", "patient", "auditor"})
+SESSION_TTL_SECONDS = 24 * 3600
+PASSWORD_MIN_LENGTH = 8
+_PBKDF2_ITERATIONS = 200_000
 # Sentinel for "argument absent" in follow-through updates, distinct from an
 # explicit null (which clears the field it names).
 _KEEP = object()
@@ -988,6 +997,29 @@ CREATE TABLE IF NOT EXISTS access_log (
   occurred_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_access_log_case ON access_log(case_id, id);
+-- Slice 1 local demo accounts and sessions. Accounts are operator-created
+-- local labels (display name, role, status), never verified identities.
+-- Passwords are stored only as pbkdf2_hmac digests with a per-account salt;
+-- plaintext is never stored. A patient account binds to one case at
+-- creation (own_case_id); the operator assigns it. Sessions store only a
+-- SHA-256 hash of the token; the token itself is never stored. Revocation
+-- marks rows, never deletes them.
+CREATE TABLE IF NOT EXISTS accounts (
+  account_id TEXT PRIMARY KEY,
+  display_name TEXT NOT NULL,
+  role TEXT NOT NULL CHECK(role IN ('operator','clinician','patient','auditor')),
+  status TEXT NOT NULL CHECK(status IN ('active','disabled')),
+  own_case_id TEXT REFERENCES cases(case_id),
+  password_hash TEXT, password_salt TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_accounts_role ON accounts(role, status);
+CREATE TABLE IF NOT EXISTS sessions (
+  token_hash TEXT PRIMARY KEY,
+  account_id TEXT NOT NULL REFERENCES accounts(account_id),
+  expires_at TEXT NOT NULL, revoked_at TEXT, created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_account ON sessions(account_id, expires_at);
 -- B-08 contradiction synthesis: human-entered limitation notes on one
 -- evidence assessment or one broker link. Append-only: rows are never
 -- updated or deleted, so note history is preserved. Notes are descriptive
@@ -1338,6 +1370,197 @@ class CaseStore:
         return self._dicts(self.db.execute(
             "SELECT id,actor,case_id,route,result,occurred_at FROM access_log "
             "WHERE case_id=? ORDER BY id", (case_id,)).fetchall())
+
+    # -- Slice 1 local demo accounts and sessions -------------------------
+    # Accounts are operator-created local labels, not verified identities.
+    # An account id doubles as the B-01 actor id, so seeded grants keep
+    # working unchanged when the demo actor becomes a demo account.
+
+    @staticmethod
+    def _public_account(row: sqlite3.Row) -> dict:
+        """Account row without credential material (never leaves the store)."""
+        return {"account_id": row["account_id"], "display_name": row["display_name"],
+                "role": row["role"], "status": row["status"],
+                "own_case_id": row["own_case_id"], "created_at": row["created_at"]}
+
+    @staticmethod
+    def _hash_password(password: str, salt: bytes) -> str:
+        return hashlib.pbkdf2_hmac(
+            "sha256", password.encode("utf-8"), salt, _PBKDF2_ITERATIONS).hex()
+
+    def create_account(self, account_id: str, display_name: str, role: str,
+                       password: str | None = None,
+                       own_case_id: str | None = None) -> dict:
+        """Operator-created account. Password is optional at creation: an
+        account without one cannot sign in until an operator sets it.
+        A patient account must bind to exactly one case at creation; other
+        roles bind to no case."""
+        account_id = valid_id(account_id)
+        if not isinstance(display_name, str) or not 1 <= len(display_name.strip()) <= 128:
+            raise InvalidInput("Account display name must have 1–128 characters")
+        if role not in ACCOUNT_ROLES:
+            raise InvalidInput("Account role must be operator, clinician, patient, or auditor")
+        if role == "patient":
+            if own_case_id is None:
+                raise InvalidInput("A patient account binds to one case at creation")
+            self._case(own_case_id)
+        elif own_case_id is not None:
+            raise InvalidInput("Only a patient account binds to a case")
+        if password is not None:
+            if not isinstance(password, str) or len(password) < PASSWORD_MIN_LENGTH:
+                raise InvalidInput(
+                    f"Account password must have at least {PASSWORD_MIN_LENGTH} characters")
+        password_hash = password_salt = None
+        if password is not None:
+            salt = secrets.token_bytes(16)
+            password_salt = salt.hex()
+            password_hash = self._hash_password(password, salt)
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            existing = self.db.execute(
+                "SELECT 1 FROM accounts WHERE account_id=?", (account_id,)).fetchone()
+            if existing is not None:
+                raise InvalidInput("Account already exists")
+            self.db.execute(
+                """INSERT INTO accounts
+                   (account_id,display_name,role,status,own_case_id,
+                    password_hash,password_salt,created_at)
+                   VALUES (?,?,?,'active',?,?,?,?)""",
+                (account_id, display_name.strip(), role, own_case_id,
+                 password_hash, password_salt, now_utc()))
+            row = self.db.execute(
+                "SELECT * FROM accounts WHERE account_id=?", (account_id,)).fetchone()
+            return self._public_account(row)
+
+    def set_account_password(self, account_id: str, password: str) -> dict:
+        """Operator-set password for an existing account. No password is ever
+        stored or returned; only its salted digest is kept."""
+        account_id = valid_id(account_id)
+        if not isinstance(password, str) or len(password) < PASSWORD_MIN_LENGTH:
+            raise InvalidInput(
+                f"Account password must have at least {PASSWORD_MIN_LENGTH} characters")
+        salt = secrets.token_bytes(16)
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            cur = self.db.execute(
+                "UPDATE accounts SET password_hash=?, password_salt=? WHERE account_id=?",
+                (self._hash_password(password, salt), salt.hex(), account_id))
+            if cur.rowcount == 0:
+                raise InvalidInput("Account not found")
+            row = self.db.execute(
+                "SELECT * FROM accounts WHERE account_id=?", (account_id,)).fetchone()
+            return self._public_account(row)
+
+    def set_account_status(self, account_id: str, status: str) -> dict:
+        """Disable or re-enable an account. Disabling also revokes every
+        live session for the account; the rows stay for audit."""
+        account_id = valid_id(account_id)
+        if status not in ("active", "disabled"):
+            raise InvalidInput("Account status must be active or disabled")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            cur = self.db.execute(
+                "UPDATE accounts SET status=? WHERE account_id=?", (status, account_id))
+            if cur.rowcount == 0:
+                raise InvalidInput("Account not found")
+            if status == "disabled":
+                self.db.execute(
+                    "UPDATE sessions SET revoked_at=? WHERE account_id=? AND revoked_at IS NULL",
+                    (now_utc(), account_id))
+            row = self.db.execute(
+                "SELECT * FROM accounts WHERE account_id=?", (account_id,)).fetchone()
+            return self._public_account(row)
+
+    def get_account(self, account_id: str) -> dict | None:
+        """Public account record, or None when unknown. Never raises for
+        unknown ids and never exposes credential material."""
+        if not isinstance(account_id, str):
+            return None
+        row = self.db.execute(
+            "SELECT * FROM accounts WHERE account_id=?", (account_id,)).fetchone()
+        return None if row is None else self._public_account(row)
+
+    def list_accounts(self) -> list[dict]:
+        """All accounts, ordered by id, without credential material."""
+        return [self._public_account(row) for row in self.db.execute(
+            "SELECT * FROM accounts ORDER BY account_id").fetchall()]
+
+    def verify_password(self, account_id: str, password: str) -> bool:
+        """True only for an active account with a set password that matches.
+        Deny by default: unknown, disabled, or passwordless accounts are
+        False. Never raises for unknown ids."""
+        if not isinstance(account_id, str) or not isinstance(password, str):
+            return False
+        row = self.db.execute(
+            "SELECT * FROM accounts WHERE account_id=?", (account_id,)).fetchone()
+        if row is None or row["status"] != "active":
+            return False
+        if row["password_hash"] is None or row["password_salt"] is None:
+            return False
+        try:
+            salt = bytes.fromhex(row["password_salt"])
+        except ValueError:
+            return False
+        digest = self._hash_password(password, salt)
+        return hmac.compare_digest(digest, row["password_hash"])
+
+    def issue_session(self, account_id: str) -> tuple[str, dict]:
+        """Create a 24-hour session for an active account. Returns the bearer
+        token (never stored; only its hash is kept) and the session record."""
+        account = self.get_account(account_id)
+        if account is None or account["status"] != "active":
+            raise InvalidInput("Account is disabled or missing")
+        token = secrets.token_urlsafe(32)
+        token_hash = hashlib.sha256(token.encode("ascii")).hexdigest()
+        created = datetime.now(timezone.utc)
+        expires = (created + timedelta(seconds=SESSION_TTL_SECONDS)).isoformat(timespec="seconds")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            self.db.execute(
+                """INSERT INTO sessions (token_hash,account_id,expires_at,revoked_at,created_at)
+                   VALUES (?,?,?,NULL,?)""",
+                (token_hash, account_id, expires, created.isoformat(timespec="seconds")))
+        return token, {"account_id": account_id, "expires_at": expires,
+                       "created_at": created.isoformat(timespec="seconds")}
+
+    def validate_session(self, token: str) -> dict | None:
+        """Account for a live session token, or None. Expired and revoked
+        sessions are None. Never raises for malformed tokens."""
+        if not isinstance(token, str) or not token:
+            return None
+        token_hash = hashlib.sha256(token.encode("utf-8", errors="ignore")).hexdigest()
+        row = self.db.execute(
+            """SELECT a.* FROM sessions s JOIN accounts a ON a.account_id=s.account_id
+               WHERE s.token_hash=? AND s.revoked_at IS NULL AND s.expires_at>?""",
+            (token_hash, now_utc())).fetchone()
+        if row is None:
+            return None
+        if row["status"] != "active":
+            return None
+        return self._public_account(row)
+
+    def revoke_session(self, token: str) -> bool:
+        """Revoke one session token. True when a live session was revoked."""
+        if not isinstance(token, str) or not token:
+            return False
+        token_hash = hashlib.sha256(token.encode("utf-8", errors="ignore")).hexdigest()
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            cur = self.db.execute(
+                "UPDATE sessions SET revoked_at=? WHERE token_hash=? AND revoked_at IS NULL",
+                (now_utc(), token_hash))
+            return cur.rowcount > 0
+
+    def revoke_account_sessions(self, account_id: str) -> int:
+        """Revoke every live session for one account. Returns the count."""
+        if not isinstance(account_id, str):
+            return 0
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            cur = self.db.execute(
+                "UPDATE sessions SET revoked_at=? WHERE account_id=? AND revoked_at IS NULL",
+                (now_utc(), account_id))
+            return int(cur.rowcount)
 
 
     def _stale_case_model_investigations(self, case_id: str) -> list[int]:
