@@ -88,7 +88,7 @@ def assert_read_only_recovery(before, after, expected_events):
         assert {key: actual[key] for key in ("patient_id", "event_type", "metadata_json")} == expected, \
             "Restored receipt differs from returned scope or action"
         assert actual["event_type"] in {"source.document_read_authorized", "source.original_read_authorized",
-                                        "source.document_selection_read_authorized"}, \
+                                        "source.document_selection_read_authorized","source.document_question_access_authorized"}, \
             "Read/retry emitted a business event"
     assert before["sequences"].keys() == after["sequences"].keys(), "Sequence coverage changed"
     assert event_sequence in before["sequences"], "Access sequence absent"
@@ -115,7 +115,7 @@ def main():
         token = secrets.token_urlsafe(32)
         actions = ["patient_create", "patient_read", "case_binding_create",
                    "case_binding_read", "case_binding_revoke", "source_import",
-                   "source_read", "source_original_read"]
+                   "source_read", "source_original_read","question_create","question_read"]
         credential = {
             "token_sha256": hashlib.sha256(token.encode()).hexdigest(),
             "actor": "ACTOR-SOURCE-PROOF", "organization": "ORG-SOURCE-PROOF",
@@ -416,6 +416,19 @@ def main():
                     item["selections"].append({"path": path, "reference": {
                         key: field for key, field in value.items() if key != "access_receipt_id"}})
 
+            question_selection=documents[-1]["selections"][-1]["reference"]
+            question_path=documents[-1]["path"]+"/questions"
+            payload=dict(synthetic=True,request_key="RESTORE-PASSAGE-QUESTION",
+                question="Which fictional record explains this selected passage?",
+                revision_id=question_selection["anchor"]["annotation_revision_id"],selection_key=question_selection["anchor"]["selection_key"],
+                anchor_sha256=question_selection["anchor_sha256"])
+            status,saved_question=request(question_path,payload)
+            assert status==201
+            status,retry=request(question_path,payload)
+            assert status==200 and retry==dict(question_id=saved_question["question_id"],duplicate=True)
+            assert request(question_path,{**payload,"question":"Different fictional question text?"})[0]==409
+            assert request(question_path,{**payload,"request_key":"CHANGED-ANCHOR","anchor_sha256":"0"*64})[0]==409
+
             # Each grant is independent. Changing the mounted fixture takes
             # effect without restarting; denied requests cannot mint receipts.
             for missing, paths in (
@@ -525,6 +538,12 @@ def main():
                     assert status == 200 and value == {**prior, "duplicate": True}, "Restored retry identity changed"
 
             def readable_cycle():
+                status,stored=request(question_path)
+                assert status==200 and len(stored["questions"])==1
+                row=stored["questions"][0]
+                assert row["question_id"]==saved_question["question_id"] and row["question"]==payload["question"]
+                assert row["selection"]["anchor"]==question_selection["anchor"]
+                document_receipt(stored["access_receipt_id"],"source.document_question_access_authorized",documents[-1])
                 restored_index()
                 for item in documents:
                     restored_document(item)
@@ -540,6 +559,12 @@ def main():
                 assert set(value) == {"detail"} and isinstance(value["detail"], str), "Denial exposed document fields"
                 assert snapshot(database) == before, "Denied document request caused effects"
 
+            for grant in ("source_original_read","question_read"):
+                credential["actions"]=[a for a in actions if a!=grant]
+                save_access()
+                no_effect_denial(question_path)
+            credential["actions"]=list(actions)
+            save_access()
             readable_cycle()
             for service in ("api", "db"):
                 before = snapshot(restored_database)

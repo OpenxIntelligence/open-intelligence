@@ -172,7 +172,13 @@ def exercise(cd,patient_id,directory,token,credentials,write_grants,artifacts,re
     cd.wait("Boolean(document.querySelector('[data-testid=passage-question-draft]'))",'fresh saved PDF passage opens question draft')
     value('[data-testid=passage-question-draft]','What would resolve this pending fictional result?')
     assert cd.evaluate("""document.querySelector('section[aria-label="Draft a passage question"] blockquote').textContent""")==initial_revision['findings'][0]['quote']
-    click('Discard question draft')
+    click('Save passage question')
+    cd.wait("!document.querySelector('[data-testid=passage-question-draft]')",'question write confirmed')
+    click('Open saved passage questions')
+    cd.wait("document.querySelector('[data-testid=saved-passage-questions]')?.textContent.includes('What would resolve this pending fictional result?')",'saved question reopened')
+    original_question,=operator(prefix+'/'+first+'/questions')['questions']
+    assert original_question['selection']['anchor']['annotation_revision_id']==initial_revision['revision_id']
+
     assert not cd.evaluate("Boolean(document.querySelector('[data-testid=passage-question-draft]'))")
     selection_path=prefix+'/'+first+'/selections/'+initial_revision['revision_id']+'/'+initial_key
     initial_selection=operator(selection_path)
@@ -218,6 +224,10 @@ def exercise(cd,patient_id,directory,token,credentials,write_grants,artifacts,re
     image=cd.command('Page.captureScreenshot',{'format':'png'});(artifacts/'h1-reviewed-document-mobile.png').write_bytes(base64.b64decode(image['data']))
     restart_api()
     assert operator(prefix+'/'+first)['revisions']==saved['revisions']
+    restored_question,=operator(prefix+'/'+first+'/questions')['questions']
+    assert restored_question['question_id']==original_question['question_id']
+    assert restored_question['selection']['anchor']==original_question['selection']['anchor']
+    assert restored_question['selection']['selection_state']=='selection_reassessment_required'
     restored_selection=operator(selection_path)
     assert restored_selection['anchor']==initial_selection['anchor']
     assert restored_selection['anchor_sha256']==initial_selection['anchor_sha256']

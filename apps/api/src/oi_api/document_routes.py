@@ -5,6 +5,7 @@ from open_intelligence.patient_registry import PatientRegistryDenied, PatientReg
 from open_intelligence.store import InvalidInput
 from .access import Principal
 from .document_contracts import DocumentUpload, DocumentImport, AnnotationCorrection
+from .reviewed_questions import PassageQuestionWrite, passage_questions
 from .reviewed_documents import ReviewedDocuments
 
 
@@ -74,3 +75,14 @@ def register_document_routes(router, *, principal, registry, records_authorized,
     def correct(request:Request,patient_id:str,case_id:str,source_id:str,payload:AnnotationCorrection,context:Principal=Depends(principal)):
         return execute(request,context,patient_id,case_id,("source_import","source_original_read"),
             lambda owner,kwargs:owner.correct(patient_id,case_id,source_id,payload,**kwargs,prepare_response=saved))
+
+
+    @router.post(prefix+"/{source_id}/questions")
+    def save_passage_question(request:Request,patient_id:str,case_id:str,source_id:str,payload:PassageQuestionWrite,context:Principal=Depends(principal)):
+        return execute(request,context,patient_id,case_id,("patient_read","source_read","source_original_read","question_create"),
+            lambda owner,kwargs:passage_questions(owner,patient_id,case_id,source_id,payload,**kwargs))
+
+    @router.get(prefix+"/{source_id}/questions")
+    def list_passage_questions(request:Request,patient_id:str,case_id:str,source_id:str,context:Principal=Depends(principal)):
+        return execute(request,context,patient_id,case_id,("patient_read","source_read","source_original_read","question_read"),
+            lambda owner,kwargs:passage_questions(owner,patient_id,case_id,source_id,None,**kwargs))

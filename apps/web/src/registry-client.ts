@@ -194,7 +194,7 @@ export class RegistrySession {
       write:body=>{if(body===null)this.#manualPassageIntents.delete(key);else if(current())this.#manualPassageIntents.set(key,body);}};
   };
   async documentRequest(caseId:string,path:string,body?:string,questionId?:string):Promise<import('./reviewed-documents').DocumentReply>{
-    if(!/^CASE-[A-Z0-9-]{1,35}$/.test(caseId)||!/^$|^\/preview$|^\/SRC-[A-F0-9]{32}(?:\/(?:original|annotations)|\/selections\/ANN-[A-F0-9]{32}\/[a-z][a-z0-9_-]{0,59})?$/.test(path))throw Error('Invalid document path');
+    if(!/^CASE-[A-Z0-9-]{1,35}$/.test(caseId)||!/^$|^\/preview$|^\/SRC-[A-F0-9]{32}(?:\/(?:original|annotations|questions)|\/selections\/ANN-[A-F0-9]{32}\/[a-z][a-z0-9_-]{0,59})?$/.test(path))throw Error('Invalid document path');
     if(questionId!==undefined&&!/^QUESTION-[A-F0-9]{32}$/.test(questionId))throw Error('Invalid question scope');
     return this.#caseContentRequest(caseId,'/documents'+path,body,questionId);
   }
